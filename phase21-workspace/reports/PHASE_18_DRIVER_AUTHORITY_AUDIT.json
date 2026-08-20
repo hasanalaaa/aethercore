@@ -1,0 +1,237 @@
+{
+  "schema": "aethercore.phase18.source-audit.v1",
+  "phase": 18,
+  "status": "PASS",
+  "checkCount": 26,
+  "checks": [
+    {
+      "id": "P18-ARCH-001",
+      "ok": true,
+      "detail": "Phase 18 source surfaces present",
+      "evidence": [
+        "crates/driver-authority/Cargo.toml",
+        "crates/driver-authority/src/lib.rs",
+        "crates/driver-acquisition/Cargo.toml",
+        "crates/driver-acquisition/src/lib.rs",
+        "crates/persistence/migrations/0012_phase18_driver_authority.sql",
+        "tests/fixtures/phase18_1/scenarios.json",
+        "tests/fixtures/phase18/authority-ranking-matrix.json",
+        "apps/ui/src/features/drivers/DriversPage.svelte",
+        "apps/ui/src/features/drivers/controller.ts",
+        "QUALIFICATION_DEBT.json"
+      ]
+    },
+    {
+      "id": "P18-AUTH-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-ID-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-MACHINE-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/windows-foundation/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-WUA-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-WUA-OFFLINE-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/windows-update/src/windows_impl.rs"
+      ]
+    },
+    {
+      "id": "P18-UTILITY-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-TRUST-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-PLAN-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-ACQ-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-acquisition/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-PREF-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-IPC-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/contracts/proto/operations.proto"
+      ]
+    },
+    {
+      "id": "P18-FW-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-PCINTEL-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P18-REGRESS-001",
+      "ok": true,
+      "detail": "required source markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P18-SOURCE-001",
+      "ok": true,
+      "detail": "production provider policy contains only modeled official vendor/Microsoft authority paths; hostile domains remain test-only",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs",
+        "crates/gpu-policy/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-BOUNDARY-001",
+      "ok": true,
+      "detail": "acquisition validates HTTPS/provider-bound URLs and renderer preference path is candidate-bound",
+      "evidence": [
+        "crates/driver-acquisition/src/lib.rs",
+        "services/maintenance-service/src/router.rs"
+      ]
+    },
+    {
+      "id": "P18-DIRECT-001",
+      "ok": true,
+      "detail": "DirectTrusted is modeled but not exposed as executable production selection",
+      "evidence": [
+        "crates/driver-hub/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-TRUTH-001",
+      "ok": true,
+      "detail": "device-aware coverage and up-to-date truth are explicit",
+      "evidence": [
+        "crates/driver-hub/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18-I18N-001",
+      "ok": true,
+      "detail": "EN/AR key parity: en=1196 ar=1196 delta=0",
+      "evidence": [
+        "apps/ui/src/lib/i18n/catalog.en.ts",
+        "apps/ui/src/lib/i18n/catalog.ar.ts"
+      ]
+    },
+    {
+      "id": "P18-UX-001",
+      "ok": true,
+      "detail": "instant press feedback is wired to design motion primitives",
+      "evidence": [
+        "apps/ui/src/features/drivers/DriversPage.svelte",
+        "apps/ui/src/design/motion/fluid-press.ts"
+      ]
+    },
+    {
+      "id": "P18-A11Y-001",
+      "ok": true,
+      "detail": "reduced-motion/transparency/contrast accommodations remain in design system",
+      "evidence": [
+        "apps/ui/src/design/styles/feature-layout.css"
+      ]
+    },
+    {
+      "id": "P18-LAB-001",
+      "ok": true,
+      "detail": "synthetic lab scenarios=17; D18-01..D18-16 present=True",
+      "evidence": [
+        "tests/fixtures/phase18_1/scenarios.json"
+      ]
+    },
+    {
+      "id": "P18-MATRIX-001",
+      "ok": true,
+      "detail": "authority matrix rows=16",
+      "evidence": [
+        "tests/fixtures/phase18/authority-ranking-matrix.json"
+      ]
+    },
+    {
+      "id": "P18-DEBT-001",
+      "ok": true,
+      "detail": "phase18/18.1 native debt items=9",
+      "evidence": [
+        "QUALIFICATION_DEBT.json"
+      ]
+    },
+    {
+      "id": "P18-QUALITY-001",
+      "ok": true,
+      "detail": "no TODO/FIXME/HACK in Phase18 implementation surfaces",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs",
+        "crates/driver-acquisition/src/lib.rs",
+        "crates/driver-hub/src/lib.rs",
+        "crates/persistence/migrations/0012_phase18_driver_authority.sql",
+        "apps/ui/src/features/drivers/DriversPage.svelte"
+      ]
+    }
+  ],
+  "limitations": [
+    "Rust/Cargo Windows-native execution is outside this source audit.",
+    "Live provider endpoints, Authenticode, staging ACLs, install/rollback/reboot and WebView2 rendering remain qualification debt."
+  ]
+}

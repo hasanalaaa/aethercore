@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Id="AetherCore.Desktop"
+      ProductCode="$(var.ProductCode)"
+      UpgradeCode="{45598C77-2C32-5BCE-8510-19C7E51EE3B8}"
+      Name="AetherCore"
+      Manufacturer="AetherCore"
+      Version="$(var.ProductVersion)"
+      Language="1033"
+      Scope="perMachine"
+      InstallerVersion="500"
+      Compressed="yes">
+
+    <SummaryInformation Description="AetherCore Windows maintenance and diagnostics suite" Manufacturer="AetherCore" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version of AetherCore is already installed." />
+    <Launch
+        Condition="VersionNT64 AND MsiNTProductType = 1 AND WindowsBuild &gt;= 22621"
+        Message="AetherCore requires Windows 11 x64 build 22621 or newer." />
+
+    <!-- Direct MSI installs are supported for managed environments, but the consumer bundle is
+         preferred because it also guarantees the Evergreen WebView2 prerequisite. Do not author
+         ARPNOREPAIR: Windows Installer repair is intentionally part of the recovery contract. -->
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="AetherCore">
+        <Component Id="DesktopComponent" Guid="{A8D2C0D6-618A-4F34-8E5B-0F47B68D9D11}" Bitness="always64">
+          <File Id="DesktopExe" Source="$(var.PayloadDir)\aethercore-desktop.exe" KeyPath="yes">
+            <Shortcut Id="StartMenuShortcut"
+                      Directory="AetherCoreProgramMenu"
+                      Name="AetherCore"
+                      Description="AetherCore"
+                      WorkingDirectory="INSTALLFOLDER"
+                      Advertise="no" />
+          </File>
+        </Component>
+
+        <Component Id="BrokerComponent" Guid="{D1D038D6-38D2-4D0C-9F24-32522707EA6A}" Bitness="always64">
+          <File Id="ConsentBrokerExe" Source="$(var.PayloadDir)\aethercore-consent-broker.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="UpdateBrokerComponent" Guid="{F2D37346-C4C8-49B7-A54A-70868D304BB2}" Bitness="always64">
+          <File Id="UpdateBrokerExe" Source="$(var.PayloadDir)\aethercore-update-broker.exe" KeyPath="yes" />
+        </Component>
+
+        <!-- Release trust is installed read-only under Program Files. The default source template is
+             disabled; production release automation may substitute an explicitly reviewed pinned
+             Ed25519 channel configuration. No private update key is ever installed. -->
+        <Component Id="UpdateTrustComponent" Guid="{1F71C1D9-1D7F-47F7-9294-14D89E629073}" Bitness="always64">
+          <File Id="UpdateTrustJson" Source="$(var.PayloadDir)\update-trust.json" KeyPath="yes" />
+        </Component>
+
+        <Component Id="HardenerComponent" Guid="{7B4D12C1-EE65-402D-9229-B4B5D156B304}" Bitness="always64">
+          <File Id="InstallHardenerExe" Source="$(var.PayloadDir)\aethercore-install-hardener.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="ServiceComponent" Guid="{C6DA3E84-2EEC-4D98-9F5F-B1F47C366309}" Bitness="always64">
+          <File Id="MaintenanceServiceExe" Source="$(var.PayloadDir)\aethercore-maintenance-service.exe" KeyPath="yes" />
+          <ServiceInstall
+              Id="MaintenanceServiceInstall"
+              Name="AetherCoreMaintenance"
+              DisplayName="AetherCore Maintenance Service"
+              Description="Privileged typed-operation engine for AetherCore."
+              Account="LocalSystem"
+              Type="ownProcess"
+              Start="auto"
+              ErrorControl="normal"
+              Vital="yes" />
+          <ServiceControl
+              Id="MaintenanceServiceControl"
+              Name="AetherCoreMaintenance"
+              Start="install"
+              Stop="both"
+              Remove="uninstall"
+              Wait="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="ProgramDataRoot" Name="AetherCore">
+        <Directory Id="ProgramDataState" Name="state" />
+        <Directory Id="ProgramDataLogs" Name="logs" />
+        <Component Id="ProgramDataComponent" Guid="{85DB878E-C90B-494B-8F8E-1C2EB07E85B9}" Bitness="always64">
+          <CreateFolder Directory="ProgramDataRoot" />
+          <CreateFolder Directory="ProgramDataState" />
+          <CreateFolder Directory="ProgramDataLogs" />
+          <RegistryValue Root="HKLM"
+                         Key="Software\AetherCore"
+                         Name="InstallVersion"
+                         Type="string"
+                         Value="$(var.ProductVersion)"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AetherCoreProgramMenu" Name="AetherCore">
+        <Component Id="ProgramMenuComponent" Guid="{89E168CE-E5CD-45DA-97C8-20452172818C}">
+          <RemoveFolder Id="RemoveAetherCoreProgramMenu" On="uninstall" />
+          <RegistryValue Root="HKLM"
+                         Key="Software\AetherCore"
+                         Name="ProgramMenu"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- This deferred LocalSystem action accepts only the literal verb "apply". It invokes only
+         fixed System32 sc.exe/icacls.exe paths and hardens the fixed AetherCore service/directories.
+         It is deliberately sequenced after InstallServices so the service exists before its service-specific
+         SID/delayed-auto policy and NT SERVICE\AetherCoreMaintenance ACLs are applied, and before StartServices.
+         This deliberately avoids relying on MSI ServiceConfig for SID/delayed-start semantics. -->
+    <CustomAction Id="HardenInstalledSecurity"
+                  FileRef="InstallHardenerExe"
+                  ExeCommand="apply"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check"
+                  HideTarget="yes" />
+    <InstallExecuteSequence>
+      <Custom Action="HardenInstalledSecurity" After="InstallServices" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+    </InstallExecuteSequence>
+
+    <Feature Id="Complete" Title="AetherCore" Level="1">
+      <ComponentRef Id="DesktopComponent" />
+      <ComponentRef Id="BrokerComponent" />
+      <ComponentRef Id="UpdateBrokerComponent" />
+      <ComponentRef Id="UpdateTrustComponent" />
+      <ComponentRef Id="HardenerComponent" />
+      <ComponentRef Id="ServiceComponent" />
+      <ComponentRef Id="ProgramDataComponent" />
+      <ComponentRef Id="ProgramMenuComponent" />
+    </Feature>
+  </Package>
+</Wix>

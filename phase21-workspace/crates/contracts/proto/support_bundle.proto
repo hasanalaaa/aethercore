@@ -1,0 +1,60 @@
+syntax = "proto3";
+package aethercore.v1;
+
+message CreateSupportBundlePreviewRequest {
+  bool include_hardware = 1;
+  bool include_crash_metadata = 2;
+  bool include_operation_history = 3;
+  bool include_scheduler_activity = 4;
+}
+message PrepareSupportBundleRequest { string preview_id = 1; }
+message ReadSupportBundleChunkRequest { string bundle_id = 1; uint64 offset = 2; uint32 max_bytes = 3; }
+message DiscardSupportBundleRequest { string bundle_id = 1; }
+message MarkSupportBundleExportedRequest { string bundle_id = 1; }
+message SupportPrivacyReport {
+  uint32 user_path_redactions = 1;
+  uint32 account_identifier_redactions = 2;
+  uint32 hardware_serial_redactions = 3;
+  uint32 email_redactions = 4;
+}
+message SupportPreviewSection { string file_name = 1; string display_key = 2; uint64 size_bytes = 3; }
+message SupportBundlePreview {
+  string preview_id = 1;
+  int64 expires_unix_ms = 2;
+  repeated SupportPreviewSection sections = 3;
+  SupportPrivacyReport privacy = 4;
+  uint64 estimated_size_bytes = 5;
+}
+message SupportBundlePreviewResponse { SupportBundlePreview preview = 1; }
+message SupportBundleReady {
+  string bundle_id = 1;
+  string file_name = 2;
+  uint64 size_bytes = 3;
+  string sha256 = 4;
+  string public_key_hex = 5;
+  int64 expires_unix_ms = 6;
+  string public_key_fingerprint_sha256 = 7;
+}
+message SupportBundleReadyResponse { SupportBundleReady bundle = 1; }
+message SupportBundleChunkResponse {
+  string bundle_id = 1;
+  uint64 offset = 2;
+  bytes data = 3;
+  bool eof = 4;
+  uint64 total_size = 5;
+}
+enum SupportBundleEventState {
+  SUPPORT_BUNDLE_EVENT_STATE_UNSPECIFIED = 0;
+  SUPPORT_BUNDLE_EVENT_STATE_PREVIEW_CREATED = 1;
+  SUPPORT_BUNDLE_EVENT_STATE_PREPARED = 2;
+  SUPPORT_BUNDLE_EVENT_STATE_EXPORTED = 3;
+  SUPPORT_BUNDLE_EVENT_STATE_DISCARDED = 4;
+}
+message SupportBundleEvent {
+  SupportBundleEventState state = 1;
+  string preview_id = 2;
+  string bundle_id = 3;
+  uint64 size_bytes = 4;
+  string sha256 = 5;
+  int64 changed_unix_ms = 6;
+}

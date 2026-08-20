@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "phase": "17.1",
+  "scenarios": [
+    {"id":"lifecycle-owner-completed","category":"findingLifecycle","given":"active missing-driver finding; drivers collector completed and device no longer reproduces issue","expected":"Resolved with resolution scan/evidence"},
+    {"id":"lifecycle-owner-failed","category":"findingLifecycle","given":"active storage finding; diagnostics collector failed","expected":"Active/VerificationUnavailable; no remediation; never Resolved"},
+    {"id":"lifecycle-owner-timeout","category":"findingLifecycle","given":"active finding; owner collector timed out","expected":"VerificationUnavailable; never Resolved"},
+    {"id":"lifecycle-owner-unavailable","category":"findingLifecycle","given":"active finding; owner collector unavailable or permission denied","expected":"VerificationUnavailable; never Resolved"},
+    {"id":"lifecycle-cancel-before-owner","category":"findingLifecycle","given":"active finding; owner collector cancelled/not completed","expected":"NotRechecked; never Resolved"},
+    {"id":"lifecycle-owner-complete-unrelated-cancel","category":"findingLifecycle","given":"owner collector completed; later unrelated scope cancelled","expected":"owner-authorized resolution remains valid"},
+    {"id":"lifecycle-recurrence","category":"findingLifecycle","given":"previously Resolved stable finding returns","expected":"Recurred with same finding ID"},
+    {"id":"lifecycle-ignored","category":"findingLifecycle","given":"ignored stable finding returns","expected":"Ignored persists and remediation remains unavailable"},
+    {"id":"fingerprint-same-state-order-time","category":"fingerprint","given":"same canonical facts with different timestamps, evidence text and order","expected":"same fingerprint"},
+    {"id":"fingerprint-driver-version-change","category":"fingerprint","given":"installed driver version changes","expected":"fingerprint changes"},
+    {"id":"fingerprint-storage-degradation","category":"fingerprint","given":"uncorrected storage error counter changes 0 to 27","expected":"fingerprint changes"},
+    {"id":"fingerprint-volatile-event-id","category":"fingerprint","given":"same event semantics but collection/event timestamp identity changes","expected":"same fingerprint"},
+    {"id":"fingerprint-privacy","category":"fingerprint","given":"diagnostic limitation contains raw user path","expected":"path is not required canonical input"},
+    {"id":"generation-rapid-restart","category":"generationOwnership","given":"A terminal then B installed before A cleanup","expected":"A cleanup cannot clear B"},
+    {"id":"generation-stale-cancel","category":"generationOwnership","given":"B authoritative and cancel request references A","expected":"B token remains live"},
+    {"id":"generation-double-terminal","category":"generationOwnership","given":"A cleanup/terminal duplicated","expected":"idempotent and cannot mutate B"},
+    {"id":"generation-late-worker","category":"generationOwnership","given":"old worker exits after next generation","expected":"old generation cannot mutate authoritative state"},
+    {"id":"correlation-fatal-near-before","category":"correlation","given":"fatal WHEA 42 seconds before crash","expected":"Strong; High; not causal/Confirmed claim"},
+    {"id":"correlation-corrected-days-before","category":"correlation","given":"corrected WHEA four days before unrelated crash","expected":"no combined hardware/crash finding"},
+    {"id":"correlation-repeated-tight","category":"correlation","given":"repeated WHEA events before repeated crashes in tight clusters","expected":"Strong relationship with elevated confidence"},
+    {"id":"correlation-crash-only","category":"correlation","given":"crash without WHEA","expected":"no fabricated hardware correlation"},
+    {"id":"correlation-whea-only","category":"correlation","given":"WHEA without crash","expected":"independent hardware finding only"},
+    {"id":"correlation-conflicting-order","category":"correlation","given":"corrected hardware evidence after crash","expected":"at most Moderate and explicit conflict"},
+    {"id":"correlation-stale","category":"correlation","given":"WHEA and crash evidence older than freshness window","expected":"no current combined correlation"}
+  ]
+}

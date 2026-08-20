@@ -1,0 +1,9 @@
+target/
+node_modules/
+dist/
+*.gguf
+*.zip
+_archive/
+_graphify/
+.DS_Store
+**/BINARY_ARTIFACTS/

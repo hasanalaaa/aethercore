@@ -1,0 +1,27 @@
+[package]
+name = "aethercore-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+
+[dependencies]
+aethercore-contracts = { path = "../../crates/contracts" }
+aethercore-gpu-policy = { path = "../../crates/gpu-policy" }
+aethercore-ipc = { path = "../../crates/ipc" }
+aethercore-update-engine = { path = "../../crates/update-engine" }
+aethercore-update-download = { path = "../../crates/update-download" }
+aethercore-support-bundle = { path = "../../crates/support-bundle" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tauri = { version = "=2.11.5", features = [] }
+uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+aethercore-windows-foundation = { path = "../../crates/windows-foundation" }
+windows.workspace = true

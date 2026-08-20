@@ -1,0 +1,259 @@
+{
+  "schema": "aethercore.phase18.1.source-audit.v1",
+  "phase": "18.1",
+  "status": "PASS",
+  "checkCount": 28,
+  "checks": [
+    {
+      "id": "P18.1-ARCH-001",
+      "ok": true,
+      "detail": "Phase 18.1 truth/coverage source surfaces present",
+      "evidence": [
+        "DRIVER_PROVIDER_COVERAGE.json",
+        "crates/driver-authority/src/provider_registry.rs",
+        "crates/driver-authority/src/truth.rs",
+        "tests/fixtures/phase18_1/scenarios.json",
+        "tests/fixtures/phase18_1/execution-mapping.json",
+        "tests/fixtures/phase18_1/update-status-truth-matrix.json"
+      ]
+    },
+    {
+      "id": "P18.1-REGISTRY-001",
+      "ok": true,
+      "detail": "machine-readable provider coverage contains required OEM/component families",
+      "evidence": [
+        "DRIVER_PROVIDER_COVERAGE.json"
+      ]
+    },
+    {
+      "id": "P18.1-REGISTRY-002",
+      "ok": true,
+      "detail": "non-WUA providers declare manual/utility/unsupported automation rather than fabricated direct adapters",
+      "evidence": [
+        "DRIVER_PROVIDER_COVERAGE.json"
+      ]
+    },
+    {
+      "id": "P18.1-REGISTRY-003",
+      "ok": true,
+      "detail": "malformed provider registry fails closed",
+      "evidence": [
+        "crates/driver-authority/src/provider_registry.rs"
+      ]
+    },
+    {
+      "id": "P18.1-TRUTH-001",
+      "ok": true,
+      "detail": "official utility is a management authority, not a DriverCandidateV2 factory",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-TRUTH-002",
+      "ok": true,
+      "detail": "management authority separates availability from concrete update evidence",
+      "evidence": [
+        "crates/driver-authority/src/truth.rs"
+      ]
+    },
+    {
+      "id": "P18.1-TRUTH-003",
+      "ok": true,
+      "detail": "management presence cannot inflate vendor-managed update count",
+      "evidence": [
+        "crates/driver-hub/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-GPU-001",
+      "ok": true,
+      "detail": "NVIDIA/AMD/Intel no-update regressions are executable Rust tests",
+      "evidence": [
+        "crates/driver-hub/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-COVERAGE-001",
+      "ok": true,
+      "detail": "coverage is device/authority-aware",
+      "evidence": [
+        "crates/driver-authority/src/truth.rs"
+      ]
+    },
+    {
+      "id": "P18.1-COVERAGE-002",
+      "ok": true,
+      "detail": "hub computes required authorities per device",
+      "evidence": [
+        "crates/driver-hub/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-COVERAGE-003",
+      "ok": true,
+      "detail": "strong UpToDate is gated on complete required-authority evaluation",
+      "evidence": [
+        "crates/driver-hub/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-RANK-001",
+      "ok": true,
+      "detail": "actual candidate ranking precedence is deterministic: trust > applicability > authority context > specificity > version",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-RANK-002",
+      "ok": true,
+      "detail": "table-driven/context and trust ranking tests exist",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-SIGNER-001",
+      "ok": true,
+      "detail": "platform verifier returns typed signer evidence",
+      "evidence": [
+        "crates/update-engine/src/platform.rs"
+      ]
+    },
+    {
+      "id": "P18.1-SIGNER-002",
+      "ok": true,
+      "detail": "acquisition enforces actual signer against provider policy and fails closed",
+      "evidence": [
+        "crates/driver-acquisition/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-SIGNER-003",
+      "ok": true,
+      "detail": "valid-signature wrong-publisher adversarial test exists",
+      "evidence": [
+        "crates/driver-acquisition/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-DIRECT-001",
+      "ok": true,
+      "detail": "DirectTrusted remains production-disabled",
+      "evidence": [
+        "crates/driver-hub/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-OVERRIDE-001",
+      "ok": true,
+      "detail": "IgnoreExactVersion is provider-scoped and empty legacy scope fails closed",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-MACHINE-001",
+      "ok": true,
+      "detail": "OEM context is tri-state rather than unsafe boolean",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-PCINTEL-001",
+      "ok": true,
+      "detail": "Deep Scan separates management guidance, coverage limits, unknown state, and concrete updates",
+      "evidence": [
+        "crates/pc-intelligence/src/normalize.rs",
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P18.1-PCINTEL-002",
+      "ok": true,
+      "detail": "management guidance is not emitted as a driver-update finding",
+      "evidence": [
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P18.1-I18N-001",
+      "ok": true,
+      "detail": "EN/AR key parity en=1196 ar=1196 delta=0",
+      "evidence": [
+        "apps/ui/src/lib/i18n/catalog.en.ts",
+        "apps/ui/src/lib/i18n/catalog.ar.ts"
+      ]
+    },
+    {
+      "id": "P18.1-UI-001",
+      "ok": true,
+      "detail": "existing Drivers UI exposes management/update/coverage truth without replacing the surface",
+      "evidence": [
+        "apps/ui/src/features/drivers/DriversPage.svelte"
+      ]
+    },
+    {
+      "id": "P18.1-UI-002",
+      "ok": true,
+      "detail": "Apple-design tactile/reduced-motion behavior preserved",
+      "evidence": [
+        "apps/ui/src/design/motion/fluid-press.ts",
+        "apps/ui/src/design/styles/feature-layout.css"
+      ]
+    },
+    {
+      "id": "P18.1-LAB-001",
+      "ok": true,
+      "detail": "behavioral scenario mapping scenarios=17 missing=[] weak=[]",
+      "evidence": [
+        "tests/fixtures/phase18_1/scenarios.json",
+        "tests/fixtures/phase18_1/execution-mapping.json"
+      ]
+    },
+    {
+      "id": "P18.1-MATRIX-001",
+      "ok": true,
+      "detail": "truth matrix rows=12; errors=[]",
+      "evidence": [
+        "tests/fixtures/phase18_1/update-status-truth-matrix.json",
+        "crates/driver-hub/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P18.1-CLAIM-001",
+      "ok": true,
+      "detail": "source does not claim universal operational provider coverage",
+      "evidence": [
+        "DRIVER_PROVIDER_COVERAGE.json",
+        "crates/driver-authority/src/truth.rs"
+      ]
+    },
+    {
+      "id": "P18.1-QUALITY-001",
+      "ok": true,
+      "detail": "no TODO/FIXME/HACK in Phase18.1 implementation surfaces; found=[]",
+      "evidence": [
+        "crates/driver-authority/src/lib.rs",
+        "crates/driver-authority/src/truth.rs",
+        "crates/driver-authority/src/provider_registry.rs",
+        "crates/driver-acquisition/src/lib.rs",
+        "crates/driver-hub/src/lib.rs",
+        "crates/update-engine/src/platform.rs",
+        "crates/pc-intelligence/src/rules.rs",
+        "apps/ui/src/features/drivers/DriversPage.svelte"
+      ]
+    }
+  ],
+  "execution": {
+    "cargoAvailable": false,
+    "rustcAvailable": false,
+    "sourceSemanticAudit": true
+  },
+  "limitations": [
+    "Cargo/Rust tests were authored but cannot execute on this host because cargo/rustc are absent.",
+    "Windows-native signer extraction, live OEM/GPU authority behavior, staging attacks, install/rollback/reboot and WebView2 rendering remain qualification debt."
+  ]
+}

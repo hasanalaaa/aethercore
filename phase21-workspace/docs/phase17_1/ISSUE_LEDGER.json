@@ -1,0 +1,89 @@
+{
+  "phase": "17.1",
+  "status": "SOURCE_CLOSED_PENDING_FINAL_PACKAGE_GATES",
+  "issues": [
+    {
+      "id": "P17.1-001",
+      "title": "False Finding resolution from absence without resolution authority",
+      "severity": "Critical",
+      "state": "Closed",
+      "rootCause": "Global absent-ID persistence transition treated non-observation as proof of resolution.",
+      "closure": "Domain/scope resolution authority, explicit verification status, structured resolution evidence, and carried unresolved Findings when reevaluation is incomplete.",
+      "regressionEvidence": [
+        "lifecycle.rs deterministic authority tests",
+        "phase17_1-integrity-audit P17.1-LIFE checks"
+      ]
+    },
+    {
+      "id": "P17.1-002",
+      "title": "Machine-state fingerprint represented Fact identity instead of state value",
+      "severity": "High",
+      "state": "Closed",
+      "rootCause": "Fingerprint hashed stable Fact IDs while observation values could change independently.",
+      "closure": "Canonical state-bearing representation sorted deterministically and hashed with SHA-256; volatile metadata and privacy-sensitive/raw diagnostic material excluded.",
+      "regressionEvidence": [
+        "fingerprint.rs value/order/timestamp/privacy tests",
+        "phase17_1-integrity-audit P17.1-FP checks"
+      ]
+    },
+    {
+      "id": "P17.1-003",
+      "title": "Old scan cleanup could clear newer scan cancellation ownership",
+      "severity": "Critical",
+      "state": "Closed",
+      "rootCause": "A single shared cancellation token had no generation identity.",
+      "closure": "RunOwnership binds scan ID, monotonic generation and token; cleanup/cancel/snapshot mutation compare authoritative identity.",
+      "regressionEvidence": [
+        "run_ownership.rs deterministic generation tests",
+        "phase17_1-integrity-audit P17.1-GEN checks"
+      ]
+    },
+    {
+      "id": "P17.1-004",
+      "title": "Broad WHEA/crash temporal coincidence could overstate correlation",
+      "severity": "Critical",
+      "state": "Closed",
+      "rootCause": "The Phase 17 combined rule accepted hardware/crash coincidence across a broad multi-day window and emitted high severity without sufficient relationship evidence.",
+      "closure": "Explicit Weak/Moderate/Strong reasoning, tight pair windows, pre-crash causal ordering for Strong, recurrence/fatal semantics, conflict evidence, exact distance and rationale; weak coincidence does not emit the combined Finding.",
+      "regressionEvidence": [
+        "rules.rs correlation matrix tests",
+        "phase17_1-integrity-audit P17.1-CORR checks"
+      ]
+    },
+    {
+      "id": "P17.1-005",
+      "title": "Volatile event timestamp embedded in resource identity could destabilize canonical fingerprint",
+      "severity": "High",
+      "state": "Closed",
+      "rootCause": "Phase 17 crash/WHEA resource IDs contain event timestamps even though timestamps are observation metadata for machine-state fingerprinting.",
+      "closure": "Canonicalization maps event identity to semantic event category/state values and excludes volatile event resource IDs.",
+      "regressionEvidence": [
+        "event_resource_timestamp_identity_does_not_change_fingerprint"
+      ]
+    },
+    {
+      "id": "P17.1-006",
+      "title": "Random cleanup candidate IDs and normal thermal variation could create state-fingerprint churn",
+      "severity": "Moderate",
+      "state": "Closed",
+      "rootCause": "Cleanup candidate UUIDs are intentionally random and exact temperatures are transient observations.",
+      "closure": "Cleanup opportunity churn is excluded from machine-state fingerprint; storage thermal state changes only when the documented attention threshold changes while reliability metrics remain state-bearing.",
+      "regressionEvidence": [
+        "normal_temperature_fluctuation_and_cleanup_churn_do_not_change_machine_state"
+      ]
+    },
+    {
+      "id": "P17.1-007",
+      "title": "New correlation branch contained a production panic shortcut",
+      "severity": "High",
+      "state": "Closed",
+      "rootCause": "The logically filtered Weak correlation match arm used unreachable!(), violating the established no-panic-shortcut production invariant.",
+      "closure": "Replaced the panic shortcut with a total informational/low fallback while preserving the earlier explicit Weak-return suppression; enterprise adversarial audit returned 88/88 PASS.",
+      "regressionEvidence": [
+        "scripts/enterprise-adversarial-audit.py production_rust_has_no_panic_shortcuts",
+        "Phase 17.1 final Omega rerun"
+      ]
+    }
+  ],
+  "remainingSourceHighCritical": []
+}

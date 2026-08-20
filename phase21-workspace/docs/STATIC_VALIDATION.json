@@ -1,0 +1,1392 @@
+{
+  "check_count": 342,
+  "checks": {
+    "cleanup_allowlist_only": {
+      "hits": [],
+      "ok": true
+    },
+    "cleanup_immutable_state_and_limits": {
+      "missing": [],
+      "ok": true
+    },
+    "cleanup_no_whole_recycle_bin": {
+      "note": "Whole-bin deletion is deferred because it cannot freeze exact item identity at plan time.",
+      "ok": true
+    },
+    "cleanup_ui_privacy_boundary": {
+      "hits": [],
+      "ok": true
+    },
+    "cleanup_windows_safety": {
+      "missing": [],
+      "ok": true
+    },
+    "immutable_phase4_plan_actions": {
+      "missing": [],
+      "ok": true
+    },
+    "parse_json": {
+      "count": 15,
+      "errors": [],
+      "ok": true
+    },
+    "parse_toml": {
+      "count": 40,
+      "errors": [],
+      "ok": true
+    },
+    "parse_yaml": {
+      "count": 4,
+      "errors": [],
+      "ok": true
+    },
+    "path_dependencies": {
+      "errors": [],
+      "ok": true
+    },
+    "phase10_all_mutation_telemetry": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_bounded_stream_backpressure": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_ci_release_gate": {
+      "note": "Current CI/release may supersede Phase 10 with a later inherited verification gate without weakening its requirements.",
+      "ok": true
+    },
+    "phase10_directional_session_frame_limits": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_duplicate_request_defense": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_explicit_stream_reset": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_global_mutation_lease": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_kernel_owner_safe_api": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_modular_proto_files": {
+      "count": 12,
+      "ok": true
+    },
+    "phase10_mutation_busy_privacy": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_mutation_lease_events": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_operation_kernel": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_per_principal_sequences": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_per_user_session_quota": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_persistence_migration": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_persistent_ipc_session": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_principal_scoped_stream": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_read_budget": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_read_watcher_lease_release": {
+      "note": "Discovery observers terminate and release their RAII read-budget lease if the domain snapshot ownership changes before they observe terminal state.",
+      "ok": true
+    },
+    "phase10_reconnect_invalidation_race_closed": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_recovery_composition": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_renderer_reload_hydration": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_replay_and_reset": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_service_decomposed": {
+      "main_lines": 158,
+      "ok": true,
+      "router_lines": 203
+    },
+    "phase10_session_client_shutdown": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_session_disconnect_cancellation": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_telemetry_decoupled": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_telemetry_owner_scoped": {
+      "note": "Transient progress lookup/clear APIs are principal-scoped by construction; no caller reads a plan id then filters owner after disclosure.",
+      "ok": true
+    },
+    "phase10_typed_domain_states": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_typed_protocol": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_typed_service_error_regressions": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_typed_service_errors": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_typed_stream_hydration": {
+      "missing": [],
+      "ok": true
+    },
+    "phase10_ui_polling_eliminated": {
+      "note": "Renderer hydration/live updates are driven by the persistent IPC event stream; no domain polling timers remain.",
+      "ok": true
+    },
+    "phase10_windows_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_accessibility_preferences": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_all_buttons_tactile": {
+      "button_count": 42,
+      "ok": true,
+      "untactile": 0
+    },
+    "phase11_app_shell_decomposed": {
+      "app_lines": 5,
+      "ok": true,
+      "shell_lines": 82
+    },
+    "phase11_ci_release_gate": {
+      "ok": true
+    },
+    "phase11_event_driven_frontend": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_feature_modules": {
+      "features": [
+        "features/overview/OverviewPage.svelte",
+        "features/drivers/DriversPage.svelte",
+        "features/repair/RepairPage.svelte",
+        "features/cleanup/CleanupPage.svelte",
+        "features/startup/StartupPage.svelte",
+        "features/diagnostics/HardwarePage.svelte",
+        "features/diagnostics/CrashPage.svelte",
+        "features/activity/ActivityPage.svelte"
+      ],
+      "ok": true
+    },
+    "phase11_indeterminate_motion_is_status_only": {
+      "note": "Looping keyframes remain only for unknown-progress/status indicators; user-driven motion is spring controlled.",
+      "ok": true
+    },
+    "phase11_interruptible_dialog": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_legacy_override_layers_removed": {
+      "ok": true
+    },
+    "phase11_logical_navigation_layout": {
+      "ok": true
+    },
+    "phase11_material_hierarchy": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_momentum_projection": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_no_fixed_interactive_transform_transitions": {
+      "ok": true
+    },
+    "phase11_no_important_overrides": {
+      "ok": true
+    },
+    "phase11_no_renderer_polling": {
+      "note": "Feature state is reducer/event-stream driven; one-shot request/response confirmation is not polling.",
+      "ok": true
+    },
+    "phase11_no_tiny_literal_type": {
+      "ok": true
+    },
+    "phase11_optical_typography": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_pointer_down_tactility": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_primitive_suite": {
+      "ok": true,
+      "primitives": [
+        "Pressable.svelte",
+        "FluidDialog.svelte",
+        "FluidPage.svelte",
+        "ProgressBar.svelte",
+        "MaterialSurface.svelte",
+        "DragSurface.svelte"
+      ]
+    },
+    "phase11_required_artifacts": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_spring_progress": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_spring_runtime": {
+      "missing": [],
+      "ok": true
+    },
+    "phase11_windows_gate": {
+      "ok": true
+    },
+    "phase12_all_eight_surfaces_localized": {
+      "features": [
+        "features/overview/OverviewPage.svelte",
+        "features/drivers/DriversPage.svelte",
+        "features/repair/RepairPage.svelte",
+        "features/cleanup/CleanupPage.svelte",
+        "features/startup/StartupPage.svelte",
+        "features/diagnostics/HardwarePage.svelte",
+        "features/diagnostics/CrashPage.svelte",
+        "features/activity/ActivityPage.svelte"
+      ],
+      "ok": true
+    },
+    "phase12_all_surfaces_locale_driven": {
+      "ok": true
+    },
+    "phase12_arabic_optical_typography": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_arabic_windows_update_localized": {
+      "ok": true
+    },
+    "phase12_catalog_arabic_optical_typography": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_catalog_audit_depth": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_catalog_bidi_isolation": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_catalog_ci_release_gate": {
+      "ok": true
+    },
+    "phase12_catalog_exact_parity": {
+      "ar": 1023,
+      "en": 1023,
+      "missing_ar": [],
+      "missing_en": [],
+      "ok": true
+    },
+    "phase12_catalog_namespace_depth": {
+      "keys": 1023,
+      "ok": true
+    },
+    "phase12_catalog_required_artifacts": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_catalog_scale": {
+      "arabic_entries_approx": 1069,
+      "english_entries_approx": 1068,
+      "ok": true
+    },
+    "phase12_catalog_windows_gate": {
+      "ok": true
+    },
+    "phase12_ci_release_gate": {
+      "ok": true
+    },
+    "phase12_consent_stays_secret_free": {
+      "ok": true
+    },
+    "phase12_css_logical_direction": {
+      "ok": true
+    },
+    "phase12_css_logical_layout": {
+      "ok": true
+    },
+    "phase12_deep_diagnostic_localization": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_deep_technical_audit": {
+      "ok": true
+    },
+    "phase12_documented_localization_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_live_announcement_localized": {
+      "ok": true
+    },
+    "phase12_localized_uac_broker": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_no_display_string_logic_audit": {
+      "ok": true
+    },
+    "phase12_no_display_string_routing": {
+      "ok": true
+    },
+    "phase12_no_legacy_untyped_catalog": {
+      "ok": true
+    },
+    "phase12_no_technical_detail_as_ui_error": {
+      "ok": true
+    },
+    "phase12_placeholder_parity": {
+      "mismatches": [],
+      "ok": true
+    },
+    "phase12_plural_architecture": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_plural_rules": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_progress_label_typed": {
+      "ok": true
+    },
+    "phase12_release_packaging_deferred": {
+      "ok": true
+    },
+    "phase12_required_artifacts": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_semantic_localization": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_semantic_localizers": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_semantic_route_ids": {
+      "ok": true
+    },
+    "phase12_service_error_message_keys": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_technical_bidi_isolation": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_typed_catalog": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_typed_catalog_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase12_visible_english_audit": {
+      "ok": true
+    },
+    "phase12_windows_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_audit_depth": {
+      "ok": true
+    },
+    "phase13_ci_release_gate": {
+      "ok": true
+    },
+    "phase13_collector_runtime": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_diagnostic_persistence_not_silent": {
+      "ok": true
+    },
+    "phase13_documented_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_event_alignment_and_handle_bounds": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_event_property_count_preallocation_cap": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_event_render_bounds": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_event_timeout_and_partial_fault": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_fault_detail_bound": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_fault_injection_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_fault_records_share_bounded_constructor": {
+      "ok": true
+    },
+    "phase13_fault_taxonomy": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_finite_wmi": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_gate_release_order": {
+      "ok": true
+    },
+    "phase13_hierarchical_cancellation": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_localized_fault_ui": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_memory_unavailable_is_unknown": {
+      "ok": true
+    },
+    "phase13_nested_fault_persistence": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_no_event_xml_scraping": {
+      "ok": true
+    },
+    "phase13_no_wbem_infinite": {
+      "ok": true
+    },
+    "phase13_permission_denied_classification": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_protocol_overlap_guard": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_provider_fanout": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_provider_fault_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_provider_supervisor_spawn_and_panic_containment": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_raw_fault_detail_not_user_visible": {
+      "ok": true
+    },
+    "phase13_required_artifacts": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_storage_byte_parsers": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_storage_fault_regressions": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_storage_watchdogs": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_structured_event_rendering": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_structured_whea_classifier": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_top_level_scan_panic_guard": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_watchdog_regressions": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_windows_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_wmi_count_consistency": {
+      "missing": [],
+      "ok": true
+    },
+    "phase13_wmi_status_semantics": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_activity_is_observable_and_localized": {
+      "ok": true
+    },
+    "phase14_cadence_contains_no_mutation_authority": {
+      "ok": true
+    },
+    "phase14_ci_release_gate": {
+      "ok": true
+    },
+    "phase14_cleanup_passive_privacy_scope": {
+      "ok": true
+    },
+    "phase14_closed_read_only_workloads": {
+      "ok": true
+    },
+    "phase14_documented_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_durable_principal_scoped_cadence": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_executor_has_no_mutation_entrypoints": {
+      "ok": true
+    },
+    "phase14_fail_closed_eligibility": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_jitter_and_backoff": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_kernel_read_budget_and_mutation_exclusion": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_linearized_commit_fence": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_owner_bound_active_console_session": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_preemption_100ms": {
+      "ok": true
+    },
+    "phase14_required_artifacts": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_resource_governor": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_scheduler_audit_depth": {
+      "ok": true
+    },
+    "phase14_service_survives_scheduler_start_failure": {
+      "ok": true
+    },
+    "phase14_typed_scheduler_events": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_windows_background_mode": {
+      "missing": [],
+      "ok": true
+    },
+    "phase14_windows_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_authenticode_chain_validation": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_bounded_https_downloader": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_broker_protected_machine_mutation_lock": {
+      "ok": true
+    },
+    "phase15_cancelled_consent_intent_is_recoverable": {
+      "ok": true
+    },
+    "phase15_ci_release_gate": {
+      "ok": true
+    },
+    "phase15_claim_cleanup_preserves_inflight_reservation": {
+      "ok": true
+    },
+    "phase15_descriptor_chunk_upload": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_documented_trust_boundaries": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_execution_expiry_fail_closed": {
+      "ok": true
+    },
+    "phase15_hash_authenticode_hash": {
+      "ok": true
+    },
+    "phase15_http_authority_is_desktop_only": {
+      "ok": true
+    },
+    "phase15_install_claim_reservation_is_linearized": {
+      "ok": true
+    },
+    "phase15_manifest_signature_before_parse": {
+      "ok": true
+    },
+    "phase15_minimum_windows_build_enforced": {
+      "ok": true
+    },
+    "phase15_no_privileged_user_path_or_url_input": {
+      "ok": true
+    },
+    "phase15_required_artifacts": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_restart_restores_exact_install_identity": {
+      "ok": true
+    },
+    "phase15_rollback_and_equivocation_floor": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_security_audit_depth": {
+      "ok": true
+    },
+    "phase15_service_derived_staging": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_service_side_download_legacy_disabled": {
+      "ok": true
+    },
+    "phase15_signed_release_requires_enabled_trust": {
+      "ok": true
+    },
+    "phase15_single_installer_authority_packaged": {
+      "ok": true
+    },
+    "phase15_support_archive_reverified_before_user_save": {
+      "ok": true
+    },
+    "phase15_support_desktop_non_overwrite": {
+      "ok": true
+    },
+    "phase15_support_deterministic_hash_manifest": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_support_embedded_pii_redaction": {
+      "ok": true
+    },
+    "phase15_support_independent_fingerprint": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_support_object_quotas_and_failure_discard": {
+      "ok": true
+    },
+    "phase15_support_preview_and_allowlist": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_support_privacy_nonlinkable_redaction": {
+      "ok": true
+    },
+    "phase15_support_proof_is_narrow": {
+      "ok": true
+    },
+    "phase15_support_rejects_unmanifested_entries": {
+      "ok": true
+    },
+    "phase15_support_service_has_no_destination_path": {
+      "ok": true
+    },
+    "phase15_support_strict_signature_verification": {
+      "ok": true
+    },
+    "phase15_support_tar_header_checksum": {
+      "ok": true
+    },
+    "phase15_typed_update_support_events": {
+      "missing": [],
+      "ok": true
+    },
+    "phase15_update_broker_fixed_surface": {
+      "ok": true
+    },
+    "phase15_update_broker_no_arbitrary_installer_args": {
+      "ok": true
+    },
+    "phase15_update_uses_global_mutation_lease": {
+      "ok": true
+    },
+    "phase15_windows_gate_order": {
+      "ok": true
+    },
+    "phase16_accessibility_matrix": {
+      "ok": true
+    },
+    "phase16_bidi_matrix": {
+      "ok": true
+    },
+    "phase16_burn_msi_lifecycle": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_ci_master_gate": {
+      "ok": true
+    },
+    "phase16_cms_release_attestation": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_dpi_refresh_matrix": {
+      "ok": true
+    },
+    "phase16_extended_soak_24h": {
+      "ok": true
+    },
+    "phase16_ga_seal_aggregation": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_ga_seal_verify": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_honest_ga_boundary": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_host_evidence_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_live_ipc_probe": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_master_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_matrix_schema": {
+      "ok": true
+    },
+    "phase16_minimum_windows_build": {
+      "ok": true
+    },
+    "phase16_no_short_exact_false_pass": {
+      "ok": true
+    },
+    "phase16_os_lane_floor": {
+      "ok": true
+    },
+    "phase16_probe_workspace_member": {
+      "ok": true
+    },
+    "phase16_production_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_resilience_fault_matrix": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_rust_test_nonzero_guard": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_signed_release_master_gate": {
+      "ok": true
+    },
+    "phase16_soak_resource_bounds": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_supply_chain_commitment": {
+      "missing": [],
+      "ok": true
+    },
+    "phase16_update_broker_elevation_lifecycle": {
+      "ok": true
+    },
+    "phase4_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase4_ui": {
+      "missing": [],
+      "ok": true
+    },
+    "phase5_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase5_ui_passive_default": {
+      "missing": [],
+      "ok": true
+    },
+    "phase5_windows_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase6_ata_is_observational_only": {
+      "note": "ATA SMART is read-only raw evidence and does not drive AetherCore health severity.",
+      "ok": true
+    },
+    "phase6_bounded_event_window": {
+      "note": "System Event Log collection is explicitly bounded by age and count.",
+      "ok": true
+    },
+    "phase6_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase6_diagnostic_engine": {
+      "missing": [],
+      "ok": true
+    },
+    "phase6_event_and_dump_collectors": {
+      "missing": [],
+      "ok": true
+    },
+    "phase6_honest_storage_model": {
+      "missing": [],
+      "ok": true
+    },
+    "phase6_no_health_score": {
+      "note": "No synthetic hardware-health percentage is present in model/rules/UI.",
+      "ok": true
+    },
+    "phase6_non_exaggerated_crash_rules": {
+      "missing": [],
+      "ok": true
+    },
+    "phase6_read_only_surface": {
+      "note": "Phase 6 collectors/diagnostic rules expose no system-mutation API.",
+      "ok": true
+    },
+    "phase6_storage_sources": {
+      "missing": [],
+      "ok": true
+    },
+    "phase6_ui": {
+      "missing": [],
+      "ok": true
+    },
+    "phase6_windows_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase7_adaptive_accessibility": {
+      "ok": true
+    },
+    "phase7_all_eight_surfaces": {
+      "ok": true,
+      "surfaces": [
+        "overview",
+        "drivers",
+        "repair",
+        "cleanup",
+        "startup",
+        "hardware",
+        "crash",
+        "activity"
+      ]
+    },
+    "phase7_component_architecture": {
+      "missing": [],
+      "ok": true
+    },
+    "phase7_design_tokens": {
+      "ok": true,
+      "token_count": 68
+    },
+    "phase7_dpi_multi_monitor": {
+      "ok": true
+    },
+    "phase7_keyboard_navigation": {
+      "note": "Primary navigation, command palette, direct shortcuts, Escape handling and dialog focus trapping remain present after decomposition.",
+      "ok": true
+    },
+    "phase7_localization_rtl": {
+      "ok": true
+    },
+    "phase7_mica_desktop_shell": {
+      "effects": [
+        "mica"
+      ],
+      "ok": true
+    },
+    "phase7_motion_budget": {
+      "note": "Interactive transform motion is no longer prescribed by fixed CSS transitions; Phase 11 springs own presentation motion.",
+      "ok": true
+    },
+    "phase7_no_remote_ui_assets": {
+      "ok": true
+    },
+    "phase7_screen_reader_accessibility": {
+      "ok": true
+    },
+    "phase7_style_layering": {
+      "note": "Phase 11 supersedes the Phase 7 override stack with explicit design-system layers while preserving its visual/accessibility foundations.",
+      "ok": true
+    },
+    "phase7_svelte_block_balance": {
+      "errors": [],
+      "ok": true
+    },
+    "phase7_windows_gate": {
+      "ok": true
+    },
+    "phase8_broker_path_boundary_tests": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_burn_two_piece_signing": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_cargo_deny_policy": {
+      "ok": true
+    },
+    "phase8_dependency_freeze_completeness": {
+      "baseline": false,
+      "cargo_lock": false,
+      "note": "Partial dependency freeze state is forbidden.",
+      "ok": true,
+      "pnpm_lock": false
+    },
+    "phase8_dependency_freeze_design": {
+      "lockfiles_present": false,
+      "note": "This source snapshot may legitimately be pre-freeze when registry egress is unavailable; production release scripts refuse to release until both locks and their approved hash baseline exist.",
+      "ok": true
+    },
+    "phase8_desktop_capability_minimal": {
+      "ok": true,
+      "permissions": [
+        "core:default"
+      ]
+    },
+    "phase8_fuzz_harness": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_hardener_fixed_operation_only": {
+      "note": "The elevated MSI helper accepts only the literal apply verb and invokes fixed System32 tooling for fixed AetherCore targets.",
+      "ok": true
+    },
+    "phase8_installer_lifecycle_verification": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_ipc_malformed_frame_resilience": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_msi_repair_not_disabled": {
+      "note": "MSI repair remains available so the deferred hardener can restore service/ACL policy drift.",
+      "ok": true
+    },
+    "phase8_msi_service_and_acl_hardening": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_msi_serviceconfig_not_relied_upon": {
+      "note": "Service SID policy and delayed-auto are applied by the fixed-purpose post-InstallServices hardener, avoiding reliance on MSI ServiceConfig semantics.",
+      "ok": true
+    },
+    "phase8_msi_upgrade_and_os_gate": {
+      "note": "MSI and Burn both reject unsupported/non-client Windows before product mutation; the explicit major-upgrade family uses a stable UpgradeCode.",
+      "ok": true
+    },
+    "phase8_nuget_signature_required": {
+      "ok": true
+    },
+    "phase8_pe_mitigation_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_pnpm_supply_chain_policy": {
+      "note": "pnpm uses its actual auditLevel setting plus dependency-age/exotic-subdependency/build-script guardrails.",
+      "ok": true
+    },
+    "phase8_release_ordering": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_release_profile_determinism": {
+      "ok": true,
+      "profile": {
+        "codegen-units": 1,
+        "incremental": false,
+        "lto": "thin",
+        "panic": "abort",
+        "strip": "symbols"
+      }
+    },
+    "phase8_release_provenance_metadata": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_release_signing_runner_isolated": {
+      "ok": true
+    },
+    "phase8_release_signing_sequence": {
+      "ok": true,
+      "positions": {
+        "bundle_build": 6210,
+        "burn_sign": 6306,
+        "msi_build": 5720,
+        "msi_sign": 5825,
+        "payload_sign": 4061
+      }
+    },
+    "phase8_release_tag_version_binding": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_reproducibility_boundary": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_required_artifacts": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_sbom_and_dependency_audit": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_script_reference_integrity": {
+      "missing": [],
+      "ok": true,
+      "referenced_count": 61
+    },
+    "phase8_security_static_audit": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_user_shell_privilege_boundary": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_webview2_bundle": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_webview2_no_injectable_url": {
+      "note": "The release script owns the Microsoft bootstrapper URL and verifies Microsoft Authenticode before packaging it.",
+      "ok": true
+    },
+    "phase8_windows_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "phase8_wix_tool_pin": {
+      "found_extensions": [
+        "WixToolset.BootstrapperApplications.wixext/6.0.2",
+        "WixToolset.Util.wixext/6.0.2"
+      ],
+      "ok": true,
+      "required_extensions": [
+        "WixToolset.BootstrapperApplications.wixext/6.0.2",
+        "WixToolset.Util.wixext/6.0.2"
+      ],
+      "version": "6.0.2"
+    },
+    "phase8_wix_xml_well_formed": {
+      "errors": [],
+      "ok": true
+    },
+    "phase9_atomic_one_shot_authorization": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_consent_intent_contract": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_cross_user_start_fail_closed": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_dependency_freeze": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_dependency_freeze_inputs": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_domain_snapshot_ownership": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_exact_cleanup_file_identity": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_kernel_derived_principal": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_pipe_token_impersonation": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_plan_ownership": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_post_consent_init_fail_closed": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_production_sanitation": {
+      "ok": true,
+      "retired_tokens": [
+        "create_demo_plan",
+        "advance_demo",
+        "Phase1Simulation",
+        "simulation_only",
+        "issue_challenge",
+        "grant_authorization",
+        "authorization_challenge",
+        "authorization_grant"
+      ]
+    },
+    "phase9_protocol_v7": {
+      "note": "Phase 9 retires prototype authorization payloads and introduces principal-bound consent-intent IPC.",
+      "ok": true
+    },
+    "phase9_secret_free_broker_cli": {
+      "note": "Elevated broker receives only a non-secret service-minted intent identifier.",
+      "ok": true
+    },
+    "phase9_service_principal_dispatch": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_token_buffer_safety": {
+      "missing": [],
+      "ok": true
+    },
+    "phase9_windows_gate": {
+      "missing": [],
+      "ok": true
+    },
+    "protobuf_unique_tags": {
+      "duplicates": [],
+      "ok": true
+    },
+    "protocol_v7_and_ipc_budget": {
+      "missing": [],
+      "ok": true
+    },
+    "repair_mutation_barrier_order": {
+      "ok": true,
+      "positions": {
+        "mutation_barrier": 3434,
+        "restore_health": 3617,
+        "scan_health": 3019
+      }
+    },
+    "repair_no_shell_or_offline_disk_mutation": {
+      "note": "CHKDSK /f may appear only in user-facing safety text; execution arrays are checked separately.",
+      "ok": true
+    },
+    "repair_wua_servicing_preflight": {
+      "missing": [],
+      "ok": true
+    },
+    "service_phase4_handlers": {
+      "missing": [],
+      "ok": true
+    },
+    "service_phase5_handlers": {
+      "missing": [],
+      "ok": true
+    },
+    "service_phase6_handlers": {
+      "missing": [],
+      "ok": true
+    },
+    "sigma_adversarial_integrity_regression": {
+      "ok": true
+    },
+    "sigma_audit_reports_require_explicit_output": {
+      "ok": true
+    },
+    "sigma_manifest_is_final_success_condition": {
+      "ok": true
+    },
+    "sigma_repository_gates_are_isolated_and_write_detected": {
+      "ok": true
+    },
+    "sqlite_migrations": {
+      "missing": [],
+      "ok": true,
+      "tables": [
+        "active_update_execution",
+        "autonomous_scheduler_runs",
+        "consent_intents",
+        "diagnostic_snapshots",
+        "driver_install_items",
+        "execution_checkpoints",
+        "maintenance_execution_items",
+        "maintenance_executions",
+        "plan_events",
+        "plan_executions",
+        "plans",
+        "recovery_records",
+        "sqlite_sequence",
+        "startup_change_records",
+        "update_manifest_floor"
+      ]
+    },
+    "startup_durable_journal": {
+      "missing": [],
+      "ok": true
+    },
+    "startup_impact_claims_are_evidence_conservative": {
+      "note": "No undocumented Task Manager startup-impact database or synthetic performance score is used.",
+      "ok": true
+    },
+    "startup_no_stop_delete_or_shell": {
+      "hits": [],
+      "ok": true
+    },
+    "startup_passive_default_and_recovery": {
+      "missing": [],
+      "ok": true
+    },
+    "startup_service_is_next_start_only": {
+      "note": "Phase 5 removes eligible third-party services from automatic boot by switching to demand/manual start; it never stops a running service.",
+      "ok": true
+    },
+    "startup_task_identity_scopes_enabled_normalization": {
+      "note": "Only task-level Settings/Enabled is excluded from identity; trigger/action drift remains hashed.",
+      "ok": true
+    },
+    "startup_windows_inventory_and_reversible_mutation": {
+      "missing": [],
+      "ok": true
+    },
+    "system_repair_fixed_windows_workflow": {
+      "missing": [],
+      "ok": true
+    },
+    "system_repair_state_and_recovery": {
+      "missing": [],
+      "ok": true
+    },
+    "tauri_ui_wiring": {
+      "invoke_count": 1,
+      "missing": [],
+      "ok": true
+    },
+    "typed_mutation_surface_only": {
+      "hits": [],
+      "ok": true
+    },
+    "ui_no_implicit_startup_disable": {
+      "note": "Every new scan resets decision state to Unreviewed; no mass-disable control exists.",
+      "ok": true
+    },
+    "workspace_members": {
+      "count": 34,
+      "missing_manifests": [],
+      "missing_required": [],
+      "ok": true
+    }
+  },
+  "limitations": [
+    "This platform-neutral gate does not compile Rust against Windows SDK bindings.",
+    "scripts/verify-phase16.ps1 and Windows CI are the authoritative native compile/session/installer/security/design/localization/reliability/scheduler/update/export gates; verify-production.ps1 is the final GA evidence/seal gate.",
+    "Live Phase 6 verifier probes remain telemetry/event collection only and intentionally perform no system mutation.",
+    "This static gate cannot render WebView2/Mica, measure frame pacing, validate platform Arabic shaping/Narrator pronunciation, or replace physical high-DPI/multi-monitor/RTL/accessibility testing.",
+    "This Linux environment cannot compile or execute WiX MSI/Burn, Authenticode signing, Service Control Manager lifecycle checks, or Windows ACL repair tests.",
+    "MSI byte-for-byte reproducibility is intentionally not claimed; Phase 8 documents and isolates the current upstream WiX nondeterminism boundary.",
+    "If dependency-registry egress is unavailable, this source package remains pre-freeze; the trusted Windows freeze workstation must create Cargo.lock, pnpm-lock.yaml, release/dependency-locks.sha256, release/dependency-manifests.sha256, and release/dependency-freeze.json before any release build."
+  ],
+  "ok": true,
+  "phase": "0-16"
+}

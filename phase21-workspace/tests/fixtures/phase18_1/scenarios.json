@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 2,
+  "phase": "18.1",
+  "scenarios": [
+    {
+      "id": "D18-01",
+      "name": "Healthy Current Device",
+      "input": "Healthy device; Windows Update required and evaluated; no concrete update evidence",
+      "expected": "UpToDate only because all required authorities are evaluated; no recommendation"
+    },
+    {
+      "id": "D18-02",
+      "name": "Missing Driver",
+      "input": "Problem code 28/missing driver; exact trusted WUA offer",
+      "expected": "Concrete WindowsManaged recommendation exists"
+    },
+    {
+      "id": "D18-03",
+      "name": "OEM vs Newer Generic",
+      "input": "OEM context; machine-specific OEM candidate versus newer generic component candidate",
+      "expected": "Machine-specific OEM wins after trust/applicability policy"
+    },
+    {
+      "id": "D18-04",
+      "name": "Self-Built Component Authority",
+      "input": "SelfBuilt context; component-vendor versus OEM candidate",
+      "expected": "Component authority wins contextual policy"
+    },
+    {
+      "id": "D18-05",
+      "name": "GPU Management vs Update",
+      "input": "NVIDIA GPU; official management authority exists; no concrete vendor update evidence",
+      "expected": "Management authority visible but never fabricated as driver update"
+    },
+    {
+      "id": "D18-06",
+      "name": "Multiple Official Candidates",
+      "input": "Two trusted applicable concrete candidates",
+      "expected": "Exactly one Recommended; alternatives retained"
+    },
+    {
+      "id": "D18-07",
+      "name": "Unsigned Candidate",
+      "input": "High-specificity unsigned concrete candidate",
+      "expected": "NotRecommended with TRUST_REJECTED"
+    },
+    {
+      "id": "D18-08",
+      "name": "Unexpected Publisher",
+      "input": "Valid Authenticode evidence from wrong signer subject/identity",
+      "expected": "UnexpectedPublisher; fail closed"
+    },
+    {
+      "id": "D18-09",
+      "name": "Redirect to Untrusted Domain",
+      "input": "Official HTTPS origin redirects outside provider allowlist",
+      "expected": "Acquisition policy rejects chain"
+    },
+    {
+      "id": "D18-10",
+      "name": "Candidate Changes After Consent",
+      "input": "Sealed candidate package identity changes",
+      "expected": "PlanInvalidated"
+    },
+    {
+      "id": "D18-11",
+      "name": "Offline",
+      "input": "Inventory succeeds; WUA offline",
+      "expected": "Inventory retained; update status unknown; no UpToDate"
+    },
+    {
+      "id": "D18-12",
+      "name": "Required Authority Not Evaluated",
+      "input": "OEM/GPU required authorities need manual official checks",
+      "expected": "Device-aware coverage incomplete; no strong UpToDate"
+    },
+    {
+      "id": "D18-13",
+      "name": "Firmware Candidate",
+      "input": "Trusted firmware offer",
+      "expected": "FirmwareProtected; excluded from Update All"
+    },
+    {
+      "id": "D18-14",
+      "name": "Ignore Exact Version",
+      "input": "Ignore exact version from Provider A; Provider B same version/newer version visible",
+      "expected": "Provider-scoped suppression only; newer/different authority remains visible"
+    },
+    {
+      "id": "D18-15",
+      "name": "Rollback Available",
+      "input": "Installed driver and backup or restore evidence",
+      "expected": "Recovery available only when installed driver plus recovery evidence exist"
+    },
+    {
+      "id": "D18-16",
+      "name": "Reboot Aggregation",
+      "input": "Independent successful updates report reboot pending",
+      "expected": "Aggregate reboot unless provider/dependency boundary requires stop"
+    },
+    {
+      "id": "D18.1-GPU-01",
+      "name": "GPU Utility No-Update Regression",
+      "input": "NVIDIA/AMD/Intel utility authority present; no WUA offer and no vendor update evidence",
+      "expected": "No RecommendedUpdateAvailable; zero update counts; management visible; coverage not strong-complete"
+    }
+  ]
+}

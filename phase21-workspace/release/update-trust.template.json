@@ -1,0 +1,5 @@
+{
+  "schema": "aethercore.update-trust.v1",
+  "enabled": false,
+  "channels": []
+}

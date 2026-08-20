@@ -1,0 +1,76 @@
+h1,h2,h3,h4 { font-family:var(--ac-font-display); font-optical-sizing:auto; text-wrap:balance; }
+h1 { margin:.35rem 0 .5rem; font-size:var(--ac-type-display); line-height:1.06; font-weight:590; letter-spacing:-.025em; }
+h2 { font-size:var(--ac-type-title); line-height:1.12; font-weight:585; letter-spacing:-.018em; }
+h3 { font-size:1.0625rem; line-height:1.25; font-weight:590; letter-spacing:-.008em; }
+h4 { font-size:var(--ac-type-headline); line-height:1.3; font-weight:600; }
+.eyebrow { color:var(--ac-text-4); font-size:var(--ac-type-technical); line-height:1.3; font-weight:680; letter-spacing:.11em; text-transform:uppercase; }
+header .sub, .sub { color:var(--ac-text-3); font-size:var(--ac-type-body); line-height:1.62; max-width:52rem; }
+small { line-height:1.45; }
+
+[lang="ar"] body { font-family:"Segoe UI Variable Text","Segoe UI",Tahoma,Arial,sans-serif; line-height:1.62; }
+[lang="ar"] h1,[lang="ar"] h2,[lang="ar"] h3,[lang="ar"] h4 { letter-spacing:0; line-height:1.2; }
+[lang="ar"] .eyebrow { letter-spacing:0; text-transform:none; }
+[dir="rtl"] code,[dir="rtl"] .technical,[dir="rtl"] .bugcheck strong,[dir="rtl"] .ata-smart-grid small,[dir="rtl"] .service-version { direction:ltr; unicode-bidi:isolate; text-align:start; }
+
+/* Phase 12 — bidirectional technical-data isolation. */
+.technical-isolate,
+code,
+kbd,
+[data-technical] {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+  font-variant-numeric: tabular-nums;
+}
+
+html[dir='rtl'] :is(.technical-isolate, code, kbd, [data-technical]) {
+  font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
+  letter-spacing: 0;
+}
+
+html[dir='rtl'] body {
+  line-height: 1.62;
+}
+
+html[dir='rtl'] :is(h1, h2, h3, h4, .eyebrow, .nav-copy, .service-copy) {
+  letter-spacing: 0;
+}
+
+html[dir='rtl'] :is(h1, h2, h3) {
+  line-height: 1.28;
+  font-weight: 650;
+}
+
+/* Phase 12 — Arabic optical rhythm and readable density. */
+html[lang='ar'] body {
+  line-height: 1.68;
+  word-spacing: .012em;
+  font-synthesis: none;
+}
+html[lang='ar'] :is(p, li, .sub, small) {
+  text-wrap: pretty;
+}
+html[lang='ar'] :is(h1, h2, h3) {
+  line-height: 1.3;
+}
+html[lang='ar'] h4 { line-height: 1.38; }
+html[lang='ar'] :is(.technical-isolate, code, kbd, [data-technical]) {
+  word-spacing: normal;
+}
+
+/* Arabic optical cleanup: presentation labels must not inherit Latin tracking/casing. */
+html[dir="rtl"] :is(
+  .eyebrow,
+  .driver-metrics article > span,
+  .phase-tag,
+  .device-table-head,
+  .vendor-chip,
+  .windows-chip,
+  .cleanup-summary article > span,
+  .startup-evidence > span,
+  .hardware-summary article > span,
+  .triage-head > span
+) {
+  letter-spacing: 0;
+  text-transform: none;
+}

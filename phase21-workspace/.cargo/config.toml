@@ -1,0 +1,8 @@
+[build]
+target-dir = "target"
+
+[term]
+color = "always"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/Brepro", "-C", "link-arg=/INCREMENTAL:NO"]

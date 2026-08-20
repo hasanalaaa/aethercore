@@ -1,0 +1,64 @@
+syntax = "proto3";
+package aethercore.v1;
+
+import "common.proto";
+
+message StartCleanupScanRequest {}
+message GetCleanupSnapshotRequest {}
+message CreateCleanupPlanRequest { string scan_id = 1; uint64 inventory_epoch = 2; repeated string candidate_ids = 3; }
+message StartCleanupRequest { string plan_id = 1; }
+message GetCleanupStatusRequest { string plan_id = 1; }
+message CleanupCandidateInfo {
+  string candidate_id = 1;
+  string provider = 2;
+  string title = 3;
+  string description = 4;
+  uint64 reclaimable_bytes = 5;
+  uint32 file_count = 6;
+  bool selected_by_default = 7;
+  bool requires_explicit_confirmation = 8;
+  bool truncated = 9;
+  string special_kind = 10;
+}
+message CleanupSnapshot {
+  string scan_id = 1;
+  string state = 2;
+  uint64 inventory_epoch = 3;
+  int64 started_unix_ms = 4;
+  int64 completed_unix_ms = 5;
+  string error_message = 6;
+  uint64 total_reclaimable_bytes = 7;
+  uint32 total_file_count = 8;
+  repeated CleanupCandidateInfo candidates = 9;
+  repeated string warnings = 10;
+  DiscoveryState state_code = 11;
+}
+message CleanupItemStatus {
+  string item_id = 1;
+  string title = 2;
+  string stage = 3;
+  string result_code = 4;
+  uint64 bytes_affected = 5;
+  string detail = 6;
+}
+message CleanupStatus {
+  string plan_id = 1;
+  string plan_state = 2;
+  string stage = 3;
+  bool progress_known = 4;
+  uint32 overall_percent = 5;
+  string current_candidate_id = 6;
+  string detail = 7;
+  bool mutation_started = 8;
+  bool recovery_required = 9;
+  string failure_message = 10;
+  uint64 reclaimed_bytes = 11;
+  uint64 skipped_bytes = 12;
+  int64 started_unix_ms = 13;
+  int64 updated_unix_ms = 14;
+  int64 completed_unix_ms = 15;
+  repeated CleanupItemStatus items = 16;
+  OperationState state_code = 17;
+}
+message CleanupSnapshotResponse { CleanupSnapshot snapshot = 1; }
+message CleanupStatusResponse { CleanupStatus status = 1; }

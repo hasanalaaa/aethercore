@@ -1,0 +1,177 @@
+{
+  "schema": "aethercore.unsafe-boundary-policy.v1",
+  "purpose": "Required review contracts for every production Rust file that crosses an unsafe/Win32/FFI boundary. Classification is not proof of soundness; it prevents unaudited unsafe surface growth.",
+  "contracts": {
+    "apps/consent-broker/src/main.rs": {
+      "domain": "interactive consent Win32 UI",
+      "safety_invariant": "UTF-16 buffers passed to MessageBoxW remain NUL-terminated and alive for the call; language queries use value-returning Win32 APIs only.",
+      "ownership": "No returned owning HANDLE or heap pointer crosses this boundary.",
+      "buffer_alignment_lifetime": "PCWSTR pointers are derived from live Vec<u16> storage and are not retained by Win32.",
+      "error_translation": "User choice is treated as data; absence/rejection never elevates authority.",
+      "partial_failure_cleanup": "No external resource survives a failed dialog/language query.",
+      "cancellation": "Consent remains one-shot and cancellation/rejection is fail-closed."
+    },
+    "apps/desktop/src/main.rs": {
+      "domain": "desktop process launch/elevation",
+      "safety_invariant": "SHELLEXECUTEINFOW and token/process structures are fully initialized, backing UTF-16 buffers outlive ShellExecuteExW, and returned process handles are validated before use.",
+      "ownership": "Any hProcess returned by ShellExecuteExW is immediately transferred to an RAII owner and closed exactly once.",
+      "buffer_alignment_lifetime": "Pointers reference stack/Vec storage valid through the synchronous API call; structure cbSize values match their concrete type.",
+      "error_translation": "Win32/HRESULT failures propagate as typed application errors rather than being interpreted as success.",
+      "partial_failure_cleanup": "Early returns rely on RAII for process/token handles; no elevation authority is retained after failure.",
+      "cancellation": "Broker launch cannot bypass the surrounding consent/update authorization state machines."
+    },
+    "apps/update-broker/src/main.rs": {
+      "domain": "elevated update confirmation UI",
+      "safety_invariant": "Dialog string pointers are NUL-terminated, live for MessageBoxW, and only an explicit affirmative result authorizes continuation.",
+      "ownership": "No owning Win32 resource is returned.",
+      "buffer_alignment_lifetime": "PCWSTR pointers remain valid for the duration of the call.",
+      "error_translation": "Non-affirmative outcomes are rejection, never implicit approval.",
+      "partial_failure_cleanup": "No resource is retained on rejection or API failure.",
+      "cancellation": "Cancellation remains fail-closed before installer authority is invoked."
+    },
+    "crates/cleaner/src/windows_impl.rs": {
+      "domain": "filesystem identity/reparse-safe deletion",
+      "safety_invariant": "Handles are opened with intended access/share/reparse semantics; variable-size file-information/final-path buffers use returned lengths and never read beyond initialized storage.",
+      "ownership": "CreateFileW handles transfer immediately to RAII and are closed exactly once.",
+      "buffer_alignment_lifetime": "FILE_ID_INFO/BY_HANDLE_FILE_INFORMATION/output buffers are correctly initialized/aligned and pointer lengths are bounded by Vec capacity.",
+      "error_translation": "Win32 failures remain typed errors and identity mismatches are rejection, not fallback deletion.",
+      "partial_failure_cleanup": "RAII closes handles on every early return; delete operations revalidate identity immediately before mutation.",
+      "cancellation": "No cancellation path may skip final path/identity/reparse defenses."
+    },
+    "crates/contracts/build.rs": {
+      "domain": "protobuf build environment",
+      "safety_invariant": "Process environment mutation occurs only inside the single-threaded build-script execution context before dependent compiler work is spawned.",
+      "ownership": "No raw operating-system resource is owned.",
+      "buffer_alignment_lifetime": "No raw pointers/buffers cross this boundary.",
+      "error_translation": "Build setup failure aborts code generation.",
+      "partial_failure_cleanup": "Environment changes are confined to the build process.",
+      "cancellation": "Build termination abandons the process-local environment with no runtime authority impact."
+    },
+    "crates/crash-diagnostics/src/windows_impl.rs": {
+      "domain": "Windows Event Log/WHEA rendering",
+      "safety_invariant": "EVT_HANDLEs and render buffers are size-probed, resized from authoritative byte counts, aligned for EVT_VARIANT access, and indexed only within returned element counts.",
+      "ownership": "Every EVT_HANDLE is wrapped/closed exactly once; borrowed event handles are not used after collection scope ends.",
+      "buffer_alignment_lifetime": "Pointer arithmetic stays within initialized render storage and typed views respect alignment and reported used length.",
+      "error_translation": "Evt* errors and malformed variants become diagnostic errors/unknown fields, never fabricated health evidence.",
+      "partial_failure_cleanup": "Event/result/context handles close through RAII after partial render failures.",
+      "cancellation": "Bounded query timeouts are preserved; cancellation/timeout cannot leave event handles unclosed."
+    },
+    "crates/driver-install/src/lib.rs": {
+      "domain": "Windows uptime boot marker",
+      "safety_invariant": "GetTickCount64 is value-returning and converted with saturating timestamp arithmetic.",
+      "ownership": "No raw resource ownership.",
+      "buffer_alignment_lifetime": "No raw buffers/pointers.",
+      "error_translation": "Arithmetic is saturating and cannot wrap into fabricated boot state.",
+      "partial_failure_cleanup": "No cleanup required.",
+      "cancellation": "No blocking/cancellable operation crosses this boundary."
+    },
+    "crates/hardware-telemetry/src/windows_impl.rs": {
+      "domain": "memory/WMI/storage telemetry",
+      "safety_invariant": "Win32/WMI structs carry required size fields, COM variants are interpreted by type, DeviceIoControl output sizes bound parser reads, and ATA/NVMe byte parsing never exceeds returned buffers.",
+      "ownership": "Device handles and COM apartments/interfaces use RAII and are released exactly once.",
+      "buffer_alignment_lifetime": "Mutable output buffers remain allocated for each call and parser slices are limited to bytes reported as valid.",
+      "error_translation": "HRESULT/Win32/unsupported-device outcomes remain explicit telemetry unavailable/error states, never synthetic health values.",
+      "partial_failure_cleanup": "RAII releases handles/COM state after WMI or IOCTL failure.",
+      "cancellation": "Provider timeouts/budgets remain authoritative and telemetry collection must not block maintenance shutdown indefinitely."
+    },
+    "crates/idle-scheduler/src/windows_state.rs": {
+      "domain": "Windows idle/power/presentation/network/servicing probes",
+      "safety_invariant": "Win32 structs are initialized with correct size/version fields, token/session handles are valid only within probe scope, and property buffers are type/length checked before conversion.",
+      "ownership": "Any token/notification/property resource returned by Win32 is immediately scoped to its corresponding RAII/release path.",
+      "buffer_alignment_lifetime": "Pointers reference live structs/buffers and returned byte counts gate reads.",
+      "error_translation": "Probe uncertainty is represented as unknown/ineligible according to scheduler policy, never permissive success.",
+      "partial_failure_cleanup": "All handles/COM allocations are released on early exits.",
+      "cancellation": "Slow provider probes remain bounded so scheduler evaluation cannot pin worker lifetime."
+    },
+    "crates/ipc/src/windows_impl.rs": {
+      "domain": "named-pipe transport/security/cancellation",
+      "safety_invariant": "SID/security-descriptor buffers remain valid for Win32 calls, returned descriptor memory is LocalFree'd exactly once, pipe/file HANDLE ownership has one RAII owner, and thread IDs are converted to cancel handles only after worker startup handshake.",
+      "ownership": "Raw pipe/thread/security allocation handles transfer once to File/OwnedHandle/LocalFree paths; from_raw_handle consumes ownership and must not alias another closer.",
+      "buffer_alignment_lifetime": "SID and descriptor pointers are used only while their backing allocation is live; framed reads/writes are bounded by protocol limits.",
+      "error_translation": "Access, identity, cancellation and I/O failures remain typed IPC errors; no security verification failure falls back to a weaker principal.",
+      "partial_failure_cleanup": "Worker-start failure closes handles/joins created workers where join ownership is retained; security allocations are freed on every branch.",
+      "cancellation": "Current synchronous CancelSynchronousIo teardown remains a native-qualification blocker until slow-peer race tests prove a bounded upper limit or transport migrates to overlapped I/O."
+    },
+    "crates/restore-point/src/windows_impl.rs": {
+      "domain": "COM security/dynamic System Restore API",
+      "safety_invariant": "COM process security is initialized under the documented one-time policy, LoadLibrary/GetProcAddress results are checked before typed invocation, and restore status structures are correctly initialized.",
+      "ownership": "Loaded module ownership is scoped and released exactly once; COM initialization remains balanced by its owner.",
+      "buffer_alignment_lifetime": "Function pointer transmutation is permitted only after non-null symbol resolution to the exact declared ABI signature.",
+      "error_translation": "HRESULT/Win32/restore status failures are surfaced explicitly.",
+      "partial_failure_cleanup": "Library/COM resources release after symbol or restore-call failure.",
+      "cancellation": "Restore-point creation is treated as a bounded mutation phase and cancellation cannot claim rollback without Windows evidence."
+    },
+    "crates/security/src/lib.rs": {
+      "domain": "named-pipe client token/service identity verification",
+      "safety_invariant": "Client impersonation/token queries use handles valid for the call, TOKEN_* buffers are resized from authoritative required lengths, SID comparisons only read initialized token data, and thread impersonation is always reverted.",
+      "ownership": "Token/service handles have one closer and impersonation is guarded by ThreadImpersonation/explicit revert.",
+      "buffer_alignment_lifetime": "TOKEN_USER/TOKEN_GROUPS typed views are created only after sufficient aligned storage has been populated.",
+      "error_translation": "Token/SID/service mismatch is authentication failure; lookup failure never grants access.",
+      "partial_failure_cleanup": "Impersonation reverts and handles close on all early-return paths.",
+      "cancellation": "Authentication is completed before session authority is retained; disconnect cannot leave impersonation active."
+    },
+    "crates/startup-manager/src/windows_impl.rs": {
+      "domain": "registry/task-scheduler/service startup enumeration and mutation",
+      "safety_invariant": "Registry value/name buffers honor returned lengths and types, COM task interfaces stay inside a valid apartment, service/registry handles are valid for each call, and task indices honor COM collection bounds.",
+      "ownership": "Registry/service handles and COM apartment lifetime are RAII-scoped; BSTR/VARIANT/interface ownership follows windows-rs semantics.",
+      "buffer_alignment_lifetime": "Mutable registry buffers are sized before calls; UTF-16 string pointers remain alive for synchronous APIs.",
+      "error_translation": "Registry/COM/service errors remain explicit and cannot fabricate enabled/disabled startup state.",
+      "partial_failure_cleanup": "Handles and COM state release after partial enumeration/mutation failure.",
+      "cancellation": "Provider operations must respect supervisor/read budgets and cannot bypass mutation authorization on retry."
+    },
+    "crates/update-engine/src/platform.rs": {
+      "domain": "Windows version and Authenticode verification",
+      "safety_invariant": "RTL_OSVERSIONINFOW and WINTRUST_DATA fields/sizes are initialized exactly for their APIs, backing path/provider structures remain live for both VERIFY and CLOSE calls, and trust state is closed on every verification attempt.",
+      "ownership": "WinTrust provider state opened by VERIFY is closed exactly once with WTD_STATEACTION_CLOSE.",
+      "buffer_alignment_lifetime": "All pointers in WINTRUST_DATA reference live stack/UTF-16 storage for the full verify/close sequence.",
+      "error_translation": "Any non-success trust status is verification failure; unsigned/untrusted payloads never advance update state.",
+      "partial_failure_cleanup": "WinTrust state close is attempted even after a failed verification result.",
+      "cancellation": "Cancellation cannot skip Authenticode/hash/signature verification before installer handoff."
+    },
+    "crates/windows-foundation/src/lib.rs": {
+      "domain": "shared Win32 RAII/COM/impersonation/file-lock primitives",
+      "safety_invariant": "Each wrapper accepts only handles/pointers whose ownership contract is explicit; SHGetKnownFolderPath memory is converted before CoTaskMemFree; OVERLAPPED structures remain live for synchronous LockFileEx/UnlockFileEx calls; impersonation is always reverted.",
+      "ownership": "OwnedHandle/OwnedServiceHandle close exactly once; into_raw transfers ownership by ManuallyDrop; COM and impersonation guards balance successful acquisition.",
+      "buffer_alignment_lifetime": "Wide path buffers are NUL-terminated/live for Win32 calls; CoTaskMem pointer is read before free.",
+      "error_translation": "Win32/HRESULT results preserve lock contention vs hard error and surface failed RevertToSelf where explicit.",
+      "partial_failure_cleanup": "RAII closes handles/uninitializes COM/reverts impersonation on early return.",
+      "cancellation": "Background/thread state guards restore prior state on scope exit and must not outlive their originating thread."
+    },
+    "crates/windows-pnp/src/windows_impl.rs": {
+      "domain": "SetupAPI/ConfigMgr device enumeration",
+      "safety_invariant": "SP_DEVINFO_DATA.cbSize is initialized, SetupAPI buffers use required-size probes and returned byte counts, property types are validated, and enumeration ends only on the documented no-more-items condition.",
+      "ownership": "HDEVINFO and related handles are destroyed exactly once through RAII.",
+      "buffer_alignment_lifetime": "Typed property views are created only from sufficiently sized initialized buffers; UTF-16 reads stay within returned lengths.",
+      "error_translation": "Unsupported/missing properties remain optional; API failures do not fabricate device health/state.",
+      "partial_failure_cleanup": "Device information sets close on every exit path.",
+      "cancellation": "Enumeration remains bounded by finite device sets and higher-level provider budgets."
+    },
+    "crates/windows-update/src/execution_windows.rs": {
+      "domain": "Windows Update Agent execution",
+      "safety_invariant": "All WUA COM methods execute within a live COM apartment, collection indices remain within Count(), VARIANT/BSTR/interface lifetimes follow windows-rs ownership, and selected update identities are revalidated against fresh WUA results before install.",
+      "ownership": "COM interfaces/collections are reference-counted by windows-rs and apartment lifetime encloses their use.",
+      "buffer_alignment_lifetime": "No borrowed COM output is retained beyond its owning interface/value lifetime.",
+      "error_translation": "HRESULT/WUA result-code failures are typed update failures; partial success cannot be promoted to full success.",
+      "partial_failure_cleanup": "MutationSupervisor/update owner state and COM apartment unwind on every error path; selection is revalidated before mutation.",
+      "cancellation": "Cancellation is checked at state-machine boundaries and cannot skip post-install verification/recovery accounting."
+    },
+    "crates/windows-update/src/windows_impl.rs": {
+      "domain": "Windows Update Agent discovery",
+      "safety_invariant": "WUA COM calls execute under a valid apartment, online search configuration/result codes are checked, collection indices stay within Count(), and metadata conversions preserve typed absence/errors.",
+      "ownership": "windows-rs COM interfaces/BSTR/VARIANT values remain within apartment lifetime and release through reference counting.",
+      "buffer_alignment_lifetime": "No raw COM pointer is retained outside its owning smart interface.",
+      "error_translation": "Search/result/property HRESULT failures become explicit discovery errors; unavailable metadata is not invented.",
+      "partial_failure_cleanup": "COM state and intermediate interfaces release on early return.",
+      "cancellation": "Discovery remains read-budget bounded; cancellation cannot mutate driver/update state."
+    },
+    "services/maintenance-service/src/main.rs": {
+      "domain": "Windows service control registration",
+      "safety_invariant": "Service control dispatcher/table callback pointers use the declared system ABI and point to static/long-lived service name/callback state for the dispatcher lifetime.",
+      "ownership": "SCM callback registration does not transfer an owning kernel HANDLE to Rust at this boundary.",
+      "buffer_alignment_lifetime": "UTF-16 service name and SERVICE_TABLE_ENTRYW storage remain valid while StartServiceCtrlDispatcherW consumes them.",
+      "error_translation": "SCM registration/dispatcher failure aborts service startup.",
+      "partial_failure_cleanup": "Service runtime state is not published before dispatcher registration succeeds.",
+      "cancellation": "Stop/control callbacks feed the bounded shutdown path; callback registration itself does not weaken shutdown authority."
+    }
+  }
+}

@@ -1,0 +1,115 @@
+syntax = "proto3";
+package aethercore.v1;
+
+import "common.proto";
+
+message StartRepairAssessmentRequest {}
+message GetRepairAssessmentRequest {}
+message CreateSystemRepairPlanRequest { string assessment_id = 1; bool run_disk_scan = 2; }
+message StartSystemRepairRequest { string plan_id = 1; }
+message GetSystemRepairStatusRequest { string plan_id = 1; }
+message RepairCheckInfo {
+  string id = 1;
+  string title = 2;
+  string stage = 3;
+  string result_code = 4;
+  int32 exit_code = 5;
+  string detail = 6;
+  string log_hint = 7;
+}
+message RepairFactInfo {
+  string id = 1;
+  string domain = 2;
+  string state = 3;
+  string resource = 4;
+  string evidence_code = 5;
+  string technical_code = 6;
+  string detail = 7;
+  int64 observed_unix_ms = 8;
+  string confidence = 9;
+}
+message RepairDiagnosisInfo {
+  string id = 1;
+  string code = 2;
+  string role = 3;
+  string domain = 4;
+  string confidence = 5;
+  string scope = 6;
+  repeated string evidence_ids = 7;
+  string uncertainty = 8;
+  string rule_version = 9;
+}
+message RepairNodeInfo {
+  string id = 1;
+  string action = 2;
+  string safety = 3;
+  repeated string dependencies = 4;
+  string target_resource = 5;
+  repeated string diagnosis_ids = 6;
+  string verification = 7;
+  string reversibility = 8;
+  bool requires_explicit_consent = 9;
+  bool requires_recovery_protection = 10;
+  bool reboot_boundary_after = 11;
+  bool executable_automatically = 12;
+}
+message RepairGraphInfo {
+  string schema = 1;
+  bool valid = 2;
+  string invalid_reason = 3;
+  repeated RepairNodeInfo nodes = 4;
+  repeated string deterministic_order = 5;
+  string digest_sha256 = 6;
+}
+message RecoveryReadinessInfo {
+  string system_restore = 1;
+  string restore_point_creation = 2;
+  string win_re = 3;
+  string journal_recovery = 4;
+  string driver_rollback = 5;
+}
+message RepairIntelligenceInfo {
+  string schema = 1;
+  string observation_id = 2;
+  string machine_state_fingerprint = 3;
+  repeated RepairFactInfo facts = 4;
+  repeated RepairDiagnosisInfo diagnoses = 5;
+  RecoveryReadinessInfo recovery = 6;
+  RepairGraphInfo graph = 7;
+}
+message RepairAssessmentSnapshot {
+  string assessment_id = 1;
+  string state = 2;
+  int64 started_unix_ms = 3;
+  int64 completed_unix_ms = 4;
+  string error_message = 5;
+  string system_volume = 6;
+  repeated RepairCheckInfo checks = 7;
+  DiscoveryState state_code = 8;
+  RepairIntelligenceInfo intelligence = 9;
+}
+message SystemRepairStatus {
+  string plan_id = 1;
+  string plan_state = 2;
+  string stage = 3;
+  bool progress_known = 4;
+  uint32 overall_percent = 5;
+  string current_step_id = 6;
+  string detail = 7;
+  bool mutation_started = 8;
+  bool recovery_required = 9;
+  string failure_message = 10;
+  int64 started_unix_ms = 11;
+  int64 updated_unix_ms = 12;
+  int64 completed_unix_ms = 13;
+  repeated RepairCheckInfo steps = 14;
+  OperationState state_code = 15;
+  string outcome = 16;
+  string repair_graph_digest = 17;
+  string machine_state_fingerprint = 18;
+  string safety_tier = 19;
+  bool reboot_required = 20;
+  string verification_state = 21;
+}
+message RepairAssessmentResponse { RepairAssessmentSnapshot assessment = 1; }
+message SystemRepairStatusResponse { SystemRepairStatus status = 1; }

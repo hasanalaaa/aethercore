@@ -1,0 +1,51 @@
+{
+  "schema": "aethercore.ga-witness.v1",
+  "version": "",
+  "operator": "",
+  "executed_utc": "",
+  "locale": "en-US",
+  "direction": "ltr",
+  "dpi_percent": 100,
+  "refresh_hz": 60,
+  "accessibility": [
+    "keyboard-only"
+  ],
+  "input": [
+    "mouse",
+    "keyboard"
+  ],
+  "update_channels": [
+    "stable",
+    "beta"
+  ],
+  "surfaces": {
+    "overview": "pass",
+    "drivers": "pass",
+    "repair": "pass",
+    "cleanup": "pass",
+    "startup": "pass",
+    "hardware": "pass",
+    "crash": "pass",
+    "activity": "pass",
+    "system-care-update": "pass",
+    "system-care-support-export": "pass",
+    "consent-dialog": "pass",
+    "command-palette": "pass"
+  },
+  "checks": {
+    "text-clipping": "pass",
+    "focus-order": "pass",
+    "focus-visible": "pass",
+    "keyboard-traversal": "pass",
+    "narrator-names-roles-values": "pass",
+    "rtl-mirroring": "pass",
+    "mixed-direction-technical-text": "pass",
+    "reduced-motion-equivalent": "pass",
+    "reduced-transparency-legibility": "pass",
+    "high-contrast-legibility": "pass",
+    "dialog-focus-trap-return": "pass",
+    "pointerdown-feedback": "pass",
+    "interruptible-motion": "pass"
+  },
+  "notes": ""
+}

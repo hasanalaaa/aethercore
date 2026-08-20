@@ -1,0 +1,75 @@
+# Exact Phase 18.1 → Phase 19 Change Inventory
+
+Generated from the Git index against the byte-exact Phase 18.1 baseline commit. Final per-file hashes live in the outer delivery `SOURCE_MANIFEST.json` / `SHA256_INVENTORY.json` to avoid a self-hashing artifact.
+
+- Changed paths: **64**
+- Added: **41**
+- Modified: **23**
+- Deleted: **0**
+
+## Paths
+
+- `M` `Cargo.toml`
+- `A` `PRODUCT_CAPABILITY_DEBT.json`
+- `M` `QUALIFICATION_DEBT.json`
+- `M` `apps/ui/src/app/PlanDialogs.svelte`
+- `M` `apps/ui/src/design/styles/feature-layout.css`
+- `M` `apps/ui/src/features/repair/RepairPage.svelte`
+- `M` `apps/ui/src/lib/contracts.ts`
+- `M` `apps/ui/src/lib/i18n/catalog.ar.ts`
+- `M` `apps/ui/src/lib/i18n/catalog.en.ts`
+- `M` `apps/ui/src/platform/stream-state.ts`
+- `M` `crates/contracts/proto/repair.proto`
+- `M` `crates/operation-engine/src/lib.rs`
+- `M` `crates/pc-intelligence/src/normalize.rs`
+- `M` `crates/pc-intelligence/src/rules.rs`
+- `A` `crates/persistence/migrations/0013_phase19_windows_repair.sql`
+- `M` `crates/persistence/src/lib.rs`
+- `M` `crates/system-repair/Cargo.toml`
+- `A` `crates/system-repair/src/dism_api.rs`
+- `M` `crates/system-repair/src/lib.rs`
+- `M` `crates/system-repair/src/windows_impl.rs`
+- `A` `crates/windows-repair-intelligence/Cargo.toml`
+- `A` `crates/windows-repair-intelligence/src/diagnosis.rs`
+- `A` `crates/windows-repair-intelligence/src/graph.rs`
+- `A` `crates/windows-repair-intelligence/src/lib.rs`
+- `A` `crates/windows-repair-intelligence/src/model.rs`
+- `A` `crates/windows-repair-intelligence/src/planner.rs`
+- `A` `crates/windows-repair-intelligence/src/taxonomy.rs`
+- `A` `crates/windows-repair-intelligence/tests/synthetic_lab.rs`
+- `M` `crates/windows-update/src/lib.rs`
+- `M` `crates/windows-update/src/windows_impl.rs`
+- `A` `docs/phase19/ARCHITECTURE.md`
+- `A` `docs/phase19/COMPONENT_STORE_SYSTEM_FILES_STRATEGY.md`
+- `A` `docs/phase19/DESTRUCTIVE_SAFETY_EVIDENCE.json`
+- `A` `docs/phase19/EXACT_CHANGE_INVENTORY.md`
+- `A` `docs/phase19/FINAL_ADVERSARIAL_REVIEW.md`
+- `A` `docs/phase19/IMMUTABLE_PLAN_REBOOT_VERIFICATION.md`
+- `A` `docs/phase19/ISSUE_LEDGER.md`
+- `A` `docs/phase19/MASTER_DELIVERY_REPORT.md`
+- `A` `docs/phase19/MICRO_PREFLIGHT.md`
+- `A` `docs/phase19/NETWORK_FILESYSTEM_STRATEGY.md`
+- `A` `docs/phase19/OFFICIAL_WINDOWS_AUTHORITY.md`
+- `A` `docs/phase19/PHASE19_SOURCE_AUDIT.json`
+- `A` `docs/phase19/PHASE19_SOURCE_AUDIT.md`
+- `A` `docs/phase19/RECOVERY_READINESS_ESCALATION.md`
+- `A` `docs/phase19/REGRESSION_EVIDENCE.md`
+- `A` `docs/phase19/REPAIR_FACT_DIAGNOSIS_SPEC.md`
+- `A` `docs/phase19/REPAIR_GRAPH_AND_SAFETY_SPEC.md`
+- `A` `docs/phase19/REPAIR_TRUTH_ADVERSARIAL_EVIDENCE.json`
+- `A` `docs/phase19/SCORECARD.md`
+- `A` `docs/phase19/SECURITY_ADVERSARIAL_EVIDENCE.json`
+- `A` `docs/phase19/SYNTHETIC_WINDOWS_REPAIR_LAB.md`
+- `A` `docs/phase19/UI_APPLE_DESIGN_EN_AR_ACCESSIBILITY.md`
+- `A` `docs/phase19/WINDOWS_UPDATE_SERVICES_STRATEGY.md`
+- `A` `docs/phase19/regression/PHASE17_1_AUDIT.txt`
+- `A` `docs/phase19/regression/PHASE17_AUDIT.txt`
+- `A` `docs/phase19/regression/PHASE18_1_AUDIT.json`
+- `A` `docs/phase19/regression/PHASE18_AUDIT.json`
+- `A` `docs/phase19/regression/PHASE19_AUDIT.json`
+- `A` `docs/phase19/regression/STATIC_VALIDATE_STDOUT.json`
+- `M` `scripts/phase17-intelligence-audit.py`
+- `M` `scripts/phase17_1-integrity-audit.py`
+- `A` `scripts/phase19-windows-repair-audit.py`
+- `M` `scripts/static_validate.py`
+- `M` `services/maintenance-service/src/protocol.rs`

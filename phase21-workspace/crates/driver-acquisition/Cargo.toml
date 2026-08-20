@@ -1,0 +1,15 @@
+[package]
+name = "aethercore-driver-acquisition"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+hex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+aethercore-driver-authority = { path = "../driver-authority" }
+aethercore-update-engine = { path = "../update-engine" }

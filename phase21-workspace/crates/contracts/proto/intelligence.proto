@@ -1,0 +1,43 @@
+syntax = "proto3";
+package aethercore.v1;
+
+message StartDeepScanRequest {}
+message CancelDeepScanRequest { string scan_id = 1; }
+message GetDeepScanSnapshotRequest {}
+message GetDeepScanHistoryRequest { uint32 limit = 1; }
+message SealRemediationPlanRequest { string scan_id = 1; repeated string selected_action_ids = 2; }
+
+enum PcDomain { PC_DOMAIN_UNSPECIFIED=0; PC_DOMAIN_SYSTEM=1; PC_DOMAIN_HARDWARE=2; PC_DOMAIN_DRIVERS=3; PC_DOMAIN_WINDOWS=4; PC_DOMAIN_STORAGE=5; PC_DOMAIN_MEMORY=6; PC_DOMAIN_DIAGNOSTICS=7; PC_DOMAIN_PERFORMANCE=8; PC_DOMAIN_STARTUP=9; PC_DOMAIN_CLEANUP=10; PC_DOMAIN_UPDATES=11; PC_DOMAIN_RECOVERY=12; }
+enum EvidenceConfidence { EVIDENCE_CONFIDENCE_UNSPECIFIED=0; EVIDENCE_CONFIDENCE_UNKNOWN=1; EVIDENCE_CONFIDENCE_LOW=2; EVIDENCE_CONFIDENCE_MEDIUM=3; EVIDENCE_CONFIDENCE_HIGH=4; EVIDENCE_CONFIDENCE_CONFIRMED=5; }
+enum FindingSeverity { FINDING_SEVERITY_UNSPECIFIED=0; FINDING_SEVERITY_INFORMATIONAL=1; FINDING_SEVERITY_LOW=2; FINDING_SEVERITY_MODERATE=3; FINDING_SEVERITY_HIGH=4; FINDING_SEVERITY_CRITICAL=5; }
+enum DeepScanState { DEEP_SCAN_STATE_UNSPECIFIED=0; DEEP_SCAN_STATE_IDLE=1; DEEP_SCAN_STATE_SCANNING=2; DEEP_SCAN_STATE_COMPLETED=3; DEEP_SCAN_STATE_PARTIAL=4; DEEP_SCAN_STATE_CANCELLED=5; DEEP_SCAN_STATE_FAILED=6; }
+enum PcSystemStatus { PC_SYSTEM_STATUS_UNSPECIFIED=0; PC_SYSTEM_STATUS_HEALTHY=1; PC_SYSTEM_STATUS_ATTENTION_RECOMMENDED=2; PC_SYSTEM_STATUS_ACTION_REQUIRED=3; PC_SYSTEM_STATUS_CRITICAL=4; }
+enum PcCollectorState { PC_COLLECTOR_STATE_UNSPECIFIED=0; PC_COLLECTOR_STATE_PENDING=1; PC_COLLECTOR_STATE_RUNNING=2; PC_COLLECTOR_STATE_COMPLETED=3; PC_COLLECTOR_STATE_COMPLETED_WITH_WARNINGS=4; PC_COLLECTOR_STATE_UNAVAILABLE=5; PC_COLLECTOR_STATE_PERMISSION_DENIED=6; PC_COLLECTOR_STATE_TIMED_OUT=7; PC_COLLECTOR_STATE_CANCELLED=8; PC_COLLECTOR_STATE_FAILED=9; }
+enum PcRemediationSafety { PC_REMEDIATION_SAFETY_UNSPECIFIED=0; PC_REMEDIATION_SAFETY_SAFE_AUTO=1; PC_REMEDIATION_SAFETY_SAFE_REVIEW=2; PC_REMEDIATION_SAFETY_SENSITIVE=3; PC_REMEDIATION_SAFETY_MANUAL=4; PC_REMEDIATION_SAFETY_HARDWARE_SERVICE=5; }
+
+message PcMessageArg { string key=1; string value=2; }
+message PcResourceRef { string kind=1; string stable_id=2; string display_name=3; }
+message PcEvidenceRef { string fact_id=1; string kind=2; string source=3; int64 observed_unix_ms=4; string technical_value=5; }
+message PcResolutionEvidence { string scope=1; PcCollectorState collector_state=2; int64 observed_unix_ms=3; repeated string evidence_fact_ids=4; }
+message PcCorrelationExplanation { string strength=1; uint64 time_distance_ms=2; string shared_scope=3; string rationale_key=4; repeated string contributing_fact_ids=5; repeated string conflicting_evidence_keys=6; }
+message PcFinding {
+  string id=1; string code=2; PcDomain domain=3; FindingSeverity severity=4; EvidenceConfidence confidence=5;
+  string title_key=6; string summary_key=7; string technical_key=8; repeated PcMessageArg message_args=9;
+  repeated PcEvidenceRef evidence=10; PcResourceRef affected_resource=11; int64 first_observed_unix_ms=12; int64 last_observed_unix_ms=13;
+  string lifecycle=14; bool remediation_available=15; PcRemediationSafety remediation_safety=16; string reboot_requirement=17;
+  string privilege_requirement=18; bool automatic_eligible=19; string reversibility=20; string estimated_impact=21; string uncertainty_key=22;
+  bool ignored=23; string rule_id=24; uint32 rule_version=25;
+  string verification_status=26; repeated string resolution_authority=27; bool has_resolved_at=28; int64 resolved_at_unix_ms=29;
+  string resolution_scan_id=30; string resolution_reason_key=31; repeated PcResolutionEvidence resolution_evidence=32; PcCorrelationExplanation correlation=33;
+}
+message PcRemediationCandidate { string action_id=1; string finding_id=2; string action_type=3; string description_key=4; string authority=5; string privilege=6; PcRemediationSafety safety=7; string reversibility=8; string reboot_requirement=9; string expected_effect_key=10; repeated string preconditions=11; string verification_method_key=12; repeated string conflicts=13; string duration_category=14; bool automatic_eligible=15; }
+message PcCollectorStatus { string id=1; PcCollectorState state=2; repeated string stage_keys=3; int64 started_unix_ms=4; int64 completed_unix_ms=5; string detail=6; }
+message PcScanProgress { uint32 total_weight=1; uint32 completed_weight=2; uint32 percent=3; uint32 completed_tasks=4; uint32 total_tasks=5; uint32 active_tasks=6; uint32 skipped_tasks=7; uint32 failed_tasks=8; uint32 unavailable_tasks=9; string current_stage_key=10; }
+message PcFindingSummary { uint32 critical=1; uint32 high=2; uint32 moderate=3; uint32 low=4; uint32 informational=5; uint32 recommended_actions=6; uint32 optional_optimizations=7; uint32 healthy_checks=8; }
+message PcScanMetrics { int64 duration_ms=1; int64 collector_duration_ms=2; uint32 peak_active_tasks=3; uint32 streamed_event_count=4; uint32 persistence_write_count=5; uint64 normalized_payload_bytes_estimate=6; }
+message DeepScanSnapshot { string scan_id=1; DeepScanState state=2; PcSystemStatus status=3; int64 started_unix_ms=4; int64 completed_unix_ms=5; PcScanProgress progress=6; uint32 facts_count=7; repeated PcFinding findings=8; repeated PcRemediationCandidate remediation_candidates=9; repeated PcCollectorStatus collectors=10; repeated string warnings=11; PcFindingSummary summary=12; string machine_state_fingerprint=13; string rule_engine_version=14; string app_version=15; PcScanMetrics metrics=16; }
+message DeepScanSnapshotResponse { DeepScanSnapshot snapshot=1; }
+message DeepScanHistoryEntry { string scan_id=1; DeepScanState state=2; PcSystemStatus status=3; int64 completed_unix_ms=4; int64 duration_ms=5; uint32 finding_count=6; uint32 unavailable_collector_count=7; string machine_state_fingerprint=8; }
+message DeepScanHistoryResponse { repeated DeepScanHistoryEntry entries=1; }
+message PcRemediationPlan { string plan_id=1; string scan_id=2; string digest=3; int64 created_unix_ms=4; bool immutable=5; repeated PcRemediationCandidate actions=6; }
+message PcRemediationPlanResponse { PcRemediationPlan plan=1; }

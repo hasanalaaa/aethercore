@@ -1,0 +1,66 @@
+[package]
+name = "aethercore-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+aethercore-ipc = { path = "../crates/ipc" }
+aethercore-update-engine = { path = "../crates/update-engine", features = ["fuzzing"] }
+aethercore-support-bundle = { path = "../crates/support-bundle", features = ["fuzzing"] }
+aethercore-windows-pnp = { path = "../crates/windows-pnp" }
+aethercore-idle-scheduler = { path = "../crates/idle-scheduler" }
+aethercore-operation-engine = { path = "../crates/operation-engine" }
+
+[[bin]]
+name = "ipc_frame"
+path = "fuzz_targets/ipc_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "update_manifest"
+path = "fuzz_targets/update_manifest.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "support_archive"
+path = "fuzz_targets/support_archive.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pii_redaction"
+path = "fuzz_targets/pii_redaction.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "windows_multisz"
+path = "fuzz_targets/windows_multisz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scheduler_eligibility"
+path = "fuzz_targets/scheduler_eligibility.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "operation_state"
+path = "fuzz_targets/operation_state.rs"
+test = false
+doc = false
+bench = false
