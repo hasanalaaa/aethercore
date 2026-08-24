@@ -220,6 +220,18 @@ export type RecurrencePattern = {
 };
 export type RecurrencePatternsResponse = { patterns:RecurrencePattern[]; digestSha256:string };
 
+// ---------------------------------------------------------------------------
+// Phase 22 — One-Click Care orchestration
+// ---------------------------------------------------------------------------
+export type CareStepReport = {
+  stepIndex:number; domainPlanId:string; domainKind:string; safetyLevel:number;
+  state:string; outcome:string; domainVerificationState:string; failureMessageKey:string
+};
+export type CareRunStatus = {
+  runId:string; state:string; stage:string; sessionConsentGranted:boolean;
+  planDigestSha256:string; steps:CareStepReport[]; updatedUnixMs:number; summaryKey:string
+};
+
 type KernelEvent<K extends string, P> = { sequence:number; emittedUnixMs:number; kind:K; planId:string; payload:P };
 export type UiKernelEvent =
   | KernelEvent<'serviceSnapshot', Omit<Snapshot, 'connected'>>
@@ -247,6 +259,7 @@ export type UiKernelEvent =
   | KernelEvent<'bottleneckReport', BottleneckReport>
   | KernelEvent<'optimizationStatus', OptimizationStatus>
   | KernelEvent<'timelinePage', TimelineResponse>
+  | KernelEvent<'careStatus', CareRunStatus>
   | KernelEvent<'unknown', null>;
 export type UiSessionState = { connected:boolean; sessionId:string; serviceVersion:string; currentSequence:number; replayFloorSequence:number; replayComplete:boolean };
 export type UiStreamReset = { reason:string; currentSequence:number; replayFloorSequence:number; messageKey:string };

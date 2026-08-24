@@ -85,6 +85,7 @@ fn normalize_event(event:v1::EventEnvelope)->UiKernelEvent {
         Some(Payload::BottleneckReport(v))=>("bottleneckReport",serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::OptimizationStatus(v))=>("optimizationStatus",serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::TimelinePage(v))=>("timelinePage",serde_json::to_value(v).unwrap_or_default()),
+        Some(Payload::CareStatus(v))=>("careStatus",serde_json::to_value(v).unwrap_or_default()),
         None=>("unknown",serde_json::Value::Null),
     };
     UiKernelEvent{sequence:event.sequence,emitted_unix_ms:event.emitted_unix_ms,kind:kind.into(),plan_id:event.plan_id,payload}
@@ -1126,6 +1127,65 @@ async fn get_recurrence_patterns() -> Result<v1::RecurrencePatternsResponse, Str
     .map_err(|e| e.to_string())?
 }
 
+// ---------------------------------------------------------------------------
+// Phase 22 — One-Click Care commands
+// ---------------------------------------------------------------------------
+
+fn extract_care_status(resp: v1::Response) -> Result<v1::CareRunStatus, String> {
+    match resp.payload {
+        Some(response::Payload::CareStatus(p)) => {
+            p.status.ok_or("missing care status".into())
+        }
+        _ => Err("unexpected care response".into()),
+    }
+}
+
+#[command]
+async fn get_care_status() -> Result<v1::CareRunStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetCareStatus(v1::GetCareStatusRequest {}))
+            .map_err(|e| e.to_string())?;
+        extract_care_status(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn grant_care_session_consent() -> Result<v1::CareRunStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GrantCareSessionConsent(
+            v1::GrantCareSessionConsentRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        extract_care_status(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn start_care_run() -> Result<v1::CareRunStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::StartCareRun(v1::StartCareRunRequest {}))
+            .map_err(|e| e.to_string())?;
+        extract_care_status(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn cancel_care_run() -> Result<v1::CareRunStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::CancelCareRun(v1::CancelCareRunRequest {}))
+            .map_err(|e| e.to_string())?;
+        extract_care_status(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[command]
 async fn create_optimization_plan(
     selected_finding_ids: Vec<String>,
@@ -1204,7 +1264,11 @@ fn main() {
             get_bottleneck_report,
             create_optimization_plan,
             get_timeline_page,
-            get_recurrence_patterns
+            get_recurrence_patterns,
+            get_care_status,
+            grant_care_session_consent,
+            start_care_run,
+            cancel_care_run
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

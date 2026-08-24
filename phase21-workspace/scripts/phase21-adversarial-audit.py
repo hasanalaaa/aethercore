@@ -169,17 +169,19 @@ for forbidden_ddl in [
         "timeline ingestion must not alter the persisted schema",
     )
 migration_names = re.findall(r"\((\d+), \"(00\d+_[a-z0-9_]+)\"", persistence)
+frozen_prefix = [
+    "0001_init", "0002_driver_install", "0003_phase4", "0004_startup_manager",
+    "0005_diagnostics", "0006_phase9_security", "0007_phase10_kernel",
+    "0008_phase14_scheduler", "0009_phase15_update", "0010_phase17_intelligence",
+    "0011_phase17_1_intelligence_integrity", "0012_phase18_driver_authority",
+    "0013_phase19_windows_repair",
+]
 check(
     "p21-no-migration-drift",
-    [name for _v, name in migration_names][:14]
-    == [
-        "0001_init", "0002_driver_install", "0003_phase4", "0004_startup_manager",
-        "0005_diagnostics", "0006_phase9_security", "0007_phase10_kernel",
-        "0008_phase14_scheduler", "0009_phase15_update", "0010_phase17_intelligence",
-        "0011_phase17_1_intelligence_integrity", "0012_phase18_driver_authority",
-        "0013_phase19_windows_repair",
-    ],
-    "existing migration list must remain untouched (no renames, no renumbers)",
+    # The ledger is append-only: the frozen prefix must be untouched; later phases
+    # may append new migrations after it but never renumber or rename these.
+    [name for _v, name in migration_names][:13] == frozen_prefix,
+    "existing migration prefix must remain untouched (no renames, no renumbers)",
 )
 
 # --- Gate P21-3: no placeholders / fake data ---------------------------------

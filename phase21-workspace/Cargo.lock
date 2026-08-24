@@ -9,6 +9,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "aethercore-care-orchestrator"
+version = "0.1.0"
+dependencies = [
+ "aethercore-collector-runtime",
+ "aethercore-operation-kernel",
+ "serde",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "aethercore-cleaner"
 version = "0.1.0"
 dependencies = [
@@ -259,6 +270,7 @@ dependencies = [
 name = "aethercore-maintenance-service"
 version = "0.1.0"
 dependencies = [
+ "aethercore-care-orchestrator",
  "aethercore-cleaner",
  "aethercore-collector-runtime",
  "aethercore-contracts",
@@ -285,6 +297,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "serde_json",
+ "sha2",
  "tracing",
  "uuid",
  "windows 0.62.2",

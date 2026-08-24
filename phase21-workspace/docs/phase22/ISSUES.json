@@ -1,0 +1,32 @@
+{
+  "schema": "aethercore.phase22.issues.v1",
+  "phase": 22,
+  "policy": "Issues discovered during Phase 22 execution. Open items are honest blockers/limits, not hidden failures. Append-only across phases.",
+  "items": [
+    {
+      "id": "P22-ISS-001",
+      "severity": "medium",
+      "state": "closed",
+      "title": "Flaky temp path collision in driver-install coordinator tests (Part A repair)",
+      "detail": "Supervisor re-verification found protection_barrier_precedes_every_fake_mutation_and_completes panicking at Database::open under parallel cargo runs: temp_root() built its scratch directory from pid + wall-clock nanos, which two test threads can share on a coarse clock.",
+      "fix": "temp_root() now anchors uniqueness with a function-local AtomicU32 counter (pid-{seq}-{nanos}); std-only, no new dependency; every call site uses the shared helper.",
+      "evidence": "10 consecutive isolated runs of the coordinator suite all green; two consecutive full workspace runs both exactly 343 passed / 0 failed. Also logged as closed P21-ISS-004 in docs/phase21/ISSUES.json."
+    },
+    {
+      "id": "P22-ISS-002",
+      "severity": "info",
+      "state": "closed",
+      "title": "Embedded Phase 21 audit exited the Phase 22 superset early",
+      "detail": "phase22-adversarial-audit.py imports and executes phase21-adversarial-audit.py in-process to inherit its checks; that script ends with sys.exit(0), terminating the superset after only the inherited gates.",
+      "resolution": "The in-process exec now catches SystemExit before running the Phase 22 gate block."
+    },
+    {
+      "id": "P22-ISS-003",
+      "severity": "medium",
+      "state": "open",
+      "title": "Live domain dispatch inside a care run is intentionally not fabricated",
+      "detail": "ServiceExecutor returns a typed DomainRejected for live runs instead of inventing per-domain success. The orchestration machinery (composition, firewall, consent, single-flight lease, journaled resume, fence cancel, truth-first report) is complete and tested against the executor trait boundary; wiring real coordinators' headless start paths into the run thread remains open.",
+      "trackedAlsoIn": "docs/phase22/QUALIFICATION_DEBT.json#P22-QD-002"
+    }
+  ]
+}

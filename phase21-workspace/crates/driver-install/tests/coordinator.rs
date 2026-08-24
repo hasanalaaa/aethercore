@@ -12,7 +12,9 @@ use aethercore_driver_backup::BackupEvidence;
 use aethercore_driver_hub::{DiscoveryBackend, DriverHub, ScanState};
 use aethercore_driver_install::{DriverInstallCoordinator, InstallPlatform};
 use aethercore_operation_engine::{OperationEngine, PlanState};
-use aethercore_operation_kernel::{MutationSupervisor, MutationWorkload, ReadBudgetManager, ReadWorkload};
+use aethercore_operation_kernel::{
+    MutationSupervisor, MutationWorkload, ReadBudgetManager, ReadWorkload,
+};
 use aethercore_persistence::Database;
 use aethercore_restore_point::RestorePointEvidence;
 use aethercore_windows_pnp::{DeviceRecord, DeviceStatus, DeviceVerification, InstalledDriver};
@@ -24,19 +26,34 @@ use aethercore_windows_update::{
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 fn approve(engine: &OperationEngine, plan_id: &str, digest: &str) {
-    let intent = engine.begin_consent_intent(plan_id, OWNER).expect("consent intent");
-    engine.approve_consent_intent(&intent.intent_id, OWNER, 4242).expect("consent approval");
+    let intent = engine
+        .begin_consent_intent(plan_id, OWNER)
+        .expect("consent intent");
+    engine
+        .approve_consent_intent(&intent.intent_id, OWNER, 4242)
+        .expect("consent approval");
 }
 
-fn start_install(coordinator: &DriverInstallCoordinator, owner: &str, plan_id: &str) -> aethercore_driver_install::Result<aethercore_driver_install::InstallStatus> {
+fn start_install(
+    coordinator: &DriverInstallCoordinator,
+    owner: &str,
+    plan_id: &str,
+) -> aethercore_driver_install::Result<aethercore_driver_install::InstallStatus> {
     let supervisor = MutationSupervisor::new();
-    let lease = supervisor.try_acquire(MutationWorkload::DriverInstall, plan_id, owner).expect("mutation lease");
+    let lease = supervisor
+        .try_acquire(MutationWorkload::DriverInstall, plan_id, owner)
+        .expect("mutation lease");
     coordinator.start_with_lease(owner, plan_id, lease)
 }
 
-fn start_driver_scan(hub: &DriverHub, owner: &str) -> aethercore_driver_hub::Result<aethercore_driver_hub::DriverHubSnapshot> {
+fn start_driver_scan(
+    hub: &DriverHub,
+    owner: &str,
+) -> aethercore_driver_hub::Result<aethercore_driver_hub::DriverHubSnapshot> {
     let budget = ReadBudgetManager::new(4);
-    let lease = budget.try_acquire(ReadWorkload::DriverDiscovery).expect("read budget lease");
+    let lease = budget
+        .try_acquire(ReadWorkload::DriverDiscovery)
+        .expect("read budget lease");
     hub.start_scan_with_lease(owner, lease)
 }
 
@@ -101,19 +118,32 @@ impl FakePlatform {
 }
 
 impl InstallPlatform for FakePlatform {
-    fn boot_marker_ms(&self) -> Result<i64, String> { Ok(1_000) }
+    fn boot_marker_ms(&self) -> Result<i64, String> {
+        Ok(1_000)
+    }
 
     fn verify_devices(&self, ids: &[String]) -> Result<Vec<DeviceVerification>, String> {
-        self.push(if self.mutated.load(Ordering::SeqCst) { "verify-after" } else { "verify-before" });
-        Ok(ids.iter().map(|id| DeviceVerification {
-            instance_id: id.clone(),
-            present: true,
-            class_name: "Net".into(),
-            hardware_ids: vec!["PCI\\VEN_FAKE&DEV_0001".into()],
-            compatible_ids: vec!["PCI\\CC_0200".into()],
-            status: DeviceStatus::default(),
-            driver: Some(if self.mutated.load(Ordering::SeqCst) { driver("2.0.0.0", "oem2.inf") } else { driver("1.0.0.0", "oem1.inf") }),
-        }).collect())
+        self.push(if self.mutated.load(Ordering::SeqCst) {
+            "verify-after"
+        } else {
+            "verify-before"
+        });
+        Ok(ids
+            .iter()
+            .map(|id| DeviceVerification {
+                instance_id: id.clone(),
+                present: true,
+                class_name: "Net".into(),
+                hardware_ids: vec!["PCI\\VEN_FAKE&DEV_0001".into()],
+                compatible_ids: vec!["PCI\\CC_0200".into()],
+                status: DeviceStatus::default(),
+                driver: Some(if self.mutated.load(Ordering::SeqCst) {
+                    driver("2.0.0.0", "oem2.inf")
+                } else {
+                    driver("1.0.0.0", "oem1.inf")
+                }),
+            })
+            .collect())
     }
 
     fn begin_restore(&self, plan_id: &str) -> Result<RestorePointEvidence, String> {
@@ -146,7 +176,10 @@ impl InstallPlatform for FakePlatform {
         Ok(BackupEvidence {
             source_inf: inf.into(),
             backup_directory: destination.display().to_string(),
-            manifest_path: destination.join("aethercore-backup.json").display().to_string(),
+            manifest_path: destination
+                .join("aethercore-backup.json")
+                .display()
+                .to_string(),
             file_count: 3,
             total_bytes: 4096,
             not_applicable: false,
@@ -184,12 +217,16 @@ impl InstallPlatform for FakePlatform {
             result_code: "orcSucceeded".into(),
             hresult: 0,
             reboot_required: self.reboot_required,
-            updates: identities.iter().cloned().map(|identity| WuaUpdateResult {
-                identity,
-                result_code: "orcSucceeded".into(),
-                hresult: 0,
-                reboot_required: self.reboot_required,
-            }).collect(),
+            updates: identities
+                .iter()
+                .cloned()
+                .map(|identity| WuaUpdateResult {
+                    identity,
+                    result_code: "orcSucceeded".into(),
+                    hresult: 0,
+                    reboot_required: self.reboot_required,
+                })
+                .collect(),
         })
     }
 }
@@ -203,9 +240,21 @@ fn driver(version: &str, inf: &str) -> InstalledDriver {
     }
 }
 
+/// Unique scratch root per invocation. A plain timestamp collides when cargo runs
+/// this binary's tests in parallel on a coarse clock, so uniqueness is anchored by
+/// a process-wide atomic counter (pid + counter + instant-nanos suffix, std only).
 fn temp_root() -> std::path::PathBuf {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).expect("clock").as_nanos();
-    std::env::temp_dir().join(format!("aethercore-phase3-coordinator-{}-{nonce}", std::process::id()))
+    use std::sync::atomic::AtomicU32;
+    static SEQUENCE: AtomicU32 = AtomicU32::new(0);
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "aethercore-phase3-coordinator-{}-{sequence}-{nonce}",
+        std::process::id()
+    ))
 }
 
 fn ready_hub() -> Arc<DriverHub> {
@@ -213,9 +262,17 @@ fn ready_hub() -> Arc<DriverHub> {
     start_driver_scan(&hub, OWNER).expect("start fake scan");
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        let snapshot = hub.snapshot_for_owner(OWNER).expect("owned driver snapshot");
-        if snapshot.state == ScanState::Ready { return hub; }
-        assert!(snapshot.state != ScanState::Failed, "fake discovery failed: {}", snapshot.error_message);
+        let snapshot = hub
+            .snapshot_for_owner(OWNER)
+            .expect("owned driver snapshot");
+        if snapshot.state == ScanState::Ready {
+            return hub;
+        }
+        assert!(
+            snapshot.state != ScanState::Failed,
+            "fake discovery failed: {}",
+            snapshot.error_message
+        );
         assert!(Instant::now() < deadline, "fake discovery timed out");
         thread::sleep(Duration::from_millis(10));
     }
@@ -237,19 +294,35 @@ fn protection_barrier_precedes_every_fake_mutation_and_completes() {
         restore_end_fails: false,
     });
     let coordinator = DriverInstallCoordinator::with_platform(
-        engine.clone(), hub.clone(), db.clone(), root.clone(), platform.clone(),
+        engine.clone(),
+        hub.clone(),
+        db.clone(),
+        root.clone(),
+        platform.clone(),
     );
 
-    let snapshot = hub.snapshot_for_owner(OWNER).expect("owned driver snapshot");
+    let snapshot = hub
+        .snapshot_for_owner(OWNER)
+        .expect("owned driver snapshot");
     let candidate_id = snapshot.devices[0].candidates[0].candidate_id.clone();
-    let plan = coordinator.create_plan(OWNER, &snapshot.scan_id, snapshot.inventory_epoch, &[candidate_id]).expect("plan");
+    let plan = coordinator
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[candidate_id],
+        )
+        .expect("plan");
     assert_eq!(plan.state, PlanState::AwaitingAuthorization);
     approve(&engine, &plan.id, &plan.digest);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        let status = coordinator.status(OWNER, Some(&plan.id)).expect("status").expect("execution");
+        let status = coordinator
+            .status(OWNER, Some(&plan.id))
+            .expect("status")
+            .expect("execution");
         if status.plan_state == "Completed" {
             assert!(status.restore_point_verified);
             assert!(status.mutation_started);
@@ -257,14 +330,27 @@ fn protection_barrier_precedes_every_fake_mutation_and_completes() {
             assert!(status.items.iter().all(|item| item.verified));
             break;
         }
-        assert!(status.plan_state != "Failed", "coordinator failed: {}", status.failure_message);
-        assert!(Instant::now() < deadline, "coordinator timed out in {}", status.stage);
+        assert!(
+            status.plan_state != "Failed",
+            "coordinator failed: {}",
+            status.failure_message
+        );
+        assert!(
+            Instant::now() < deadline,
+            "coordinator timed out in {}",
+            status.stage
+        );
         thread::sleep(Duration::from_millis(10));
     }
 
     assert_eq!(platform.mutation_count.load(Ordering::SeqCst), 1);
     let events = platform.events.lock().expect("events").clone();
-    let pos = |name| events.iter().position(|event| *event == name).unwrap_or_else(|| panic!("missing {name}: {events:?}"));
+    let pos = |name| {
+        events
+            .iter()
+            .position(|event| *event == name)
+            .unwrap_or_else(|| panic!("missing {name}: {events:?}"))
+    };
     assert!(pos("wua-download") < pos("restore-begin"));
     assert!(pos("restore-begin") < pos("backup"));
     assert!(pos("backup") < pos("wua-install"));
@@ -276,7 +362,6 @@ fn protection_barrier_precedes_every_fake_mutation_and_completes() {
     drop(db);
     let _ = std::fs::remove_dir_all(root);
 }
-
 
 #[test]
 fn backup_failure_cancels_protection_and_never_reaches_install() {
@@ -294,23 +379,46 @@ fn backup_failure_cancels_protection_and_never_reaches_install() {
         restore_end_fails: false,
     });
     let coordinator = DriverInstallCoordinator::with_platform(
-        engine.clone(), hub.clone(), db.clone(), root.clone(), platform.clone(),
+        engine.clone(),
+        hub.clone(),
+        db.clone(),
+        root.clone(),
+        platform.clone(),
     );
 
-    let snapshot = hub.snapshot_for_owner(OWNER).expect("owned driver snapshot");
+    let snapshot = hub
+        .snapshot_for_owner(OWNER)
+        .expect("owned driver snapshot");
     let candidate_id = snapshot.devices[0].candidates[0].candidate_id.clone();
-    let plan = coordinator.create_plan(OWNER, &snapshot.scan_id, snapshot.inventory_epoch, &[candidate_id]).expect("plan");
+    let plan = coordinator
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[candidate_id],
+        )
+        .expect("plan");
     approve(&engine, &plan.id, &plan.digest);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        let status = coordinator.status(OWNER, Some(&plan.id)).expect("status").expect("execution");
+        let status = coordinator
+            .status(OWNER, Some(&plan.id))
+            .expect("status")
+            .expect("execution");
         if status.plan_state == "Failed" {
-            assert!(!status.mutation_started, "backup failure must occur before the mutation barrier");
+            assert!(
+                !status.mutation_started,
+                "backup failure must occur before the mutation barrier"
+            );
             break;
         }
-        assert!(Instant::now() < deadline, "coordinator timed out in {}", status.stage);
+        assert!(
+            Instant::now() < deadline,
+            "coordinator timed out in {}",
+            status.stage
+        );
         thread::sleep(Duration::from_millis(10));
     }
 
@@ -344,26 +452,55 @@ fn restore_end_failure_after_mutation_requires_recovery_and_never_completes() {
         restore_end_fails: true,
     });
     let coordinator = DriverInstallCoordinator::with_platform(
-        engine.clone(), hub.clone(), db.clone(), root.clone(), platform.clone(),
+        engine.clone(),
+        hub.clone(),
+        db.clone(),
+        root.clone(),
+        platform.clone(),
     );
 
-    let snapshot = hub.snapshot_for_owner(OWNER).expect("owned driver snapshot");
+    let snapshot = hub
+        .snapshot_for_owner(OWNER)
+        .expect("owned driver snapshot");
     let candidate_id = snapshot.devices[0].candidates[0].candidate_id.clone();
-    let plan = coordinator.create_plan(OWNER, &snapshot.scan_id, snapshot.inventory_epoch, &[candidate_id]).expect("plan");
+    let plan = coordinator
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[candidate_id],
+        )
+        .expect("plan");
     approve(&engine, &plan.id, &plan.digest);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        let status = coordinator.status(OWNER, Some(&plan.id)).expect("status").expect("execution");
+        let status = coordinator
+            .status(OWNER, Some(&plan.id))
+            .expect("status")
+            .expect("execution");
         if status.plan_state == "Failed" {
-            assert!(status.mutation_started, "restore END failure occurs only after the install barrier");
-            assert!(status.recovery_required, "unclosed restore transaction must require recovery review");
+            assert!(
+                status.mutation_started,
+                "restore END failure occurs only after the install barrier"
+            );
+            assert!(
+                status.recovery_required,
+                "unclosed restore transaction must require recovery review"
+            );
             assert_ne!(status.stage, "Completed");
             break;
         }
-        assert_ne!(status.plan_state, "Completed", "restore END failure must never be reported as Completed");
-        assert!(Instant::now() < deadline, "coordinator timed out in {}", status.stage);
+        assert_ne!(
+            status.plan_state, "Completed",
+            "restore END failure must never be reported as Completed"
+        );
+        assert!(
+            Instant::now() < deadline,
+            "coordinator timed out in {}",
+            status.stage
+        );
         thread::sleep(Duration::from_millis(10));
     }
 
@@ -371,14 +508,18 @@ fn restore_end_failure_after_mutation_requires_recovery_and_never_completes() {
     let events = platform.events.lock().expect("events").clone();
     assert!(events.contains(&"wua-install"));
     assert!(events.contains(&"restore-end"));
-    assert!(db.recovery_records(20).expect("recovery history").iter().any(|r| r.plan_id == plan.id));
+    assert!(
+        db.recovery_records(20)
+            .expect("recovery history")
+            .iter()
+            .any(|r| r.plan_id == plan.id)
+    );
 
     drop(coordinator);
     drop(engine);
     drop(db);
     let _ = std::fs::remove_dir_all(root);
 }
-
 
 #[test]
 fn cross_user_start_cannot_fail_or_mutate_an_owned_plan() {
@@ -397,19 +538,36 @@ fn cross_user_start_cannot_fail_or_mutate_an_owned_plan() {
         restore_end_fails: false,
     });
     let coordinator = DriverInstallCoordinator::with_platform(
-        engine.clone(), hub.clone(), db.clone(), root.clone(), platform.clone(),
+        engine.clone(),
+        hub.clone(),
+        db.clone(),
+        root.clone(),
+        platform.clone(),
     );
 
-    let snapshot = hub.snapshot_for_owner(OWNER).expect("owned driver snapshot");
+    let snapshot = hub
+        .snapshot_for_owner(OWNER)
+        .expect("owned driver snapshot");
     let candidate_id = snapshot.devices[0].candidates[0].candidate_id.clone();
     let plan = coordinator
-        .create_plan(OWNER, &snapshot.scan_id, snapshot.inventory_epoch, &[candidate_id])
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[candidate_id],
+        )
         .expect("plan");
 
     assert!(start_install(&coordinator, OTHER, &plan.id).is_err());
-    let after = engine.get_plan_for_owner(&plan.id, OWNER).expect("owner plan survives");
+    let after = engine
+        .get_plan_for_owner(&plan.id, OWNER)
+        .expect("owner plan survives");
     assert_eq!(after.state, PlanState::AwaitingAuthorization);
-    assert!(db.get_execution(&plan.id).expect("execution query").is_none());
+    assert!(
+        db.get_execution(&plan.id)
+            .expect("execution query")
+            .is_none()
+    );
     assert_eq!(platform.mutation_count.load(Ordering::SeqCst), 0);
 
     drop(coordinator);

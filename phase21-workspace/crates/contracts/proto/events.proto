@@ -14,6 +14,7 @@ import "update.proto";
 import "support_bundle.proto";
 import "performance.proto";
 import "timeline.proto";
+import "care.proto";
 
 enum EventKind {
   EVENT_KIND_UNSPECIFIED = 0;
@@ -43,6 +44,8 @@ enum EventKind {
   EVENT_KIND_OPTIMIZATION_EXECUTION = 24;
   // Phase 21: Timeline Intelligence (additive; next free tag).
   EVENT_KIND_TIMELINE_PAGE = 25;
+  // Phase 22: One-Click Care (additive; next free tag).
+  EVENT_KIND_CARE_RUN = 26;
 }
 
 enum MutationLeaseState {
@@ -58,6 +61,8 @@ enum MutationWorkloadKind {
   MUTATION_WORKLOAD_KIND_CLEANUP = 3;
   MUTATION_WORKLOAD_KIND_STARTUP = 4;
   MUTATION_WORKLOAD_KIND_UPDATE = 5;
+  // Phase 22: One-Click Care orchestration (additive; next free value).
+  MUTATION_WORKLOAD_KIND_ONE_CLICK_CARE = 6;
 }
 
 message MutationLeaseEvent {
@@ -113,6 +118,8 @@ message EventEnvelope {
     OptimizationStatus optimization_status = 33;
     // Phase 21: Timeline Intelligence (additive; next free tag).
     TimelineResponse timeline_page = 34;
+    // Phase 22: One-Click Care (additive; next free tag).
+    CareRunStatus care_status = 35;
   }
 }
 

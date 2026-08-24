@@ -27,6 +27,16 @@
       "title": "Response payload oneof required a second new tag for timeline_page",
       "detail": "Initial plan allocated response tag 45 only (recurrence_patterns). Wiring get_timeline_page showed RPC replies also need their own payload variant distinct from the stream envelope tag 34; tag 46 was allocated additively.",
       "resolution": "operations.proto Response payload tags 45 and 46 added; both frozen by the extended audit wire-freeze gate."
+    },
+    {
+      "id": "P21-ISS-004",
+      "severity": "medium",
+      "state": "closed",
+      "title": "Flaky parallel-test collision in driver-install coordinator tests (static temp path)",
+      "detail": "temp_root() in crates/driver-install/tests/coordinator.rs derived its scratch directory from process id + wall-clock nanos only. Under `cargo test --workspace` the test threads of one binary share a clock; two tests starting in the same nanosecond tick produced the same path and both opened state.db, panicking protection_barrier_precedes_every_fake_mutation_and_completes at Database::open (UNIQUE/WAL contention). Reproduced intermittently by the supervisor during Phase 22 re-verification.",
+      "rootCause": "Timestamp-only uniqueness is not collision-free for concurrent callers on coarse clocks.",
+      "fix": "temp_root() now anchors uniqueness in a function-local AtomicU32 sequence counter (process-wide, std only, no new dependencies) combined with pid + instant-nanos suffix: 'aethercore-phase3-coordinator-{pid}-{seq}-{nanos}'. Applied to every call site via the shared helper.",
+      "evidence": "10 consecutive isolated runs of `cargo test -p aethercore-driver-install --test coordinator` all green (4 passed each); two consecutive full `cargo test --workspace --jobs 2 --no-fail-fast` runs both reported exactly 343 passed / 0 failed."
     }
   ]
 }

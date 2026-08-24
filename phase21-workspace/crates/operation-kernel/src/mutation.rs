@@ -13,6 +13,9 @@ pub enum MutationWorkload {
     Update,
     /// Phase 20: reversible performance optimizations governed by the same single-flight lease.
     Optimization,
+    /// Phase 22: One-Click Care orchestration. The orchestrator itself holds the machine-wide
+    /// mutation lease for the duration of a run, so no domain plan can start underneath it.
+    OneClickCare,
 }
 
 impl MutationWorkload {
@@ -24,6 +27,7 @@ impl MutationWorkload {
             Self::Startup => "Startup",
             Self::Update => "Update",
             Self::Optimization => "Optimization",
+            Self::OneClickCare => "OneClickCare",
         }
     }
 }

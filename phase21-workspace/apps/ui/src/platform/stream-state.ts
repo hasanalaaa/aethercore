@@ -18,6 +18,7 @@ import type {
   UpdateSnapshot,
   SupportBundleEvent,
   TimelineResponse,
+  CareRunStatus,
   RecoveryEntry,
   RepairAssessment,
   Snapshot,
@@ -58,6 +59,7 @@ export type StreamState = {
   optimizationStatus: OptimizationStatus | null;
   perfSampling: boolean;
   timelinePage: TimelineResponse | null;
+  careStatus: CareRunStatus | null;
   session: UiSessionState;
   lastKernelSequence: number;
 };
@@ -191,6 +193,7 @@ export function createInitialStreamState(): StreamState {
     optimizationStatus: null,
     perfSampling: false,
     timelinePage: null,
+    careStatus: null,
     session: {
       connected: false,
       sessionId: '',
@@ -324,6 +327,9 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
       break;
     case 'timelinePage':
       next.timelinePage = event.payload;
+      break;
+    case 'careStatus':
+      next.careStatus = event.payload;
       break;
     case 'progressTelemetry':
       next = applyProgress(next, event.payload);

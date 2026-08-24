@@ -1,0 +1,64 @@
+syntax = "proto3";
+package aethercore.v1;
+
+// Phase 22 — One-Click Care orchestration.
+// Additive-only extension: every message here is new; no existing tag, field or
+// enum value was renumbered. The orchestrator sequences EXISTING typed domain plans
+// only; steps cite their own domain verification outcome (truth-first reporting).
+
+// ---------------------------------------------------------------------------
+// Requests / responses
+// ---------------------------------------------------------------------------
+
+message StartCareRunRequest {
+  // Empty in Phase 22: the service composes the plan from the owner's existing
+  // eligible plans. No client-supplied step content is trusted.
+}
+
+message GrantCareSessionConsentRequest {
+  // Explicit one-time session consent for Level 0–1 auto work this session.
+  // Never implied; never persisted beyond the session scope.
+}
+
+message GetCareStatusRequest {}
+
+message CancelCareRunRequest {}
+
+message CareStatusResponse { CareRunStatus status = 1; }
+
+// ---------------------------------------------------------------------------
+// Care run status (streamed on EventKind CARE_RUN / envelope tag care_status)
+// ---------------------------------------------------------------------------
+
+message CareStepReport {
+  uint32 step_index = 1;
+  // Reference to the EXISTING domain plan wrapped by this step.
+  string domain_plan_id = 2;
+  // Domain kind exactly as reported by the owning domain.
+  string domain_kind = 3;
+  // Safety level: 0 = auto under session consent, >= 2 = review-only.
+  int64 safety_level = 4;
+  // Pending | Executing | Completed | Failed | Skipped.
+  string state = 5;
+  // VerifiedByDomain | CompletedUnverified | Failed | Skipped.
+  string outcome = 6;
+  // Verification verdict exactly as the DOMAIN reported it ("Verified", "" ...).
+  string domain_verification_state = 7;
+  // Domain's own failure message key when failed; resolved in renderer catalogs.
+  string failure_message_key = 8;
+}
+
+message CareRunStatus {
+  string run_id = 1;
+  // Idle | AwaitingConsent | Running | Completed | Failed | Cancelled.
+  string state = 2;
+  string stage = 3;
+  bool session_consent_granted = 4;
+  // Deterministic digest over the composed plan content.
+  string plan_digest_sha256 = 5;
+  repeated CareStepReport steps = 6;
+  int64 updated_unix_ms = 7;
+  // Truth-first summary key. Aggregates only from cited per-domain evidence:
+  // completedVerified | completedWithFailures | stoppedForConsent | ...
+  string summary_key = 8;
+}

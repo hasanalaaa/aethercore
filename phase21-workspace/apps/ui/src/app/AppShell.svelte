@@ -22,6 +22,7 @@
   import CrashPage from '../features/diagnostics/CrashPage.svelte';
   import ActivityPage from '../features/activity/ActivityPage.svelte';
   import TimelinePanel from '../features/timeline/TimelinePage.svelte';
+  import CarePanel from '../features/care/CarePanel.svelte';
 
   let windowCleanup: WindowUxCleanup | undefined;
   let kernelCleanup: KernelSessionCleanup | undefined;
@@ -78,7 +79,8 @@
         {:else if $shellState.activePage === 'activity'}
           <ActivityPage />
           <TimelinePanel />
-        {:else}<OverviewPage />{/if}
+        {:else}<OverviewPage />
+          <CarePanel />{/if}
       </FluidPage>
     {/key}
     <RecoveryPanel />

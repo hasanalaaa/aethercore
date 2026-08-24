@@ -22,6 +22,7 @@ mod scheduler;
 #[cfg(windows)]
 mod support;
 mod timeline;
+mod care;
 
 const SERVICE_NAME:&str="AetherCoreMaintenance";
 

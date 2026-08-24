@@ -1,0 +1,63 @@
+{
+  "schema": "aethercore.phase22.qualification-debt.v1",
+  "closureClaim": "PHASE_22_ONE_CLICK_CARE_SOURCE_COMPLETE",
+  "carriedForwardFromPhase21": [
+    {
+      "id": "P21-QD-001",
+      "area": "Timeline service handlers — Windows IPC round trip",
+      "risk": "medium",
+      "status": "UNCHANGED — untouched by Phase 22"
+    },
+    {
+      "id": "P21-QD-002",
+      "area": "Recurrence thresholds calibration",
+      "risk": "medium",
+      "status": "UNCHANGED — untouched by Phase 22"
+    },
+    {
+      "id": "P21-QD-003",
+      "area": "Timeline page cursor stability",
+      "risk": "low",
+      "status": "UNCHANGED — untouched by Phase 22"
+    },
+    {
+      "id": "P21-QD-004",
+      "area": "Renderer timeline panel under real RTL screen readers",
+      "risk": "low",
+      "status": "UNCHANGED — untouched by Phase 22"
+    },
+    {
+      "id": "P20-QD-003",
+      "area": "Domain C — EcoQoS / priority application (NoopPlatform worst case)",
+      "risk": "high",
+      "status": "UNCHANGED — untouched by Phase 22; still the highest open native risk"
+    }
+  ],
+  "newInPhase22": [
+    {
+      "id": "P22-QD-001",
+      "area": "One-Click Care handlers — Windows IPC round trip",
+      "debt": "The four care request handlers and the CareCoordinator were exercised through unit + integration tests on the development host. The desktop ↔ named-pipe ↔ LocalSystem-service round trip with a real authenticated principal has not run for these handlers.",
+      "risk": "medium",
+      "evidenceClass": "SOURCE_COMPLETE",
+      "closurePath": "Ride the existing Windows qualification lane; assert principal scoping, consent gating, single-flight rejection under concurrent start, and journal completeness."
+    },
+    {
+      "id": "P22-QD-002",
+      "area": "Live domain dispatch inside the orchestrator run path",
+      "debt": "Phase 22 ships the complete orchestration machinery (composition, firewall, single-flight lease, journaled resume, fence cancellation, truth-first report) exercised against the DomainStepExecutor trait boundary. Binding each domain coordinator's headless start_with_lease entry point into the orchestrator's execution thread is intentionally deferred: several coordinators currently assume the router's async watch context.",
+      "risk": "high",
+      "evidenceClass": "SOURCE_COMPLETE_WITH_EXPLICIT_REJECTION",
+      "closurePath": "Expose headless entry points per domain (or a dispatcher service-side), then flip ServiceExecutor to call them. Until then live runs surface an explicit typed rejection instead of a fabricated success.",
+      "honestyNote": "This is the load-bearing debt of Phase 22: the UI can compose plans, grant session consent, cancel, and read evidence-based reports, but a live end-to-end mutation sequence requires this wiring."
+    },
+    {
+      "id": "P22-QD-003",
+      "area": "Session consent scope semantics on Windows service restart",
+      "debt": "Consent lives in an in-memory registry keyed by principal. A service restart mid-session clears it (conservative and safe), but the UX copy does not yet distinguish 'consent cleared by service restart' from 'never granted'.",
+      "risk": "low",
+      "evidenceClass": "SOURCE_COMPLETE",
+      "closurePath": "Add a distinct status reason key once native round-trip testing lands."
+    }
+  ]
+}

@@ -16,9 +16,11 @@ const MIGRATION_0007: &str = include_str!("../migrations/0007_phase10_kernel.sql
 const MIGRATION_0008: &str = include_str!("../migrations/0008_phase14_scheduler.sql");
 const MIGRATION_0009: &str = include_str!("../migrations/0009_phase15_update.sql");
 const MIGRATION_0010: &str = include_str!("../migrations/0010_phase17_intelligence.sql");
-const MIGRATION_0011: &str = include_str!("../migrations/0011_phase17_1_intelligence_integrity.sql");
+const MIGRATION_0011: &str =
+    include_str!("../migrations/0011_phase17_1_intelligence_integrity.sql");
 const MIGRATION_0012: &str = include_str!("../migrations/0012_phase18_driver_authority.sql");
 const MIGRATION_0013: &str = include_str!("../migrations/0013_phase19_windows_repair.sql");
+const MIGRATION_0014: &str = include_str!("../migrations/0014_phase22_care_orchestration.sql");
 
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "0001_init", MIGRATION_0001),
@@ -34,6 +36,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (11, "0011_phase17_1_intelligence_integrity", MIGRATION_0011),
     (12, "0012_phase18_driver_authority", MIGRATION_0012),
     (13, "0013_phase19_windows_repair", MIGRATION_0013),
+    (14, "0014_phase22_care_orchestration", MIGRATION_0014),
 ];
 
 #[derive(Debug, Error)]
@@ -49,6 +52,41 @@ pub enum PersistenceError {
 }
 
 pub type Result<T> = std::result::Result<T, PersistenceError>;
+
+/// Phase 22 — one orchestrated One-Click Care run (crash-safe resume anchor).
+#[derive(Clone, Debug, Default)]
+pub struct CareRunRecord {
+    pub run_id: String,
+    pub owner_principal_key: String,
+    pub state: String,
+    pub stage: String,
+    pub plan_digest_sha256: String,
+    /// True only after the owner granted the explicit per-session consent.
+    pub session_consent_granted: bool,
+    pub steps_total: u32,
+    pub steps_done: u32,
+    pub detail: String,
+    pub created_unix_ms: i64,
+    pub updated_unix_ms: i64,
+    pub completed_unix_ms: Option<i64>,
+}
+
+/// Phase 22 — one step inside a care run. Each step wraps an EXISTING domain plan
+/// and cites that domain's own verification outcome; the orchestrator never invents one.
+#[derive(Clone, Debug, Default)]
+pub struct CareStepRecord {
+    pub run_id: String,
+    pub step_index: u32,
+    pub domain_plan_id: String,
+    pub domain_kind: String,
+    pub safety_level: i64,
+    pub state: String,
+    pub outcome: String,
+    pub verification_state: String,
+    pub failure_message: String,
+    pub started_unix_ms: i64,
+    pub updated_unix_ms: i64,
+}
 
 #[derive(Clone, Debug)]
 pub struct PlanRecord {
@@ -168,7 +206,6 @@ pub struct RecoveryRecord {
     pub created_unix_ms: i64,
 }
 
-
 #[derive(Clone, Debug, Default)]
 pub struct MaintenanceExecutionRecord {
     pub plan_id: String,
@@ -191,7 +228,6 @@ pub struct MaintenanceExecutionRecord {
     pub updated_unix_ms: i64,
     pub completed_unix_ms: Option<i64>,
 }
-
 
 #[derive(Clone, Debug, Default)]
 pub struct RepairTimelineEventRecord {
@@ -233,7 +269,6 @@ pub struct MaintenanceItemRecord {
     pub detail: String,
     pub updated_unix_ms: i64,
 }
-
 
 #[derive(Clone, Debug, Default)]
 pub struct StartupChangeRecord {
@@ -377,7 +412,10 @@ impl Database {
     }
 
     pub fn insert_plan(&self, p: &PlanRecord, event_kind: &str) -> Result<()> {
-        let mut conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let mut conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute(
             "INSERT INTO plans(id,title,state,digest,risk,immutable_json,created_unix_ms,updated_unix_ms,owner_principal_key) VALUES(?,?,?,?,?,?,?,?,?)",
@@ -392,7 +430,10 @@ impl Database {
     }
 
     pub fn latest_plan(&self) -> Result<Option<PlanRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT id,title,state,digest,risk,immutable_json,created_unix_ms,updated_unix_ms,owner_principal_key FROM plans ORDER BY created_unix_ms DESC LIMIT 1",
             [], row_to_plan,
@@ -400,7 +441,10 @@ impl Database {
     }
 
     pub fn latest_plan_for_owner(&self, owner_principal_key: &str) -> Result<Option<PlanRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT id,title,state,digest,risk,immutable_json,created_unix_ms,updated_unix_ms,owner_principal_key FROM plans WHERE owner_principal_key=? ORDER BY created_unix_ms DESC LIMIT 1",
             [owner_principal_key], row_to_plan,
@@ -408,15 +452,25 @@ impl Database {
     }
 
     pub fn get_plan(&self, id: &str) -> Result<Option<PlanRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT id,title,state,digest,risk,immutable_json,created_unix_ms,updated_unix_ms,owner_principal_key FROM plans WHERE id=?",
             [id], row_to_plan,
         ).optional().map_err(Into::into)
     }
 
-    pub fn get_plan_for_owner(&self, id: &str, owner_principal_key: &str) -> Result<Option<PlanRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn get_plan_for_owner(
+        &self,
+        id: &str,
+        owner_principal_key: &str,
+    ) -> Result<Option<PlanRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT id,title,state,digest,risk,immutable_json,created_unix_ms,updated_unix_ms,owner_principal_key FROM plans WHERE id=? AND owner_principal_key=?",
             params![id, owner_principal_key], row_to_plan,
@@ -424,22 +478,42 @@ impl Database {
     }
 
     pub fn plans_in_states(&self, states: &[&str]) -> Result<Vec<PlanRecord>> {
-        if states.is_empty() { return Ok(Vec::new()); }
-        let placeholders = std::iter::repeat_n("?", states.len()).collect::<Vec<_>>().join(",");
-        let sql = format!("SELECT id,title,state,digest,risk,immutable_json,created_unix_ms,updated_unix_ms,owner_principal_key FROM plans WHERE state IN ({placeholders}) ORDER BY updated_unix_ms");
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        if states.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = std::iter::repeat_n("?", states.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id,title,state,digest,risk,immutable_json,created_unix_ms,updated_unix_ms,owner_principal_key FROM plans WHERE state IN ({placeholders}) ORDER BY updated_unix_ms"
+        );
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(&sql)?;
         let params = rusqlite::params_from_iter(states.iter().copied());
         let rows = stmt.query_map(params, row_to_plan)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn transition_plan(&self, id: &str, expected: &str, next: &str, detail: &str, now_ms: i64) -> Result<bool> {
-        let mut conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn transition_plan(
+        &self,
+        id: &str,
+        expected: &str,
+        next: &str,
+        detail: &str,
+        now_ms: i64,
+    ) -> Result<bool> {
+        let mut conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let changed = tx.execute(
             "UPDATE plans SET state=?,updated_unix_ms=? WHERE id=? AND state=?",
-            params![next,now_ms,id,expected],
+            params![next, now_ms, id, expected],
         )?;
         if changed == 1 {
             tx.execute(
@@ -451,8 +525,18 @@ impl Database {
         Ok(changed == 1)
     }
 
-    pub fn append_plan_event(&self, plan_id: &str, state: &str, event_kind: &str, detail: &str, now_ms: i64) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn append_plan_event(
+        &self,
+        plan_id: &str,
+        state: &str,
+        event_kind: &str,
+        detail: &str,
+        now_ms: i64,
+    ) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO plan_events(plan_id,from_state,to_state,event_kind,detail,created_unix_ms) VALUES(?,?,?,?,?,?)",
             params![plan_id,state,state,event_kind,detail,now_ms],
@@ -461,13 +545,19 @@ impl Database {
     }
 
     pub fn event_count(&self) -> Result<u64> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM plan_events", [], |r| r.get(0))?;
         Ok(n as u64)
     }
 
     pub fn event_count_for_owner(&self, owner_principal_key: &str) -> Result<u64> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let n: i64 = conn.query_row(
             "SELECT COUNT(*) FROM plan_events e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=?",
             [owner_principal_key],
@@ -485,7 +575,10 @@ impl Database {
         created_ms: i64,
         expires_ms: i64,
     ) -> Result<()> {
-        let mut conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let mut conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute(
             "DELETE FROM consent_intents WHERE plan_id=? AND owner_principal_key=? AND consumed_unix_ms IS NULL",
@@ -500,7 +593,10 @@ impl Database {
     }
 
     pub fn get_consent_intent(&self, intent_id: &str) -> Result<Option<ConsentIntentRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT intent_id,plan_id,digest,owner_principal_key,created_unix_ms,expires_unix_ms,approved_unix_ms,consumed_unix_ms,broker_pid FROM consent_intents WHERE intent_id=?",
             [intent_id],
@@ -508,8 +604,17 @@ impl Database {
         ).optional().map_err(Into::into)
     }
 
-    pub fn approve_consent_intent(&self, intent_id: &str, owner_principal_key: &str, broker_pid: u32, now_ms: i64) -> Result<bool> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn approve_consent_intent(
+        &self,
+        intent_id: &str,
+        owner_principal_key: &str,
+        broker_pid: u32,
+        now_ms: i64,
+    ) -> Result<bool> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let changed = conn.execute(
             "UPDATE consent_intents SET approved_unix_ms=?,broker_pid=? WHERE intent_id=? AND owner_principal_key=? AND approved_unix_ms IS NULL AND consumed_unix_ms IS NULL AND expires_unix_ms>=?",
             params![now_ms,broker_pid,intent_id,owner_principal_key,now_ms],
@@ -517,8 +622,17 @@ impl Database {
         Ok(changed == 1)
     }
 
-    pub fn approved_consent_until(&self, plan_id: &str, digest: &str, owner_principal_key: &str, now_ms: i64) -> Result<i64> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn approved_consent_until(
+        &self,
+        plan_id: &str,
+        digest: &str,
+        owner_principal_key: &str,
+        now_ms: i64,
+    ) -> Result<i64> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let value: Option<i64> = conn.query_row(
             "SELECT MAX(expires_unix_ms) FROM consent_intents WHERE plan_id=? AND digest=? AND owner_principal_key=? AND approved_unix_ms IS NOT NULL AND consumed_unix_ms IS NULL AND expires_unix_ms>=?",
             params![plan_id,digest,owner_principal_key,now_ms],
@@ -539,24 +653,33 @@ impl Database {
         detail: &str,
         now_ms: i64,
     ) -> Result<bool> {
-        let mut conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let mut conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let intent_id: Option<String> = tx.query_row(
             "SELECT c.intent_id FROM consent_intents c INNER JOIN plans p ON p.id=c.plan_id WHERE c.plan_id=? AND c.owner_principal_key=? AND c.digest=p.digest AND p.owner_principal_key=c.owner_principal_key AND c.approved_unix_ms IS NOT NULL AND c.consumed_unix_ms IS NULL AND c.expires_unix_ms>=? ORDER BY c.approved_unix_ms DESC LIMIT 1",
             params![plan_id,owner_principal_key,now_ms],
             |r| r.get(0),
         ).optional()?;
-        let Some(intent_id) = intent_id else { return Ok(false); };
+        let Some(intent_id) = intent_id else {
+            return Ok(false);
+        };
         let consumed = tx.execute(
             "UPDATE consent_intents SET consumed_unix_ms=? WHERE intent_id=? AND consumed_unix_ms IS NULL",
             params![now_ms,intent_id],
         )?;
-        if consumed != 1 { return Ok(false); }
+        if consumed != 1 {
+            return Ok(false);
+        }
         let changed = tx.execute(
             "UPDATE plans SET state=?,updated_unix_ms=? WHERE id=? AND owner_principal_key=? AND state=?",
             params![next,now_ms,plan_id,owner_principal_key,expected],
         )?;
-        if changed != 1 { return Ok(false); }
+        if changed != 1 {
+            return Ok(false);
+        }
         tx.execute(
             "INSERT INTO plan_events(plan_id,from_state,to_state,event_kind,detail,created_unix_ms) VALUES(?,?,?,?,?,?)",
             params![plan_id,expected,next,"authorization_consumed_transition",detail,now_ms],
@@ -566,7 +689,10 @@ impl Database {
     }
 
     pub fn upsert_execution(&self, r: &ExecutionRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO plan_executions(plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(plan_id) DO UPDATE SET stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_candidate_id=excluded.current_candidate_id,bytes_downloaded=excluded.bytes_downloaded,bytes_total=excluded.bytes_total,detail=excluded.detail,reboot_required=excluded.reboot_required,reboot_boot_marker_ms=excluded.reboot_boot_marker_ms,restore_point_sequence=excluded.restore_point_sequence,backup_root=excluded.backup_root,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
@@ -576,7 +702,10 @@ impl Database {
     }
 
     pub fn get_execution(&self, plan_id: &str) -> Result<Option<ExecutionRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms FROM plan_executions WHERE plan_id=?",
             [plan_id], row_to_execution,
@@ -584,15 +713,24 @@ impl Database {
     }
 
     pub fn latest_execution(&self) -> Result<Option<ExecutionRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms FROM plan_executions ORDER BY updated_unix_ms DESC LIMIT 1",
             [], row_to_execution,
         ).optional().map_err(Into::into)
     }
 
-    pub fn latest_execution_for_owner(&self, owner_principal_key: &str) -> Result<Option<ExecutionRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn latest_execution_for_owner(
+        &self,
+        owner_principal_key: &str,
+    ) -> Result<Option<ExecutionRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT e.plan_id,e.stage,e.progress_known,e.overall_percent,e.current_candidate_id,e.bytes_downloaded,e.bytes_total,e.detail,e.reboot_required,e.reboot_boot_marker_ms,e.restore_point_sequence,e.backup_root,e.mutation_started,e.recovery_required,e.failure_message,e.started_unix_ms,e.updated_unix_ms,e.completed_unix_ms FROM plan_executions e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? ORDER BY e.updated_unix_ms DESC LIMIT 1",
             [owner_principal_key], row_to_execution,
@@ -600,7 +738,10 @@ impl Database {
     }
 
     pub fn upsert_install_item(&self, r: &InstallItemRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO driver_install_items(plan_id,candidate_id,update_id,revision,instance_id,title,stage,progress_known,progress_percent,result_code,hresult,reboot_required,verified,before_driver_json,after_driver_json,before_problem_code,after_problem_code,backup_path,detail,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(plan_id,candidate_id) DO UPDATE SET stage=excluded.stage,progress_known=excluded.progress_known,progress_percent=excluded.progress_percent,result_code=excluded.result_code,hresult=excluded.hresult,reboot_required=excluded.reboot_required,verified=excluded.verified,before_driver_json=excluded.before_driver_json,after_driver_json=excluded.after_driver_json,before_problem_code=excluded.before_problem_code,after_problem_code=excluded.after_problem_code,backup_path=excluded.backup_path,detail=excluded.detail,updated_unix_ms=excluded.updated_unix_ms",
@@ -610,12 +751,16 @@ impl Database {
     }
 
     pub fn install_items(&self, plan_id: &str) -> Result<Vec<InstallItemRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT plan_id,candidate_id,update_id,revision,instance_id,title,stage,progress_known,progress_percent,result_code,hresult,reboot_required,verified,before_driver_json,after_driver_json,before_problem_code,after_problem_code,backup_path,detail,updated_unix_ms FROM driver_install_items WHERE plan_id=? ORDER BY rowid"
         )?;
         let rows = stmt.query_map([plan_id], row_to_install_item)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn recent_verified_driver_install_items_for_owner(
@@ -624,7 +769,10 @@ impl Database {
         since_unix_ms: i64,
         limit: usize,
     ) -> Result<Vec<InstallItemRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT i.plan_id,i.candidate_id,i.update_id,i.revision,i.instance_id,i.title,i.stage,i.progress_known,i.progress_percent,i.result_code,i.hresult,i.reboot_required,i.verified,i.before_driver_json,i.after_driver_json,i.before_problem_code,i.after_problem_code,i.backup_path,i.detail,i.updated_unix_ms \
              FROM driver_install_items i INNER JOIN plans p ON p.id=i.plan_id \
@@ -635,11 +783,18 @@ impl Database {
             rusqlite::params![owner_principal_key, since_unix_ms, limit.min(500) as i64],
             row_to_install_item,
         )?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn upsert_driver_authority_override(&self, r: &DriverAuthorityOverrideRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn upsert_driver_authority_override(
+        &self,
+        r: &DriverAuthorityOverrideRecord,
+    ) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO driver_authority_overrides(owner_principal_key,override_id,device_privacy_key,behavior,candidate_version,provider_id,expires_unix_ms,created_unix_ms,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?,?) \
              ON CONFLICT(owner_principal_key,override_id) DO UPDATE SET device_privacy_key=excluded.device_privacy_key,behavior=excluded.behavior,candidate_version=excluded.candidate_version,provider_id=excluded.provider_id,expires_unix_ms=excluded.expires_unix_ms,updated_unix_ms=excluded.updated_unix_ms",
@@ -648,23 +803,56 @@ impl Database {
         Ok(())
     }
 
-    pub fn driver_authority_overrides_for_owner(&self, owner_principal_key: &str, now_ms: i64) -> Result<Vec<DriverAuthorityOverrideRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn driver_authority_overrides_for_owner(
+        &self,
+        owner_principal_key: &str,
+        now_ms: i64,
+    ) -> Result<Vec<DriverAuthorityOverrideRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT owner_principal_key,override_id,device_privacy_key,behavior,candidate_version,provider_id,expires_unix_ms,created_unix_ms,updated_unix_ms FROM driver_authority_overrides WHERE owner_principal_key=? AND (expires_unix_ms IS NULL OR expires_unix_ms>?) ORDER BY updated_unix_ms DESC"
         )?;
-        let rows = stmt.query_map(params![owner_principal_key,now_ms], |r| Ok(DriverAuthorityOverrideRecord { owner_principal_key:r.get(0)?,override_id:r.get(1)?,device_privacy_key:r.get(2)?,behavior:r.get(3)?,candidate_version:r.get(4)?,provider_id:r.get(5)?,expires_unix_ms:r.get(6)?,created_unix_ms:r.get(7)?,updated_unix_ms:r.get(8)? }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(params![owner_principal_key, now_ms], |r| {
+            Ok(DriverAuthorityOverrideRecord {
+                owner_principal_key: r.get(0)?,
+                override_id: r.get(1)?,
+                device_privacy_key: r.get(2)?,
+                behavior: r.get(3)?,
+                candidate_version: r.get(4)?,
+                provider_id: r.get(5)?,
+                expires_unix_ms: r.get(6)?,
+                created_unix_ms: r.get(7)?,
+                updated_unix_ms: r.get(8)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn delete_driver_authority_override(&self, owner_principal_key: &str, override_id: &str) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
-        conn.execute("DELETE FROM driver_authority_overrides WHERE owner_principal_key=? AND override_id=?", params![owner_principal_key,override_id])?;
+    pub fn delete_driver_authority_override(
+        &self,
+        owner_principal_key: &str,
+        override_id: &str,
+    ) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "DELETE FROM driver_authority_overrides WHERE owner_principal_key=? AND override_id=?",
+            params![owner_principal_key, override_id],
+        )?;
         Ok(())
     }
 
     pub fn upsert_driver_authority_scan(&self, r: &DriverAuthorityScanRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO driver_authority_scans(owner_principal_key,scan_id,inventory_epoch,authority_coverage,snapshot_json,created_unix_ms) VALUES(?,?,?,?,?,?) \
              ON CONFLICT(owner_principal_key,scan_id) DO UPDATE SET inventory_epoch=excluded.inventory_epoch,authority_coverage=excluded.authority_coverage,snapshot_json=excluded.snapshot_json,created_unix_ms=excluded.created_unix_ms",
@@ -673,15 +861,43 @@ impl Database {
         Ok(())
     }
 
-    pub fn driver_authority_scans_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<DriverAuthorityScanRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn driver_authority_scans_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<DriverAuthorityScanRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare("SELECT owner_principal_key,scan_id,inventory_epoch,authority_coverage,snapshot_json,created_unix_ms FROM driver_authority_scans WHERE owner_principal_key=? ORDER BY created_unix_ms DESC LIMIT ?")?;
-        let rows = stmt.query_map(params![owner_principal_key,limit.min(100) as i64], |r| { let epoch:i64=r.get(2)?; Ok(DriverAuthorityScanRecord { owner_principal_key:r.get(0)?,scan_id:r.get(1)?,inventory_epoch:epoch.max(0) as u64,authority_coverage:r.get(3)?,snapshot_json:r.get(4)?,created_unix_ms:r.get(5)? }) })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(params![owner_principal_key, limit.min(100) as i64], |r| {
+            let epoch: i64 = r.get(2)?;
+            Ok(DriverAuthorityScanRecord {
+                owner_principal_key: r.get(0)?,
+                scan_id: r.get(1)?,
+                inventory_epoch: epoch.max(0) as u64,
+                authority_coverage: r.get(3)?,
+                snapshot_json: r.get(4)?,
+                created_unix_ms: r.get(5)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn add_checkpoint(&self, plan_id: &str, candidate_id: &str, checkpoint: &str, detail_json: &str, now_ms: i64) -> Result<i64> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn add_checkpoint(
+        &self,
+        plan_id: &str,
+        candidate_id: &str,
+        checkpoint: &str,
+        detail_json: &str,
+        now_ms: i64,
+    ) -> Result<i64> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO execution_checkpoints(plan_id,candidate_id,checkpoint,detail_json,created_unix_ms) VALUES(?,?,?,?,?)",
             params![plan_id,candidate_id,checkpoint,detail_json,now_ms],
@@ -690,16 +906,32 @@ impl Database {
     }
 
     pub fn checkpoints(&self, plan_id: &str, limit: usize) -> Result<Vec<CheckpointRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT seq,plan_id,candidate_id,checkpoint,detail_json,created_unix_ms FROM execution_checkpoints WHERE plan_id=? ORDER BY seq DESC LIMIT ?"
         )?;
-        let rows = stmt.query_map(params![plan_id, limit.min(500) as i64], |r| Ok(CheckpointRecord { seq:r.get(0)?,plan_id:r.get(1)?,candidate_id:r.get(2)?,checkpoint:r.get(3)?,detail_json:r.get(4)?,created_unix_ms:r.get(5)? }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(params![plan_id, limit.min(500) as i64], |r| {
+            Ok(CheckpointRecord {
+                seq: r.get(0)?,
+                plan_id: r.get(1)?,
+                candidate_id: r.get(2)?,
+                checkpoint: r.get(3)?,
+                detail_json: r.get(4)?,
+                created_unix_ms: r.get(5)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn add_recovery_record(&self, r: &RecoveryRecord) -> Result<i64> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO recovery_records(plan_id,severity,kind,summary,detail,restore_point_sequence,backup_root,created_unix_ms) VALUES(?,?,?,?,?,?,?,?)",
             params![r.plan_id,r.severity,r.kind,r.summary,r.detail,r.restore_point_sequence,r.backup_root,r.created_unix_ms],
@@ -708,25 +940,64 @@ impl Database {
     }
 
     pub fn recovery_records(&self, limit: usize) -> Result<Vec<RecoveryRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT seq,plan_id,severity,kind,summary,detail,restore_point_sequence,backup_root,created_unix_ms FROM recovery_records ORDER BY seq DESC LIMIT ?"
         )?;
-        let rows = stmt.query_map([limit.min(500) as i64], |r| Ok(RecoveryRecord { seq:r.get(0)?,plan_id:r.get(1)?,severity:r.get(2)?,kind:r.get(3)?,summary:r.get(4)?,detail:r.get(5)?,restore_point_sequence:r.get(6)?,backup_root:r.get(7)?,created_unix_ms:r.get(8)? }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map([limit.min(500) as i64], |r| {
+            Ok(RecoveryRecord {
+                seq: r.get(0)?,
+                plan_id: r.get(1)?,
+                severity: r.get(2)?,
+                kind: r.get(3)?,
+                summary: r.get(4)?,
+                detail: r.get(5)?,
+                restore_point_sequence: r.get(6)?,
+                backup_root: r.get(7)?,
+                created_unix_ms: r.get(8)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn recovery_records_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<RecoveryRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn recovery_records_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<RecoveryRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT r.seq,r.plan_id,r.severity,r.kind,r.summary,r.detail,r.restore_point_sequence,r.backup_root,r.created_unix_ms FROM recovery_records r INNER JOIN plans p ON p.id=r.plan_id WHERE p.owner_principal_key=? ORDER BY r.seq DESC LIMIT ?"
         )?;
-        let rows = stmt.query_map(params![owner_principal_key, limit.min(500) as i64], |r| Ok(RecoveryRecord { seq:r.get(0)?,plan_id:r.get(1)?,severity:r.get(2)?,kind:r.get(3)?,summary:r.get(4)?,detail:r.get(5)?,restore_point_sequence:r.get(6)?,backup_root:r.get(7)?,created_unix_ms:r.get(8)? }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(params![owner_principal_key, limit.min(500) as i64], |r| {
+            Ok(RecoveryRecord {
+                seq: r.get(0)?,
+                plan_id: r.get(1)?,
+                severity: r.get(2)?,
+                kind: r.get(3)?,
+                summary: r.get(4)?,
+                detail: r.get(5)?,
+                restore_point_sequence: r.get(6)?,
+                backup_root: r.get(7)?,
+                created_unix_ms: r.get(8)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn upsert_maintenance_execution(&self, r: &MaintenanceExecutionRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO maintenance_executions(plan_id,domain,stage,progress_known,overall_percent,current_item_id,detail,mutation_started,recovery_required,failure_message,outcome,machine_state_fingerprint,repair_graph_digest,reboot_required,reboot_resume_token,verification_state,started_unix_ms,updated_unix_ms,completed_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(plan_id) DO UPDATE SET domain=excluded.domain,stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_item_id=excluded.current_item_id,detail=excluded.detail,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,outcome=excluded.outcome,machine_state_fingerprint=excluded.machine_state_fingerprint,repair_graph_digest=excluded.repair_graph_digest,reboot_required=excluded.reboot_required,reboot_resume_token=excluded.reboot_resume_token,verification_state=excluded.verification_state,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
@@ -735,24 +1006,43 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_maintenance_execution(&self, plan_id: &str) -> Result<Option<MaintenanceExecutionRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn get_maintenance_execution(
+        &self,
+        plan_id: &str,
+    ) -> Result<Option<MaintenanceExecutionRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT plan_id,domain,stage,progress_known,overall_percent,current_item_id,detail,mutation_started,recovery_required,failure_message,outcome,machine_state_fingerprint,repair_graph_digest,reboot_required,reboot_resume_token,verification_state,started_unix_ms,updated_unix_ms,completed_unix_ms FROM maintenance_executions WHERE plan_id=?",
             [plan_id], row_to_maintenance_execution,
         ).optional().map_err(Into::into)
     }
 
-    pub fn latest_maintenance_execution(&self, domain: &str) -> Result<Option<MaintenanceExecutionRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn latest_maintenance_execution(
+        &self,
+        domain: &str,
+    ) -> Result<Option<MaintenanceExecutionRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT plan_id,domain,stage,progress_known,overall_percent,current_item_id,detail,mutation_started,recovery_required,failure_message,outcome,machine_state_fingerprint,repair_graph_digest,reboot_required,reboot_resume_token,verification_state,started_unix_ms,updated_unix_ms,completed_unix_ms FROM maintenance_executions WHERE domain=? ORDER BY updated_unix_ms DESC LIMIT 1",
             [domain], row_to_maintenance_execution,
         ).optional().map_err(Into::into)
     }
 
-    pub fn latest_maintenance_execution_for_owner(&self, domain: &str, owner_principal_key: &str) -> Result<Option<MaintenanceExecutionRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn latest_maintenance_execution_for_owner(
+        &self,
+        domain: &str,
+        owner_principal_key: &str,
+    ) -> Result<Option<MaintenanceExecutionRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT e.plan_id,e.domain,e.stage,e.progress_known,e.overall_percent,e.current_item_id,e.detail,e.mutation_started,e.recovery_required,e.failure_message,e.outcome,e.machine_state_fingerprint,e.repair_graph_digest,e.reboot_required,e.reboot_resume_token,e.verification_state,e.started_unix_ms,e.updated_unix_ms,e.completed_unix_ms FROM maintenance_executions e INNER JOIN plans p ON p.id=e.plan_id WHERE e.domain=? AND p.owner_principal_key=? ORDER BY e.updated_unix_ms DESC LIMIT 1",
             params![domain, owner_principal_key], row_to_maintenance_execution,
@@ -760,7 +1050,10 @@ impl Database {
     }
 
     pub fn insert_repair_timeline_event(&self, r: &RepairTimelineEventRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO repair_timeline_events(event_id,plan_id,assessment_id,owner_principal_key,event_kind,domain,action_id,diagnosis_code,outcome,detail,machine_state_fingerprint,created_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             params![r.event_id,r.plan_id,r.assessment_id,r.owner_principal_key,r.event_kind,r.domain,r.action_id,r.diagnosis_code,r.outcome,r.detail,r.machine_state_fingerprint,r.created_unix_ms],
@@ -770,32 +1063,190 @@ impl Database {
 
     /// Phase 21 (Timeline Intelligence): read-only, additive owner-scoped reader over
     /// `repair_timeline_events`. No schema change — consumes rows exactly as written.
-    pub fn repair_timeline_events_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<RepairTimelineEventRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn repair_timeline_events_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<RepairTimelineEventRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT event_id,plan_id,assessment_id,owner_principal_key,event_kind,domain,action_id,diagnosis_code,outcome,detail,machine_state_fingerprint,created_unix_ms FROM repair_timeline_events WHERE owner_principal_key=? ORDER BY created_unix_ms DESC, event_id DESC LIMIT ?"
         )?;
-        let rows = stmt.query_map(params![owner_principal_key, limit.min(2000) as i64], |row| Ok(RepairTimelineEventRecord {
-            event_id:row.get(0)?, plan_id:row.get(1)?, assessment_id:row.get(2)?, owner_principal_key:row.get(3)?,
-            event_kind:row.get(4)?, domain:row.get(5)?, action_id:row.get(6)?, diagnosis_code:row.get(7)?,
-            outcome:row.get(8)?, detail:row.get(9)?, machine_state_fingerprint:row.get(10)?, created_unix_ms:row.get(11)?
-        }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(
+            params![owner_principal_key, limit.min(2000) as i64],
+            |row| {
+                Ok(RepairTimelineEventRecord {
+                    event_id: row.get(0)?,
+                    plan_id: row.get(1)?,
+                    assessment_id: row.get(2)?,
+                    owner_principal_key: row.get(3)?,
+                    event_kind: row.get(4)?,
+                    domain: row.get(5)?,
+                    action_id: row.get(6)?,
+                    diagnosis_code: row.get(7)?,
+                    outcome: row.get(8)?,
+                    detail: row.get(9)?,
+                    machine_state_fingerprint: row.get(10)?,
+                    created_unix_ms: row.get(11)?,
+                })
+            },
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// Phase 21 (Timeline Intelligence): read-only, additive owner-scoped reader over
     /// maintenance executions of owner-visible plans. No schema change.
-    pub fn maintenance_executions_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<MaintenanceExecutionRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn maintenance_executions_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<MaintenanceExecutionRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT e.plan_id,e.domain,e.stage,e.progress_known,e.overall_percent,e.current_item_id,e.detail,e.mutation_started,e.recovery_required,e.failure_message,e.outcome,e.machine_state_fingerprint,e.repair_graph_digest,e.reboot_required,e.reboot_resume_token,e.verification_state,e.started_unix_ms,e.updated_unix_ms,e.completed_unix_ms FROM maintenance_executions e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? ORDER BY e.updated_unix_ms DESC LIMIT ?"
         )?;
-        let rows = stmt.query_map(params![owner_principal_key, limit.min(2000) as i64], row_to_maintenance_execution)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(
+            params![owner_principal_key, limit.min(2000) as i64],
+            row_to_maintenance_execution,
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    // ---------------- Phase 22: One-Click Care orchestration journal ----------------
+
+    /// Inserts or updates a care run row. Crash-safe resume anchor: the row exists
+    /// before any step starts and is updated in place as the run progresses.
+    pub fn upsert_care_run(&self, r: &CareRunRecord) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "INSERT INTO care_runs(run_id,owner_principal_key,state,stage,plan_digest_sha256,session_consent_granted,steps_total,steps_done,detail,created_unix_ms,updated_unix_ms,completed_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)\n             ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,stage=excluded.stage,session_consent_granted=excluded.session_consent_granted,steps_done=excluded.steps_done,detail=excluded.detail,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
+            params![r.run_id,r.owner_principal_key,r.state,r.stage,r.plan_digest_sha256,bool_i(r.session_consent_granted),r.steps_total,r.steps_done,r.detail,r.created_unix_ms,r.updated_unix_ms,r.completed_unix_ms],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_care_run(&self, run_id: &str) -> Result<Option<CareRunRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.query_row(
+            "SELECT run_id,owner_principal_key,state,stage,plan_digest_sha256,session_consent_granted,steps_total,steps_done,detail,created_unix_ms,updated_unix_ms,completed_unix_ms FROM care_runs WHERE run_id=?",
+            [run_id], row_to_care_run,
+        ).optional().map_err(Into::into)
+    }
+
+    /// The owner's most recent non-terminal run, if any (resume target).
+    pub fn active_care_run_for_owner(
+        &self,
+        owner_principal_key: &str,
+    ) -> Result<Option<CareRunRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.query_row(
+            "SELECT run_id,owner_principal_key,state,stage,plan_digest_sha256,session_consent_granted,steps_total,steps_done,detail,created_unix_ms,updated_unix_ms,completed_unix_ms FROM care_runs WHERE owner_principal_key=? AND state NOT IN ('Completed','Failed','Cancelled') ORDER BY created_unix_ms DESC LIMIT 1",
+            [owner_principal_key], row_to_care_run,
+        ).optional().map_err(Into::into)
+    }
+
+    pub fn care_runs_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<CareRunRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        let mut stmt = conn.prepare(
+            "SELECT run_id,owner_principal_key,state,stage,plan_digest_sha256,session_consent_granted,steps_total,steps_done,detail,created_unix_ms,updated_unix_ms,completed_unix_ms FROM care_runs WHERE owner_principal_key=? ORDER BY created_unix_ms DESC LIMIT ?"
+        )?;
+        let rows = stmt.query_map(
+            params![owner_principal_key, limit.min(100) as i64],
+            row_to_care_run,
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Replaces all step rows for a run inside one transaction. Steps are written
+    /// before the run starts and updated in place; full replacement keeps the
+    /// journal consistent with the authoritative in-memory plan.
+    pub fn replace_care_steps(&self, steps: &[CareStepRecord]) -> Result<()> {
+        let mut conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute("DELETE FROM care_steps", [])?;
+        for s in steps {
+            tx.execute(
+                "INSERT INTO care_steps(run_id,step_index,domain_plan_id,domain_kind,safety_level,state,outcome,verification_state,failure_message,started_unix_ms,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                params![s.run_id,s.step_index,s.domain_plan_id,s.domain_kind,s.safety_level,s.state,s.outcome,s.verification_state,s.failure_message,s.started_unix_ms,s.updated_unix_ms],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Updates one step row's mutable columns (state/outcome/verification/failure).
+    pub fn update_care_step(&self, r: &CareStepRecord) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "UPDATE care_steps SET state=?3,outcome=?4,verification_state=?5,failure_message=?6,updated_unix_ms=?7 WHERE run_id=?1 AND step_index=?2",
+            params![r.run_id,r.step_index,r.state,r.outcome,r.verification_state,r.failure_message,r.updated_unix_ms],
+        )?;
+        Ok(())
+    }
+
+    pub fn care_steps_for_run(&self, run_id: &str) -> Result<Vec<CareStepRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        let mut stmt = conn.prepare(
+            "SELECT run_id,step_index,domain_plan_id,domain_kind,safety_level,state,outcome,verification_state,failure_message,started_unix_ms,updated_unix_ms FROM care_steps WHERE run_id=? ORDER BY step_index"
+        )?;
+        let rows = stmt.query_map([run_id], |row| {
+            Ok(CareStepRecord {
+                run_id: row.get(0)?,
+                step_index: row.get::<_, i64>(1)?.max(0).min(u32::MAX as i64) as u32,
+                domain_plan_id: row.get(2)?,
+                domain_kind: row.get(3)?,
+                safety_level: row.get(4)?,
+                state: row.get(5)?,
+                outcome: row.get(6)?,
+                verification_state: row.get(7)?,
+                failure_message: row.get(8)?,
+                started_unix_ms: row.get(9)?,
+                updated_unix_ms: row.get(10)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn upsert_repair_reboot_resume(&self, r: &RepairRebootResumeRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO repair_reboot_resume_tickets(token_sha256,owner_principal_key,assessment_id,machine_state_fingerprint,repair_graph_digest,resume_policy,state,created_unix_ms,consumed_unix_ms) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(token_sha256) DO UPDATE SET state=excluded.state,consumed_unix_ms=excluded.consumed_unix_ms",
             params![r.token_sha256,r.owner_principal_key,r.assessment_id,r.machine_state_fingerprint,r.repair_graph_digest,r.resume_policy,r.state,r.created_unix_ms,r.consumed_unix_ms],
@@ -803,8 +1254,14 @@ impl Database {
         Ok(())
     }
 
-    pub fn latest_pending_repair_reboot_resume(&self, owner: &str) -> Result<Option<RepairRebootResumeRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn latest_pending_repair_reboot_resume(
+        &self,
+        owner: &str,
+    ) -> Result<Option<RepairRebootResumeRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT token_sha256,owner_principal_key,assessment_id,machine_state_fingerprint,repair_graph_digest,resume_policy,state,created_unix_ms,consumed_unix_ms FROM repair_reboot_resume_tickets WHERE owner_principal_key=? AND state='AwaitingRebootReassessment' ORDER BY created_unix_ms DESC LIMIT 1",
             [owner],
@@ -812,14 +1269,25 @@ impl Database {
         ).optional().map_err(Into::into)
     }
 
-    pub fn consume_repair_reboot_resume(&self, token: &str, state: &str, consumed_unix_ms: i64) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn consume_repair_reboot_resume(
+        &self,
+        token: &str,
+        state: &str,
+        consumed_unix_ms: i64,
+    ) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute("UPDATE repair_reboot_resume_tickets SET state=?2,consumed_unix_ms=?3 WHERE token_sha256=?1 AND state='AwaitingRebootReassessment'", params![token,state,consumed_unix_ms])?;
         Ok(())
     }
 
     pub fn upsert_maintenance_item(&self, r: &MaintenanceItemRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO maintenance_execution_items(plan_id,item_id,kind,stage,result_code,bytes_affected,detail,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?)
              ON CONFLICT(plan_id,item_id) DO UPDATE SET kind=excluded.kind,stage=excluded.stage,result_code=excluded.result_code,bytes_affected=excluded.bytes_affected,detail=excluded.detail,updated_unix_ms=excluded.updated_unix_ms",
@@ -829,17 +1297,27 @@ impl Database {
     }
 
     pub fn maintenance_items(&self, plan_id: &str) -> Result<Vec<MaintenanceItemRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT plan_id,item_id,kind,stage,result_code,bytes_affected,detail,updated_unix_ms FROM maintenance_execution_items WHERE plan_id=? ORDER BY rowid"
         )?;
         let rows = stmt.query_map([plan_id], row_to_maintenance_item)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-
-    pub fn scheduler_run(&self, owner_principal_key: &str, workload: &str) -> Result<Option<SchedulerRunRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn scheduler_run(
+        &self,
+        owner_principal_key: &str,
+        workload: &str,
+    ) -> Result<Option<SchedulerRunRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT owner_principal_key,workload,failure_count,next_eligible_unix_ms,last_outcome,last_completed_unix_ms,updated_unix_ms FROM autonomous_scheduler_runs WHERE owner_principal_key=? AND workload=?",
             params![owner_principal_key, workload],
@@ -851,7 +1329,10 @@ impl Database {
     }
 
     pub fn upsert_scheduler_run(&self, record: &SchedulerRunRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO autonomous_scheduler_runs(owner_principal_key,workload,failure_count,next_eligible_unix_ms,last_outcome,last_completed_unix_ms,updated_unix_ms) VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_principal_key,workload) DO UPDATE SET failure_count=excluded.failure_count,next_eligible_unix_ms=excluded.next_eligible_unix_ms,last_outcome=excluded.last_outcome,last_completed_unix_ms=excluded.last_completed_unix_ms,updated_unix_ms=excluded.updated_unix_ms",
             params![record.owner_principal_key,record.workload,record.failure_count,record.next_eligible_unix_ms,record.last_outcome,record.last_completed_unix_ms,record.updated_unix_ms],
@@ -859,8 +1340,14 @@ impl Database {
         Ok(())
     }
 
-    pub fn update_manifest_floor(&self, channel: &str) -> Result<Option<UpdateManifestFloorRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn update_manifest_floor(
+        &self,
+        channel: &str,
+    ) -> Result<Option<UpdateManifestFloorRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT channel,highest_sequence,generated_unix_ms,manifest_sha256,updated_unix_ms FROM update_manifest_floor WHERE channel=?",
             [channel],
@@ -869,7 +1356,10 @@ impl Database {
     }
 
     pub fn upsert_update_manifest_floor(&self, record: &UpdateManifestFloorRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO update_manifest_floor(channel,highest_sequence,generated_unix_ms,manifest_sha256,updated_unix_ms) VALUES(?,?,?,?,?) ON CONFLICT(channel) DO UPDATE SET highest_sequence=excluded.highest_sequence,generated_unix_ms=excluded.generated_unix_ms,manifest_sha256=excluded.manifest_sha256,updated_unix_ms=excluded.updated_unix_ms WHERE excluded.highest_sequence>update_manifest_floor.highest_sequence OR (excluded.highest_sequence=update_manifest_floor.highest_sequence AND excluded.manifest_sha256=update_manifest_floor.manifest_sha256)",
             params![record.channel,record.highest_sequence as i64,record.generated_unix_ms,record.manifest_sha256,record.updated_unix_ms],
@@ -877,8 +1367,14 @@ impl Database {
         Ok(())
     }
 
-    pub fn replace_update_execution_guard(&self, record: &UpdateExecutionGuardRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn replace_update_execution_guard(
+        &self,
+        record: &UpdateExecutionGuardRecord,
+    ) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO active_update_execution(slot,ticket_id,owner_principal_key,release_id,release_version,channel,notes_message_key,minimum_windows_build,staged_path,expected_sha256,expected_size,expires_unix_ms,created_unix_ms) VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(slot) DO UPDATE SET ticket_id=excluded.ticket_id,owner_principal_key=excluded.owner_principal_key,release_id=excluded.release_id,release_version=excluded.release_version,channel=excluded.channel,notes_message_key=excluded.notes_message_key,minimum_windows_build=excluded.minimum_windows_build,staged_path=excluded.staged_path,expected_sha256=excluded.expected_sha256,expected_size=excluded.expected_size,expires_unix_ms=excluded.expires_unix_ms,created_unix_ms=excluded.created_unix_ms",
             params![record.ticket_id,record.owner_principal_key,record.release_id,record.release_version,record.channel,record.notes_message_key,record.minimum_windows_build as i64,record.staged_path,record.expected_sha256,record.expected_size as i64,record.expires_unix_ms,record.created_unix_ms],
@@ -887,7 +1383,10 @@ impl Database {
     }
 
     pub fn active_update_execution_guard(&self) -> Result<Option<UpdateExecutionGuardRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT ticket_id,owner_principal_key,release_id,release_version,channel,notes_message_key,minimum_windows_build,staged_path,expected_sha256,expected_size,expires_unix_ms,created_unix_ms FROM active_update_execution WHERE slot=1",
             [],
@@ -896,33 +1395,73 @@ impl Database {
     }
 
     pub fn clear_update_execution_guard(&self, ticket_id: &str) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
-        conn.execute("DELETE FROM active_update_execution WHERE slot=1 AND ticket_id=?",[ticket_id])?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "DELETE FROM active_update_execution WHERE slot=1 AND ticket_id=?",
+            [ticket_id],
+        )?;
         Ok(())
     }
 
-    pub fn support_journal_events_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<SupportJournalEventRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn support_journal_events_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<SupportJournalEventRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT e.seq,e.plan_id,e.from_state,e.to_state,e.event_kind,e.detail,e.created_unix_ms FROM plan_events e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? ORDER BY e.seq DESC LIMIT ?"
         )?;
-        let rows = stmt.query_map(params![owner_principal_key, limit.min(500) as i64], |row| Ok(SupportJournalEventRecord {
-            seq:row.get(0)?, plan_id:row.get(1)?, from_state:row.get(2)?, to_state:row.get(3)?, event_kind:row.get(4)?, detail:row.get(5)?, created_unix_ms:row.get(6)?
-        }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(params![owner_principal_key, limit.min(500) as i64], |row| {
+            Ok(SupportJournalEventRecord {
+                seq: row.get(0)?,
+                plan_id: row.get(1)?,
+                from_state: row.get(2)?,
+                to_state: row.get(3)?,
+                event_kind: row.get(4)?,
+                detail: row.get(5)?,
+                created_unix_ms: row.get(6)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn scheduler_runs_for_owner(&self, owner_principal_key: &str) -> Result<Vec<SchedulerRunRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn scheduler_runs_for_owner(
+        &self,
+        owner_principal_key: &str,
+    ) -> Result<Vec<SchedulerRunRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare("SELECT owner_principal_key,workload,failure_count,next_eligible_unix_ms,last_outcome,last_completed_unix_ms,updated_unix_ms FROM autonomous_scheduler_runs WHERE owner_principal_key=? ORDER BY workload")?;
-        let rows = stmt.query_map([owner_principal_key], |row| Ok(SchedulerRunRecord {
-            owner_principal_key:row.get(0)?, workload:row.get(1)?, failure_count:row.get::<_,i64>(2)?.max(0).min(u32::MAX as i64) as u32, next_eligible_unix_ms:row.get(3)?, last_outcome:row.get(4)?, last_completed_unix_ms:row.get(5)?, updated_unix_ms:row.get(6)?
-        }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map([owner_principal_key], |row| {
+            Ok(SchedulerRunRecord {
+                owner_principal_key: row.get(0)?,
+                workload: row.get(1)?,
+                failure_count: row.get::<_, i64>(2)?.max(0).min(u32::MAX as i64) as u32,
+                next_eligible_unix_ms: row.get(3)?,
+                last_outcome: row.get(4)?,
+                last_completed_unix_ms: row.get(5)?,
+                updated_unix_ms: row.get(6)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn save_diagnostic_snapshot(&self, record: &DiagnosticSnapshotRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT OR REPLACE INTO diagnostic_snapshots(snapshot_id,state,collected_unix_ms,warning_count,snapshot_json,owner_principal_key) VALUES(?,?,?,?,?,?)",
             params![record.snapshot_id, record.state, record.collected_unix_ms, record.warning_count, record.snapshot_json, record.owner_principal_key],
@@ -934,23 +1473,49 @@ impl Database {
         Ok(())
     }
 
-    pub fn latest_diagnostic_snapshot_for_owner(&self, owner_principal_key: &str) -> Result<Option<DiagnosticSnapshotRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn latest_diagnostic_snapshot_for_owner(
+        &self,
+        owner_principal_key: &str,
+    ) -> Result<Option<DiagnosticSnapshotRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT snapshot_id,owner_principal_key,state,collected_unix_ms,warning_count,snapshot_json FROM diagnostic_snapshots WHERE owner_principal_key=? ORDER BY collected_unix_ms DESC LIMIT 1",
             [owner_principal_key], |r| Ok(DiagnosticSnapshotRecord{snapshot_id:r.get(0)?,owner_principal_key:r.get(1)?,state:r.get(2)?,collected_unix_ms:r.get(3)?,warning_count:r.get(4)?,snapshot_json:r.get(5)?}),
         ).optional().map_err(Into::into)
     }
 
-    pub fn diagnostic_snapshots_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<DiagnosticSnapshotRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn diagnostic_snapshots_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<DiagnosticSnapshotRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt=conn.prepare("SELECT snapshot_id,owner_principal_key,state,collected_unix_ms,warning_count,snapshot_json FROM diagnostic_snapshots WHERE owner_principal_key=? ORDER BY collected_unix_ms DESC LIMIT ?")?;
-        let rows=stmt.query_map(params![owner_principal_key,limit.min(200) as i64],|r|Ok(DiagnosticSnapshotRecord{snapshot_id:r.get(0)?,owner_principal_key:r.get(1)?,state:r.get(2)?,collected_unix_ms:r.get(3)?,warning_count:r.get(4)?,snapshot_json:r.get(5)?}))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(params![owner_principal_key, limit.min(200) as i64], |r| {
+            Ok(DiagnosticSnapshotRecord {
+                snapshot_id: r.get(0)?,
+                owner_principal_key: r.get(1)?,
+                state: r.get(2)?,
+                collected_unix_ms: r.get(3)?,
+                warning_count: r.get(4)?,
+                snapshot_json: r.get(5)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn upsert_startup_change(&self, record: &StartupChangeRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO startup_change_records(change_id,origin_change_id,plan_id,item_id,kind,display_name,direction,original_json,applied_json,state,detail,created_unix_ms,updated_unix_ms,restored_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(change_id) DO UPDATE SET origin_change_id=excluded.origin_change_id,plan_id=excluded.plan_id,item_id=excluded.item_id,kind=excluded.kind,display_name=excluded.display_name,direction=excluded.direction,original_json=excluded.original_json,applied_json=excluded.applied_json,state=excluded.state,detail=excluded.detail,updated_unix_ms=excluded.updated_unix_ms,restored_unix_ms=excluded.restored_unix_ms",
             params![record.change_id,record.origin_change_id,record.plan_id,record.item_id,record.kind,record.display_name,record.direction,record.original_json,record.applied_json,record.state,record.detail,record.created_unix_ms,record.updated_unix_ms,record.restored_unix_ms],
@@ -959,15 +1524,25 @@ impl Database {
     }
 
     pub fn get_startup_change(&self, change_id: &str) -> Result<Option<StartupChangeRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT change_id,origin_change_id,plan_id,item_id,kind,display_name,direction,original_json,applied_json,state,detail,created_unix_ms,updated_unix_ms,restored_unix_ms FROM startup_change_records WHERE change_id=?",
             [change_id], row_to_startup_change,
         ).optional().map_err(Into::into)
     }
 
-    pub fn get_startup_change_for_owner(&self, change_id: &str, owner_principal_key: &str) -> Result<Option<StartupChangeRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn get_startup_change_for_owner(
+        &self,
+        change_id: &str,
+        owner_principal_key: &str,
+    ) -> Result<Option<StartupChangeRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
             "SELECT s.change_id,s.origin_change_id,s.plan_id,s.item_id,s.kind,s.display_name,s.direction,s.original_json,s.applied_json,s.state,s.detail,s.created_unix_ms,s.updated_unix_ms,s.restored_unix_ms FROM startup_change_records s INNER JOIN plans p ON p.id=s.plan_id WHERE s.change_id=? AND p.owner_principal_key=?",
             params![change_id, owner_principal_key], row_to_startup_change,
@@ -975,33 +1550,64 @@ impl Database {
     }
 
     pub fn startup_changes(&self, limit: usize) -> Result<Vec<StartupChangeRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare("SELECT change_id,origin_change_id,plan_id,item_id,kind,display_name,direction,original_json,applied_json,state,detail,created_unix_ms,updated_unix_ms,restored_unix_ms FROM startup_change_records ORDER BY updated_unix_ms DESC LIMIT ?")?;
         let rows = stmt.query_map([limit.min(500) as i64], row_to_startup_change)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn startup_changes_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<StartupChangeRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn startup_changes_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<StartupChangeRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare("SELECT s.change_id,s.origin_change_id,s.plan_id,s.item_id,s.kind,s.display_name,s.direction,s.original_json,s.applied_json,s.state,s.detail,s.created_unix_ms,s.updated_unix_ms,s.restored_unix_ms FROM startup_change_records s INNER JOIN plans p ON p.id=s.plan_id WHERE p.owner_principal_key=? ORDER BY s.updated_unix_ms DESC LIMIT ?")?;
-        let rows = stmt.query_map(params![owner_principal_key, limit.min(500) as i64], row_to_startup_change)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(
+            params![owner_principal_key, limit.min(500) as i64],
+            row_to_startup_change,
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn startup_changes_in_states(&self, states: &[&str]) -> Result<Vec<StartupChangeRecord>> {
-        if states.is_empty() { return Ok(Vec::new()); }
-        let placeholders = std::iter::repeat_n("?", states.len()).collect::<Vec<_>>().join(",");
-        let sql = format!("SELECT change_id,origin_change_id,plan_id,item_id,kind,display_name,direction,original_json,applied_json,state,detail,created_unix_ms,updated_unix_ms,restored_unix_ms FROM startup_change_records WHERE state IN ({placeholders}) ORDER BY updated_unix_ms");
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        if states.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = std::iter::repeat_n("?", states.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT change_id,origin_change_id,plan_id,item_id,kind,display_name,direction,original_json,applied_json,state,detail,created_unix_ms,updated_unix_ms,restored_unix_ms FROM startup_change_records WHERE state IN ({placeholders}) ORDER BY updated_unix_ms"
+        );
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(states.iter().copied()), row_to_startup_change)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(
+            rusqlite::params_from_iter(states.iter().copied()),
+            row_to_startup_change,
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 }
 
 impl Database {
     pub fn save_intelligence_scan(&self, record: &IntelligenceScanRecord) -> Result<()> {
-        let conn=self.connection.lock().map_err(|_|PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT OR REPLACE INTO intelligence_scans(scan_id,owner_principal_key,state,status,started_unix_ms,completed_unix_ms,machine_state_fingerprint,rule_engine_version,app_version,finding_count,unavailable_collector_count,snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             params![record.scan_id,record.owner_principal_key,record.state,record.status,record.started_unix_ms,record.completed_unix_ms,record.machine_state_fingerprint,record.rule_engine_version,record.app_version,record.finding_count,record.unavailable_collector_count,record.snapshot_json],
@@ -1013,15 +1619,44 @@ impl Database {
         Ok(())
     }
 
-    pub fn intelligence_scans_for_owner(&self, owner_principal_key:&str, limit:usize)->Result<Vec<IntelligenceScanRecord>> {
-        let conn=self.connection.lock().map_err(|_|PersistenceError::Poisoned)?;
+    pub fn intelligence_scans_for_owner(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<IntelligenceScanRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt=conn.prepare("SELECT scan_id,owner_principal_key,state,status,started_unix_ms,completed_unix_ms,machine_state_fingerprint,rule_engine_version,app_version,finding_count,unavailable_collector_count,snapshot_json FROM intelligence_scans WHERE owner_principal_key=? ORDER BY completed_unix_ms DESC LIMIT ?")?;
-        let rows=stmt.query_map(params![owner_principal_key,limit.clamp(1,200) as i64],|r|Ok(IntelligenceScanRecord{scan_id:r.get(0)?,owner_principal_key:r.get(1)?,state:r.get(2)?,status:r.get(3)?,started_unix_ms:r.get(4)?,completed_unix_ms:r.get(5)?,machine_state_fingerprint:r.get(6)?,rule_engine_version:r.get(7)?,app_version:r.get(8)?,finding_count:r.get::<_,i64>(9)?.max(0) as u32,unavailable_collector_count:r.get::<_,i64>(10)?.max(0) as u32,snapshot_json:r.get(11)?}))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(
+            params![owner_principal_key, limit.clamp(1, 200) as i64],
+            |r| {
+                Ok(IntelligenceScanRecord {
+                    scan_id: r.get(0)?,
+                    owner_principal_key: r.get(1)?,
+                    state: r.get(2)?,
+                    status: r.get(3)?,
+                    started_unix_ms: r.get(4)?,
+                    completed_unix_ms: r.get(5)?,
+                    machine_state_fingerprint: r.get(6)?,
+                    rule_engine_version: r.get(7)?,
+                    app_version: r.get(8)?,
+                    finding_count: r.get::<_, i64>(9)?.max(0) as u32,
+                    unavailable_collector_count: r.get::<_, i64>(10)?.max(0) as u32,
+                    snapshot_json: r.get(11)?,
+                })
+            },
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn upsert_intelligence_finding(&self, record: &IntelligenceFindingRecord) -> Result<()> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
             "INSERT INTO intelligence_findings(owner_principal_key,finding_id,finding_code,first_observed_unix_ms,last_observed_unix_ms,lifecycle,severity,confidence,verification_status,resolved_at_unix_ms,resolution_scan_id,resolution_reason_key,finding_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_principal_key,finding_id) DO UPDATE SET finding_code=excluded.finding_code,first_observed_unix_ms=MIN(intelligence_findings.first_observed_unix_ms,excluded.first_observed_unix_ms),last_observed_unix_ms=excluded.last_observed_unix_ms,lifecycle=excluded.lifecycle,severity=excluded.severity,confidence=excluded.confidence,verification_status=excluded.verification_status,resolved_at_unix_ms=excluded.resolved_at_unix_ms,resolution_scan_id=excluded.resolution_scan_id,resolution_reason_key=excluded.resolution_reason_key,finding_json=excluded.finding_json",
             params![
@@ -1035,8 +1670,14 @@ impl Database {
         Ok(())
     }
 
-    pub fn intelligence_findings_for_owner(&self, owner_principal_key: &str) -> Result<Vec<IntelligenceFindingRecord>> {
-        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+    pub fn intelligence_findings_for_owner(
+        &self,
+        owner_principal_key: &str,
+    ) -> Result<Vec<IntelligenceFindingRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
             "SELECT owner_principal_key,finding_id,finding_code,first_observed_unix_ms,last_observed_unix_ms,lifecycle,severity,confidence,verification_status,resolved_at_unix_ms,resolution_scan_id,resolution_reason_key,finding_json FROM intelligence_findings WHERE owner_principal_key=? ORDER BY last_observed_unix_ms DESC",
         )?;
@@ -1057,38 +1698,86 @@ impl Database {
                 finding_json: r.get(12)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn save_intelligence_remediation_plan(&self,owner_principal_key:&str,plan_id:&str,scan_id:&str,digest:&str,immutable_json:&str,created_unix_ms:i64)->Result<()> {
-        let conn=self.connection.lock().map_err(|_|PersistenceError::Poisoned)?;
-        conn.execute("INSERT INTO intelligence_remediation_plans(plan_id,owner_principal_key,scan_id,digest,immutable_json,created_unix_ms) VALUES(?,?,?,?,?,?)",params![plan_id,owner_principal_key,scan_id,digest,immutable_json,created_unix_ms])?;Ok(())
+    pub fn save_intelligence_remediation_plan(
+        &self,
+        owner_principal_key: &str,
+        plan_id: &str,
+        scan_id: &str,
+        digest: &str,
+        immutable_json: &str,
+        created_unix_ms: i64,
+    ) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute("INSERT INTO intelligence_remediation_plans(plan_id,owner_principal_key,scan_id,digest,immutable_json,created_unix_ms) VALUES(?,?,?,?,?,?)",params![plan_id,owner_principal_key,scan_id,digest,immutable_json,created_unix_ms])?;
+        Ok(())
     }
 
-    pub fn upsert_intelligence_override(&self,record:&IntelligenceOverrideRecord)->Result<()> {
-        let conn=self.connection.lock().map_err(|_|PersistenceError::Poisoned)?;
+    pub fn upsert_intelligence_override(&self, record: &IntelligenceOverrideRecord) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute("INSERT INTO intelligence_overrides(owner_principal_key,override_id,scope_kind,scope_value_hash,behavior,expires_unix_ms,created_unix_ms,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(owner_principal_key,override_id) DO UPDATE SET scope_kind=excluded.scope_kind,scope_value_hash=excluded.scope_value_hash,behavior=excluded.behavior,expires_unix_ms=excluded.expires_unix_ms,updated_unix_ms=excluded.updated_unix_ms",params![record.owner_principal_key,record.override_id,record.scope_kind,record.scope_value_hash,record.behavior,record.expires_unix_ms,record.created_unix_ms,record.updated_unix_ms])?;
         Ok(())
     }
 
-    pub fn intelligence_overrides_for_owner(&self,owner_principal_key:&str,now_ms:i64)->Result<Vec<IntelligenceOverrideRecord>> {
-        let conn=self.connection.lock().map_err(|_|PersistenceError::Poisoned)?;
+    pub fn intelligence_overrides_for_owner(
+        &self,
+        owner_principal_key: &str,
+        now_ms: i64,
+    ) -> Result<Vec<IntelligenceOverrideRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt=conn.prepare("SELECT owner_principal_key,override_id,scope_kind,scope_value_hash,behavior,expires_unix_ms,created_unix_ms,updated_unix_ms FROM intelligence_overrides WHERE owner_principal_key=? AND (expires_unix_ms IS NULL OR expires_unix_ms>?) ORDER BY updated_unix_ms DESC")?;
-        let rows=stmt.query_map(params![owner_principal_key,now_ms],|r|Ok(IntelligenceOverrideRecord{owner_principal_key:r.get(0)?,override_id:r.get(1)?,scope_kind:r.get(2)?,scope_value_hash:r.get(3)?,behavior:r.get(4)?,expires_unix_ms:r.get(5)?,created_unix_ms:r.get(6)?,updated_unix_ms:r.get(7)?}))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(params![owner_principal_key, now_ms], |r| {
+            Ok(IntelligenceOverrideRecord {
+                owner_principal_key: r.get(0)?,
+                override_id: r.get(1)?,
+                scope_kind: r.get(2)?,
+                scope_value_hash: r.get(3)?,
+                behavior: r.get(4)?,
+                expires_unix_ms: r.get(5)?,
+                created_unix_ms: r.get(6)?,
+                updated_unix_ms: r.get(7)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn delete_intelligence_override(&self,owner_principal_key:&str,override_id:&str)->Result<()> {
-        let conn=self.connection.lock().map_err(|_|PersistenceError::Poisoned)?;
-        conn.execute("DELETE FROM intelligence_overrides WHERE owner_principal_key=? AND override_id=?",params![owner_principal_key,override_id])?;
+    pub fn delete_intelligence_override(
+        &self,
+        owner_principal_key: &str,
+        override_id: &str,
+    ) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "DELETE FROM intelligence_overrides WHERE owner_principal_key=? AND override_id=?",
+            params![owner_principal_key, override_id],
+        )?;
         Ok(())
     }
 
-    pub fn recent_recovery_event_count_for_owner(&self,owner_principal_key:&str)->Result<u32>{
-        let conn=self.connection.lock().map_err(|_|PersistenceError::Poisoned)?;
-        let count:i64=conn.query_row("SELECT COUNT(*) FROM plan_events e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? AND (e.event_kind LIKE '%recovery%' OR e.to_state='RecoveryRequired')",[owner_principal_key],|r|r.get(0))?;Ok(count.max(0).min(u32::MAX as i64) as u32)
+    pub fn recent_recovery_event_count_for_owner(&self, owner_principal_key: &str) -> Result<u32> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        let count:i64=conn.query_row("SELECT COUNT(*) FROM plan_events e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? AND (e.event_kind LIKE '%recovery%' OR e.to_state='RecoveryRequired')",[owner_principal_key],|r|r.get(0))?;
+        Ok(count.max(0).min(u32::MAX as i64) as u32)
     }
-
 }
 
 fn apply_migrations(conn: &mut Connection) -> Result<()> {
@@ -1097,13 +1786,17 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
     )?;
     for (version, name, sql) in MIGRATIONS {
         let checksum = hex_lower(&Sha256::digest(sql.as_bytes()));
-        let existing: Option<String> = conn.query_row(
-            "SELECT checksum_sha256 FROM schema_migrations WHERE version=?",
-            [version],
-            |r| r.get(0),
-        ).optional()?;
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT checksum_sha256 FROM schema_migrations WHERE version=?",
+                [version],
+                |r| r.get(0),
+            )
+            .optional()?;
         if let Some(existing) = existing {
-            if existing != checksum { return Err(PersistenceError::MigrationDrift(*version)); }
+            if existing != checksum {
+                return Err(PersistenceError::MigrationDrift(*version));
+            }
             continue;
         }
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1131,44 +1824,168 @@ fn hex_lower(bytes: &[u8]) -> String {
     out
 }
 
-fn bool_i(v: bool) -> i32 { if v { 1 } else { 0 } }
+fn bool_i(v: bool) -> i32 {
+    if v { 1 } else { 0 }
+}
 
 /// SQLite has no unsigned 64-bit integers. Byte-count columns are stored as i64; values above
 /// `i64::MAX` saturate instead of wrapping, and reads clamp negatives (legacy/corrupt rows) to 0.
-fn u64_to_i64(v: u64) -> i64 { i64::try_from(v).unwrap_or(i64::MAX) }
-fn i64_to_u64(v: i64) -> u64 { v.max(0) as u64 }
+fn u64_to_i64(v: u64) -> i64 {
+    i64::try_from(v).unwrap_or(i64::MAX)
+}
+fn i64_to_u64(v: i64) -> u64 {
+    v.max(0) as u64
+}
 
+fn row_to_care_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<CareRunRecord> {
+    Ok(CareRunRecord {
+        run_id: row.get(0)?,
+        owner_principal_key: row.get(1)?,
+        state: row.get(2)?,
+        stage: row.get(3)?,
+        plan_digest_sha256: row.get(4)?,
+        session_consent_granted: row.get::<_, i32>(5)? != 0,
+        steps_total: row.get::<_, i64>(6)?.max(0).min(u32::MAX as i64) as u32,
+        steps_done: row.get::<_, i64>(7)?.max(0).min(u32::MAX as i64) as u32,
+        detail: row.get(8)?,
+        created_unix_ms: row.get(9)?,
+        updated_unix_ms: row.get(10)?,
+        completed_unix_ms: row.get(11)?,
+    })
+}
 
 fn row_to_plan(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanRecord> {
-    Ok(PlanRecord { id:row.get(0)?,title:row.get(1)?,state:row.get(2)?,digest:row.get(3)?,risk:row.get(4)?,immutable_json:row.get(5)?,created_unix_ms:row.get(6)?,updated_unix_ms:row.get(7)?,owner_principal_key:row.get(8)? })
+    Ok(PlanRecord {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        state: row.get(2)?,
+        digest: row.get(3)?,
+        risk: row.get(4)?,
+        immutable_json: row.get(5)?,
+        created_unix_ms: row.get(6)?,
+        updated_unix_ms: row.get(7)?,
+        owner_principal_key: row.get(8)?,
+    })
 }
 
 fn row_to_consent_intent(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConsentIntentRecord> {
     Ok(ConsentIntentRecord {
-        intent_id: row.get(0)?, plan_id: row.get(1)?, digest: row.get(2)?,
-        owner_principal_key: row.get(3)?, created_unix_ms: row.get(4)?, expires_unix_ms: row.get(5)?,
-        approved_unix_ms: row.get(6)?, consumed_unix_ms: row.get(7)?, broker_pid: row.get(8)?,
+        intent_id: row.get(0)?,
+        plan_id: row.get(1)?,
+        digest: row.get(2)?,
+        owner_principal_key: row.get(3)?,
+        created_unix_ms: row.get(4)?,
+        expires_unix_ms: row.get(5)?,
+        approved_unix_ms: row.get(6)?,
+        consumed_unix_ms: row.get(7)?,
+        broker_pid: row.get(8)?,
     })
 }
 
 fn row_to_execution(row: &rusqlite::Row<'_>) -> rusqlite::Result<ExecutionRecord> {
-    Ok(ExecutionRecord { plan_id:row.get(0)?,stage:row.get(1)?,progress_known:row.get::<_,i32>(2)? != 0,overall_percent:row.get(3)?,current_candidate_id:row.get(4)?,bytes_downloaded:i64_to_u64(row.get::<_,i64>(5)?),bytes_total:i64_to_u64(row.get::<_,i64>(6)?),detail:row.get(7)?,reboot_required:row.get::<_,i32>(8)? != 0,reboot_boot_marker_ms:row.get(9)?,restore_point_sequence:row.get(10)?,backup_root:row.get(11)?,mutation_started:row.get::<_,i32>(12)? != 0,recovery_required:row.get::<_,i32>(13)? != 0,failure_message:row.get(14)?,started_unix_ms:row.get(15)?,updated_unix_ms:row.get(16)?,completed_unix_ms:row.get(17)? })
+    Ok(ExecutionRecord {
+        plan_id: row.get(0)?,
+        stage: row.get(1)?,
+        progress_known: row.get::<_, i32>(2)? != 0,
+        overall_percent: row.get(3)?,
+        current_candidate_id: row.get(4)?,
+        bytes_downloaded: i64_to_u64(row.get::<_, i64>(5)?),
+        bytes_total: i64_to_u64(row.get::<_, i64>(6)?),
+        detail: row.get(7)?,
+        reboot_required: row.get::<_, i32>(8)? != 0,
+        reboot_boot_marker_ms: row.get(9)?,
+        restore_point_sequence: row.get(10)?,
+        backup_root: row.get(11)?,
+        mutation_started: row.get::<_, i32>(12)? != 0,
+        recovery_required: row.get::<_, i32>(13)? != 0,
+        failure_message: row.get(14)?,
+        started_unix_ms: row.get(15)?,
+        updated_unix_ms: row.get(16)?,
+        completed_unix_ms: row.get(17)?,
+    })
 }
 
 fn row_to_install_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<InstallItemRecord> {
-    Ok(InstallItemRecord { plan_id:row.get(0)?,candidate_id:row.get(1)?,update_id:row.get(2)?,revision:row.get(3)?,instance_id:row.get(4)?,title:row.get(5)?,stage:row.get(6)?,progress_known:row.get::<_,i32>(7)? != 0,progress_percent:row.get(8)?,result_code:row.get(9)?,hresult:row.get(10)?,reboot_required:row.get::<_,i32>(11)? != 0,verified:row.get::<_,i32>(12)? != 0,before_driver_json:row.get(13)?,after_driver_json:row.get(14)?,before_problem_code:row.get(15)?,after_problem_code:row.get(16)?,backup_path:row.get(17)?,detail:row.get(18)?,updated_unix_ms:row.get(19)? })
+    Ok(InstallItemRecord {
+        plan_id: row.get(0)?,
+        candidate_id: row.get(1)?,
+        update_id: row.get(2)?,
+        revision: row.get(3)?,
+        instance_id: row.get(4)?,
+        title: row.get(5)?,
+        stage: row.get(6)?,
+        progress_known: row.get::<_, i32>(7)? != 0,
+        progress_percent: row.get(8)?,
+        result_code: row.get(9)?,
+        hresult: row.get(10)?,
+        reboot_required: row.get::<_, i32>(11)? != 0,
+        verified: row.get::<_, i32>(12)? != 0,
+        before_driver_json: row.get(13)?,
+        after_driver_json: row.get(14)?,
+        before_problem_code: row.get(15)?,
+        after_problem_code: row.get(16)?,
+        backup_path: row.get(17)?,
+        detail: row.get(18)?,
+        updated_unix_ms: row.get(19)?,
+    })
 }
 
-fn row_to_maintenance_execution(row: &rusqlite::Row<'_>) -> rusqlite::Result<MaintenanceExecutionRecord> {
-    Ok(MaintenanceExecutionRecord { plan_id:row.get(0)?,domain:row.get(1)?,stage:row.get(2)?,progress_known:row.get::<_,i32>(3)? != 0,overall_percent:row.get(4)?,current_item_id:row.get(5)?,detail:row.get(6)?,mutation_started:row.get::<_,i32>(7)? != 0,recovery_required:row.get::<_,i32>(8)? != 0,failure_message:row.get(9)?,outcome:row.get(10)?,machine_state_fingerprint:row.get(11)?,repair_graph_digest:row.get(12)?,reboot_required:row.get::<_,i32>(13)? != 0,reboot_resume_token:row.get(14)?,verification_state:row.get(15)?,started_unix_ms:row.get(16)?,updated_unix_ms:row.get(17)?,completed_unix_ms:row.get(18)? })
+fn row_to_maintenance_execution(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<MaintenanceExecutionRecord> {
+    Ok(MaintenanceExecutionRecord {
+        plan_id: row.get(0)?,
+        domain: row.get(1)?,
+        stage: row.get(2)?,
+        progress_known: row.get::<_, i32>(3)? != 0,
+        overall_percent: row.get(4)?,
+        current_item_id: row.get(5)?,
+        detail: row.get(6)?,
+        mutation_started: row.get::<_, i32>(7)? != 0,
+        recovery_required: row.get::<_, i32>(8)? != 0,
+        failure_message: row.get(9)?,
+        outcome: row.get(10)?,
+        machine_state_fingerprint: row.get(11)?,
+        repair_graph_digest: row.get(12)?,
+        reboot_required: row.get::<_, i32>(13)? != 0,
+        reboot_resume_token: row.get(14)?,
+        verification_state: row.get(15)?,
+        started_unix_ms: row.get(16)?,
+        updated_unix_ms: row.get(17)?,
+        completed_unix_ms: row.get(18)?,
+    })
 }
 
 fn row_to_maintenance_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<MaintenanceItemRecord> {
-    Ok(MaintenanceItemRecord { plan_id:row.get(0)?,item_id:row.get(1)?,kind:row.get(2)?,stage:row.get(3)?,result_code:row.get(4)?,bytes_affected:i64_to_u64(row.get::<_,i64>(5)?),detail:row.get(6)?,updated_unix_ms:row.get(7)? })
+    Ok(MaintenanceItemRecord {
+        plan_id: row.get(0)?,
+        item_id: row.get(1)?,
+        kind: row.get(2)?,
+        stage: row.get(3)?,
+        result_code: row.get(4)?,
+        bytes_affected: i64_to_u64(row.get::<_, i64>(5)?),
+        detail: row.get(6)?,
+        updated_unix_ms: row.get(7)?,
+    })
 }
 
 fn row_to_startup_change(row: &rusqlite::Row<'_>) -> rusqlite::Result<StartupChangeRecord> {
-    Ok(StartupChangeRecord { change_id:row.get(0)?,origin_change_id:row.get(1)?,plan_id:row.get(2)?,item_id:row.get(3)?,kind:row.get(4)?,display_name:row.get(5)?,direction:row.get(6)?,original_json:row.get(7)?,applied_json:row.get(8)?,state:row.get(9)?,detail:row.get(10)?,created_unix_ms:row.get(11)?,updated_unix_ms:row.get(12)?,restored_unix_ms:row.get(13)? })
+    Ok(StartupChangeRecord {
+        change_id: row.get(0)?,
+        origin_change_id: row.get(1)?,
+        plan_id: row.get(2)?,
+        item_id: row.get(3)?,
+        kind: row.get(4)?,
+        display_name: row.get(5)?,
+        direction: row.get(6)?,
+        original_json: row.get(7)?,
+        applied_json: row.get(8)?,
+        state: row.get(9)?,
+        detail: row.get(10)?,
+        created_unix_ms: row.get(11)?,
+        updated_unix_ms: row.get(12)?,
+        restored_unix_ms: row.get(13)?,
+    })
 }
 
 #[cfg(test)]
@@ -1177,91 +1994,247 @@ mod tests {
     use uuid::Uuid;
 
     fn temp_db() -> (Database, std::path::PathBuf) {
-        let path = std::env::temp_dir().join(format!("aethercore-persistence-{}.db", Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("aethercore-persistence-{}.db", Uuid::new_v4()));
         (Database::open(&path).unwrap(), path)
     }
 
     #[test]
     fn uncommitted_transition_is_rolled_back_like_power_loss() {
         let (db, path) = temp_db();
-        let plan = PlanRecord { id:"plan-atomicity".into(),title:"Atomicity".into(),state:"Draft".into(),digest:"digest-atomicity".into(),risk:"Amber".into(),immutable_json:"{}".into(),created_unix_ms:1,updated_unix_ms:1,owner_principal_key:"test-owner".into() };
+        let plan = PlanRecord {
+            id: "plan-atomicity".into(),
+            title: "Atomicity".into(),
+            state: "Draft".into(),
+            digest: "digest-atomicity".into(),
+            risk: "Amber".into(),
+            immutable_json: "{}".into(),
+            created_unix_ms: 1,
+            updated_unix_ms: 1,
+            owner_principal_key: "test-owner".into(),
+        };
         db.insert_plan(&plan, "plan_created").unwrap();
         {
             let mut conn = db.connection.lock().unwrap();
-            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).unwrap();
-            tx.execute("UPDATE plans SET state='Scanning', updated_unix_ms=2 WHERE id=?", [&plan.id]).unwrap();
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            tx.execute(
+                "UPDATE plans SET state='Scanning', updated_unix_ms=2 WHERE id=?",
+                [&plan.id],
+            )
+            .unwrap();
             tx.execute("INSERT INTO plan_events(plan_id,from_state,to_state,event_kind,detail,created_unix_ms) VALUES(?,?,?,?,?,?)", params![plan.id,"Draft","Scanning","state_transition","fault injection",2]).unwrap();
         }
         assert_eq!(db.get_plan(&plan.id).unwrap().unwrap().state, "Draft");
         assert_eq!(db.event_count().unwrap(), 1);
-        drop(db); cleanup_database(&path);
+        drop(db);
+        cleanup_database(&path);
     }
 
     #[test]
     fn consent_consumption_and_plan_transition_are_atomic_and_one_shot() {
         let (db, path) = temp_db();
         let owner = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        let plan = PlanRecord { id:"consent-plan".into(),title:"Consent".into(),state:"AwaitingAuthorization".into(),digest:"digest-consent".into(),risk:"Amber".into(),immutable_json:"{}".into(),created_unix_ms:1,updated_unix_ms:1,owner_principal_key:owner.into() };
+        let plan = PlanRecord {
+            id: "consent-plan".into(),
+            title: "Consent".into(),
+            state: "AwaitingAuthorization".into(),
+            digest: "digest-consent".into(),
+            risk: "Amber".into(),
+            immutable_json: "{}".into(),
+            created_unix_ms: 1,
+            updated_unix_ms: 1,
+            owner_principal_key: owner.into(),
+        };
         db.insert_plan(&plan, "plan_created").unwrap();
-        db.begin_consent_intent("intent-1", &plan.id, &plan.digest, owner, 10, 10_000).unwrap();
-        assert!(db.approve_consent_intent("intent-1", owner, 4242, 20).unwrap());
+        db.begin_consent_intent("intent-1", &plan.id, &plan.digest, owner, 10, 10_000)
+            .unwrap();
+        assert!(
+            db.approve_consent_intent("intent-1", owner, 4242, 20)
+                .unwrap()
+        );
 
         // Wrong expected state must roll back the attempted consume as well as the plan update.
-        assert!(!db.consume_consent_and_transition(&plan.id, owner, "Draft", "Preflight", "wrong expected", 30).unwrap());
-        assert!(db.get_consent_intent("intent-1").unwrap().unwrap().consumed_unix_ms.is_none());
-        assert_eq!(db.get_plan(&plan.id).unwrap().unwrap().state, "AwaitingAuthorization");
+        assert!(
+            !db.consume_consent_and_transition(
+                &plan.id,
+                owner,
+                "Draft",
+                "Preflight",
+                "wrong expected",
+                30
+            )
+            .unwrap()
+        );
+        assert!(
+            db.get_consent_intent("intent-1")
+                .unwrap()
+                .unwrap()
+                .consumed_unix_ms
+                .is_none()
+        );
+        assert_eq!(
+            db.get_plan(&plan.id).unwrap().unwrap().state,
+            "AwaitingAuthorization"
+        );
 
-        assert!(db.consume_consent_and_transition(&plan.id, owner, "AwaitingAuthorization", "Preflight", "approved", 40).unwrap());
-        assert_eq!(db.get_consent_intent("intent-1").unwrap().unwrap().consumed_unix_ms, Some(40));
+        assert!(
+            db.consume_consent_and_transition(
+                &plan.id,
+                owner,
+                "AwaitingAuthorization",
+                "Preflight",
+                "approved",
+                40
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            db.get_consent_intent("intent-1")
+                .unwrap()
+                .unwrap()
+                .consumed_unix_ms,
+            Some(40)
+        );
         assert_eq!(db.get_plan(&plan.id).unwrap().unwrap().state, "Preflight");
-        assert!(!db.consume_consent_and_transition(&plan.id, owner, "Preflight", "Protected", "replay", 50).unwrap());
-        drop(db); cleanup_database(&path);
+        assert!(
+            !db.consume_consent_and_transition(
+                &plan.id,
+                owner,
+                "Preflight",
+                "Protected",
+                "replay",
+                50
+            )
+            .unwrap()
+        );
+        drop(db);
+        cleanup_database(&path);
     }
 
     #[test]
     fn execution_and_checkpoint_are_durable() {
         let (db, path) = temp_db();
-        let plan = PlanRecord { id:"p".into(),title:"Driver plan".into(),state:"AwaitingAuthorization".into(),digest:"d".into(),risk:"Amber".into(),immutable_json:"{}".into(),created_unix_ms:1,updated_unix_ms:1,owner_principal_key:"test-owner".into() };
+        let plan = PlanRecord {
+            id: "p".into(),
+            title: "Driver plan".into(),
+            state: "AwaitingAuthorization".into(),
+            digest: "d".into(),
+            risk: "Amber".into(),
+            immutable_json: "{}".into(),
+            created_unix_ms: 1,
+            updated_unix_ms: 1,
+            owner_principal_key: "test-owner".into(),
+        };
         db.insert_plan(&plan, "driver_plan_created").unwrap();
-        let execution = ExecutionRecord { plan_id:"p".into(),stage:"Preflight".into(),started_unix_ms:2,updated_unix_ms:2,..ExecutionRecord::default() };
+        let execution = ExecutionRecord {
+            plan_id: "p".into(),
+            stage: "Preflight".into(),
+            started_unix_ms: 2,
+            updated_unix_ms: 2,
+            ..ExecutionRecord::default()
+        };
         db.upsert_execution(&execution).unwrap();
-        db.add_checkpoint("p", "", "preflight_started", "{}", 3).unwrap();
+        db.add_checkpoint("p", "", "preflight_started", "{}", 3)
+            .unwrap();
         drop(db);
         let reopened = Database::open(&path).unwrap();
-        assert_eq!(reopened.get_execution("p").unwrap().unwrap().stage, "Preflight");
-        assert_eq!(reopened.checkpoints("p", 10).unwrap()[0].checkpoint, "preflight_started");
-        drop(reopened); cleanup_database(&path);
+        assert_eq!(
+            reopened.get_execution("p").unwrap().unwrap().stage,
+            "Preflight"
+        );
+        assert_eq!(
+            reopened.checkpoints("p", 10).unwrap()[0].checkpoint,
+            "preflight_started"
+        );
+        drop(reopened);
+        cleanup_database(&path);
     }
 
     #[test]
     fn generic_maintenance_execution_and_items_are_durable() {
         let (db, path) = temp_db();
-        let plan = PlanRecord { id:"phase4".into(),title:"Repair".into(),state:"Executing".into(),digest:"d4".into(),risk:"Amber".into(),immutable_json:"{}".into(),created_unix_ms:1,updated_unix_ms:1,owner_principal_key:"test-owner".into() };
+        let plan = PlanRecord {
+            id: "phase4".into(),
+            title: "Repair".into(),
+            state: "Executing".into(),
+            digest: "d4".into(),
+            risk: "Amber".into(),
+            immutable_json: "{}".into(),
+            created_unix_ms: 1,
+            updated_unix_ms: 1,
+            owner_principal_key: "test-owner".into(),
+        };
         db.insert_plan(&plan, "phase4_plan_created").unwrap();
-        db.upsert_maintenance_execution(&MaintenanceExecutionRecord { plan_id:"phase4".into(),domain:"SystemRepair".into(),stage:"Executing".into(),progress_known:true,overall_percent:50,mutation_started:true,started_unix_ms:2,updated_unix_ms:3,..Default::default() }).unwrap();
-        db.upsert_maintenance_item(&MaintenanceItemRecord { plan_id:"phase4".into(),item_id:"dism".into(),kind:"DISM RestoreHealth".into(),stage:"Completed".into(),result_code:"ExitCode0".into(),bytes_affected:0,detail:"ok".into(),updated_unix_ms:4 }).unwrap();
+        db.upsert_maintenance_execution(&MaintenanceExecutionRecord {
+            plan_id: "phase4".into(),
+            domain: "SystemRepair".into(),
+            stage: "Executing".into(),
+            progress_known: true,
+            overall_percent: 50,
+            mutation_started: true,
+            started_unix_ms: 2,
+            updated_unix_ms: 3,
+            ..Default::default()
+        })
+        .unwrap();
+        db.upsert_maintenance_item(&MaintenanceItemRecord {
+            plan_id: "phase4".into(),
+            item_id: "dism".into(),
+            kind: "DISM RestoreHealth".into(),
+            stage: "Completed".into(),
+            result_code: "ExitCode0".into(),
+            bytes_affected: 0,
+            detail: "ok".into(),
+            updated_unix_ms: 4,
+        })
+        .unwrap();
         drop(db);
         let reopened = Database::open(&path).unwrap();
-        let execution = reopened.get_maintenance_execution("phase4").unwrap().unwrap();
-        assert_eq!(execution.domain,"SystemRepair");
+        let execution = reopened
+            .get_maintenance_execution("phase4")
+            .unwrap()
+            .unwrap();
+        assert_eq!(execution.domain, "SystemRepair");
         assert!(execution.mutation_started);
         let items = reopened.maintenance_items("phase4").unwrap();
-        assert_eq!(items.len(),1);
-        assert_eq!(items[0].item_id,"dism");
-        drop(reopened);cleanup_database(&path);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].item_id, "dism");
+        drop(reopened);
+        cleanup_database(&path);
     }
 
     #[test]
     fn startup_change_record_is_durable_and_queryable() {
         let (db, path) = temp_db();
-        let plan = PlanRecord { id:"startup-plan".into(),title:"Optimize startup".into(),state:"Executing".into(),digest:"startup-digest".into(),risk:"Amber".into(),immutable_json:"{}".into(),created_unix_ms:1,updated_unix_ms:1,owner_principal_key:"test-owner".into() };
+        let plan = PlanRecord {
+            id: "startup-plan".into(),
+            title: "Optimize startup".into(),
+            state: "Executing".into(),
+            digest: "startup-digest".into(),
+            risk: "Amber".into(),
+            immutable_json: "{}".into(),
+            created_unix_ms: 1,
+            updated_unix_ms: 1,
+            owner_principal_key: "test-owner".into(),
+        };
         db.insert_plan(&plan, "startup_plan_created").unwrap();
         let record = StartupChangeRecord {
-            change_id:"change-1".into(), origin_change_id:"change-1".into(), plan_id:plan.id.clone(),
-            item_id:"item-1".into(), kind:"RegistryRun".into(), display_name:"Vendor Agent".into(),
-            direction:"Disable".into(), original_json:r#"{"exists":true}"#.into(),
-            applied_json:r#"{"exists":false}"#.into(), state:"Prepared".into(),
-            detail:"frozen before mutation".into(), created_unix_ms:2, updated_unix_ms:2, restored_unix_ms:None,
+            change_id: "change-1".into(),
+            origin_change_id: "change-1".into(),
+            plan_id: plan.id.clone(),
+            item_id: "item-1".into(),
+            kind: "RegistryRun".into(),
+            display_name: "Vendor Agent".into(),
+            direction: "Disable".into(),
+            original_json: r#"{"exists":true}"#.into(),
+            applied_json: r#"{"exists":false}"#.into(),
+            state: "Prepared".into(),
+            detail: "frozen before mutation".into(),
+            created_unix_ms: 2,
+            updated_unix_ms: 2,
+            restored_unix_ms: None,
         };
         db.upsert_startup_change(&record).unwrap();
         drop(db);
@@ -1280,83 +2253,208 @@ mod tests {
 
     #[test]
     fn diagnostic_snapshot_is_durable() {
-        let (db,path)=temp_db();
-        db.save_diagnostic_snapshot(&DiagnosticSnapshotRecord{snapshot_id:"diag-1".into(),owner_principal_key:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),state:"Ready".into(),collected_unix_ms:9,warning_count:1,snapshot_json:r#"{"cards":[]}"#.into()}).unwrap();
+        let (db, path) = temp_db();
+        db.save_diagnostic_snapshot(&DiagnosticSnapshotRecord {
+            snapshot_id: "diag-1".into(),
+            owner_principal_key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .into(),
+            state: "Ready".into(),
+            collected_unix_ms: 9,
+            warning_count: 1,
+            snapshot_json: r#"{"cards":[]}"#.into(),
+        })
+        .unwrap();
         drop(db);
-        let reopened=Database::open(&path).unwrap();
-        let row=reopened.latest_diagnostic_snapshot_for_owner("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").unwrap().unwrap();
-        assert_eq!(row.snapshot_id,"diag-1");assert_eq!(row.warning_count,1);
-        drop(reopened);cleanup_database(&path);
+        let reopened = Database::open(&path).unwrap();
+        let row = reopened
+            .latest_diagnostic_snapshot_for_owner(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.snapshot_id, "diag-1");
+        assert_eq!(row.warning_count, 1);
+        drop(reopened);
+        cleanup_database(&path);
     }
 
     #[test]
     fn phase17_intelligence_history_findings_and_sealed_plan_are_durable() {
-        let (db,path)=temp_db();
-        let owner="phase17-owner";
-        db.save_intelligence_scan(&IntelligenceScanRecord{
-            scan_id:"scan-1".into(),owner_principal_key:owner.into(),state:"Completed".into(),status:"AttentionRecommended".into(),
-            started_unix_ms:10,completed_unix_ms:20,machine_state_fingerprint:"fingerprint".into(),rule_engine_version:"phase17-rules-v1".into(),app_version:"0.1".into(),finding_count:1,unavailable_collector_count:0,snapshot_json:r#"{"scanId":"scan-1"}"#.into(),
-        }).unwrap();
-        db.upsert_intelligence_finding(&IntelligenceFindingRecord{
-            owner_principal_key:owner.into(),finding_id:"finding-1".into(),finding_code:"DRIVER_MISSING".into(),first_observed_unix_ms:10,last_observed_unix_ms:20,lifecycle:"New".into(),severity:"High".into(),confidence:"Confirmed".into(),verification_status:"ConfirmedCurrent".into(),resolved_at_unix_ms:None,resolution_scan_id:String::new(),resolution_reason_key:String::new(),finding_json:r#"{"id":"finding-1"}"#.into(),
-        }).unwrap();
-        db.save_intelligence_remediation_plan(owner,"plan-1","scan-1","digest",r#"{"immutable":true}"#,21).unwrap();
-        db.upsert_intelligence_override(&IntelligenceOverrideRecord{owner_principal_key:owner.into(),override_id:"override-1".into(),scope_kind:"finding".into(),scope_value_hash:"hash".into(),behavior:"Ignore".into(),expires_unix_ms:None,created_unix_ms:22,updated_unix_ms:22}).unwrap();
+        let (db, path) = temp_db();
+        let owner = "phase17-owner";
+        db.save_intelligence_scan(&IntelligenceScanRecord {
+            scan_id: "scan-1".into(),
+            owner_principal_key: owner.into(),
+            state: "Completed".into(),
+            status: "AttentionRecommended".into(),
+            started_unix_ms: 10,
+            completed_unix_ms: 20,
+            machine_state_fingerprint: "fingerprint".into(),
+            rule_engine_version: "phase17-rules-v1".into(),
+            app_version: "0.1".into(),
+            finding_count: 1,
+            unavailable_collector_count: 0,
+            snapshot_json: r#"{"scanId":"scan-1"}"#.into(),
+        })
+        .unwrap();
+        db.upsert_intelligence_finding(&IntelligenceFindingRecord {
+            owner_principal_key: owner.into(),
+            finding_id: "finding-1".into(),
+            finding_code: "DRIVER_MISSING".into(),
+            first_observed_unix_ms: 10,
+            last_observed_unix_ms: 20,
+            lifecycle: "New".into(),
+            severity: "High".into(),
+            confidence: "Confirmed".into(),
+            verification_status: "ConfirmedCurrent".into(),
+            resolved_at_unix_ms: None,
+            resolution_scan_id: String::new(),
+            resolution_reason_key: String::new(),
+            finding_json: r#"{"id":"finding-1"}"#.into(),
+        })
+        .unwrap();
+        db.save_intelligence_remediation_plan(
+            owner,
+            "plan-1",
+            "scan-1",
+            "digest",
+            r#"{"immutable":true}"#,
+            21,
+        )
+        .unwrap();
+        db.upsert_intelligence_override(&IntelligenceOverrideRecord {
+            owner_principal_key: owner.into(),
+            override_id: "override-1".into(),
+            scope_kind: "finding".into(),
+            scope_value_hash: "hash".into(),
+            behavior: "Ignore".into(),
+            expires_unix_ms: None,
+            created_unix_ms: 22,
+            updated_unix_ms: 22,
+        })
+        .unwrap();
         let stored = db.intelligence_findings_for_owner(owner).unwrap();
-        assert_eq!(stored[0].lifecycle,"New");
-        assert_eq!(stored[0].verification_status,"ConfirmedCurrent");
+        assert_eq!(stored[0].lifecycle, "New");
+        assert_eq!(stored[0].verification_status, "ConfirmedCurrent");
         drop(db);
 
-        let reopened=Database::open(&path).unwrap();
-        let scans=reopened.intelligence_scans_for_owner(owner,10).unwrap();
-        assert_eq!(scans.len(),1);
-        assert_eq!(scans[0].scan_id,"scan-1");
-        assert_eq!(reopened.intelligence_findings_for_owner(owner).unwrap()[0].first_observed_unix_ms,10);
-        assert_eq!(reopened.intelligence_overrides_for_owner(owner,30).unwrap()[0].behavior,"Ignore");
-        reopened.delete_intelligence_override(owner,"override-1").unwrap();
-        assert!(reopened.intelligence_overrides_for_owner(owner,30).unwrap().is_empty());
-        drop(reopened);cleanup_database(&path);
+        let reopened = Database::open(&path).unwrap();
+        let scans = reopened.intelligence_scans_for_owner(owner, 10).unwrap();
+        assert_eq!(scans.len(), 1);
+        assert_eq!(scans[0].scan_id, "scan-1");
+        assert_eq!(
+            reopened.intelligence_findings_for_owner(owner).unwrap()[0].first_observed_unix_ms,
+            10
+        );
+        assert_eq!(
+            reopened
+                .intelligence_overrides_for_owner(owner, 30)
+                .unwrap()[0]
+                .behavior,
+            "Ignore"
+        );
+        reopened
+            .delete_intelligence_override(owner, "override-1")
+            .unwrap();
+        assert!(
+            reopened
+                .intelligence_overrides_for_owner(owner, 30)
+                .unwrap()
+                .is_empty()
+        );
+        drop(reopened);
+        cleanup_database(&path);
     }
 
     #[test]
     fn recent_verified_driver_changes_are_principal_scoped() {
-        let (db,path)=temp_db();
-        let plan = |id:&str, owner:&str, digest:&str| PlanRecord {
-            id:id.into(), title:"driver plan".into(), state:"Completed".into(), digest:digest.into(), risk:"Sensitive".into(),
-            immutable_json:"{}".into(), created_unix_ms:100, updated_unix_ms:200, owner_principal_key:owner.into(),
+        let (db, path) = temp_db();
+        let plan = |id: &str, owner: &str, digest: &str| PlanRecord {
+            id: id.into(),
+            title: "driver plan".into(),
+            state: "Completed".into(),
+            digest: digest.into(),
+            risk: "Sensitive".into(),
+            immutable_json: "{}".into(),
+            created_unix_ms: 100,
+            updated_unix_ms: 200,
+            owner_principal_key: owner.into(),
         };
-        db.insert_plan(&plan("plan-a","owner-a","digest-a"),"test").unwrap();
-        db.insert_plan(&plan("plan-b","owner-b","digest-b"),"test").unwrap();
-        for (plan_id,candidate_id,verified,updated) in [("plan-a","candidate-a",true,250_i64),("plan-a","candidate-old",true,50_i64),("plan-b","candidate-b",true,260_i64),("plan-a","candidate-unverified",false,270_i64)] {
+        db.insert_plan(&plan("plan-a", "owner-a", "digest-a"), "test")
+            .unwrap();
+        db.insert_plan(&plan("plan-b", "owner-b", "digest-b"), "test")
+            .unwrap();
+        for (plan_id, candidate_id, verified, updated) in [
+            ("plan-a", "candidate-a", true, 250_i64),
+            ("plan-a", "candidate-old", true, 50_i64),
+            ("plan-b", "candidate-b", true, 260_i64),
+            ("plan-a", "candidate-unverified", false, 270_i64),
+        ] {
             db.upsert_install_item(&InstallItemRecord {
-                plan_id:plan_id.into(), candidate_id:candidate_id.into(), update_id:format!("update-{candidate_id}"), revision:1,
-                instance_id:format!("PCI\\{candidate_id}"), title:candidate_id.into(), stage:"Verified".into(), progress_known:true, progress_percent:100,
-                result_code:"orcSucceeded".into(), hresult:0, reboot_required:false, verified, before_driver_json:"{}".into(),
-                after_driver_json:r#"{"version":"2.0"}"#.into(), before_problem_code:0, after_problem_code:0, backup_path:String::new(),
-                detail:String::new(), updated_unix_ms:updated,
-            }).unwrap();
+                plan_id: plan_id.into(),
+                candidate_id: candidate_id.into(),
+                update_id: format!("update-{candidate_id}"),
+                revision: 1,
+                instance_id: format!("PCI\\{candidate_id}"),
+                title: candidate_id.into(),
+                stage: "Verified".into(),
+                progress_known: true,
+                progress_percent: 100,
+                result_code: "orcSucceeded".into(),
+                hresult: 0,
+                reboot_required: false,
+                verified,
+                before_driver_json: "{}".into(),
+                after_driver_json: r#"{"version":"2.0"}"#.into(),
+                before_problem_code: 0,
+                after_problem_code: 0,
+                backup_path: String::new(),
+                detail: String::new(),
+                updated_unix_ms: updated,
+            })
+            .unwrap();
         }
-        let rows=db.recent_verified_driver_install_items_for_owner("owner-a",100,10).unwrap();
-        assert_eq!(rows.len(),1);
-        assert_eq!(rows[0].candidate_id,"candidate-a");
-        assert!(db.recent_verified_driver_install_items_for_owner("owner-c",0,10).unwrap().is_empty());
-        drop(db);cleanup_database(&path);
+        let rows = db
+            .recent_verified_driver_install_items_for_owner("owner-a", 100, 10)
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].candidate_id, "candidate-a");
+        assert!(
+            db.recent_verified_driver_install_items_for_owner("owner-c", 0, 10)
+                .unwrap()
+                .is_empty()
+        );
+        drop(db);
+        cleanup_database(&path);
     }
 
     #[test]
     fn scheduler_cadence_is_durable_and_principal_scoped() {
-        let (db,path)=temp_db();
-        let record=SchedulerRunRecord{
-            owner_principal_key:"owner-a".into(),workload:"HardwareTelemetry".into(),failure_count:2,
-            next_eligible_unix_ms:12345,last_outcome:"failed".into(),last_completed_unix_ms:Some(9000),updated_unix_ms:10000,
+        let (db, path) = temp_db();
+        let record = SchedulerRunRecord {
+            owner_principal_key: "owner-a".into(),
+            workload: "HardwareTelemetry".into(),
+            failure_count: 2,
+            next_eligible_unix_ms: 12345,
+            last_outcome: "failed".into(),
+            last_completed_unix_ms: Some(9000),
+            updated_unix_ms: 10000,
         };
         db.upsert_scheduler_run(&record).unwrap();
-        assert!(db.scheduler_run("owner-b","HardwareTelemetry").unwrap().is_none());
+        assert!(
+            db.scheduler_run("owner-b", "HardwareTelemetry")
+                .unwrap()
+                .is_none()
+        );
         drop(db);
-        let reopened=Database::open(&path).unwrap();
-        let loaded=reopened.scheduler_run("owner-a","HardwareTelemetry").unwrap().unwrap();
-        assert_eq!(loaded,record);
-        drop(reopened);cleanup_database(&path);
+        let reopened = Database::open(&path).unwrap();
+        let loaded = reopened
+            .scheduler_run("owner-a", "HardwareTelemetry")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded, record);
+        drop(reopened);
+        cleanup_database(&path);
     }
 
     fn cleanup_database(path: &Path) {

@@ -98,7 +98,11 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
 
     // Phase 21: Timeline Intelligence. Read-only over persisted history; construction
     // never mutates the journal and every query is principal-scoped + bounded later.
-    let timeline = Arc::new(crate::timeline::TimelineCoordinator::new(db.clone()));
+    let timeline=Arc::new(crate::timeline::TimelineCoordinator::new(db.clone()));
+
+    // Phase 22: One-Click Care orchestration. Composes existing domain plans only;
+    // single-flight behind MutationWorkload::OneClickCare, journaled resume.
+    let care=Arc::new(crate::care::CareCoordinator::new(db.clone()));
 
     // Recovery is centralized and deliberately observation-only. A failure aborts service startup;
     // no client can enter the operation kernel before every domain has reconciled its journal.
@@ -134,5 +138,6 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
         support,
         performance,
         timeline,
+        care,
     })
 }

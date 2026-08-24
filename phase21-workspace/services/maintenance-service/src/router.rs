@@ -42,6 +42,8 @@ pub struct ServiceContext {
     pub performance: Arc<PerformanceEngine>,
     /// Phase 21: Timeline Intelligence — read-only coordinator over persisted history.
     pub timeline: Arc<crate::timeline::TimelineCoordinator>,
+    /// Phase 22: One-Click Care — orchestration over existing domain plans only.
+    pub care: Arc<crate::care::CareCoordinator>,
 }
 
 impl ServiceContext {
@@ -1179,6 +1181,30 @@ pub fn handle_request(
                     .patterns_for_owner(&principal_key)
                     .map_err(err)?;
                 Ok(Some(response::Payload::RecurrencePatterns(patterns)))
+            }
+            // ---------------- Phase 22: One-Click Care ----------------
+            request::Payload::GetCareStatus(_) => {
+                let status=ctx.care.plan_preview(&principal_key);
+                publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
+                Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
+            }
+            request::Payload::GrantCareSessionConsent(_) => {
+                ctx.care.grant_session_consent(&principal_key);
+                let status=ctx.care.plan_preview(&principal_key);
+                publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
+                Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
+            }
+            request::Payload::StartCareRun(_) => {
+                let run_id=format!("care-{}", chrono::Utc::now().timestamp_millis());
+                let status=ctx.care.start_run(&principal_key,&run_id).map_err(|e|ServiceError::new(6,v1::ErrorCode::Conflict,"care","care.error.startFailed",e.to_string()))?;
+                publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
+                Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
+            }
+            request::Payload::CancelCareRun(_) => {
+                ctx.care.cancel();
+                let status=ctx.care.plan_preview(&principal_key);
+                publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
+                Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
             }
         }
     })();

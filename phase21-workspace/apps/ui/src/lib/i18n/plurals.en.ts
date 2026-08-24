@@ -11,5 +11,6 @@ export const enPlurals = {
   'unit.triageCard': { one: '{count} triage card', other: '{count} triage cards' },
   'unit.warning': { one: '{count} warning', other: '{count} warnings' },
   'unit.occurrence': { one: '{count} occurrence', other: '{count} occurrences' },
+  'unit.careStep': { one: '{count} care step', other: '{count} care steps' },
 } as const;
 export type PluralMessageKey = keyof typeof enPlurals;

@@ -84,6 +84,8 @@ impl OperationKernel {
                 // Phase 20 workload reuses the Update wire tag: the enum is protocol-frozen and
                 // the renderer treats any lease as machine-busy identically.
                 MutationWorkload::Optimization => MutationWorkloadKind::Update,
+                // Phase 22 workload gets its own wire value (additive; see events.proto).
+                MutationWorkload::OneClickCare => MutationWorkloadKind::OneClickCare,
             };
             // Distinct clones: publish borrows these for routing while the event moves the
             // originals out of the snapshot, so reference and moved values never alias.
