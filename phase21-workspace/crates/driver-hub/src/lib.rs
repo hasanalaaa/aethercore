@@ -273,6 +273,15 @@ pub enum DiscoveryFailure {
     Unavailable(String),
 }
 
+impl std::fmt::Display for DiscoveryFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Offline(detail) => write!(f, "discovery offline: {detail}"),
+            Self::Unavailable(detail) => write!(f, "discovery unavailable: {detail}"),
+        }
+    }
+}
+
 pub trait DiscoveryBackend: Send + Sync + 'static {
     fn inventory(&self) -> std::result::Result<Vec<DeviceRecord>, String>;
     fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure>;
@@ -687,6 +696,21 @@ fn match_inventory_with_overrides(
     let mut normalized: Vec<Vec<DriverCandidateV2>> = vec![Vec::new(); devices.len()];
     let mut unmatched = Vec::new();
 
+    // Derive status flags from the raw problem code when a backend did not populate them.
+    // Problem code 28 (CM_PROB_FAILED_INSTALL) is the canonical missing-driver classification.
+    let devices: Vec<DeviceRecord> = devices
+        .into_iter()
+        .map(|mut device| {
+            if device.status.problem_code != 0 && !device.status.has_problem {
+                device.status.has_problem = true;
+            }
+            if aethercore_windows_pnp::is_missing_driver_problem(device.status.problem_code) {
+                device.status.missing_driver = true;
+            }
+            device
+        })
+        .collect();
+
     for offer in &discovery.offers {
         let key = normalize_pnp_id(&offer.hardware_id);
         let (indexes, match_kind) = if key.is_empty() {
@@ -1020,6 +1044,7 @@ mod tests {
         hub.start_scan_with_lease(owner, lease)
     }
     use aethercore_windows_pnp::{DeviceStatus, InstalledDriver};
+    use aethercore_windows_update::{DriverOffer, VersionSource};
 
     fn device(id: &str, class: &str) -> DeviceRecord {
         DeviceRecord {
@@ -1352,7 +1377,7 @@ mod tests {
             let snapshot = hub.snapshot();
             if snapshot.state == ScanState::Ready {
                 assert_eq!(snapshot.authority_coverage, "Offline");
-                assert_eq!(snapshot.devices[0].update_status, "UpdateStatusUnknown");
+                assert_eq!(snapshot.devices[0].update_status, "UpdateStatusUnknownOffline");
                 assert_eq!(snapshot.provider_status, vec!["microsoft.windows-update:Offline"]);
                 assert!(snapshot.warnings.iter().any(|warning| warning.contains("discovery offline")));
                 return;
@@ -1383,7 +1408,7 @@ mod tests {
                 assert_eq!(snapshot.summary.device_count, 1);
                 assert_eq!(snapshot.summary.update_offer_count, 0);
                 assert_eq!(snapshot.authority_coverage, "ProviderUnavailable");
-                assert_eq!(snapshot.devices[0].update_status, "UpdateStatusUnknown");
+                assert_eq!(snapshot.devices[0].update_status, "ProviderUnavailable");
                 assert_eq!(snapshot.summary.status_unknown_count, 1);
                 assert!(snapshot
                     .warnings

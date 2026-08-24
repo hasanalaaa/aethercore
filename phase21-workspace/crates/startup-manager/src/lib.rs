@@ -262,7 +262,7 @@ impl StartupManager {
             let original=item.original_state.clone().ok_or_else(||StartupError::NotManageable(item.display_name.clone()))?;
             let change_id=Uuid::new_v4().to_string();
             let applied=disabled_state(&original,&self.data_root,&change_id)?;
-            actions.push(StartupChangeAction{change_id:change_id.clone(),item_id:item.item_id.clone(),direction:"Disable".into(),kind:item.kind.clone(),display_name:item.display_name.clone(),source_locator:item.source.clone(),original_state_json:serde_json::to_string(&original)?,applied_state_json:serde_json::to_string(&applied)?,service_change:item.service_change});
+            actions.push(StartupChangeAction{change_id:change_id.clone(),item_id:item.item_id.clone(),direction:"Disable".into(),startup_kind:item.kind.clone(),display_name:item.display_name.clone(),source_locator:item.source.clone(),original_state_json:serde_json::to_string(&original)?,applied_state_json:serde_json::to_string(&applied)?,service_change:item.service_change});
             if actions.len()>MAX_ACTIONS_PER_PLAN{return Err(StartupError::TooManyActions)}
         }
         if actions.is_empty(){return Err(StartupError::PassiveDefault)}
@@ -273,7 +273,7 @@ impl StartupManager {
         let source=self.db.get_startup_change_for_owner(change_id,owner_principal_key)?.ok_or_else(||StartupError::UnknownItem(change_id.into()))?;
         if !matches!(source.state.as_str(),"Applied"|"AppliedRecovered") { return Err(StartupError::Drift(format!("change {} is not restorable",change_id))); }
         if source.kind=="Service" && !confirm_service_changes { return Err(StartupError::ServiceConfirmationRequired); }
-        let action=StartupChangeAction{change_id:Uuid::new_v4().to_string(),item_id:source.item_id.clone(),direction:"Restore".into(),kind:source.kind.clone(),display_name:source.display_name.clone(),source_locator:String::new(),original_state_json:source.original_json.clone(),applied_state_json:source.applied_json.clone(),service_change:source.kind=="Service"};
+        let action=StartupChangeAction{change_id:Uuid::new_v4().to_string(),item_id:source.item_id.clone(),direction:"Restore".into(),startup_kind:source.kind.clone(),display_name:source.display_name.clone(),source_locator:String::new(),original_state_json:source.original_json.clone(),applied_state_json:source.applied_json.clone(),service_change:source.kind=="Service"};
         self.engine.create_startup_plan(owner_principal_key,0,&format!("restore:{change_id}"),vec![action]).map_err(Into::into)
     }
 
@@ -315,20 +315,20 @@ impl StartupManager {
         let rec=match plan_id{Some(id)=>{self.engine.get_plan_for_owner(id,owner_principal_key)?;self.db.get_maintenance_execution(id)?},None=>self.db.latest_maintenance_execution_for_owner(DOMAIN,owner_principal_key)?};
         let Some(rec)=rec else{return Ok(None)}; if rec.domain!=DOMAIN{return Ok(None)}
         let plan=self.engine.get_plan_for_owner(&rec.plan_id,owner_principal_key)?;
-        let action_meta=self.engine.startup_actions(&rec.plan_id).unwrap_or_default().into_iter().map(|a|(a.item_id.clone(),(a.display_name,a.kind))).collect::<HashMap<_,_>>();
+        let action_meta=self.engine.startup_actions(&rec.plan_id).unwrap_or_default().into_iter().map(|a|(a.item_id.clone(),(a.display_name,a.startup_kind))).collect::<HashMap<_,_>>();
         let items=self.db.maintenance_items(&rec.plan_id)?.into_iter().map(|i|{let (display_name,kind)=action_meta.get(&i.item_id).cloned().unwrap_or_else(||(i.kind.clone(),i.kind.clone()));StartupExecutionItem{item_id:i.item_id,display_name,kind,stage:i.stage,result_code:i.result_code,detail:i.detail}}).collect();
         let live=self.telemetry.get_for_owner(owner_principal_key,&rec.plan_id).filter(|value|value.emitted_unix_ms>=rec.updated_unix_ms);
         Ok(Some(StartupExecutionStatus{plan_id:rec.plan_id,plan_state:plan.state.as_str().into(),stage:live.as_ref().map(|v|v.stage.clone()).unwrap_or(rec.stage),progress_known:live.as_ref().map(|v|v.progress_known).unwrap_or(rec.progress_known),overall_percent:live.as_ref().map(|v|v.overall_percent).unwrap_or(rec.overall_percent),current_item_id:live.as_ref().map(|v|v.current_item_id.clone()).unwrap_or(rec.current_item_id),detail:live.as_ref().map(|v|v.detail.clone()).unwrap_or(rec.detail),mutation_started:rec.mutation_started,recovery_required:rec.recovery_required,failure_message:rec.failure_message,started_unix_ms:rec.started_unix_ms,updated_unix_ms:live.as_ref().map(|v|v.emitted_unix_ms).unwrap_or(rec.updated_unix_ms),completed_unix_ms:rec.completed_unix_ms.unwrap_or(0),items}))
     }
 
     pub fn history(&self,owner_principal_key:&str,limit:usize)->Result<Vec<StartupHistoryEntry>>{
-        Ok(self.db.startup_changes_for_owner(owner_principal_key,limit)?.into_iter().map(|r|StartupHistoryEntry{change_id:r.change_id,origin_change_id:r.origin_change_id,plan_id:r.plan_id,item_id:r.item_id,kind:r.kind,display_name:r.display_name,direction:r.direction,state:r.state.clone(),detail:r.detail,created_unix_ms:r.created_unix_ms,updated_unix_ms:r.updated_unix_ms,restored_unix_ms:r.restored_unix_ms.unwrap_or(0),restorable:matches!(r.state.as_str(),"Applied"|"AppliedRecovered")&&r.direction=="Disable"}).collect())
+        Ok(self.db.startup_changes_for_owner(owner_principal_key,limit)?.into_iter().map(|r|{let direction=r.direction.clone();let restorable=matches!(r.state.as_str(),"Applied"|"AppliedRecovered")&&direction=="Disable";StartupHistoryEntry{change_id:r.change_id,origin_change_id:r.origin_change_id,plan_id:r.plan_id,item_id:r.item_id,kind:r.kind,display_name:r.display_name,direction,state:r.state.clone(),detail:r.detail,created_unix_ms:r.created_unix_ms,updated_unix_ms:r.updated_unix_ms,restored_unix_ms:r.restored_unix_ms.unwrap_or(0),restorable}}).collect())
     }
 
     pub fn recover_incomplete(&self)->Result<()> {
         // Never replay startup mutations after restart. Reconcile prepared records by observation only.
         for mut rec in self.db.startup_changes_in_states(&["Prepared"])? {
-            let action=StartupChangeAction{change_id:rec.change_id.clone(),item_id:rec.item_id.clone(),direction:rec.direction.clone(),kind:rec.kind.clone(),display_name:rec.display_name.clone(),source_locator:String::new(),original_state_json:rec.original_json.clone(),applied_state_json:rec.applied_json.clone(),service_change:rec.kind=="Service"};
+            let action=StartupChangeAction{change_id:rec.change_id.clone(),item_id:rec.item_id.clone(),direction:rec.direction.clone(),startup_kind:rec.kind.clone(),display_name:rec.display_name.clone(),source_locator:String::new(),original_state_json:rec.original_json.clone(),applied_state_json:rec.applied_json.clone(),service_change:rec.kind=="Service"};
             match self.platform.current_state(&action) {
                 Ok(current) if current==expected_before(&action) => {rec.state="NoChange".into();rec.detail="Restart recovery observed original state; no mutation replayed.".into();}
                 Ok(current) if current==target_after(&action) => {rec.state="AppliedRecovered".into();rec.detail="Restart recovery observed the intended changed state; no mutation replayed.".into();}
@@ -372,7 +372,7 @@ fn execute_plan_with_telemetry(engine:&OperationEngine,db:&Database,platform:&dy
     for action in &actions {
         let now=now_ms();
         let origin=if action.direction=="Restore" { origin_from_restore_scan(engine,plan_id).unwrap_or_else(||action.change_id.clone()) } else { action.change_id.clone() };
-        db.upsert_startup_change(&StartupChangeRecord{change_id:action.change_id.clone(),origin_change_id:origin,plan_id:plan_id.into(),item_id:action.item_id.clone(),kind:action.kind.clone(),display_name:action.display_name.clone(),direction:action.direction.clone(),original_json:action.original_state_json.clone(),applied_json:action.applied_state_json.clone(),state:"Prepared".into(),detail:"Exact original and target states durably recorded before mutation.".into(),created_unix_ms:now,updated_unix_ms:now,restored_unix_ms:None})?;
+        db.upsert_startup_change(&StartupChangeRecord{change_id:action.change_id.clone(),origin_change_id:origin,plan_id:plan_id.into(),item_id:action.item_id.clone(),kind:action.startup_kind.clone(),display_name:action.display_name.clone(),direction:action.direction.clone(),original_json:action.original_state_json.clone(),applied_json:action.applied_state_json.clone(),state:"Prepared".into(),detail:"Exact original and target states durably recorded before mutation.".into(),created_unix_ms:now,updated_unix_ms:now,restored_unix_ms:None})?;
     }
     engine.transition(plan_id,PlanState::Preflight,PlanState::Protected,"startup rollback evidence persisted")?;
     engine.transition(plan_id,PlanState::Protected,PlanState::Executing,"startup mutation barrier")?;
@@ -381,7 +381,7 @@ fn execute_plan_with_telemetry(engine:&OperationEngine,db:&Database,platform:&dy
     for (index,action) in actions.iter().enumerate() {
         let pct=((index*100)/actions.len().max(1)) as u32;
         publish_progress(telemetry,owner_principal_key,plan_id,"Executing",pct,&action.item_id,&format!("{}: {}",action.direction,action.display_name));
-        db.upsert_maintenance_item(&MaintenanceItemRecord{plan_id:plan_id.into(),item_id:action.item_id.clone(),kind:action.kind.clone(),stage:"Executing".into(),result_code:String::new(),bytes_affected:0,detail:format!("{} {}",action.direction,action.kind),updated_unix_ms:now_ms()})?;
+        db.upsert_maintenance_item(&MaintenanceItemRecord{plan_id:plan_id.into(),item_id:action.item_id.clone(),kind:action.startup_kind.clone(),stage:"Executing".into(),result_code:String::new(),bytes_affected:0,detail:format!("{} {}",action.direction,action.startup_kind),updated_unix_ms:now_ms()})?;
         update_exec(db,plan_id,"Executing",pct,&format!("{}: {}",action.direction,action.display_name),true,false,"")?;
         if let Some(mut execution)=db.get_maintenance_execution(plan_id)?{execution.current_item_id=action.item_id.clone();execution.updated_unix_ms=now_ms();db.upsert_maintenance_execution(&execution)?;}
         platform.apply(action)?;
@@ -394,7 +394,7 @@ fn execute_plan_with_telemetry(engine:&OperationEngine,db:&Database,platform:&dy
                 source.state="Restored".into();source.detail=format!("Restored by startup change {}.",rec.change_id);source.updated_unix_ms=rec.updated_unix_ms;source.restored_unix_ms=Some(rec.updated_unix_ms);db.upsert_startup_change(&source)?;
             }
         }
-        db.upsert_maintenance_item(&MaintenanceItemRecord{plan_id:plan_id.into(),item_id:action.item_id.clone(),kind:action.kind.clone(),stage:"Completed".into(),result_code:"Verified".into(),bytes_affected:0,detail:"Change verified and reversible evidence retained.".into(),updated_unix_ms:now_ms()})?;
+        db.upsert_maintenance_item(&MaintenanceItemRecord{plan_id:plan_id.into(),item_id:action.item_id.clone(),kind:action.startup_kind.clone(),stage:"Completed".into(),result_code:"Verified".into(),bytes_affected:0,detail:"Change verified and reversible evidence retained.".into(),updated_unix_ms:now_ms()})?;
     }
     engine.transition(plan_id,PlanState::Executing,PlanState::Verifying,"startup post-change verification")?;
     publish_progress(telemetry,owner_principal_key,plan_id,"Verifying",95,"","Verifying exact post-change startup state");
@@ -414,7 +414,7 @@ fn fail_execution(engine:&OperationEngine,db:&Database,plan_id:&str,message:&str
 
 fn update_exec(db:&Database,plan_id:&str,stage:&str,pct:u32,detail:&str,mutation:bool,recovery:bool,failure:&str)->Result<()> {
     let old=db.get_maintenance_execution(plan_id)?.unwrap_or_default();let now=now_ms();
-    db.upsert_maintenance_execution(&MaintenanceExecutionRecord{plan_id:plan_id.into(),domain:DOMAIN.into(),stage:stage.into(),progress_known:true,overall_percent:pct,current_item_id:old.current_item_id,detail:detail.into(),mutation_started:mutation||old.mutation_started,recovery_required:recovery||old.recovery_required,failure_message:failure.into(),started_unix_ms:if old.started_unix_ms==0{now}else{old.started_unix_ms},updated_unix_ms:now,completed_unix_ms:old.completed_unix_ms})?;Ok(())
+    db.upsert_maintenance_execution(&MaintenanceExecutionRecord{plan_id:plan_id.into(),domain:DOMAIN.into(),stage:stage.into(),progress_known:true,overall_percent:pct,current_item_id:old.current_item_id,detail:detail.into(),mutation_started:mutation||old.mutation_started,recovery_required:recovery||old.recovery_required,failure_message:failure.into(),started_unix_ms:if old.started_unix_ms==0{now}else{old.started_unix_ms},updated_unix_ms:now,completed_unix_ms:old.completed_unix_ms,..old})?;Ok(())
 }
 
 fn disabled_state(original:&NativeState,data_root:&Path,change_id:&str)->Result<NativeState>{
@@ -461,7 +461,7 @@ mod tests {
         let plan=m.create_plan(OWNER,"s",1,&[StartupDecision{item_id:"agent".into(),decision:RecommendationDecision::Disable}],false).unwrap();
         let action=m.engine.startup_actions(&plan.id).unwrap().into_iter().next().unwrap();
         let now=now_ms();
-        m.db.upsert_startup_change(&StartupChangeRecord{change_id:action.change_id.clone(),origin_change_id:action.change_id.clone(),plan_id:plan.id.clone(),item_id:action.item_id.clone(),kind:action.kind.clone(),display_name:action.display_name.clone(),direction:"Disable".into(),original_json:action.original_state_json.clone(),applied_json:action.applied_state_json.clone(),state:"Prepared".into(),detail:String::new(),created_unix_ms:now,updated_unix_ms:now,restored_unix_ms:None}).unwrap();
+        m.db.upsert_startup_change(&StartupChangeRecord{change_id:action.change_id.clone(),origin_change_id:action.change_id.clone(),plan_id:plan.id.clone(),item_id:action.item_id.clone(),kind:action.startup_kind.clone(),display_name:action.display_name.clone(),direction:"Disable".into(),original_json:action.original_state_json.clone(),applied_json:action.applied_state_json.clone(),state:"Prepared".into(),detail:String::new(),created_unix_ms:now,updated_unix_ms:now,restored_unix_ms:None}).unwrap();
         m.recover_incomplete().unwrap();
         let rec=m.db.get_startup_change(&action.change_id).unwrap().unwrap();
         assert_eq!(rec.state,"NoChange");
@@ -478,7 +478,7 @@ mod tests {
         let action=m.engine.startup_actions(&plan.id).unwrap().into_iter().next().unwrap();
         p.states.lock().unwrap().insert(action.item_id.clone(),action.applied_state_json.clone());
         let now=now_ms();
-        m.db.upsert_startup_change(&StartupChangeRecord{change_id:action.change_id.clone(),origin_change_id:action.change_id.clone(),plan_id:plan.id.clone(),item_id:action.item_id.clone(),kind:action.kind.clone(),display_name:action.display_name.clone(),direction:"Disable".into(),original_json:action.original_state_json.clone(),applied_json:action.applied_state_json.clone(),state:"Prepared".into(),detail:String::new(),created_unix_ms:now,updated_unix_ms:now,restored_unix_ms:None}).unwrap();
+        m.db.upsert_startup_change(&StartupChangeRecord{change_id:action.change_id.clone(),origin_change_id:action.change_id.clone(),plan_id:plan.id.clone(),item_id:action.item_id.clone(),kind:action.startup_kind.clone(),display_name:action.display_name.clone(),direction:"Disable".into(),original_json:action.original_state_json.clone(),applied_json:action.applied_state_json.clone(),state:"Prepared".into(),detail:String::new(),created_unix_ms:now,updated_unix_ms:now,restored_unix_ms:None}).unwrap();
         m.recover_incomplete().unwrap();
         let rec=m.db.get_startup_change(&action.change_id).unwrap().unwrap();
         assert_eq!(rec.state,"AppliedRecovered");

@@ -471,6 +471,11 @@ impl RepairCoordinator {
             plan_id, owner_principal_key, "one-shot consent consumed; system repair entered preflight",
         ) {
             if let Ok(mut running) = self.running.lock() { *running = None; }
+            // A missing/expired one-shot consent must surface as the typed authorization error
+            // instead of a generic engine wrapper, so callers can react to it specifically.
+            if matches!(error, aethercore_operation_engine::EngineError::AuthorizationRequired) {
+                return Err(RepairError::AuthorizationRequired);
+            }
             return Err(error.into());
         }
 
@@ -564,7 +569,7 @@ impl RepairCoordinator {
 
         let live = self
             .telemetry
-            .get(&record.plan_id)
+            .get_for_owner(owner_principal_key, &record.plan_id)
             .filter(|value| value.owner_principal_key == owner_principal_key && value.emitted_unix_ms >= record.updated_unix_ms);
         Ok(Some(RepairExecutionStatus {
             plan_id: record.plan_id,

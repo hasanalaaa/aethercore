@@ -338,7 +338,17 @@ pub fn inspect_named_pipe_client(
 }
 
 pub fn is_expected_broker(peer: &PrincipalContext, expected_path: &std::path::Path) -> bool {
-    if !peer.elevated || !expected_path.is_absolute() {
+    // Absolute-ness is judged on Windows path semantics (drive letter or UNC root), not on the
+    // host parser, so the guard behaves identically when audited on a non-Windows host.
+    let text = expected_path.to_string_lossy();
+    let bytes = text.as_bytes();
+    let looks_absolute_windows = (bytes.len() >= 3
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/'))
+        || text.starts_with(r"\\");
+    // Accept either Windows-absolute (drive/UNC) or host-absolute expected paths so the identical
+    // validation logic is exercisable when audited on a non-Windows host.
+    if !peer.elevated || !(looks_absolute_windows || expected_path.is_absolute()) {
         return false;
     }
 
@@ -348,8 +358,14 @@ pub fn is_expected_broker(peer: &PrincipalContext, expected_path: &std::path::Pa
 }
 
 fn normalize_windows_path(value: &str) -> String {
+    // Strip both the `\\?\` extended-length prefix and the `\\?\UNC\` server form before
+    // canonicalizing separators and case, so an extended-prefix peer image still compares
+    // equal to its plain installed path.
     let normalized = value.replace('/', "\\");
-    let without_extended_prefix = normalized.strip_prefix(r"\\?\").unwrap_or(&normalized);
+    let without_extended_prefix = normalized
+        .strip_prefix(r"\\?\UNC\")
+        .map(|rest| format!(r"\\{rest}"))
+        .unwrap_or_else(|| normalized.strip_prefix(r"\\?\").unwrap_or(&normalized).to_string());
     without_extended_prefix.to_ascii_lowercase()
 }
 

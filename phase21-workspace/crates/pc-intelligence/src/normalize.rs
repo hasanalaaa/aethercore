@@ -1,4 +1,3 @@
-use aethercore_collector_runtime::FaultKind;
 use aethercore_cleaner::{CleanupScanState, CleanupSnapshot};
 use aethercore_diagnostic_engine::{DiagnosticsSnapshot, ScanState as DiagnosticScanState};
 use aethercore_driver_hub::{DriverHubSnapshot, ScanState as DriverScanState};
@@ -140,12 +139,14 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
         ));
     }
     for fault in &snapshot.provider_faults {
-        let state = match fault.kind {
-            FaultKind::Timeout => CollectorState::TimedOut,
-            FaultKind::Cancelled => CollectorState::Cancelled,
-            FaultKind::Unavailable => CollectorState::Unavailable,
-            FaultKind::PermissionDenied => CollectorState::PermissionDenied,
-            FaultKind::MalformedResponse | FaultKind::ProviderFailure | FaultKind::Io | FaultKind::Internal => CollectorState::Failed,
+        // ProviderFaultRecord.kind is the Debug string of a collector FaultKind; match on that
+        // textual contract so normalization never misreads an unknown kind as success.
+        let state = match fault.kind.as_str() {
+            "Timeout" => CollectorState::TimedOut,
+            "Cancelled" => CollectorState::Cancelled,
+            "Unavailable" => CollectorState::Unavailable,
+            "PermissionDenied" => CollectorState::PermissionDenied,
+            _ => CollectorState::Failed,
         };
         out.push(limitation(&fault.provider, state, &fault.detail, snapshot.completed_unix_ms));
     }

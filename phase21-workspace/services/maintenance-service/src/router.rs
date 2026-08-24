@@ -33,6 +33,8 @@ pub struct ServiceContext {
     pub db: Arc<Database>,
     pub updates: Arc<UpdateCoordinator>,
     pub support: Arc<SupportBundleEngine>,
+    /// Phase 20: performance telemetry ring, bottleneck analysis, and optimization governance.
+    pub performance: Arc<PerformanceEngine>,
 }
 
 impl ServiceContext {
@@ -126,6 +128,45 @@ pub fn handle_request(ctx:&ServiceContext, peer:&aethercore_security::PrincipalC
             request::Payload::ReadSupportBundleChunk(v)=>{let chunk=ctx.support.read_chunk(&principal_key,&v.bundle_id,v.offset,v.max_bytes).map_err(err)?;Ok(Some(response::Payload::SupportBundleChunk(v1::SupportBundleChunkResponse{bundle_id:v.bundle_id,offset:chunk.offset,data:chunk.bytes,eof:chunk.eof,total_size:chunk.total_size})))}
             request::Payload::DiscardSupportBundle(v)=>{ctx.support.discard(&principal_key,&v.bundle_id).map_err(err)?;publish(ctx,&principal_key,EventKind::SupportBundle,"",Some(event_envelope::Payload::SupportBundle(v1::SupportBundleEvent{state:v1::SupportBundleEventState::Discarded as i32,preview_id:String::new(),bundle_id:v.bundle_id,size_bytes:0,sha256:String::new(),changed_unix_ms:chrono::Utc::now().timestamp_millis()})));Ok(None)}
             request::Payload::MarkSupportBundleExported(v)=>{let ready=ctx.support.ready_for_owner(&principal_key,&v.bundle_id).map_err(err)?;publish(ctx,&principal_key,EventKind::SupportBundle,"",Some(event_envelope::Payload::SupportBundle(v1::SupportBundleEvent{state:v1::SupportBundleEventState::Exported as i32,preview_id:String::new(),bundle_id:v.bundle_id,size_bytes:ready.size_bytes,sha256:ready.sha256,changed_unix_ms:chrono::Utc::now().timestamp_millis()})));Ok(None)}
+            // ---------------- Phase 20: performance intelligence ----------------
+            request::Payload::StartPerfSampling(v)=>{
+                request_context.checkpoint().map_err(err)?;
+                ctx.performance.start_sampling(&principal_key,v.interval_ms).map_err(|detail|ServiceError::internal("performance","perf.error.startSampling",detail))?;
+                Ok(None)
+            }
+            request::Payload::StopPerfSampling(_)=>{
+                ctx.performance.stop_sampling();
+                Ok(None)
+            }
+            request::Payload::GetPerformanceSnapshot(_)=>{
+                let interval=1000u32;
+                ctx.performance.ensure_sample(&principal_key,interval);
+                let snapshot=ctx.performance.latest(&principal_key).ok_or_else(||ServiceError::new(5,v1::ErrorCode::NotFound,"performance","perf.error.noSamples","no performance samples available",true))?;
+                let proto=crate::performance::perf_snapshot_proto(&snapshot);
+                publish(ctx,&principal_key,EventKind::PerformanceSnapshot,"",Some(event_envelope::Payload::PerformanceSnapshot(proto.clone())));
+                Ok(Some(response::Payload::PerformanceSnapshot(v1::PerformanceSnapshotResponse{snapshot:Some(proto)})))
+            }
+            request::Payload::GetBottleneckReport(_)=>{
+                let (report,_aggregate)=ctx.performance.analyze(&principal_key).ok_or_else(||ServiceError::new(5,v1::ErrorCode::NotFound,"performance","perf.error.insufficientEvidence","insufficient samples for bottleneck analysis",true))?;
+                let proto=crate::performance::bottleneck_report_proto(&report);
+                publish(ctx,&principal_key,EventKind::BottleneckReport,"",Some(event_envelope::Payload::BottleneckReport(proto.clone())));
+                Ok(Some(response::Payload::BottleneckReport(v1::BottleneckReportResponse{report:Some(proto)})))
+            }
+            request::Payload::CreateOptimizationPlan(v)=>{
+                request_context.checkpoint().map_err(err)?;
+                let (report,_aggregate)=ctx.performance.analyze(&principal_key).ok_or_else(||ServiceError::new(5,v1::ErrorCode::NotFound,"performance","perf.error.insufficientEvidence","insufficient samples for planning",true))?;
+                let plan=ctx.performance.create_plan(&report,&v.selected_finding_ids,&Default::default()).map_err(|e|ServiceError::new(6,v1::ErrorCode::Conflict,"performance","perf.error.planning",e.to_string()))?;
+                let proto=crate::performance::plan_proto(&plan);
+                publish(ctx,&principal_key,EventKind::PlanChanged,&proto.plan_id,Some(event_envelope::Payload::OptimizationStatus(v1::OptimizationStatus{plan_id:proto.plan_id.clone(),plan_state:"ReadyForReview".into(),stage:"PlanSealed".into(),progress_known:false,overall_percent:0,current_candidate_id:String::new(),detail:format!("digest={}",proto.digest_sha256),mutation_started:false,recovery_required:false,failure_message:String::new(),started_unix_ms:0,updated_unix_ms:chrono::Utc::now().timestamp_millis(),completed_unix_ms:0,items:Vec::new()})));
+                Ok(Some(response::Payload::OptimizationPlan(v1::OptimizationPlanSnapshotResponse{plan:Some(proto)})))
+            }
+            request::Payload::StartOptimization(v)=>{
+                request_context.checkpoint().map_err(err)?;
+                Err(ServiceError::forbidden("performance","perf.error.executionRequiresConsent","optimization execution is driven through the consent broker after plan review"))
+            }
+            request::Payload::GetOptimizationStatus(_)=>{
+                Ok(Some(response::Payload::OptimizationStatus(v1::OptimizationStatusResponse{status:None})))
+            }
         }
     })();
     match result {

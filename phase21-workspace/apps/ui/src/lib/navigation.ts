@@ -1,8 +1,8 @@
 import type { MessageKey } from './i18n';
 
 /** Stable semantic route identifiers. Display labels live exclusively in the message catalogs. */
-export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'hardware' | 'crash' | 'activity';
-export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'check' | 'warning' | 'service';
+export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity';
+export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'check' | 'warning' | 'service';
 
 export type NavigationItem = {
   id: PageId;
@@ -19,7 +19,8 @@ export const NAVIGATION: readonly NavigationItem[] = [
   { id: 'repair', icon: 'repair', labelKey: 'nav.repair', descriptionKey: 'nav.repairDescription', shortcut: 'Ctrl+Shift+4' },
   { id: 'cleanup', icon: 'cleanup', labelKey: 'nav.cleanup', descriptionKey: 'nav.cleanupDescription', shortcut: 'Ctrl+Shift+5' },
   { id: 'startup', icon: 'startup', labelKey: 'nav.startup', descriptionKey: 'nav.startupDescription', shortcut: 'Ctrl+Shift+6' },
-  { id: 'hardware', icon: 'hardware', labelKey: 'nav.hardware', descriptionKey: 'nav.hardwareDescription', shortcut: 'Ctrl+Shift+7' },
-  { id: 'crash', icon: 'crash', labelKey: 'nav.crash', descriptionKey: 'nav.crashDescription', shortcut: 'Ctrl+Shift+8' },
-  { id: 'activity', icon: 'activity', labelKey: 'nav.activity', descriptionKey: 'nav.activityDescription', shortcut: 'Ctrl+Shift+9' },
+  { id: 'performance', icon: 'performance', labelKey: 'nav.performance', descriptionKey: 'nav.performanceDescription', shortcut: 'Ctrl+Shift+7' },
+  { id: 'hardware', icon: 'hardware', labelKey: 'nav.hardware', descriptionKey: 'nav.hardwareDescription', shortcut: 'Ctrl+Shift+8' },
+  { id: 'crash', icon: 'crash', labelKey: 'nav.crash', descriptionKey: 'nav.crashDescription', shortcut: 'Ctrl+Shift+9' },
+  { id: 'activity', icon: 'activity', labelKey: 'nav.activity', descriptionKey: 'nav.activityDescription', shortcut: 'Ctrl+Shift+0' },
 ] as const;

@@ -19,6 +19,9 @@ aethercore-driver-install = { path = "../../crates/driver-install" }
 aethercore-ipc = { path = "../../crates/ipc" }
 aethercore-operation-engine = { path = "../../crates/operation-engine" }
 aethercore-operation-kernel = { path = "../../crates/operation-kernel" }
+aethercore-performance-telemetry = { path = "../../crates/performance-telemetry" }
+aethercore-performance-bottleneck = { path = "../../crates/performance-bottleneck" }
+aethercore-performance-optimization = { path = "../../crates/performance-optimization" }
 aethercore-pc-intelligence = { path = "../../crates/pc-intelligence" }
 aethercore-persistence = { path = "../../crates/persistence" }
 aethercore-security = { path = "../../crates/security" }

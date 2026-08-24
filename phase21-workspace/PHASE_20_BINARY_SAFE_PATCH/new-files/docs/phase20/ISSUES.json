@@ -1,0 +1,31 @@
+{
+  "schema": "aethercore.phase20.issues.v1",
+  "generatedUnixMs": 0,
+  "items": [
+    {
+      "id": "P20-ISS-001",
+      "severity": "low",
+      "area": "test-harness",
+      "title": "SQLite DatabaseBusy under full-workspace parallel test runs",
+      "detail": "`cargo test --workspace` at default job parallelism can fail crates/driver-install/tests/coordinator.rs::restore_end_failure_after_mutation_requires_recovery_and_never_completes with SQLITE_BUSY when several test binaries run simultaneously on a loaded machine. The test passes in isolation and the full suite is clean with `--jobs 2`. The product service opens its journal database from a single process; this is test-scheduling contention only.",
+      "workaround": "cargo test --workspace --jobs 2",
+      "status": "open"
+    },
+    {
+      "id": "P20-ISS-002",
+      "severity": "low",
+      "area": "renderer",
+      "title": "17 pre-existing svelte-check warnings retained unchanged",
+      "detail": "Warnings (unused CSS selectors, a11y hints) present in the Phase 19 tree are preserved byte-for-byte rather than churned, per byte-minimal diff discipline.",
+      "status": "wontfix-in-p20"
+    },
+    {
+      "id": "P20-ISS-003",
+      "severity": "info",
+      "area": "service",
+      "title": "StartOptimization intentionally returns Forbidden pending consent broker",
+      "detail": "Plan creation and status retrieval are fully wired; direct execution requires single-use consent tokens issued by the desktop review flow. The router refuses execution without that handshake instead of silently applying changes — the safe default.",
+      "status": "by-design"
+    }
+  ]
+}

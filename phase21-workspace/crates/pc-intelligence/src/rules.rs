@@ -369,7 +369,7 @@ fn correlate_hardware_crash(facts: &[SystemFact], now_ms: i64, findings: &mut Ve
         .len();
     let distinct_crashes = causal_tight_pairs
         .iter()
-        .map(|(_, crash, _, _, _, _, _)| crash.id.as_str())
+        .map(|(_, crash, _, _, _, _)| crash.id.as_str())
         .collect::<std::collections::BTreeSet<_>>()
         .len();
 

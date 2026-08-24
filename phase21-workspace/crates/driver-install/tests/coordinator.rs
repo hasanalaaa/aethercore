@@ -60,7 +60,7 @@ impl DiscoveryBackend for FakeDiscovery {
         }])
     }
 
-    fn updates(&self) -> Result<DiscoveryResult, String> {
+    fn updates(&self) -> Result<DiscoveryResult, aethercore_driver_hub::DiscoveryFailure> {
         Ok(DiscoveryResult {
             offers: vec![DriverOffer {
                 update_id: "11111111-2222-3333-4444-555555555555".into(),

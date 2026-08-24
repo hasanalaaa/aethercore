@@ -142,7 +142,10 @@ pub struct StartupChangeAction {
     pub change_id: String,
     pub item_id: String,
     pub direction: String,
-    pub kind: String,
+    /// Registry/task/service classification. Serialized as `startupKind` because `kind` is the
+    /// PlanAction enum tag; `alias` keeps historical documents readable.
+    #[serde(alias = "kind")]
+    pub startup_kind: String,
     pub display_name: String,
     pub source_locator: String,
     pub original_state_json: String,
@@ -265,6 +268,28 @@ impl OperationEngine {
         require_owner_key(owner_principal_key)?;
         let record = self.db.get_plan_for_owner(id, owner_principal_key)?.ok_or(EngineError::NotFound)?;
         self.view_from(record)
+    }
+
+    /// Plans still in non-terminal states, oldest activity first. Recovery workers use this at
+    /// service startup to classify interrupted operations; it never replays anything by itself.
+    pub fn recoverable_plans(&self) -> Result<Vec<PlanView>> {
+        let records = self.db.plans_in_states(&[
+            "Preflight",
+            "Protected",
+            "Executing",
+            "Verifying",
+            "RebootPending",
+            "Resuming",
+        ])?;
+        let mut views = Vec::with_capacity(records.len());
+        for record in records {
+            // A plan whose hashed material no longer validates is skipped rather than surfaced:
+            // recovery must never act on a record that fails integrity verification.
+            if let Ok(view) = self.view_from(record) {
+                views.push(view);
+            }
+        }
+        Ok(views)
     }
 
     pub fn driver_install_actions(&self, id: &str) -> Result<Vec<DriverInstallAction>> {
@@ -583,7 +608,7 @@ mod tests {
         let cleanup_action=CleanupDeleteAction{candidate_id:"cleanup-1".into(),scan_id:"scan-clean".into(),inventory_epoch:9,provider:"Temp".into(),title:"Temp files".into(),special_kind:"Files".into(),files:vec![CleanupFileEvidence{path:r"C:\\Temp\\a.tmp".into(),root:r"C:\\Temp".into(),root_final_path:r"C:\\Temp".into(),size_bytes:10,modified_unix_ms:1,volume_serial_number:1,file_id_128:"00112233445566778899aabbccddeeff".into()}],expected_bytes:10};
         let cleanup_plan=e.create_cleanup_plan(OWNER_A,9,"scan-clean",vec![cleanup_action]).unwrap();
         assert_eq!(e.cleanup_actions(&cleanup_plan.id).unwrap()[0].candidate_id,"cleanup-1");
-        let startup=StartupChangeAction{change_id:"chg-1".into(),item_id:"item-1".into(),direction:"Disable".into(),kind:"RegistryRun".into(),display_name:"Agent".into(),source_locator:"HKLM64|...|Agent".into(),original_state_json:r#"{"exists":true,"data":"AA=="}"#.into(),applied_state_json:r#"{"exists":false}"#.into(),service_change:false};
+        let startup=StartupChangeAction{change_id:"chg-1".into(),item_id:"item-1".into(),direction:"Disable".into(),startup_kind:"RegistryRun".into(),display_name:"Agent".into(),source_locator:"HKLM64|...|Agent".into(),original_state_json:r#"{"exists":true,"data":"AA=="}"#.into(),applied_state_json:r#"{"exists":false}"#.into(),service_change:false};
         let startup_plan=e.create_startup_plan(OWNER_A,11,"startup-scan",vec![startup.clone()]).unwrap();
         assert_eq!(e.startup_actions(&startup_plan.id).unwrap(),vec![startup]);
         drop(e);cleanup(&p);

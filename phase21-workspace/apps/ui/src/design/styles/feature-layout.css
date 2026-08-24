@@ -2966,3 +2966,84 @@ header .sub {
 .repair-dialog-plan>div { display:grid; grid-template-columns:auto 1fr auto; gap:.6rem; align-items:center; padding:.65rem .75rem; border-radius:var(--ac-radius-sm); background:var(--ac-fill-secondary); }
 .repair-dialog-plan small { opacity:.72; text-align:end; }
 [dir="rtl"] .repair-dialog-plan small { text-align:start; }
+
+/* ---------------------------------------------------------------------------
+   Phase 20 — Performance page
+   Materials follow the shared translucent-surface system; sparklines are technical,
+   always-LTR charts. All motion goes through the spring primitives, never CSS keyframes.
+--------------------------------------------------------------------------- */
+.perf-summary .metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.metric-card strong {
+  font-size: 1.7rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.sparkline {
+  width: 100%;
+  height: 28px;
+  direction: ltr;
+  overflow: visible;
+}
+.sparkline polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+.throttle-warning {
+  border-inline-start: 3px solid var(--warning, #e0a030);
+}
+.bottleneck-panel .finding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.finding-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  transition: transform 100ms ease-out;
+}
+.finding-card.root-cause {
+  border-inline-start: 3px solid var(--accent);
+}
+.finding-card header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.finding-card em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.finding-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.evidence-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted-foreground);
+}
+.analyze-button {
+  margin-inline-start: 8px;
+}

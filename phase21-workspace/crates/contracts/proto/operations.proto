@@ -10,6 +10,7 @@ import "diagnostics.proto";
 import "intelligence.proto";
 import "update.proto";
 import "support_bundle.proto";
+import "performance.proto";
 
 // Request/Response remain the stable v7 RPC payloads. Session framing lives in events.proto.
 
@@ -75,6 +76,13 @@ message Request {
     GetDeepScanHistoryRequest get_deep_scan_history = 68;
     SealRemediationPlanRequest seal_remediation_plan = 69;
     SetDriverCandidatePolicyRequest set_driver_candidate_policy = 70;
+    StartPerfSamplingRequest start_perf_sampling = 71;
+    StopPerfSamplingRequest stop_perf_sampling = 72;
+    GetPerformanceSnapshotRequest get_performance_snapshot = 73;
+    GetBottleneckReportRequest get_bottleneck_report = 74;
+    CreateOptimizationPlanRequest create_optimization_plan = 75;
+    StartOptimizationRequest start_optimization = 76;
+    GetOptimizationStatusRequest get_optimization_status = 77;
   }
 }
 message Response {
@@ -114,6 +122,10 @@ message Response {
     DeepScanSnapshotResponse deep_scan_snapshot = 38;
     DeepScanHistoryResponse deep_scan_history = 39;
     PcRemediationPlanResponse pc_remediation_plan = 40;
+    PerformanceSnapshotResponse performance_snapshot = 41;
+    BottleneckReportResponse bottleneck_report = 42;
+    OptimizationStatusResponse optimization_status = 43;
+    OptimizationPlanSnapshotResponse optimization_plan = 44;
   }
 }
 message PingRequest {}

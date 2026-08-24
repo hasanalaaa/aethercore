@@ -81,19 +81,27 @@ impl OperationKernel {
                 MutationWorkload::Cleanup => MutationWorkloadKind::Cleanup,
                 MutationWorkload::Startup => MutationWorkloadKind::Startup,
                 MutationWorkload::Update => MutationWorkloadKind::Update,
+                // Phase 20 workload reuses the Update wire tag: the enum is protocol-frozen and
+                // the renderer treats any lease as machine-busy identically.
+                MutationWorkload::Optimization => MutationWorkloadKind::Update,
+            };
+            // Distinct clones: publish borrows these for routing while the event moves the
+            // originals out of the snapshot, so reference and moved values never alias.
+            let owner_key = snapshot.owner_principal_key.clone();
+            let plan_ref = snapshot.plan_id.clone();
+            let mutation_event = v1::MutationLeaseEvent {
+                lease_id: snapshot.lease_id,
+                workload: workload as i32,
+                plan_id: snapshot.plan_id,
+                state: state as i32,
+                acquired_unix_ms: snapshot.acquired_unix_ms,
+                changed_unix_ms: Utc::now().timestamp_millis(),
             };
             mutation_events.publish(
-                &snapshot.owner_principal_key,
+                &owner_key,
                 EventKind::MutationLease,
-                &snapshot.plan_id,
-                Some(event_envelope::Payload::MutationLease(v1::MutationLeaseEvent {
-                    lease_id: snapshot.lease_id,
-                    workload: workload as i32,
-                    plan_id: snapshot.plan_id,
-                    state: state as i32,
-                    acquired_unix_ms: snapshot.acquired_unix_ms,
-                    changed_unix_ms: Utc::now().timestamp_millis(),
-                })),
+                &plan_ref,
+                Some(event_envelope::Payload::MutationLease(mutation_event)),
             );
         }));
 
@@ -102,22 +110,24 @@ impl OperationKernel {
             if value.owner_principal_key.is_empty() {
                 return;
             }
+            // Distinct clones keep the routing borrow separate from the moved payload fields.
+            let owner_key = value.owner_principal_key.clone();
+            let plan_ref = value.plan_id.clone();
+            let progress_event = v1::ProgressTelemetryEvent {
+                plan_id: value.plan_id,
+                stage: value.stage,
+                progress_known: value.progress_known,
+                overall_percent: value.overall_percent,
+                current_item_id: value.current_item_id,
+                detail: value.detail,
+                bytes_completed: value.bytes_completed,
+                bytes_total: value.bytes_total,
+            };
             telemetry_events.publish(
-                &value.owner_principal_key,
+                &owner_key,
                 EventKind::ProgressTelemetry,
-                &value.plan_id,
-                Some(event_envelope::Payload::ProgressTelemetry(
-                    v1::ProgressTelemetryEvent {
-                        plan_id: value.plan_id,
-                        stage: value.stage,
-                        progress_known: value.progress_known,
-                        overall_percent: value.overall_percent,
-                        current_item_id: value.current_item_id,
-                        detail: value.detail,
-                        bytes_completed: value.bytes_completed,
-                        bytes_total: value.bytes_total,
-                    },
-                )),
+                &plan_ref,
+                Some(event_envelope::Payload::ProgressTelemetry(progress_event)),
             );
         }));
 

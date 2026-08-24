@@ -12,6 +12,8 @@ mod streaming;
 #[cfg(windows)]
 mod protocol;
 #[cfg(windows)]
+mod performance;
+#[cfg(windows)]
 mod router;
 #[cfg(windows)]
 mod server;

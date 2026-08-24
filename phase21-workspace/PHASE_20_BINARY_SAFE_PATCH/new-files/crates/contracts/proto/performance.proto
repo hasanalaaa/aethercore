@@ -1,0 +1,304 @@
+syntax = "proto3";
+package aethercore.v1;
+
+// Phase 20 — Performance Intelligence, Bottleneck Analysis & Safe Optimization.
+// All sampling payloads are bounded: counts and capacities are enforced by the sampler, and
+// every repeated field below has a hard maximum documented next to it. Timestamps are Unix ms.
+
+// ---------------------------------------------------------------------------
+// Requests / responses
+// ---------------------------------------------------------------------------
+
+message StartPerfSamplingRequest {
+  // Requested interval in milliseconds. The service clamps this into [250, 60000];
+  // sub-250ms rates are rejected to keep observer overhead negligible.
+  uint32 interval_ms = 1;
+}
+
+message StopPerfSamplingRequest {}
+
+message GetPerformanceSnapshotRequest {}
+
+message GetBottleneckReportRequest {}
+
+message CreateOptimizationPlanRequest {
+  // Bottleneck finding ids selected for remediation planning.
+  repeated string selected_finding_ids = 1;
+}
+
+message StartOptimizationRequest { string plan_id = 1; }
+message GetOptimizationStatusRequest { string plan_id = 1; }
+
+message PerformanceSnapshotResponse { PerfSnapshot snapshot = 1; }
+message BottleneckReportResponse { BottleneckReport report = 1; }
+message OptimizationStatusResponse { OptimizationStatus status = 1; }
+message OptimizationPlanSnapshotResponse { OptimizationPlanSnapshot plan = 1; }
+message OptimizationHistoryResponse { repeated OptimizationHistoryEntry entries = 1; }
+
+// ---------------------------------------------------------------------------
+// Core sample types (Domain A)
+// ---------------------------------------------------------------------------
+
+message CpuSample {
+  // Per-processor busy percentages in [0,10000] (basis points). Bounded to MAX_CPU_COUNT=256.
+  repeated uint32 per_processor_busy_bp = 1;
+  uint32 total_busy_bp = 2;
+  // DPC/ISR time as basis points of one processor's time.
+  uint32 dpc_isr_busy_bp = 3;
+  uint64 context_switches_per_sec = 4;
+  uint64 processor_queue_length_x100 = 5;
+}
+
+enum ThermalThrottleReason {
+  THERMAL_THROTTLE_REASON_UNSPECIFIED = 0;
+  THERMAL_THROTTLE_REASON_NONE = 1;
+  // Package thermal limit reached (thermal throttling).
+  THERMAL_THROTTLE_REASON_THERMAL = 2;
+  // Power-limit clamp (PL1/PL2 style) without thermal flag.
+  THERMAL_THROTTLE_REASON_POWER = 3;
+  // VRM/board-level power delivery limit reported by the platform.
+  THERMAL_THROTTLE_REASON_VRM = 4;
+  // Current-limited operation (battery/adapter current ceiling).
+  THERMAL_THROTTLE_REASON_CURRENT = 5;
+}
+
+message PowerSample {
+  bool throttle_active = 1;
+  ThermalThrottleReason throttle_reason = 2;
+  // Processor power/thermal limit reasons bitmask source value (raw, evidence only).
+  uint64 limit_reasons_raw = 3;
+  int32 temperature_c = 4;
+  bool has_temperature = 5;
+}
+
+message MemorySample {
+  uint64 total_physical_bytes = 1;
+  uint64 available_physical_bytes = 2;
+  // Windows standby cache size estimate (bytes).
+  uint64 standby_cache_bytes = 3;
+  uint64 modified_page_list_bytes = 4;
+  // Commit charge: committed bytes and commit limit bytes.
+  uint64 commit_bytes = 5;
+  uint64 commit_limit_bytes = 6;
+  // Hard faults (storage-backed page faults) per second across the system.
+  uint64 hard_faults_per_sec = 7;
+  // Soft faults per second (demand-zero / transition without storage).
+  uint64 soft_faults_per_sec = 8;
+  uint32 memory_load_percent = 9;
+}
+
+message StorageQueueSample {
+  string device_id = 1;
+  string friendly_name = 2;
+  // Active time percentage in basis points.
+  uint32 active_time_bp = 3;
+  uint64 queue_depth_x100 = 4;
+  // Average transfer latency in microseconds (read+write blended by the counter).
+  uint64 avg_transfer_latency_us = 5;
+  uint64 read_bytes_per_sec = 6;
+  uint64 write_bytes_per_sec = 7;
+}
+
+message GpuEngineSample {
+  string engine_name = 1;
+  // Utilization in basis points.
+  uint32 utilization_bp = 2;
+}
+
+message GpuSample {
+  string adapter_id = 1;
+  string adapter_name = 2;
+  // Dedicated (VRAM) budget usage.
+  uint64 dedicated_used_bytes = 3;
+  uint64 dedicated_total_bytes = 4;
+  uint64 shared_used_bytes = 5;
+  repeated GpuEngineSample engines = 6;
+  // Present monitor jitter: stddev of frame times over window, in microseconds.
+  uint64 frametime_jitter_us = 7;
+  bool compositor_lag_detected = 8;
+}
+
+message ProcessCpuTopEntry {
+  uint32 pid = 1;
+  string name = 2;
+  // Cumulative CPU busy bp attributed in the window.
+  uint32 cpu_busy_bp = 3;
+  uint64 read_bytes_per_sec = 4;
+  uint64 write_bytes_per_sec = 5;
+  // Working set at sample time.
+  uint64 working_set_bytes = 6;
+}
+
+message PerfSnapshot {
+  int64 captured_unix_ms = 1;
+  uint32 interval_ms = 2;
+  CpuSample cpu = 3;
+  PowerSample power = 4;
+  MemorySample memory = 5;
+  repeated StorageQueueSample storage = 6;
+  GpuSample gpu = 7;
+  repeated ProcessCpuTopEntry process_top = 8;
+  // Degraded collectors are listed with their fault kind instead of failing the snapshot.
+  repeated PerfCollectorFault collector_faults = 9;
+}
+
+message PerfCollectorFault {
+  string collector = 1;
+  string kind = 2;
+  string detail = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Bottleneck attribution (Domain B)
+// ---------------------------------------------------------------------------
+
+enum BottleneckRole {
+  BOTTLENECK_ROLE_UNSPECIFIED = 0;
+  // Direct observed cause of the user-visible symptom.
+  BOTTLENECK_ROLE_ROOT_CAUSE = 1;
+  // Amplifies or gates a root cause but is not itself the origin.
+  BOTTLENECK_ROLE_CONTRIBUTING_CONDITION = 2;
+  // Observable effect of an upstream cause.
+  BOTTLENECK_ROLE_SYMPTOM = 3;
+}
+
+enum EvidenceConfidenceP20 {
+  EVIDENCE_CONFIDENCE_P20_UNSPECIFIED = 0;
+  EVIDENCE_CONFIDENCE_P20_LOW = 1;
+  EVIDENCE_CONFIDENCE_P20_MEDIUM = 2;
+  EVIDENCE_CONFIDENCE_P20_HIGH = 3;
+  EVIDENCE_CONFIDENCE_P20_CONFIRMED = 4;
+}
+
+message BottleneckEvidenceRef {
+  // Snapshot-relative fact key, e.g. "cpu.totalBusyBp>90@t123".
+  string fact_key = 1;
+  double observed_value = 2;
+  // Threshold that classified this fact as anomalous.
+  double threshold = 3;
+  int64 observed_unix_ms = 4;
+}
+
+message BottleneckFinding {
+  string id = 1;
+  // Stable rule code, e.g. "CPU_SATURATION", "STANDBY_STARVATION", "THERMAL_CLAMP".
+  string code = 2;
+  BottleneckRole role = 3;
+  EvidenceConfidenceP20 confidence = 4;
+  // Findings whose ids appear here explain *why* this finding exists.
+  repeated string caused_by_finding_ids = 5;
+  // Human-presentable message keys + args resolved in the renderer catalogs.
+  string title_key = 6;
+  string summary_key = 7;
+  repeated PerfMessageArg message_args = 8;
+  repeated BottleneckEvidenceRef evidence = 9;
+  // Which optimization action kinds could address this finding.
+  repeated string applicable_action_kinds = 10;
+  int64 first_observed_unix_ms = 11;
+  int64 last_observed_unix_ms = 12;
+}
+
+message PerfMessageArg { string key = 1; string value = 2; }
+
+message BottleneckReport {
+  string report_id = 1;
+  int64 generated_unix_ms = 2;
+  // Number of samples the analysis consumed.
+  uint32 analyzed_sample_count = 3;
+  uint32 analysis_window_ms = 4;
+  repeated BottleneckFinding findings = 5;
+  // Deterministic digest over sorted finding content (sha256 hex prefix).
+  string digest_sha256 = 6;
+  string rule_engine_version = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Safe optimization governance (Domain C)
+// ---------------------------------------------------------------------------
+
+enum OptimizationActionKind {
+  OPTIMIZATION_ACTION_KIND_UNSPECIFIED = 0;
+  // EcoQoS (PROCESS_POWER_THROTTLING_EXECUTION_SPEED) on specific process ids.
+  OPTIMIZATION_ACTION_KIND_ECO_QOS = 1;
+  // PROCESS_MODE_BACKGROUND_BEGIN/END priority class on background offenders.
+  OPTIMIZATION_ACTION_KIND_BACKGROUND_PRIORITY = 2;
+  // Cooperative working-set trim via official memory manager API (no EmptyWorkingSet brute force).
+  OPTIMIZATION_ACTION_KIND_COOPERATIVE_TRIM_REQUEST = 3;
+  // Game Mode / foreground gaming profile toggles.
+  OPTIMIZATION_ACTION_KIND_GAME_MODE_PROFILE = 4;
+  // Low-latency audio/video creation profile toggles.
+  OPTIMIZATION_ACTION_KIND_CREATION_PROFILE = 5;
+  // Startup entry delay/disable orchestration (delegates to startup authority).
+  OPTIMIZATION_ACTION_KIND_STARTUP_GOVERNOR = 6;
+}
+
+enum ReversibilityKind {
+  REVERSIBILITY_KIND_UNSPECIFIED = 0;
+  REVERSIBILITY_KIND_AUTOMATIC_RESTORE = 1;
+  REVERSIBILITY_KIND_SESSION_ONLY = 2;
+  REVERSIBILITY_KIND_MANUAL_REVIEW = 3;
+}
+
+message OptimizationCandidate {
+  string candidate_id = 1;
+  OptimizationActionKind kind = 2;
+  // Finding(s) this candidate addresses.
+  repeated string finding_ids = 3;
+  string title_key = 4;
+  string description_key = 5;
+  ReversibilityKind reversibility = 6;
+  // Expected pre/post delta metric keys (evidence for verification).
+  repeated string expected_effect_metric_keys = 7;
+  // Target identity is privacy-keyed, never a raw path/user name.
+  repeated uint32 target_pids = 8;
+  // True when the renderer may auto-select this after explicit user review.
+  bool requires_explicit_consent = 9;
+}
+
+message OptimizationPlanSnapshot {
+  string plan_id = 1;
+  string report_id = 2;
+  string digest_sha256 = 3;
+  int64 created_unix_ms = 4;
+  bool immutable = 5;
+  repeated OptimizationCandidate candidates = 6;
+}
+
+message OptimizationExecutionItem {
+  string candidate_id = 1;
+  string stage = 2;
+  string result_code = 3;
+  string detail = 4;
+  // Measured delta for expected_effect_metric_keys when verification ran.
+  bool verified = 5;
+}
+
+message OptimizationStatus {
+  string plan_id = 1;
+  string plan_state = 2;
+  string stage = 3;
+  bool progress_known = 4;
+  uint32 overall_percent = 5;
+  string current_candidate_id = 6;
+  string detail = 7;
+  bool mutation_started = 8;
+  bool recovery_required = 9;
+  string failure_message = 10;
+  int64 started_unix_ms = 11;
+  int64 updated_unix_ms = 12;
+  int64 completed_unix_ms = 13;
+  repeated OptimizationExecutionItem items = 14;
+}
+
+message OptimizationHistoryEntry {
+  string change_id = 1;
+  string plan_id = 2;
+  string candidate_id = 3;
+  string direction = 4;
+  string state = 5;
+  string detail = 6;
+  int64 created_unix_ms = 7;
+  int64 updated_unix_ms = 8;
+  int64 restored_unix_ms = 9;
+  bool restorable = 10;
+}

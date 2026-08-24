@@ -394,7 +394,7 @@ mod tests {
         for index in 0..=SUBSCRIBER_CAPACITY {
             bus.publish(
                 "owner-a",
-                EventKind::TelemetryProgress,
+                EventKind::ProgressTelemetry,
                 format!("p{index}"),
                 None,
             );
@@ -455,7 +455,7 @@ mod tests {
         for index in 0..=SUBSCRIBER_CAPACITY {
             bus.publish(
                 "owner-sensitive",
-                EventKind::TelemetryProgress,
+                EventKind::ProgressTelemetry,
                 format!("plan-{index}"),
                 None,
             );

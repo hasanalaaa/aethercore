@@ -5,7 +5,7 @@ import { serviceInvoke } from '../../platform/service-client';
 import { refreshServiceSnapshot } from '../../platform/snapshot';
 import { patchStreamState, streamState } from '../../platform/stream-state';
 
-export const scanStates = ['InventoryScanning', 'UpdateSearching', 'Matching'] as const;
+export const scanStates: readonly string[] = ['InventoryScanning', 'UpdateSearching', 'Matching'];
 export function scanStateIndex(state: string): number { return scanStates.findIndex((candidate) => candidate === state); }
 export const driverFilters: DriverFilter[] = ['All', 'Updates', 'Problems', 'Missing', 'Display'];
 

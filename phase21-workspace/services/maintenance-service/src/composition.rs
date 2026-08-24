@@ -37,6 +37,10 @@ pub fn build(data_path:&Path, product_data_root:&Path)->Result<ServiceContext>{
     ));
     let intelligence=Arc::new(DeepScanCoordinator::new(db.clone(),intelligence_backend,env!("CARGO_PKG_VERSION")));
 
+    // Phase 20: passive performance telemetry + optimization governance. Sampling starts only on
+    // explicit owner request; construction here never touches counters.
+    let performance=Arc::new(crate::performance::PerformanceEngine::with_synthetic(kernel.mutations().clone()));
+
     // Recovery is centralized and deliberately observation-only. A failure aborts service startup;
     // no client can enter the operation kernel before every domain has reconciled its journal.
     kernel.recovery().run_task("driver-install",||installer.recover_incomplete()).context("driver recovery")?;
@@ -44,5 +48,5 @@ pub fn build(data_path:&Path, product_data_root:&Path)->Result<ServiceContext>{
     kernel.recovery().run_task("cleanup",||cleaner.recover_incomplete()).context("cleanup recovery")?;
     kernel.recovery().run_task("startup",||startup.recover_incomplete()).context("startup recovery")?;
 
-    Ok(ServiceContext{kernel,engine,driver_hub,installer,repair,cleaner,startup,diagnostics,intelligence,db,updates,support})
+    Ok(ServiceContext{kernel,engine,driver_hub,installer,repair,cleaner,startup,diagnostics,intelligence,db,updates,support,performance})
 }

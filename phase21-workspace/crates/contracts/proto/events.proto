@@ -12,6 +12,7 @@ import "intelligence.proto";
 import "scheduler.proto";
 import "update.proto";
 import "support_bundle.proto";
+import "performance.proto";
 
 enum EventKind {
   EVENT_KIND_UNSPECIFIED = 0;
@@ -36,6 +37,9 @@ enum EventKind {
   EVENT_KIND_UPDATE = 19;
   EVENT_KIND_SUPPORT_BUNDLE = 20;
   EVENT_KIND_DEEP_SCAN = 21;
+  EVENT_KIND_PERFORMANCE_SNAPSHOT = 22;
+  EVENT_KIND_BOTTLENECK_REPORT = 23;
+  EVENT_KIND_OPTIMIZATION_EXECUTION = 24;
 }
 
 enum MutationLeaseState {
@@ -101,6 +105,9 @@ message EventEnvelope {
     UpdateSnapshot update_snapshot = 28;
     SupportBundleEvent support_bundle = 29;
     DeepScanSnapshot deep_scan_snapshot = 30;
+    PerfSnapshot performance_snapshot = 31;
+    BottleneckReport bottleneck_report = 32;
+    OptimizationStatus optimization_status = 33;
   }
 }
 

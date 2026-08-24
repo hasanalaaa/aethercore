@@ -81,6 +81,9 @@ fn normalize_event(event:v1::EventEnvelope)->UiKernelEvent {
         Some(Payload::UpdateSnapshot(v))=>("updateSnapshot",serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::SupportBundle(v))=>("supportBundle",serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::DeepScanSnapshot(v))=>("deepScanSnapshot",serde_json::to_value(v).unwrap_or_default()),
+        Some(Payload::PerformanceSnapshot(v))=>("performanceSnapshot",serde_json::to_value(v).unwrap_or_default()),
+        Some(Payload::BottleneckReport(v))=>("bottleneckReport",serde_json::to_value(v).unwrap_or_default()),
+        Some(Payload::OptimizationStatus(v))=>("optimizationStatus",serde_json::to_value(v).unwrap_or_default()),
         None=>("unknown",serde_json::Value::Null),
     };
     UiKernelEvent{sequence:event.sequence,emitted_unix_ms:event.emitted_unix_ms,kind:kind.into(),plan_id:event.plan_id,payload}
@@ -1003,6 +1006,103 @@ fn wide_os(s: &std::ffi::OsStr) -> Vec<u16> {
     s.encode_wide().chain(std::iter::once(0)).collect()
 }
 
+
+// ---------------------------------------------------------------------------
+// Phase 20 — performance intelligence commands
+// ---------------------------------------------------------------------------
+
+fn extract_perf_snapshot(resp: v1::Response) -> Result<v1::PerfSnapshot, String> {
+    match resp.payload {
+        Some(response::Payload::PerformanceSnapshot(p)) => {
+            p.snapshot.ok_or("missing performance snapshot".into())
+        }
+        _ => Err("unexpected performance response".into()),
+    }
+}
+
+#[command]
+async fn start_perf_sampling(interval_ms: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        request(request::Payload::StartPerfSampling(
+            v1::StartPerfSamplingRequest { interval_ms },
+        ))
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn stop_perf_sampling() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        request(request::Payload::StopPerfSampling(v1::StopPerfSamplingRequest {}))
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn get_performance_snapshot() -> Result<v1::PerfSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetPerformanceSnapshot(
+            v1::GetPerformanceSnapshotRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        extract_perf_snapshot(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn extract_bottleneck_report(resp: v1::Response) -> Result<v1::BottleneckReport, String> {
+    match resp.payload {
+        Some(response::Payload::BottleneckReport(r)) => {
+            r.report.ok_or("missing bottleneck report".into())
+        }
+        _ => Err("unexpected bottleneck response".into()),
+    }
+}
+
+#[command]
+async fn get_bottleneck_report() -> Result<v1::BottleneckReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetBottleneckReport(
+            v1::GetBottleneckReportRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        extract_bottleneck_report(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn extract_optimization_plan(resp: v1::Response) -> Result<v1::OptimizationPlanSnapshot, String> {
+    match resp.payload {
+        Some(response::Payload::OptimizationPlan(p)) => {
+            p.plan.ok_or("missing optimization plan".into())
+        }
+        _ => Err("unexpected optimization plan response".into()),
+    }
+}
+
+#[command]
+async fn create_optimization_plan(
+    selected_finding_ids: Vec<String>,
+) -> Result<v1::OptimizationPlanSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::CreateOptimizationPlan(
+            v1::CreateOptimizationPlanRequest { selected_finding_ids },
+        ))
+        .map_err(|e| e.to_string())?;
+        extract_optimization_plan(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     let result = tauri::Builder::default()
         .setup(|app| {
@@ -1059,7 +1159,12 @@ fn main() {
             stage_update,
             install_staged_update,
             create_support_bundle_preview,
-            export_support_bundle
+            export_support_bundle,
+            start_perf_sampling,
+            stop_perf_sampling,
+            get_performance_snapshot,
+            get_bottleneck_report,
+            create_optimization_plan
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

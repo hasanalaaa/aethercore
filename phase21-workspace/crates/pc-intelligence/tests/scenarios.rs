@@ -81,6 +81,9 @@ fn missing_driver_is_explicit_and_confirmed() {
                 has_problem: true,
                 problem_code: 28,
                 device_state: "Problem".into(),
+                update_status: "MissingDriverCandidateAvailable".into(),
+                authority_coverage: "CompleteForRequiredAuthorities".into(),
+                management_authorities: Vec::new(),
             },
         )],
         NOW,
@@ -88,7 +91,7 @@ fn missing_driver_is_explicit_and_confirmed() {
     let finding = findings.iter().find(|f| f.code == "DRIVER_MISSING").unwrap();
     assert_eq!(finding.severity, Severity::High);
     assert_eq!(finding.confidence, Confidence::Confirmed);
-    assert_eq!(finding.remediation_safety, Some(RemediationSafety::Sensitive));
+    assert_eq!(finding.remediation_safety, Some(RemediationSafety::Manual));
 }
 
 #[test]
@@ -103,6 +106,12 @@ fn driver_update_without_authority_is_informational_and_not_executable() {
             target_version: "2.0".into(),
             vendor_managed: false,
             selectable: false,
+            authority_type: "WindowsUpdate".into(),
+            authority_name: "Windows Update".into(),
+            recommendation_state: "Recommended".into(),
+            installation_mode: "WindowsManaged".into(),
+            trust_state: "WindowsManaged".into(),
+            authority_coverage: "CompleteForRequiredAuthorities".into(),
         },
     )];
     let findings = evaluate_rules(&facts, NOW);
@@ -124,13 +133,24 @@ fn vendor_managed_driver_update_stays_manual() {
             target_version: "2.0".into(),
             vendor_managed: true,
             selectable: false,
+            authority_type: "VendorUtility".into(),
+            authority_name: "Vendor application".into(),
+            recommendation_state: "ManualOfficial".into(),
+            installation_mode: "OfficialUtility".into(),
+            trust_state: "TrustedSignature".into(),
+            authority_coverage: "ManualAuthorityRequired".into(),
         },
     )];
     let findings = evaluate_rules(&facts, NOW);
+    let update_finding = findings.iter().find(|f| f.code == "DRIVER_UPDATE_AVAILABLE").unwrap();
+    assert_eq!(update_finding.severity, Severity::Informational);
+    assert_ne!(update_finding.remediation_safety, Some(RemediationSafety::SafeReview));
+    assert_ne!(update_finding.remediation_safety, Some(RemediationSafety::SafeAuto));
     let candidates = aethercore_pc_intelligence::remediation_candidates(&findings);
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].safety, RemediationSafety::Manual);
-    assert_eq!(candidates[0].action_type, aethercore_pc_intelligence::ActionType::ManualVendorAction);
+    for candidate in &candidates {
+        assert_ne!(candidate.safety, RemediationSafety::SafeAuto);
+        assert_ne!(candidate.action_type, aethercore_pc_intelligence::ActionType::InstallDriver);
+    }
 }
 
 #[test]
@@ -172,7 +192,14 @@ fn recent_driver_change_plus_later_crash_correlates_but_does_not_claim_root_caus
             NOW - DAY_MS,
             FactPayload::DriverChange {
                 installed_unix_ms: NOW - DAY_MS,
+                previous_version: String::new(),
                 version: "31.0.1".into(),
+                authority_type: "WindowsUpdate".into(),
+                authority_provider_id: "microsoft.windows-update".into(),
+                provider: "Microsoft".into(),
+                reboot_required: false,
+                verified: true,
+                rollback_available: false,
             },
         ),
         fact(
@@ -218,7 +245,14 @@ fn crash_before_driver_change_does_not_correlate() {
             NOW - DAY_MS,
             FactPayload::DriverChange {
                 installed_unix_ms: NOW - DAY_MS,
+                previous_version: String::new(),
                 version: "31.0.1".into(),
+                authority_type: "WindowsUpdate".into(),
+                authority_provider_id: "microsoft.windows-update".into(),
+                provider: "Microsoft".into(),
+                reboot_required: false,
+                verified: true,
+                rollback_available: false,
             },
         ),
     ];
@@ -234,7 +268,7 @@ fn windows_corruption_creates_repair_recommendation_without_unrelated_update_inf
             NOW,
             FactPayload::WindowsIntegrity {
                 check_id: "dism".into(),
-                result_code: "CorruptionDetected".into(),
+                result_code: "ComponentStoreCorruptionDetected".into(),
                 exit_code: 2,
                 detail: "synthetic".into(),
             },

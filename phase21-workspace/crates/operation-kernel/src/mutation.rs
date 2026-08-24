@@ -11,6 +11,8 @@ pub enum MutationWorkload {
     Cleanup,
     Startup,
     Update,
+    /// Phase 20: reversible performance optimizations governed by the same single-flight lease.
+    Optimization,
 }
 
 impl MutationWorkload {
@@ -21,6 +23,7 @@ impl MutationWorkload {
             Self::Cleanup => "Cleanup",
             Self::Startup => "Startup",
             Self::Update => "Update",
+            Self::Optimization => "Optimization",
         }
     }
 }

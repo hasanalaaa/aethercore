@@ -6,6 +6,7 @@ export const enPlurals = {
   'unit.update': { one: '{count} update', other: '{count} updates' },
   'unit.serviceTarget': { one: '{count} service target', other: '{count} service targets' },
   'unit.offer': { one: '{count} offer', other: '{count} offers' },
+  'unit.finding': { one: '{count} finding', other: '{count} findings' },
   'unit.day': { one: '{count} day', other: '{count} days' },
   'unit.triageCard': { one: '{count} triage card', other: '{count} triage cards' },
   'unit.warning': { one: '{count} warning', other: '{count} warnings' },

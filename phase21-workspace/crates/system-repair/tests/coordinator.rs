@@ -43,10 +43,10 @@ impl RepairPlatform for FakeRepairPlatform {
             vec![RepairCheck {
                 id: "dism-check".into(),
                 title: "Component store quick check".into(),
-                stage: "Completed".into(),
-                result_code: "ExitCode0".into(),
-                exit_code: 0,
-                detail: "healthy".into(),
+                stage: "Attention".into(),
+                result_code: "ComponentStoreRepairable".into(),
+                exit_code: 1,
+                detail: "repairable corruption detected by synthetic evidence".into(),
                 log_hint: "DISM.log".into(),
             }],
         ))
@@ -95,10 +95,19 @@ impl RepairPlatform for FakeRepairPlatform {
     ) -> aethercore_system_repair::Result<()> {
         self.event("verify");
         emit(RepairCheck {
+            id: "verify-dism".into(),
+            title: "Verify component store".into(),
+            stage: "Completed".into(),
+            result_code: "ComponentStoreHealthy".into(),
+            exit_code: 0,
+            detail: "verified healthy after repair".into(),
+            log_hint: "DISM.log".into(),
+        });
+        emit(RepairCheck {
             id: "verify-sfc".into(),
             title: "Verify protected system files".into(),
             stage: "Completed".into(),
-            result_code: "ExitCode0".into(),
+            result_code: "SystemFilesHealthy".into(),
             exit_code: 0,
             detail: "verified".into(),
             log_hint: "CBS.log".into(),

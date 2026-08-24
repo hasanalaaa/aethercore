@@ -289,7 +289,7 @@ pub struct UpdateExecutionGuardRecord {
     pub created_unix_ms: i64,
 }
 
-#[derive(Clone, Debug, Default, serde::Serialize)]
+#[derive(Clone, Debug, Default)]
 pub struct SupportJournalEventRecord {
     pub seq: i64,
     pub plan_id: String,
@@ -365,7 +365,7 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
 
-        let conn = Connection::open(path)?;
+        let mut conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "FULL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
@@ -570,7 +570,7 @@ impl Database {
         conn.execute(
             "INSERT INTO plan_executions(plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(plan_id) DO UPDATE SET stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_candidate_id=excluded.current_candidate_id,bytes_downloaded=excluded.bytes_downloaded,bytes_total=excluded.bytes_total,detail=excluded.detail,reboot_required=excluded.reboot_required,reboot_boot_marker_ms=excluded.reboot_boot_marker_ms,restore_point_sequence=excluded.restore_point_sequence,backup_root=excluded.backup_root,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
-            params![r.plan_id,r.stage,bool_i(r.progress_known),r.overall_percent,r.current_candidate_id,r.bytes_downloaded,r.bytes_total,r.detail,bool_i(r.reboot_required),r.reboot_boot_marker_ms,r.restore_point_sequence,r.backup_root,bool_i(r.mutation_started),bool_i(r.recovery_required),r.failure_message,r.started_unix_ms,r.updated_unix_ms,r.completed_unix_ms],
+            params![r.plan_id,r.stage,bool_i(r.progress_known),r.overall_percent,r.current_candidate_id,u64_to_i64(r.bytes_downloaded),u64_to_i64(r.bytes_total),r.detail,bool_i(r.reboot_required),r.reboot_boot_marker_ms,r.restore_point_sequence,r.backup_root,bool_i(r.mutation_started),bool_i(r.recovery_required),r.failure_message,r.started_unix_ms,r.updated_unix_ms,r.completed_unix_ms],
         )?;
         Ok(())
     }
@@ -797,7 +797,7 @@ impl Database {
         conn.execute(
             "INSERT INTO maintenance_execution_items(plan_id,item_id,kind,stage,result_code,bytes_affected,detail,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?)
              ON CONFLICT(plan_id,item_id) DO UPDATE SET kind=excluded.kind,stage=excluded.stage,result_code=excluded.result_code,bytes_affected=excluded.bytes_affected,detail=excluded.detail,updated_unix_ms=excluded.updated_unix_ms",
-            params![r.plan_id,r.item_id,r.kind,r.stage,r.result_code,r.bytes_affected,r.detail,r.updated_unix_ms],
+            params![r.plan_id,r.item_id,r.kind,r.stage,r.result_code,u64_to_i64(r.bytes_affected),r.detail,r.updated_unix_ms],
         )?;
         Ok(())
     }
@@ -883,7 +883,7 @@ impl Database {
         let rows = stmt.query_map(params![owner_principal_key, limit.min(500) as i64], |row| Ok(SupportJournalEventRecord {
             seq:row.get(0)?, plan_id:row.get(1)?, from_state:row.get(2)?, to_state:row.get(3)?, event_kind:row.get(4)?, detail:row.get(5)?, created_unix_ms:row.get(6)?
         }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
     }
 
     pub fn scheduler_runs_for_owner(&self, owner_principal_key: &str) -> Result<Vec<SchedulerRunRecord>> {
@@ -892,7 +892,7 @@ impl Database {
         let rows = stmt.query_map([owner_principal_key], |row| Ok(SchedulerRunRecord {
             owner_principal_key:row.get(0)?, workload:row.get(1)?, failure_count:row.get::<_,i64>(2)?.max(0).min(u32::MAX as i64) as u32, next_eligible_unix_ms:row.get(3)?, last_outcome:row.get(4)?, last_completed_unix_ms:row.get(5)?, updated_unix_ms:row.get(6)?
         }))?;
-        rows.collect::<rusqlite::Result<Vec<_>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
     }
 
     pub fn save_diagnostic_snapshot(&self, record: &DiagnosticSnapshotRecord) -> Result<()> {
@@ -920,7 +920,7 @@ impl Database {
         let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt=conn.prepare("SELECT snapshot_id,owner_principal_key,state,collected_unix_ms,warning_count,snapshot_json FROM diagnostic_snapshots WHERE owner_principal_key=? ORDER BY collected_unix_ms DESC LIMIT ?")?;
         let rows=stmt.query_map(params![owner_principal_key,limit.min(200) as i64],|r|Ok(DiagnosticSnapshotRecord{snapshot_id:r.get(0)?,owner_principal_key:r.get(1)?,state:r.get(2)?,collected_unix_ms:r.get(3)?,warning_count:r.get(4)?,snapshot_json:r.get(5)?}))?;
-        rows.collect::<rusqlite::Result<Vec<_>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
     }
 
     pub fn upsert_startup_change(&self, record: &StartupChangeRecord) -> Result<()> {
@@ -1107,6 +1107,11 @@ fn hex_lower(bytes: &[u8]) -> String {
 
 fn bool_i(v: bool) -> i32 { if v { 1 } else { 0 } }
 
+/// SQLite has no unsigned 64-bit integers. Byte-count columns are stored as i64; values above
+/// `i64::MAX` saturate instead of wrapping, and reads clamp negatives (legacy/corrupt rows) to 0.
+fn u64_to_i64(v: u64) -> i64 { i64::try_from(v).unwrap_or(i64::MAX) }
+fn i64_to_u64(v: i64) -> u64 { v.max(0) as u64 }
+
 
 fn row_to_plan(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanRecord> {
     Ok(PlanRecord { id:row.get(0)?,title:row.get(1)?,state:row.get(2)?,digest:row.get(3)?,risk:row.get(4)?,immutable_json:row.get(5)?,created_unix_ms:row.get(6)?,updated_unix_ms:row.get(7)?,owner_principal_key:row.get(8)? })
@@ -1121,7 +1126,7 @@ fn row_to_consent_intent(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConsentInt
 }
 
 fn row_to_execution(row: &rusqlite::Row<'_>) -> rusqlite::Result<ExecutionRecord> {
-    Ok(ExecutionRecord { plan_id:row.get(0)?,stage:row.get(1)?,progress_known:row.get::<_,i32>(2)? != 0,overall_percent:row.get(3)?,current_candidate_id:row.get(4)?,bytes_downloaded:row.get(5)?,bytes_total:row.get(6)?,detail:row.get(7)?,reboot_required:row.get::<_,i32>(8)? != 0,reboot_boot_marker_ms:row.get(9)?,restore_point_sequence:row.get(10)?,backup_root:row.get(11)?,mutation_started:row.get::<_,i32>(12)? != 0,recovery_required:row.get::<_,i32>(13)? != 0,failure_message:row.get(14)?,started_unix_ms:row.get(15)?,updated_unix_ms:row.get(16)?,completed_unix_ms:row.get(17)? })
+    Ok(ExecutionRecord { plan_id:row.get(0)?,stage:row.get(1)?,progress_known:row.get::<_,i32>(2)? != 0,overall_percent:row.get(3)?,current_candidate_id:row.get(4)?,bytes_downloaded:i64_to_u64(row.get::<_,i64>(5)?),bytes_total:i64_to_u64(row.get::<_,i64>(6)?),detail:row.get(7)?,reboot_required:row.get::<_,i32>(8)? != 0,reboot_boot_marker_ms:row.get(9)?,restore_point_sequence:row.get(10)?,backup_root:row.get(11)?,mutation_started:row.get::<_,i32>(12)? != 0,recovery_required:row.get::<_,i32>(13)? != 0,failure_message:row.get(14)?,started_unix_ms:row.get(15)?,updated_unix_ms:row.get(16)?,completed_unix_ms:row.get(17)? })
 }
 
 fn row_to_install_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<InstallItemRecord> {
@@ -1133,7 +1138,7 @@ fn row_to_maintenance_execution(row: &rusqlite::Row<'_>) -> rusqlite::Result<Mai
 }
 
 fn row_to_maintenance_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<MaintenanceItemRecord> {
-    Ok(MaintenanceItemRecord { plan_id:row.get(0)?,item_id:row.get(1)?,kind:row.get(2)?,stage:row.get(3)?,result_code:row.get(4)?,bytes_affected:row.get(5)?,detail:row.get(6)?,updated_unix_ms:row.get(7)? })
+    Ok(MaintenanceItemRecord { plan_id:row.get(0)?,item_id:row.get(1)?,kind:row.get(2)?,stage:row.get(3)?,result_code:row.get(4)?,bytes_affected:i64_to_u64(row.get::<_,i64>(5)?),detail:row.get(6)?,updated_unix_ms:row.get(7)? })
 }
 
 fn row_to_startup_change(row: &rusqlite::Row<'_>) -> rusqlite::Result<StartupChangeRecord> {

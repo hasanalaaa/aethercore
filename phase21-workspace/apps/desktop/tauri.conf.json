@@ -23,7 +23,6 @@
         "transparent": true,
         "center": true,
         "theme": "Dark",
-        "noRedirectionBitmap": true,
         "backgroundColor": "#00000000",
         "windowEffects": {
           "effects": [
@@ -49,6 +48,9 @@
         "type": "downloadBootstrapper",
         "silent": true
       }
-    }
+    },
+    "icon": [
+      "icons/icon.png"
+    ]
   }
 }

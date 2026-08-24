@@ -1,5 +1,8 @@
-<script lang="ts">
+<script context="module" lang="ts">
   export type MaterialLevel = 'base' | 'structural' | 'elevated' | 'focused';
+</script>
+
+<script lang="ts">
   export let level: MaterialLevel = 'base';
   export let className = '';
   export let as: 'section' | 'article' | 'div' = 'section';

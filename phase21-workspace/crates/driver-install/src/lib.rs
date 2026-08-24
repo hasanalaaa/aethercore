@@ -406,7 +406,8 @@ impl DriverInstallCoordinator {
             }
             Err(error) => {
                 if let Some(restore) = restore_evidence.as_ref() {
-                    self.close_restore_transaction(plan_id, &mut execution, restore, !execution.mutation_started)?;
+                    let skip_restore = !execution.mutation_started;
+                    self.close_restore_transaction(plan_id, &mut execution, restore, skip_restore)?;
                 }
                 if execution.mutation_started {
                     execution.recovery_required = true;

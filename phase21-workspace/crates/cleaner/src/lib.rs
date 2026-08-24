@@ -563,7 +563,7 @@ impl CleanupEngine {
 
         let live = self
             .telemetry
-            .get(&record.plan_id)
+            .get_for_owner(owner_principal_key, &record.plan_id)
             .filter(|value| value.owner_principal_key == owner_principal_key && value.emitted_unix_ms >= record.updated_unix_ms);
         Ok(Some(CleanupExecutionStatus {
             plan_id: record.plan_id,

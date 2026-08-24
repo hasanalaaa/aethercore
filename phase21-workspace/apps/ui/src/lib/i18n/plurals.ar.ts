@@ -2,6 +2,7 @@ import type { PluralMessageKey } from './plurals.en';
 
 type ArabicPlural = { zero: string; one: string; two: string; few: string; many: string; other: string };
 export const arPlurals = {
+  'unit.finding': { zero: 'لا نتائج', one: 'نتيجة واحدة', two: 'نتيجتان', few: '{count} نتائج', many: '{count} نتيجة', other: '{count} نتيجة' },
   'unit.file': { zero: 'لا ملفات', one: 'ملف واحد', two: 'ملفان', few: '{count} ملفات', many: '{count} ملفًا', other: '{count} ملف' },
   'unit.category': { zero: 'لا فئات', one: 'فئة واحدة', two: 'فئتان', few: '{count} فئات', many: '{count} فئةً', other: '{count} فئة' },
   'unit.action': { zero: 'لا إجراءات', one: 'إجراء واحد', two: 'إجراءان', few: '{count} إجراءات', many: '{count} إجراءً', other: '{count} إجراء' },

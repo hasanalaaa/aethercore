@@ -17,6 +17,7 @@
   import RepairPage from '../features/repair/RepairPage.svelte';
   import CleanupPage from '../features/cleanup/CleanupPage.svelte';
   import StartupPage from '../features/startup/StartupPage.svelte';
+  import PerformancePage from '../features/performance/PerformancePage.svelte';
   import HardwarePage from '../features/diagnostics/HardwarePage.svelte';
   import CrashPage from '../features/diagnostics/CrashPage.svelte';
   import ActivityPage from '../features/activity/ActivityPage.svelte';
@@ -70,6 +71,7 @@
         {:else if $shellState.activePage === 'repair'}<RepairPage />
         {:else if $shellState.activePage === 'cleanup'}<CleanupPage />
         {:else if $shellState.activePage === 'startup'}<StartupPage />
+        {:else if $shellState.activePage === 'performance'}<PerformancePage />
         {:else if $shellState.activePage === 'hardware'}<HardwarePage />
         {:else if $shellState.activePage === 'crash'}<CrashPage />
         {:else if $shellState.activePage === 'activity'}<ActivityPage />

@@ -139,11 +139,11 @@ impl DeepScanCoordinator {
         }
 
         let inner = self.inner.clone();
-        let owner = owner.to_owned();
+        let worker_owner = owner.to_owned();
         let worker_identity = identity.clone();
         if let Err(error) = thread::Builder::new()
             .name("aether-deep-scan".into())
-            .spawn(move || run(inner, owner, token, worker_identity))
+            .spawn(move || run(inner, worker_owner, token, worker_identity))
         {
             if owns_run(&self.inner, &identity) {
                 let mut snapshot = self.inner.snapshot.lock().unwrap_or_else(|p| p.into_inner());
@@ -157,7 +157,7 @@ impl DeepScanCoordinator {
             return Err(IntelligenceError::Internal(error.to_string()));
         }
 
-        self.snapshot_for_owner(owner.as_str())
+        self.snapshot_for_owner(&owner)
     }
 
     pub fn cancel(&self, owner: &str, scan_id: &str) -> Result<DeepScanSnapshot> {

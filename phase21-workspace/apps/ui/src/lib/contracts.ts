@@ -137,6 +137,52 @@ export type PcScanMetrics = { durationMs:number; collectorDurationMs:number; pea
 export type DeepScanSnapshot = { scanId:string; state:number; status:number; startedUnixMs:number; completedUnixMs:number; progress:PcScanProgress|null; factsCount:number; findings:PcFinding[]; remediationCandidates:PcRemediationCandidate[]; collectors:PcCollectorStatus[]; warnings:string[]; summary:PcFindingSummary|null; metrics:PcScanMetrics|null; machineStateFingerprint:string; ruleEngineVersion:string; appVersion:string };
 export type DeepScanHistoryEntry = { scanId:string; state:number; status:number; completedUnixMs:number; durationMs:number; findingCount:number; unavailableCollectorCount:number; machineStateFingerprint:string };
 export type PcRemediationPlan = { planId:string; scanId:string; digest:string; createdUnixMs:number; immutable:boolean; actions:PcRemediationCandidate[] };
+// ---------------------------------------------------------------------------
+// Phase 20 — performance intelligence
+// ---------------------------------------------------------------------------
+export type PerfCollectorFault = { collector:string; kind:string; detail:string };
+export type CpuSample = { perProcessorBusyBp:number[]; totalBusyBp:number; dpcIsrBusyBp:number; contextSwitchesPerSec:number; processorQueueLengthX100:number };
+export type PowerSample = { throttleActive:boolean; throttleReason:number; limitReasonsRaw:number; hasTemperature:boolean; temperatureC:number };
+export type MemorySample = { totalPhysicalBytes:number; availablePhysicalBytes:number; standbyCacheBytes:number; modifiedPageListBytes:number; commitBytes:number; commitLimitBytes:number; hardFaultsPerSec:number; softFaultsPerSec:number; memoryLoadPercent:number };
+export type StorageQueueSample = { deviceId:string; friendlyName:string; activeTimeBp:number; queueDepthX100:number; avgTransferLatencyUs:number; readBytesPerSec:number; writeBytesPerSec:number };
+export type GpuEngineSample = { engineName:string; utilizationBp:number };
+export type GpuSample = { adapterId:string; adapterName:string; dedicatedUsedBytes:number; dedicatedTotalBytes:number; sharedUsedBytes:number; engines:GpuEngineSample[]; frametimeJitterUs:number; compositorLagDetected:boolean };
+export type ProcessCpuTopEntry = { pid:number; name:string; cpuBusyBp:number; readBytesPerSec:number; writeBytesPerSec:number; workingSetBytes:number };
+export type PerfSnapshot = {
+  capturedUnixMs:number; intervalMs:number;
+  cpu:CpuSample | null; power:PowerSample | null; memory:MemorySample | null;
+  storage:StorageQueueSample[]; gpu:GpuSample | null;
+  processTop:ProcessCpuTopEntry[]; collectorFaults:PerfCollectorFault[]
+};
+export type PerfMessageArg = { key:string; value:string };
+export type BottleneckEvidenceRef = { factKey:string; observedValue:number; threshold:number; observedUnixMs:number };
+export type BottleneckFinding = {
+  id:string; code:string; role:number; confidence:number;
+  causedByFindingIds:string[]; titleKey:string; summaryKey:string;
+  messageArgs:PerfMessageArg[]; evidence:BottleneckEvidenceRef[];
+  applicableActionKinds:string[]; firstObservedUnixMs:number; lastObservedUnixMs:number
+};
+export type BottleneckReport = {
+  reportId:string; generatedUnixMs:number; analyzedSampleCount:number; analysisWindowMs:number;
+  findings:BottleneckFinding[]; digestSha256:string; ruleEngineVersion:string
+};
+export type OptimizationCandidate = {
+  candidateId:string; kind:number; findingIds:string[]; titleKey:string; descriptionKey:string;
+  reversibility:number; expectedEffectMetricKeys:string[]; targetPids:number[];
+  requiresExplicitConsent:boolean
+};
+export type OptimizationPlanSnapshot = {
+  planId:string; reportId:string; digestSha256:string; createdUnixMs:number;
+  immutable:boolean; candidates:OptimizationCandidate[]
+};
+export type OptimizationExecutionItem = { candidateId:string; stage:string; resultCode:string; detail:string; verified:boolean };
+export type OptimizationStatus = {
+  planId:string; planState:string; stage:string; progressKnown:boolean; overallPercent:number;
+  currentCandidateId:string; detail:string; mutationStarted:boolean; recoveryRequired:boolean;
+  failureMessage:string; startedUnixMs:number; updatedUnixMs:number; completedUnixMs:number;
+  items:OptimizationExecutionItem[]
+};
+
 type KernelEvent<K extends string, P> = { sequence:number; emittedUnixMs:number; kind:K; planId:string; payload:P };
 export type UiKernelEvent =
   | KernelEvent<'serviceSnapshot', Omit<Snapshot, 'connected'>>
@@ -160,6 +206,9 @@ export type UiKernelEvent =
   | KernelEvent<'updateSnapshot', UpdateSnapshot>
   | KernelEvent<'supportBundle', SupportBundleEvent>
   | KernelEvent<'deepScanSnapshot', DeepScanSnapshot>
+  | KernelEvent<'performanceSnapshot', PerfSnapshot>
+  | KernelEvent<'bottleneckReport', BottleneckReport>
+  | KernelEvent<'optimizationStatus', OptimizationStatus>
   | KernelEvent<'unknown', null>;
 export type UiSessionState = { connected:boolean; sessionId:string; serviceVersion:string; currentSequence:number; replayFloorSequence:number; replayComplete:boolean };
 export type UiStreamReset = { reason:string; currentSequence:number; replayFloorSequence:number; messageKey:string };

@@ -1,5 +1,8 @@
 import { get, writable } from 'svelte/store';
 import type {
+  BottleneckReport,
+  PerfSnapshot,
+  OptimizationStatus,
   CleanupSnapshot,
   CleanupStatus,
   DeepScanHistoryEntry,
@@ -49,6 +52,10 @@ export type StreamState = {
   schedulerEvent: SchedulerEvent | null;
   updateSnapshot: UpdateSnapshot;
   supportBundleEvent: SupportBundleEvent | null;
+  performance: PerfSnapshot;
+  bottleneckReport: BottleneckReport | null;
+  optimizationStatus: OptimizationStatus | null;
+  perfSampling: boolean;
   session: UiSessionState;
   lastKernelSequence: number;
 };
@@ -174,6 +181,13 @@ export function createInitialStreamState(): StreamState {
     schedulerEvent: null,
     updateSnapshot: { state: 1, channel: 1, currentVersion: '—', latestRelease: null, stagedRelease: null, progressKnown: false, overallPercent: 0, bytesCompleted: 0, bytesTotal: 0, statusMessageKey: 'update.status.disabled', checkedUnixMs: 0, updatedUnixMs: 0 },
     supportBundleEvent: null,
+    performance: {
+      capturedUnixMs: 0, intervalMs: 0, cpu: null, power: null, memory: null,
+      storage: [], gpu: null, processTop: [], collectorFaults: [],
+    },
+    bottleneckReport: null,
+    optimizationStatus: null,
+    perfSampling: false,
     session: {
       connected: false,
       sessionId: '',
@@ -294,6 +308,16 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
       break;
     case 'deepScanSnapshot':
       next.deepScan = event.payload;
+      break;
+    case 'performanceSnapshot':
+      next.performance = event.payload;
+      next.perfSampling = true;
+      break;
+    case 'bottleneckReport':
+      next.bottleneckReport = event.payload;
+      break;
+    case 'optimizationStatus':
+      next.optimizationStatus = event.payload;
       break;
     case 'progressTelemetry':
       next = applyProgress(next, event.payload);
