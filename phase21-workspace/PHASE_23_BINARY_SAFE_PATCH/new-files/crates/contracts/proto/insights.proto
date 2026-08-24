@@ -1,0 +1,41 @@
+syntax = "proto3";
+package aethercore.v1;
+
+// Phase 23 — Embedded Local Intelligence (advisory-only). Additive-only extension:
+// every message here is new; no existing tag, field or enum value was renumbered.
+// Insights are ephemeral session state; they cite EXISTING evidence ids and never
+// express mutation semantics.
+
+message InsightCitation {
+  string evidence_id = 1;
+  // bottleneckReport | repairDiagnosis | timelinePattern | maintenanceHistory.
+  string surface = 2;
+}
+
+message Insight {
+  uint32 schema_version = 1;
+  string summary_key = 2;
+  string explanation = 3;
+  // Weak | Moderate | Strong.
+  string confidence = 4;
+  repeated InsightCitation citations = 5;
+  // localModel | ruleFallback (renderer badge source of truth).
+  string engine = 6;
+}
+
+message ListInsightsRequest {}
+
+message RequestInsightRequest {
+  // Advisory question key; evidence pack is composed service-side from public read APIs.
+  string question_key = 1;
+}
+
+message DismissInsightRequest {
+  string insight_id = 1; // session-scoped handle assigned by the coordinator
+}
+
+message InsightsResponse {
+  // localModel | ruleFallback | disabled — which engine served / would serve.
+  string engine_label = 1;
+  repeated Insight insights = 2;
+}

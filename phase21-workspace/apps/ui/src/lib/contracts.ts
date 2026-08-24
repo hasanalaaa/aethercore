@@ -232,6 +232,17 @@ export type CareRunStatus = {
   planDigestSha256:string; steps:CareStepReport[]; updatedUnixMs:number; summaryKey:string
 };
 
+// Phase 23 — Local Intelligence (advisory-only)
+export type InsightCitation = { evidenceId:string; surface:'bottleneckReport'|'repairDiagnosis'|'timelinePattern'|'maintenanceHistory' };
+export type Insight = {
+  schemaVersion:number; summaryKey:string; explanation:string;
+  confidence:'Weak'|'Moderate'|'Strong'; citations:InsightCitation[];
+  engine:'localModel'|'ruleFallback'
+};
+export type InsightsResponse = {
+  engineLabel:'localModel'|'ruleFallback'|'disabled'; insights:Insight[]
+};
+
 type KernelEvent<K extends string, P> = { sequence:number; emittedUnixMs:number; kind:K; planId:string; payload:P };
 export type UiKernelEvent =
   | KernelEvent<'serviceSnapshot', Omit<Snapshot, 'connected'>>
@@ -260,6 +271,7 @@ export type UiKernelEvent =
   | KernelEvent<'optimizationStatus', OptimizationStatus>
   | KernelEvent<'timelinePage', TimelineResponse>
   | KernelEvent<'careStatus', CareRunStatus>
+  | KernelEvent<'insights', InsightsResponse>
   | KernelEvent<'unknown', null>;
 export type UiSessionState = { connected:boolean; sessionId:string; serviceVersion:string; currentSequence:number; replayFloorSequence:number; replayComplete:boolean };
 export type UiStreamReset = { reason:string; currentSequence:number; replayFloorSequence:number; messageKey:string };

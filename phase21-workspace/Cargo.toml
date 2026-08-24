@@ -35,6 +35,7 @@ members = [
   "crates/pc-intelligence",
   "crates/timeline-intelligence",
   "crates/care-orchestrator",
+  "crates/intelligence-core",
   "crates/idle-scheduler",
   "crates/update-engine",
   "crates/update-download",

@@ -9,7 +9,8 @@ pub mod engine;
 pub mod model;
 
 pub use engine::{
-    CareJournal, CareRunResult, DomainStepExecutor, MutationLeaseGuard, run_care_plan,
+    CareJournal, CareRunResult, DomainDispatch, DomainStepExecutor, MutationLeaseGuard,
+    run_care_plan,
 };
 pub use model::{
     CareError, CarePlan, CareSafety, CareStep, CareStepReport, MAX_CARE_STEPS, StepOutcome,

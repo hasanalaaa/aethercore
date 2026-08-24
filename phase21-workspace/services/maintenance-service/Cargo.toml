@@ -30,6 +30,7 @@ aethercore-startup-manager = { path = "../../crates/startup-manager" }
 aethercore-restore-point = { path = "../../crates/restore-point" }
 aethercore-timeline-intelligence = { path = "../../crates/timeline-intelligence" }
 aethercore-care-orchestrator = { path = "../../crates/care-orchestrator" }
+aethercore-intelligence-core = { path = "../../crates/intelligence-core" }
 sha2.workspace = true
 anyhow.workspace = true
 chrono.workspace = true

@@ -322,26 +322,62 @@ fn chrono_now() -> i64 {
 // Coordinator
 // ---------------------------------------------------------------------------
 
-/// Executor binding to real domain coordinators arrives with the router wiring;
-/// the engine's trait keeps this module testable without native platforms.
-struct ServiceExecutor;
+/// Re-exported dispatch trait (owned by the care-orchestrator crate so service code
+/// and tests share one shape). Implementations live in composition at startup.
+pub use aethercore_care_orchestrator::DomainDispatch;
+
+/// Poll cadence and ceiling for awaiting a dispatched domain plan.
+const DISPATCH_POLL_MS: u64 = 100;
+const DISPATCH_TIMEOUT_MS: u64 = 120_000;
+
+/// Terminal plan states per the operation engine state machine.
+fn is_terminal_plan_state(state: &str) -> bool {
+    matches!(state, "Completed" | "Failed" | "RebootPending")
+}
+
+/// Real executor: forwards to the composition-provided [`DomainDispatch`].
+struct ServiceExecutor {
+    dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
+}
 
 impl DomainStepExecutor for ServiceExecutor {
     fn execute_step(
         &self,
-        _owner: &str,
+        owner: &str,
         domain_plan_id: &str,
-        domain_kind: &str,
+        _domain_kind: &str,
         _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
     ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError> {
-        // Phase 22 ships orchestration of review + auto classification and the run
-        // machinery; actual domain start_with_lease dispatch requires live platform
-        // handles bound at composition. Until a domain exposes a headless entry point
-        // callable from the orchestrator thread, execution surfaces as an explicit
-        // typed rejection rather than a fabricated success.
+        let (plan_state, verification_state, failure_key) = self
+            .dispatch
+            .start_and_await(owner, domain_plan_id)
+            .map_err(
+                |detail| aethercore_care_orchestrator::CareError::DomainRejected {
+                    domain_kind: _domain_kind.to_string(),
+                    detail,
+                },
+            )?;
+        if is_terminal_plan_state(&plan_state) && plan_state != "Completed" {
+            return Ok((StepOutcome::Failed, verification_state, failure_key));
+        }
+        if plan_state == "Completed" {
+            if !verification_state.is_empty() {
+                return Ok((
+                    StepOutcome::VerifiedByDomain,
+                    verification_state,
+                    String::new(),
+                ));
+            }
+            return Ok((
+                StepOutcome::CompletedUnverified,
+                String::new(),
+                String::new(),
+            ));
+        }
+        // Non-terminal after deadline (RebootPending counts as terminal-but-unverified).
         Err(aethercore_care_orchestrator::CareError::DomainRejected {
-            domain_kind: domain_kind.to_string(),
-            detail: format!("plan {domain_plan_id}: domain dispatch not wired in phase 22"),
+            domain_kind: _domain_kind.to_string(),
+            detail: format!("plan {domain_plan_id} did not reach a terminal state in time"),
         })
     }
 }
@@ -351,15 +387,21 @@ pub struct CareCoordinator {
     supervisor: MutationSupervisor,
     fence: CommitFence,
     pub consent: Arc<SessionConsentRegistry>,
+    /// Composition-provided dispatch into the real domain coordinators (Part A).
+    dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
 }
 
 impl CareCoordinator {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(
+        db: Arc<Database>,
+        dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
+    ) -> Self {
         Self {
             db,
             supervisor: MutationSupervisor::new(),
             fence: CommitFence::new(),
             consent: Arc::new(SessionConsentRegistry::default()),
+            dispatch,
         }
     }
 
@@ -395,7 +437,9 @@ impl CareCoordinator {
         let journal = PersistenceJournal {
             db: self.db.clone(),
         };
-        let executor = ServiceExecutor;
+        let executor = ServiceExecutor {
+            dispatch: self.dispatch.clone(),
+        };
         let result: Result<CareRunResult, aethercore_care_orchestrator::CareError> =
             aethercore_care_orchestrator::run_care_plan(
                 &self.supervisor,

@@ -1,0 +1,42 @@
+{
+  "schema": "aethercore.phase23.qualification-debt.v1",
+  "closureClaim": "PHASE_23_LOCAL_INTELLIGENCE_SOURCE_COMPLETE_WITH_FALLBACK_DEFAULT",
+  "closedThisPhase": [
+    {
+      "id": "QD-022-002",
+      "area": "Live domain dispatch inside care runs",
+      "closure": "DomainDispatch trait + RealDomainDispatch (composition-owned) now perform real start_with_lease dispatch with per-domain lease acquisition and terminal-state polling; ServiceExecutor maps real outcomes onto the unchanged truth-first vocabulary. Proven by end-to-end dispatch tests + two identical 356/0 full-suite runs."
+    }
+  ],
+  "carriedForwardFromPhase22": [
+    { "id": "P21-QD-001", "area": "Timeline service handlers — Windows IPC round trip", "risk": "medium", "status": "UNCHANGED" },
+    { "id": "P21-QD-002", "area": "Recurrence thresholds calibration", "risk": "medium", "status": "UNCHANGED" },
+    { "id": "P21-QD-003", "area": "Timeline page cursor stability", "risk": "low", "status": "UNCHANGED" },
+    { "id": "P21-QD-004", "area": "Renderer timeline panel under real RTL screen readers", "risk": "low", "status": "UNCHANGED" },
+    { "id": "P20-QD-003", "area": "EcoQoS / priority application (NoopPlatform worst case)", "risk": "high", "status": "UNCHANGED — still the highest open native risk" },
+    { "id": "P22-QD-001", "area": "One-Click Care handlers — Windows IPC round trip", "risk": "medium", "status": "UNCHANGED" },
+    { "id": "P22-QD-003", "area": "Session consent scope semantics on Windows service restart", "risk": "low", "status": "UNCHANGED" }
+  ],
+  "newInPhase23": [
+    {
+      "id": "QD-023-001",
+      "area": "Model artifact commitment + llama.cpp backend wiring",
+      "debt": "The local-model feature compiles and reports honest unavailability; no GGUF artifact is committed yet. Activation requires: artifact under assets/models/ with pinned sha256 + license, --features local-model, llama_cpp_2 binding added under the documented owner-review waiver, then the load() stub replaced with a real bounded-context load.",
+      "risk": "high",
+      "evidenceClass": "FALLBACK_IS_DEFAULT_ENGINE",
+      "honestyNote": "The default shipped engine is the deterministic fallback; no AI output is fabricated in this build."
+    },
+    {
+      "id": "QD-023-002",
+      "area": "Model quality evaluation on real maintenance journals",
+      "debt": "Fallback rule summaries are deterministic but shallow by design; once the model path activates, insight quality must be evaluated against real journals (citation precision, summary usefulness) before being surfaced beyond the advisory badge.",
+      "risk": "medium"
+    },
+    {
+      "id": "QD-023-003",
+      "area": "Windows CPU inference performance + low-RAM ceiling validation",
+      "debt": "INFERENCE_TIMEOUT (10s) and MAX_MODEL_RAM_BUDGET_BYTES (2 GiB) are enforced constants, but actual q4 inference latency and resident-memory behavior on low-RAM Windows hosts are unmeasured until native qualification.",
+      "risk": "medium"
+    }
+  ]
+}

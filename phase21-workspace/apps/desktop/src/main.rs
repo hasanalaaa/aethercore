@@ -86,6 +86,7 @@ fn normalize_event(event:v1::EventEnvelope)->UiKernelEvent {
         Some(Payload::OptimizationStatus(v))=>("optimizationStatus",serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::TimelinePage(v))=>("timelinePage",serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::CareStatus(v))=>("careStatus",serde_json::to_value(v).unwrap_or_default()),
+        Some(Payload::Insights(v))=>("insights",serde_json::to_value(v).unwrap_or_default()),
         None=>("unknown",serde_json::Value::Null),
     };
     UiKernelEvent{sequence:event.sequence,emitted_unix_ms:event.emitted_unix_ms,kind:kind.into(),plan_id:event.plan_id,payload}
@@ -1186,6 +1187,52 @@ async fn cancel_care_run() -> Result<v1::CareRunStatus, String> {
     .map_err(|e| e.to_string())?
 }
 
+// ---------------------------------------------------------------------------
+// Phase 23 — Local Intelligence commands (advisory-only)
+// ---------------------------------------------------------------------------
+
+fn extract_insights(resp: v1::Response) -> Result<v1::InsightsResponse, String> {
+    match resp.payload {
+        Some(response::Payload::InsightsResponse(p)) => Ok(p),
+        _ => Err("unexpected insights response".into()),
+    }
+}
+
+#[command]
+async fn list_insights() -> Result<v1::InsightsResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::ListInsights(v1::ListInsightsRequest {}))
+            .map_err(|e| e.to_string())?;
+        extract_insights(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn request_insight(question_key: String) -> Result<v1::InsightsResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::RequestInsight(v1::RequestInsightRequest {
+            question_key,
+        }))
+        .map_err(|e| e.to_string())?;
+        extract_insights(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn dismiss_insight(insight_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        request(request::Payload::DismissInsight(v1::DismissInsightRequest { insight_id }))
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[command]
 async fn create_optimization_plan(
     selected_finding_ids: Vec<String>,
@@ -1268,7 +1315,10 @@ fn main() {
             get_care_status,
             grant_care_session_consent,
             start_care_run,
-            cancel_care_run
+            cancel_care_run,
+            list_insights,
+            request_insight,
+            dismiss_insight
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

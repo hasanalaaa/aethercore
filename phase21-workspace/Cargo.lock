@@ -256,6 +256,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethercore-intelligence-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "aethercore-ipc"
 version = "0.1.0"
 dependencies = [
@@ -279,6 +290,7 @@ dependencies = [
  "aethercore-driver-hub",
  "aethercore-driver-install",
  "aethercore-idle-scheduler",
+ "aethercore-intelligence-core",
  "aethercore-ipc",
  "aethercore-operation-engine",
  "aethercore-operation-kernel",

@@ -1,0 +1,27 @@
+[package]
+name = "aethercore-intelligence-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# INVARIANT I5 (air-gapped): the dependency allowlist below is deliberate and audited.
+# serde/serde_json — typed evidence + schema parsing; sha2 — model hash pinning;
+# thiserror — typed errors. NO network-capable crates (no reqwest/ureq/hyper/tokio
+# net features). The llama.cpp binding (llama_cpp_2) is intentionally NOT added until
+# its artifact is committed (QD-023-001); the local-model feature compiles without it
+# and reports honest unavailability so the selector degrades to the fallback reasoner.
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[features]
+default = []
+# Manual activation path for the on-device model (see src/llama.rs + ARCHITECTURE.md).
+local-model = []
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,29 @@
+{
+  "schema": "aethercore.phase23.issues.v1",
+  "phase": 23,
+  "policy": "Append-only across phases. Open items are honest limits, never hidden failures.",
+  "items": [
+    {
+      "id": "P23-ISS-001",
+      "severity": "info",
+      "state": "closed",
+      "title": "DomainDispatch trait ownership moved to care-orchestrator",
+      "detail": "The Part A dispatch trait was first drafted in the service crate; the proof tests needed it without a service dependency, so it was moved into crates/care-orchestrator (engine.rs) and re-exported. Service code and tests now share one trait shape."
+    },
+    {
+      "id": "P23-ISS-002",
+      "severity": "medium",
+      "state": "open",
+      "title": "No committed model artifact in this delivery",
+      "detail": "Per the model-selection contract, no GGUF binary was fabricated. DeterministicFallbackReasoner is the default enabled engine; the LLM path is fully coded behind --features local-model with documented manual activation (assets/models/models.manifest.json activationContract).",
+      "trackedAlsoIn": "docs/phase23/QUALIFICATION_DEBT.json#QD-023-001"
+    },
+    {
+      "id": "P23-ISS-003",
+      "severity": "low",
+      "state": "closed",
+      "title": "Audit allowlist regex initially caught Cargo.toml section keys",
+      "detail": "The dependency allowlist gate matched [package] keys (name/edition/publish) as dependencies. Fixed by parsing only [dependencies]/[dev-dependencies] sections; llama_cpp_2 waiver check now applies to real declarations, not comment mentions."
+    }
+  ]
+}

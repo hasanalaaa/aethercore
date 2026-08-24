@@ -15,4 +15,5 @@ export const arPlurals = {
   'unit.warning': { zero: 'لا تحذيرات', one: 'تحذير واحد', two: 'تحذيران', few: '{count} تحذيرات', many: '{count} تحذيرًا', other: '{count} تحذير' },
   'unit.occurrence': { zero: 'لا تكرارات', one: 'تكرار واحد', two: 'تكراران', few: '{count} تكرارات', many: '{count} تكرارًا', other: '{count} تكرار' },
   'unit.careStep': { zero: 'لا خطوات عناية', one: 'خطوة عناية واحدة', two: 'خطوتا عناية', few: '{count} خطوات عناية', many: '{count} خطوة عناية', other: '{count} خطوة عناية' },
+  'unit.insight': { zero: 'لا استشرافات', one: 'استشراف واحد', two: 'استشرافان', few: '{count} استشرافات', many: '{count} استشرافًا', other: '{count} استشراف' },
 } satisfies Record<PluralMessageKey, ArabicPlural>;

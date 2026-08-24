@@ -1,0 +1,15 @@
+{
+  "schema": "aethercore.phase23.model-manifest.v1",
+  "policy": "Air-gapped model integrity (invariant I5). Every entry pins an artifact that ships INSIDE the repository under assets/models/. The loader refuses any hash mismatch (fail-closed); there is no runtime download and no network path. An empty artifacts list means the deterministic fallback reasoner is the default enabled engine; the on-device model activates only via --features local-model after a real artifact is committed here with its pinned hash.",
+  "artifacts": [],
+  "activationContract": {
+    "featureFlag": "local-model",
+    "steps": [
+      "1. Obtain a quantized GGUF instruct model (target class: q4_k_m, <= 2 GB, strong structured-JSON compliance; candidate: Qwen2.5-3B-Instruct GGUF, Apache-2.0) from its official distribution.",
+      "2. Copy the .gguf into assets/models/ (respect the repo file-size policy; chunk if needed).",
+      "3. Compute sha256 and add an entry to 'artifacts' with fileName, sha256Hex, declaredRamBudgetBytes (<= 2147483648).",
+      "4. Place the license text alongside as <fileName>.LICENSE.",
+      "5. Build the service with --features local-model and re-run scripts/phase23-adversarial-audit.py (model-hash gate must PASS)."
+    ]
+  }
+}

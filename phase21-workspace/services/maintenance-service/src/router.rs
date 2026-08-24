@@ -44,6 +44,8 @@ pub struct ServiceContext {
     pub timeline: Arc<crate::timeline::TimelineCoordinator>,
     /// Phase 22: One-Click Care — orchestration over existing domain plans only.
     pub care: Arc<crate::care::CareCoordinator>,
+    /// Phase 23: Embedded Local Intelligence — advisory-only, ephemeral session state.
+    pub intelligence_core: Arc<crate::intelligence::IntelligenceCoordinator>,
 }
 
 impl ServiceContext {
@@ -1205,6 +1207,33 @@ pub fn handle_request(
                 let status=ctx.care.plan_preview(&principal_key);
                 publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
                 Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
+            }
+            // ---------------- Phase 23: Local Intelligence (advisory-only) ----------------
+            request::Payload::ListInsights(_) => {
+                request_context.checkpoint().map_err(err)?;
+                let response=ctx.intelligence_core.list();
+                publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response.clone())));
+                Ok(Some(response::Payload::InsightsResponse(response)))
+            }
+            request::Payload::RequestInsight(_) => {
+                request_context.checkpoint().map_err(err)?;
+                // Observer-effect guard: no inference while any mutation or care run holds
+                // the machine-wide lease. Kernel state is the single source of truth.
+                let mutation_active=ctx.kernel.mutations().is_active();
+                match ctx.intelligence_core.request(&principal_key,mutation_active){
+                    Ok(response)=>{
+                        publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response.clone())));
+                        Ok(Some(response::Payload::InsightsResponse(response)))
+                    }
+                    Err(e)=>Err(ServiceError::new(6,v1::ErrorCode::Unavailable,"intelligence","insight.error.busy",e)),
+                }
+            }
+            request::Payload::DismissInsight(v) => {
+                request_context.checkpoint().map_err(err)?;
+                let _=ctx.intelligence_core.dismiss(&v.insight_id);
+                let response=ctx.intelligence_core.list();
+                publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response)));
+                Ok(Some(response::Payload::InsightsResponse(v1::InsightsResponse{engine_label:ctx.intelligence_core.engine_label().into(),insights:Vec::new()})))
             }
         }
     })();

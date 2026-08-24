@@ -35,6 +35,19 @@ pub trait DomainStepExecutor {
     ) -> Result<(StepOutcome, String, String), CareError>;
 }
 
+/// Phase 23 / Part A — typed dispatch into real domain coordinators. Implemented by
+/// the service layer over its coordinators; the engine calls it through
+/// `DomainStepExecutor` bridges. Kept here so service code and tests share one shape.
+pub trait DomainDispatch: Send + Sync {
+    /// Starts ONE existing domain plan behind its own safety rules and polls until a
+    /// terminal state or deadline. Returns (plan_state, verification_state, failure_key).
+    fn start_and_await(
+        &self,
+        owner_principal_key: &str,
+        domain_plan_id: &str,
+    ) -> Result<(String, String, String), String>;
+}
+
 /// Handle proving the orchestrator currently owns the machine-wide mutation lease.
 /// Holding it is required for any `execute_step` call. The inner lease releases on
 /// drop; the guard type exists so executors cannot fabricate one.

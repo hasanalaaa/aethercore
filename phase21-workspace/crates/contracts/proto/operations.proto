@@ -13,6 +13,7 @@ import "support_bundle.proto";
 import "performance.proto";
 import "timeline.proto";
 import "care.proto";
+import "insights.proto";
 
 // Request/Response remain the stable v7 RPC payloads. Session framing lives in events.proto.
 
@@ -93,6 +94,10 @@ message Request {
     GrantCareSessionConsentRequest grant_care_session_consent = 81;
     GetCareStatusRequest get_care_status = 82;
     CancelCareRunRequest cancel_care_run = 83;
+    // Phase 23: Local Intelligence (additive; next free tags).
+    ListInsightsRequest list_insights = 84;
+    RequestInsightRequest request_insight = 85;
+    DismissInsightRequest dismiss_insight = 86;
   }
 }
 message Response {
@@ -141,6 +146,8 @@ message Response {
     TimelineResponse timeline_page = 46;
     // Phase 22: One-Click Care (additive; next free tag).
     CareStatusResponse care_status = 47;
+    // Phase 23: Local Intelligence (additive; next free tag).
+    InsightsResponse insights_response = 48;
   }
 }
 message PingRequest {}

@@ -15,6 +15,7 @@ import "support_bundle.proto";
 import "performance.proto";
 import "timeline.proto";
 import "care.proto";
+import "insights.proto";
 
 enum EventKind {
   EVENT_KIND_UNSPECIFIED = 0;
@@ -46,6 +47,8 @@ enum EventKind {
   EVENT_KIND_TIMELINE_PAGE = 25;
   // Phase 22: One-Click Care (additive; next free tag).
   EVENT_KIND_CARE_RUN = 26;
+  // Phase 23: Local Intelligence (additive; next free tag).
+  EVENT_KIND_INSIGHTS = 27;
 }
 
 enum MutationLeaseState {
@@ -120,6 +123,8 @@ message EventEnvelope {
     TimelineResponse timeline_page = 34;
     // Phase 22: One-Click Care (additive; next free tag).
     CareRunStatus care_status = 35;
+    // Phase 23: Local Intelligence (additive; next free tag).
+    InsightsResponse insights = 36;
   }
 }
 

@@ -23,6 +23,7 @@ mod scheduler;
 mod support;
 mod timeline;
 mod care;
+mod intelligence;
 
 const SERVICE_NAME:&str="AetherCoreMaintenance";
 

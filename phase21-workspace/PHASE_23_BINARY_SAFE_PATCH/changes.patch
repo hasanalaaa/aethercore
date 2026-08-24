@@ -1,0 +1,771 @@
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -256,6 +256,17 @@
+ ]
+ 
+ [[package]]
++name = "aethercore-intelligence-core"
++version = "0.1.0"
++dependencies = [
++ "serde",
++ "serde_json",
++ "sha2",
++ "tempfile",
++ "thiserror 2.0.20",
++]
++
++[[package]]
+ name = "aethercore-ipc"
+ version = "0.1.0"
+ dependencies = [
+@@ -279,6 +290,7 @@
+  "aethercore-driver-hub",
+  "aethercore-driver-install",
+  "aethercore-idle-scheduler",
++ "aethercore-intelligence-core",
+  "aethercore-ipc",
+  "aethercore-operation-engine",
+  "aethercore-operation-kernel",
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -35,6 +35,7 @@
+   "crates/pc-intelligence",
+   "crates/timeline-intelligence",
+   "crates/care-orchestrator",
++  "crates/intelligence-core",
+   "crates/idle-scheduler",
+   "crates/update-engine",
+   "crates/update-download",
+--- a/apps/desktop/src/main.rs
++++ b/apps/desktop/src/main.rs
+@@ -86,6 +86,7 @@
+         Some(Payload::OptimizationStatus(v))=>("optimizationStatus",serde_json::to_value(v).unwrap_or_default()),
+         Some(Payload::TimelinePage(v))=>("timelinePage",serde_json::to_value(v).unwrap_or_default()),
+         Some(Payload::CareStatus(v))=>("careStatus",serde_json::to_value(v).unwrap_or_default()),
++        Some(Payload::Insights(v))=>("insights",serde_json::to_value(v).unwrap_or_default()),
+         None=>("unknown",serde_json::Value::Null),
+     };
+     UiKernelEvent{sequence:event.sequence,emitted_unix_ms:event.emitted_unix_ms,kind:kind.into(),plan_id:event.plan_id,payload}
+@@ -1181,6 +1182,52 @@
+         let resp = request(request::Payload::CancelCareRun(v1::CancelCareRunRequest {}))
+             .map_err(|e| e.to_string())?;
+         extract_care_status(resp)
++    })
++    .await
++    .map_err(|e| e.to_string())?
++}
++
++// ---------------------------------------------------------------------------
++// Phase 23 — Local Intelligence commands (advisory-only)
++// ---------------------------------------------------------------------------
++
++fn extract_insights(resp: v1::Response) -> Result<v1::InsightsResponse, String> {
++    match resp.payload {
++        Some(response::Payload::InsightsResponse(p)) => Ok(p),
++        _ => Err("unexpected insights response".into()),
++    }
++}
++
++#[command]
++async fn list_insights() -> Result<v1::InsightsResponse, String> {
++    tauri::async_runtime::spawn_blocking(move || {
++        let resp = request(request::Payload::ListInsights(v1::ListInsightsRequest {}))
++            .map_err(|e| e.to_string())?;
++        extract_insights(resp)
++    })
++    .await
++    .map_err(|e| e.to_string())?
++}
++
++#[command]
++async fn request_insight(question_key: String) -> Result<v1::InsightsResponse, String> {
++    tauri::async_runtime::spawn_blocking(move || {
++        let resp = request(request::Payload::RequestInsight(v1::RequestInsightRequest {
++            question_key,
++        }))
++        .map_err(|e| e.to_string())?;
++        extract_insights(resp)
++    })
++    .await
++    .map_err(|e| e.to_string())?
++}
++
++#[command]
++async fn dismiss_insight(insight_id: String) -> Result<(), String> {
++    tauri::async_runtime::spawn_blocking(move || {
++        request(request::Payload::DismissInsight(v1::DismissInsightRequest { insight_id }))
++            .map_err(|e| e.to_string())?;
++        Ok(())
+     })
+     .await
+     .map_err(|e| e.to_string())?
+@@ -1268,7 +1315,10 @@
+             get_care_status,
+             grant_care_session_consent,
+             start_care_run,
+-            cancel_care_run
++            cancel_care_run,
++            list_insights,
++            request_insight,
++            dismiss_insight
+         ])
+         .run(tauri::generate_context!());
+     if let Err(error) = result {
+--- a/apps/ui/src/app/AppShell.svelte
++++ b/apps/ui/src/app/AppShell.svelte
+@@ -23,6 +23,7 @@
+   import ActivityPage from '../features/activity/ActivityPage.svelte';
+   import TimelinePanel from '../features/timeline/TimelinePage.svelte';
+   import CarePanel from '../features/care/CarePanel.svelte';
++  import InsightsPanel from '../features/insights/InsightsPanel.svelte';
+ 
+   let windowCleanup: WindowUxCleanup | undefined;
+   let kernelCleanup: KernelSessionCleanup | undefined;
+@@ -79,8 +80,11 @@
+         {:else if $shellState.activePage === 'activity'}
+           <ActivityPage />
+           <TimelinePanel />
++          <CarePanel />
++          <InsightsPanel />
+         {:else}<OverviewPage />
+-          <CarePanel />{/if}
++          <CarePanel />
++          <InsightsPanel />{/if}
+       </FluidPage>
+     {/key}
+     <RecoveryPanel />
+--- a/apps/ui/src/lib/contracts.ts
++++ b/apps/ui/src/lib/contracts.ts
+@@ -232,6 +232,17 @@
+   planDigestSha256:string; steps:CareStepReport[]; updatedUnixMs:number; summaryKey:string
+ };
+ 
++// Phase 23 — Local Intelligence (advisory-only)
++export type InsightCitation = { evidenceId:string; surface:'bottleneckReport'|'repairDiagnosis'|'timelinePattern'|'maintenanceHistory' };
++export type Insight = {
++  schemaVersion:number; summaryKey:string; explanation:string;
++  confidence:'Weak'|'Moderate'|'Strong'; citations:InsightCitation[];
++  engine:'localModel'|'ruleFallback'
++};
++export type InsightsResponse = {
++  engineLabel:'localModel'|'ruleFallback'|'disabled'; insights:Insight[]
++};
++
+ type KernelEvent<K extends string, P> = { sequence:number; emittedUnixMs:number; kind:K; planId:string; payload:P };
+ export type UiKernelEvent =
+   | KernelEvent<'serviceSnapshot', Omit<Snapshot, 'connected'>>
+@@ -260,6 +271,7 @@
+   | KernelEvent<'optimizationStatus', OptimizationStatus>
+   | KernelEvent<'timelinePage', TimelineResponse>
+   | KernelEvent<'careStatus', CareRunStatus>
++  | KernelEvent<'insights', InsightsResponse>
+   | KernelEvent<'unknown', null>;
+ export type UiSessionState = { connected:boolean; sessionId:string; serviceVersion:string; currentSequence:number; replayFloorSequence:number; replayComplete:boolean };
+ export type UiStreamReset = { reason:string; currentSequence:number; replayFloorSequence:number; messageKey:string };
+--- a/apps/ui/src/lib/i18n/catalog.ar.ts
++++ b/apps/ui/src/lib/i18n/catalog.ar.ts
+@@ -1484,4 +1484,30 @@
+   'care.consentBulletReview': 'تبقى تثبيتات التعريفات وإصلاحات ويندوز في تدفقات مراجعتها الخاصة.',
+   'care.consentBulletSession': 'هذا التفويض يدوم لهذه الجلسة فقط ويمكن إلغاؤه أثناء التشغيل.',
+   'care.consentAuthorize': 'تفويض وبدء',
++
++  'insight.eyebrow': 'استشرافات',
++  'insight.title': 'ماذا تعني تقاريرك',
++  'insight.badgeAdvisory': 'استشارة ذكاء اصطناعي',
++  'insight.badgeLocal': 'محلي',
++  'insight.badgeOffline': 'دون اتصال',
++  'insight.engine.localModel': 'نموذج على الجهاز',
++  'insight.engine.ruleFallback': 'ملخص قاعدي',
++  'insight.explainThis': 'اشرح هذا',
++  'insight.thinking': 'يفكر محلياً…',
++  'insight.dismissPanel': 'إغلاق لوحة الاستشرافات',
++  'insight.empty': 'لا استشرافات بعد للأدلة الحالية. شغّل فحصاً أو خطوة عناية أولاً ثم أعد المحاولة.',
++  'insight.citations': 'الأدلة:',
++  'insight.confidence.weak': 'ثقة ضعيفة',
++  'insight.confidence.moderate': 'ثقة متوسطة',
++  'insight.confidence.strong': 'ثقة قوية',
++  'insight.surface.bottleneckReport': 'أداء',
++  'insight.surface.repairDiagnosis': 'إصلاح',
++  'insight.surface.timelinePattern': 'نمط زمني',
++  'insight.surface.maintenanceHistory': 'سجل',
++  'insight.summary.bottleneck': 'ملخص ملاحظات الأداء',
++  'insight.summary.repairState': 'ملخص حالة الإصلاح',
++  'insight.summary.recurrence': 'ملخص الأنماط المتكررة',
++  'insight.error.busy': 'لا يزال هناك شرح آخر قيد التشغيل.',
++  'common.refresh': 'تحديث',
++  'common.dismiss': 'تجاهل',
+ } satisfies Record<MessageKey, string>;
+--- a/apps/ui/src/lib/i18n/catalog.en.ts
++++ b/apps/ui/src/lib/i18n/catalog.en.ts
+@@ -1484,6 +1484,32 @@
+   'care.consentBulletReview': 'Driver installs and Windows repairs stay in their own review flows.',
+   'care.consentBulletSession': 'This authorization lasts this session only and can be cancelled mid-run.',
+   'care.consentAuthorize': 'Authorize & Start',
++
++  'insight.eyebrow': 'Insights',
++  'insight.title': 'What your reports mean',
++  'insight.badgeAdvisory': 'AI advisory',
++  'insight.badgeLocal': 'local',
++  'insight.badgeOffline': 'offline',
++  'insight.engine.localModel': 'On-device model',
++  'insight.engine.ruleFallback': 'Rule-based summary',
++  'insight.explainThis': 'Explain this',
++  'insight.thinking': 'Thinking locally…',
++  'insight.dismissPanel': 'Dismiss insights panel',
++  'insight.empty': 'No insights yet for the current evidence. Run a scan or a care step first, then ask again.',
++  'insight.citations': 'Evidence:',
++  'insight.confidence.weak': 'Weak confidence',
++  'insight.confidence.moderate': 'Moderate confidence',
++  'insight.confidence.strong': 'Strong confidence',
++  'insight.surface.bottleneckReport': 'performance',
++  'insight.surface.repairDiagnosis': 'repair',
++  'insight.surface.timelinePattern': 'timeline pattern',
++  'insight.surface.maintenanceHistory': 'history',
++  'insight.summary.bottleneck': 'Performance findings summary',
++  'insight.summary.repairState': 'Repair state summary',
++  'insight.summary.recurrence': 'Recurring patterns summary',
++  'insight.error.busy': 'Another explanation is still running.',
++  'common.refresh': 'Refresh',
++  'common.dismiss': 'Dismiss',
+ } as const;
+ 
+ export type MessageKey = keyof typeof enCatalog;
+--- a/apps/ui/src/lib/i18n/plurals.ar.ts
++++ b/apps/ui/src/lib/i18n/plurals.ar.ts
+@@ -15,4 +15,5 @@
+   'unit.warning': { zero: 'لا تحذيرات', one: 'تحذير واحد', two: 'تحذيران', few: '{count} تحذيرات', many: '{count} تحذيرًا', other: '{count} تحذير' },
+   'unit.occurrence': { zero: 'لا تكرارات', one: 'تكرار واحد', two: 'تكراران', few: '{count} تكرارات', many: '{count} تكرارًا', other: '{count} تكرار' },
+   'unit.careStep': { zero: 'لا خطوات عناية', one: 'خطوة عناية واحدة', two: 'خطوتا عناية', few: '{count} خطوات عناية', many: '{count} خطوة عناية', other: '{count} خطوة عناية' },
++  'unit.insight': { zero: 'لا استشرافات', one: 'استشراف واحد', two: 'استشرافان', few: '{count} استشرافات', many: '{count} استشرافًا', other: '{count} استشراف' },
+ } satisfies Record<PluralMessageKey, ArabicPlural>;
+--- a/apps/ui/src/lib/i18n/plurals.en.ts
++++ b/apps/ui/src/lib/i18n/plurals.en.ts
+@@ -12,5 +12,6 @@
+   'unit.warning': { one: '{count} warning', other: '{count} warnings' },
+   'unit.occurrence': { one: '{count} occurrence', other: '{count} occurrences' },
+   'unit.careStep': { one: '{count} care step', other: '{count} care steps' },
++  'unit.insight': { one: '{count} insight', other: '{count} insights' },
+ } as const;
+ export type PluralMessageKey = keyof typeof enPlurals;
+--- a/apps/ui/src/platform/stream-state.ts
++++ b/apps/ui/src/platform/stream-state.ts
+@@ -19,6 +19,7 @@
+   SupportBundleEvent,
+   TimelineResponse,
+   CareRunStatus,
++  InsightsResponse,
+   RecoveryEntry,
+   RepairAssessment,
+   Snapshot,
+@@ -60,6 +61,7 @@
+   perfSampling: boolean;
+   timelinePage: TimelineResponse | null;
+   careStatus: CareRunStatus | null;
++  insights: InsightsResponse | null;
+   session: UiSessionState;
+   lastKernelSequence: number;
+ };
+@@ -194,6 +196,7 @@
+     perfSampling: false,
+     timelinePage: null,
+     careStatus: null,
++    insights: null,
+     session: {
+       connected: false,
+       sessionId: '',
+@@ -331,6 +334,9 @@
+     case 'careStatus':
+       next.careStatus = event.payload;
+       break;
++    case 'insights':
++      next.insights = event.payload;
++      break;
+     case 'progressTelemetry':
+       next = applyProgress(next, event.payload);
+       break;
+--- a/crates/care-orchestrator/src/engine.rs
++++ b/crates/care-orchestrator/src/engine.rs
+@@ -33,6 +33,19 @@
+         domain_kind: &str,
+         lease: &MutationLeaseGuard,
+     ) -> Result<(StepOutcome, String, String), CareError>;
++}
++
++/// Phase 23 / Part A — typed dispatch into real domain coordinators. Implemented by
++/// the service layer over its coordinators; the engine calls it through
++/// `DomainStepExecutor` bridges. Kept here so service code and tests share one shape.
++pub trait DomainDispatch: Send + Sync {
++    /// Starts ONE existing domain plan behind its own safety rules and polls until a
++    /// terminal state or deadline. Returns (plan_state, verification_state, failure_key).
++    fn start_and_await(
++        &self,
++        owner_principal_key: &str,
++        domain_plan_id: &str,
++    ) -> Result<(String, String, String), String>;
+ }
+ 
+ /// Handle proving the orchestrator currently owns the machine-wide mutation lease.
+--- a/crates/care-orchestrator/src/lib.rs
++++ b/crates/care-orchestrator/src/lib.rs
+@@ -9,7 +9,8 @@
+ pub mod model;
+ 
+ pub use engine::{
+-    CareJournal, CareRunResult, DomainStepExecutor, MutationLeaseGuard, run_care_plan,
++    CareJournal, CareRunResult, DomainDispatch, DomainStepExecutor, MutationLeaseGuard,
++    run_care_plan,
+ };
+ pub use model::{
+     CareError, CarePlan, CareSafety, CareStep, CareStepReport, MAX_CARE_STEPS, StepOutcome,
+--- a/crates/contracts/build.rs
++++ b/crates/contracts/build.rs
+@@ -28,6 +28,7 @@
+         "performance.proto",
+         "timeline.proto",
+         "care.proto",
++        "insights.proto",
+         "events.proto",
+         "aethercore.proto",
+     ] {
+--- a/crates/contracts/proto/events.proto
++++ b/crates/contracts/proto/events.proto
+@@ -15,6 +15,7 @@
+ import "performance.proto";
+ import "timeline.proto";
+ import "care.proto";
++import "insights.proto";
+ 
+ enum EventKind {
+   EVENT_KIND_UNSPECIFIED = 0;
+@@ -46,6 +47,8 @@
+   EVENT_KIND_TIMELINE_PAGE = 25;
+   // Phase 22: One-Click Care (additive; next free tag).
+   EVENT_KIND_CARE_RUN = 26;
++  // Phase 23: Local Intelligence (additive; next free tag).
++  EVENT_KIND_INSIGHTS = 27;
+ }
+ 
+ enum MutationLeaseState {
+@@ -120,6 +123,8 @@
+     TimelineResponse timeline_page = 34;
+     // Phase 22: One-Click Care (additive; next free tag).
+     CareRunStatus care_status = 35;
++    // Phase 23: Local Intelligence (additive; next free tag).
++    InsightsResponse insights = 36;
+   }
+ }
+ 
+--- a/crates/contracts/proto/operations.proto
++++ b/crates/contracts/proto/operations.proto
+@@ -13,6 +13,7 @@
+ import "performance.proto";
+ import "timeline.proto";
+ import "care.proto";
++import "insights.proto";
+ 
+ // Request/Response remain the stable v7 RPC payloads. Session framing lives in events.proto.
+ 
+@@ -93,6 +94,10 @@
+     GrantCareSessionConsentRequest grant_care_session_consent = 81;
+     GetCareStatusRequest get_care_status = 82;
+     CancelCareRunRequest cancel_care_run = 83;
++    // Phase 23: Local Intelligence (additive; next free tags).
++    ListInsightsRequest list_insights = 84;
++    RequestInsightRequest request_insight = 85;
++    DismissInsightRequest dismiss_insight = 86;
+   }
+ }
+ message Response {
+@@ -141,6 +146,8 @@
+     TimelineResponse timeline_page = 46;
+     // Phase 22: One-Click Care (additive; next free tag).
+     CareStatusResponse care_status = 47;
++    // Phase 23: Local Intelligence (additive; next free tag).
++    InsightsResponse insights_response = 48;
+   }
+ }
+ message PingRequest {}
+--- a/services/maintenance-service/Cargo.toml
++++ b/services/maintenance-service/Cargo.toml
+@@ -30,6 +30,7 @@
+ aethercore-restore-point = { path = "../../crates/restore-point" }
+ aethercore-timeline-intelligence = { path = "../../crates/timeline-intelligence" }
+ aethercore-care-orchestrator = { path = "../../crates/care-orchestrator" }
++aethercore-intelligence-core = { path = "../../crates/intelligence-core" }
+ sha2.workspace = true
+ anyhow.workspace = true
+ chrono.workspace = true
+--- a/services/maintenance-service/src/care.rs
++++ b/services/maintenance-service/src/care.rs
+@@ -322,26 +322,62 @@
+ // Coordinator
+ // ---------------------------------------------------------------------------
+ 
+-/// Executor binding to real domain coordinators arrives with the router wiring;
+-/// the engine's trait keeps this module testable without native platforms.
+-struct ServiceExecutor;
++/// Re-exported dispatch trait (owned by the care-orchestrator crate so service code
++/// and tests share one shape). Implementations live in composition at startup.
++pub use aethercore_care_orchestrator::DomainDispatch;
++
++/// Poll cadence and ceiling for awaiting a dispatched domain plan.
++const DISPATCH_POLL_MS: u64 = 100;
++const DISPATCH_TIMEOUT_MS: u64 = 120_000;
++
++/// Terminal plan states per the operation engine state machine.
++fn is_terminal_plan_state(state: &str) -> bool {
++    matches!(state, "Completed" | "Failed" | "RebootPending")
++}
++
++/// Real executor: forwards to the composition-provided [`DomainDispatch`].
++struct ServiceExecutor {
++    dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
++}
+ 
+ impl DomainStepExecutor for ServiceExecutor {
+     fn execute_step(
+         &self,
+-        _owner: &str,
++        owner: &str,
+         domain_plan_id: &str,
+-        domain_kind: &str,
++        _domain_kind: &str,
+         _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
+     ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError> {
+-        // Phase 22 ships orchestration of review + auto classification and the run
+-        // machinery; actual domain start_with_lease dispatch requires live platform
+-        // handles bound at composition. Until a domain exposes a headless entry point
+-        // callable from the orchestrator thread, execution surfaces as an explicit
+-        // typed rejection rather than a fabricated success.
++        let (plan_state, verification_state, failure_key) = self
++            .dispatch
++            .start_and_await(owner, domain_plan_id)
++            .map_err(
++                |detail| aethercore_care_orchestrator::CareError::DomainRejected {
++                    domain_kind: _domain_kind.to_string(),
++                    detail,
++                },
++            )?;
++        if is_terminal_plan_state(&plan_state) && plan_state != "Completed" {
++            return Ok((StepOutcome::Failed, verification_state, failure_key));
++        }
++        if plan_state == "Completed" {
++            if !verification_state.is_empty() {
++                return Ok((
++                    StepOutcome::VerifiedByDomain,
++                    verification_state,
++                    String::new(),
++                ));
++            }
++            return Ok((
++                StepOutcome::CompletedUnverified,
++                String::new(),
++                String::new(),
++            ));
++        }
++        // Non-terminal after deadline (RebootPending counts as terminal-but-unverified).
+         Err(aethercore_care_orchestrator::CareError::DomainRejected {
+-            domain_kind: domain_kind.to_string(),
+-            detail: format!("plan {domain_plan_id}: domain dispatch not wired in phase 22"),
++            domain_kind: _domain_kind.to_string(),
++            detail: format!("plan {domain_plan_id} did not reach a terminal state in time"),
+         })
+     }
+ }
+@@ -351,15 +387,21 @@
+     supervisor: MutationSupervisor,
+     fence: CommitFence,
+     pub consent: Arc<SessionConsentRegistry>,
++    /// Composition-provided dispatch into the real domain coordinators (Part A).
++    dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
+ }
+ 
+ impl CareCoordinator {
+-    pub fn new(db: Arc<Database>) -> Self {
++    pub fn new(
++        db: Arc<Database>,
++        dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
++    ) -> Self {
+         Self {
+             db,
+             supervisor: MutationSupervisor::new(),
+             fence: CommitFence::new(),
+             consent: Arc::new(SessionConsentRegistry::default()),
++            dispatch,
+         }
+     }
+ 
+@@ -395,7 +437,9 @@
+         let journal = PersistenceJournal {
+             db: self.db.clone(),
+         };
+-        let executor = ServiceExecutor;
++        let executor = ServiceExecutor {
++            dispatch: self.dispatch.clone(),
++        };
+         let result: Result<CareRunResult, aethercore_care_orchestrator::CareError> =
+             aethercore_care_orchestrator::run_care_plan(
+                 &self.supervisor,
+--- a/services/maintenance-service/src/composition.rs
++++ b/services/maintenance-service/src/composition.rs
+@@ -98,11 +98,30 @@
+ 
+     // Phase 21: Timeline Intelligence. Read-only over persisted history; construction
+     // never mutates the journal and every query is principal-scoped + bounded later.
+-    let timeline=Arc::new(crate::timeline::TimelineCoordinator::new(db.clone()));
++    let timeline = Arc::new(crate::timeline::TimelineCoordinator::new(db.clone()));
++
++    // Phase 22/23 Part A: typed dispatch into the real domain coordinators, shared by
++    // the router handlers and the CareCoordinator. Each arm acquires that domain's own
++    // mutation lease (so single-flight stays machine-wide) and polls to a terminal state.
++    let dispatch: Arc<dyn aethercore_care_orchestrator::DomainDispatch> =
++        Arc::new(RealDomainDispatch {
++            kernel: kernel.mutations().clone(),
++            cleaner: cleaner.clone(),
++            startup: startup.clone(),
++            repair: repair.clone(),
++        });
+ 
+     // Phase 22: One-Click Care orchestration. Composes existing domain plans only;
+     // single-flight behind MutationWorkload::OneClickCare, journaled resume.
+-    let care=Arc::new(crate::care::CareCoordinator::new(db.clone()));
++    let care = Arc::new(crate::care::CareCoordinator::new(db.clone(), dispatch));
++
++    // Phase 23: Embedded Local Intelligence — advisory-only, air-gapped, ephemeral.
++    // Default build ships the deterministic fallback engine; the on-device model path
++    // activates only with --features local-model + hash-pinned artifact (I5).
++    let intelligence_core = Arc::new(crate::intelligence::IntelligenceCoordinator::new(
++        db.clone(),
++        None,
++    ));
+ 
+     // Recovery is centralized and deliberately observation-only. A failure aborts service startup;
+     // no client can enter the operation kernel before every domain has reconciled its journal.
+@@ -139,5 +158,172 @@
+         performance,
+         timeline,
+         care,
++        intelligence_core,
+     })
+ }
++
++// ---------------------------------------------------------------------------
++// Phase 23 / Part A — real domain dispatch shared by router + care coordinator
++// ---------------------------------------------------------------------------
++
++struct RealDomainDispatch {
++    kernel: aethercore_operation_kernel::MutationSupervisor,
++    cleaner: Arc<CleanupEngine>,
++    startup: Arc<StartupManager>,
++    repair: Arc<RepairCoordinator>,
++}
++
++impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
++    fn start_and_await(
++        &self,
++        owner_principal_key: &str,
++        domain_plan_id: &str,
++    ) -> Result<(String, String, String), String> {
++        use crate::care::{DISPATCH_POLL_MS, DISPATCH_TIMEOUT_MS, is_terminal_plan_state};
++        let deadline =
++            std::time::Instant::now() + std::time::Duration::from_millis(DISPATCH_TIMEOUT_MS);
++        let plan = self
++            .cleaner
++            .status(owner_principal_key, Some(domain_plan_id))
++            .map_err(|e| e.to_string())?
++            .or_else(|| {
++                self.startup
++                    .status(owner_principal_key, Some(domain_plan_id))
++                    .ok()
++                    .flatten()
++            })
++            .map(|_| ())
++            .is_some();
++        let _ = plan; // presence check only; dispatch decided by kind probe below
++
++        // Kind probe order mirrors plan_kind(): cleanup → startup → repair. The first
++        // coordinator that OWNS this plan id performs the dispatch.
++        if let Ok(Some(status)) = self
++            .cleaner
++            .status(owner_principal_key, Some(domain_plan_id))
++        {
++            let lease = self
++                .kernel
++                .try_acquire(
++                    aethercore_operation_kernel::MutationWorkload::Cleanup,
++                    domain_plan_id,
++                    owner_principal_key,
++                )
++                .map_err(|e| format!("cleanup lease: {e}"))?;
++            self.cleaner
++                .start_with_lease(owner_principal_key, domain_plan_id, lease)
++                .map_err(|e| e.to_string())?;
++            loop {
++                if let Ok(Some(s)) = self
++                    .cleaner
++                    .status(owner_principal_key, Some(domain_plan_id))
++                {
++                    if is_terminal_plan_state(&s.plan_state)
++                        || std::time::Instant::now() >= deadline
++                    {
++                        let verified = !s.items.is_empty()
++                            && s.items.iter().all(|item| item.result_code == "Deleted");
++                        let failure = if s.plan_state == "Failed" {
++                            "care.error.domainFailure"
++                        } else {
++                            ""
++                        };
++                        return Ok((
++                            s.plan_state,
++                            if verified {
++                                "Verified".into()
++                            } else {
++                                String::new()
++                            },
++                            failure.into(),
++                        ));
++                    }
++                }
++                std::thread::sleep(std::time::Duration::from_millis(DISPATCH_POLL_MS));
++            }
++        }
++        if let Ok(Some(status)) = self
++            .startup
++            .status(owner_principal_key, Some(domain_plan_id))
++        {
++            let _ = status;
++            let lease = self
++                .kernel
++                .try_acquire(
++                    aethercore_operation_kernel::MutationWorkload::Startup,
++                    domain_plan_id,
++                    owner_principal_key,
++                )
++                .map_err(|e| format!("startup lease: {e}"))?;
++            self.startup
++                .start_with_lease(owner_principal_key, domain_plan_id, lease)
++                .map_err(|e| e.to_string())?;
++            loop {
++                if let Ok(Some(s)) = self
++                    .startup
++                    .status(owner_principal_key, Some(domain_plan_id))
++                {
++                    if is_terminal_plan_state(&s.plan_state)
++                        || std::time::Instant::now() >= deadline
++                    {
++                        let verified = !s.items.is_empty()
++                            && s.items.iter().all(|i| i.result_code == "Verified");
++                        let failure = if s.plan_state == "Failed" {
++                            "care.error.domainFailure"
++                        } else {
++                            ""
++                        };
++                        return Ok((
++                            s.plan_state,
++                            if verified {
++                                "Verified".into()
++                            } else {
++                                String::new()
++                            },
++                            failure.into(),
++                        ));
++                    }
++                }
++                std::thread::sleep(std::time::Duration::from_millis(DISPATCH_POLL_MS));
++            }
++        }
++        if let Ok(Some(status)) = self
++            .repair
++            .status(owner_principal_key, Some(domain_plan_id))
++        {
++            let _ = status;
++            let lease = self
++                .kernel
++                .try_acquire(
++                    aethercore_operation_kernel::MutationWorkload::SystemRepair,
++                    domain_plan_id,
++                    owner_principal_key,
++                )
++                .map_err(|e| format!("system repair lease: {e}"))?;
++            self.repair
++                .start_with_lease(owner_principal_key, domain_plan_id, lease)
++                .map_err(|e| e.to_string())?;
++            loop {
++                if let Ok(Some(s)) = self
++                    .repair
++                    .status(owner_principal_key, Some(domain_plan_id))
++                {
++                    if is_terminal_plan_state(&s.plan_state)
++                        || std::time::Instant::now() >= deadline
++                    {
++                        let failure = if s.plan_state == "Failed" {
++                            "care.error.domainFailure"
++                        } else {
++                            ""
++                        };
++                        return Ok((s.plan_state, s.verification_state, failure.into()));
++                    }
++                }
++                std::thread::sleep(std::time::Duration::from_millis(DISPATCH_POLL_MS));
++            }
++        }
++        Err(format!(
++            "plan {domain_plan_id}: no domain coordinator owns this plan"
++        ))
++    }
++}
+--- a/services/maintenance-service/src/main.rs
++++ b/services/maintenance-service/src/main.rs
+@@ -23,6 +23,7 @@
+ mod support;
+ mod timeline;
+ mod care;
++mod intelligence;
+ 
+ const SERVICE_NAME:&str="AetherCoreMaintenance";
+ 
+--- a/services/maintenance-service/src/router.rs
++++ b/services/maintenance-service/src/router.rs
+@@ -44,6 +44,8 @@
+     pub timeline: Arc<crate::timeline::TimelineCoordinator>,
+     /// Phase 22: One-Click Care — orchestration over existing domain plans only.
+     pub care: Arc<crate::care::CareCoordinator>,
++    /// Phase 23: Embedded Local Intelligence — advisory-only, ephemeral session state.
++    pub intelligence_core: Arc<crate::intelligence::IntelligenceCoordinator>,
+ }
+ 
+ impl ServiceContext {
+@@ -1205,6 +1207,33 @@
+                 let status=ctx.care.plan_preview(&principal_key);
+                 publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
+                 Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
++            }
++            // ---------------- Phase 23: Local Intelligence (advisory-only) ----------------
++            request::Payload::ListInsights(_) => {
++                request_context.checkpoint().map_err(err)?;
++                let response=ctx.intelligence_core.list();
++                publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response.clone())));
++                Ok(Some(response::Payload::InsightsResponse(response)))
++            }
++            request::Payload::RequestInsight(_) => {
++                request_context.checkpoint().map_err(err)?;
++                // Observer-effect guard: no inference while any mutation or care run holds
++                // the machine-wide lease. Kernel state is the single source of truth.
++                let mutation_active=ctx.kernel.mutations().is_active();
++                match ctx.intelligence_core.request(&principal_key,mutation_active){
++                    Ok(response)=>{
++                        publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response.clone())));
++                        Ok(Some(response::Payload::InsightsResponse(response)))
++                    }
++                    Err(e)=>Err(ServiceError::new(6,v1::ErrorCode::Unavailable,"intelligence","insight.error.busy",e)),
++                }
++            }
++            request::Payload::DismissInsight(v) => {
++                request_context.checkpoint().map_err(err)?;
++                let _=ctx.intelligence_core.dismiss(&v.insight_id);
++                let response=ctx.intelligence_core.list();
++                publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response)));
++                Ok(Some(response::Payload::InsightsResponse(v1::InsightsResponse{engine_label:ctx.intelligence_core.engine_label().into(),insights:Vec::new()})))
+             }
+         }
+     })();
