@@ -6,16 +6,57 @@
       "id": "QD-022-002",
       "area": "Live domain dispatch inside care runs",
       "closure": "DomainDispatch trait + RealDomainDispatch (composition-owned) now perform real start_with_lease dispatch with per-domain lease acquisition and terminal-state polling; ServiceExecutor maps real outcomes onto the unchanged truth-first vocabulary. Proven by end-to-end dispatch tests + two identical 356/0 full-suite runs."
+    },
+    {
+      "id": "QD-023-001",
+      "area": "Model artifact commitment + llama.cpp backend wiring",
+      "closure": "Real artifact committed: assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf, 1,117,320,736 bytes, sha256 6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e — computed locally AND equal to the HF repo's published LFS OID. llama-cpp-2 0.1.154 added under the documented owner-review waiver; load() performs a real bounded-context (2048-token) load; startup activation + typed log line wired in composition. T1 proves hash-ok → localModel active; T2/T3 prove fail-closed tamper/missing paths degrade honestly.",
+      "evidence": "tests/adversarial.rs t1_embedded_artifact_verifies_and_engine_reports_local_model (ok) · tampered_model_artifact_is_refused_and_fallback_engages (ok) · t3_missing_artifact_refuses_and_degrades (ok). docs/phase23/MODEL_EMBEDDING.md."
     }
   ],
   "carriedForwardFromPhase22": [
-    { "id": "P21-QD-001", "area": "Timeline service handlers — Windows IPC round trip", "risk": "medium", "status": "UNCHANGED" },
-    { "id": "P21-QD-002", "area": "Recurrence thresholds calibration", "risk": "medium", "status": "UNCHANGED" },
-    { "id": "P21-QD-003", "area": "Timeline page cursor stability", "risk": "low", "status": "UNCHANGED" },
-    { "id": "P21-QD-004", "area": "Renderer timeline panel under real RTL screen readers", "risk": "low", "status": "UNCHANGED" },
-    { "id": "P20-QD-003", "area": "EcoQoS / priority application (NoopPlatform worst case)", "risk": "high", "status": "UNCHANGED — still the highest open native risk" },
-    { "id": "P22-QD-001", "area": "One-Click Care handlers — Windows IPC round trip", "risk": "medium", "status": "UNCHANGED" },
-    { "id": "P22-QD-003", "area": "Session consent scope semantics on Windows service restart", "risk": "low", "status": "UNCHANGED" }
+    {
+      "id": "P21-QD-001",
+      "area": "Timeline service handlers — Windows IPC round trip",
+      "risk": "medium",
+      "status": "UNCHANGED"
+    },
+    {
+      "id": "P21-QD-002",
+      "area": "Recurrence thresholds calibration",
+      "risk": "medium",
+      "status": "UNCHANGED"
+    },
+    {
+      "id": "P21-QD-003",
+      "area": "Timeline page cursor stability",
+      "risk": "low",
+      "status": "UNCHANGED"
+    },
+    {
+      "id": "P21-QD-004",
+      "area": "Renderer timeline panel under real RTL screen readers",
+      "risk": "low",
+      "status": "UNCHANGED"
+    },
+    {
+      "id": "P20-QD-003",
+      "area": "EcoQoS / priority application (NoopPlatform worst case)",
+      "risk": "high",
+      "status": "UNCHANGED — still the highest open native risk"
+    },
+    {
+      "id": "P22-QD-001",
+      "area": "One-Click Care handlers — Windows IPC round trip",
+      "risk": "medium",
+      "status": "UNCHANGED"
+    },
+    {
+      "id": "P22-QD-003",
+      "area": "Session consent scope semantics on Windows service restart",
+      "risk": "low",
+      "status": "UNCHANGED"
+    }
   ],
   "newInPhase23": [
     {
@@ -24,7 +65,8 @@
       "debt": "The local-model feature compiles and reports honest unavailability; no GGUF artifact is committed yet. Activation requires: artifact under assets/models/ with pinned sha256 + license, --features local-model, llama_cpp_2 binding added under the documented owner-review waiver, then the load() stub replaced with a real bounded-context load.",
       "risk": "high",
       "evidenceClass": "FALLBACK_IS_DEFAULT_ENGINE",
-      "honestyNote": "The default shipped engine is the deterministic fallback; no AI output is fabricated in this build."
+      "honestyNote": "The default shipped engine is the deterministic fallback; no AI output is fabricated in this build.",
+      "status": "CLOSED IN 23.1 — see closedThisPhase"
     },
     {
       "id": "QD-023-002",

@@ -19,7 +19,10 @@ pub use engine::{
     DeterministicFallbackReasoner, INFERENCE_TIMEOUT, IntelligenceError, LocalReasoner,
     MAX_MODEL_RAM_BUDGET_BYTES, ReasonerSelector,
 };
-pub use llama::{LlamaCppReasoner, ModelManifestEntry, verify_model_hash};
+pub use llama::{
+    activate_embedded_reasoner, embedded_model_entry, verify_model_hash, LlamaCppReasoner,
+    ModelManifestEntry, EMBEDDED_MODEL_RELATIVE_PATH,
+};
 pub use model::{
     Citation, EvidenceItem, EvidenceSurface, INSIGHT_SCHEMA_V1, Insight, InsightConfidence,
     InsightEngineKind, MAX_EVIDENCE_ITEMS, MAX_INSIGHTS_PER_CALL, TypedEvidencePack,

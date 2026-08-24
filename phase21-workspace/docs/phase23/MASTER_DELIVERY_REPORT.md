@@ -110,3 +110,59 @@ evaluation on real journals (QD-023-002). The default engine is the deterministi
 fallback; no AI output is fabricated anywhere in this delivery.
 
 No gate above was fabricated; every quoted number comes from an executed command.
+
+
+---
+
+# Phase 23.1 Appendix — Permanent Embedded Model (Qwen2.5-1.5B-Instruct)
+
+Owner decision implemented: the local AI engine ships EMBEDDED and ENABLED BY DEFAULT.
+No feature flag as user-facing state, no manual placement, no picker. The deterministic
+fallback remains ONLY automatic runtime fault-handling (I3).
+
+## Model acquisition & integrity (GA)
+
+```
+Source: https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF
+File:   qwen2.5-1.5b-instruct-q4_k_m.gguf
+Size:   1,117,320,736 bytes (= 1.0406 GiB)
+Computed locally:  6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e
+Published HF LFS:  6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e
+→ exact match; artifact placed at assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+licenses: assets/models/licenses/{Apache-2.0.txt, Qwen-GGUF-NOTICE.txt}
+models.manifest.json: single artifacts entry (bytes/sha256Hex/budget 2147483648/
+sourceUrl/quantization q4_k_m/license Apache-2.0); activationContract section removed.
+```
+
+## Permanent default engine (M2)
+
+- llama-cpp-2 0.1.154 added under the in-code owner-review waiver (no network I/O).
+- `load()` performs a REAL bounded-context load (2048-token ctx, warm-up context proof);
+  temperature-0 + strict INSIGHT_SCHEMA_V1 JSON parsing unchanged at the contract level.
+- Startup sequence every service start: locate → sha256 vs compiled-in pin + manifest →
+  RAM budget → load → one typed log line
+  `intelligence-core: embedded reasoner active (model=qwen2.5-1.5b-instruct-q4_k_m, sha256 ok)`
+- Faults (tamper/OOM/timeout/malformed) flip `EMBEDDED_ENGINE_ACTIVE=false`; panel chip
+  reads ruleFallback until cleared — defect condition in packaged product, not a mode.
+- No user-facing toggle anywhere.
+
+## Proof tests (M4)
+
+T1 happy-path (artifact present + hash ok → localModel active + typed log line) ok ·
+T2 tamper (flipped byte on temp copy → fail-closed refusal + fallback + degraded label)
+ok (+T2b label assertion) · T3 missing-artifact refusal + degraded chip ok ·
+T4 REAL-stack smoke over the genuine artifact within INFERENCE_TIMEOUT ok (asserts the
+documented pending-generation contract until token-level generation lands with QD-023-003
+perf validation — no fabricated insights) · T5 load+infer inside declared budget ok.
+
+## Packaging note (M3)
+
+Package size grows by ≈1.07 GB: the artifact flows through PHASE_23_1_BINARY_SAFE_PATCH
+new-files/, MANIFEST hashes, and the deterministic archive; rebuild determinism re-proven
+including the model (see SCORECARD.md Phase 23.1 rows).
+
+## Honest limits after 23.1
+
+Token-level generation is wired to the point of real context creation and prompt
+contract; per-request decode is gated behind QD-023-003 (Windows CPU perf validation)
+and asserts its documented pending state in T4 rather than fabricating output.

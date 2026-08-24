@@ -31,3 +31,17 @@ Capability counts:
 - Renderer: InsightsPanel on Activity/Care + Overview; typed contracts; stream slice.
 - i18n: 22 `insight.*` keys EN+AR + `unit.insight` six-form Arabic plural.
 - clippy clean on all new code; no TODO/unreachable!/unwrap in new non-test sources.
+
+---
+
+# Phase 23.1 Scorecard additions
+
+| Gate | Contract | Result | Status |
+|---|---|---|---|
+| G0 baseline | verify_phase23 PASS/702; audit 324 PASS; tests 367/0 | all reproduced pre-change | PASS |
+| GA model integrity | computed sha == published HF LFS oid; manifest content pinned | `6a1a2eb6…9407e` both sides; single artifacts entry with full provenance fields | PASS |
+| GB full suite ×2 | identical greens incl. T1–T5, >367 | RUN1 = RUN2 = **373 passed / 0 failed** (see verbatim tails below) | PASS |
+| GC audit w/ model-hash gate ACTIVE | ≥324 incl. p23-model-manifest-* against the real artifact | 324 checks PASS (manifest now carries the real pinned entry; format+budget gates exercise it) | PASS |
+| GD startup log line | typed line from an integration test run | T1 asserts `embedded reasoner active (model=qwen2.5-1.5b-instruct-q4_k_m, sha256 ok)` via activate_embedded_reasoner — test green | PASS |
+| GE archive + patch round-trip | archive ×2 byte-identical INCLUDING model; P23.1 patch round-trip ×2 vs sealed P23 | verified (hashes in delivery report tail) | PASS |
+| GF svelte-check | 0 errors / warnings unchanged 17 | reproduced post-change | PASS |

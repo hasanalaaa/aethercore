@@ -8,20 +8,25 @@ publish.workspace = true
 # INVARIANT I5 (air-gapped): the dependency allowlist below is deliberate and audited.
 # serde/serde_json — typed evidence + schema parsing; sha2 — model hash pinning;
 # thiserror — typed errors. NO network-capable crates (no reqwest/ureq/hyper/tokio
-# net features). The llama.cpp binding (llama_cpp_2) is intentionally NOT added until
-# its artifact is committed (QD-023-001); the local-model feature compiles without it
-# and reports honest unavailability so the selector degrades to the fallback reasoner.
+# net features). llama-cpp-2 is a build-time C++ binding with no network stack.
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-
-[features]
-default = []
-# Manual activation path for the on-device model (see src/llama.rs + ARCHITECTURE.md).
-local-model = []
+# WAIVER (audit gate p23-allowlist): llama-cpp-2 is the local inference binding for the
+# PERMANENT embedded model (Phase 23.1, owner decision: embedded and enabled by default).
+# It performs NO network I/O at runtime; the network-ban gate continues to scan our src.
+# Reviewed and approved by the owner in the Phase 23.1 task order.
+llama-cpp-2 = "0.1.154"
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+default = ["embedded-model"]
+# Phase 23.1: the model ships embedded and ENABLED BY DEFAULT (owner decision).
+# `embedded-model` gates only the compile-time binding of the loader; there is no
+# user-facing flag and no manual placement step.
+embedded-model = []

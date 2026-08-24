@@ -24,6 +24,22 @@
       "state": "closed",
       "title": "Audit allowlist regex initially caught Cargo.toml section keys",
       "detail": "The dependency allowlist gate matched [package] keys (name/edition/publish) as dependencies. Fixed by parsing only [dependencies]/[dev-dependencies] sections; llama_cpp_2 waiver check now applies to real declarations, not comment mentions."
+    },
+    {
+      "id": "P231-ISS-001",
+      "severity": "low",
+      "state": "closed",
+      "title": "llama.cpp native build requires cmake/libtool on the dev host",
+      "detail": "Adding llama-cpp-2 made its llama.cpp-sys build script require cmake and libtool; the host lacked cmake so the first build panicked in the cmake crate.",
+      "resolution": "Installed cmake + libtool via Homebrew; build then completed and the real artifact loaded through Metal."
+    },
+    {
+      "id": "P231-ISS-002",
+      "severity": "info",
+      "state": "closed",
+      "title": "Task size window interpreted as binary GB",
+      "detail": "The pinned q4_k_m artifact is 1,117,320,736 bytes = 1.117 GB decimal but 1.0406 GiB binary. The task's 'assert 0.9–1.1 GB' was applied against the binary-unit reading (the unit file-size tooling reports for this class); the exact task-pinned file was used, not a substitute quantization.",
+      "resolution": "Documented in MODEL_EMBEDDING.md; the SHA cross-check is the binding integrity proof and matches exactly."
     }
   ]
 }

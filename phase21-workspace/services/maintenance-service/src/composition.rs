@@ -118,10 +118,14 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
     // Phase 23: Embedded Local Intelligence — advisory-only, air-gapped, ephemeral.
     // Default build ships the deterministic fallback engine; the on-device model path
     // activates only with --features local-model + hash-pinned artifact (I5).
-    let intelligence_core = Arc::new(crate::intelligence::IntelligenceCoordinator::new(
+    let mut intelligence_core = crate::intelligence::IntelligenceCoordinator::new(
         db.clone(),
         None,
-    ));
+    );
+    // Phase 23.1: the embedded model is the PERMANENT default engine — verify + load at
+    // every service start; fallback engages ONLY on runtime faults (I3).
+    intelligence_core.activate_embedded_default(product_dir.as_path());
+    let intelligence_core = Arc::new(intelligence_core);
 
     // Recovery is centralized and deliberately observation-only. A failure aborts service startup;
     // no client can enter the operation kernel before every domain has reconciled its journal.

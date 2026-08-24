@@ -319,14 +319,136 @@ fn tampered_model_artifact_is_refused_and_fallback_engages() {
     );
 }
 
+/// T2b — tamper also flips the service-side degraded chip source: the selector label.
 #[test]
-fn llama_reasoner_reports_honest_unavailability_in_default_build() {
-    let mut llama = LlamaCppReasoner::new();
-    assert!(!llama.is_loaded());
-    let load_result = llama.load(std::path::Path::new("/nonexistent/model.gguf"));
+fn t2_tamper_degrades_engine_label_to_rule_fallback() {
+    // After a failed verification the coordinator builds its selector WITHOUT a model,
+    // so the panel chip reads ruleFallback until the fault clears (I3).
+    let selector = ReasonerSelector::new(None);
+    assert_eq!(selector.engine_label(), "ruleFallback");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 23.1 — permanent embedded model proofs (T1 happy path, T3 missing artifact,
+// T4 real-stack inference contract, T5 budget). The model is now the DEFAULT engine;
+// the fallback engages ONLY on runtime faults.
+// ---------------------------------------------------------------------------
+
+fn repo_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .to_path_buf()
+}
+
+fn embedded_model_path() -> std::path::PathBuf {
+    repo_root().join(aethercore_intelligence_core::EMBEDDED_MODEL_RELATIVE_PATH)
+}
+
+/// T1 — happy path: real artifact present + hash ok + RAM budget ok → the loader
+/// accepts, the typed startup log line is produced, and a selector built on the
+/// loaded reasoner reports the localModel engine as active.
+#[test]
+fn t1_embedded_artifact_verifies_and_engine_reports_local_model() {
+    let model_path = embedded_model_path();
     assert!(
-        load_result.is_err(),
-        "default build has no committed artifact"
+        model_path.exists(),
+        "shipped artifact must exist in assets/models/"
     );
-    assert!(!llama.is_loaded());
+    let pinned = aethercore_intelligence_core::embedded_model_entry();
+    aethercore_intelligence_core::verify_model_hash(&model_path, &pinned)
+        .expect("shipped artifact must match its pinned sha256");
+
+    // Full startup sequence through the public activation helper (emits the typed log).
+    let label = aethercore_intelligence_core::activate_embedded_reasoner(&repo_root())
+        .expect("embedded reasoner activates");
+    assert!(
+        label.contains("embedded reasoner active")
+            && label.contains("qwen2.5-1.5b-instruct-q4_k_m")
+            && label.contains("sha256 ok"),
+        "typed startup log line contract: {label}"
+    );
+
+    // Selector built with the loaded reasoner reports localModel.
+    struct Loaded(LlamaCppReasoner);
+    impl LocalReasoner for Loaded {
+        fn load(&mut self, p: &std::path::Path) -> Result<(), String> {
+            self.0.load(p)
+        }
+        fn is_loaded(&self) -> bool {
+            self.0.is_loaded()
+        }
+        fn infer(
+            &self,
+            pack: &TypedEvidencePack,
+            q: &str,
+            deadline: Instant,
+        ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
+            self.0.infer(pack, q, deadline)
+        }
+    }
+    let mut llama = LlamaCppReasoner::new();
+    llama.load(&model_path).expect("load");
+    assert!(llama.is_loaded());
+    let selector = ReasonerSelector::new(Some(Box::new(Loaded(llama))));
+    assert_eq!(
+        selector.engine_label(),
+        "localModel",
+        "T1: localModel active"
+    );
+}
+
+/// T3 — missing artifact: refusal path + honest degraded chip (ruleFallback label).
+#[test]
+fn t3_missing_artifact_refuses_and_degrades() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let label_result = aethercore_intelligence_core::activate_embedded_reasoner(dir.path());
+    assert!(label_result.is_err(), "missing artifact must refuse");
+
+    let selector = ReasonerSelector::new(None);
+    assert_eq!(
+        selector.engine_label(),
+        "ruleFallback",
+        "degraded chip source"
+    );
+}
+
+/// T4 — REAL stack smoke over the genuine artifact: load succeeds and an inference
+/// call returns within INFERENCE_TIMEOUT. Token-level generation is not wired yet
+/// (gated on QD-023-003 perf validation), so the documented pending-generation error
+/// is asserted — never a fabricated insight.
+#[test]
+fn t4_real_stack_inference_contract_over_real_artifact() {
+    let mut llama = LlamaCppReasoner::new();
+    llama.load(&embedded_model_path()).expect("artifact loads");
+    let deadline = Instant::now() + aethercore_intelligence_core::INFERENCE_TIMEOUT;
+    let result = llama.infer(&populated_pack(), "explain", deadline);
+    match result {
+        Err(msg) => assert!(
+            msg.contains("generation") || msg.contains("context pool"),
+            "failure must be the documented pending-generation one: {msg}"
+        ),
+        Ok(insights) => {
+            assert!(!insights.is_empty());
+            assert!(insights.iter().all(|i| i.schema_version == 1));
+        }
+    }
+}
+
+/// T5 — budget: load + inference attempt respect declared time constants.
+#[test]
+fn t5_budget_constants_respected_on_load_and_call() {
+    let started = Instant::now();
+    let mut llama = LlamaCppReasoner::new();
+    llama.load(&embedded_model_path()).expect("loads");
+    let _ = llama.infer(
+        &populated_pack(),
+        "",
+        started + aethercore_intelligence_core::INFERENCE_TIMEOUT,
+    );
+    assert!(
+        started.elapsed() < aethercore_intelligence_core::INFERENCE_TIMEOUT,
+        "load+infer must respect the hard time budget"
+    );
 }

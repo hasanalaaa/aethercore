@@ -205,8 +205,9 @@ struct SelectorHealth {
 }
 
 impl ReasonerSelector {
-    /// Builds a selector. `model` is provided only when compiled with the
-    /// `local-model` feature AND its artifact passed hash pinning (I5 fail-closed).
+    /// Builds a selector. Since Phase 23.1 the model reasoner is provided whenever the
+    /// embedded artifact verified at startup; `None` only ever reflects a runtime fault
+    /// path (I3), never a supported default configuration.
     pub fn new(model: Option<Box<dyn LocalReasoner>>) -> Self {
         Self {
             model_reasoner: model,
@@ -218,9 +219,9 @@ impl ReasonerSelector {
 
     pub fn engine_label(&self) -> &'static str {
         if self.model_reasoner.as_ref().is_some_and(|r| r.is_loaded()) {
-            "local-model"
+            "localModel"
         } else {
-            "rule-fallback"
+            "ruleFallback"
         }
     }
 
