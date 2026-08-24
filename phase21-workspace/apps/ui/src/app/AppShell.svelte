@@ -21,6 +21,7 @@
   import HardwarePage from '../features/diagnostics/HardwarePage.svelte';
   import CrashPage from '../features/diagnostics/CrashPage.svelte';
   import ActivityPage from '../features/activity/ActivityPage.svelte';
+  import TimelinePanel from '../features/timeline/TimelinePage.svelte';
 
   let windowCleanup: WindowUxCleanup | undefined;
   let kernelCleanup: KernelSessionCleanup | undefined;
@@ -74,7 +75,9 @@
         {:else if $shellState.activePage === 'performance'}<PerformancePage />
         {:else if $shellState.activePage === 'hardware'}<HardwarePage />
         {:else if $shellState.activePage === 'crash'}<CrashPage />
-        {:else if $shellState.activePage === 'activity'}<ActivityPage />
+        {:else if $shellState.activePage === 'activity'}
+          <ActivityPage />
+          <TimelinePanel />
         {:else}<OverviewPage />{/if}
       </FluidPage>
     {/key}

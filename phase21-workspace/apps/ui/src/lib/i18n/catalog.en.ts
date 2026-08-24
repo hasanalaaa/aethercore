@@ -1434,6 +1434,27 @@ export const enCatalog = {
   'perf.reviewPlan': 'Review plan',
   'perf.safetyTitle': 'Safety contract',
   'perf.safetyCopy': 'AetherCore never deletes files or registry values to "clean up" performance, never force-dumps working sets, and every optimization it does offer is measured before and after, fully reversible, and recorded in the journal.',
+
+  'timeline.eyebrow': 'Timeline',
+  'timeline.title': 'What happened on this PC',
+  'timeline.refresh': 'Refresh',
+  'timeline.empty': 'No activity recorded yet. Operations, scans and repairs will appear here as they complete.',
+  'timeline.digest': 'Timeline digest',
+  'timeline.outcome.succeeded': 'Succeeded',
+  'timeline.outcome.failed': 'Failed',
+  'timeline.outcome.neutral': 'Recorded',
+  'timeline.class.operation': 'Operation',
+  'timeline.class.finding': 'Finding',
+  'timeline.class.verification': 'Verification',
+  'timeline.class.recovery': 'Recovery',
+  'timeline.class.escalation': 'Escalation',
+  'timeline.recurrenceEyebrow': 'Recurrence reasoning',
+  'timeline.recurrenceTitle': 'Repeated failure patterns',
+  'timeline.analyze': 'Detect patterns',
+  'timeline.confidence.weak': 'Weak evidence',
+  'timeline.confidence.moderate': 'Moderate evidence',
+  'timeline.confidence.strong': 'Strong evidence',
+  'timeline.correlationNote': 'Patterns correlate repeated events over time. Correlation is not causation; every pattern cites its full evidence.',
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;

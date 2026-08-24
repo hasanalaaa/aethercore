@@ -768,6 +768,32 @@ impl Database {
         Ok(())
     }
 
+    /// Phase 21 (Timeline Intelligence): read-only, additive owner-scoped reader over
+    /// `repair_timeline_events`. No schema change — consumes rows exactly as written.
+    pub fn repair_timeline_events_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<RepairTimelineEventRecord>> {
+        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let mut stmt = conn.prepare(
+            "SELECT event_id,plan_id,assessment_id,owner_principal_key,event_kind,domain,action_id,diagnosis_code,outcome,detail,machine_state_fingerprint,created_unix_ms FROM repair_timeline_events WHERE owner_principal_key=? ORDER BY created_unix_ms DESC, event_id DESC LIMIT ?"
+        )?;
+        let rows = stmt.query_map(params![owner_principal_key, limit.min(2000) as i64], |row| Ok(RepairTimelineEventRecord {
+            event_id:row.get(0)?, plan_id:row.get(1)?, assessment_id:row.get(2)?, owner_principal_key:row.get(3)?,
+            event_kind:row.get(4)?, domain:row.get(5)?, action_id:row.get(6)?, diagnosis_code:row.get(7)?,
+            outcome:row.get(8)?, detail:row.get(9)?, machine_state_fingerprint:row.get(10)?, created_unix_ms:row.get(11)?
+        }))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    /// Phase 21 (Timeline Intelligence): read-only, additive owner-scoped reader over
+    /// maintenance executions of owner-visible plans. No schema change.
+    pub fn maintenance_executions_for_owner(&self, owner_principal_key: &str, limit: usize) -> Result<Vec<MaintenanceExecutionRecord>> {
+        let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
+        let mut stmt = conn.prepare(
+            "SELECT e.plan_id,e.domain,e.stage,e.progress_known,e.overall_percent,e.current_item_id,e.detail,e.mutation_started,e.recovery_required,e.failure_message,e.outcome,e.machine_state_fingerprint,e.repair_graph_digest,e.reboot_required,e.reboot_resume_token,e.verification_state,e.started_unix_ms,e.updated_unix_ms,e.completed_unix_ms FROM maintenance_executions e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? ORDER BY e.updated_unix_ms DESC LIMIT ?"
+        )?;
+        let rows = stmt.query_map(params![owner_principal_key, limit.min(2000) as i64], row_to_maintenance_execution)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
     pub fn upsert_repair_reboot_resume(&self, r: &RepairRebootResumeRecord) -> Result<()> {
         let conn = self.connection.lock().map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(

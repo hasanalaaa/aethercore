@@ -28,6 +28,7 @@ aethercore-security = { path = "../../crates/security" }
 aethercore-system-repair = { path = "../../crates/system-repair" }
 aethercore-startup-manager = { path = "../../crates/startup-manager" }
 aethercore-restore-point = { path = "../../crates/restore-point" }
+aethercore-timeline-intelligence = { path = "../../crates/timeline-intelligence" }
 anyhow.workspace = true
 chrono.workspace = true
 tracing.workspace = true

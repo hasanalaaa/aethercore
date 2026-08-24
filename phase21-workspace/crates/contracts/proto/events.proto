@@ -13,6 +13,7 @@ import "scheduler.proto";
 import "update.proto";
 import "support_bundle.proto";
 import "performance.proto";
+import "timeline.proto";
 
 enum EventKind {
   EVENT_KIND_UNSPECIFIED = 0;
@@ -40,6 +41,8 @@ enum EventKind {
   EVENT_KIND_PERFORMANCE_SNAPSHOT = 22;
   EVENT_KIND_BOTTLENECK_REPORT = 23;
   EVENT_KIND_OPTIMIZATION_EXECUTION = 24;
+  // Phase 21: Timeline Intelligence (additive; next free tag).
+  EVENT_KIND_TIMELINE_PAGE = 25;
 }
 
 enum MutationLeaseState {
@@ -108,6 +111,8 @@ message EventEnvelope {
     PerfSnapshot performance_snapshot = 31;
     BottleneckReport bottleneck_report = 32;
     OptimizationStatus optimization_status = 33;
+    // Phase 21: Timeline Intelligence (additive; next free tag).
+    TimelineResponse timeline_page = 34;
   }
 }
 

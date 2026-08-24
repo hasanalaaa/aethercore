@@ -84,6 +84,7 @@ fn normalize_event(event:v1::EventEnvelope)->UiKernelEvent {
         Some(Payload::PerformanceSnapshot(v))=>("performanceSnapshot",serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::BottleneckReport(v))=>("bottleneckReport",serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::OptimizationStatus(v))=>("optimizationStatus",serde_json::to_value(v).unwrap_or_default()),
+        Some(Payload::TimelinePage(v))=>("timelinePage",serde_json::to_value(v).unwrap_or_default()),
         None=>("unknown",serde_json::Value::Null),
     };
     UiKernelEvent{sequence:event.sequence,emitted_unix_ms:event.emitted_unix_ms,kind:kind.into(),plan_id:event.plan_id,payload}
@@ -1088,6 +1089,43 @@ fn extract_optimization_plan(resp: v1::Response) -> Result<v1::OptimizationPlanS
     }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 21 — Timeline Intelligence commands
+// ---------------------------------------------------------------------------
+
+#[command]
+async fn get_timeline_page(page_size: u32, before_sequence: u64) -> Result<v1::TimelineResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetTimelinePage(v1::GetTimelinePageRequest {
+            page_size,
+            before_sequence,
+        }))
+        .map_err(|e| e.to_string())?;
+        match resp.payload {
+            Some(response::Payload::TimelinePage(p)) => Ok(p),
+            _ => Err("unexpected timeline response".into()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn get_recurrence_patterns() -> Result<v1::RecurrencePatternsResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetRecurrencePatterns(
+            v1::GetRecurrencePatternsRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        match resp.payload {
+            Some(response::Payload::RecurrencePatterns(p)) => Ok(p),
+            _ => Err("unexpected recurrence patterns response".into()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[command]
 async fn create_optimization_plan(
     selected_finding_ids: Vec<String>,
@@ -1164,7 +1202,9 @@ fn main() {
             stop_perf_sampling,
             get_performance_snapshot,
             get_bottleneck_report,
-            create_optimization_plan
+            create_optimization_plan,
+            get_timeline_page,
+            get_recurrence_patterns
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

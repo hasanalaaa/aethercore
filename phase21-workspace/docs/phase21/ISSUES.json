@@ -1,0 +1,32 @@
+{
+  "schema": "aethercore.phase21.issues.v1",
+  "phase": 21,
+  "policy": "Issues discovered during Phase 21 execution. Open items are honest blockers/limits, not hidden failures. Append-only across phases.",
+  "items": [
+    {
+      "id": "P21-ISS-001",
+      "severity": "low",
+      "state": "open",
+      "title": "Timeline page cursor is index-based and can shift as history grows",
+      "detail": "GetTimelinePage.before_sequence indexes the ordered event list rebuilt per request; concurrent history growth can shift page boundaries (repeat/skip at edges). Read-only review surface only.",
+      "resolutionPath": "Replace with stable cursor over (observedUnixMs, semanticIdentitySha256, sourceId) via additive wire tag when the timeline becomes authoritative beyond review.",
+      "trackedAlsoIn": "docs/phase21/QUALIFICATION_DEBT.md#qd-021-003"
+    },
+    {
+      "id": "P21-ISS-002",
+      "severity": "info",
+      "state": "closed",
+      "title": "svelte-check could not run on the extracted tree (partial node_modules stub)",
+      "detail": "The archive ships a 6-entry node_modules stub; vite 8 imports rolldown which was absent, so svelte-check failed to load vite.config. Renderer baseline was therefore not measurable until dependencies were restored.",
+      "resolution": "Ran pnpm install --frozen-lockfile in apps/ui (pnpm-lock.yaml is part of the sealed tree). node_modules is gitignored and excluded from delivery manifests; baseline restored to exactly 0 errors / 17 warnings before any renderer edits."
+    },
+    {
+      "id": "P21-ISS-003",
+      "severity": "info",
+      "state": "closed",
+      "title": "Response payload oneof required a second new tag for timeline_page",
+      "detail": "Initial plan allocated response tag 45 only (recurrence_patterns). Wiring get_timeline_page showed RPC replies also need their own payload variant distinct from the stream envelope tag 34; tag 46 was allocated additively.",
+      "resolution": "operations.proto Response payload tags 45 and 46 added; both frozen by the extended audit wire-freeze gate."
+    }
+  ]
+}

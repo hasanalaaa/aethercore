@@ -183,6 +183,43 @@ export type OptimizationStatus = {
   items:OptimizationExecutionItem[]
 };
 
+// ---------------------------------------------------------------------------
+// Phase 21 — Timeline Intelligence & recurrence reasoning
+// ---------------------------------------------------------------------------
+export type TimelineEventClass =
+  | 'TIMELINE_EVENT_CLASS_UNSPECIFIED'
+  | 'TIMELINE_EVENT_CLASS_OPERATION'
+  | 'TIMELINE_EVENT_CLASS_FINDING'
+  | 'TIMELINE_EVENT_CLASS_VERIFICATION'
+  | 'TIMELINE_EVENT_CLASS_RECOVERY'
+  | 'TIMELINE_EVENT_CLASS_ESCALATION';
+export type TimelineOutcomeKind =
+  | 'TIMELINE_OUTCOME_UNSPECIFIED'
+  | 'TIMELINE_OUTCOME_SUCCEEDED'
+  | 'TIMELINE_OUTCOME_FAILED'
+  | 'TIMELINE_OUTCOME_NEUTRAL';
+export type RecurrenceConfidenceKind =
+  | 'RECURRENCE_CONFIDENCE_UNSPECIFIED'
+  | 'RECURRENCE_CONFIDENCE_WEAK'
+  | 'RECURRENCE_CONFIDENCE_MODERATE'
+  | 'RECURRENCE_CONFIDENCE_STRONG';
+export type TimelineEntry = {
+  sourceId:string; class:TimelineEventClass; domain:string; code:string;
+  outcome:TimelineOutcomeKind; observedUnixMs:number; semanticIdentitySha256:string
+};
+export type TimelineResponse = {
+  entries:TimelineEntry[]; hasMore:boolean; nextBeforeSequence:number;
+  digestSha256:string; duplicatesCollapsed:number
+};
+export type RecurrenceEvidence = { sourceId:string; observedUnixMs:number; gapFromPreviousMs:number };
+export type RecurrencePattern = {
+  semanticIdentitySha256:string; class:TimelineEventClass; domain:string; code:string;
+  confidence:RecurrenceConfidenceKind; occurrenceCount:number;
+  firstObservedUnixMs:number; lastObservedUnixMs:number; meanGapMs:number;
+  evidence:RecurrenceEvidence[]
+};
+export type RecurrencePatternsResponse = { patterns:RecurrencePattern[]; digestSha256:string };
+
 type KernelEvent<K extends string, P> = { sequence:number; emittedUnixMs:number; kind:K; planId:string; payload:P };
 export type UiKernelEvent =
   | KernelEvent<'serviceSnapshot', Omit<Snapshot, 'connected'>>
@@ -209,6 +246,7 @@ export type UiKernelEvent =
   | KernelEvent<'performanceSnapshot', PerfSnapshot>
   | KernelEvent<'bottleneckReport', BottleneckReport>
   | KernelEvent<'optimizationStatus', OptimizationStatus>
+  | KernelEvent<'timelinePage', TimelineResponse>
   | KernelEvent<'unknown', null>;
 export type UiSessionState = { connected:boolean; sessionId:string; serviceVersion:string; currentSequence:number; replayFloorSequence:number; replayComplete:boolean };
 export type UiStreamReset = { reason:string; currentSequence:number; replayFloorSequence:number; messageKey:string };

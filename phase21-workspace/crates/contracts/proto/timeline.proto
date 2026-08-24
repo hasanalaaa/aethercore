@@ -1,0 +1,97 @@
+syntax = "proto3";
+package aethercore.v1;
+
+// Phase 21 — Timeline Intelligence & Recurrence Reasoning.
+// Additive-only extension: every message here is new; no existing tag, field or
+// enum value was renumbered. Timestamps are Unix ms. All repeated fields are
+// bounded server-side (MAX_TIMELINE_EVENTS=2000, MAX_PAGE_SIZE=200,
+// MAX_PATTERNS=64, MAX_PATTERN_EVIDENCE=32 in aethercore-timeline-intelligence).
+
+// ---------------------------------------------------------------------------
+// Requests / responses
+// ---------------------------------------------------------------------------
+
+message GetTimelinePageRequest {
+  // Server clamps into [1, 200] (MAX_PAGE_SIZE). Zero means "use the default".
+  uint32 page_size = 1;
+  uint64 before_sequence = 2;
+}
+
+message GetRecurrencePatternsRequest {
+  // Reserved for future scoping filters; empty in Phase 21.
+}
+
+message TimelineResponse {
+  repeated TimelineEntry entries = 1;
+  bool has_more = 2;
+  uint64 next_before_sequence = 3;
+  string digest_sha256 = 4;
+  uint32 duplicates_collapsed = 5;
+}
+
+message RecurrencePatternsResponse {
+  repeated RecurrencePattern patterns = 1;
+  string digest_sha256 = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Timeline model
+// ---------------------------------------------------------------------------
+
+enum TimelineEventClass {
+  TIMELINE_EVENT_CLASS_UNSPECIFIED = 0;
+  TIMELINE_EVENT_CLASS_OPERATION = 1;
+  TIMELINE_EVENT_CLASS_FINDING = 2;
+  TIMELINE_EVENT_CLASS_VERIFICATION = 3;
+  TIMELINE_EVENT_CLASS_RECOVERY = 4;
+  TIMELINE_EVENT_CLASS_ESCALATION = 5;
+}
+
+enum TimelineOutcome {
+  TIMELINE_OUTCOME_UNSPECIFIED = 0;
+  TIMELINE_OUTCOME_SUCCEEDED = 1;
+  TIMELINE_OUTCOME_FAILED = 2;
+  TIMELINE_OUTCOME_NEUTRAL = 3;
+}
+
+message TimelineEntry {
+  // Persistence-layer source row identity (journal seq / execution plan id / ...).
+  string source_id = 1;
+  TimelineEventClass class = 2;
+  // Domain exactly as persisted; never rewritten by the timeline.
+  string domain = 3;
+  // Action / rule / workload code exactly as persisted.
+  string code = 4;
+  TimelineOutcome outcome = 5;
+  int64 observed_unix_ms = 6;
+  // Deterministic semantic identity over stable content only.
+  string semantic_identity_sha256 = 7;
+}
+
+enum RecurrenceConfidence {
+  RECURRENCE_CONFIDENCE_UNSPECIFIED = 0;
+  RECURRENCE_CONFIDENCE_WEAK = 1;
+  RECURRENCE_CONFIDENCE_MODERATE = 2;
+  RECURRENCE_CONFIDENCE_STRONG = 3;
+}
+
+message RecurrenceEvidence {
+  string source_id = 1;
+  int64 observed_unix_ms = 2;
+  // Time distance from the previous cited occurrence (0 for the first).
+  int64 gap_from_previous_ms = 3;
+}
+
+message RecurrencePattern {
+  string semantic_identity_sha256 = 1;
+  TimelineEventClass class = 2;
+  string domain = 3;
+  string code = 4;
+  RecurrenceConfidence confidence = 5;
+  uint32 occurrence_count = 6;
+  int64 first_observed_unix_ms = 7;
+  int64 last_observed_unix_ms = 8;
+  int64 mean_gap_ms = 9;
+  // Bounded citation list (<= 32): first and last always present.
+  repeated RecurrenceEvidence evidence = 10;
+}

@@ -17,6 +17,7 @@ import type {
   SchedulerEvent,
   UpdateSnapshot,
   SupportBundleEvent,
+  TimelineResponse,
   RecoveryEntry,
   RepairAssessment,
   Snapshot,
@@ -56,6 +57,7 @@ export type StreamState = {
   bottleneckReport: BottleneckReport | null;
   optimizationStatus: OptimizationStatus | null;
   perfSampling: boolean;
+  timelinePage: TimelineResponse | null;
   session: UiSessionState;
   lastKernelSequence: number;
 };
@@ -188,6 +190,7 @@ export function createInitialStreamState(): StreamState {
     bottleneckReport: null,
     optimizationStatus: null,
     perfSampling: false,
+    timelinePage: null,
     session: {
       connected: false,
       sessionId: '',
@@ -318,6 +321,9 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
       break;
     case 'optimizationStatus':
       next.optimizationStatus = event.payload;
+      break;
+    case 'timelinePage':
+      next.timelinePage = event.payload;
       break;
     case 'progressTelemetry':
       next = applyProgress(next, event.payload);

@@ -13,4 +13,5 @@ export const arPlurals = {
   'unit.day': { zero: 'صفر يوم', one: 'يوم واحد', two: 'يومان', few: '{count} أيام', many: '{count} يومًا', other: '{count} يوم' },
   'unit.triageCard': { zero: 'لا بطاقات فرز', one: 'بطاقة فرز واحدة', two: 'بطاقتا فرز', few: '{count} بطاقات فرز', many: '{count} بطاقة فرز', other: '{count} بطاقة فرز' },
   'unit.warning': { zero: 'لا تحذيرات', one: 'تحذير واحد', two: 'تحذيران', few: '{count} تحذيرات', many: '{count} تحذيرًا', other: '{count} تحذير' },
+  'unit.occurrence': { zero: 'لا تكرارات', one: 'تكرار واحد', two: 'تكراران', few: '{count} تكرارات', many: '{count} تكرارًا', other: '{count} تكرار' },
 } satisfies Record<PluralMessageKey, ArabicPlural>;

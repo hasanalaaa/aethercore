@@ -1,0 +1,76 @@
+{
+  "schema": "aethercore.phase21.qualification-debt.v1",
+  "closureClaim": "PHASE_21_TIMELINE_INTELLIGENCE_SOURCE_COMPLETE",
+  "carriedForwardFromPhase20": [
+    {
+      "id": "P20-QD-001",
+      "area": "Domain A — PDH collection",
+      "risk": "medium",
+      "status": "UNCHANGED — untouched by Phase 21"
+    },
+    {
+      "id": "P20-QD-002",
+      "area": "Domain A — GPU/VRAM",
+      "risk": "low",
+      "status": "UNCHANGED — untouched by Phase 21"
+    },
+    {
+      "id": "P20-QD-003",
+      "area": "Domain C — EcoQoS / priority application (NoopPlatform worst case)",
+      "risk": "high",
+      "status": "UNCHANGED — untouched by Phase 21; remains the highest open native risk"
+    },
+    {
+      "id": "P20-QD-004",
+      "area": "Domain C — Game Mode registry semantics",
+      "risk": "medium",
+      "status": "UNCHANGED — untouched by Phase 21"
+    },
+    {
+      "id": "P20-QD-005",
+      "area": "Domain D — WebView2 rendering",
+      "risk": "low",
+      "status": "UNCHANGED — untouched by Phase 21"
+    },
+    {
+      "id": "P20-QD-006",
+      "area": "Test harness scheduling",
+      "risk": "low",
+      "status": "UNCHANGED — untouched by Phase 21"
+    }
+  ],
+  "newInPhase21": [
+    {
+      "id": "P21-QD-001",
+      "area": "Timeline service handlers — Windows IPC round trip",
+      "debt": "GetTimelinePage / GetRecurrencePatterns and TimelineCoordinator were exercised through unit + persistence-backed integration tests on the development host. The desktop ↔ named-pipe ↔ LocalSystem-service round trip with a real authenticated principal has not run for these two handlers.",
+      "risk": "medium",
+      "evidenceClass": "SOURCE_COMPLETE",
+      "closurePath": "Ride the existing Windows qualification lane used for earlier phases' handlers; assert principal scoping holds and pages never exceed MAX_PAGE_SIZE=200."
+    },
+    {
+      "id": "P21-QD-002",
+      "area": "Recurrence thresholds calibration",
+      "debt": "Confidence classes (Strong ±25% / Moderate ±50%, floor=3 occurrences, window=30 days, caps 64 patterns/32 citations) follow the Phase 17.1 correlation discipline but are calibrated on synthetic history only, not months of live fleet journals.",
+      "risk": "medium",
+      "evidenceClass": "SOURCE_COMPLETE",
+      "closurePath": "After one release cycle of live journals, re-run the threshold study and either confirm or adjust constants with recorded rationale."
+    },
+    {
+      "id": "P21-QD-003",
+      "area": "Timeline page cursor stability",
+      "debt": "before_sequence indexes the ordered event list rebuilt per request; concurrent history growth can shift page boundaries (repeat/skip at page edges). Acceptable for the read-only review surface shipped in Phase 21.",
+      "risk": "low",
+      "evidenceClass": "SOURCE_COMPLETE",
+      "closurePath": "Replace with a stable cursor over (observedUnixMs, semanticIdentitySha256, sourceId) via an additive wire tag if the timeline becomes authoritative beyond review."
+    },
+    {
+      "id": "P21-QD-004",
+      "area": "Renderer timeline panel under real RTL screen readers",
+      "debt": "TimelinePanel honors reduced-motion/reduced-transparency via the shared preference store and isolates technical values with TechnicalText, but has not been walked with VoiceOver/NVDA in Arabic against live data.",
+      "risk": "low",
+      "evidenceClass": "SOURCE_COMPLETE",
+      "closurePath": "Accessibility walkthrough during Windows-native qualification (same lane as P21-QD-001)."
+    }
+  ]
+}

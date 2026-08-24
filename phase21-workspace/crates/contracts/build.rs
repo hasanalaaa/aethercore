@@ -26,6 +26,7 @@ fn main() {
         "update.proto",
         "support_bundle.proto",
         "performance.proto",
+        "timeline.proto",
         "events.proto",
         "aethercore.proto",
     ] {
