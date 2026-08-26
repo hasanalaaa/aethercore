@@ -14,6 +14,7 @@ import "performance.proto";
 import "timeline.proto";
 import "care.proto";
 import "insights.proto";
+import "capabilities.proto";
 
 // Request/Response remain the stable v7 RPC payloads. Session framing lives in events.proto.
 
@@ -98,6 +99,12 @@ message Request {
     ListInsightsRequest list_insights = 84;
     RequestInsightRequest request_insight = 85;
     DismissInsightRequest dismiss_insight = 86;
+    // Phase 26: Universal Platform Foundation (additive; next free tag).
+    GetPlatformCapabilitiesRequest get_platform_capabilities = 87;
+    // Phase 27: Native Unix Providers (additive; next free tag).
+    GetEngineSourceRequest get_engine_source = 88;
+    // Phase 29: Enterprise Outputs — signed journal export (additive; next free tag).
+    ExportJournalRequest export_journal = 89;
   }
 }
 message Response {
@@ -148,10 +155,35 @@ message Response {
     CareStatusResponse care_status = 47;
     // Phase 23: Local Intelligence (additive; next free tag).
     InsightsResponse insights_response = 48;
+    // Phase 26: Universal Platform Foundation (additive; next free tag).
+    PlatformCapabilitiesResponse platform_capabilities_response = 49;
+    // Phase 27: Native Unix Providers (additive tags).
+    EngineSourceResponse engine_source_response = 50;
+    // Phase 29: Enterprise Outputs — signed journal export (additive; next free tag).
+    ExportJournalResponse export_journal_response = 51;
   }
 }
 message PingRequest {}
 message PongResponse { string service_version = 1; }
+// Phase 29 (T1): EXPORT_V1 journal export. The service performs the read-only export
+// (single-writer discipline) and returns the sealed envelope; signing is optional and
+// only happens when the owner has explicitly provisioned a key.
+message ExportJournalRequest {
+  // Inclusive lower bound (unix ms); 0 = from the beginning.
+  int64 from_unix_ms = 1;
+  // Exclusive upper bound (unix ms); 0 = up to now.
+  int64 to_unix_ms = 2;
+  // Owner principal key scope; empty = the calling principal's own records.
+  string owner_principal_key = 3;
+}
+message ExportJournalResponse {
+  // Canonical EXPORT_V1 JSON envelope (aethercore.export.v1), serialized compactly.
+  bytes envelope_json = 1;
+  // Record count for cheap logging/telemetry without parsing the envelope.
+  uint64 record_count = 2;
+  // Honest signature presence: false ⇒ digest-only export.
+  bool signed = 3;
+}
 message GetSnapshotRequest {}
 // A renderer/bootstrap synchronization request. It republishes principal-scoped current state
 // through the ordered Event Bus and is intentionally not a polling/snapshot side channel.

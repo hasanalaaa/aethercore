@@ -1,19 +1,19 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread,
     time::Duration,
 };
 
 use aethercore_contracts::{
-    v1::{
-        self, client_frame, server_frame, ClientFrame, ErrorCode, ErrorInfo, Response,
-        ResponseHeader, ServerFrame, ServerHello, StreamReset, StreamResetReason,
-    },
     DEFAULT_REQUEST_DEADLINE_MS, MAX_REQUEST_DEADLINE_MS, PROTOCOL_VERSION,
+    v1::{
+        self, ClientFrame, ErrorCode, ErrorInfo, Response, ResponseHeader, ServerFrame,
+        ServerHello, StreamReset, StreamResetReason, client_frame, server_frame,
+    },
 };
 use aethercore_operation_kernel::{RequestContext, SubscriptionItem};
 use chrono::Utc;
@@ -173,10 +173,12 @@ pub fn run(stop: Arc<AtomicBool>, context: ServiceContext) -> anyhow::Result<()>
                 // recovery never joins a namespace created by another process while this service
                 // had no live pipe object.
                 thread::sleep(Duration::from_millis(200));
-                listener = aethercore_ipc::PipeServerListener::claim_first()
-                    .map_err(|claim_error| anyhow::anyhow!(
-                        "reclaim IPC pipe namespace after accept failure: {claim_error}"
-                    ))?;
+                listener =
+                    aethercore_ipc::PipeServerListener::claim_first().map_err(|claim_error| {
+                        anyhow::anyhow!(
+                            "reclaim IPC pipe namespace after accept failure: {claim_error}"
+                        )
+                    })?;
             }
         }
     }
@@ -203,7 +205,9 @@ fn serve_session(
         .ok_or_else(|| anyhow::anyhow!("per-user persistent IPC session cap reached"))?;
     let owner = peer.binding_key();
 
-    let first = session.read().map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let first = session
+        .read()
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     let hello = match first.payload {
         Some(client_frame::Payload::Hello(value)) => value,
         _ => anyhow::bail!("client hello required"),
@@ -219,18 +223,21 @@ fn serve_session(
         .subscribe(&owner, hello.replay_after_sequence);
 
     writer
-        .write_bootstrap(&ServerFrame {
-            payload: Some(server_frame::Payload::Hello(ServerHello {
-                protocol_version: PROTOCOL_VERSION,
-                session_id: session_id.clone(),
-                service_version: env!("CARGO_PKG_VERSION").into(),
-                server_time_unix_ms: Utc::now().timestamp_millis(),
-                current_sequence: replay.current_sequence,
-                max_inflight_requests: MAX_INFLIGHT_PER_SESSION as u32,
-                replay_floor_sequence: replay.replay_floor_sequence,
-                replay_complete: replay.complete,
-            })),
-        }, IPC_BOOTSTRAP_ENQUEUE_TIMEOUT)
+        .write_bootstrap(
+            &ServerFrame {
+                payload: Some(server_frame::Payload::Hello(ServerHello {
+                    protocol_version: PROTOCOL_VERSION,
+                    session_id: session_id.clone(),
+                    service_version: env!("CARGO_PKG_VERSION").into(),
+                    server_time_unix_ms: Utc::now().timestamp_millis(),
+                    current_sequence: replay.current_sequence,
+                    max_inflight_requests: MAX_INFLIGHT_PER_SESSION as u32,
+                    replay_floor_sequence: replay.replay_floor_sequence,
+                    replay_complete: replay.complete,
+                })),
+            },
+            IPC_BOOTSTRAP_ENQUEUE_TIMEOUT,
+        )
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
     if hello.protocol_version != PROTOCOL_VERSION {
@@ -240,9 +247,12 @@ fn serve_session(
     if replay.complete {
         for event in replay.events {
             writer
-                .write_bootstrap(&ServerFrame {
-                    payload: Some(server_frame::Payload::Event(event)),
-                }, IPC_BOOTSTRAP_ENQUEUE_TIMEOUT)
+                .write_bootstrap(
+                    &ServerFrame {
+                        payload: Some(server_frame::Payload::Event(event)),
+                    },
+                    IPC_BOOTSTRAP_ENQUEUE_TIMEOUT,
+                )
                 .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         }
     } else {
@@ -252,14 +262,17 @@ fn serve_session(
             StreamResetReason::ReplayWindowExceeded
         };
         writer
-            .write_bootstrap(&ServerFrame {
-                payload: Some(server_frame::Payload::StreamReset(StreamReset {
-                    reason: reason as i32,
-                    current_sequence: replay.current_sequence,
-                    replay_floor_sequence: replay.replay_floor_sequence,
-                    message_key: "ipc.streamReset.hydrationRequired".into(),
-                })),
-            }, IPC_BOOTSTRAP_ENQUEUE_TIMEOUT)
+            .write_bootstrap(
+                &ServerFrame {
+                    payload: Some(server_frame::Payload::StreamReset(StreamReset {
+                        reason: reason as i32,
+                        current_sequence: replay.current_sequence,
+                        replay_floor_sequence: replay.replay_floor_sequence,
+                        message_key: "ipc.streamReset.hydrationRequired".into(),
+                    })),
+                },
+                IPC_BOOTSTRAP_ENQUEUE_TIMEOUT,
+            )
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     }
 
@@ -271,48 +284,48 @@ fn serve_session(
     thread::Builder::new()
         .name("aether-ipc-event-pump".into())
         .spawn(move || {
-        while pump_alive.load(Ordering::Acquire) {
-            match subscription.recv_timeout(Duration::from_millis(500)) {
-                SubscriptionItem::Event(event) => {
-                    if pump_writer
-                        .write(&ServerFrame {
-                            payload: Some(server_frame::Payload::Event(event)),
-                        })
-                        .is_err()
-                    {
-                        break;
+            while pump_alive.load(Ordering::Acquire) {
+                match subscription.recv_timeout(Duration::from_millis(500)) {
+                    SubscriptionItem::Event(event) => {
+                        if pump_writer
+                            .write(&ServerFrame {
+                                payload: Some(server_frame::Payload::Event(event)),
+                            })
+                            .is_err()
+                        {
+                            break;
+                        }
                     }
-                }
-                SubscriptionItem::Lagged => {
-                    // Queue overflow is never silent. Drop stale queued telemetry, reset the
-                    // consumer sequence to the current bus edge, and republish a complete typed
-                    // current-state image before continuing live delivery.
-                    let current = pump_context.kernel.events().current_sequence(&pump_owner);
-                    let floor = pump_context
-                        .kernel
-                        .events()
-                        .replay_floor_sequence(&pump_owner);
-                    if pump_writer
-                        .write(&ServerFrame {
-                            payload: Some(server_frame::Payload::StreamReset(StreamReset {
-                                reason: StreamResetReason::SubscriberLagged as i32,
-                                current_sequence: current,
-                                replay_floor_sequence: floor,
-                                message_key: "ipc.streamReset.subscriberLagged".into(),
-                            })),
-                        })
-                        .is_err()
-                    {
-                        break;
+                    SubscriptionItem::Lagged => {
+                        // Queue overflow is never silent. Drop stale queued telemetry, reset the
+                        // consumer sequence to the current bus edge, and republish a complete typed
+                        // current-state image before continuing live delivery.
+                        let current = pump_context.kernel.events().current_sequence(&pump_owner);
+                        let floor = pump_context
+                            .kernel
+                            .events()
+                            .replay_floor_sequence(&pump_owner);
+                        if pump_writer
+                            .write(&ServerFrame {
+                                payload: Some(server_frame::Payload::StreamReset(StreamReset {
+                                    reason: StreamResetReason::SubscriberLagged as i32,
+                                    current_sequence: current,
+                                    replay_floor_sequence: floor,
+                                    message_key: "ipc.streamReset.subscriberLagged".into(),
+                                })),
+                            })
+                            .is_err()
+                        {
+                            break;
+                        }
+                        streaming::publish_hydration(&pump_context, &pump_owner);
                     }
-                    streaming::publish_hydration(&pump_context, &pump_owner);
+                    SubscriptionItem::Timeout => {}
+                    SubscriptionItem::Disconnected => break,
                 }
-                SubscriptionItem::Timeout => {}
-                SubscriptionItem::Disconnected => break,
             }
-        }
-    })
-    .map_err(|error| anyhow::anyhow!("failed to create IPC event pump: {error}"))?;
+        })
+        .map_err(|error| anyhow::anyhow!("failed to create IPC event pump: {error}"))?;
 
     // A normal successful reconnect consumes only replay deltas. Hydration is explicit through
     // HydrateSession (renderer/bootstrap) and automatic only after a replay/reset failure. This
@@ -523,6 +536,9 @@ mod tests {
             assert!(try_acquire_slot(&counter, MAX_GLOBAL_INFLIGHT_REQUESTS));
         }
         assert!(!try_acquire_slot(&counter, MAX_GLOBAL_INFLIGHT_REQUESTS));
-        assert_eq!(counter.load(Ordering::Acquire), MAX_GLOBAL_INFLIGHT_REQUESTS);
+        assert_eq!(
+            counter.load(Ordering::Acquire),
+            MAX_GLOBAL_INFLIGHT_REQUESTS
+        );
     }
 }

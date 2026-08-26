@@ -1,0 +1,26 @@
+syntax = "proto3";
+package aethercore.v1;
+
+// Phase 26 — Universal Platform Foundation: honest capability matrix.
+// Additive-only extension: every message here is new; no existing tag, field or enum
+// value was renumbered. NotAvailable is a first-class answer; nothing is simulated.
+
+message CapabilityAvailability {
+  // native | degraded | notAvailable.
+  string state = 1;
+  // Present for degraded (note) and notAvailable (reason); resolved in catalogs.
+  string key = 2;
+}
+
+message PlatformCapabilityStatus {
+  string name = 1;
+  CapabilityAvailability availability = 2;
+}
+
+message GetPlatformCapabilitiesRequest {}
+
+message PlatformCapabilitiesResponse {
+  // macos | linux | windows.
+  string platform = 1;
+  repeated PlatformCapabilityStatus capabilities = 2;
+}

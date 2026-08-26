@@ -4,13 +4,11 @@ use aethercore_diagnostic_engine::DiagnosticError;
 use aethercore_driver_hub::HubError;
 use aethercore_driver_install::InstallError;
 use aethercore_operation_engine::EngineError;
+use aethercore_operation_kernel::{MutationError, ReadBudgetError, RequestContextError};
 use aethercore_pc_intelligence::IntelligenceError;
-use aethercore_operation_kernel::{
-    MutationError, ReadBudgetError, RequestContextError,
-};
 use aethercore_startup_manager::StartupError;
-use aethercore_system_repair::RepairError;
 use aethercore_support_bundle::SupportBundleError;
+use aethercore_system_repair::RepairError;
 use aethercore_update_engine::UpdateEngineError;
 
 #[derive(Debug)]
@@ -42,19 +40,49 @@ impl ServiceError {
         }
     }
 
-    pub fn invalid(domain: &'static str, message_key: &'static str, detail: impl Into<String>) -> Self {
-        Self::new(400, ErrorCode::InvalidRequest, domain, message_key, detail, false)
+    pub fn invalid(
+        domain: &'static str,
+        message_key: &'static str,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            400,
+            ErrorCode::InvalidRequest,
+            domain,
+            message_key,
+            detail,
+            false,
+        )
     }
 
-    pub fn internal(domain: &'static str, message_key: &'static str, detail: impl Into<String>) -> Self {
+    pub fn internal(
+        domain: &'static str,
+        message_key: &'static str,
+        detail: impl Into<String>,
+    ) -> Self {
         Self::new(500, ErrorCode::Internal, domain, message_key, detail, false)
     }
 
-    pub fn forbidden(domain: &'static str, message_key: &'static str, detail: impl Into<String>) -> Self {
-        Self::new(403, ErrorCode::Forbidden, domain, message_key, detail, false)
+    pub fn forbidden(
+        domain: &'static str,
+        message_key: &'static str,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            403,
+            ErrorCode::Forbidden,
+            domain,
+            message_key,
+            detail,
+            false,
+        )
     }
 
-    fn conflict(domain: &'static str, message_key: &'static str, detail: impl Into<String>) -> Self {
+    fn conflict(
+        domain: &'static str,
+        message_key: &'static str,
+        detail: impl Into<String>,
+    ) -> Self {
         Self::new(409, ErrorCode::Conflict, domain, message_key, detail, false)
     }
 
@@ -62,7 +90,11 @@ impl ServiceError {
         Self::new(429, ErrorCode::Busy, domain, message_key, detail, true)
     }
 
-    fn not_found(domain: &'static str, message_key: &'static str, detail: impl Into<String>) -> Self {
+    fn not_found(
+        domain: &'static str,
+        message_key: &'static str,
+        detail: impl Into<String>,
+    ) -> Self {
         Self::new(404, ErrorCode::NotFound, domain, message_key, detail, false)
     }
 }
@@ -145,16 +177,12 @@ impl From<EngineError> for ServiceError {
         let detail = value.to_string();
         match value {
             EngineError::NotFound => Self::not_found("operation-engine", "plan.notFound", detail),
-            EngineError::OwnershipMismatch => Self::forbidden(
-                "operation-engine",
-                "plan.ownerMismatch",
-                detail,
-            ),
-            EngineError::AuthorizationRequired | EngineError::ConsentIntentInvalid => Self::forbidden(
-                "authorization",
-                "authorization.requiredOrInvalid",
-                detail,
-            ),
+            EngineError::OwnershipMismatch => {
+                Self::forbidden("operation-engine", "plan.ownerMismatch", detail)
+            }
+            EngineError::AuthorizationRequired | EngineError::ConsentIntentInvalid => {
+                Self::forbidden("authorization", "authorization.requiredOrInvalid", detail)
+            }
             EngineError::InvalidState
             | EngineError::InvalidTransition(_, _)
             | EngineError::DigestMismatch
@@ -180,7 +208,14 @@ impl From<HubError> for ServiceError {
         let detail = value.to_string();
         match value {
             HubError::Busy => Self::busy("drivers", "drivers.scanBusy", detail),
-            HubError::Cancelled => Self::new(499, ErrorCode::Cancelled, "drivers", "ipc.cancelled", detail, false),
+            HubError::Cancelled => Self::new(
+                499,
+                ErrorCode::Cancelled,
+                "drivers",
+                "ipc.cancelled",
+                detail,
+                false,
+            ),
             HubError::OwnershipMismatch => Self::not_found(
                 "drivers",
                 "drivers.stateUnavailable",
@@ -196,6 +231,9 @@ impl From<HubError> for ServiceError {
                 Self::forbidden("drivers", "drivers.candidateProtected", detail)
             }
             HubError::Inventory(_) => Self::internal("drivers", "drivers.inventoryFailure", detail),
+            HubError::InvalidPolicy(_) | HubError::Persistence(_) => {
+                Self::internal("drivers", "drivers.inventoryFailure", detail)
+            }
             HubError::EmptySelection
             | HubError::TooManySelections
             | HubError::DuplicateCandidate(_) => {
@@ -210,11 +248,9 @@ impl From<InstallError> for ServiceError {
         let detail = value.to_string();
         match value {
             InstallError::Busy => Self::busy("driver-install", "drivers.installBusy", detail),
-            InstallError::AuthorizationRequired => Self::forbidden(
-                "driver-install",
-                "authorization.required",
-                detail,
-            ),
+            InstallError::AuthorizationRequired => {
+                Self::forbidden("driver-install", "authorization.required", detail)
+            }
             InstallError::InvalidPlan => {
                 Self::invalid("driver-install", "drivers.invalidInstallPlan", detail)
             }
@@ -255,7 +291,13 @@ impl From<RepairError> for ServiceError {
             }
             RepairError::UnsupportedPlatform
             | RepairError::Command(_)
-            | RepairError::Persistence(_) => {
+            | RepairError::Persistence(_)
+            | RepairError::InvalidRepairGraph(_)
+            | RepairError::NoRepairRecommended
+            | RepairError::VerificationFailed
+            | RepairError::RebootBoundary
+            | RepairError::SourceRequired(_)
+            | RepairError::RecoveryUnavailable(_) => {
                 Self::internal("repair", "repair.executionFailure", detail)
             }
             RepairError::Engine(error) => error.into(),
@@ -270,7 +312,14 @@ impl From<CleanerError> for ServiceError {
             CleanerError::Busy | CleanerError::AlreadyRunning | CleanerError::MutationBusy => {
                 Self::busy("cleanup", "cleanup.busy", detail)
             }
-            CleanerError::Cancelled => Self::new(499, ErrorCode::Cancelled, "cleanup", "ipc.cancelled", detail, false),
+            CleanerError::Cancelled => Self::new(
+                499,
+                ErrorCode::Cancelled,
+                "cleanup",
+                "ipc.cancelled",
+                detail,
+                false,
+            ),
             CleanerError::OwnershipMismatch => Self::not_found(
                 "cleanup",
                 "cleanup.stateUnavailable",
@@ -305,7 +354,14 @@ impl From<StartupError> for ServiceError {
             StartupError::Busy | StartupError::AlreadyRunning | StartupError::MutationBusy => {
                 Self::busy("startup", "startup.busy", detail)
             }
-            StartupError::Cancelled => Self::new(499, ErrorCode::Cancelled, "startup", "ipc.cancelled", detail, false),
+            StartupError::Cancelled => Self::new(
+                499,
+                ErrorCode::Cancelled,
+                "startup",
+                "ipc.cancelled",
+                detail,
+                false,
+            ),
             StartupError::OwnershipMismatch => Self::not_found(
                 "startup",
                 "startup.stateUnavailable",
@@ -317,9 +373,7 @@ impl From<StartupError> for ServiceError {
             StartupError::ScanNotReady
             | StartupError::StaleScan
             | StartupError::ServiceConfirmationRequired
-            | StartupError::Drift(_) => {
-                Self::conflict("startup", "startup.stateConflict", detail)
-            }
+            | StartupError::Drift(_) => Self::conflict("startup", "startup.stateConflict", detail),
             StartupError::UnknownItem(_) => {
                 Self::not_found("startup", "startup.itemNotFound", detail)
             }
@@ -345,8 +399,17 @@ impl From<DiagnosticError> for ServiceError {
         let detail = value.to_string();
         match value {
             DiagnosticError::Busy => Self::busy("diagnostics", "diagnostics.busy", detail),
-            DiagnosticError::Cancelled => Self::new(499, ErrorCode::Cancelled, "diagnostics", "ipc.cancelled", detail, false),
-            DiagnosticError::Provider(_) => Self::internal("diagnostics", "diagnostics.providerFailure", detail),
+            DiagnosticError::Cancelled => Self::new(
+                499,
+                ErrorCode::Cancelled,
+                "diagnostics",
+                "ipc.cancelled",
+                detail,
+                false,
+            ),
+            DiagnosticError::Provider(_) => {
+                Self::internal("diagnostics", "diagnostics.providerFailure", detail)
+            }
             DiagnosticError::OwnershipMismatch => Self::not_found(
                 "diagnostics",
                 "diagnostics.stateUnavailable",
@@ -362,31 +425,70 @@ impl From<DiagnosticError> for ServiceError {
     }
 }
 
-
 impl From<UpdateEngineError> for ServiceError {
     fn from(value: UpdateEngineError) -> Self {
-        let detail=value.to_string();
+        let detail = value.to_string();
         match value {
-            UpdateEngineError::Disabled => Self::conflict("update","update.error.disabled",detail),
-            UpdateEngineError::ResponseTooLarge | UpdateEngineError::SizeMismatch | UpdateEngineError::HashMismatch | UpdateEngineError::Manifest(_) | UpdateEngineError::Rollback => Self::conflict("update","update.error.integrity",detail),
-            UpdateEngineError::Trust(_) | UpdateEngineError::Authenticode(_) => Self::forbidden("update","update.error.trust",detail),
-            UpdateEngineError::UnknownRelease | UpdateEngineError::IntentUnavailable | UpdateEngineError::TicketUnavailable => Self::not_found("update","update.error.unavailable",detail),
-            UpdateEngineError::Ownership => Self::not_found("update","update.error.unavailable","update state is unavailable"),
-            UpdateEngineError::InvalidState => Self::conflict("update","update.error.stateConflict",detail),
-            UpdateEngineError::Busy => Self::busy("update","update.error.busy",detail),
-            UpdateEngineError::Io(_) | UpdateEngineError::Persistence(_) | UpdateEngineError::UnsupportedPlatform => Self::internal("update","update.error.internal",detail),
+            UpdateEngineError::Disabled => {
+                Self::conflict("update", "update.error.disabled", detail)
+            }
+            UpdateEngineError::ResponseTooLarge
+            | UpdateEngineError::SizeMismatch
+            | UpdateEngineError::HashMismatch
+            | UpdateEngineError::Manifest(_)
+            | UpdateEngineError::Rollback => {
+                Self::conflict("update", "update.error.integrity", detail)
+            }
+            UpdateEngineError::Trust(_) | UpdateEngineError::Authenticode(_) => {
+                Self::forbidden("update", "update.error.trust", detail)
+            }
+            UpdateEngineError::UnknownRelease
+            | UpdateEngineError::IntentUnavailable
+            | UpdateEngineError::TicketUnavailable => {
+                Self::not_found("update", "update.error.unavailable", detail)
+            }
+            UpdateEngineError::Ownership => Self::not_found(
+                "update",
+                "update.error.unavailable",
+                "update state is unavailable",
+            ),
+            UpdateEngineError::InvalidState => {
+                Self::conflict("update", "update.error.stateConflict", detail)
+            }
+            UpdateEngineError::Busy => Self::busy("update", "update.error.busy", detail),
+            UpdateEngineError::Io(_)
+            | UpdateEngineError::Persistence(_)
+            | UpdateEngineError::UnsupportedPlatform => {
+                Self::internal("update", "update.error.internal", detail)
+            }
         }
     }
 }
 impl From<SupportBundleError> for ServiceError {
-    fn from(value:SupportBundleError)->Self{
-        let detail=value.to_string();
+    fn from(value: SupportBundleError) -> Self {
+        let detail = value.to_string();
         match value {
-            SupportBundleError::PreviewUnavailable | SupportBundleError::BundleUnavailable | SupportBundleError::Ownership => Self::not_found("support-bundle","support.error.unavailable","support bundle state is unavailable"),
-            SupportBundleError::SectionTooLarge | SupportBundleError::BundleTooLarge | SupportBundleError::InvalidArchive(_) => Self::invalid("support-bundle","support.error.invalid",detail),
-            SupportBundleError::ResourceLimit => Self::busy("support-bundle","support.error.busy",detail),
-            SupportBundleError::InvalidProof | SupportBundleError::HashMismatch => Self::conflict("support-bundle","support.error.integrity",detail),
-            SupportBundleError::Io(_) | SupportBundleError::Json(_) => Self::internal("support-bundle","support.error.internal",detail),
+            SupportBundleError::PreviewUnavailable
+            | SupportBundleError::BundleUnavailable
+            | SupportBundleError::Ownership => Self::not_found(
+                "support-bundle",
+                "support.error.unavailable",
+                "support bundle state is unavailable",
+            ),
+            SupportBundleError::SectionTooLarge
+            | SupportBundleError::BundleTooLarge
+            | SupportBundleError::InvalidArchive(_) => {
+                Self::invalid("support-bundle", "support.error.invalid", detail)
+            }
+            SupportBundleError::ResourceLimit => {
+                Self::busy("support-bundle", "support.error.busy", detail)
+            }
+            SupportBundleError::InvalidProof | SupportBundleError::HashMismatch => {
+                Self::conflict("support-bundle", "support.error.integrity", detail)
+            }
+            SupportBundleError::Io(_) | SupportBundleError::Json(_) => {
+                Self::internal("support-bundle", "support.error.internal", detail)
+            }
         }
     }
 }
@@ -451,11 +553,29 @@ mod tests {
 
 impl From<IntelligenceError> for ServiceError {
     fn from(value: IntelligenceError) -> Self {
-        let detail=value.to_string();
+        let detail = value.to_string();
         match value {
-            IntelligenceError::Busy => Self::busy("pc-intelligence","deepScan.busy",detail),
-            IntelligenceError::Ownership | IntelligenceError::UnknownScan => Self::not_found("pc-intelligence","deepScan.stateUnavailable","deep scan state is unavailable"),
-            IntelligenceError::Persistence(_) | IntelligenceError::Internal(_) => Self::internal("pc-intelligence","deepScan.failure",detail),
+            IntelligenceError::Busy => Self::busy("pc-intelligence", "deepScan.busy", detail),
+            IntelligenceError::Ownership | IntelligenceError::UnknownScan => Self::not_found(
+                "pc-intelligence",
+                "deepScan.stateUnavailable",
+                "deep scan state is unavailable",
+            ),
+            IntelligenceError::Persistence(_) | IntelligenceError::Internal(_) => {
+                Self::internal("pc-intelligence", "deepScan.failure", detail)
+            }
         }
+    }
+}
+
+// Phase 27: the unix build compiles router.rs without the Windows-only broker helpers,
+// so this conversion must live here (the Windows path reaches it identically).
+impl From<aethercore_persistence::PersistenceError> for ServiceError {
+    fn from(value: aethercore_persistence::PersistenceError) -> Self {
+        Self::internal(
+            "persistence",
+            "persistence.error.internal",
+            value.to_string(),
+        )
     }
 }

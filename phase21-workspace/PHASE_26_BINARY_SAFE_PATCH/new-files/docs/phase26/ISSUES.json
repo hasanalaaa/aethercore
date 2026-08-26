@@ -1,0 +1,30 @@
+{
+  "schema": "aethercore.phase26.issues.v1",
+  "phase": 26,
+  "policy": "Append-only across phases. Open items are honest limits, never hidden failures.",
+  "items": [
+    {
+      "id": "P26-ISS-001",
+      "severity": "info",
+      "state": "closed",
+      "title": "Unix socket path length constrained test dirs",
+      "detail": "macOS limits unix socket paths to ~104 bytes (SUN_LEN); the first adversarial-test temp dir name exceeded it and binds failed with InvalidInput.",
+      "resolution": "Test helper switched to short 'axt-<tag>-<pid>' directory names; production socket path is well under the limit."
+    },
+    {
+      "id": "P26-ISS-002",
+      "severity": "medium",
+      "state": "open",
+      "title": "macOS peer-credential authentication depth deferred",
+      "detail": "SO_PEERCRED does not exist on macOS; Phase 26 ships the 0700-dir + 0600-socket boundary as the auth contract and defers deeper verification.",
+      "trackedAlsoIn": "docs/phase26/QUALIFICATION_DEBT.json#QD-026-001"
+    },
+    {
+      "id": "P26-ISS-003",
+      "severity": "low",
+      "state": "closed",
+      "title": "Windows freeze scan needed an explicit allowlist",
+      "detail": "The cfg(windows) freeze gate scans every .rs file outside explicitly allowed prefixes; the initial threshold was miscalibrated for this workspace's file distribution and was set from the measured count (176 files scanned) rather than an invented number."
+    }
+  ]
+}

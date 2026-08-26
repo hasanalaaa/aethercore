@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "phase": "30",
+  "policy": "Append-only ledger. Items carried forward verbatim until honestly closed. Nothing silently deleted.",
+  "closureClaim": "No closures in Phase 30. New: QD-030-001 (engine-live lanes need real servers), QD-030-002 (remediation deferred to consent pipeline), QD-030-003 (rule-set calibration).",
+  "items": [
+    { "id": "QD-026-001", "status": "CARRIED", "risk": "low" },
+    { "id": "QD-026-002", "status": "CARRIED", "risk": "medium" },
+    { "id": "QD-026-003", "status": "CLOSED(P28)", "risk": "-" },
+    { "id": "QD-027-001", "status": "CARRIED", "risk": "medium" },
+    { "id": "QD-027-002", "status": "CARRIED", "risk": "medium" },
+    { "id": "QD-028-001", "status": "CARRIED", "risk": "low" },
+    { "id": "QD-028-002", "status": "CARRIED", "risk": "low" },
+    { "id": "QD-028-003", "status": "CARRIED", "risk": "low" },
+    { "id": "QD-028-004", "status": "CARRIED", "risk": "low" },
+    { "id": "QD-029-001", "status": "OPEN", "risk": "medium" },
+    { "id": "QD-029-002", "status": "OPEN", "risk": "medium" },
+    { "id": "QD-029-003", "status": "OPEN", "risk": "low" },
+    { "id": "QD-030-001", "status": "OPEN", "risk": "medium", "area": "Engine-live lanes", "debt": "Postgres/MySQL live checks require real servers; declared NotAvailable on this host.", "evidenceClass": "NOT_EXECUTED_HOST" },
+    { "id": "QD-030-002", "status": "OPEN", "risk": "medium", "area": "Remediation", "debt": "DB remediation actions (VACUUM, repair) deferred to the safety-level/consent pipeline.", "evidenceClass": "SCOPE_DECISION" },
+    { "id": "QD-030-003", "status": "OPEN", "risk": "medium", "area": "Rule calibration", "debt": "Thresholds calibrated against synthetic fixtures; production-config calibration open.", "evidenceClass": "CALIBRATION_PENDING" }
+  ]
+}

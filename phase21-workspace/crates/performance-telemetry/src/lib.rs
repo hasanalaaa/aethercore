@@ -174,11 +174,18 @@ impl PerfSnapshot {
         clamp_bp(&mut self.cpu.total_busy_bp);
         clamp_bp(&mut self.cpu.dpc_isr_busy_bp);
         self.storage.truncate(MAX_STORAGE_DEVICES);
-        self.storage.iter_mut().for_each(|device| clamp_bp(&mut device.active_time_bp));
+        self.storage
+            .iter_mut()
+            .for_each(|device| clamp_bp(&mut device.active_time_bp));
         self.gpu.engines.truncate(MAX_GPU_ENGINES);
-        self.gpu.engines.iter_mut().for_each(|engine| clamp_bp(&mut engine.utilization_bp));
+        self.gpu
+            .engines
+            .iter_mut()
+            .for_each(|engine| clamp_bp(&mut engine.utilization_bp));
         self.process_top.truncate(MAX_PROCESS_TOP);
-        self.process_top.iter_mut().for_each(|entry| clamp_bp(&mut entry.cpu_busy_bp));
+        self.process_top
+            .iter_mut()
+            .for_each(|entry| clamp_bp(&mut entry.cpu_busy_bp));
         self.memory.memory_load_percent = self.memory.memory_load_percent.min(100);
         self.collector_faults.truncate(MAX_COLLECTOR_FAULTS);
         for fault in &mut self.collector_faults {
@@ -189,7 +196,11 @@ impl PerfSnapshot {
     }
 
     pub fn interval(&self) -> Duration {
-        Duration::from_millis(self.interval_ms.clamp(MIN_INTERVAL_MS, MAX_INTERVAL_MS).into())
+        Duration::from_millis(
+            self.interval_ms
+                .clamp(MIN_INTERVAL_MS, MAX_INTERVAL_MS)
+                .into(),
+        )
     }
 
     /// Interval clamped into the legal range for a start request.
@@ -214,6 +225,60 @@ mod windows_impl;
 #[cfg(windows)]
 pub use windows_impl::WindowsPerfPlatform;
 
+// Phase 27 — native unix providers (additive; Windows paths untouched).
+#[cfg(target_os = "linux")]
+mod linux_impl;
+#[cfg(target_os = "macos")]
+mod macos_impl;
+
+#[cfg(target_os = "linux")]
+pub use linux_impl::LinuxPerfPlatform;
+#[cfg(target_os = "macos")]
+pub use macos_impl::MacosPerfPlatform;
+
+/// Composition-time provider selection by cfg. `--synthetic` (and every test/audit)
+/// forces the deterministic synthetic platform explicitly; on Windows the frozen
+/// native provider stays the default exactly as shipped.
+pub fn default_platform() -> std::sync::Arc<dyn PerfPlatform> {
+    #[cfg(windows)]
+    {
+        std::sync::Arc::new(WindowsPerfPlatform)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::sync::Arc::new(MacosPerfPlatform::new())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::sync::Arc::new(LinuxPerfPlatform::new())
+    }
+}
+
+/// Test-injection surface for the pure provider math (integration tests only; never
+/// part of the production call graph). Re-exports typed views of private helpers.
+#[doc(hidden)]
+pub mod __test {
+    #[cfg(target_os = "macos")]
+    pub use super::macos_impl::{CpuTicks, busy_bp_from_ticks, read_cpu_ticks};
+
+    /// Constructs an injected tick counter for delta-math tests.
+    #[cfg(target_os = "macos")]
+    pub fn cpu_ticks(user: u64, system: u64, idle: u64, nice: u64) -> CpuTicks {
+        CpuTicks {
+            user,
+            system,
+            idle,
+            nice,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub use super::linux_impl::{
+        busy_bp_from_proc, parse_diskstats as rows_from_diskstats, parse_loadavg as loadavg_from,
+        parse_proc_meminfo as meminfo_from_proc, parse_proc_stat_cpu as cpu_from_proc_stat,
+    };
+}
+
 /// Deterministic synthetic platform used by tests, adversarial audits, and offline UI work.
 /// Values derive from a monotonic tick counter plus scenario knobs, so windowed aggregates are
 /// exactly predictable and reproducible across hosts.
@@ -230,7 +295,8 @@ impl SyntheticPerfPlatform {
     }
 
     pub fn with_cpu_busy_bp(&self, bp: u32) -> &Self {
-        self.cpu_busy_bp.store(u64::from(bp.min(10_000)), Ordering::Relaxed);
+        self.cpu_busy_bp
+            .store(u64::from(bp.min(10_000)), Ordering::Relaxed);
         self
     }
 
@@ -282,7 +348,10 @@ impl PerfPlatform for SyntheticPerfPlatform {
                 dedicated_used_bytes: 512 * 1024 * 1024,
                 dedicated_total_bytes: 8 * 1024 * 1024 * 1024,
                 shared_used_bytes: 0,
-                engines: vec![GpuEngineSample { engine_name: "3D".into(), utilization_bp: busy }],
+                engines: vec![GpuEngineSample {
+                    engine_name: "3D".into(),
+                    utilization_bp: busy,
+                }],
                 frametime_jitter_us: (tick % 7) * 100,
                 compositor_lag_detected: false,
             },
@@ -326,7 +395,9 @@ struct RingState {
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 static PUBLISHED_TOTAL: AtomicU64 = AtomicU64::new(0);
@@ -383,34 +454,36 @@ impl PerformanceRing {
             state.owner_principal_key = owner_principal_key.to_owned();
             state.samples.clear();
         }
-        let interval = Duration::from_millis(
-            u64::from(PerfSnapshot::clamped_interval_ms(requested_interval_ms)),
-        );
+        let interval = Duration::from_millis(u64::from(PerfSnapshot::clamped_interval_ms(
+            requested_interval_ms,
+        )));
         self.active.store(true, Ordering::Release);
 
         let active = self.active.clone();
         let state = self.state.clone();
-        let spawned = thread::Builder::new().name("aether-perf-sampler".into()).spawn(move || {
-            while active.load(Ordering::Acquire) {
-                let started = std::time::Instant::now();
-                let snapshot = platform.sample(interval).normalized();
-                PUBLISHED_TOTAL.fetch_add(1, Ordering::Relaxed);
-                {
-                    let mut guard = lock(&state);
-                    if guard.samples.len() >= MAX_RING_SAMPLES {
-                        guard.samples.pop_front();
+        let spawned = thread::Builder::new()
+            .name("aether-perf-sampler".into())
+            .spawn(move || {
+                while active.load(Ordering::Acquire) {
+                    let started = std::time::Instant::now();
+                    let snapshot = platform.sample(interval).normalized();
+                    PUBLISHED_TOTAL.fetch_add(1, Ordering::Relaxed);
+                    {
+                        let mut guard = lock(&state);
+                        if guard.samples.len() >= MAX_RING_SAMPLES {
+                            guard.samples.pop_front();
+                        }
+                        guard.samples.push_back(snapshot);
                     }
-                    guard.samples.push_back(snapshot);
+                    let elapsed = started.elapsed();
+                    if elapsed < interval {
+                        thread::sleep(interval - elapsed);
+                    } else {
+                        // Overrun: yield instead of spinning hot; next tick re-times itself.
+                        thread::yield_now();
+                    }
                 }
-                let elapsed = started.elapsed();
-                if elapsed < interval {
-                    thread::sleep(interval - elapsed);
-                } else {
-                    // Overrun: yield instead of spinning hot; next tick re-times itself.
-                    thread::yield_now();
-                }
-            }
-        });
+            });
         if spawned.is_err() {
             self.active.store(false, Ordering::Release);
             return Err(TelemetryError::NotActive);
@@ -512,11 +585,18 @@ impl PerformanceRing {
                 // Wide arithmetic: commit bytes can approach u64::MAX, so the basis-point ratio
                 // is computed in u128 and clamped before narrowing.
                 let committed = snap.memory.commit_bytes.min(snap.memory.commit_limit_bytes);
-                let ratio = ((u128::from(committed) * 10_000) / u128::from(snap.memory.commit_limit_bytes)).min(10_000);
+                let ratio = ((u128::from(committed) * 10_000)
+                    / u128::from(snap.memory.commit_limit_bytes))
+                .min(10_000);
                 commit_bp_sum = commit_bp_sum.saturating_add(ratio as u64);
             }
             if !snap.storage.is_empty() {
-                let peak_device = snap.storage.iter().map(|d| d.active_time_bp).max().unwrap_or(0);
+                let peak_device = snap
+                    .storage
+                    .iter()
+                    .map(|d| d.active_time_bp)
+                    .max()
+                    .unwrap_or(0);
                 store_sum = store_sum.saturating_add(u64::from(peak_device));
                 store_n += 1;
                 store_peak = store_peak.max(peak_device);

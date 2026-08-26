@@ -1233,6 +1233,90 @@ async fn dismiss_insight(insight_id: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+// ---------------------------------------------------------------------------
+// Phase 27 — honest platform/engine surface for the Diagnostics & About sections.
+// ---------------------------------------------------------------------------
+
+/// Typed availability chip for the renderer capability matrix.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UiCapabilityAvailability {
+    state: String,
+    key: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UiPlatformCapabilityStatus {
+    name: String,
+    availability: UiCapabilityAvailability,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UiPlatformCapabilities {
+    platform: String,
+    capabilities: Vec<UiPlatformCapabilityStatus>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UiEngineSource {
+    source: String,
+    platform: String,
+}
+
+#[command]
+async fn get_platform_capabilities() -> Result<UiPlatformCapabilities, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetPlatformCapabilities(
+            v1::GetPlatformCapabilitiesRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        match resp.payload {
+            Some(response::Payload::PlatformCapabilitiesResponse(matrix)) => Ok(UiPlatformCapabilities {
+                platform: matrix.platform,
+                capabilities: matrix
+                    .capabilities
+                    .into_iter()
+                    .map(|c| {
+                        let (state, key) = c
+                            .availability
+                            .map(|a| (a.state, a.key))
+                            .unwrap_or_default();
+                        UiPlatformCapabilityStatus {
+                            name: c.name,
+                            availability: UiCapabilityAvailability { state, key },
+                        }
+                    })
+                    .collect(),
+            }),
+            _ => Err("unexpected capabilities response".into()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn get_engine_source() -> Result<UiEngineSource, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetEngineSource(
+            v1::GetEngineSourceRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        match resp.payload {
+            Some(response::Payload::EngineSourceResponse(source)) => Ok(UiEngineSource {
+                source: source.source,
+                platform: source.platform,
+            }),
+            _ => Err("unexpected engine source response".into()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[command]
 async fn create_optimization_plan(
     selected_finding_ids: Vec<String>,
@@ -1318,7 +1402,9 @@ fn main() {
             cancel_care_run,
             list_insights,
             request_insight,
-            dismiss_insight
+            dismiss_insight,
+            get_platform_capabilities,
+            get_engine_source
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

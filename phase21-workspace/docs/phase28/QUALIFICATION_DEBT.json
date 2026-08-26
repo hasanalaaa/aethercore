@@ -1,0 +1,84 @@
+{
+  "schema": "aethercore.phase26.qualification-debt.v1",
+  "phase": "28",
+  "policy": "Append-only ledger. Items are carried forward verbatim until honestly closed; closures must cite concrete evidence artifacts. Nothing here may be silently deleted.",
+  "closureClaim": "QD-026-003 CLOSED in Phase 28 with live signal-integration evidence; all other prior debt carried forward unchanged; four Phase 28 debts opened.",
+  "carriedForwardFromPriorPhases": [
+    {
+      "id": "QD-026-001",
+      "area": "macOS IPC peer-auth depth",
+      "risk": "medium",
+      "status": "CARRIED — documented 0700-dir+0600-socket boundary remains the auth depth; SO_PEERCRED deepening still deferred"
+    },
+    {
+      "id": "QD-026-002",
+      "area": "Linux distro variance of telemetry collectors",
+      "risk": "medium",
+      "status": "CARRIED — typed Degraded declarations stand; live Linux kernel matrix still open"
+    },
+    {
+      "id": "QD-027-001",
+      "area": "macOS provider proven on Apple Silicon only",
+      "risk": "low",
+      "status": "CARRIED"
+    },
+    {
+      "id": "QD-027-002",
+      "area": "Linux provider fixture-tested only",
+      "risk": "medium",
+      "status": "CARRIED"
+    }
+  ],
+  "closedInThisPhase": [
+    {
+      "id": "QD-026-003",
+      "area": "Daemon lifecycle managers deferred to P28",
+      "closedInPhase": "28",
+      "evidence": [
+        "services/maintenance-service/src/unix_composition.rs — GRACEFUL_DRAIN_WINDOW bounded drain after SIGTERM/SIGTERM stop-flag",
+        "services/maintenance-service/src/main.rs — PID file removed after graceful stop; --daemon writes rotated JSONL logs via aethercore_diagnostics::init_json_file_rotated",
+        "crates/diagnostics/src/lib.rs — DAEMON_LOG_MAX_BYTES=5MiB cap, keep-last-N deterministic generations, runtime roll; unit tests pin rotation semantics",
+        "apps/aetherctl/tests/phase28_cli_matrix.rs::sigterm_drains_connected_session_then_exits_zero_cleaning_files — REAL kill(2)/SIGTERM against the REAL daemon: drain protects the connected session, exit code 0, socket+PID files removed",
+        "packaging/launchd/com.aethercore.maintenance.plist — plutil -lint = OK (live)",
+        "packaging/systemd/aethercore-maintenance.service — static key assertions in scripts/phase28-adversarial-audit.py (runtime verify deferred, QD-028-002)"
+      ],
+      "residualNote": "launchd/systemd INSTALLATION remains out of scope by CX-5: units ship as artifacts only; nothing auto-installs."
+    }
+  ],
+  "newInPhase26": [
+    {
+      "id": "QD-026-001-note",
+      "note": "original entry text preserved in docs/phase26/QUALIFICATION_DEBT.json; ledger schema extended append-only in Phase 28"
+    }
+  ],
+  "newInPhase28": [
+    {
+      "id": "QD-028-001",
+      "area": "Windows named-pipe CLI lane",
+      "debt": "apps/aetherctl cfg(windows) lane reuses the frozen SessionClient but has no Windows compile/run proof on this macOS host.",
+      "risk": "low",
+      "evidenceClass": "FROZEN_REUSE_UNPROVEN_ON_HOST — assigned to P24 workstream"
+    },
+    {
+      "id": "QD-028-002",
+      "area": "systemd runtime verification needs a Linux host",
+      "debt": "systemd-analyze verify NOT_EXECUTED here; only static key assertions run (scripts/phase28-adversarial-audit.py p28-systemd-*).",
+      "risk": "low",
+      "evidenceClass": "NOT_EXECUTED_HONESTLY_RECORDED"
+    },
+    {
+      "id": "QD-028-003",
+      "area": "Deferred RPC lanes rationale",
+      "debt": "updates 46–52/58–64, driver-policy 69–70, support-bundle 53–57 and generic consent 42–44 remain unexposed headlessly; one-line rationales recorded in ROUTING_TABLE.md 'Deferred RPC lanes'.",
+      "risk": "low",
+      "evidenceClass": "DOCUMENTED_DEFERRAL"
+    },
+    {
+      "id": "QD-028-004",
+      "area": "CLI strings EN-only",
+      "debt": "aetherctl human-readable strings/message_keys are English-only with documented rationale: the CLI is a technical surface consumed in transcripts/CI where EN-only keeps output grep-stable; the DESKTOP renderer stays fully EN/AR bilingual (parity gate p27-i18n-en-ar-parity untouched and still passing).",
+      "risk": "low",
+      "evidenceClass": "DOCUMENTED_DECISION"
+    }
+  ]
+}

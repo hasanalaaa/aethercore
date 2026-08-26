@@ -26,6 +26,7 @@
     startPerfSampling,
     stopPerfSampling,
   } from './controller';
+  import { serviceInvoke } from '../../platform/service-client';
 
   $: locale = $shellState.locale;
   $: busy = $shellState.busy;
@@ -34,6 +35,12 @@
   $: sampling = $streamState.perfSampling;
   $: selectedIds = $perfUi.selectedFindingIds;
   $: plan = $perfUi.plan;
+
+  // Phase 27 (T5): honest engine source (native/synthetic) pulled once per mount.
+  let engineSource: { source: string; platform: string } | null = null;
+  serviceInvoke<{ source: string; platform: string }>('get_engine_source')
+    .then((source) => (engineSource = source))
+    .catch(() => (engineSource = null));
 
   const ROLE_ROOT_CAUSE = 1;
   const ROLE_CONTRIBUTING = 2;
@@ -104,6 +111,12 @@
     </Pressable>
   </div>
 </header>
+
+{#if engineSource}
+  <section class="warning-strip engine-source"><span>◈</span>
+    <div><strong>{engineSource.source === 'native' ? t('about.engineSourceNative', locale) : t('about.engineSourceSynthetic', locale)}</strong></div>
+  </section>
+{/if}
 
 {#if performance.collectorFaults.length}
   <section class="warning-strip"><span>◇</span>

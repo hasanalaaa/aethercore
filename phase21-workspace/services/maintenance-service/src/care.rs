@@ -327,11 +327,11 @@ fn chrono_now() -> i64 {
 pub use aethercore_care_orchestrator::DomainDispatch;
 
 /// Poll cadence and ceiling for awaiting a dispatched domain plan.
-const DISPATCH_POLL_MS: u64 = 100;
-const DISPATCH_TIMEOUT_MS: u64 = 120_000;
+pub(crate) const DISPATCH_POLL_MS: u64 = 100;
+pub(crate) const DISPATCH_TIMEOUT_MS: u64 = 120_000;
 
 /// Terminal plan states per the operation engine state machine.
-fn is_terminal_plan_state(state: &str) -> bool {
+pub(crate) fn is_terminal_plan_state(state: &str) -> bool {
     matches!(state, "Completed" | "Failed" | "RebootPending")
 }
 

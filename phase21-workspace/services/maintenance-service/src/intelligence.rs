@@ -43,10 +43,7 @@ impl EphemeralInsights {
     }
 
     fn list(&self) -> Vec<(String, v1::Insight)> {
-        self.items
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone()
+        self.items.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
     fn dismiss(&self, insight_id: &str) -> bool {
@@ -70,7 +67,10 @@ pub struct IntelligenceCoordinator {
 impl IntelligenceCoordinator {
     /// `model_reasoner` is Some only when the artifact passed hash pinning at startup
     /// AND the build has the local-model feature (I5 fail-closed).
-    pub fn new(db: Arc<Database>, model_reasoner: Option<Box<dyn aethercore_intelligence_core::LocalReasoner>>) -> Self {
+    pub fn new(
+        db: Arc<Database>,
+        model_reasoner: Option<Box<dyn aethercore_intelligence_core::LocalReasoner>>,
+    ) -> Self {
         Self {
             db,
             selector: Arc::new(ReasonerSelector::new(model_reasoner)),
@@ -94,8 +94,7 @@ impl IntelligenceCoordinator {
                 let mut reasoner = LlamaCppReasoner::new();
                 match reasoner.load(&model_path) {
                     Ok(()) => {
-                        self.selector =
-                            Arc::new(ReasonerSelector::new(Some(Box::new(reasoner))));
+                        self.selector = Arc::new(ReasonerSelector::new(Some(Box::new(reasoner))));
                         EMBEDDED_ENGINE_ACTIVE.store(true, Ordering::SeqCst);
                         // Typed startup log line (contract M2).
                         eprintln!(
@@ -150,7 +149,10 @@ impl IntelligenceCoordinator {
         let mut pack = TypedEvidencePack::default();
 
         // Surface 1: latest maintenance history rows (existing executions/plans).
-        if let Ok(rows) = self.db.maintenance_executions_for_owner(owner_principal_key, 8) {
+        if let Ok(rows) = self
+            .db
+            .maintenance_executions_for_owner(owner_principal_key, 8)
+        {
             for row in rows.into_iter().take(8) {
                 pack.push(EvidenceItem {
                     evidence_id: row.plan_id.clone(),
@@ -158,17 +160,26 @@ impl IntelligenceCoordinator {
                     detail: format!(
                         "plan {} domain {} stage {}",
                         row.plan_id,
-                        if row.domain.is_empty() { "n/a" } else { &row.domain },
-                        if row.stage.is_empty() { "n/a" } else { &row.stage }
+                        if row.domain.is_empty() {
+                            "n/a"
+                        } else {
+                            &row.domain
+                        },
+                        if row.stage.is_empty() {
+                            "n/a"
+                        } else {
+                            &row.stage
+                        }
                     ),
                 });
             }
         }
 
         // Surface 2: recent timeline events as history evidence (bounded read).
-        if let Ok(timeline) =
-            aethercore_timeline_intelligence::ingest::ingest_owner_history(self.db.as_ref(), owner_principal_key)
-        {
+        if let Ok(timeline) = aethercore_timeline_intelligence::ingest::ingest_owner_history(
+            self.db.as_ref(),
+            owner_principal_key,
+        ) {
             for event in timeline.into_iter().take(12) {
                 pack.push(EvidenceItem {
                     evidence_id: event.semantic_identity_sha256.clone(),
@@ -217,8 +228,12 @@ impl IntelligenceCoordinator {
                     })
                     .collect(),
                 engine: match insight.engine {
-                    aethercore_intelligence_core::InsightEngineKind::LocalModel => "localModel".into(),
-                    aethercore_intelligence_core::InsightEngineKind::RuleFallback => "ruleFallback".into(),
+                    aethercore_intelligence_core::InsightEngineKind::LocalModel => {
+                        "localModel".into()
+                    }
+                    aethercore_intelligence_core::InsightEngineKind::RuleFallback => {
+                        "ruleFallback".into()
+                    }
                 },
             })
             .collect();

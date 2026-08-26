@@ -1,0 +1,13 @@
+# Phase 31 (W5) — cargo-deny supply-chain check
+
+Tool: cargo-deny 0.20.2 · Config: deny.toml (RustSec advisories=deny, multiple-versions=warn,
+license allowlist Apache-2.0/MIT/BSD/Unicode family).
+
+Result: **advisories ok, bans ok, licenses ok, sources ok**
+
+## Triage notes
+- Workspace crates originally lacked license fields → fixed by adding
+  `license.workspace = true` (workspace license = "Apache-2.0 OR MIT") to all 47 manifests.
+- Linux-desktop transitive unmaintained advisories (gtk3-rs family, unic-*,
+  proc-macro-error) are documented ignores in deny.toml; tracked as QD-031-001
+  (migrate to gtk4-rs when tauri does).

@@ -50,34 +50,62 @@ pub(crate) fn build_sections(
             sections.push(SupportSection {
                 file_name: "diagnostics.json".into(),
                 display_key: "support.section.diagnostics".into(),
-                value: serde_json::to_value(snapshot).map_err(|e| crate::errors::ServiceError::internal(
-                    "support-bundle", "support.error.serialization", e.to_string()))?,
+                value: serde_json::to_value(snapshot).map_err(|e| {
+                    crate::errors::ServiceError::internal(
+                        "support-bundle",
+                        "support.error.serialization",
+                        e.to_string(),
+                    )
+                })?,
             });
         }
     }
 
     if include_operation_history {
-        let events = ctx.db.support_journal_events_for_owner(owner, 200)
-            .map_err(|e| crate::errors::ServiceError::internal("support-bundle", "support.error.persistence", e.to_string()))?;
+        let events = ctx
+            .db
+            .support_journal_events_for_owner(owner, 200)
+            .map_err(|e| {
+                crate::errors::ServiceError::internal(
+                    "support-bundle",
+                    "support.error.persistence",
+                    e.to_string(),
+                )
+            })?;
         sections.push(SupportSection {
             file_name: "operation-history.json".into(),
             display_key: "support.section.operationHistory".into(),
-            value: serde_json::to_value(events).map_err(|e| crate::errors::ServiceError::internal(
-                "support-bundle", "support.error.serialization", e.to_string()))?,
+            value: serde_json::to_value(events).map_err(|e| {
+                crate::errors::ServiceError::internal(
+                    "support-bundle",
+                    "support.error.serialization",
+                    e.to_string(),
+                )
+            })?,
         });
     }
 
     if include_scheduler_activity {
-        let runs = ctx.db.scheduler_runs_for_owner(owner)
-            .map_err(|e| crate::errors::ServiceError::internal("support-bundle", "support.error.persistence", e.to_string()))?;
-        let values: Vec<_> = runs.into_iter().map(|run| json!({
-            "workload": run.workload,
-            "failureCount": run.failure_count,
-            "nextEligibleUnixMs": run.next_eligible_unix_ms,
-            "lastOutcome": run.last_outcome,
-            "lastCompletedUnixMs": run.last_completed_unix_ms,
-            "updatedUnixMs": run.updated_unix_ms,
-        })).collect();
+        let runs = ctx.db.scheduler_runs_for_owner(owner).map_err(|e| {
+            crate::errors::ServiceError::internal(
+                "support-bundle",
+                "support.error.persistence",
+                e.to_string(),
+            )
+        })?;
+        let values: Vec<_> = runs
+            .into_iter()
+            .map(|run| {
+                json!({
+                    "workload": run.workload,
+                    "failureCount": run.failure_count,
+                    "nextEligibleUnixMs": run.next_eligible_unix_ms,
+                    "lastOutcome": run.last_outcome,
+                    "lastCompletedUnixMs": run.last_completed_unix_ms,
+                    "updatedUnixMs": run.updated_unix_ms,
+                })
+            })
+            .collect();
         sections.push(SupportSection {
             file_name: "scheduler-activity.json".into(),
             display_key: "support.section.schedulerActivity".into(),

@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [dependencies]
 aethercore-collector-runtime = { path = "../collector-runtime" }
@@ -15,5 +16,19 @@ chrono.workspace = true
 aethercore-windows-foundation = { path = "../windows-foundation" }
 windows.workspace = true
 
+# Phase 27 (owner-review waiver, audit allowlist): libc is the ONLY new dependency and it is
+# strictly cfg-gated to unix targets below. It provides the raw syscall bindings for the
+# native macOS/Linux telemetry providers (mach host_statistics64, sysctl, getloadavg,
+# statfs, proc_pidinfo; /proc parsing needs no bindings). It performs no network I/O and
+# introduces no runtime linkage beyond libSystem/libc which the binary already links.
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 uuid.workspace = true
+aethercore-performance-bottleneck = { path = "../performance-bottleneck" }
+criterion.workspace = true
+
+[[bench]]
+name = "perf_ring"
+harness = false

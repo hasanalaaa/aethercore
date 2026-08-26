@@ -12,7 +12,11 @@ const DEV_PIPE_TOKEN_ENV: &str = "AETHERCORE_DEV_PIPE_TOKEN";
 
 #[cfg(debug_assertions)]
 fn pipe_name_with_dev_token(token: &str) -> Result<String> {
-    if token.len() != 32 || !token.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) {
+    if token.len() != 32
+        || !token
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return Err(IpcError::Protocol("invalid development pipe token".into()));
     }
     Ok(format!("{PIPE_NAME}.{token}"))
@@ -79,20 +83,34 @@ pub enum IpcError {
 
 pub type Result<T> = std::result::Result<T, IpcError>;
 
-fn write_message_with_limit<W: std::io::Write, M: Message>(writer: &mut W, message: &M, limit: usize) -> Result<()> {
+fn write_message_with_limit<W: std::io::Write, M: Message>(
+    writer: &mut W,
+    message: &M,
+    limit: usize,
+) -> Result<()> {
     let bytes = message.encode_to_vec();
-    if bytes.len() > limit { return Err(IpcError::FrameTooLarge { actual: bytes.len(), limit }); }
+    if bytes.len() > limit {
+        return Err(IpcError::FrameTooLarge {
+            actual: bytes.len(),
+            limit,
+        });
+    }
     writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
     writer.write_all(&bytes)?;
     writer.flush()?;
     Ok(())
 }
 
-fn read_message_with_limit<R: std::io::Read, M: Message + Default>(reader: &mut R, limit: usize) -> Result<M> {
+fn read_message_with_limit<R: std::io::Read, M: Message + Default>(
+    reader: &mut R,
+    limit: usize,
+) -> Result<M> {
     let mut header = [0u8; 4];
     reader.read_exact(&mut header)?;
     let len = u32::from_le_bytes(header) as usize;
-    if len == 0 || len > limit { return Err(IpcError::FrameTooLarge { actual: len, limit }); }
+    if len == 0 || len > limit {
+        return Err(IpcError::FrameTooLarge { actual: len, limit });
+    }
     let mut bytes = vec![0u8; len];
     reader.read_exact(&mut bytes)?;
     Ok(M::decode(bytes.as_slice())?)
@@ -100,20 +118,44 @@ fn read_message_with_limit<R: std::io::Read, M: Message + Default>(reader: &mut 
 
 // Legacy payload-frame helpers are retained as deterministic fuzz targets. Production v7 uses
 // ClientFrame/ServerFrame session envelopes below.
-pub(crate) fn write_request<W: std::io::Write>(writer: &mut W, request: &Request) -> Result<()> { write_message_with_limit(writer, request, MAX_REQUEST_FRAME_BYTES) }
-pub(crate) fn read_request<R: std::io::Read>(reader: &mut R) -> Result<Request> { read_message_with_limit(reader, MAX_REQUEST_FRAME_BYTES) }
-pub(crate) fn write_response<W: std::io::Write>(writer: &mut W, response: &Response) -> Result<()> { write_message_with_limit(writer, response, MAX_RESPONSE_FRAME_BYTES) }
-pub(crate) fn read_response<R: std::io::Read>(reader: &mut R) -> Result<Response> { read_message_with_limit(reader, MAX_RESPONSE_FRAME_BYTES) }
-pub(crate) fn write_client_frame<W: std::io::Write>(writer: &mut W, frame: &ClientFrame) -> Result<()> { write_message_with_limit(writer, frame, MAX_CLIENT_SESSION_FRAME_BYTES) }
-pub(crate) fn read_client_frame<R: std::io::Read>(reader: &mut R) -> Result<ClientFrame> { read_message_with_limit(reader, MAX_CLIENT_SESSION_FRAME_BYTES) }
-pub(crate) fn write_server_frame<W: std::io::Write>(writer: &mut W, frame: &ServerFrame) -> Result<()> { write_message_with_limit(writer, frame, MAX_SERVER_SESSION_FRAME_BYTES) }
-pub(crate) fn read_server_frame<R: std::io::Read>(reader: &mut R) -> Result<ServerFrame> { read_message_with_limit(reader, MAX_SERVER_SESSION_FRAME_BYTES) }
+pub(crate) fn write_request<W: std::io::Write>(writer: &mut W, request: &Request) -> Result<()> {
+    write_message_with_limit(writer, request, MAX_REQUEST_FRAME_BYTES)
+}
+pub(crate) fn read_request<R: std::io::Read>(reader: &mut R) -> Result<Request> {
+    read_message_with_limit(reader, MAX_REQUEST_FRAME_BYTES)
+}
+pub(crate) fn write_response<W: std::io::Write>(writer: &mut W, response: &Response) -> Result<()> {
+    write_message_with_limit(writer, response, MAX_RESPONSE_FRAME_BYTES)
+}
+pub(crate) fn read_response<R: std::io::Read>(reader: &mut R) -> Result<Response> {
+    read_message_with_limit(reader, MAX_RESPONSE_FRAME_BYTES)
+}
+pub(crate) fn write_client_frame<W: std::io::Write>(
+    writer: &mut W,
+    frame: &ClientFrame,
+) -> Result<()> {
+    write_message_with_limit(writer, frame, MAX_CLIENT_SESSION_FRAME_BYTES)
+}
+pub(crate) fn read_client_frame<R: std::io::Read>(reader: &mut R) -> Result<ClientFrame> {
+    read_message_with_limit(reader, MAX_CLIENT_SESSION_FRAME_BYTES)
+}
+pub(crate) fn write_server_frame<W: std::io::Write>(
+    writer: &mut W,
+    frame: &ServerFrame,
+) -> Result<()> {
+    write_message_with_limit(writer, frame, MAX_SERVER_SESSION_FRAME_BYTES)
+}
+pub(crate) fn read_server_frame<R: std::io::Read>(reader: &mut R) -> Result<ServerFrame> {
+    read_message_with_limit(reader, MAX_SERVER_SESSION_FRAME_BYTES)
+}
 
 pub fn decode_request_frame_bytes(frame: &[u8]) -> Result<Request> {
     let mut cursor = std::io::Cursor::new(frame);
     let request = read_request(&mut cursor)?;
     let consumed = cursor.position() as usize;
-    if consumed != frame.len() { return Err(IpcError::TrailingBytes(frame.len() - consumed)); }
+    if consumed != frame.len() {
+        return Err(IpcError::TrailingBytes(frame.len() - consumed));
+    }
     Ok(request)
 }
 
@@ -121,38 +163,245 @@ pub fn decode_client_frame_bytes(frame: &[u8]) -> Result<ClientFrame> {
     let mut cursor = std::io::Cursor::new(frame);
     let message = read_client_frame(&mut cursor)?;
     let consumed = cursor.position() as usize;
-    if consumed != frame.len() { return Err(IpcError::TrailingBytes(frame.len() - consumed)); }
+    if consumed != frame.len() {
+        return Err(IpcError::TrailingBytes(frame.len() - consumed));
+    }
     Ok(message)
 }
 
-#[cfg(windows)] mod windows_impl;
-#[cfg(windows)] pub use windows_impl::{PipeServerListener, PipeServerSession, PipeServerWriter, SessionClient, connect};
+// ---------------------------------------------------------------------------
+// Phase 26 — Transport abstraction (additive; Windows behavior byte-unchanged)
+// ---------------------------------------------------------------------------
+
+/// Typed transport-level errors shared by every transport implementation. Existing
+/// `IpcError` variants are reused via conversion so Windows code paths keep their
+/// exact error shapes.
+#[derive(Debug, Error)]
+pub enum TransportError {
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("protocol encode: {0}")]
+    Encode(#[from] prost::EncodeError),
+    #[error("frame exceeds the negotiated maximum of {limit} bytes (got {got})")]
+    FrameTooLarge { limit: usize, got: usize },
+    #[error("peer disconnected mid-frame after {received} of {expected} bytes")]
+    PeerDisconnectedMidFrame { received: usize, expected: usize },
+    #[error("transport endpoint does not exist or is stale: {0}")]
+    EndpointStale(String),
+    #[error("permission denied connecting to transport endpoint: {0}")]
+    PermissionDenied(String),
+    #[error("authentication with the service endpoint failed")]
+    AuthFailed,
+}
+
+impl From<TransportError> for IpcError {
+    fn from(e: TransportError) -> Self {
+        match e {
+            TransportError::Io(io) => IpcError::Io(io),
+            TransportError::Encode(enc) => IpcError::Encode(enc),
+            _ => IpcError::Protocol(e.to_string()),
+        }
+    }
+}
+
+/// Byte-stream framing shared by all transports: 4-byte little-endian length prefix +
+/// protobuf body. Identical on the wire to the Windows named-pipe framing.
+pub struct TransportFrame;
+
+impl TransportFrame {
+    pub const LENGTH_PREFIX_BYTES: usize = 4;
+
+    /// Encodes one frame (length prefix + payload). Enforces the caller's limit first.
+    pub fn encode(
+        payload: &[u8],
+        max_frame_bytes: usize,
+    ) -> std::result::Result<Vec<u8>, TransportError> {
+        if payload.len() > max_frame_bytes {
+            return Err(TransportError::FrameTooLarge {
+                limit: max_frame_bytes,
+                got: payload.len(),
+            });
+        }
+        let mut out = Vec::with_capacity(Self::LENGTH_PREFIX_BYTES + payload.len());
+        out.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        out.extend_from_slice(payload);
+        Ok(out)
+    }
+
+    /// Reads exactly one length prefix from an already-buffered header.
+    pub fn decode_length(header: [u8; 4]) -> usize {
+        u32::from_le_bytes(header) as usize
+    }
+
+    pub fn validate_length(
+        length: usize,
+        max_frame_bytes: usize,
+    ) -> std::result::Result<(), TransportError> {
+        if length > max_frame_bytes {
+            return Err(TransportError::FrameTooLarge {
+                limit: max_frame_bytes,
+                got: length,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Transport trait: connection-oriented, framed, authenticated at connect/accept time.
+///
+/// Conformance markers required of every implementation (checked by the phase26 audit):
+/// `impl Transport for <Type>` plus a `<Type>::KIND` associated constant equal to
+/// "namedPipe" or "unixSocket".
+pub trait Transport: Send {
+    /// Identifier used in logs and capability output.
+    const KIND: &'static str;
+
+    /// Sends one already-encoded frame; blocks until fully written.
+    fn send_frame(&mut self, encoded: &[u8]) -> std::result::Result<(), TransportError>;
+
+    /// Reads one full frame into `buf`, returning the payload length.
+    fn recv_frame(
+        &mut self,
+        buf: &mut Vec<u8>,
+        max_frame_bytes: usize,
+    ) -> std::result::Result<usize, TransportError>;
+
+    /// Graceful shutdown of this side.
+    fn shutdown(&mut self) -> std::result::Result<(), TransportError>;
+}
+
+#[cfg(windows)]
+mod windows_impl;
+#[cfg(windows)]
+pub use windows_impl::{
+    PipeServerListener, PipeServerSession, PipeServerWriter, SessionClient, connect,
+};
 
 #[cfg(not(windows))]
-pub fn connect(_: &Request) -> Result<Response> { Err(IpcError::Unsupported) }
+pub fn connect(_: &Request) -> Result<Response> {
+    Err(IpcError::Unsupported)
+}
+
+// Phase 26: Unix transport — cfg(unix)-additive; Windows code paths untouched.
+#[cfg(unix)]
+pub mod unix_impl;
+#[cfg(unix)]
+pub use unix_impl::{UnixSocketListener, UnixSocketSession};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aethercore_contracts::{PROTOCOL_VERSION, v1::{RequestHeader, request}};
+    use aethercore_contracts::{
+        PROTOCOL_VERSION,
+        v1::{RequestHeader, request},
+    };
 
     #[cfg(debug_assertions)]
     #[test]
     fn development_pipe_token_is_strict_and_namespace_scoped() {
         let token = "0123456789abcdef0123456789abcdef";
-        assert_eq!(pipe_name_with_dev_token(token).unwrap(), format!("{PIPE_NAME}.{token}"));
-        for invalid in ["", "0123", "0123456789ABCDEF0123456789ABCDEF", "gggggggggggggggggggggggggggggggg", "0123456789abcdef0123456789abcde/"] {
-            assert!(matches!(pipe_name_with_dev_token(invalid), Err(IpcError::Protocol(_))));
+        assert_eq!(
+            pipe_name_with_dev_token(token).unwrap(),
+            format!("{PIPE_NAME}.{token}")
+        );
+        for invalid in [
+            "",
+            "0123",
+            "0123456789ABCDEF0123456789ABCDEF",
+            "gggggggggggggggggggggggggggggggg",
+            "0123456789abcdef0123456789abcde/",
+        ] {
+            assert!(matches!(
+                pipe_name_with_dev_token(invalid),
+                Err(IpcError::Protocol(_))
+            ));
         }
     }
 
-    fn ping() -> Request { Request { header: Some(RequestHeader { protocol_version: PROTOCOL_VERSION, request_id: "a1b2c3d4-test-request".into() }), payload: Some(request::Payload::Ping(aethercore_contracts::v1::PingRequest {})) } }
+    fn ping() -> Request {
+        Request {
+            header: Some(RequestHeader {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "a1b2c3d4-test-request".into(),
+            }),
+            payload: Some(request::Payload::Ping(
+                aethercore_contracts::v1::PingRequest {},
+            )),
+        }
+    }
 
-    #[test] fn request_frame_round_trips(){let input=ping();let mut bytes=Vec::new();write_request(&mut bytes,&input).unwrap();let mut slice=bytes.as_slice();let decoded=read_request(&mut slice).unwrap();assert_eq!(decoded.header.unwrap().request_id,"a1b2c3d4-test-request");}
-    #[test] fn request_limit_is_smaller_than_response_limit(){assert!(MAX_REQUEST_FRAME_BYTES<MAX_RESPONSE_FRAME_BYTES);}
-    #[test] fn session_direction_limits_match_trust_and_payload_shape(){assert!(MAX_CLIENT_SESSION_FRAME_BYTES>=MAX_REQUEST_FRAME_BYTES);assert!(MAX_CLIENT_SESSION_FRAME_BYTES<MAX_RESPONSE_FRAME_BYTES);assert!(MAX_SERVER_SESSION_FRAME_BYTES>=MAX_RESPONSE_FRAME_BYTES);}
-    #[test] fn rejects_zero_and_oversized_request_before_allocation(){let zero_bytes=0u32.to_le_bytes();let mut zero=zero_bytes.as_slice();assert!(matches!(read_request(&mut zero),Err(IpcError::FrameTooLarge{actual:0,..})));let too_large=(MAX_REQUEST_FRAME_BYTES as u32+1).to_le_bytes();let mut input=too_large.as_slice();assert!(matches!(read_request(&mut input),Err(IpcError::FrameTooLarge{..})));}
-    #[test] fn rejects_truncated_header_and_payload(){let mut header=[1u8,2,3].as_slice();assert!(matches!(read_request(&mut header),Err(IpcError::Io(_))));let mut payload=Vec::new();payload.extend_from_slice(&16u32.to_le_bytes());payload.extend_from_slice(&[0x08,0x01]);let mut payload=payload.as_slice();assert!(matches!(read_request(&mut payload),Err(IpcError::Io(_))));}
-    #[test] fn rejects_invalid_protobuf_and_trailing_bytes(){let invalid=[1u8,0,0,0,0xff];assert!(matches!(decode_request_frame_bytes(&invalid),Err(IpcError::Decode(_))));let input=ping();let mut bytes=Vec::new();write_request(&mut bytes,&input).unwrap();bytes.push(0x42);assert!(matches!(decode_request_frame_bytes(&bytes),Err(IpcError::TrailingBytes(1))));}
-    #[test] fn deterministic_malformed_frame_corpus_never_panics(){let mut state=0x9e37_79b9_7f4a_7c15u64;for len in 0..2048usize{let mut bytes=vec![0u8;len%257];for byte in &mut bytes{state^=state<<13;state^=state>>7;state^=state<<17;*byte=state as u8;}assert!(std::panic::catch_unwind(||decode_client_frame_bytes(&bytes)).is_ok());}}
+    #[test]
+    fn request_frame_round_trips() {
+        let input = ping();
+        let mut bytes = Vec::new();
+        write_request(&mut bytes, &input).unwrap();
+        let mut slice = bytes.as_slice();
+        let decoded = read_request(&mut slice).unwrap();
+        assert_eq!(decoded.header.unwrap().request_id, "a1b2c3d4-test-request");
+    }
+    #[test]
+    fn request_limit_is_smaller_than_response_limit() {
+        assert!(MAX_REQUEST_FRAME_BYTES < MAX_RESPONSE_FRAME_BYTES);
+    }
+    #[test]
+    fn session_direction_limits_match_trust_and_payload_shape() {
+        assert!(MAX_CLIENT_SESSION_FRAME_BYTES >= MAX_REQUEST_FRAME_BYTES);
+        assert!(MAX_CLIENT_SESSION_FRAME_BYTES < MAX_RESPONSE_FRAME_BYTES);
+        assert!(MAX_SERVER_SESSION_FRAME_BYTES >= MAX_RESPONSE_FRAME_BYTES);
+    }
+    #[test]
+    fn rejects_zero_and_oversized_request_before_allocation() {
+        let zero_bytes = 0u32.to_le_bytes();
+        let mut zero = zero_bytes.as_slice();
+        assert!(matches!(
+            read_request(&mut zero),
+            Err(IpcError::FrameTooLarge { actual: 0, .. })
+        ));
+        let too_large = (MAX_REQUEST_FRAME_BYTES as u32 + 1).to_le_bytes();
+        let mut input = too_large.as_slice();
+        assert!(matches!(
+            read_request(&mut input),
+            Err(IpcError::FrameTooLarge { .. })
+        ));
+    }
+    #[test]
+    fn rejects_truncated_header_and_payload() {
+        let mut header = [1u8, 2, 3].as_slice();
+        assert!(matches!(read_request(&mut header), Err(IpcError::Io(_))));
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&16u32.to_le_bytes());
+        payload.extend_from_slice(&[0x08, 0x01]);
+        let mut payload = payload.as_slice();
+        assert!(matches!(read_request(&mut payload), Err(IpcError::Io(_))));
+    }
+    #[test]
+    fn rejects_invalid_protobuf_and_trailing_bytes() {
+        let invalid = [1u8, 0, 0, 0, 0xff];
+        assert!(matches!(
+            decode_request_frame_bytes(&invalid),
+            Err(IpcError::Decode(_))
+        ));
+        let input = ping();
+        let mut bytes = Vec::new();
+        write_request(&mut bytes, &input).unwrap();
+        bytes.push(0x42);
+        assert!(matches!(
+            decode_request_frame_bytes(&bytes),
+            Err(IpcError::TrailingBytes(1))
+        ));
+    }
+    #[test]
+    fn deterministic_malformed_frame_corpus_never_panics() {
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        for len in 0..2048usize {
+            let mut bytes = vec![0u8; len % 257];
+            for byte in &mut bytes {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                *byte = state as u8;
+            }
+            assert!(std::panic::catch_unwind(|| decode_client_frame_bytes(&bytes)).is_ok());
+        }
+    }
 }

@@ -29,6 +29,7 @@ fn main() {
         "timeline.proto",
         "care.proto",
         "insights.proto",
+        "capabilities.proto",
         "events.proto",
         "aethercore.proto",
     ] {

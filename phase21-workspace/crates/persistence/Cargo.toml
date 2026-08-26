@@ -4,11 +4,27 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [dependencies]
 rusqlite.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+serde_json.workspace = true
+# Phase 27: SupportJournalEventRecord is serialized into support bundles; the derive is
+# additive and the crate gains no new capability surface beyond typed serialization.
+serde.workspace = true
+# Phase 29 (T1, owner-review waiver): ed25519-dalek signs/verifies EXPORT_V1 digests —
+# local cryptography only, no network I/O. Keys are NEVER generated implicitly.
+ed25519-dalek.workspace = true
 
 [dev-dependencies]
+
 uuid.workspace = true
+
+
+criterion.workspace = true
+
+[[bench]]
+name = "export_verify"
+harness = false

@@ -209,7 +209,9 @@ pub fn analyze(aggregate: &WindowAggregate, window: &[PerfSnapshot], now_unix_ms
 
 fn finalize(mut outputs: Vec<RuleOutput>, aggregate: &WindowAggregate, now_unix_ms: i64) -> Report {
     // Stable order: tier asc, then code asc. IDs derive from codes => deterministic.
-    outputs.sort_by(|a, b| format!("{}{}", a.tier as u8, a.code).cmp(&format!("{}{}", b.tier as u8, b.code)));
+    outputs.sort_by(|a, b| {
+        format!("{}{}", a.tier as u8, a.code).cmp(&format!("{}{}", b.tier as u8, b.code))
+    });
 
     let mut findings: Vec<Finding> = Vec::new();
     for output in &outputs {
@@ -224,9 +226,21 @@ fn finalize(mut outputs: Vec<RuleOutput>, aggregate: &WindowAggregate, now_unix_
             summary_key: output.summary_key.to_string(),
             message_args: output.args.clone(),
             evidence: output.evidence.clone(),
-            applicable_action_kinds: output.applicable_actions.iter().map(|s| s.to_string()).collect(),
-            first_observed_unix_ms: output.evidence.first().map(|e| e.observed_unix_ms).unwrap_or(now_unix_ms),
-            last_observed_unix_ms: output.evidence.last().map(|e| e.observed_unix_ms).unwrap_or(now_unix_ms),
+            applicable_action_kinds: output
+                .applicable_actions
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            first_observed_unix_ms: output
+                .evidence
+                .first()
+                .map(|e| e.observed_unix_ms)
+                .unwrap_or(now_unix_ms),
+            last_observed_unix_ms: output
+                .evidence
+                .last()
+                .map(|e| e.observed_unix_ms)
+                .unwrap_or(now_unix_ms),
         });
         let _ = aggregate;
     }
@@ -234,10 +248,14 @@ fn finalize(mut outputs: Vec<RuleOutput>, aggregate: &WindowAggregate, now_unix_
     // Resolve causal edges after all ids exist; unknown dependencies are dropped rather than
     // left dangling. Tier ordering guarantees acyclicity. The map owns its strings so `findings`
     // can be mutably borrowed while dependencies resolve.
-    let code_to_id: std::collections::HashMap<String, String> =
-        findings.iter().map(|f| (f.code.clone(), f.id.clone())).collect();
+    let code_to_id: std::collections::HashMap<String, String> = findings
+        .iter()
+        .map(|f| (f.code.clone(), f.id.clone()))
+        .collect();
     for output in &outputs {
-        let Some(finding) = findings.iter_mut().find(|f| f.code == output.code) else { continue };
+        let Some(finding) = findings.iter_mut().find(|f| f.code == output.code) else {
+            continue;
+        };
         for dep in &output.depends_on {
             let dep_code = (*dep).to_string();
             if let Some(dep_id) = code_to_id.get(&dep_code) {
@@ -258,7 +276,10 @@ fn finalize(mut outputs: Vec<RuleOutput>, aggregate: &WindowAggregate, now_unix_
         rule_engine_version: RULE_ENGINE_VERSION.to_string(),
     };
     report.digest_sha256 = compute_digest(&report);
-    report.report_id = format!("bottleneck-{}", &report.digest_sha256[..12.min(report.digest_sha256.len())]);
+    report.report_id = format!(
+        "bottleneck-{}",
+        &report.digest_sha256[..12.min(report.digest_sha256.len())]
+    );
     report
 }
 
@@ -332,13 +353,22 @@ fn cpu_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Optio
             title_key: "perf.finding.cpuSaturation.title",
             summary_key: "perf.finding.cpuSaturation.summary",
             args: vec![
-                arg("averagePercent", format!("{}", aggregate.cpu_busy_bp_avg / 100)),
-                arg("peakPercent", format!("{}", aggregate.cpu_busy_bp_peak / 100)),
+                arg(
+                    "averagePercent",
+                    format!("{}", aggregate.cpu_busy_bp_avg / 100),
+                ),
+                arg(
+                    "peakPercent",
+                    format!("{}", aggregate.cpu_busy_bp_peak / 100),
+                ),
                 arg("sampleCount", format!("{}", aggregate.sample_count)),
             ],
-            evidence: vec![
-                evidence("cpu.busyBp.avg", u64::from(aggregate.cpu_busy_bp_avg), u64::from(thresholds::CPU_SATURATION_AVG_BP), last.captured_unix_ms),
-            ],
+            evidence: vec![evidence(
+                "cpu.busyBp.avg",
+                u64::from(aggregate.cpu_busy_bp_avg),
+                u64::from(thresholds::CPU_SATURATION_AVG_BP),
+                last.captured_unix_ms,
+            )],
             depends_on: vec![],
             applicable_actions: vec!["ecoQos", "backgroundPriority"],
         });
@@ -358,7 +388,10 @@ fn dpc_pressure(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option<
         confidence: Confidence::High,
         title_key: "perf.finding.dpcPressure.title",
         summary_key: "perf.finding.dpcPressure.summary",
-        args: vec![arg("dpcIsrPercent", format!("{}", aggregate.dpc_isr_busy_bp_avg / 100))],
+        args: vec![arg(
+            "dpcIsrPercent",
+            format!("{}", aggregate.dpc_isr_busy_bp_avg / 100),
+        )],
         evidence: vec![evidence(
             "cpu.dpcIsrBp.avg",
             u64::from(aggregate.dpc_isr_busy_bp_avg),
@@ -371,7 +404,10 @@ fn dpc_pressure(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option<
 }
 
 fn thermal_clamp(window: &[PerfSnapshot]) -> Option<RuleOutput> {
-    let throttled = window.iter().filter(|snap| snap.power.throttle_active).count();
+    let throttled = window
+        .iter()
+        .filter(|snap| snap.power.throttle_active)
+        .count();
     if throttled == 0 {
         return None;
     }
@@ -383,18 +419,28 @@ fn thermal_clamp(window: &[PerfSnapshot]) -> Option<RuleOutput> {
         .map(|snap| snap.power.throttle_reason)
         .unwrap_or_default();
     let (code, title, summary) = match reason {
-        aethercore_performance_telemetry::ThermalThrottleReason::Power | aethercore_performance_telemetry::ThermalThrottleReason::Vrm | aethercore_performance_telemetry::ThermalThrottleReason::Current => (
+        aethercore_performance_telemetry::ThermalThrottleReason::Power
+        | aethercore_performance_telemetry::ThermalThrottleReason::Vrm
+        | aethercore_performance_telemetry::ThermalThrottleReason::Current => (
             "POWER_LIMIT_CLAMP",
             "perf.finding.powerClamp.title",
             "perf.finding.powerClamp.summary",
         ),
-        _ => ("THERMAL_CLAMP", "perf.finding.thermalClamp.title", "perf.finding.thermalClamp.summary"),
+        _ => (
+            "THERMAL_CLAMP",
+            "perf.finding.thermalClamp.title",
+            "perf.finding.thermalClamp.summary",
+        ),
     };
     Some(RuleOutput {
         code,
         tier: Tier::Hardware,
         role: Role::RootCause,
-        confidence: if majority { Confidence::Confirmed } else { Confidence::High },
+        confidence: if majority {
+            Confidence::Confirmed
+        } else {
+            Confidence::High
+        },
         title_key: title,
         summary_key: summary,
         args: vec![arg("throttledSamples", format!("{throttled}"))],
@@ -418,16 +464,29 @@ fn standby_starvation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> O
         code: "STANDBY_STARVATION",
         tier: Tier::Resource,
         role: Role::RootCause,
-        confidence: if aggregate.sample_count >= thresholds::MIN_SAMPLES_FOR_CONFIRMED { Confidence::Confirmed } else { Confidence::High },
+        confidence: if aggregate.sample_count >= thresholds::MIN_SAMPLES_FOR_CONFIRMED {
+            Confidence::Confirmed
+        } else {
+            Confidence::High
+        },
         title_key: "perf.finding.standbyStarvation.title",
         summary_key: "perf.finding.standbyStarvation.summary",
         args: vec![
-            arg("hardFaultsAvg", format!("{}", aggregate.hard_faults_per_sec_avg)),
-            arg("hardFaultsPeak", format!("{}", aggregate.hard_faults_per_sec_peak)),
+            arg(
+                "hardFaultsAvg",
+                format!("{}", aggregate.hard_faults_per_sec_avg),
+            ),
+            arg(
+                "hardFaultsPeak",
+                format!("{}", aggregate.hard_faults_per_sec_peak),
+            ),
         ],
-        evidence: vec![
-            evidence("memory.hardFaults.avg", aggregate.hard_faults_per_sec_avg, thresholds::HARD_FAULT_STARVATION_PER_SEC, last.captured_unix_ms),
-        ],
+        evidence: vec![evidence(
+            "memory.hardFaults.avg",
+            aggregate.hard_faults_per_sec_avg,
+            thresholds::HARD_FAULT_STARVATION_PER_SEC,
+            last.captured_unix_ms,
+        )],
         depends_on: vec![],
         applicable_actions: vec![],
     })
@@ -445,7 +504,10 @@ fn commit_pressure(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Opti
         confidence: Confidence::High,
         title_key: "perf.finding.commitPressure.title",
         summary_key: "perf.finding.commitPressure.summary",
-        args: vec![arg("commitPressurePercent", format!("{}", aggregate.commit_pressure_bp / 100))],
+        args: vec![arg(
+            "commitPressurePercent",
+            format!("{}", aggregate.commit_pressure_bp / 100),
+        )],
         evidence: vec![evidence(
             "memory.commitBp.avg",
             u64::from(aggregate.commit_pressure_bp),
@@ -464,7 +526,11 @@ fn io_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option
         return None;
     }
     let latency_evidence = peak_of(window, |snap| {
-        snap.storage.iter().map(|device| device.avg_transfer_latency_us).max().unwrap_or(0)
+        snap.storage
+            .iter()
+            .map(|device| device.avg_transfer_latency_us)
+            .max()
+            .unwrap_or(0)
     });
     let mut evidence_vec = vec![evidence(
         "storage.activeBp.peak",
@@ -476,18 +542,33 @@ fn io_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option
         .as_ref()
         .is_some_and(|(latency, _)| *latency >= thresholds::TRANSFER_LATENCY_US);
     if let Some((latency, at)) = latency_evidence {
-        evidence_vec.push(evidence("storage.transferLatencyUs", latency, thresholds::TRANSFER_LATENCY_US, at));
+        evidence_vec.push(evidence(
+            "storage.transferLatencyUs",
+            latency,
+            thresholds::TRANSFER_LATENCY_US,
+            at,
+        ));
     }
     Some(RuleOutput {
         code: "IO_SATURATION",
         tier: Tier::Resource,
         role: Role::RootCause,
-        confidence: if slow_transfer { Confidence::Confirmed } else { Confidence::High },
+        confidence: if slow_transfer {
+            Confidence::Confirmed
+        } else {
+            Confidence::High
+        },
         title_key: "perf.finding.ioSaturation.title",
         summary_key: "perf.finding.ioSaturation.summary",
         args: vec![
-            arg("activePeakPercent", format!("{}", aggregate.storage_active_bp_peak / 100)),
-            arg("activeAvgPercent", format!("{}", aggregate.storage_active_bp_avg / 100)),
+            arg(
+                "activePeakPercent",
+                format!("{}", aggregate.storage_active_bp_peak / 100),
+            ),
+            arg(
+                "activeAvgPercent",
+                format!("{}", aggregate.storage_active_bp_avg / 100),
+            ),
         ],
         evidence: evidence_vec,
         depends_on: vec![],
@@ -497,16 +578,26 @@ fn io_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option
 
 fn gpu_bound(window: &[PerfSnapshot]) -> Option<RuleOutput> {
     let peak = peak_of(window, |snap| {
-        snap.gpu.engines.first().map(|engine| u64::from(engine.utilization_bp)).unwrap_or(0)
+        snap.gpu
+            .engines
+            .first()
+            .map(|engine| u64::from(engine.utilization_bp))
+            .unwrap_or(0)
     })?;
     if peak.0 < u64::from(thresholds::GPU_SATURATION_BP) {
         return None;
     }
     let jitter_peak = peak_of(window, |snap| snap.gpu.frametime_jitter_us);
     let lag = window.iter().any(|snap| snap.gpu.compositor_lag_detected);
-    let confidence = if lag { Confidence::Confirmed } else { Confidence::High };
+    let confidence = if lag {
+        Confidence::Confirmed
+    } else {
+        Confidence::High
+    };
     let mut deps = Vec::new();
-    let jitter_bad = jitter_peak.as_ref().is_some_and(|(jitter, _)| *jitter >= thresholds::FRAMETIME_JITTER_US);
+    let jitter_bad = jitter_peak
+        .as_ref()
+        .is_some_and(|(jitter, _)| *jitter >= thresholds::FRAMETIME_JITTER_US);
     if jitter_bad || lag {
         deps.push("DPC_ISR_PRESSURE");
     }
@@ -518,7 +609,12 @@ fn gpu_bound(window: &[PerfSnapshot]) -> Option<RuleOutput> {
         title_key: "perf.finding.gpuBound.title",
         summary_key: "perf.finding.gpuBound.summary",
         args: vec![arg("gpuPeakPercent", format!("{}", peak.0 / 100))],
-        evidence: vec![evidence("gpu.utilizationBp.peak", peak.0, u64::from(thresholds::GPU_SATURATION_BP), peak.1)],
+        evidence: vec![evidence(
+            "gpu.utilizationBp.peak",
+            peak.0,
+            u64::from(thresholds::GPU_SATURATION_BP),
+            peak.1,
+        )],
         depends_on: deps,
         applicable_actions: vec!["gameModeProfile"],
     })
@@ -530,7 +626,10 @@ fn working_set_bloat(window: &[PerfSnapshot]) -> Option<RuleOutput> {
     // excuse for EmptyWorkingSet brute force.
     let first = window.first()?;
     let last = window.last()?;
-    let growth = last.memory.modified_page_list_bytes.saturating_sub(first.memory.modified_page_list_bytes);
+    let growth = last
+        .memory
+        .modified_page_list_bytes
+        .saturating_sub(first.memory.modified_page_list_bytes);
     if growth < thresholds::MODIFIED_LIST_GROWTH_BYTES {
         return None;
     }
@@ -554,5 +653,8 @@ fn working_set_bloat(window: &[PerfSnapshot]) -> Option<RuleOutput> {
 }
 
 fn arg(key: &str, value: String) -> MessageArg {
-    MessageArg { key: key.to_string(), value }
+    MessageArg {
+        key: key.to_string(),
+        value,
+    }
 }

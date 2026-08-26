@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "phase": "29",
+  "policy": "Append-only ledger. Items carried forward verbatim until honestly closed; closures must cite concrete evidence artifacts. Nothing silently deleted.",
+  "closureClaim": "No closures in Phase 29. QD-026-003 remains CLOSED (P28 evidence). New: QD-029-001 (HSM/KMS keys out of scope), QD-029-002 (archival format governance), QD-029-003 (SBOM certification path).",
+  "items": [
+    { "id": "QD-026-001", "status": "CARRIED", "risk": "low", "note": "SO_PEERCRED deepening deferred; 0700-dir + 0600-socket boundary documented (CX-4)." },
+    { "id": "QD-026-002", "status": "CARRIED", "risk": "medium", "note": "Typed Degraded declarations for storage queue proxies; distro variance." },
+    { "id": "QD-026-003", "status": "CLOSED(P28)", "risk": "-", "note": "Rotation + signals evidence recorded in P28." },
+    { "id": "QD-027-001", "status": "CARRIED", "risk": "medium", "note": "macOS provider validation across Apple Silicon/Intel." },
+    { "id": "QD-027-002", "status": "CARRIED", "risk": "medium", "note": "Linux kernel-version spread calibration." },
+    { "id": "QD-028-001", "status": "CARRIED", "risk": "low", "note": "Windows named-pipe CLI lane unproven on macOS host." },
+    { "id": "QD-028-002", "status": "CARRIED", "risk": "low", "note": "systemd runtime verification NOT_EXECUTED on macOS host." },
+    { "id": "QD-028-003", "status": "CARRIED", "risk": "low", "note": "Deferred RPC lanes rationale in ROUTING_TABLE.md." },
+    { "id": "QD-028-004", "status": "CARRIED", "risk": "low", "note": "CLI strings EN-only (closed later — see QD-028-004-closure in phase31)."},
+    { "id": "QD-029-001", "status": "OPEN", "risk": "medium", "area": "Key custody", "debt": "HSM/KMS-backed signing keys out of scope; local file seeds only (0600, explicit `keys generate`).", "evidenceClass": "SCOPE_DECISION" },
+    { "id": "QD-029-002", "status": "OPEN", "risk": "medium", "area": "Archival governance", "debt": "Long-term archival format governance for EXPORT_V1 (version migration policy) undefined.", "evidenceClass": "SCOPE_DECISION" },
+    { "id": "QD-029-003", "status": "OPEN", "risk": "low", "area": "SBOM certification", "debt": "Inventory is CycloneDX-SHAPED and honestly labeled 'not a certified SBOM'; certification path undefined.", "evidenceClass": "SCOPE_DECISION" }
+  ]
+}

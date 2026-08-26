@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use aethercore_performance_telemetry::{
-    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform, PerfSnapshot,
+    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MAX_GPU_ENGINES, MAX_PROCESS_TOP,
+    MAX_RING_SAMPLES, MAX_STORAGE_DEVICES, MemorySample, PerfPlatform, PerfSnapshot,
     PerformanceRing, StorageQueueSample, SyntheticPerfPlatform, ThermalThrottleReason,
-    MAX_GPU_ENGINES, MAX_PROCESS_TOP, MAX_RING_SAMPLES, MAX_STORAGE_DEVICES,
 };
 
 const OWNER_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -40,23 +40,38 @@ fn hostile_counter_values_are_clamped_into_contract_ranges() {
             context_switches_per_sec: u64::MAX,
             processor_queue_length_x100: u64::MAX,
         },
-        memory: MemorySample { memory_load_percent: u32::MAX, ..Default::default() },
-        storage: vec![StorageQueueSample {
-            device_id: "d".into(),
-            friendly_name: "d".into(),
-            active_time_bp: u32::MAX,
+        memory: MemorySample {
+            memory_load_percent: u32::MAX,
             ..Default::default()
-        }; MAX_STORAGE_DEVICES + 8],
+        },
+        storage: vec![
+            StorageQueueSample {
+                device_id: "d".into(),
+                friendly_name: "d".into(),
+                active_time_bp: u32::MAX,
+                ..Default::default()
+            };
+            MAX_STORAGE_DEVICES + 8
+        ],
         gpu: GpuSample {
-            engines: vec![GpuEngineSample { engine_name: "3D".into(), utilization_bp: u32::MAX }; MAX_GPU_ENGINES + 8],
+            engines: vec![
+                GpuEngineSample {
+                    engine_name: "3D".into(),
+                    utilization_bp: u32::MAX
+                };
+                MAX_GPU_ENGINES + 8
+            ],
             ..Default::default()
         },
         process_top: vec![Default::default(); MAX_PROCESS_TOP + 16],
-        collector_faults: vec![CollectorFault {
-            collector: "x".repeat(4096),
-            kind: "y".into(),
-            detail: "z".repeat(8192),
-        }; 64],
+        collector_faults: vec![
+            CollectorFault {
+                collector: "x".repeat(4096),
+                kind: "y".into(),
+                detail: "z".repeat(8192),
+            };
+            64
+        ],
         power: Default::default(),
     };
     // Pre-fix normalization is idempotent and applied on push; simulate that path.
@@ -81,7 +96,10 @@ fn ring_is_bounded_and_drops_oldest() {
     }
     assert_eq!(ring.len(OWNER_A), MAX_RING_SAMPLES);
     let newest = ring.latest(OWNER_A).unwrap();
-    assert_eq!(newest.captured_unix_ms, 1_700_000_000_000 + MAX_RING_SAMPLES as i64 + 24);
+    assert_eq!(
+        newest.captured_unix_ms,
+        1_700_000_000_000 + MAX_RING_SAMPLES as i64 + 24
+    );
 }
 
 #[test]

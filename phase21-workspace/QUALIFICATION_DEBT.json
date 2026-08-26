@@ -336,6 +336,22 @@
       "expectedEvidence": "Workspace compiles/tests; history survives migration; renderer cannot inject executable, command, service, registry/path mutation or bypass recovery/reboot graph invariants.",
       "severityIfUnqualified": "Critical",
       "qualificationHook": "scripts/phase19-windows-qualification.ps1#build-migration-security"
+    },
+    {
+      "capabilityId": "P27-QD-001",
+      "subsystem": "macOS native performance telemetry provider (macos_impl.rs)",
+      "windowsApiDependency": "n/a (unix provider)",
+      "requiredNativeScenario": "Validate Mach host_statistics64/vm64/sysctl/proc_pidinfo collectors across Apple Silicon AND Intel Macs, multiple macOS majors, and under heavy load / low-memory conditions; confirm tick-delta correctness across sleep/wake.",
+      "status": "open",
+      "notes": "Validated on this Apple Silicon host only (P27). Intel + macOS-version spread deferred to P28+ qualification."
+    },
+    {
+      "capabilityId": "P27-QD-002",
+      "subsystem": "Linux native performance telemetry provider (linux_impl.rs)",
+      "windowsApiDependency": "n/a (unix provider)",
+      "requiredNativeScenario": "Run the /proc-based provider across a kernel-version matrix (LTS bounds) and representative distros; verify parser tolerance to layout drift (diskstats fields added by newer kernels), cgroup-v2 memory accounting deltas, and thermal-zone absence paths.",
+      "status": "open",
+      "notes": "Proven via fixture tests on macOS; live Linux validation requires real hardware. QD-026-002 notes refined in docs/phase27: storage queue metrics are proxies and stay Degraded."
     }
   ]
 }

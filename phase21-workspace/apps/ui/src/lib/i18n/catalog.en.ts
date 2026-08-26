@@ -79,6 +79,16 @@ export const enCatalog = {
   'common.engineOffline': 'Engine offline',
   'common.countWithBytes': '{count} · {bytes}',
 
+  'about.title': 'About this build',
+  'about.platform': 'Platform',
+  'about.engineSource': 'Performance engine source',
+  'about.engineSourceNative': 'Native platform provider',
+  'about.engineSourceSynthetic': 'Synthetic engine (audits/offline)',
+  'about.capabilitiesTitle': 'Platform capabilities',
+  'about.capabilityState.native': 'Native',
+  'about.capabilityState.degraded': 'Degraded',
+  'about.capabilityState.notAvailable': 'Not available',
+
   'state.Idle': 'Idle',
   'state.Scanning': 'Scanning',
   'state.InventoryScanning': 'Reading devices',

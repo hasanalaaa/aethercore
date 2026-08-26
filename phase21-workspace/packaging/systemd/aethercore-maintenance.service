@@ -1,0 +1,31 @@
+# Phase 28 lifecycle artifact (CX-5). Template ONLY - nothing installs this unit.
+# Static key assertions live in scripts/phase28-adversarial-audit.py; runtime
+# verification (systemd-analyze verify) is honestly NOT_EXECUTED on this macOS host
+# (QD-028-002). See README.md next to this file.
+
+[Unit]
+Description=AetherCore Maintenance Service (headless daemon)
+Documentation=docs/phase28/ARCHITECTURE.md
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/aethercore-maintenance-service --daemon
+Restart=on-failure
+RestartSec=5s
+User=aethercore
+Group=aethercore
+
+# Hardening profile asserted by the Phase 28 audit.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictSUIDSGID=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

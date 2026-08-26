@@ -1,0 +1,34 @@
+{
+  "schema": "aethercore.phase27.issues.v1",
+  "phase": "27",
+  "items": [
+    {
+      "id": "P27-I-001",
+      "severity": "info",
+      "title": "Unix composition requires opt-in unix-ipc feature for UDS serving",
+      "detail": "Default unix build keeps the honest scaffold message; `--features unix-ipc` compiles the real UDS transport. Packaging must ship the service built with unix-ipc on macOS/Linux.",
+      "disposition": "documented in docs/phase27/ARCHITECTURE.md §2"
+    },
+    {
+      "id": "P27-I-002",
+      "severity": "low",
+      "title": "macOS sun_path constraint shapes the rendezvous path",
+      "detail": "sun_path is 104 bytes; per-user $TMPDIR can exceed it. default_socket_dir anchors at ${AETHERCORE_IPC_ROOT:-/tmp}/aethercore-ipc/v7 and tests use short /tmp roots.",
+      "disposition": "resolved in code (crates/ipc/src/unix_impl.rs)"
+    },
+    {
+      "id": "P27-I-003",
+      "severity": "medium",
+      "title": "Accepted sockets inherit listener non-blocking mode on macOS",
+      "detail": "A poll-style accept window makes the stop flag responsive, but accepted streams inherit non-blocking mode, which races session reads. accept() now forces the stream back to blocking before returning.",
+      "disposition": "fixed in crates/ipc/src/unix_impl.rs::accept; covered by GD integration test"
+    },
+    {
+      "id": "P27-I-004",
+      "severity": "low",
+      "title": "Update coordinator cannot resolve the OS build off-Windows",
+      "detail": "composition passes current_windows_build_or_zero(); update eligibility stays disabled off-Windows exactly as the honest matrix reports windowsUpdate NotAvailable.",
+      "disposition": "resolved via UpdateCoordinator::load_with_build (Windows path unchanged)"
+    }
+  ]
+}

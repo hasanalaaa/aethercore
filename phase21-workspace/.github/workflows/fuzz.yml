@@ -1,0 +1,37 @@
+name: fuzz
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  cargo-fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [export_envelope_parse, pg_conf_parse, mysql_conf_parse,
+                 pg_slow_log_parse, mysql_slow_log_parse]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Run fuzz target (${{ matrix.target }}, 200 runs)
+        continue-on-error: true
+        run: |
+          cargo fuzz run ${{ matrix.target }} -- -runs=200 -max_total_time=300
+
+      - name: Upload crash artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts
+          if-no-files-found: ignore

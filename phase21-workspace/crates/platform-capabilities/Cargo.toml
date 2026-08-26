@@ -1,0 +1,13 @@
+[package]
+name = "aethercore-platform-capabilities"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# Phase 26 — Universal Platform Foundation. Platform-neutral: no OS APIs, no network,
+# no mutation surfaces — pure typed data + tables (audit allowlist compliant).
+
+[dependencies]
+serde.workspace = true

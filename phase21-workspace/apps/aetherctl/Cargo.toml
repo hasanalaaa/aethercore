@@ -1,0 +1,55 @@
+[package]
+name = "aetherctl"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherctl"
+path = "src/main.rs"
+
+[dependencies]
+# Phase 28 wire-contract reuse (CX-3): the CLI consumes the SAME contracts and IPC
+# libraries as every other surface; it never re-implements framing or tags.
+aethercore-contracts = { path = "../../crates/contracts" }
+aethercore-ipc = { path = "../../crates/ipc" }
+aethercore-platform-capabilities = { path = "../../crates/platform-capabilities" }
+aethercore-performance-telemetry = { path = "../../crates/performance-telemetry" }
+serde.workspace = true
+serde_json.workspace = true
+# Phase 29 (T3, owner-review waiver): ed25519-dalek signs/verifies EXPORT_V1 digests and
+# derives key fingerprints locally. Neither performs network I/O. Key material is never
+# created implicitly — `keys generate` seeds from the OS CSPRNG as an explicit action.
+ed25519-dalek = { version = "2", default-features = false }
+aethercore-persistence = { path = "../../crates/persistence" }
+# Phase 30 (T6): read-only SQLite diagnostics provider (rusqlite bundled, no new deps
+# beyond the workspace-pinned rusqlite; owner-review waiver on file in that crate).
+aethercore-db-diagnostics = { path = "../../crates/db-diagnostics" }
+sha2.workspace = true
+thiserror.workspace = true
+# Phase 28 (owner-review waiver, audit allowlist): prost is the v7 wire codec shared with
+# every other consumer of aethercore-contracts; it performs no network I/O by itself and is
+# required to encode/decode the byte-identical session frames (CX-3). libc (unix only) backs
+# the PID-file liveness cross-check via kill(pid, 0); strictly cfg-gated below.
+prost.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", features = ["std"] }
+
+[dev-dependencies]
+
+[features]
+default = []
+# Opt-in compile of the REAL embedded-model loader behind `--load-model`. Without this
+# feature self-check --load-model returns the honest typed not-available answer.
+embedded-model = ["dep:aethercore-intelligence-core"]
+# Marker feature for the Phase 28 real-daemon proof suite (tests/phase28_cli_matrix.rs).
+# Run with: cargo test --workspace --features aethercore-maintenance-service/unix-ipc,aetherctl/e2e
+# so BOTH binaries (aetherctl + unix-ipc daemon) land in one target directory.
+e2e = []
+
+[dependencies.aethercore-intelligence-core]
+path = "../../crates/intelligence-core"
+optional = true

@@ -16,6 +16,13 @@ use anyhow::{Context, Result};
 
 use crate::router::ServiceContext;
 
+/// Phase 27 (unix composition): resolves the OS build number where the platform API
+/// exists (Windows) and reports 0 elsewhere. 0 disables update eligibility checks, which
+/// is already the honest state on non-Windows platforms.
+fn current_windows_build_or_zero() -> u32 {
+    aethercore_update_engine::current_windows_build().unwrap_or(0)
+}
+
 pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContext> {
     let db = Arc::new(Database::open(data_path).context("open journal database")?);
     let engine = Arc::new(OperationEngine::new(db.clone()));
@@ -55,7 +62,7 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
         .ok_or_else(|| anyhow::anyhow!("service executable has no parent directory"))?
         .to_path_buf();
     let event_bus = kernel.events().clone();
-    let updates = UpdateCoordinator::load(
+    let updates = UpdateCoordinator::load_with_build(
         env!("CARGO_PKG_VERSION"),
         &product_dir,
         product_data_root,
@@ -73,6 +80,11 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
                 ),
             );
         })),
+        // Phase 27 (unix composition): Windows build detection is unavailable off-Windows.
+        // Update trust stays disabled (no channels configured) and the coordinator degrades
+        // to an inert state — the honest matrix already reports windowsUpdate NotAvailable
+        // on macOS/Linux. Zero behavior change on Windows (build detected normally).
+        current_windows_build_or_zero(),
     )
     .context("initialize secure update coordinator")?;
     let intelligence_backend = Arc::new(ExistingSubsystemBackend::new(
@@ -92,7 +104,18 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
 
     // Phase 20: passive performance telemetry + optimization governance. Sampling starts only on
     // explicit owner request; construction here never touches counters.
+    // Phase 28 (anti-snake-oil, P28-I-007): the unix composition previously wired the
+    // synthetic platform while engine_source() reported "native" — a simulation labeled
+    // as truth. The cfg-selected REAL provider (macOS/Linux/Windows native) is now the
+    // default; the synthetic platform remains available ONLY under the explicit
+    // force-synthetic-perf audit feature.
+    #[cfg(feature = "force-synthetic-perf")]
     let performance = Arc::new(crate::performance::PerformanceEngine::with_synthetic(
+        kernel.mutations().clone(),
+    ));
+    #[cfg(not(feature = "force-synthetic-perf"))]
+    let performance = Arc::new(crate::performance::PerformanceEngine::new(
+        aethercore_performance_telemetry::default_platform(),
         kernel.mutations().clone(),
     ));
 
@@ -118,10 +141,7 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
     // Phase 23: Embedded Local Intelligence — advisory-only, air-gapped, ephemeral.
     // Default build ships the deterministic fallback engine; the on-device model path
     // activates only with --features local-model + hash-pinned artifact (I5).
-    let mut intelligence_core = crate::intelligence::IntelligenceCoordinator::new(
-        db.clone(),
-        None,
-    );
+    let mut intelligence_core = crate::intelligence::IntelligenceCoordinator::new(db.clone(), None);
     // Phase 23.1: the embedded model is the PERMANENT default engine — verify + load at
     // every service start; fallback engages ONLY on runtime faults (I3).
     intelligence_core.activate_embedded_default(product_dir.as_path());
@@ -190,14 +210,13 @@ impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
             .cleaner
             .status(owner_principal_key, Some(domain_plan_id))
             .map_err(|e| e.to_string())?
-            .or_else(|| {
-                self.startup
-                    .status(owner_principal_key, Some(domain_plan_id))
-                    .ok()
-                    .flatten()
-            })
-            .map(|_| ())
-            .is_some();
+            .is_some()
+            || self
+                .startup
+                .status(owner_principal_key, Some(domain_plan_id))
+                .ok()
+                .flatten()
+                .is_some();
         let _ = plan; // presence check only; dispatch decided by kind probe below
 
         // Kind probe order mirrors plan_kind(): cleanup → startup → repair. The first

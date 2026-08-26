@@ -1,0 +1,38 @@
+{
+  "schema": "aethercore.phase26.qualification-debt.v1",
+  "closureClaim": "PHASE_26_UNIVERSAL_PLATFORM_FOUNDATION_COMPLETE",
+  "carriedForwardFromPriorPhases": [
+    { "id": "P20-QD-003", "area": "EcoQoS / priority application (NoopPlatform worst case)", "risk": "high", "status": "UNCHANGED" },
+    { "id": "P21-QD-001", "area": "Timeline service handlers — Windows IPC round trip", "risk": "medium", "status": "UNCHANGED" },
+    { "id": "P21-QD-002", "area": "Recurrence thresholds calibration", "risk": "medium", "status": "UNCHANGED" },
+    { "id": "P21-QD-003", "area": "Timeline page cursor stability", "risk": "low", "status": "UNCHANGED" },
+    { "id": "P21-QD-004", "area": "Renderer panels under real RTL screen readers", "risk": "low", "status": "UNCHANGED" },
+    { "id": "P22-QD-001", "area": "One-Click Care handlers — Windows IPC round trip", "risk": "medium", "status": "UNCHANGED" },
+    { "id": "P22-QD-003", "area": "Session consent scope on Windows service restart", "risk": "low", "status": "UNCHANGED" },
+    { "id": "QD-023-002", "area": "Model quality evaluation on real journals", "risk": "medium", "status": "UNCHANGED" },
+    { "id": "QD-023-003", "area": "Windows CPU inference perf + low-RAM ceiling validation", "risk": "medium", "status": "UNCHANGED" }
+  ],
+  "newInPhase26": [
+    {
+      "id": "QD-026-001",
+      "area": "macOS IPC peer-auth depth",
+      "debt": "Unix transport authentication is the 0700-dir + 0600-socket permission boundary; macOS lacks SO_PEERCRED so peer PID/UID verification is not implemented. Linux deepening via SO_PEERCRED is also deferred to keep Phase 26 dependency-free.",
+      "risk": "medium",
+      "evidenceClass": "DOCUMENTED_LIMITATION"
+    },
+    {
+      "id": "QD-026-002",
+      "area": "Linux distro variance for degraded telemetry",
+      "debt": "Storage/GPU/thermal telemetry are marked Degraded with a single distro-variance note; actual behavior across systemd variants, sysfs layouts, and vendor tools is unmeasured.",
+      "risk": "medium",
+      "evidenceClass": "HONEST_DEGRADED_DECLARATION"
+    },
+    {
+      "id": "QD-026-003",
+      "area": "Daemon lifecycle managers deferred to P28",
+      "debt": "--daemon writes a PID file and structured logs only; launchd plist / systemd unit installation, log rotation, and graceful-signal handling are Phase 28 scope per CX-5.",
+      "risk": "low",
+      "evidenceClass": "SCAFFOLD_ONLY_BY_CONTRACT"
+    }
+  ]
+}

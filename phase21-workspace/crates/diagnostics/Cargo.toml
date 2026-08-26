@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
 tracing-subscriber.workspace = true
+# Phase 29 (T2): structured JSON-LINES emission with the stable event schema.
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true

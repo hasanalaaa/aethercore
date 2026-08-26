@@ -63,3 +63,12 @@ jobs:
           path: out/release/**
           if-no-files-found: error
           retention-days: 14
+
+  deny-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: cargo deny check
+        run: cargo deny check advisories bans licenses sources

@@ -1,0 +1,55 @@
+{
+  "schema": "aethercore.phase28.issues.v1",
+  "phase": "28",
+  "items": [
+    {
+      "id": "P28-I-001",
+      "severity": "info",
+      "title": "doctor on a fresh daemon answers diagnostics.stateUnavailable (exit 5)",
+      "detail": "GetDiagnosticsSnapshot requires an owned diagnostic snapshot for the calling principal; a fresh daemon has none, so the service honestly rejects until a scan exists (desktop/deep-scan creates it). The CLI surfaces the typed rejection verbatim instead of simulating data; the matrix test accepts both well-formed outcomes.",
+      "disposition": "documented in docs/phase28/ROUTING_TABLE.md and asserted in the proof suite"
+    },
+    {
+      "id": "P28-I-002",
+      "severity": "info",
+      "title": "Foreground daemons intentionally expose pid:null",
+      "detail": "Per the Phase 26 contract only --daemon writes a PID file, so detection of a foreground daemon reports Reachable{pid:null}. The kill-9 proof therefore runs against --daemon mode where the cross-check is fully exercisable.",
+      "disposition": "by contract; proven in tests/phase28_cli_matrix.rs"
+    },
+    {
+      "id": "P28-I-003",
+      "severity": "low",
+      "title": "self-check --load-model is feature-gated",
+      "detail": "The real llama.cpp loader compiles only under the opt-in cargo feature `embedded-model`; the default build answers capability-unavailable (exit 7) instead of pretending to load. Hash-only verification always runs for real.",
+      "disposition": "documented in ROUTING_TABLE.md; honest refusal asserted by unit-level envelope contract"
+    },
+    {
+      "id": "P28-I-004",
+      "severity": "info",
+      "title": "Consent adversarial suite avoids executing a destructive care run on the qualification host",
+      "detail": "The suite proves every refusal path (non-interactive, JSON mode, wrong digest), proves grant visibility through care status (sessionConsentGranted=true after consent-grant over the same principal path), and proves the empty-digest ordering guard. Full care-run execution remains covered by the care-orchestrator's own P22 test suite; running auto cleanup steps against this Mac's real filesystem from CI was judged an unacceptable side effect.",
+      "disposition": "design decision recorded here and in SCORECARD.md"
+    },
+    {
+      "id": "P28-I-006",
+      "severity": "medium",
+      "title": "External process injected macOS-style duplicate files into the workspace mid-session (30 items, build-breaking)",
+      "detail": "During Phase 28 execution an outside (non-agent) sync-style process created Finder-style duplicate entries across the tree — ultimately 30 items including crates/*/src/lib 2.rs, services/maintenance-service/tests/phase26_unix 2.rs (which broke cargo test target discovery with an invalid crate name), Cargo 2.toml, and four PHASE_2x_BINARY_SAFE_PATCH/new-files 2 directories. Full forensic manifest (paths + sha256 + mtimes/ctimes) preserved at /tmp/p28_quarantine/_MANIFEST.json. None of the items exist in the sealed P27 archive, so quarantining them RESTORES anchor parity; they were moved out-of-tree rather than deleted. Operators must investigate the syncing process before trusting this host for future phases.",
+      "disposition": "quarantined to /tmp/p28_quarantine with manifest; renderer gate keeps a narrow named exclusion for the two ui strays in case they reappear"
+    },
+    {
+      "id": "P28-I-007",
+      "severity": "medium",
+      "title": "INHERITED (P27) and FIXED: unix composition served synthetic performance data under a native label",
+      "detail": "composition.rs wired PerformanceEngine::with_synthetic() unconditionally on the unix path while engine_source() reported native — simulated counters labeled as truth, violating the anti-snake-oil rule once the CLI exposed perf lanes headlessly. Fixed in Phase 28: default_platform() (real cfg-selected provider) is the composition default; SyntheticPerfPlatform remains available ONLY under the explicit force-synthetic-perf audit feature. The CLI's offline telemetry-once always used the real provider.",
+      "disposition": "fixed in services/maintenance-service/src/composition.rs; recorded here for cross-phase traceability"
+    },
+    {
+      "id": "P28-I-005",
+      "severity": "low",
+      "title": "serde_json map ordering sorts JSON object keys alphabetically",
+      "detail": "Envelope data keys are emitted in alphabetical order (serde_json default map). Determinism is preserved (same input → same bytes); insertion-order rendering would require the preserve_order feature, which is out of scope.",
+      "disposition": "accepted; text renderer derives tables from first-row key order which is therefore stable"
+    }
+  ]
+}

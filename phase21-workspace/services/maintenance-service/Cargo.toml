@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# Phase 31 (W7): the unix transport is unconditional — these are no longer optional.
+signal-hook = { version = "0.3", default-features = false }
+prost.workspace = true
 
 [dependencies]
 aethercore-collector-runtime = { path = "../../crates/collector-runtime" }
@@ -31,13 +37,32 @@ aethercore-restore-point = { path = "../../crates/restore-point" }
 aethercore-timeline-intelligence = { path = "../../crates/timeline-intelligence" }
 aethercore-care-orchestrator = { path = "../../crates/care-orchestrator" }
 aethercore-intelligence-core = { path = "../../crates/intelligence-core" }
+aethercore-platform-capabilities = { path = "../../crates/platform-capabilities" }
 sha2.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 serde_json.workspace = true
+# Phase 27 (T1, owner-review waiver): signal_hook provides typed SIGINT/SIGTERM handling
+# for the unix --foreground loop — the unix analogue of the Windows SCM Stop control.
+# It performs no network I/O. prost provides ServerFrame encoding for the unix session
+# writer. Both are optional and activated ONLY by the unix-ipc feature, which also gates
+# every unix-composition module in src/, so they compile exclusively for builds that opt in.
+signal-hook = { version = "0.3", default-features = false, optional = true }
+prost = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows.workspace = true
 windows-service = "0.8.1"
+
+[dev-dependencies]
+# Phase 27: the GD integration test drives real prost-encoded v7 frames over UDS.
+prost = { workspace = true }
+
+[features]
+default = []
+unix-ipc = ["dep:signal-hook", "dep:prost"]
+# Phase 27 (T5): audits/tests may force the synthetic engine and the honest "synthetic"
+# engine-source label without touching native code paths.
+force-synthetic-perf = []

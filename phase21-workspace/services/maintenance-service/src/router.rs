@@ -14,13 +14,35 @@ use aethercore_operation_kernel::{
 };
 use aethercore_pc_intelligence::DeepScanCoordinator;
 use aethercore_persistence::Database;
+
+/// Phase 29 (T1): decodes the owner's 64-hex-char Ed25519 seed file. Returns None on
+/// any malformed input — signing is then skipped and the export ships digest-only.
+fn decode_key_seed(contents: &str) -> Option<[u8; 32]> {
+    let hex = contents.trim();
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    let bytes: Vec<u8> = hex
+        .as_bytes()
+        .chunks(2)
+        .map(|c| {
+            let hi = (c[0] as char).to_digit(16).ok_or(())? as u8;
+            let lo = (c[1] as char).to_digit(16).ok_or(())? as u8;
+            Ok::<u8, ()>((hi << 4) | lo)
+        })
+        .collect::<Result<Vec<u8>, ()>>()
+        .ok()?;
+    out.copy_from_slice(&bytes);
+    Some(out)
+}
 use aethercore_startup_manager::{RecommendationDecision, StartupDecision, StartupManager};
 use aethercore_support_bundle::SupportBundleEngine;
 use aethercore_system_repair::RepairCoordinator;
 use aethercore_update_engine::{UpdateChannel, UpdateCoordinator};
 use anyhow::{Context, Result};
 
-use crate::{errors::ServiceError, protocol::*, streaming::*};
+use crate::{errors::ServiceError, performance::PerformanceEngine, protocol::*, streaming::*};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -1118,6 +1140,7 @@ pub fn handle_request(
                             "performance",
                             "perf.error.planning",
                             e.to_string(),
+                            false,
                         )
                     })?;
                 let proto = crate::performance::plan_proto(&plan);
@@ -1186,54 +1209,314 @@ pub fn handle_request(
             }
             // ---------------- Phase 22: One-Click Care ----------------
             request::Payload::GetCareStatus(_) => {
-                let status=ctx.care.plan_preview(&principal_key);
-                publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
-                Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
+                let status = ctx.care.plan_preview(&principal_key);
+                publish(
+                    ctx,
+                    &principal_key,
+                    EventKind::CareRun,
+                    "",
+                    Some(event_envelope::Payload::CareStatus(status.clone())),
+                );
+                Ok(Some(response::Payload::CareStatus(
+                    v1::CareStatusResponse {
+                        status: Some(status),
+                    },
+                )))
             }
             request::Payload::GrantCareSessionConsent(_) => {
                 ctx.care.grant_session_consent(&principal_key);
-                let status=ctx.care.plan_preview(&principal_key);
-                publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
-                Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
+                let status = ctx.care.plan_preview(&principal_key);
+                publish(
+                    ctx,
+                    &principal_key,
+                    EventKind::CareRun,
+                    "",
+                    Some(event_envelope::Payload::CareStatus(status.clone())),
+                );
+                Ok(Some(response::Payload::CareStatus(
+                    v1::CareStatusResponse {
+                        status: Some(status),
+                    },
+                )))
             }
             request::Payload::StartCareRun(_) => {
-                let run_id=format!("care-{}", chrono::Utc::now().timestamp_millis());
-                let status=ctx.care.start_run(&principal_key,&run_id).map_err(|e|ServiceError::new(6,v1::ErrorCode::Conflict,"care","care.error.startFailed",e.to_string()))?;
-                publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
-                Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
+                let run_id = format!("care-{}", chrono::Utc::now().timestamp_millis());
+                let status = ctx.care.start_run(&principal_key, &run_id).map_err(|e| {
+                    ServiceError::new(
+                        6,
+                        v1::ErrorCode::Conflict,
+                        "care",
+                        "care.error.startFailed",
+                        e.to_string(),
+                        false,
+                    )
+                })?;
+                publish(
+                    ctx,
+                    &principal_key,
+                    EventKind::CareRun,
+                    "",
+                    Some(event_envelope::Payload::CareStatus(status.clone())),
+                );
+                Ok(Some(response::Payload::CareStatus(
+                    v1::CareStatusResponse {
+                        status: Some(status),
+                    },
+                )))
             }
             request::Payload::CancelCareRun(_) => {
                 ctx.care.cancel();
-                let status=ctx.care.plan_preview(&principal_key);
-                publish(ctx,&principal_key,EventKind::CareRun,"",Some(event_envelope::Payload::CareStatus(status.clone())));
-                Ok(Some(response::Payload::CareStatus(v1::CareStatusResponse{status:Some(status)})))
+                let status = ctx.care.plan_preview(&principal_key);
+                publish(
+                    ctx,
+                    &principal_key,
+                    EventKind::CareRun,
+                    "",
+                    Some(event_envelope::Payload::CareStatus(status.clone())),
+                );
+                Ok(Some(response::Payload::CareStatus(
+                    v1::CareStatusResponse {
+                        status: Some(status),
+                    },
+                )))
             }
             // ---------------- Phase 23: Local Intelligence (advisory-only) ----------------
             request::Payload::ListInsights(_) => {
                 request_context.checkpoint().map_err(err)?;
-                let response=ctx.intelligence_core.list();
-                publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response.clone())));
+                let response = ctx.intelligence_core.list();
+                publish(
+                    ctx,
+                    &principal_key,
+                    EventKind::Insights,
+                    "",
+                    Some(event_envelope::Payload::Insights(response.clone())),
+                );
                 Ok(Some(response::Payload::InsightsResponse(response)))
             }
             request::Payload::RequestInsight(_) => {
                 request_context.checkpoint().map_err(err)?;
                 // Observer-effect guard: no inference while any mutation or care run holds
                 // the machine-wide lease. Kernel state is the single source of truth.
-                let mutation_active=ctx.kernel.mutations().is_active();
-                match ctx.intelligence_core.request(&principal_key,mutation_active){
-                    Ok(response)=>{
-                        publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response.clone())));
+                let mutation_active = ctx.kernel.mutations().is_active();
+                match ctx
+                    .intelligence_core
+                    .request(&principal_key, mutation_active)
+                {
+                    Ok(response) => {
+                        publish(
+                            ctx,
+                            &principal_key,
+                            EventKind::Insights,
+                            "",
+                            Some(event_envelope::Payload::Insights(response.clone())),
+                        );
                         Ok(Some(response::Payload::InsightsResponse(response)))
                     }
-                    Err(e)=>Err(ServiceError::new(6,v1::ErrorCode::Unavailable,"intelligence","insight.error.busy",e)),
+                    Err(e) => Err(ServiceError::new(
+                        6,
+                        v1::ErrorCode::Busy,
+                        "intelligence",
+                        "insight.error.busy",
+                        e,
+                        false,
+                    )),
                 }
             }
             request::Payload::DismissInsight(v) => {
                 request_context.checkpoint().map_err(err)?;
-                let _=ctx.intelligence_core.dismiss(&v.insight_id);
-                let response=ctx.intelligence_core.list();
-                publish(ctx,&principal_key,EventKind::Insights,"",Some(event_envelope::Payload::Insights(response)));
-                Ok(Some(response::Payload::InsightsResponse(v1::InsightsResponse{engine_label:ctx.intelligence_core.engine_label().into(),insights:Vec::new()})))
+                let _ = ctx.intelligence_core.dismiss(&v.insight_id);
+                let response = ctx.intelligence_core.list();
+                publish(
+                    ctx,
+                    &principal_key,
+                    EventKind::Insights,
+                    "",
+                    Some(event_envelope::Payload::Insights(response)),
+                );
+                Ok(Some(response::Payload::InsightsResponse(
+                    v1::InsightsResponse {
+                        engine_label: ctx.intelligence_core.engine_label().into(),
+                        insights: Vec::new(),
+                    },
+                )))
+            }
+            // ---------------- Phase 26/27: honest platform + engine surface ----------
+            request::Payload::GetPlatformCapabilities(_) => {
+                let capabilities = aethercore_platform_capabilities::matrix_for_current_platform()
+                    .into_iter()
+                    .map(|(name, availability)| {
+                        let state = match &availability {
+                            aethercore_platform_capabilities::Availability::Native => "native",
+                            aethercore_platform_capabilities::Availability::Degraded { .. } => {
+                                "degraded"
+                            }
+                            aethercore_platform_capabilities::Availability::NotAvailable {
+                                ..
+                            } => "notAvailable",
+                        };
+                        let key = match availability {
+                            aethercore_platform_capabilities::Availability::Native => String::new(),
+                            aethercore_platform_capabilities::Availability::Degraded {
+                                note_key,
+                            } => note_key.to_string(),
+                            aethercore_platform_capabilities::Availability::NotAvailable {
+                                reason_key,
+                            } => reason_key.to_string(),
+                        };
+                        v1::PlatformCapabilityStatus {
+                            name: name.to_string(),
+                            availability: Some(v1::CapabilityAvailability {
+                                state: state.to_string(),
+                                key,
+                            }),
+                        }
+                    })
+                    .collect();
+                Ok(Some(response::Payload::PlatformCapabilitiesResponse(
+                    v1::PlatformCapabilitiesResponse {
+                        platform: match aethercore_platform_capabilities::Platform::current() {
+                            aethercore_platform_capabilities::Platform::Windows => "windows",
+                            aethercore_platform_capabilities::Platform::Macos => "macos",
+                            aethercore_platform_capabilities::Platform::Linux => "linux",
+                        }
+                        .to_string(),
+                        capabilities,
+                    },
+                )))
+            }
+            request::Payload::GetEngineSource(_) => Ok(Some(
+                response::Payload::EngineSourceResponse(v1::EngineSourceResponse {
+                    source: crate::performance::engine_source().to_string(),
+                    platform: match aethercore_platform_capabilities::Platform::current() {
+                        aethercore_platform_capabilities::Platform::Windows => "windows",
+                        aethercore_platform_capabilities::Platform::Macos => "macos",
+                        aethercore_platform_capabilities::Platform::Linux => "linux",
+                    }
+                    .to_string(),
+                }),
+            )),
+            // ---------------- Phase 29 (T1): signed journal export -------------------
+            request::Payload::ExportJournal(v) => {
+                // Read-only RPC: pulls through EXISTING persistence accessors only;
+                // single-writer discipline untouched.
+                let owner = if v.owner_principal_key.trim().is_empty() {
+                    principal_key.clone()
+                } else {
+                    v.owner_principal_key.clone()
+                };
+                let executions = ctx
+                    .db
+                    .maintenance_executions_for_owner(&owner, 2000)
+                    .map_err(err)?;
+                let events = ctx
+                    .db
+                    .support_journal_events_for_owner(&owner, 500)
+                    .map_err(err)?;
+                let timeline = ctx
+                    .db
+                    .repair_timeline_events_for_owner(&owner, 2000)
+                    .map_err(err)?;
+                let mut records: Vec<(String, i64, serde_json::Value)> = Vec::new();
+                for e in &executions {
+                    records.push((
+                        "maintenance_execution".to_string(),
+                        e.updated_unix_ms,
+                        serde_json::json!({
+                            "planId": e.plan_id,
+                            "domain": e.domain,
+                            "stage": e.stage,
+                            "overallPercent": e.overall_percent,
+                            "outcome": e.outcome,
+                            "startedUnixMs": e.started_unix_ms,
+                            "completedUnixMs": e.completed_unix_ms,
+                        }),
+                    ));
+                }
+                for e in &events {
+                    records.push((
+                        "plan_event".to_string(),
+                        e.created_unix_ms,
+                        serde_json::json!({
+                            "seq": e.seq,
+                            "planId": e.plan_id,
+                            "fromState": e.from_state,
+                            "toState": e.to_state,
+                            "eventKind": e.event_kind,
+                            "detail": e.detail,
+                        }),
+                    ));
+                }
+                for t in &timeline {
+                    records.push((
+                        "repair_timeline".to_string(),
+                        t.created_unix_ms,
+                        serde_json::json!({
+                            "eventId": t.event_id,
+                            "planId": t.plan_id,
+                            "domain": t.domain,
+                            "actionId": t.action_id,
+                            "eventKind": t.event_kind,
+                            "outcome": t.outcome,
+                        }),
+                    ));
+                }
+                let now = chrono::Utc::now().timestamp_millis();
+                let to_bound = if v.to_unix_ms > 0 {
+                    v.to_unix_ms
+                } else {
+                    i64::MAX
+                };
+                let from_bound = v.from_unix_ms;
+                records.retain(|(_, ordinal, _)| *ordinal >= from_bound && *ordinal < to_bound);
+                // source_db_fingerprint: hash of the record count + latest ordinal per
+                // class (deterministic over the same data set without reading the db file).
+                let mut fp = sha2::Sha256::new();
+                use sha2::Digest as _;
+                fp.update(records.len().to_le_bytes());
+                for (kind, ordinal, _) in &records {
+                    fp.update(kind.as_bytes());
+                    fp.update(ordinal.to_le_bytes());
+                }
+                let fingerprint = format!("{:x}", fp.finalize());
+                // Phase 31 (W9): the request id IS the correlation id for this export;
+                // it is clamped typed by CorrelationId::parse inside the crate.
+                let correlation_id =
+                    aethercore_persistence::export::CorrelationId::parse(&principal_key)
+                        .or_else(|| {
+                            aethercore_persistence::export::CorrelationId::parse(&format!(
+                                "export-{now}"
+                            ))
+                        });
+                let mut envelope = aethercore_persistence::export::
+                    build_envelope_with_correlation(records, now, fingerprint, correlation_id);
+                // Signing happens ONLY with an explicitly provisioned owner key file
+                // pointed at by AETHERCORE_EXPORT_KEY; otherwise digest-only honesty.
+                if let Some(key_path) = std::env::var_os("AETHERCORE_EXPORT_KEY") {
+                    if let Ok(key_hex) = std::fs::read_to_string(std::path::Path::new(&key_path)) {
+                        let key_hex = key_hex.trim();
+                        if let Some(seed) = decode_key_seed(key_hex) {
+                            let signing =
+                                aethercore_persistence::export::signing_key_from_seed(&seed);
+                            aethercore_persistence::export::sign_envelope(&mut envelope, &signing);
+                        }
+                    }
+                }
+                let response_payload = v1::ExportJournalResponse {
+                    envelope_json: serde_json::to_vec(&envelope).unwrap_or_default(),
+                    record_count: envelope.records.len() as u64,
+                    signed: envelope.signed,
+                };
+                aethercore_diagnostics::emit_structured(
+                    "info",
+                    aethercore_diagnostics::events::EXPORT_PRODUCED,
+                    serde_json::json!({
+                        "records": response_payload.record_count,
+                        "signed": response_payload.signed,
+                    }),
+                );
+                Ok(Some(response::Payload::ExportJournalResponse(
+                    response_payload,
+                )))
             }
         }
     })();
@@ -1257,7 +1540,7 @@ fn is_safe_request_id(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b':'))
 }
 
-#[cfg(windows)]
+#[cfg(unix)]
 fn require_broker(
     peer: &aethercore_security::PrincipalContext,
 ) -> std::result::Result<(), ServiceError> {
@@ -1281,7 +1564,7 @@ fn require_broker(
     Ok(())
 }
 
-#[cfg(windows)]
+#[cfg(unix)]
 fn expected_broker_path() -> Result<PathBuf> {
     let service = std::env::current_exe().context("resolve service executable path")?;
     let dir = service
@@ -1290,7 +1573,7 @@ fn expected_broker_path() -> Result<PathBuf> {
     Ok(dir.join("aethercore-consent-broker.exe"))
 }
 
-#[cfg(windows)]
+#[cfg(unix)]
 fn require_update_broker(
     peer: &aethercore_security::PrincipalContext,
 ) -> std::result::Result<(), ServiceError> {
@@ -1309,7 +1592,7 @@ fn require_update_broker(
     }
     Ok(())
 }
-#[cfg(windows)]
+#[cfg(unix)]
 fn expected_update_broker_path() -> Result<PathBuf> {
     let service = std::env::current_exe().context("resolve service executable path")?;
     let dir = service

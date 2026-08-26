@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 # INVARIANT I5 (air-gapped): the dependency allowlist below is deliberate and audited.
 # serde/serde_json — typed evidence + schema parsing; sha2 — model hash pinning;

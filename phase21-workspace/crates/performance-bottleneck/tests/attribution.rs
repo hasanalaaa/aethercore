@@ -2,13 +2,18 @@
 
 use std::time::Duration;
 
-use aethercore_performance_bottleneck::{analyze, thresholds, Confidence, Role};
+use aethercore_performance_bottleneck::{Confidence, Role, analyze, thresholds};
 use aethercore_performance_telemetry::{
     GpuEngineSample, PerfPlatform, PerfSnapshot, StorageQueueSample, SyntheticPerfPlatform,
     ThermalThrottleReason,
 };
 
-fn build_window(samples: Vec<PerfSnapshot>) -> (aethercore_performance_bottleneck::Report, aethercore_performance_telemetry::WindowAggregate) {
+fn build_window(
+    samples: Vec<PerfSnapshot>,
+) -> (
+    aethercore_performance_bottleneck::Report,
+    aethercore_performance_telemetry::WindowAggregate,
+) {
     let ring = aethercore_performance_telemetry::PerformanceRing::new();
     let owner = "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo";
     for snap in samples {
@@ -60,7 +65,12 @@ fn sustained_cpu_saturation_is_confirmed_root_cause() {
         .expect("cpu saturation must be detected");
     assert_eq!(finding.role, Role::RootCause);
     assert_eq!(finding.confidence, Confidence::Confirmed);
-    assert!(finding.evidence.iter().all(|ev| ev.observed_value >= ev.threshold));
+    assert!(
+        finding
+            .evidence
+            .iter()
+            .all(|ev| ev.observed_value >= ev.threshold)
+    );
     assert!(!finding.applicable_action_kinds.is_empty());
 }
 
@@ -100,8 +110,18 @@ fn thermal_clamp_distinguishes_power_limit_from_thermal() {
         snap.power.throttle_reason = ThermalThrottleReason::Thermal;
     }
     let (thermal_report, _) = build_window(thermal_samples);
-    assert!(thermal_report.findings.iter().any(|finding| finding.code == "THERMAL_CLAMP"));
-    assert!(!thermal_report.findings.iter().any(|finding| finding.code == "POWER_LIMIT_CLAMP"));
+    assert!(
+        thermal_report
+            .findings
+            .iter()
+            .any(|finding| finding.code == "THERMAL_CLAMP")
+    );
+    assert!(
+        !thermal_report
+            .findings
+            .iter()
+            .any(|finding| finding.code == "POWER_LIMIT_CLAMP")
+    );
 }
 
 #[test]
@@ -144,31 +164,12 @@ fn io_saturation_with_slow_transfers_reaches_confirmed() {
         .find(|finding| finding.code == "IO_SATURATION")
         .expect("io saturation must be detected");
     assert_eq!(finding.confidence, Confidence::Confirmed);
-    assert_eq!(finding.evidence.len(), 2, "latency evidence must be cited alongside active time");
+    assert_eq!(
+        finding.evidence.len(),
+        2,
+        "latency evidence must be cited alongside active time"
+    );
 }
-
-#[test]
-fn debug_probe() {
-    let mut samples: Vec<PerfSnapshot> = (0..8)
-        .map(|index| idle_snapshot(1_700_000_000_000 + index * 1000))
-        .collect();
-    for snap in &mut samples {
-        snap.gpu.engines.push(GpuEngineSample { engine_name: "3D".into(), utilization_bp: 9_900 });
-        snap.gpu.frametime_jitter_us = 9_000;
-        snap.cpu.dpc_isr_busy_bp = 4_000;
-    }
-    let ring = aethercore_performance_telemetry::PerformanceRing::new();
-    let owner = "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo";
-    for s in samples { ring.push(owner, s).unwrap(); }
-    let agg = ring.aggregate(owner);
-    eprintln!("AGG dpc={} gpu={} samples={}", agg.dpc_isr_busy_bp_avg, agg.gpu_busy_bp_avg, agg.sample_count);
-    let report = analyze(&agg, &ring.window(owner), 1_700_000_100_000);
-    for f in &report.findings { eprintln!("FINDING {} {:?}", f.code, f.confidence); }
-}
-
-#[test]
-#[ignore]
-fn zz_debug_probe() { debug_probe(); }
 
 #[test]
 fn gpu_bound_links_to_dpc_pressure_when_jitter_is_high() {
@@ -185,13 +186,29 @@ fn gpu_bound_links_to_dpc_pressure_when_jitter_is_high() {
         snap.cpu.dpc_isr_busy_bp = 4_000; // above DPC threshold => dependency exists
     }
     let (report, _) = build_window(samples);
-    let gpu = report.findings.iter().find(|finding| finding.code == "GPU_BOUND_WORKLOAD").unwrap();
+    let gpu = report
+        .findings
+        .iter()
+        .find(|finding| finding.code == "GPU_BOUND_WORKLOAD")
+        .unwrap();
     let dpc = report
         .findings
         .iter()
         .find(|finding| finding.code == "DPC_ISR_PRESSURE")
-        .unwrap_or_else(|| panic!("DPC finding absent; codes={:?}", report.findings.iter().map(|f| f.code.clone()).collect::<Vec<_>>()));
-    assert!(gpu.caused_by_finding_ids.contains(&dpc.id), "causality edge must be materialized");
+        .unwrap_or_else(|| {
+            panic!(
+                "DPC finding absent; codes={:?}",
+                report
+                    .findings
+                    .iter()
+                    .map(|f| f.code.clone())
+                    .collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        gpu.caused_by_finding_ids.contains(&dpc.id),
+        "causality edge must be materialized"
+    );
 }
 
 #[test]

@@ -31,7 +31,6 @@ impl PrincipalContext {
     }
 }
 
-
 #[derive(Debug, thiserror::Error)]
 pub enum SecurityError {
     #[error("unsupported platform")]
@@ -96,7 +95,8 @@ pub fn inspect_named_pipe_client(
         let impersonation = ThreadImpersonation::named_pipe_client(pipe).map_err(winerr)?;
         let result = (|| {
             let mut raw_token = HANDLE::default();
-            OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut raw_token).map_err(winerr)?;
+            OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut raw_token)
+                .map_err(winerr)?;
             let token = OwnedHandle::new(raw_token);
             principal_from_token(token.get(), pid, image, session_id)
         })();
@@ -130,78 +130,84 @@ fn principal_from_token(
     };
 
     unsafe {
-    let mut elevation = TOKEN_ELEVATION::default();
-    let mut returned = 0u32;
-    GetTokenInformation(
-        token,
-        TokenElevation,
-        Some((&mut elevation as *mut TOKEN_ELEVATION).cast()),
-        std::mem::size_of::<TOKEN_ELEVATION>() as u32,
-        &mut returned,
-    )
-    .map_err(winerr)?;
+        let mut elevation = TOKEN_ELEVATION::default();
+        let mut returned = 0u32;
+        GetTokenInformation(
+            token,
+            TokenElevation,
+            Some((&mut elevation as *mut TOKEN_ELEVATION).cast()),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned,
+        )
+        .map_err(winerr)?;
 
-    let mut statistics = TOKEN_STATISTICS::default();
-    GetTokenInformation(
-        token,
-        TokenStatistics,
-        Some((&mut statistics as *mut TOKEN_STATISTICS).cast()),
-        std::mem::size_of::<TOKEN_STATISTICS>() as u32,
-        &mut returned,
-    )
-    .map_err(winerr)?;
+        let mut statistics = TOKEN_STATISTICS::default();
+        GetTokenInformation(
+            token,
+            TokenStatistics,
+            Some((&mut statistics as *mut TOKEN_STATISTICS).cast()),
+            std::mem::size_of::<TOKEN_STATISTICS>() as u32,
+            &mut returned,
+        )
+        .map_err(winerr)?;
 
-    // TOKEN_USER is variable-sized because the SID storage follows the structure.
-    let mut needed = 0u32;
-    let _ = GetTokenInformation(token, TokenUser, None, 0, &mut needed);
-    if needed < std::mem::size_of::<TOKEN_USER>() as u32 || needed > 64 * 1024 {
-        return Err(SecurityError::InvalidToken("TokenUser size"));
-    }
-    // Use pointer-sized storage rather than Vec<u8> so TOKEN_USER is correctly aligned on both
-    // x86 and x64. The SID pointer returned by Windows must point back inside this owned buffer.
-    let word = std::mem::size_of::<usize>();
-    let words = (needed as usize).div_ceil(word);
-    let mut user_buffer = vec![0usize; words];
-    GetTokenInformation(
-        token,
-        TokenUser,
-        Some(user_buffer.as_mut_ptr().cast()),
-        needed,
-        &mut returned,
-    )
-    .map_err(winerr)?;
-    let user = &*(user_buffer.as_ptr().cast::<TOKEN_USER>());
-    if user.User.Sid.is_invalid() {
-        return Err(SecurityError::InvalidToken("missing user SID"));
-    }
-    let buffer_start = user_buffer.as_ptr() as usize;
-    let buffer_end = buffer_start
-        .checked_add(user_buffer.len().saturating_mul(word))
-        .ok_or(SecurityError::InvalidToken("TokenUser buffer range"))?;
-    let sid_start = user.User.Sid.0 as usize;
-    if sid_start < buffer_start || sid_start.checked_add(8).is_none_or(|minimum_end| minimum_end > buffer_end) {
-        return Err(SecurityError::InvalidToken("user SID pointer outside TokenUser buffer"));
-    }
-    let sid_len = GetLengthSid(user.User.Sid) as usize;
-    let sid_end = sid_start
-        .checked_add(sid_len)
-        .ok_or(SecurityError::InvalidToken("user SID range"))?;
-    if sid_len == 0 || sid_end > buffer_end {
-        return Err(SecurityError::InvalidToken("invalid user SID length"));
-    }
-    let sid_bytes = std::slice::from_raw_parts(user.User.Sid.0.cast::<u8>(), sid_len);
+        // TOKEN_USER is variable-sized because the SID storage follows the structure.
+        let mut needed = 0u32;
+        let _ = GetTokenInformation(token, TokenUser, None, 0, &mut needed);
+        if needed < std::mem::size_of::<TOKEN_USER>() as u32 || needed > 64 * 1024 {
+            return Err(SecurityError::InvalidToken("TokenUser size"));
+        }
+        // Use pointer-sized storage rather than Vec<u8> so TOKEN_USER is correctly aligned on both
+        // x86 and x64. The SID pointer returned by Windows must point back inside this owned buffer.
+        let word = std::mem::size_of::<usize>();
+        let words = (needed as usize).div_ceil(word);
+        let mut user_buffer = vec![0usize; words];
+        GetTokenInformation(
+            token,
+            TokenUser,
+            Some(user_buffer.as_mut_ptr().cast()),
+            needed,
+            &mut returned,
+        )
+        .map_err(winerr)?;
+        let user = &*(user_buffer.as_ptr().cast::<TOKEN_USER>());
+        if user.User.Sid.is_invalid() {
+            return Err(SecurityError::InvalidToken("missing user SID"));
+        }
+        let buffer_start = user_buffer.as_ptr() as usize;
+        let buffer_end = buffer_start
+            .checked_add(user_buffer.len().saturating_mul(word))
+            .ok_or(SecurityError::InvalidToken("TokenUser buffer range"))?;
+        let sid_start = user.User.Sid.0 as usize;
+        if sid_start < buffer_start
+            || sid_start
+                .checked_add(8)
+                .is_none_or(|minimum_end| minimum_end > buffer_end)
+        {
+            return Err(SecurityError::InvalidToken(
+                "user SID pointer outside TokenUser buffer",
+            ));
+        }
+        let sid_len = GetLengthSid(user.User.Sid) as usize;
+        let sid_end = sid_start
+            .checked_add(sid_len)
+            .ok_or(SecurityError::InvalidToken("user SID range"))?;
+        if sid_len == 0 || sid_end > buffer_end {
+            return Err(SecurityError::InvalidToken("invalid user SID length"));
+        }
+        let sid_bytes = std::slice::from_raw_parts(user.User.Sid.0.cast::<u8>(), sid_len);
 
-    let high = statistics.AuthenticationId.HighPart as i64 as u64;
-    let authentication_id = (high << 32) | statistics.AuthenticationId.LowPart as u64;
+        let high = statistics.AuthenticationId.HighPart as i64 as u64;
+        let authentication_id = (high << 32) | statistics.AuthenticationId.LowPart as u64;
 
-    Ok(PrincipalContext {
-        pid,
-        image_path,
-        elevated: elevation.TokenIsElevated != 0,
-        user_sid: hex::encode(sid_bytes),
-        authentication_id,
-        session_id,
-    })
+        Ok(PrincipalContext {
+            pid,
+            image_path,
+            elevated: elevation.TokenIsElevated != 0,
+            user_sid: hex::encode(sid_bytes),
+            authentication_id,
+            session_id,
+        })
     }
 }
 
@@ -211,7 +217,6 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
 
     use aethercore_windows_foundation::OwnedHandle;
     use windows::{
-        core::{PCWSTR, PWSTR},
         Win32::{
             Foundation::{BOOL, ERROR_INSUFFICIENT_BUFFER, HANDLE},
             Security::{
@@ -220,6 +225,7 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
             },
             System::Threading::GetCurrentProcess,
         },
+        core::{PCWSTR, PWSTR},
     };
 
     const MAX_ACCOUNT_SID_BYTES: u32 = 4 * 1024;
@@ -243,20 +249,30 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
         ) {
             Err(error) if error.code() == ERROR_INSUFFICIENT_BUFFER.to_hresult() => {}
             Err(error) => return Err(winerr(error)),
-            Ok(()) => return Err(SecurityError::InvalidToken("service SID lookup unexpectedly needed no buffer")),
+            Ok(()) => {
+                return Err(SecurityError::InvalidToken(
+                    "service SID lookup unexpectedly needed no buffer",
+                ));
+            }
         }
         if sid_bytes == 0 || sid_bytes > MAX_ACCOUNT_SID_BYTES {
-            return Err(SecurityError::InvalidToken("service SID size outside safety bound"));
+            return Err(SecurityError::InvalidToken(
+                "service SID size outside safety bound",
+            ));
         }
         if domain_chars > MAX_ACCOUNT_DOMAIN_CHARS {
-            return Err(SecurityError::InvalidToken("service SID domain size outside safety bound"));
+            return Err(SecurityError::InvalidToken(
+                "service SID domain size outside safety bound",
+            ));
         }
 
         let sid_words = usize::try_from(sid_bytes)
             .ok()
             .and_then(|bytes| bytes.checked_add(std::mem::size_of::<u64>() - 1))
             .map(|bytes| bytes / std::mem::size_of::<u64>())
-            .ok_or(SecurityError::InvalidToken("service SID allocation overflow"))?;
+            .ok_or(SecurityError::InvalidToken(
+                "service SID allocation overflow",
+            ))?;
         let mut sid = vec![0u64; sid_words];
         let sid_capacity = sid
             .len()
@@ -280,10 +296,14 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
         )
         .map_err(winerr)?;
         if sid_bytes == 0 || usize::try_from(sid_bytes).map_or(true, |bytes| bytes > sid_capacity) {
-            return Err(SecurityError::InvalidToken("service SID length exceeded allocated buffer"));
+            return Err(SecurityError::InvalidToken(
+                "service SID length exceeded allocated buffer",
+            ));
         }
         if !IsValidSid(sid_ptr).as_bool() {
-            return Err(SecurityError::InvalidToken("service SID lookup returned invalid SID"));
+            return Err(SecurityError::InvalidToken(
+                "service SID lookup returned invalid SID",
+            ));
         }
 
         // CheckTokenMembership proves the service SID is not merely configured/present: it must be
@@ -291,7 +311,9 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
         let mut is_member = BOOL::default();
         CheckTokenMembership(None, sid_ptr, &mut is_member).map_err(winerr)?;
         if !is_member.as_bool() {
-            return Err(SecurityError::InvalidToken("service SID is not enabled in effective token"));
+            return Err(SecurityError::InvalidToken(
+                "service SID is not enabled in effective token",
+            ));
         }
 
         let mut raw_token = HANDLE::default();
@@ -300,7 +322,9 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
         let mut needed = 0u32;
         let _ = GetTokenInformation(token.get(), TokenRestrictedSids, None, 0, &mut needed);
         if needed < std::mem::size_of::<u32>() as u32 || needed > MAX_TOKEN_GROUP_BUFFER_BYTES {
-            return Err(SecurityError::InvalidToken("restricted SID list size outside safety bound"));
+            return Err(SecurityError::InvalidToken(
+                "restricted SID list size outside safety bound",
+            ));
         }
         let word = std::mem::size_of::<usize>();
         let words = (needed as usize).div_ceil(word);
@@ -315,11 +339,15 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
         )
         .map_err(winerr)?;
         if returned < std::mem::size_of::<u32>() as u32 || returned > needed {
-            return Err(SecurityError::InvalidToken("restricted SID list length changed outside buffer"));
+            return Err(SecurityError::InvalidToken(
+                "restricted SID list length changed outside buffer",
+            ));
         }
         let restricted_count = *(restricted.as_ptr().cast::<u32>());
         if restricted_count != 0 {
-            return Err(SecurityError::InvalidToken("maintenance service token contains restricting SIDs"));
+            return Err(SecurityError::InvalidToken(
+                "maintenance service token contains restricting SIDs",
+            ));
         }
         Ok(())
     }
@@ -337,15 +365,62 @@ pub fn inspect_named_pipe_client(
     Err(SecurityError::Unsupported)
 }
 
+/// Phase 27 (CX-4/QD-026-001) — unix socket principal binding.
+///
+/// Binds the connecting peer to the socket-owning user via the documented permission
+/// boundary: the maintenance socket lives in a 0700 directory with a 0600 socket file,
+/// so only the owning OS user can connect. The peer principal is therefore the service's
+/// own uid, expressed through the same `binding_key()` derivation the Windows host uses
+/// (a stable SHA-256 of the identity material). This deliberately does NOT claim deeper
+/// credential verification (SO_PEERCRED is absent on macOS); deepening stays recorded in
+/// QD-026-001.
+#[cfg(unix)]
+pub fn socket_owner_principal() -> PrincipalContext {
+    let uid = unsafe { libc_getuid() };
+    let pid = std::process::id();
+    // Identity material mirrors the Windows shape: a stable per-user string plus stable
+    // session context. On unix the logon/session dimension collapses to the uid itself.
+    let identity = format!("unix:uid={uid}");
+    let image_path = std::env::current_exe()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "unknown".to_string());
+    let mut hasher = Sha256::new();
+    hasher.update(identity.as_bytes());
+    let digest = hasher.finalize();
+    let mut hex_sid = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(hex_sid, "{byte:02x}");
+    }
+    // Truncate to a 32-hex canonical form so the encoded SID stays compact and stable.
+    hex_sid.truncate(32);
+    PrincipalContext {
+        pid,
+        image_path,
+        elevated: false,
+        user_sid: hex_sid,
+        authentication_id: u64::from(uid),
+        session_id: 0,
+    }
+}
+
+#[cfg(unix)]
+fn libc_getuid() -> u32 {
+    unsafe extern "C" {
+        fn getuid() -> u32;
+    }
+    // SAFETY: getuid(2) is unconditionally memory-safe.
+    unsafe { getuid() }
+}
+
 pub fn is_expected_broker(peer: &PrincipalContext, expected_path: &std::path::Path) -> bool {
     // Absolute-ness is judged on Windows path semantics (drive letter or UNC root), not on the
     // host parser, so the guard behaves identically when audited on a non-Windows host.
     let text = expected_path.to_string_lossy();
     let bytes = text.as_bytes();
-    let looks_absolute_windows = (bytes.len() >= 3
-        && bytes[1] == b':'
-        && (bytes[2] == b'\\' || bytes[2] == b'/'))
-        || text.starts_with(r"\\");
+    let looks_absolute_windows =
+        (bytes.len() >= 3 && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/'))
+            || text.starts_with(r"\\");
     // Accept either Windows-absolute (drive/UNC) or host-absolute expected paths so the identical
     // validation logic is exercisable when audited on a non-Windows host.
     if !peer.elevated || !(looks_absolute_windows || expected_path.is_absolute()) {
@@ -365,7 +440,12 @@ fn normalize_windows_path(value: &str) -> String {
     let without_extended_prefix = normalized
         .strip_prefix(r"\\?\UNC\")
         .map(|rest| format!(r"\\{rest}"))
-        .unwrap_or_else(|| normalized.strip_prefix(r"\\?\").unwrap_or(&normalized).to_string());
+        .unwrap_or_else(|| {
+            normalized
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&normalized)
+                .to_string()
+        });
     without_extended_prefix.to_ascii_lowercase()
 }
 
@@ -410,7 +490,10 @@ mod tests {
         let good = principal(&expected.display().to_string(), true, 1, 1);
         assert!(is_expected_broker(&good, expected));
 
-        let not_elevated = PrincipalContext { elevated: false, ..good.clone() };
+        let not_elevated = PrincipalContext {
+            elevated: false,
+            ..good.clone()
+        };
         assert!(!is_expected_broker(&not_elevated, expected));
 
         let renamed = principal(
@@ -428,7 +511,8 @@ mod tests {
 
     #[test]
     fn broker_validation_accepts_extended_path_prefix() {
-        let expected = std::path::Path::new(r"C:\Program Files\AetherCore\aethercore-consent-broker.exe");
+        let expected =
+            std::path::Path::new(r"C:\Program Files\AetherCore\aethercore-consent-broker.exe");
         let peer = principal(
             r"\\?\C:\Program Files\AetherCore\aethercore-consent-broker.exe",
             true,
@@ -440,7 +524,8 @@ mod tests {
 
     #[test]
     fn broker_validation_rejects_common_prefix_and_relative_expected_path() {
-        let expected = std::path::Path::new(r"C:\Program Files\AetherCore\aethercore-consent-broker.exe");
+        let expected =
+            std::path::Path::new(r"C:\Program Files\AetherCore\aethercore-consent-broker.exe");
         let prefix_attack = principal(
             r"C:\Program Files\AetherCoreEvil\aethercore-consent-broker.exe",
             true,

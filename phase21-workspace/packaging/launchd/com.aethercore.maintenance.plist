@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Phase 28 lifecycle artifact (CX-5). Template ONLY - nothing installs this file
+  automatically. An administrator who chooses to run the maintenance daemon as this
+  user's agent copies it to ~/Library/LaunchAgents/com.aethercore.maintenance.plist
+  and loads it explicitly (launchctl bootstrap gui/$UID ...).
+  The binary path below must point at the installed unix-ipc build.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.aethercore.maintenance</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/local/bin/aethercore-maintenance-service</string>
+      <string>--daemon</string>
+    </array>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>Nice</key>
+    <integer>5</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/aethercore-maintenance.launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/aethercore-maintenance.launchd.err.log</string>
+  </dict>
+</plist>

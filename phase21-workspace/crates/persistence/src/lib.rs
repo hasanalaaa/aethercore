@@ -324,7 +324,7 @@ pub struct UpdateExecutionGuardRecord {
     pub created_unix_ms: i64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct SupportJournalEventRecord {
     pub seq: i64,
     pub plan_id: String,
@@ -2463,3 +2463,8 @@ mod tests {
         let _ = std::fs::remove_file(path.with_extension("db-shm"));
     }
 }
+
+// Phase 29 (T1): EXPORT_V1 — canonical hash-chained, optionally signed journal export.
+// Owner-review waiver: ed25519-dalek is the ONLY new dependency this phase; it performs
+// local Ed25519 signing/verification for export digests and does no network I/O.
+pub mod export;

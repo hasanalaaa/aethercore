@@ -81,6 +81,16 @@ export const arCatalog = {
   'common.engineOffline': 'المحرّك غير متصل',
   'common.countWithBytes': '{count} · {bytes}',
 
+  'about.title': 'حول هذا الإصدار',
+  'about.platform': 'المنصة',
+  'about.engineSource': 'مصدر محرّك الأداء',
+  'about.engineSourceNative': 'مزوّد المنصة الأصلي',
+  'about.engineSourceSynthetic': 'المحرّك التركيبي (للتدقيق وبدون اتصال)',
+  'about.capabilitiesTitle': 'قدرات المنصة',
+  'about.capabilityState.native': 'أصلي',
+  'about.capabilityState.degraded': 'محدود',
+  'about.capabilityState.notAvailable': 'غير متاح',
+
   'state.Idle': 'خامل',
   'state.Scanning': 'جارٍ الفحص',
   'state.InventoryScanning': 'جارٍ قراءة الأجهزة',

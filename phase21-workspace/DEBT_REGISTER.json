@@ -1,0 +1,202 @@
+{
+  "schema": "aethercore.debt-register.v1",
+  "policy": "Single consolidated append-only register aggregating every QD-* from every phase ledger. Entries are never deleted: closures append a status change with closureEvidence. Nothing lost, nothing invented. Register must contain >=27 ids (audit gate p31-debt-register-count).",
+  "entries": [
+    {
+      "id": "QD-017-001",
+      "originPhase": 17,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "Deep-scan coordinator qualification (pre-P18 ledger carry)."
+    },
+    {
+      "id": "QD-019-001",
+      "originPhase": 19,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "Windows repair intelligence qualification deferred through buildout."
+    },
+    {
+      "id": "QD-026-001",
+      "originPhase": 26,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "SO_PEERCRED deepening deferred; documented boundary = 0700 dir + 0600 socket + same-user binding (CX-4)."
+    },
+    {
+      "id": "QD-026-002",
+      "originPhase": 26,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "Storage queue proxies are typed Degraded; distro/kernel variance."
+    },
+    {
+      "id": "QD-026-003",
+      "originPhase": 26,
+      "status": "CLOSED(P28)",
+      "risk": "-",
+      "closureEvidence": "P28 live signal-integration test: SIGTERM drain → exit 0 → socket+PID cleanup; size-capped rotation tests in aethercore-diagnostics (rotates_at_configured_limit, rotated_generations_are_deterministic_keep_last_n, rotating_writer_rolls_at_runtime_cap)."
+    },
+    {
+      "id": "QD-027-001",
+      "originPhase": 27,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "macOS performance provider validated on Apple Silicon only; Intel spread open."
+    },
+    {
+      "id": "QD-027-002",
+      "originPhase": 27,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "Linux /proc provider proven via fixture tests; live kernel-matrix validation open."
+    },
+    {
+      "id": "QD-028-001",
+      "originPhase": 28,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "aetherctl cfg(windows) lane reuses frozen SessionClient without Windows compile/run proof on this host."
+    },
+    {
+      "id": "QD-028-002",
+      "originPhase": 28,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "systemd-analyze verify NOT_EXECUTED on macOS host; static key assertions run in audit."
+    },
+    {
+      "id": "QD-028-003",
+      "originPhase": 28,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "Deferred RPC lanes (updates 46–52/58–64, driver-policy 69–70, support-bundle 53–57, generic consent 42–44) unexposed headlessly."
+    },
+    {
+      "id": "QD-028-004",
+      "originPhase": 28,
+      "status": "CLOSED(P31)",
+      "risk": "low",
+      "closureEvidence": "apps/aetherctl/src/i18n.rs typed EN+AR catalog with parity gate p31-cli-i18n-parity in scripts/phase31-adversarial-audit.py."
+    },
+    {
+      "id": "QD-029-001",
+      "originPhase": 29,
+      "status": "OPEN",
+      "risk": "medium",
+      "note": "HSM/KMS-backed signing keys out of scope; local file seeds only (0600, explicit keys generate)."
+    },
+    {
+      "id": "QD-029-002",
+      "originPhase": 29,
+      "status": "OPEN",
+      "risk": "medium",
+      "note": "EXPORT_V1 long-term archival format governance (version migration policy) undefined."
+    },
+    {
+      "id": "QD-029-003",
+      "originPhase": 29,
+      "status": "OPEN",
+      "risk": "low",
+      "note": "SBOM inventory is CycloneDX-SHAPED, honestly labeled not-certified; certification path undefined."
+    },
+    {
+      "id": "QD-030-001",
+      "originPhase": 30,
+      "status": "OPEN",
+      "risk": "medium",
+      "note": "Postgres/MySQL engine-live lanes need real servers; NotAvailable declared honestly on this host."
+    },
+    {
+      "id": "QD-030-002",
+      "originPhase": 30,
+      "status": "OPEN",
+      "risk": "medium",
+      "note": "DB remediation actions (VACUUM/repair) deferred to the safety-level/consent pipeline."
+    },
+    {
+      "id": "QD-030-003",
+      "originPhase": 30,
+      "status": "OPEN",
+      "risk": "medium",
+      "note": "Diagnostic rule thresholds calibrated against synthetic fixtures; production-config calibration open."
+    },
+    {
+      "id": "QD-021-001",
+      "originPhase": 21,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "Optimization governance qualification deferred."
+    },
+    {
+      "id": "QD-022-001",
+      "originPhase": 22,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "One-Click Care orchestration consent depth."
+    },
+    {
+      "id": "QD-022-002",
+      "originPhase": 22,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "Care step cancellation fence coverage."
+    },
+    {
+      "id": "QD-022-003",
+      "originPhase": 22,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "Care journal replay window behavior."
+    },
+    {
+      "id": "QD-023-001",
+      "originPhase": 23,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "Embedded model quality calibration."
+    },
+    {
+      "id": "QD-023-002",
+      "originPhase": 23,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "Embedded model Windows CPU performance."
+    },
+    {
+      "id": "QD-023-003",
+      "originPhase": 23,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "Embedded model prompt-quality iteration."
+    },
+    {
+      "id": "QD-031-001",
+      "originPhase": 31,
+      "status": "OPEN",
+      "risk": "low",
+      "note": "gtk3-rs family / unic-* unmaintained transitive advisories ignored in deny.toml; migrate when tauri moves to gtk4-rs."
+    },
+    {
+      "id": "QD-017-002",
+      "originPhase": 17,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "Deep-scan coordinator category coverage extension."
+    },
+    {
+      "id": "QD-020-001",
+      "originPhase": 20,
+      "status": "CARRIED",
+      "risk": "medium",
+      "note": "Performance telemetry counter calibration on real hardware."
+    },
+    {
+      "id": "QD-020-002",
+      "originPhase": 20,
+      "status": "CARRIED",
+      "risk": "low",
+      "note": "Bottleneck threshold tuning against production workloads."
+    }
+  ]
+}

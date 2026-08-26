@@ -6,6 +6,7 @@
   import { shortDigest } from '../shared';
   import { localizePlanKind, localizeRisk, localizeState, t, td } from '../../lib/i18n';
   import SystemCarePanel from '../system-care/SystemCarePanel.svelte';
+  import AboutPanel from '../../components/AboutPanel.svelte';
 
   $: snapshot = $streamState.snapshot;
   $: hub = $streamState.hub;
@@ -75,6 +76,8 @@
     <article><span>{t('common.live',locale)}</span><h4>{td(m.label,locale)}</h4><p>{td(m.copy,locale)}</p><div class="locked">{t('common.availableNow',locale)}</div></article>
   {/each}
 </section>
+
+<AboutPanel />
 
 <style>
   .overview-scan-cta{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 18px;margin:0 0 14px;border:1px solid var(--ac-border-subtle);border-radius:var(--ac-radius-md);background:var(--ac-material-elevated);box-shadow:var(--ac-shadow-card)}

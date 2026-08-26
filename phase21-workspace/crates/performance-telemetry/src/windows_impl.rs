@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use super::{
-    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform, PerfSnapshot,
-    PowerSample, ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
+    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform,
+    PerfSnapshot, PowerSample, ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
 };
 use windows::Win32::System::Power::{CallNtPowerInformation, PROCESSOR_POWER_INFORMATION};
 
@@ -22,10 +22,24 @@ mod pdh {
     extern "system" {
         pub fn PdhOpenQueryW(datasource: PCWSTR, userdata: usize, query: *mut isize) -> i32;
         pub fn PdhCloseQuery(query: isize) -> i32;
-        pub fn PdhAddEnglishCounterW(query: isize, path: PCWSTR, userdata: usize, counter: *mut isize) -> i32;
+        pub fn PdhAddEnglishCounterW(
+            query: isize,
+            path: PCWSTR,
+            userdata: usize,
+            counter: *mut isize,
+        ) -> i32;
         pub fn PdhCollectQueryData(query: isize) -> i32;
-        pub fn PdhGetFormattedCounterValue(counter: isize, format: u32, lptype: *mut u32, value: *mut i64) -> i32;
-        pub fn PdhExpandWildCardPathWW(szsearchpath: PCWSTR, psearchresultlist: *mut PWSTR, pcchbufferlength: *mut u32) -> i32;
+        pub fn PdhGetFormattedCounterValue(
+            counter: isize,
+            format: u32,
+            lptype: *mut u32,
+            value: *mut i64,
+        ) -> i32;
+        pub fn PdhExpandWildCardPathWW(
+            szsearchpath: PCWSTR,
+            psearchresultlist: *mut PWSTR,
+            pcchbufferlength: *mut u32,
+        ) -> i32;
     }
 
     pub const PDH_MORE_DATA: i32 = 0x8000_07D2;
@@ -91,7 +105,12 @@ impl CounterHandle {
     fn read_u64(&self) -> Option<u64> {
         let mut value = 0i64;
         unsafe {
-            if pdh_ok(pdh::PdhGetFormattedCounterValue(self.0, pdh::PDH_FMT_LARGE, std::ptr::null_mut(), &mut value)) {
+            if pdh_ok(pdh::PdhGetFormattedCounterValue(
+                self.0,
+                pdh::PDH_FMT_LARGE,
+                std::ptr::null_mut(),
+                &mut value,
+            )) {
                 Some(value.max(0) as u64)
             } else {
                 None
@@ -140,7 +159,10 @@ fn sample_cpu(faults: &mut Vec<CollectorFault>, interval: Duration) -> CpuSample
         return sample;
     }
     let read_bp = |counter: &Option<CounterHandle>| -> Option<u32> {
-        counter.as_ref().and_then(|c| c.read_u64()).map(|v| v.min(10_000) as u32)
+        counter
+            .as_ref()
+            .and_then(|c| c.read_u64())
+            .map(|v| v.min(10_000) as u32)
     };
     if let Some(busy) = read_bp(&total) {
         sample.total_busy_bp = busy.min(10_000);
@@ -194,7 +216,9 @@ fn sample_power(faults: &mut Vec<CollectorFault>) -> PowerSample {
             // within the first entry only; multi-packet aggregation stays product debt.
             let read_u32 = |offset: usize| -> Option<u32> {
                 if offset + 4 <= buffer.len() {
-                    Some(u32::from_le_bytes(buffer[offset..offset + 4].try_into().ok()?))
+                    Some(u32::from_le_bytes(
+                        buffer[offset..offset + 4].try_into().ok()?,
+                    ))
                 } else {
                     None
                 }
@@ -204,7 +228,8 @@ fn sample_power(faults: &mut Vec<CollectorFault>) -> PowerSample {
             let mhz_limit = read_u32(12);
             if let (Some(max), Some(current)) = (max_mhz, current_mhz) {
                 if max > 0 && current > 0 {
-                    let ratio_bp = ((u64::from(current) * 10_000) / u64::from(max)).min(10_000) as u32;
+                    let ratio_bp =
+                        ((u64::from(current) * 10_000) / u64::from(max)).min(10_000) as u32;
                     // A sustained ratio materially below max indicates a clamp in effect.
                     if ratio_bp < 8_500 {
                         sample.throttle_active = true;
@@ -231,7 +256,9 @@ fn sample_power(faults: &mut Vec<CollectorFault>) -> PowerSample {
         });
     }
     sample.throttle_reason = match sample.throttle_reason {
-        ThermalThrottleReason::Unspecified if !sample.throttle_active => ThermalThrottleReason::None,
+        ThermalThrottleReason::Unspecified if !sample.throttle_active => {
+            ThermalThrottleReason::None
+        }
         other => other,
     };
     sample
@@ -248,7 +275,9 @@ fn sample_memory(faults: &mut Vec<CollectorFault>) -> MemorySample {
         if GlobalMemoryStatusEx(&mut status).is_ok() {
             sample.total_physical_bytes = status.ullTotalPhys;
             sample.available_physical_bytes = status.ullAvailPhys;
-            sample.commit_bytes = status.ullTotalPageFile.saturating_sub(status.ullAvailPageFile);
+            sample.commit_bytes = status
+                .ullTotalPageFile
+                .saturating_sub(status.ullAvailPageFile);
             sample.commit_limit_bytes = status.ullTotalPageFile;
             sample.memory_load_percent = status.dwMemoryLoad.min(100);
         } else {
@@ -263,14 +292,19 @@ fn sample_memory(faults: &mut Vec<CollectorFault>) -> MemorySample {
     let query = QueryHandle::open();
     if let Some(query) = &query {
         let standby = query.add_english_counter(r"\Memory\Standby Cache Normal Priority Bytes");
-        let standby_reserve = query.add_english_counter(r"\Memory\Standby Cache Reserve Priority Bytes");
+        let standby_reserve =
+            query.add_english_counter(r"\Memory\Standby Cache Reserve Priority Bytes");
         let modified = query.add_english_counter(r"\Memory\Modified Page List Bytes");
         let hard = query.add_english_counter(r"\Memory\Pages Input/sec");
         let soft = query.add_english_counter(r"\Memory\Pages Output/sec");
         if query.collect() {
             sample.standby_cache_bytes = standby.as_ref().and_then(|c| c.read_u64()).unwrap_or(0)
-                + standby_reserve.as_ref().and_then(|c| c.read_u64()).unwrap_or(0);
-            sample.modified_page_list_bytes = modified.as_ref().and_then(|c| c.read_u64()).unwrap_or(0);
+                + standby_reserve
+                    .as_ref()
+                    .and_then(|c| c.read_u64())
+                    .unwrap_or(0);
+            sample.modified_page_list_bytes =
+                modified.as_ref().and_then(|c| c.read_u64()).unwrap_or(0);
             sample.hard_faults_per_sec = hard.as_ref().and_then(|c| c.read_u64()).unwrap_or(0);
             sample.soft_faults_per_sec = soft.as_ref().and_then(|c| c.read_u64()).unwrap_or(0);
         }
@@ -301,7 +335,10 @@ fn sample_storage(faults: &mut Vec<CollectorFault>) -> Vec<StorageQueueSample> {
     }
     // Enumerate physical disk instances through the wildcard expansion API.
     let pattern = windows::core::PCWSTR::from_raw(
-        r"\PhysicalDisk(*)\% Disk Time\0".encode_utf16().collect::<Vec<u16>>().as_ptr(),
+        r"\PhysicalDisk(*)\% Disk Time\0"
+            .encode_utf16()
+            .collect::<Vec<u16>>()
+            .as_ptr(),
     );
     let mut needed = 0u32;
     unsafe {
@@ -320,7 +357,10 @@ fn sample_storage(faults: &mut Vec<CollectorFault>) -> Vec<StorageQueueSample> {
     // Walk the double-NUL-terminated list.
     let mut cursor = 0usize;
     while cursor < buffer.len() {
-        let end = buffer[cursor..].iter().position(|c| *c == 0).map(|p| cursor + p)?;
+        let end = buffer[cursor..]
+            .iter()
+            .position(|c| *c == 0)
+            .map(|p| cursor + p)?;
         let instance = String::from_utf16_lossy(&buffer[cursor..end]);
         if instance.is_empty() {
             break;
@@ -337,11 +377,26 @@ fn sample_storage(faults: &mut Vec<CollectorFault>) -> Vec<StorageQueueSample> {
         if devices.len() >= super::MAX_STORAGE_DEVICES {
             break;
         }
-        let active = query.add_english_counter(&active_path).and_then(|c| c.read_u64()).unwrap_or(0);
-        let queue_depth = query.add_english_counter(&queue_path).and_then(|c| c.read_u64()).unwrap_or(0);
-        let latency = query.add_english_counter(&latency_path).and_then(|c| c.read_u64()).unwrap_or(0);
-        let read_bps = query.add_english_counter(&read_path).and_then(|c| c.read_u64()).unwrap_or(0);
-        let write_bps = query.add_english_counter(&write_path).and_then(|c| c.read_u64()).unwrap_or(0);
+        let active = query
+            .add_english_counter(&active_path)
+            .and_then(|c| c.read_u64())
+            .unwrap_or(0);
+        let queue_depth = query
+            .add_english_counter(&queue_path)
+            .and_then(|c| c.read_u64())
+            .unwrap_or(0);
+        let latency = query
+            .add_english_counter(&latency_path)
+            .and_then(|c| c.read_u64())
+            .unwrap_or(0);
+        let read_bps = query
+            .add_english_counter(&read_path)
+            .and_then(|c| c.read_u64())
+            .unwrap_or(0);
+        let write_bps = query
+            .add_english_counter(&write_path)
+            .and_then(|c| c.read_u64())
+            .unwrap_or(0);
         devices.push(StorageQueueSample {
             device_id: format!("physicaldisk:{instance}"),
             friendly_name: instance,

@@ -164,7 +164,10 @@ pub(crate) fn finding_proto(value: &Finding) -> v1::BottleneckFinding {
         message_args: value
             .message_args
             .iter()
-            .map(|arg| v1::PerfMessageArg { key: arg.key.clone(), value: arg.value.clone() })
+            .map(|arg| v1::PerfMessageArg {
+                key: arg.key.clone(),
+                value: arg.value.clone(),
+            })
             .collect(),
         evidence: value
             .evidence
@@ -187,7 +190,7 @@ pub(crate) fn bottleneck_report_proto(value: &Report) -> v1::BottleneckReport {
         report_id: value.report_id.clone(),
         generated_unix_ms: value.generated_unix_ms,
         analyzed_sample_count: value.analyzed_sample_count,
-        analysis_window_ms: value.analysis_window_ms,
+        analysis_window_ms: u32::try_from(value.analysis_window_ms).unwrap_or(u32::MAX),
         findings: value.findings.iter().map(finding_proto).collect(),
         digest_sha256: value.digest_sha256.clone(),
         rule_engine_version: value.rule_engine_version.clone(),
@@ -204,10 +207,20 @@ fn reversibility_proto(value: Reversibility) -> v1::ReversibilityKind {
 }
 
 fn action_kind_from_str(value: &str) -> v1::OptimizationActionKind {
-    match ActionKind::parse(value) {
+    // ActionKind::parse is crate-private; mirror its exact string mapping here.
+    let parsed = match value {
+        "ecoQos" => Some(ActionKind::EcoQos),
+        "backgroundPriority" => Some(ActionKind::BackgroundPriority),
+        "cooperativeTrimRequest" => Some(ActionKind::CooperativeTrimRequest),
+        "gameModeProfile" => Some(ActionKind::GameModeProfile),
+        _ => None,
+    };
+    match parsed {
         Some(ActionKind::EcoQos) | None if value == "ecoQos" => v1::OptimizationActionKind::EcoQos,
         _ if value == "backgroundPriority" => v1::OptimizationActionKind::BackgroundPriority,
-        _ if value == "cooperativeTrimRequest" => v1::OptimizationActionKind::CooperativeTrimRequest,
+        _ if value == "cooperativeTrimRequest" => {
+            v1::OptimizationActionKind::CooperativeTrimRequest
+        }
         _ if value == "gameModeProfile" => v1::OptimizationActionKind::GameModeProfile,
         _ => v1::OptimizationActionKind::Unspecified,
     }
@@ -231,7 +244,11 @@ pub(crate) fn plan_proto(value: &Plan) -> v1::OptimizationPlanSnapshot {
                 description_key: candidate.description_key.clone(),
                 reversibility: reversibility_proto(candidate.reversibility) as i32,
                 expected_effect_metric_keys: candidate.expected_effect_metric_keys.clone(),
-                target_pids: candidate.target_process_keys.iter().map(|key| key.pid).collect(),
+                target_pids: candidate
+                    .target_process_keys
+                    .iter()
+                    .map(|key| key.pid)
+                    .collect(),
                 requires_explicit_consent: candidate.requires_explicit_consent,
             })
             .collect(),
@@ -287,8 +304,29 @@ pub struct PerformanceEngine {
     governor: OptimizationGovernor,
 }
 
+/// Phase 27 (T5): honest engine-source label surfaced to the renderer. The synthetic
+/// platform is used ONLY when explicitly requested (audits/tests/offline UI); native
+/// builds report "native" per the cfg-selected provider.
+pub(crate) fn engine_source() -> &'static str {
+    #[cfg(feature = "force-synthetic-perf")]
+    {
+        "synthetic"
+    }
+    #[cfg(not(feature = "force-synthetic-perf"))]
+    {
+        if cfg!(windows) || cfg!(target_os = "macos") || cfg!(target_os = "linux") {
+            "native"
+        } else {
+            "synthetic"
+        }
+    }
+}
+
 impl PerformanceEngine {
-    pub fn new(platform: Arc<dyn aethercore_performance_telemetry::PerfPlatform>, mutations: MutationSupervisor) -> Self {
+    pub fn new(
+        platform: Arc<dyn aethercore_performance_telemetry::PerfPlatform>,
+        mutations: MutationSupervisor,
+    ) -> Self {
         Self {
             ring: aethercore_performance_telemetry::PerformanceRing::new(),
             platform,
@@ -325,19 +363,30 @@ impl PerformanceEngine {
     /// background sampler's first tick.
     pub fn ensure_sample(&self, owner: &str, interval_ms: u32) {
         if self.ring.latest(owner).is_none() {
-            let snap = self.platform.sample(std::time::Duration::from_millis(u64::from(interval_ms)));
+            let snap = self
+                .platform
+                .sample(std::time::Duration::from_millis(u64::from(interval_ms)));
             let _ = self.ring.push(owner, snap);
         }
     }
 
-    pub fn analyze(&self, owner: &str) -> Option<(aethercore_performance_bottleneck::Report, aethercore_performance_telemetry::WindowAggregate)> {
+    pub fn analyze(
+        &self,
+        owner: &str,
+    ) -> Option<(
+        aethercore_performance_bottleneck::Report,
+        aethercore_performance_telemetry::WindowAggregate,
+    )> {
         let aggregate = self.ring.aggregate(owner);
         if aggregate.sample_count == 0 {
             return None;
         }
         let window = self.ring.window(owner);
         let now = chrono::Utc::now().timestamp_millis();
-        Some((aethercore_performance_bottleneck::analyze(&aggregate, &window, now), aggregate))
+        Some((
+            aethercore_performance_bottleneck::analyze(&aggregate, &window, now),
+            aggregate,
+        ))
     }
 
     pub fn create_plan(
@@ -345,7 +394,10 @@ impl PerformanceEngine {
         report: &aethercore_performance_bottleneck::Report,
         selected: &[String],
         offenders: &BTreeMap<String, Vec<aethercore_performance_optimization::ProcessKey>>,
-    ) -> Result<aethercore_performance_optimization::Plan, aethercore_performance_optimization::OptimizationError> {
+    ) -> Result<
+        aethercore_performance_optimization::Plan,
+        aethercore_performance_optimization::OptimizationError,
+    > {
         self.governor.create_plan(report, selected, offenders)
     }
 
