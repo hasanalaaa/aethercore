@@ -1,0 +1,2937 @@
+--- a/DEBT_REGISTER.json
++++ b/DEBT_REGISTER.json
+@@ -200 +200,4 @@
+-    }
++    },
++    {"id":"QD-033-001","originPhase":33,"status":"OPEN","risk":"low","note":"Official CIS benchmark-content licensing/governance. We reference control IDs; we do not republish proprietary benchmark text."},
++    {"id":"QD-033-002","originPhase":33,"status":"OPEN","risk":"medium","note":"Continuous compliance scheduling deferred to Fleet/automation phase."},
++    {"id":"QD-033-003","originPhase":33,"status":"OPEN","risk":"low","note":"Custom compliance-profile UI/editor deferred."}
+--- a/apps/aetherctl/src/cli.rs
++++ b/apps/aetherctl/src/cli.rs
+@@ -39,0 +40,2 @@
++  sec       audit --profile <cis-l1|cis-l2> --out <file>
++              [--format <json|html|both>] [--sign --key <seedfile>]
+@@ -41,0 +44 @@
++  compliance verify <report.json>            (offline integrity/signature verification)
+@@ -121,0 +125,13 @@
++    /// Phase 33: offline CIS compliance report generation.
++    ComplianceAudit {
++        profile: String,
++        out: String,
++        format: String,
++        sign: bool,
++        key: Option<String>,
++        targets: Vec<(String, String)>,
++    },
++    /// Phase 33: offline compliance report verification.
++    ComplianceVerify {
++        file: String,
++    },
+@@ -423,0 +440,6 @@
++                    let mut profile = String::from("cis-l1");
++                    let mut out = None;
++                    let mut format = String::from("json");
++                    let mut sign = false;
++                    let mut key = None;
++                    let mut compliance_requested = false;
+@@ -450,0 +473,25 @@
++                            "--profile" => {
++                                cursor.next();
++                                profile = cursor.value_after("--profile")?;
++                                compliance_requested = true;
++                            }
++                            "--out" => {
++                                cursor.next();
++                                out = Some(cursor.value_after("--out")?);
++                                compliance_requested = true;
++                            }
++                            "--format" => {
++                                cursor.next();
++                                format = cursor.value_after("--format")?;
++                                compliance_requested = true;
++                            }
++                            "--sign" => {
++                                cursor.next();
++                                sign = true;
++                                compliance_requested = true;
++                            }
++                            "--key" => {
++                                cursor.next();
++                                key = Some(cursor.value_after("--key")?);
++                                compliance_requested = true;
++                            }
+@@ -459 +506,28 @@
+-                    if targets.is_empty() {
++                    if compliance_requested {
++                        if !matches!(profile.as_str(), "cis-l1" | "cis-l2") {
++                            return Err(usage(
++                                "cli.usage.complianceProfile",
++                                format!("unsupported profile '{profile}'"),
++                            ));
++                        }
++                        if !matches!(format.as_str(), "json" | "html" | "both") {
++                            return Err(usage(
++                                "cli.usage.complianceFormat",
++                                format!("unsupported report format '{format}'"),
++                            ));
++                        }
++                        if sign != key.is_some() {
++                            return Err(usage(
++                                "cli.usage.complianceSigning",
++                                "--sign and --key <seedfile> must be supplied together".to_string(),
++                            ));
++                        }
++                        Command::Offline(OfflineJob::ComplianceAudit {
++                            profile,
++                            out: out.ok_or_else(|| value_missing("--out"))?,
++                            format,
++                            sign,
++                            key,
++                            targets,
++                        })
++                    } else if targets.is_empty() {
+@@ -463,0 +538,2 @@
++                    } else {
++                        Command::Offline(OfflineJob::SecAudit { targets })
+@@ -465 +540,0 @@
+-                    Command::Offline(OfflineJob::SecAudit { targets })
+@@ -491,26 +566,21 @@
+-            if sub != "summary" {
+-                return Err(usage(
+-                    "cli.usage.unknownSubcommand",
+-                    format!("unknown compliance subcommand '{sub}'"),
+-                ));
+-            }
+-            let mut profile = String::from("cis-l1");
+-            let mut report_file = String::new();
+-            let mut map_file = String::new();
+-            while let Some(flag) = cursor.peek().cloned() {
+-                match flag.as_str() {
+-                    "--profile" => {
+-                        cursor.next();
+-                        profile = cursor.value_after("--profile")?;
+-                    }
+-                    "--report" => {
+-                        cursor.next();
+-                        report_file = cursor.value_after("--report")?;
+-                    }
+-                    "--map" => {
+-                        cursor.next();
+-                        map_file = cursor.value_after("--map")?;
+-                    }
+-                    other => {
+-                        if other.starts_with("--") {
+-                            return Err(unknown_flag(other));
++            if sub == "verify" {
++                let file = cursor
++                    .next()
++                    .cloned()
++                    .ok_or_else(|| value_missing("<report.json>"))?;
++                Command::Offline(OfflineJob::ComplianceVerify { file })
++            } else {
++                if sub != "summary" {
++                    return Err(usage(
++                        "cli.usage.unknownSubcommand",
++                        format!("unknown compliance subcommand '{sub}'"),
++                    ));
++                }
++                let mut profile = String::from("cis-l1");
++                let mut report_file = String::new();
++                let mut map_file = String::new();
++                while let Some(flag) = cursor.peek().cloned() {
++                    match flag.as_str() {
++                        "--profile" => {
++                            cursor.next();
++                            profile = cursor.value_after("--profile")?;
+@@ -518 +588,14 @@
+-                        break;
++                        "--report" => {
++                            cursor.next();
++                            report_file = cursor.value_after("--report")?;
++                        }
++                        "--map" => {
++                            cursor.next();
++                            map_file = cursor.value_after("--map")?;
++                        }
++                        other => {
++                            if other.starts_with("--") {
++                                return Err(unknown_flag(other));
++                            }
++                            break;
++                        }
+@@ -521,6 +604,11 @@
+-            }
+-            if report_file.is_empty() || map_file.is_empty() {
+-                return Err(usage(
+-                    "cli.usage.complianceRequiresInputs",
+-                    "compliance summary requires --report <file> --map <file>".to_string(),
+-                ));
++                if report_file.is_empty() || map_file.is_empty() {
++                    return Err(usage(
++                        "cli.usage.complianceRequiresInputs",
++                        "compliance summary requires --report <file> --map <file>".to_string(),
++                    ));
++                }
++                Command::Offline(OfflineJob::SecComplianceSummary {
++                    profile,
++                    report_file,
++                    map_file,
++                })
+@@ -528,5 +615,0 @@
+-            Command::Offline(OfflineJob::SecComplianceSummary {
+-                profile,
+-                report_file,
+-                map_file,
+-            })
+@@ -991,11 +1073,0 @@
+-fn parse_flag_id(cursor: &mut Cursor, flag: &str) -> Result<Option<String>, CliError> {
+-    let mut id: Option<String> = None;
+-    while let Some(pending) = cursor.next() {
+-        match pending.as_str() {
+-            f if f == flag => id = Some(cursor.value_after(flag)?),
+-            other => return Err(unknown_flag(other)),
+-        }
+-    }
+-    Ok(id)
+-}
+-
+@@ -1084,0 +1157,62 @@
++
++    #[test]
++    fn phase33_compliance_audit_parses_without_explicit_targets() {
++        let invocation = parse(&argv(&[
++            "sec",
++            "audit",
++            "--profile",
++            "cis-l1",
++            "--out",
++            "/tmp/report.json",
++            "--format",
++            "both",
++        ]))
++        .unwrap();
++        assert!(matches!(
++            invocation.command,
++            Command::Offline(OfflineJob::ComplianceAudit { ref profile, ref format, ref targets, .. })
++                if profile == "cis-l1" && format == "both" && targets.is_empty()
++        ));
++    }
++
++    #[test]
++    fn phase33_sign_requires_explicit_key() {
++        assert!(
++            parse(&argv(&[
++                "sec",
++                "audit",
++                "--profile",
++                "cis-l1",
++                "--out",
++                "/tmp/r.json",
++                "--sign",
++            ]))
++            .is_err()
++        );
++    }
++
++    #[test]
++    fn phase33_format_is_closed_enum() {
++        assert!(
++            parse(&argv(&[
++                "sec",
++                "audit",
++                "--profile",
++                "cis-l1",
++                "--out",
++                "/tmp/r.json",
++                "--format",
++                "pdf",
++            ]))
++            .is_err()
++        );
++    }
++
++    #[test]
++    fn phase33_offline_verify_parses() {
++        let invocation = parse(&argv(&["compliance", "verify", "/tmp/report.json"])).unwrap();
++        assert!(matches!(
++            invocation.command,
++            Command::Offline(OfflineJob::ComplianceVerify { ref file }) if file == "/tmp/report.json"
++        ));
++    }
+--- a/apps/aetherctl/src/i18n.rs
++++ b/apps/aetherctl/src/i18n.rs
+@@ -29,4 +29,4 @@
+-    if let Some(f) = flag {
+-        if let Some(l) = Lang::parse(f) {
+-            return l;
+-        }
++    if let Some(f) = flag
++        && let Some(l) = Lang::parse(f)
++    {
++        return l;
+@@ -34,4 +34,4 @@
+-    if let Ok(env) = std::env::var("AETHERCORE_LANG") {
+-        if let Some(l) = Lang::parse(&env) {
+-            return l;
+-        }
++    if let Ok(env) = std::env::var("AETHERCORE_LANG")
++        && let Some(l) = Lang::parse(&env)
++    {
++        return l;
+@@ -101,0 +102,19 @@
++    "compliance.profile.cisL1",
++    "compliance.profile.cisL2",
++    "compliance.help",
++    "compliance.family.general",
++    "compliance.family.ssh",
++    "compliance.family.access",
++    "compliance.family.filesystem",
++    "compliance.family.secrets",
++    "compliance.family.auth",
++    "compliance.finding",
++    "compliance.not_verified",
++    "compliance.verified",
++    "compliance.not_applicable",
++    "cli.usage.compliance",
++    "cli.usage.complianceProfile",
++    "cli.usage.complianceFormat",
++    "cli.usage.complianceSigning",
++    "cli.usage.complianceRequiresInputs",
++    "sec.signatureMismatch",
+@@ -236,0 +256,21 @@
++        "compliance.profile.cisL1" => "CIS Level 1 compliance",
++        "compliance.profile.cisL2" => "CIS Level 2 compliance",
++        "compliance.help" => {
++            "`sec audit --profile cis-l1|cis-l2 --out <file> [--format json|html|both] [--sign --key <seedfile>]`; `compliance verify <report.json>`"
++        }
++        "compliance.family.general" => "General controls",
++        "compliance.family.ssh" => "SSH controls",
++        "compliance.family.access" => "Access controls",
++        "compliance.family.filesystem" => "Filesystem controls",
++        "compliance.family.secrets" => "Secret-handling controls",
++        "compliance.family.auth" => "Authentication controls",
++        "compliance.finding" => "a mapped security finding failed this control",
++        "compliance.not_verified" => "evidence not verified",
++        "compliance.verified" => "evidence verified",
++        "compliance.not_applicable" => "not applicable to this platform",
++        "cli.usage.compliance" => "invalid compliance command usage",
++        "cli.usage.complianceProfile" => "profile must be `cis-l1` or `cis-l2`",
++        "cli.usage.complianceFormat" => "format must be `json`, `html`, or `both`",
++        "cli.usage.complianceSigning" => "`--sign` requires an explicit `--key <seedfile>`",
++        "cli.usage.complianceRequiresInputs" => "compliance summary requires report and map inputs",
++        "sec.signatureMismatch" => "compliance report signature mismatch",
+@@ -337,0 +378,21 @@
++        "compliance.profile.cisL1" => "امتثال CIS المستوى 1",
++        "compliance.profile.cisL2" => "امتثال CIS المستوى 2",
++        "compliance.help" => {
++            "`sec audit --profile cis-l1|cis-l2 --out <file> [--format json|html|both] [--sign --key <seedfile>]`؛ و`compliance verify <report.json>`"
++        }
++        "compliance.family.general" => "ضوابط عامة",
++        "compliance.family.ssh" => "ضوابط SSH",
++        "compliance.family.access" => "ضوابط الوصول",
++        "compliance.family.filesystem" => "ضوابط نظام الملفات",
++        "compliance.family.secrets" => "ضوابط التعامل مع الأسرار",
++        "compliance.family.auth" => "ضوابط المصادقة",
++        "compliance.finding" => "أخفقت نتيجة أمنية مربوطة هذا الضابط",
++        "compliance.not_verified" => "لم يُتحقق من الدليل",
++        "compliance.verified" => "تم التحقق من الدليل",
++        "compliance.not_applicable" => "لا ينطبق على هذه المنصة",
++        "cli.usage.compliance" => "استخدام غير صالح لأمر الامتثال",
++        "cli.usage.complianceProfile" => "يجب أن يكون الملف `cis-l1` أو `cis-l2`",
++        "cli.usage.complianceFormat" => "يجب أن تكون الصيغة `json` أو `html` أو `both`",
++        "cli.usage.complianceSigning" => "يتطلب `--sign` مفتاحًا صريحًا عبر `--key <seedfile>`",
++        "cli.usage.complianceRequiresInputs" => "يتطلب ملخص الامتثال ملف التقرير والخريطة",
++        "sec.signatureMismatch" => "عدم تطابق توقيع تقرير الامتثال",
+@@ -383,0 +445,6 @@
++
++    #[test]
++    fn compliance_help_is_present_in_both_languages() {
++        assert!(en("compliance.help").contains("sec audit --profile"));
++        assert!(ar("compliance.help").contains("sec audit --profile"));
++    }
+--- a/apps/aetherctl/src/main.rs
++++ b/apps/aetherctl/src/main.rs
+@@ -44,0 +45 @@
++    let _active_language = invocation.lang;
+--- a/apps/aetherctl/src/offline.rs
++++ b/apps/aetherctl/src/offline.rs
+@@ -56,0 +57,2 @@
++        OfflineJob::ComplianceAudit { .. } => "sec audit --profile".to_string(),
++        OfflineJob::ComplianceVerify { .. } => "compliance verify".to_string(),
+@@ -97,0 +100,16 @@
++        OfflineJob::ComplianceAudit {
++            profile,
++            out,
++            format,
++            sign,
++            key,
++            targets,
++        } => crate::sec::run_compliance_audit(
++            &profile,
++            &out,
++            &format,
++            sign,
++            key.as_deref(),
++            &targets,
++        ),
++        OfflineJob::ComplianceVerify { file } => crate::sec::verify_compliance_report(&file),
+@@ -519 +536,0 @@
+-    use ed25519_dalek::Signer as _;
+--- a/apps/aetherctl/src/sec.rs
++++ b/apps/aetherctl/src/sec.rs
+@@ -15 +14,0 @@
+-
+@@ -50,0 +50,189 @@
++/// Phase 33 compliance report pipeline: direct, offline, and explicit about signing.
++pub fn run_compliance_audit(
++    profile_id: &str,
++    out: &str,
++    format: &str,
++    sign: bool,
++    key_path: Option<&str>,
++    targets: &[(String, String)],
++) -> Result<serde_json::Value, CliError> {
++    if !matches!(profile_id, "cis-l1" | "cis-l2") {
++        return Err(usage_error(format!("unsupported profile '{profile_id}'")));
++    }
++    if !matches!(format, "json" | "html" | "both") {
++        return Err(usage_error(format!("unsupported report format '{format}'")));
++    }
++    if sign != key_path.is_some() {
++        return Err(usage_error(
++            "--sign and explicit --key <seedfile> must be supplied together".to_string(),
++        ));
++    }
++
++    let parsed = if targets.is_empty() {
++        default_live_targets()
++    } else {
++        parse_targets(targets)?
++    };
++    sec::validate_targets(&parsed).map_err(|detail| CliError::Rejected {
++        message_key: "sec.traversalRejected".to_string(),
++        detail: Some(detail),
++    })?;
++    let audit = sec::run_audit(&parsed);
++    let profile_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
++        .join("../../assets/compliance/profiles")
++        .join(format!("{profile_id}.json"));
++    let profile =
++        sec::compliance::Profile::load(&profile_path).map_err(|error| CliError::LocalIo {
++            message_key: "sec.complianceProfile".to_string(),
++            detail: Some(error.to_string()),
++        })?;
++    let generated_unix_ms = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .map_err(|error| CliError::LocalIo {
++            message_key: "sec.reportInvalid".to_string(),
++            detail: Some(format!("system clock before epoch: {error}")),
++        })?
++        .as_millis() as i64;
++    let host_fingerprint = format!("{}:{}", audit.platform, audit.digest);
++    let mut report =
++        sec::compliance::evaluate(&profile, &audit, host_fingerprint, generated_unix_ms)
++            .map_err(compliance_error)?;
++
++    if let Some(path) = key_path {
++        let raw = std::fs::read_to_string(path).map_err(|error| CliError::LocalIo {
++            message_key: "local.io.read".to_string(),
++            detail: Some(format!("read signing key: {error}")),
++        })?;
++        let seed = decode_seed(raw.trim()).map_err(|detail| CliError::LocalIo {
++            message_key: "local.keys.badKeyFile".to_string(),
++            detail: Some(detail),
++        })?;
++        let signing_key = aethercore_persistence::export::signing_key_from_seed(&seed);
++        let signature = aethercore_persistence::export::sign_digest(&report.digest, &signing_key);
++        report.signed = true;
++        report.signature = Some(sec::compliance::ReportSignature {
++            public_key_hex: signature.public_key_hex,
++            signature_hex: signature.signature_hex,
++        });
++    }
++
++    let value = serde_json::to_value(&report).map_err(|error| CliError::LocalIo {
++        message_key: "sec.reportInvalid".to_string(),
++        detail: Some(format!("serialize report: {error}")),
++    })?;
++    if matches!(format, "json" | "both") {
++        let json = serde_json::to_vec_pretty(&report).map_err(|error| CliError::LocalIo {
++            message_key: "sec.reportInvalid".to_string(),
++            detail: Some(format!("serialize report: {error}")),
++        })?;
++        std::fs::write(out, json).map_err(|error| CliError::LocalIo {
++            message_key: "local.io.write".to_string(),
++            detail: Some(format!("write JSON report: {error}")),
++        })?;
++    }
++    if matches!(format, "html" | "both") {
++        let html_path = if format == "both" {
++            std::path::Path::new(out).with_extension("html")
++        } else {
++            std::path::PathBuf::from(out)
++        };
++        std::fs::write(&html_path, sec::compliance::render_html(&report)).map_err(|error| {
++            CliError::LocalIo {
++                message_key: "local.io.write".to_string(),
++                detail: Some(format!("write HTML report: {error}")),
++            }
++        })?;
++    }
++    Ok(value)
++}
++
++pub fn verify_compliance_report(file: &str) -> Result<serde_json::Value, CliError> {
++    let raw = std::fs::read(file).map_err(|error| CliError::LocalIo {
++        message_key: "local.io.read".to_string(),
++        detail: Some(format!("read compliance report: {error}")),
++    })?;
++    let report = sec::compliance::parse_report_bytes(&raw).map_err(compliance_error)?;
++    sec::compliance::verify_integrity(&report).map_err(compliance_error)?;
++    if let Some(signature) = &report.signature {
++        let signature = aethercore_persistence::export::ExportSignature {
++            public_key_hex: signature.public_key_hex.clone(),
++            signature_hex: signature.signature_hex.clone(),
++        };
++        aethercore_persistence::export::verify_digest_signature(&report.digest, &signature)
++            .map_err(|_| CliError::LocalIo {
++                message_key: "sec.signatureMismatch".to_string(),
++                detail: Some("signature mismatch".to_string()),
++            })?;
++    }
++    Ok(serde_json::json!({
++        "verified": true,
++        "signed": report.signed,
++        "digest": report.digest,
++        "profile": report.profile_id,
++    }))
++}
++
++fn parse_targets(targets: &[(String, String)]) -> Result<Vec<sec::model::AuditTarget>, CliError> {
++    targets
++        .iter()
++        .map(|(kind, path)| match kind.as_str() {
++            "ssh" => Ok(sec::model::AuditTarget::SshdConfig { path: path.clone() }),
++            "sudoers" => Ok(sec::model::AuditTarget::Sudoers { path: path.clone() }),
++            "fs" => Ok(sec::model::AuditTarget::FilesystemPaths {
++                paths: vec![path.clone()],
++            }),
++            "authlog" => Ok(sec::model::AuditTarget::AuthLogs {
++                paths: vec![path.clone()],
++            }),
++            "secrets" => Ok(sec::model::AuditTarget::SecretsDir { dir: path.clone() }),
++            "firewall" => Ok(sec::model::AuditTarget::FirewallState),
++            _ => Err(usage_error(format!("unknown audit target kind '{kind}'"))),
++        })
++        .collect()
++}
++
++fn default_live_targets() -> Vec<sec::model::AuditTarget> {
++    let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/unknown".to_string());
++    vec![
++        sec::model::AuditTarget::SshdConfig {
++            path: "/etc/ssh/sshd_config".to_string(),
++        },
++        sec::model::AuditTarget::Sudoers {
++            path: "/etc/sudoers".to_string(),
++        },
++        sec::model::AuditTarget::FilesystemPaths { paths: vec![home] },
++        sec::model::AuditTarget::FirewallState,
++    ]
++}
++
++fn usage_error(detail: String) -> CliError {
++    CliError::Usage {
++        message_key: "cli.usage.compliance".to_string(),
++        detail: Some(detail),
++    }
++}
++
++fn compliance_error(error: sec::compliance::ComplianceError) -> CliError {
++    CliError::LocalIo {
++        message_key: "sec.reportInvalid".to_string(),
++        detail: Some(error.to_string()),
++    }
++}
++
++fn decode_seed(input: &str) -> Result<[u8; 32], String> {
++    if input.len() != 64 {
++        return Err("seed must contain exactly 64 hexadecimal characters".to_string());
++    }
++    let mut seed = [0_u8; 32];
++    for (index, chunk) in input.as_bytes().chunks(2).enumerate() {
++        let high = (chunk[0] as char)
++            .to_digit(16)
++            .ok_or_else(|| "invalid seed encoding".to_string())? as u8;
++        let low = (chunk[1] as char)
++            .to_digit(16)
++            .ok_or_else(|| "invalid seed encoding".to_string())? as u8;
++        seed[index] = (high << 4) | low;
++    }
++    Ok(seed)
++}
++
+@@ -310,0 +499,123 @@
++}
++
++#[cfg(test)]
++mod phase33_tests {
++    use super::*;
++
++    fn temp_dir(label: &str) -> std::path::PathBuf {
++        let path =
++            std::env::temp_dir().join(format!("aethercore-p33-{label}-{}", std::process::id()));
++        let _ = std::fs::remove_dir_all(&path);
++        std::fs::create_dir_all(&path).expect("create isolated test directory");
++        path
++    }
++
++    #[test]
++    fn gd2_and_gd3_report_determinism_signature_tamper_and_unsigned_honesty() {
++        let dir = temp_dir("lifecycle");
++        let ssh = dir.join("sshd_config");
++        std::fs::write(
++            &ssh,
++            "PermitRootLogin yes\nPasswordAuthentication yes\nPubkeyAuthentication yes\n",
++        )
++        .expect("write fixture");
++        let key = dir.join("owner.seed");
++        std::fs::write(&key, format!("{}\n", "09".repeat(32))).expect("write test seed");
++        let signed_path = dir.join("signed.json");
++        let targets = vec![("ssh".to_string(), ssh.display().to_string())];
++
++        let signed = run_compliance_audit(
++            "cis-l1",
++            &signed_path.display().to_string(),
++            "both",
++            true,
++            Some(&key.display().to_string()),
++            &targets,
++        )
++        .expect("signed report");
++        assert_eq!(signed["signed"], true);
++        let verified = verify_compliance_report(&signed_path.display().to_string())
++            .expect("verify signed report");
++        assert_eq!(verified["verified"], true);
++        assert_eq!(verified["signed"], true);
++
++        let html = std::fs::read_to_string(signed_path.with_extension("html"))
++            .expect("read standalone HTML");
++        assert!(!html.contains("http://"));
++        assert!(!html.contains("https://"));
++        assert!(html.contains("dir=\"rtl\""));
++
++        let mut tampered: serde_json::Value =
++            serde_json::from_slice(&std::fs::read(&signed_path).expect("read signed report"))
++                .expect("parse signed report");
++        tampered["host_fingerprint"] = serde_json::json!("tampered");
++        let tampered_path = dir.join("tampered.json");
++        std::fs::write(
++            &tampered_path,
++            serde_json::to_vec_pretty(&tampered).expect("serialize tamper"),
++        )
++        .expect("write tampered report");
++        let error = verify_compliance_report(&tampered_path.display().to_string())
++            .expect_err("tamper must fail");
++        assert!(format!("{error:?}").contains("digest mismatch"));
++
++        let mut signature_tampered: serde_json::Value =
++            serde_json::from_slice(&std::fs::read(&signed_path).expect("read signed report"))
++                .expect("parse signed report");
++        let signature = signature_tampered["signature"]["signature_hex"]
++            .as_str()
++            .expect("signature hex");
++        let replacement = if signature.starts_with('0') { "1" } else { "0" };
++        let tampered_hex = format!("{replacement}{}", &signature[1..]);
++        signature_tampered["signature"]["signature_hex"] =
++            serde_json::json!(tampered_hex);
++        let signature_tampered_path = dir.join("signature-tampered.json");
++        std::fs::write(
++            &signature_tampered_path,
++            serde_json::to_vec_pretty(&signature_tampered).expect("serialize signature tamper"),
++        )
++        .expect("write signature tamper");
++        let signature_error =
++            verify_compliance_report(&signature_tampered_path.display().to_string())
++                .expect_err("signature tamper must fail");
++        assert!(format!("{signature_error:?}").contains("signature mismatch"));
++
++        let unsigned_path = dir.join("unsigned.json");
++        let unsigned = run_compliance_audit(
++            "cis-l1",
++            &unsigned_path.display().to_string(),
++            "json",
++            false,
++            None,
++            &targets,
++        )
++        .expect("unsigned report");
++        assert_eq!(unsigned["signed"], false);
++        assert!(unsigned.get("signature").is_none());
++        let unsigned_verified = verify_compliance_report(&unsigned_path.display().to_string())
++            .expect("verify unsigned integrity");
++        assert_eq!(unsigned_verified["signed"], false);
++
++        let signed_report: sec::compliance::ComplianceReport =
++            serde_json::from_slice(&std::fs::read(&signed_path).expect("read report first time"))
++                .expect("parse first report");
++        let second_path = dir.join("second.json");
++        let second = run_compliance_audit(
++            "cis-l1",
++            &second_path.display().to_string(),
++            "json",
++            false,
++            None,
++            &targets,
++        )
++        .expect("second semantic report");
++        assert_eq!(signed_report.digest, second["digest"]);
++
++        println!("GD-2 digest identical: {}", signed_report.digest);
++        println!("GD-3 signed verification: PASS");
++        println!("GD-3 content tamper: {error:?}");
++        println!("GD-3 signature tamper: {signature_error:?}");
++        println!("GD-3 unsigned integrity: PASS signed=false signature=absent");
++
++        std::fs::remove_dir_all(dir).expect("remove isolated test directory");
++    }
+--- a/crates/persistence/src/export.rs
++++ b/crates/persistence/src/export.rs
+@@ -198 +198 @@
+-    mut records: Vec<(String, i64, serde_json::Value)>,
++    records: Vec<(String, i64, serde_json::Value)>,
+@@ -250,0 +251,7 @@
++    envelope.signature = Some(sign_digest(&envelope.digest, signing_key));
++    envelope.signed = true;
++}
++
++/// Shared Phase 29 Ed25519 primitive for any already-canonical lowercase-hex
++/// digest. Keys are always caller-provided; this function never generates one.
++pub fn sign_digest(digest: &str, signing_key: &ed25519_dalek::SigningKey) -> ExportSignature {
+@@ -253,3 +260,2 @@
+-    let signature = signing_key.sign(envelope.digest.as_bytes());
+-    envelope.signed = true;
+-    envelope.signature = Some(ExportSignature {
++    let signature = signing_key.sign(digest.as_bytes());
++    ExportSignature {
+@@ -258 +264,19 @@
+-    });
++    }
++}
++
++/// Verifies a signature produced by [`sign_digest`] and returns the existing
++/// typed Phase 29 failure rather than introducing a second crypto error model.
++pub fn verify_digest_signature(
++    digest: &str,
++    signature: &ExportSignature,
++) -> Result<(), VerifyError> {
++    use ed25519_dalek::{Signature, VerifyingKey};
++    let key_bytes =
++        decode_hex_fixed::<32>(&signature.public_key_hex).map_err(|_| VerifyError::BadSignature)?;
++    let sig_bytes =
++        decode_hex_fixed::<64>(&signature.signature_hex).map_err(|_| VerifyError::BadSignature)?;
++    let key = VerifyingKey::from_bytes(&key_bytes).map_err(|_| VerifyError::BadSignature)?;
++    let signature = Signature::from_slice(&sig_bytes).map_err(|_| VerifyError::BadSignature)?;
++    use ed25519_dalek::Verifier as _;
++    key.verify(digest.as_bytes(), &signature)
++        .map_err(|_| VerifyError::BadSignature)
+@@ -306,15 +330 @@
+-        use ed25519_dalek::{Signature, VerifyingKey};
+-        let key_bytes = decode_hex_fixed::<32>(&signature.public_key_hex)
+-            .map_err(|_| VerifyError::BadSignature)?;
+-        let sig_bytes = decode_hex_fixed::<64>(&signature.signature_hex)
+-            .map_err(|_| VerifyError::BadSignature)?;
+-        let Ok(key) = VerifyingKey::from_bytes(&key_bytes) else {
+-            return Err(VerifyError::BadSignature);
+-        };
+-        let Ok(sig) = Signature::from_slice(&sig_bytes) else {
+-            return Err(VerifyError::BadSignature);
+-        };
+-        use ed25519_dalek::Verifier as _;
+-        if key.verify(envelope.digest.as_bytes(), &sig).is_err() {
+-            return Err(VerifyError::BadSignature);
+-        }
++        verify_digest_signature(&envelope.digest, signature)?;
+@@ -502,0 +513,14 @@
++    #[test]
++    fn shared_digest_signature_primitive_supports_compliance_reports() {
++        let key = signing_key_from_seed(&[9_u8; 32]);
++        let signature = sign_digest("compliance-digest", &key);
++        assert_eq!(
++            verify_digest_signature("compliance-digest", &signature),
++            Ok(())
++        );
++        assert_eq!(
++            verify_digest_signature("tampered-digest", &signature),
++            Err(VerifyError::BadSignature)
++        );
++    }
++
+--- a/crates/security-audit/src/lib.rs
++++ b/crates/security-audit/src/lib.rs
+@@ -14,0 +15 @@
++pub mod compliance;
+--- /dev/null
++++ b/assets/compliance/profiles/cis-l1.json
+@@ -0,0 +1,17 @@
++{
++  "schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l1","title_key":"compliance.profile.cisL1",
++  "control_families":[{"family_id":"general","title_key":"compliance.family.general","controls":[
++    {"control_id":"CIS L1 1.1","rule_codes":["cve.vulnerable_package","fw.config_present","fw.state_not_available"],"applicability":"all"},
++    {"control_id":"CIS L1 1.2","rule_codes":["fs.scan_truncated","secrets.scan_truncated"],"applicability":"all"}]},
++  {"family_id":"ssh","title_key":"compliance.family.ssh","controls":[
++    {"control_id":"CIS L1 5.1","rule_codes":["ssh.permit_root_login","ssh.password_authentication"],"applicability":"unix"},
++    {"control_id":"CIS L1 5.2","rule_codes":["ssh.pubkey_authentication","ssh.x11_forwarding","ssh.max_auth_tries","ssh.client_alive"],"applicability":"unix"}]},
++  {"family_id":"access","title_key":"compliance.family.access","controls":[
++    {"control_id":"CIS L1 6.1","rule_codes":["sudo.nopasswd","sudo.wildcard_all","pass.max_days","pass.min_days","pass.min_len"],"applicability":"all"}]},
++  {"family_id":"filesystem","title_key":"compliance.family.filesystem","controls":[
++    {"control_id":"CIS L1 1.3","rule_codes":["fs.ssh_dir_perms","fs.ssh_key_perms","fs.suid_inventory","fs.world_writable"],"applicability":"all"}]},
++  {"family_id":"secrets","title_key":"compliance.family.secrets","controls":[
++    {"control_id":"CIS L1 1.4","rule_codes":["secrets.aws_key","secrets.dotenv","secrets.generic_assignment","secrets.private_key_block"],"applicability":"all"}]},
++  {"family_id":"auth","title_key":"compliance.family.auth","controls":[{"control_id":"CIS L1 7.1","rule_codes":["auth.failure_burst"],"applicability":"all"}]}
++  ]
++}
+--- /dev/null
++++ b/assets/compliance/profiles/cis-l2.json
+@@ -0,0 +1 @@
++{"schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l2","title_key":"compliance.profile.cisL2","control_families":[{"family_id":"general","title_key":"compliance.family.general","controls":[{"control_id":"CIS L2 1.1","rule_codes":["cve.vulnerable_package","fw.config_present","fw.state_not_available","fs.scan_truncated","secrets.scan_truncated"],"applicability":"all"}]},{"family_id":"ssh","title_key":"compliance.family.ssh","controls":[{"control_id":"CIS L2 5.1","rule_codes":["ssh.permit_root_login","ssh.password_authentication","ssh.pubkey_authentication","ssh.x11_forwarding","ssh.max_auth_tries","ssh.client_alive"],"applicability":"unix"}]},{"family_id":"access","title_key":"compliance.family.access","controls":[{"control_id":"CIS L2 6.1","rule_codes":["sudo.nopasswd","sudo.wildcard_all","pass.max_days","pass.min_days","pass.min_len"],"applicability":"all"}]},{"family_id":"filesystem","title_key":"compliance.family.filesystem","controls":[{"control_id":"CIS L2 1.2","rule_codes":["fs.ssh_dir_perms","fs.ssh_key_perms","fs.suid_inventory","fs.world_writable"],"applicability":"all"}]},{"family_id":"secrets","title_key":"compliance.family.secrets","controls":[{"control_id":"CIS L2 1.3","rule_codes":["secrets.aws_key","secrets.dotenv","secrets.generic_assignment","secrets.private_key_block"],"applicability":"all"}]},{"family_id":"auth","title_key":"compliance.family.auth","controls":[{"control_id":"CIS L2 7.1","rule_codes":["auth.failure_burst"],"applicability":"all"}]}]}
+--- /dev/null
++++ b/crates/security-audit/src/compliance.rs
+@@ -0,0 +1,534 @@
++//! Phase 33 — strict offline compliance profiles and signed point-in-time reports.
++//!
++//! Profiles carry identifiers and local rule mappings only. They do not
++//! republish CIS Benchmark prose. Evaluation is read-only and treats missing,
++//! unavailable, permission-denied, or partial evidence as `NotVerified`.
++
++use crate::{LaneStatus, SecurityAuditReport};
++use serde::{Deserialize, Serialize};
++use sha2::{Digest as _, Sha256};
++use std::collections::BTreeSet;
++use std::path::Path;
++
++pub const PROFILE_SCHEMA: &str = "COMPLIANCE_PROFILE_V1";
++pub const REPORT_SCHEMA: &str = "aethercore.compliance.v1";
++
++pub const IMPLEMENTED_RULE_CODES: &[&str] = &[
++    "auth.failure_burst",
++    "cve.vulnerable_package",
++    "fs.scan_truncated",
++    "fs.ssh_dir_perms",
++    "fs.ssh_key_perms",
++    "fs.suid_inventory",
++    "fs.world_writable",
++    "fw.config_present",
++    "fw.state_not_available",
++    "pass.max_days",
++    "pass.min_days",
++    "pass.min_len",
++    "secrets.aws_key",
++    "secrets.dotenv",
++    "secrets.generic_assignment",
++    "secrets.private_key_block",
++    "secrets.scan_truncated",
++    "ssh.client_alive",
++    "ssh.max_auth_tries",
++    "ssh.password_authentication",
++    "ssh.permit_root_login",
++    "ssh.pubkey_authentication",
++    "ssh.x11_forwarding",
++    "sudo.nopasswd",
++    "sudo.wildcard_all",
++];
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields)]
++pub struct Profile {
++    pub schema: String,
++    pub profile_id: String,
++    pub title_key: String,
++    pub control_families: Vec<ControlFamily>,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields)]
++pub struct ControlFamily {
++    pub family_id: String,
++    pub title_key: String,
++    pub controls: Vec<Control>,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields)]
++pub struct Control {
++    pub control_id: String,
++    pub rule_codes: Vec<String>,
++    pub applicability: Applicability,
++}
++
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "lowercase")]
++pub enum Applicability {
++    Unix,
++    Windows,
++    All,
++}
++
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
++pub enum ControlStatus {
++    Pass,
++    Fail,
++    NotApplicable,
++    NotVerified,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields)]
++pub struct ControlResult {
++    pub control_id: String,
++    pub status: ControlStatus,
++    pub evidence_refs: Vec<String>,
++    pub reason_key: String,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
++#[serde(tag = "state", rename_all = "camelCase", deny_unknown_fields)]
++pub enum ScorePct {
++    Calculated { value: f64 },
++    NoVerifiableControls,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
++#[serde(deny_unknown_fields)]
++pub struct Score {
++    pub pass: usize,
++    pub fail: usize,
++    pub na: usize,
++    pub not_verified: usize,
++    pub score_pct: ScorePct,
++}
++
++impl Score {
++    pub fn total(&self) -> usize {
++        self.pass + self.fail + self.na + self.not_verified
++    }
++
++    fn from_controls(controls: &[ControlResult]) -> Self {
++        let (mut pass, mut fail, mut na, mut not_verified) = (0, 0, 0, 0);
++        for control in controls {
++            match control.status {
++                ControlStatus::Pass => pass += 1,
++                ControlStatus::Fail => fail += 1,
++                ControlStatus::NotApplicable => na += 1,
++                ControlStatus::NotVerified => not_verified += 1,
++            }
++        }
++        let score_pct = if pass + fail == 0 {
++            ScorePct::NoVerifiableControls
++        } else {
++            ScorePct::Calculated {
++                value: pass as f64 * 100.0 / (pass + fail) as f64,
++            }
++        };
++        Self {
++            pass,
++            fail,
++            na,
++            not_verified,
++            score_pct,
++        }
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields)]
++pub struct ReportSignature {
++    pub public_key_hex: String,
++    pub signature_hex: String,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
++#[serde(deny_unknown_fields)]
++pub struct ComplianceReport {
++    pub schema: String,
++    pub profile_id: String,
++    pub host_fingerprint: String,
++    pub generated_unix_ms: i64,
++    pub controls: Vec<ControlResult>,
++    pub score: Score,
++    pub digest: String,
++    pub signed: bool,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub signature: Option<ReportSignature>,
++}
++
++#[derive(Debug, thiserror::Error, PartialEq, Eq)]
++pub enum ComplianceError {
++    #[error("malformed profile: {0}")]
++    MalformedProfile(String),
++    #[error("unknown profile schema: {0}")]
++    UnknownProfileSchema(String),
++    #[error("unknown profile: {0}")]
++    UnknownProfile(String),
++    #[error("duplicate family id: {0}")]
++    DuplicateFamily(String),
++    #[error("duplicate control id: {0}")]
++    DuplicateControl(String),
++    #[error("duplicate rule mapping: {0}")]
++    DuplicateRuleMapping(String),
++    #[error("empty control: {0}")]
++    EmptyControl(String),
++    #[error("unknown rule code: {0}")]
++    UnknownRule(String),
++    #[error("malformed CIS control id: {0}")]
++    MalformedControlId(String),
++    #[error("malformed report: {0}")]
++    MalformedReport(String),
++    #[error("report schema mismatch: {0}")]
++    ReportSchema(String),
++    #[error("report profile mismatch: {0}")]
++    ReportProfile(String),
++    #[error("report score totals are inconsistent")]
++    ScoreMismatch,
++    #[error("report contains duplicate control id: {0}")]
++    DuplicateReportControl(String),
++    #[error("digest mismatch")]
++    DigestMismatch,
++    #[error("signed flag inconsistent with signature presence")]
++    SignatureFlagInconsistent,
++    #[error("canonical report serialization failed: {0}")]
++    Canonicalization(String),
++}
++
++impl Profile {
++    pub fn from_bytes(raw: &[u8]) -> Result<Self, ComplianceError> {
++        let profile: Self = serde_json::from_slice(raw)
++            .map_err(|error| ComplianceError::MalformedProfile(error.to_string()))?;
++        profile.validate()?;
++        Ok(profile)
++    }
++
++    pub fn load(path: &Path) -> Result<Self, ComplianceError> {
++        let raw = std::fs::read(path)
++            .map_err(|error| ComplianceError::MalformedProfile(error.to_string()))?;
++        Self::from_bytes(&raw)
++    }
++
++    pub fn validate(&self) -> Result<(), ComplianceError> {
++        if self.schema != PROFILE_SCHEMA {
++            return Err(ComplianceError::UnknownProfileSchema(self.schema.clone()));
++        }
++        if !matches!(self.profile_id.as_str(), "cis-l1" | "cis-l2") {
++            return Err(ComplianceError::UnknownProfile(self.profile_id.clone()));
++        }
++        if self.title_key.trim().is_empty() || self.control_families.is_empty() {
++            return Err(ComplianceError::MalformedProfile(
++                "title_key and control_families must be non-empty".to_string(),
++            ));
++        }
++        let mut family_ids = BTreeSet::new();
++        let mut control_ids = BTreeSet::new();
++        let mut mapped_rules = BTreeSet::new();
++        for family in &self.control_families {
++            if family.family_id.trim().is_empty()
++                || family.title_key.trim().is_empty()
++                || family.controls.is_empty()
++            {
++                return Err(ComplianceError::MalformedProfile(format!(
++                    "family '{}' is empty",
++                    family.family_id
++                )));
++            }
++            if !family_ids.insert(family.family_id.clone()) {
++                return Err(ComplianceError::DuplicateFamily(family.family_id.clone()));
++            }
++            for control in &family.controls {
++                if !control_ids.insert(control.control_id.clone()) {
++                    return Err(ComplianceError::DuplicateControl(
++                        control.control_id.clone(),
++                    ));
++                }
++                if control.rule_codes.is_empty() {
++                    return Err(ComplianceError::EmptyControl(control.control_id.clone()));
++                }
++                if !valid_control_id(&control.control_id, &self.profile_id) {
++                    return Err(ComplianceError::MalformedControlId(
++                        control.control_id.clone(),
++                    ));
++                }
++                for code in &control.rule_codes {
++                    if !IMPLEMENTED_RULE_CODES.contains(&code.as_str()) {
++                        return Err(ComplianceError::UnknownRule(code.clone()));
++                    }
++                    if !mapped_rules.insert(code.clone()) {
++                        return Err(ComplianceError::DuplicateRuleMapping(code.clone()));
++                    }
++                }
++            }
++        }
++        Ok(())
++    }
++
++    pub fn controls(&self) -> impl Iterator<Item = &Control> {
++        self.control_families
++            .iter()
++            .flat_map(|family| family.controls.iter())
++    }
++}
++
++fn valid_control_id(control_id: &str, profile_id: &str) -> bool {
++    let prefix = match profile_id {
++        "cis-l1" => "CIS L1 ",
++        "cis-l2" => "CIS L2 ",
++        _ => return false,
++    };
++    let Some(rest) = control_id.strip_prefix(prefix) else {
++        return false;
++    };
++    let parts: Vec<_> = rest.split('.').collect();
++    (2..=3).contains(&parts.len())
++        && parts
++            .iter()
++            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
++}
++
++fn lane_matches(lane: &str, rule_code: &str) -> bool {
++    let prefix = rule_code.split('.').next().unwrap_or(rule_code);
++    match prefix {
++        "ssh" => lane == "sshd",
++        "sudo" => lane == "sudoers",
++        "pass" => lane == "password",
++        "fs" => lane == "filesystem",
++        "fw" => lane == "firewall",
++        _ => lane.starts_with(prefix),
++    }
++}
++
++fn applicable(applicability: Applicability, platform: &str) -> bool {
++    match applicability {
++        Applicability::All => true,
++        Applicability::Unix => platform != "windows",
++        Applicability::Windows => platform == "windows",
++    }
++}
++
++fn is_unavailable_marker(rule_code: &str) -> bool {
++    rule_code == "fw.state_not_available" || rule_code.ends_with(".scan_truncated")
++}
++
++fn is_positive_observation(rule_code: &str) -> bool {
++    rule_code == "fw.config_present"
++}
++
++pub fn evaluate(
++    profile: &Profile,
++    audit: &SecurityAuditReport,
++    host_fingerprint: impl Into<String>,
++    generated_unix_ms: i64,
++) -> Result<ComplianceReport, ComplianceError> {
++    profile.validate()?;
++    let mut controls = Vec::new();
++    for control in profile.controls() {
++        if !applicable(control.applicability, &audit.platform) {
++            controls.push(ControlResult {
++                control_id: control.control_id.clone(),
++                status: ControlStatus::NotApplicable,
++                evidence_refs: Vec::new(),
++                reason_key: "compliance.not_applicable".to_string(),
++            });
++            continue;
++        }
++        let mut failed = false;
++        let mut verified = true;
++        let mut evidence_refs = Vec::new();
++        for rule_code in &control.rule_codes {
++            let matching_lanes: Vec<_> = audit
++                .lanes
++                .iter()
++                .filter(|lane| lane_matches(&lane.lane, rule_code))
++                .collect();
++            if matching_lanes.is_empty() {
++                verified = false;
++                continue;
++            }
++            for lane in matching_lanes {
++                if matches!(lane.status, LaneStatus::NotAvailable { .. }) {
++                    verified = false;
++                    continue;
++                }
++                for finding in lane
++                    .findings
++                    .iter()
++                    .filter(|finding| finding.code == *rule_code)
++                {
++                    evidence_refs.push(finding.id.clone());
++                    if is_unavailable_marker(rule_code) {
++                        verified = false;
++                    } else if !is_positive_observation(rule_code) {
++                        failed = true;
++                    }
++                }
++            }
++        }
++        evidence_refs.sort();
++        evidence_refs.dedup();
++        let status = if failed {
++            ControlStatus::Fail
++        } else if !verified {
++            ControlStatus::NotVerified
++        } else {
++            ControlStatus::Pass
++        };
++        let reason_key = match status {
++            ControlStatus::Pass => "compliance.verified",
++            ControlStatus::Fail => "compliance.finding",
++            ControlStatus::NotApplicable => "compliance.not_applicable",
++            ControlStatus::NotVerified => "compliance.not_verified",
++        };
++        controls.push(ControlResult {
++            control_id: control.control_id.clone(),
++            status,
++            evidence_refs,
++            reason_key: reason_key.to_string(),
++        });
++    }
++    controls.sort_by(|left, right| left.control_id.cmp(&right.control_id));
++    let score = Score::from_controls(&controls);
++    if score.total() != controls.len() {
++        return Err(ComplianceError::ScoreMismatch);
++    }
++    let mut report = ComplianceReport {
++        schema: REPORT_SCHEMA.to_string(),
++        profile_id: profile.profile_id.clone(),
++        host_fingerprint: host_fingerprint.into(),
++        generated_unix_ms,
++        controls,
++        score,
++        digest: String::new(),
++        signed: false,
++        signature: None,
++    };
++    report.digest = digest(&report)?;
++    Ok(report)
++}
++
++/// Digest rule: timestamp, digest, signed flag, and signature are excluded;
++/// controls and evidence references are sorted before canonical serialization.
++pub fn digest(report: &ComplianceReport) -> Result<String, ComplianceError> {
++    let mut canonical = report.clone();
++    canonical.generated_unix_ms = 0;
++    canonical.digest.clear();
++    canonical.signed = false;
++    canonical.signature = None;
++    canonical
++        .controls
++        .sort_by(|left, right| left.control_id.cmp(&right.control_id));
++    for control in &mut canonical.controls {
++        control.evidence_refs.sort()
++    }
++    let bytes = serde_json::to_vec(&canonical)
++        .map_err(|error| ComplianceError::Canonicalization(error.to_string()))?;
++    Ok(format!("{:x}", Sha256::digest(bytes)))
++}
++
++pub fn parse_report_bytes(raw: &[u8]) -> Result<ComplianceReport, ComplianceError> {
++    serde_json::from_slice(raw).map_err(|error| ComplianceError::MalformedReport(error.to_string()))
++}
++
++pub fn verify_integrity(report: &ComplianceReport) -> Result<(), ComplianceError> {
++    if report.schema != REPORT_SCHEMA {
++        return Err(ComplianceError::ReportSchema(report.schema.clone()));
++    }
++    if !matches!(report.profile_id.as_str(), "cis-l1" | "cis-l2") {
++        return Err(ComplianceError::ReportProfile(report.profile_id.clone()));
++    }
++    if report.signed != report.signature.is_some() {
++        return Err(ComplianceError::SignatureFlagInconsistent);
++    }
++    let mut ids = BTreeSet::new();
++    for control in &report.controls {
++        if !ids.insert(control.control_id.clone()) {
++            return Err(ComplianceError::DuplicateReportControl(
++                control.control_id.clone(),
++            ));
++        }
++    }
++    if Score::from_controls(&report.controls) != report.score
++        || report.score.total() != report.controls.len()
++    {
++        return Err(ComplianceError::ScoreMismatch);
++    }
++    if report.digest != digest(report)? {
++        return Err(ComplianceError::DigestMismatch);
++    }
++    Ok(())
++}
++
++/// Renders one printable, self-contained bilingual document with inline CSS.
++pub fn render_html(report: &ComplianceReport) -> String {
++    let rows = report
++        .controls
++        .iter()
++        .map(|control| {
++            format!(
++                "<tr><td><code>{}</code></td><td>{:?}</td><td><code>{}</code></td><td>{}</td></tr>",
++                escape(&control.control_id),
++                control.status,
++                escape(&control.reason_key),
++                escape(&control.evidence_refs.join(", "))
++            )
++        })
++        .collect::<String>();
++    let score = match report.score.score_pct {
++        ScorePct::Calculated { value } => format!("{value:.2}%"),
++        ScorePct::NoVerifiableControls => "N/A".to_string(),
++    };
++    format!(
++        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Compliance report</title><style>body{{font-family:system-ui,sans-serif;margin:2rem;color:#182230}}section{{margin-block:2rem}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #ccd3dc;padding:.45rem;text-align:start}}code{{font-family:ui-monospace,monospace}}@media print{{body{{margin:0}}section{{break-inside:avoid}}}}</style></head><body><section dir=\"ltr\"><h1>Compliance report</h1><p><code>{}</code> · <code>{}</code> · score {}</p></section><section lang=\"ar\" dir=\"rtl\"><h1>تقرير الامتثال</h1><p><code>{}</code> · <code>{}</code> · النتيجة {}</p></section><table><thead><tr><th>Control / الضابط</th><th>Status / الحالة</th><th>Reason / السبب</th><th>Evidence / الدليل</th></tr></thead><tbody>{}</tbody></table></body></html>",
++        escape(&report.profile_id),
++        escape(&report.host_fingerprint),
++        score,
++        escape(&report.profile_id),
++        escape(&report.host_fingerprint),
++        score,
++        rows
++    )
++}
++
++fn escape(input: &str) -> String {
++    input
++        .replace('&', "&amp;")
++        .replace('<', "&lt;")
++        .replace('>', "&gt;")
++        .replace('"', "&quot;")
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn digest_ignores_timestamp() {
++        let score = Score {
++            pass: 1,
++            fail: 0,
++            na: 0,
++            not_verified: 0,
++            score_pct: ScorePct::Calculated { value: 100.0 },
++        };
++        let first = ComplianceReport {
++            schema: REPORT_SCHEMA.to_string(),
++            profile_id: "cis-l1".to_string(),
++            host_fingerprint: "host".to_string(),
++            generated_unix_ms: 1,
++            controls: Vec::new(),
++            score,
++            digest: String::new(),
++            signed: false,
++            signature: None,
++        };
++        let mut second = first.clone();
++        second.generated_unix_ms = 2;
++        assert_eq!(digest(&first), digest(&second));
++    }
++}
+--- /dev/null
++++ b/crates/security-audit/tests/compliance_red.rs
+@@ -0,0 +1,333 @@
++use aethercore_security_audit::compliance::{
++    self, ComplianceError, ControlStatus, IMPLEMENTED_RULE_CODES, Profile, ScorePct,
++};
++use aethercore_security_audit::model::{Confidence, EvidenceRef, SecFinding, Severity};
++use aethercore_security_audit::{LaneReport, LaneStatus, SecurityAuditReport};
++use std::collections::BTreeSet;
++use std::path::PathBuf;
++
++#[test]
++fn compliance_profile_rejects_unknown_fields() {
++    let err = Profile::from_bytes(br#"{"schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l1","title_key":"x","unknown":1,"control_families":[]}"#).unwrap_err();
++    assert!(matches!(err, ComplianceError::MalformedProfile(_)));
++    println!("GD-5 unknown JSON field => {err}");
++}
++
++#[test]
++fn not_verified_is_not_pass() {
++    assert_ne!(ControlStatus::NotVerified, ControlStatus::Pass);
++}
++
++#[test]
++fn profile_rejects_invalid_rule_and_control_shape() {
++    let base = r#"{"schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l1","title_key":"x","control_families":[{"family_id":"f","title_key":"f","controls":[{"control_id":"CIS L1 1.1","rule_codes":["no.such.rule"],"applicability":"all"}]}]}"#;
++    let unknown_rule = Profile::from_bytes(base.as_bytes()).unwrap_err();
++    assert_eq!(
++        unknown_rule,
++        ComplianceError::UnknownRule("no.such.rule".into())
++    );
++    let empty = base.replace("no.such.rule", "");
++    let empty_rule = Profile::from_bytes(empty.as_bytes()).unwrap_err();
++    assert_eq!(empty_rule, ComplianceError::UnknownRule(String::new()));
++    println!("GD-5 nonexistent rule_code => {unknown_rule}");
++    println!("GD-5 empty rule_code => {empty_rule}");
++}
++
++#[test]
++fn bundled_profiles_are_strict_and_cover_every_implemented_rule() {
++    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/compliance/profiles");
++    let expected: BTreeSet<_> = IMPLEMENTED_RULE_CODES.iter().copied().collect();
++    for name in ["cis-l1.json", "cis-l2.json"] {
++        let profile = Profile::load(&root.join(name)).unwrap();
++        let actual: BTreeSet<_> = profile
++            .controls()
++            .flat_map(|control| control.rule_codes.iter().map(String::as_str))
++            .collect();
++        assert_eq!(actual, expected, "incomplete P32 rule coverage in {name}");
++    }
++}
++
++#[test]
++fn gd5_rejects_duplicate_control_malformed_id_and_zero_rule_control() {
++    let valid = control("CIS L1 1.1", &["ssh.password_authentication"], "unix");
++    let duplicate = [valid.clone(), valid].join(",");
++    let duplicate_error = Profile::from_bytes(
++        format!(r#"{{"schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l1","title_key":"x","control_families":[{{"family_id":"f","title_key":"f","controls":[{duplicate}]}}]}}"#).as_bytes(),
++    ).unwrap_err();
++    assert_eq!(
++        duplicate_error,
++        ComplianceError::DuplicateControl("CIS L1 1.1".into())
++    );
++
++    let malformed_control = control(
++        "CIS L1 control-one",
++        &["ssh.password_authentication"],
++        "unix",
++    );
++    let malformed = Profile::from_bytes(
++        format!(r#"{{"schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l1","title_key":"x","control_families":[{{"family_id":"f","title_key":"f","controls":[{malformed_control}]}}]}}"#).as_bytes(),
++    ).unwrap_err();
++    assert_eq!(
++        malformed,
++        ComplianceError::MalformedControlId("CIS L1 control-one".into())
++    );
++
++    let zero_rules = serde_json::json!({
++        "schema": "COMPLIANCE_PROFILE_V1",
++        "profile_id": "cis-l1",
++        "title_key": "x",
++        "control_families": [{
++            "family_id": "f",
++            "title_key": "f",
++            "controls": [{
++                "control_id": "CIS L1 1.1",
++                "rule_codes": [],
++                "applicability": "all"
++            }]
++        }]
++    });
++    let zero_error = Profile::from_bytes(&serde_json::to_vec(&zero_rules).unwrap()).unwrap_err();
++    assert_eq!(
++        zero_error,
++        ComplianceError::EmptyControl("CIS L1 1.1".into())
++    );
++
++    println!("GD-5 duplicate control ID => {duplicate_error}");
++    println!("GD-5 malformed CIS control ID => {malformed}");
++    println!("GD-5 zero-rule control => {zero_error}");
++}
++
++fn profile(controls: &str) -> Profile {
++    let raw = format!(
++        r#"{{"schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l1","title_key":"compliance.profile.cisL1","control_families":[{{"family_id":"f","title_key":"compliance.family.general","controls":[{controls}]}}]}}"#
++    );
++    Profile::from_bytes(raw.as_bytes()).unwrap()
++}
++
++fn control(id: &str, rules: &[&str], applicability: &str) -> String {
++    serde_json::json!({
++        "control_id": id,
++        "rule_codes": rules,
++        "applicability": applicability,
++    })
++    .to_string()
++}
++
++fn finding(code: &str) -> SecFinding {
++    SecFinding::try_new(
++        "SEC-TEST-001",
++        code,
++        Severity::High,
++        vec![EvidenceRef {
++            fact: "sensitive raw fact must not enter compliance refs".into(),
++            observed: "bad".into(),
++            expected_or_threshold: "good".into(),
++            source_location: "/fixture:1".into(),
++        }],
++        None,
++        "sec.test",
++        Confidence::Exact,
++    )
++    .unwrap()
++}
++
++#[test]
++fn profile_rejects_duplicate_rule_mapping() {
++    let controls = [
++        control("CIS L1 1.1", &["ssh.password_authentication"], "unix"),
++        control("CIS L1 1.2", &["ssh.password_authentication"], "unix"),
++    ]
++    .join(",");
++    let raw = format!(
++        r#"{{"schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l1","title_key":"x","control_families":[{{"family_id":"f","title_key":"f","controls":[{controls}]}}]}}"#
++    );
++    assert!(
++        Profile::from_bytes(raw.as_bytes())
++            .unwrap_err()
++            .to_string()
++            .contains("duplicate rule mapping")
++    );
++}
++
++#[test]
++fn gd1_control_matrix_is_honest_and_totals_exact() {
++    let profile = Profile::load(
++        &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
++            .join("../../assets/compliance/profiles/cis-l1.json"),
++    )
++    .unwrap();
++    let audit = SecurityAuditReport {
++        schema_version: 1,
++        platform: "macos".into(),
++        lanes: vec![
++            LaneReport {
++                lane: "sshd".into(),
++                status: LaneStatus::ok(2),
++                findings: vec![
++                    finding("ssh.permit_root_login"),
++                    finding("ssh.password_authentication"),
++                ],
++            },
++            LaneReport {
++                lane: "password".into(),
++                status: LaneStatus::not_available("permission denied"),
++                findings: vec![],
++            },
++            LaneReport {
++                lane: "sudoers".into(),
++                status: LaneStatus::ok(0),
++                findings: vec![],
++            },
++            LaneReport {
++                lane: "filesystem".into(),
++                status: LaneStatus::ok(0),
++                findings: vec![],
++            },
++            LaneReport {
++                lane: "secrets".into(),
++                status: LaneStatus::ok(0),
++                findings: vec![],
++            },
++            LaneReport {
++                lane: "firewall".into(),
++                status: LaneStatus::ok(0),
++                findings: vec![],
++            },
++            LaneReport {
++                lane: "authlog[0]".into(),
++                status: LaneStatus::ok(0),
++                findings: vec![],
++            },
++            LaneReport {
++                lane: "cve".into(),
++                status: LaneStatus::ok(0),
++                findings: vec![],
++            },
++        ],
++        digest: "host-audit-digest".into(),
++    };
++    let report = compliance::evaluate(&profile, &audit, "host", 7).unwrap();
++    let statuses: Vec<_> = report.controls.iter().map(|c| c.status).collect();
++    assert_eq!(
++        statuses,
++        vec![
++            ControlStatus::Pass,
++            ControlStatus::Pass,
++            ControlStatus::Pass,
++            ControlStatus::Pass,
++            ControlStatus::Fail,
++            ControlStatus::Pass,
++            ControlStatus::NotVerified,
++            ControlStatus::Pass,
++        ]
++    );
++    assert_eq!(
++        (
++            report.score.pass,
++            report.score.fail,
++            report.score.na,
++            report.score.not_verified
++        ),
++        (6, 1, 0, 1)
++    );
++    assert_eq!(
++        report.score.score_pct,
++        ScorePct::Calculated {
++            value: 6.0 * 100.0 / 7.0
++        }
++    );
++    assert_eq!(report.controls.len(), report.score.total());
++    assert!(
++        !serde_json::to_string(&report)
++            .unwrap()
++            .contains("sensitive raw fact")
++    );
++    println!(
++        "GD-1 control matrix: {}",
++        serde_json::to_string(&report.controls).unwrap()
++    );
++    println!(
++        "GD-1 score: {}",
++        serde_json::to_string(&report.score).unwrap()
++    );
++}
++
++#[test]
++fn zero_verifiable_controls_has_typed_state() {
++    let profile = profile(&control("CIS L1 1.1", &["pass.min_len"], "all"));
++    let audit = SecurityAuditReport {
++        schema_version: 1,
++        platform: "macos".into(),
++        lanes: vec![LaneReport {
++            lane: "password".into(),
++            status: LaneStatus::not_available("unavailable"),
++            findings: vec![],
++        }],
++        digest: "d".into(),
++    };
++    let report = compliance::evaluate(&profile, &audit, "host", 1).unwrap();
++    assert_eq!(report.score.score_pct, ScorePct::NoVerifiableControls);
++}
++
++#[test]
++fn digest_sorts_semantically_and_excludes_timestamp() {
++    let controls_a = [
++        control("CIS L1 1.1", &["ssh.password_authentication"], "unix"),
++        control("CIS L1 1.2", &["ssh.pubkey_authentication"], "unix"),
++    ]
++    .join(",");
++    let controls_b = [
++        control("CIS L1 1.2", &["ssh.pubkey_authentication"], "unix"),
++        control("CIS L1 1.1", &["ssh.password_authentication"], "unix"),
++    ]
++    .join(",");
++    let audit = SecurityAuditReport {
++        schema_version: 1,
++        platform: "macos".into(),
++        lanes: vec![LaneReport {
++            lane: "sshd".into(),
++            status: LaneStatus::ok(0),
++            findings: vec![],
++        }],
++        digest: "d".into(),
++    };
++    let a = compliance::evaluate(&profile(&controls_a), &audit, "host", 1).unwrap();
++    let mut b = compliance::evaluate(&profile(&controls_b), &audit, "host", 2).unwrap();
++    assert_eq!(a.digest, b.digest);
++    assert_eq!(
++        serde_json::to_vec(&a.controls).unwrap(),
++        serde_json::to_vec(&b.controls).unwrap()
++    );
++    assert_eq!(compliance::render_html(&a), compliance::render_html(&b));
++    b.generated_unix_ms = a.generated_unix_ms;
++    assert_eq!(serde_json::to_vec(&a).unwrap(), serde_json::to_vec(&b).unwrap());
++    println!("GD-2 digest identical: {}", a.digest);
++    println!("GD-2 JSON identical after timestamp allowlist normalization: true");
++    println!("GD-2 HTML identical: true");
++}
++
++#[test]
++fn html_is_bilingual_rtl_and_air_gapped() {
++    let profile = profile(&control(
++        "CIS L1 1.1",
++        &["ssh.pubkey_authentication"],
++        "unix",
++    ));
++    let audit = SecurityAuditReport {
++        schema_version: 1,
++        platform: "macos".into(),
++        lanes: vec![LaneReport {
++            lane: "sshd".into(),
++            status: LaneStatus::ok(0),
++            findings: vec![],
++        }],
++        digest: "d".into(),
++    };
++    let report = compliance::evaluate(&profile, &audit, "host", 1).unwrap();
++    let html = compliance::render_html(&report);
++    assert!(html.contains("Compliance report"));
++    assert!(html.contains("تقرير الامتثال"));
++    assert!(html.contains("dir=\"rtl\""));
++    assert!(!html.contains("http://"));
++    assert!(!html.contains("https://"));
++}
+--- /dev/null
++++ b/docs/phase33/ARCHITECTURE.md
+@@ -0,0 +1,61 @@
++# Phase 33 — Compliance Reporting Architecture
++
++## Profile contract
++
++`COMPLIANCE_PROFILE_V1` is a strict, local, identifier-only JSON format. Unknown
++fields, unknown schemas, unknown profile IDs, malformed CIS identifiers, empty
++controls, duplicate control IDs, duplicate rule mappings, and references to
++unimplemented P32 rules are rejected before evaluation. The bundled `cis-l1`
++and `cis-l2` assets map every implemented P32 security-audit rule. The `general`
++family holds rules without a more natural family so no rule silently vanishes.
++
++The assets reference CIS control identifiers and AetherCore rule mappings only.
++Official CIS Benchmark prose is not republished, and this feature does not claim
++an official CIS certification.
++
++## Evaluation vocabulary and score
++
++Every profile control produces exactly one of four typed states:
++
++- `Pass`: every mapped lane was available and no failing mapped finding exists.
++- `Fail`: an available lane produced a mapped security finding.
++- `NotApplicable`: the control does not apply to the current platform.
++- `NotVerified`: required evidence was unavailable, denied, missing, or partial.
++
++`NotVerified` is deliberately not `Pass`: lack of evidence cannot establish a
++security posture. Evaluation enforces the invariant
++`pass + fail + na + not_verified == controls.len()`. The percentage is
++`pass / (pass + fail) * 100`; `NotApplicable` and `NotVerified` are excluded
++from the denominator. If `pass + fail == 0`, the report contains the typed
++`NoVerifiableControls` state instead of a fabricated percentage.
++
++Evidence references contain finding IDs only. Raw facts, observed secret text,
++and expected-value strings from security-audit evidence never enter a compliance
++report.
++
++## Report, digest, and rendering
++
++The JSON envelope schema is `aethercore.compliance.v1`. Canonical digest input
++contains the schema, profile ID, host fingerprint, sorted controls, sorted
++evidence references, and score. `generated_unix_ms`, the digest field itself,
++the `signed` flag, and the optional signature are normalized out. This makes
++the digest stable for the same semantic observation while retaining the actual
++point-in-time timestamp in the serialized report.
++
++HTML rendering is a single printable EN/AR document. CSS is inline, Arabic uses
++`dir="rtl"`, identifiers remain in code styling, and the renderer contains no
++external JavaScript, fonts, CDN, HTTP, or HTTPS resource dependency.
++
++## Point-in-time trust model
++
++Signing reuses the Phase 29 Ed25519 digest primitive with an explicitly supplied
++owner seed created through `aetherctl keys generate`. A valid signature proves
++that the report digest has not changed and that the signer possessed the private
++key at signing time. An unsigned report states `signed: false` and has no fake
++signature.
++
++A signed report does **not** prove continuous compliance, correctness or
++completeness of every host observation, external certification, or official CIS
++certification. Verification is fully offline and distinguishes malformed report,
++schema/profile mismatch, score inconsistency, digest mismatch, signed-flag
++inconsistency, and signature mismatch.
+--- /dev/null
++++ b/docs/phase33/ISSUES.json
+@@ -0,0 +1,10 @@
++{
++  "schema": "aethercore.phase33.issues.v1",
++  "issues": [],
++  "assessment": "No confirmed Phase 33 product defect remained after the focused compliance, CLI, i18n, digest, signing, tamper, and reconstruction checks. Full-workspace qualification and archive sealing are acceptance gates, not silently converted into issue closures.",
++  "honesty": {
++    "continuous_compliance": "NOT_IMPLEMENTED; tracked as QD-033-002",
++    "official_cis_certification": "NOT_CLAIMED",
++    "browser_visual_inspection": "NOT_REQUIRED; static standalone HTML proof is the acceptance contract"
++  }
++}
+--- /dev/null
++++ b/docs/phase33/MASTER_DELIVERY_REPORT.md
+@@ -0,0 +1,29 @@
++# Phase 33 Master Delivery Report
++
++Authoritative archive hash: see PHASE33_FINAL_SHA256.txt
++
++## Delivered scope
++
++The delivery adds strict `cis-l1` and `cis-l2` profiles, the read-only compliance
++evaluation engine, deterministic JSON and self-contained bilingual HTML reports,
++owner-key Ed25519 signing through the shared Phase 29 primitive, and fully
++offline verification. No daemon request, response, event, or envelope wire tag
++is allocated by Phase 33.
++
++The binary-safe delta is based on the sealed Phase 32 master archive. Its
++manifest records only modified/added/removed Phase 33 paths; its full-tree
++ledger covers the delivered tree while structurally excluding build caches,
++Finder noise, and the self-referential Phase 33 patch directory. Two independent
++reconstruction cycles are required before seal acceptance.
++
++## Assurance boundary
++
++The report is a point-in-time assessment of locally available P32 audit lanes.
++`NotVerified` remains first-class and is excluded from the score denominator.
++A signature establishes report integrity and signer key possession at signing
++time. It does not establish continuous compliance, observation completeness,
++external certification, or official CIS certification.
++
++The final artifact hash is intentionally stored only in the external pointer
++file named above. Embedding the archive hash inside the archive would create a
++self-referential, non-closable seal.
+--- /dev/null
++++ b/docs/phase33/PROGRESS.md
+@@ -0,0 +1,24 @@
++# Phase 33 Progress
++
++## Implementation checkpoint
++
++- Added strict `COMPLIANCE_PROFILE_V1` parsing and validation for `cis-l1` and
++  `cis-l2`, with complete P32 rule coverage.
++- Added four-state evaluation, exact totals, honest zero-verifiable scoring,
++  deterministic semantic digests, and raw-evidence isolation.
++- Added self-contained bilingual JSON/HTML output and offline report integrity
++  verification.
++- Reused the Phase 29 owner-key Ed25519 digest-signing primitive; no second
++  cryptographic implementation was introduced.
++- Extended registry-driven CLI parsing/routing and EN/AR catalogs without new
++  wire tags or daemon dependency.
++- Replaced placeholder delivery files with a real sealed-P32 `-U0` delta,
++  unrecorded-file-aware full-tree verifier, and two-cycle reconstruction runner.
++
++## Seal sequence
++
++Source and documentation finish before the manifest/ledger refresh. The final
++sequence then runs focused live proofs, workspace tests twice, inherited and P33
++audits, Svelte and clippy gates, two independent reconstruction cycles, and two
++archive builds. `PHASE33_FINAL_SHA256.txt` is written outside the archive. Only
++read-only verification is permitted after archive creation.
+--- /dev/null
++++ b/docs/phase33/QUALIFICATION_DEBT.json
+@@ -0,0 +1,24 @@
++{
++  "schema": "aethercore.phase33.qualification-debt.v1",
++  "policy": "Phase 33 records deferred qualification honestly; no entry is represented as implemented or certified.",
++  "items": [
++    {
++      "id": "QD-033-001",
++      "status": "OPEN",
++      "risk": "low",
++      "detail": "Official CIS benchmark-content licensing/governance. We reference control IDs; we do not republish proprietary benchmark text."
++    },
++    {
++      "id": "QD-033-002",
++      "status": "OPEN",
++      "risk": "medium",
++      "detail": "Continuous compliance scheduling is deferred to the Fleet/automation phase; reports remain explicit point-in-time owner actions."
++    },
++    {
++      "id": "QD-033-003",
++      "status": "OPEN",
++      "risk": "low",
++      "detail": "A custom compliance-profile UI/editor is deferred; Phase 33 accepts only the two bundled strict profiles."
++    }
++  ]
++}
+--- /dev/null
++++ b/docs/phase33/SCORECARD.md
+@@ -0,0 +1,20 @@
++# Phase 33 Qualification Scorecard
++
++| Area | Acceptance evidence |
++|---|---|
++| Strict profiles | Both bundled assets parse; malformed/unknown/duplicate inputs reject typed |
++| P32 coverage | Every implemented security-audit rule is mapped in each bundled profile |
++| Honest evaluation | Exact Pass/Fail/NotApplicable/NotVerified matrix and totals invariant |
++| Scoring | NA/NV excluded; zero verifiable controls returns a typed state |
++| Determinism | Same semantic input yields the same digest; fixed timestamp renders byte-stably |
++| Signing | Phase 29 primitive reuse, signed pass, digest tamper fail, signature tamper fail |
++| Unsigned honesty | Integrity verification passes with `signed:false` and no signature |
++| Rendering | JSON schema pinned; HTML nonempty, printable, bilingual, RTL, and air-gapped |
++| CLI/i18n | Offline generation/verification; EN/AR parity and selection precedence retained |
++| Wire contract | Request maximum 90 and response maximum 52; no proto bytes changed |
++| Delivery | Patch/full-tree pass and two independent sealed-P32 reconstructions compare exactly |
++| Archive | Two byte-identical builds and external-only final SHA pointer |
++
++The standardized final status report is the authoritative record of exact gate
++counts and outputs. This scorecard defines the evidence required and does not
++replace execution of any gate.
+--- /dev/null
++++ b/scripts/_build_p33_archive.py
+@@ -0,0 +1,98 @@
++#!/usr/bin/env python3
++"""Build the complete Phase 33 archive twice and seal its external hash."""
++from __future__ import annotations
++
++import hashlib
++import os
++import pathlib
++import shutil
++import subprocess
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++OUT = ROOT.parent
++NAME = "AetherCore-Phase33-Master-Delivery"
++EXCLUDED_DIRS = {
++    "target",
++    "node_modules",
++    ".git",
++    "dist",
++    "state",
++    "support-staging",
++    "__pycache__",
++}
++
++
++def sha256(path: pathlib.Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        for block in iter(lambda: handle.read(1024 * 1024), b""):
++            digest.update(block)
++    return digest.hexdigest()
++
++
++def build(destination: pathlib.Path) -> None:
++    if destination.exists():
++        destination.unlink()
++    staging = pathlib.Path("/tmp/p33_archive_stage")
++    shutil.rmtree(staging, ignore_errors=True)
++    stage_root = staging / NAME
++    stage_root.mkdir(parents=True)
++    for path in sorted(ROOT.rglob("*")):
++        rel = path.relative_to(ROOT)
++        if (
++            path.is_dir()
++            or rel.name == ".DS_Store"
++            or any(part in EXCLUDED_DIRS for part in rel.parts)
++        ):
++            continue
++        target = stage_root / rel
++        target.parent.mkdir(parents=True, exist_ok=True)
++        shutil.copy2(path, target)
++    list_file = staging / "_files.txt"
++    entries = sorted(
++        str(path.relative_to(staging)) for path in stage_root.rglob("*") if path.is_file()
++    )
++    list_file.write_text("\n".join(entries) + "\n", encoding="utf-8")
++    environment = dict(os.environ, SOURCE_DATE_EPOCH="1787600000", COPYFILE_DISABLE="1")
++    with destination.open("wb") as output:
++        tar = subprocess.Popen(
++            [
++                "tar",
++                "--no-xattrs",
++                "--uid=0",
++                "--gid=0",
++                "--uname=",
++                "--gname=",
++                "-cf",
++                "-",
++                "-C",
++                str(staging),
++                "--files-from",
++                str(list_file),
++            ],
++            stdout=subprocess.PIPE,
++            env=environment,
++        )
++        assert tar.stdout is not None
++        gzip = subprocess.Popen(["gzip", "-n", "-1"], stdin=tar.stdout, stdout=output)
++        tar.stdout.close()
++        gzip.communicate()
++        if tar.wait() != 0 or gzip.returncode != 0:
++            raise SystemExit("archive pipeline failed")
++    shutil.rmtree(staging, ignore_errors=True)
++
++
++hashes = []
++destination = OUT / f"{NAME}.zip"
++for run in (1, 2):
++    build(destination)
++    digest = sha256(destination)
++    hashes.append(digest)
++    print(f"run{run}: {digest}")
++identical = hashes[0] == hashes[1]
++print("ARCHIVE_TWICE_IDENTICAL:", identical)
++if not identical:
++    raise SystemExit(1)
++(OUT / "PHASE33_FINAL_SHA256.txt").write_text(
++    f"{hashes[0]}  {NAME}.zip\n", encoding="utf-8"
++)
+--- /dev/null
++++ b/scripts/_build_p33_patch.py
+@@ -0,0 +1,174 @@
++#!/usr/bin/env python3
++"""Build the Phase 33 text delta and full-tree SHA-256 ledger.
++
++The delta is computed against the authoritative sealed Phase 32 archive. The
++Phase 33 patch directory is excluded from both scans because hashing artifacts
++that contain their own hashes would create a self-reference loop. Earlier
++phase patch directories remain in scope.
++"""
++from __future__ import annotations
++
++import hashlib
++import json
++import pathlib
++import shutil
++import subprocess
++import sys
++
++ROOT = (
++    pathlib.Path(sys.argv[1]).resolve()
++    if len(sys.argv) > 1
++    else pathlib.Path(__file__).resolve().parents[1]
++)
++PATCH = ROOT / "PHASE_33_BINARY_SAFE_PATCH"
++BASE_ARCHIVE = ROOT.parent / "AetherCore-Phase32-Master-Delivery.zip"
++BASE_HASH_FILE = ROOT.parent / "PHASE32_FINAL_SHA256.txt"
++BASE = pathlib.Path("/tmp/p33_p32_seal/base")
++EXCLUDED_DIRS = {
++    "target",
++    "node_modules",
++    ".git",
++    "dist",
++    "state",
++    "support-staging",
++    "__pycache__",
++}
++SELF_PREFIX = "PHASE_33_BINARY_SAFE_PATCH/"
++SELF_LEDGER = f"{SELF_PREFIX}PHASE_33_EXPECTED_FULL_SHA256.json"
++
++
++def sha256(path: pathlib.Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        for block in iter(lambda: handle.read(1024 * 1024), b""):
++            digest.update(block)
++    return digest.hexdigest()
++
++
++def excluded(root: pathlib.Path, path: pathlib.Path) -> bool:
++    rel = path.relative_to(root)
++    return (
++        path.name == ".DS_Store"
++        or any(part in EXCLUDED_DIRS for part in rel.parts)
++        or str(rel).startswith(SELF_PREFIX)
++    )
++
++
++def file_map(root: pathlib.Path) -> dict[str, pathlib.Path]:
++    return {
++        str(path.relative_to(root)): path
++        for path in sorted(root.rglob("*"))
++        if path.is_file() and not excluded(root, path)
++    }
++
++
++def ensure_base() -> None:
++    if not BASE_ARCHIVE.is_file() or not BASE_HASH_FILE.is_file():
++        raise SystemExit("FATAL: authoritative Phase 32 archive/hash is missing")
++    expected = BASE_HASH_FILE.read_text(encoding="utf-8").split()[0]
++    observed = sha256(BASE_ARCHIVE)
++    if observed != expected:
++        raise SystemExit(
++            f"FATAL: Phase 32 archive hash mismatch: expected={expected} observed={observed}"
++        )
++    marker = BASE / "PHASE_32_BINARY_SAFE_PATCH" / "verify_phase32.py"
++    if not marker.is_file():
++        shutil.rmtree(BASE.parent, ignore_errors=True)
++        BASE.mkdir(parents=True)
++        subprocess.run(
++            [
++                "tar",
++                "-xzf",
++                str(BASE_ARCHIVE),
++                "-C",
++                str(BASE),
++                "--strip-components",
++                "1",
++            ],
++            check=True,
++        )
++
++
++def require_text(path: pathlib.Path, rel: str) -> None:
++    raw = path.read_bytes()
++    if b"\0" in raw:
++        raise SystemExit(f"FATAL: binary Phase 33 delta requires payload support: {rel}")
++    try:
++        raw.decode("utf-8")
++    except UnicodeDecodeError as error:
++        raise SystemExit(f"FATAL: non-UTF-8 Phase 33 delta {rel}: {error}") from error
++
++
++def unified_diff(old: pathlib.Path | None, new: pathlib.Path | None, rel: str) -> str:
++    if old is not None:
++        require_text(old, rel)
++    if new is not None:
++        require_text(new, rel)
++    command = ["diff", "-U0", "-u"]
++    if old is None or new is None:
++        command.append("-N")
++    command += [
++        "--label",
++        f"a/{rel}" if old is not None else "/dev/null",
++        "--label",
++        f"b/{rel}" if new is not None else "/dev/null",
++        str(old) if old is not None else "/dev/null",
++        str(new) if new is not None else "/dev/null",
++    ]
++    result = subprocess.run(command, capture_output=True, text=True)
++    if result.returncode not in (0, 1):
++        raise SystemExit(f"FATAL: diff failed for {rel}: {result.stderr.strip()}")
++    return result.stdout
++
++
++ensure_base()
++PATCH.mkdir(parents=True, exist_ok=True)
++live = file_map(ROOT)
++sealed = file_map(BASE)
++added = sorted(set(live) - set(sealed))
++removed = sorted(set(sealed) - set(live))
++modified = sorted(
++    rel for rel in set(live) & set(sealed) if sha256(live[rel]) != sha256(sealed[rel])
++)
++
++diffs = [unified_diff(sealed[rel], live[rel], rel) for rel in modified]
++diffs += [unified_diff(None, live[rel], rel) for rel in added]
++diffs += [unified_diff(sealed[rel], None, rel) for rel in removed]
++(PATCH / "changes.patch").write_text("".join(diffs), encoding="utf-8")
++
++post_state = modified + added
++sha_map = {rel: sha256(live[rel]) for rel in sorted(post_state)}
++manifest = {
++    "schema": "aethercore.phase33.binary-safe-patch.v1",
++    "base": BASE_ARCHIVE.name,
++    "base_sha256": sha256(BASE_ARCHIVE),
++    "files": modified + [f"+{rel}" for rel in added] + [f"-{rel}" for rel in removed],
++    "modifiedCount": len(modified),
++    "addedCount": len(added),
++    "removedCount": len(removed),
++    "sha256": sha_map,
++}
++(PATCH / "MANIFEST.json").write_text(
++    json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
++)
++
++ledger = {rel: sha256(path) for rel, path in sorted(live.items())}
++full = {
++    "schema": "aethercore.phase33.full-sha256.v1",
++    "base": BASE_ARCHIVE.name,
++    "note": (
++        "Build/dependency caches and .DS_Store are structurally excluded. "
++        "PHASE_33_BINARY_SAFE_PATCH is excluded as a self-referential deliverable; "
++        "its integrity is established by two sealed-P32 reconstruction cycles. "
++        "Earlier phase patch directories remain in the full-tree scope."
++    ),
++    "files": ledger,
++    "self_excluded": SELF_LEDGER,
++}
++(PATCH / "PHASE_33_EXPECTED_FULL_SHA256.json").write_text(
++    json.dumps(full, indent=2, sort_keys=True) + "\n", encoding="utf-8"
++)
++print(
++    f"modified={len(modified)} added={len(added)} removed={len(removed)} "
++    f"manifest={len(manifest['files'])} ledger={len(ledger)}"
++)
+--- /dev/null
++++ b/scripts/_p33_final_seal.py
+@@ -0,0 +1,110 @@
++#!/usr/bin/env python3
++"""Final Phase 33 delivery seal; no delivered-tree writes after archive build."""
++from __future__ import annotations
++
++import json
++import pathlib
++import subprocess
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++BASE = pathlib.Path("/tmp/p33_p32_seal/base")
++
++
++def run(command: list[str], *, cwd: pathlib.Path = ROOT) -> subprocess.CompletedProcess[str]:
++    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
++    print(f"$ {' '.join(command)}")
++    output = (result.stdout + result.stderr).strip()
++    if output:
++        print("\n".join(output.splitlines()[-30:]))
++    if result.returncode != 0:
++        raise SystemExit(f"seal command failed with exit {result.returncode}")
++    return result
++
++
++def verify(label: str, script: pathlib.Path, root: pathlib.Path, full: bool) -> None:
++    command = [sys.executable, str(script), str(root)]
++    if full:
++        command.append("--full-tree")
++    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
++    parsed = json.loads(result.stdout)
++    problems = parsed.get("problem_count", len(parsed.get("problems", [])))
++    print(
++        f"{label}: checked={parsed.get('checked')} problems={problems} "
++        f"status={parsed.get('status')}"
++    )
++    if result.returncode != 0 or parsed.get("status") != "PASS":
++        raise SystemExit(f"{label} failed")
++
++
++if not (BASE / "PHASE_32_BINARY_SAFE_PATCH/verify_phase32.py").is_file():
++    raise SystemExit("pristine sealed-P32 extraction missing at /tmp/p33_p32_seal/base")
++
++print("== 1. Refresh Phase 33 delta and full-tree ledger ==")
++run([sys.executable, "scripts/_build_p33_patch.py", str(ROOT)])
++
++print("== 2. Verify Phase 33 patch/full-tree and adversarial audit ==")
++verify(
++    "P33 patch",
++    ROOT / "PHASE_33_BINARY_SAFE_PATCH/verify_phase33.py",
++    ROOT,
++    False,
++)
++verify(
++    "P33 full-tree",
++    ROOT / "PHASE_33_BINARY_SAFE_PATCH/verify_phase33.py",
++    ROOT,
++    True,
++)
++run([sys.executable, "scripts/phase33-adversarial-audit.py", str(ROOT)])
++
++print("== 3. Two independent sealed-P32 reconstruction cycles ==")
++run([sys.executable, "scripts/_p33_reconstruction_test.py", str(ROOT)])
++
++print("== 4. Inherited verifiers against the immutable sealed-P32 base ==")
++verify(
++    "P32 full-tree",
++    BASE / "PHASE_32_BINARY_SAFE_PATCH/verify_phase32.py",
++    BASE,
++    True,
++)
++verify("P32 patch", BASE / "PHASE_32_BINARY_SAFE_PATCH/verify_phase32.py", BASE, False)
++verify(
++    "P31 full-tree",
++    BASE / "PHASE_31_BINARY_SAFE_PATCH/verify_phase31.py",
++    BASE,
++    True,
++)
++verify("P31 patch", BASE / "PHASE_31_BINARY_SAFE_PATCH/verify_phase31.py", BASE, False)
++
++print("== 5. Build Phase 33 archive twice; write external final hash ==")
++archive = run([sys.executable, "scripts/_build_p33_archive.py"])
++if "ARCHIVE_TWICE_IDENTICAL: True" not in archive.stdout:
++    raise SystemExit("archive determinism marker missing")
++
++print("== 6. Post-archive READ-ONLY verification; no delivered-tree writes ==")
++verify(
++    "P33 patch post-seal",
++    ROOT / "PHASE_33_BINARY_SAFE_PATCH/verify_phase33.py",
++    ROOT,
++    False,
++)
++verify(
++    "P33 full-tree post-seal",
++    ROOT / "PHASE_33_BINARY_SAFE_PATCH/verify_phase33.py",
++    ROOT,
++    True,
++)
++verify(
++    "P32 full-tree post-seal",
++    BASE / "PHASE_32_BINARY_SAFE_PATCH/verify_phase32.py",
++    BASE,
++    True,
++)
++verify(
++    "P31 full-tree post-seal",
++    BASE / "PHASE_31_BINARY_SAFE_PATCH/verify_phase31.py",
++    BASE,
++    True,
++)
++print("PHASE33_FINAL_SEAL_OK: True")
+--- /dev/null
++++ b/scripts/_p33_reconstruction_test.py
+@@ -0,0 +1,139 @@
++#!/usr/bin/env python3
++"""Run two independent sealed-P32 -> P33 reconstruction cycles."""
++from __future__ import annotations
++
++import hashlib
++import json
++import pathlib
++import shutil
++import subprocess
++import sys
++import tempfile
++
++ROOT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
++ARCHIVE = ROOT.parent / "AetherCore-Phase32-Master-Delivery.zip"
++HASH_FILE = ROOT.parent / "PHASE32_FINAL_SHA256.txt"
++PATCH_DIR = "PHASE_33_BINARY_SAFE_PATCH"
++EXCLUDED_DIRS = {
++    "target",
++    "node_modules",
++    ".git",
++    "dist",
++    "state",
++    "support-staging",
++    "__pycache__",
++    PATCH_DIR,
++}
++
++
++def sha256(path: pathlib.Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        for block in iter(lambda: handle.read(1024 * 1024), b""):
++            digest.update(block)
++    return digest.hexdigest()
++
++
++def scoped(root: pathlib.Path) -> dict[str, str]:
++    result = {}
++    for path in sorted(root.rglob("*")):
++        rel = path.relative_to(root)
++        if (
++            path.is_file()
++            and path.name != ".DS_Store"
++            and not any(part in EXCLUDED_DIRS for part in rel.parts)
++        ):
++            result[str(rel)] = sha256(path)
++    return result
++
++
++expected_archive = HASH_FILE.read_text(encoding="utf-8").split()[0]
++observed_archive = sha256(ARCHIVE)
++if observed_archive != expected_archive:
++    raise SystemExit(
++        f"sealed P32 archive mismatch: expected={expected_archive} observed={observed_archive}"
++    )
++
++live = scoped(ROOT)
++results = []
++for cycle in (1, 2):
++    temp = pathlib.Path(tempfile.mkdtemp(prefix=f"aethercore-p33-cycle-{cycle}-"))
++    reconstructed = temp / "root"
++    reconstructed.mkdir()
++    try:
++        subprocess.run(
++            [
++                "tar",
++                "-xzf",
++                str(ARCHIVE),
++                "-C",
++                str(reconstructed),
++                "--strip-components",
++                "1",
++            ],
++            check=True,
++        )
++        shutil.copytree(ROOT / PATCH_DIR, reconstructed / PATCH_DIR)
++        apply = reconstructed / PATCH_DIR / "apply_phase33_patch.sh"
++        applied = subprocess.run(
++            [str(apply), str(reconstructed)], capture_output=True, text=True
++        )
++        patch_verify = subprocess.run(
++            [
++                sys.executable,
++                str(reconstructed / PATCH_DIR / "verify_phase33.py"),
++                str(reconstructed),
++            ],
++            capture_output=True,
++            text=True,
++        )
++        full_verify = subprocess.run(
++            [
++                sys.executable,
++                str(reconstructed / PATCH_DIR / "verify_phase33.py"),
++                str(reconstructed),
++                "--full-tree",
++            ],
++            capture_output=True,
++            text=True,
++        )
++        rebuilt = scoped(reconstructed)
++        mismatches = sorted(
++            set(live) ^ set(rebuilt)
++            | {rel for rel in set(live) & set(rebuilt) if live[rel] != rebuilt[rel]}
++        )
++        result = {
++            "cycle": cycle,
++            "apply_status": "PASS" if applied.returncode == 0 else "FAIL",
++            "apply_error": applied.stderr.strip()[-500:],
++            "patch_status": json.loads(patch_verify.stdout).get("status", "FAIL")
++            if patch_verify.stdout
++            else "FAIL",
++            "full_tree_status": json.loads(full_verify.stdout).get("status", "FAIL")
++            if full_verify.stdout
++            else "FAIL",
++            "compared_files": len(live),
++            "mismatch_count": len(mismatches),
++            "mismatches": mismatches[:20],
++        }
++        results.append(result)
++    finally:
++        shutil.rmtree(temp, ignore_errors=True)
++
++ok = all(
++    row["apply_status"] == row["patch_status"] == row["full_tree_status"] == "PASS"
++    and row["mismatch_count"] == 0
++    for row in results
++)
++print(
++    json.dumps(
++        {
++            "schema": "aethercore.phase33.reconstruction.v1",
++            "base_sha256": observed_archive,
++            "cycles": results,
++            "status": "PASS" if ok else "FAIL",
++        },
++        indent=2,
++    )
++)
++raise SystemExit(0 if ok else 1)
+--- /dev/null
++++ b/scripts/p33-live-proofs.py
+@@ -0,0 +1,209 @@
++#!/usr/bin/env python3
++"""Execute Phase 33 GD-1..GD-5, including the real local-Mac pipeline."""
++from __future__ import annotations
++
++import json
++import pathlib
++import subprocess
++import tempfile
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++BIN = ROOT / "target/debug/aetherctl"
++
++
++def checked(command: list[str]) -> subprocess.CompletedProcess[str]:
++    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
++    if result.returncode != 0:
++        raise SystemExit(
++            f"command failed ({result.returncode}): {' '.join(command)}\n"
++            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
++        )
++    return result
++
++
++def cli(*args: str, expect_success: bool = True) -> subprocess.CompletedProcess[str]:
++    result = subprocess.run([str(BIN), *args], cwd=ROOT, text=True, capture_output=True)
++    if expect_success and result.returncode != 0:
++        raise SystemExit(f"aetherctl failed: {args}\n{result.stdout}\n{result.stderr}")
++    if not expect_success and result.returncode == 0:
++        raise SystemExit(f"aetherctl unexpectedly accepted: {args}")
++    return result
++
++
++checked(["cargo", "build", "-q", "-p", "aetherctl"])
++
++profile_proofs = checked(
++    [
++        "cargo",
++        "test",
++        "-q",
++        "-p",
++        "aethercore-security-audit",
++        "--test",
++        "compliance_red",
++        "--",
++        "--nocapture",
++    ]
++)
++for line in profile_proofs.stdout.splitlines():
++    marker = line.find("GD-")
++    if marker >= 0:
++        print(line[marker:])
++
++signature_proofs = checked(
++    [
++        "cargo",
++        "test",
++        "-q",
++        "-p",
++        "aetherctl",
++        "phase33_tests::gd2_and_gd3_report_determinism_signature_tamper_and_unsigned_honesty",
++        "--",
++        "--nocapture",
++    ]
++)
++for line in signature_proofs.stdout.splitlines():
++    marker = line.find("GD-")
++    if marker >= 0:
++        print(line[marker:])
++
++with tempfile.TemporaryDirectory(prefix="aethercore-p33-live-") as temp_name:
++    temp = pathlib.Path(temp_name)
++    fixture = temp / "sshd_config"
++    fixture.write_text(
++        "PermitRootLogin yes\nPasswordAuthentication yes\nPubkeyAuthentication yes\n",
++        encoding="utf-8",
++    )
++
++    # Independent CLI determinism proof with only timestamp allowlisted.
++    first_json = temp / "determinism-first.json"
++    second_json = temp / "determinism-second.json"
++    cli(
++        "sec",
++        "audit",
++        "--profile",
++        "cis-l1",
++        "--ssh",
++        str(fixture),
++        "--out",
++        str(first_json),
++        "--format",
++        "both",
++    )
++    cli(
++        "sec",
++        "audit",
++        "--profile",
++        "cis-l1",
++        "--ssh",
++        str(fixture),
++        "--out",
++        str(second_json),
++        "--format",
++        "both",
++    )
++    first = json.loads(first_json.read_text(encoding="utf-8"))
++    second = json.loads(second_json.read_text(encoding="utf-8"))
++    if first["digest"] != second["digest"]:
++        raise SystemExit("GD-2 digest drift")
++    first["generated_unix_ms"] = 0
++    second["generated_unix_ms"] = 0
++    if first != second:
++        raise SystemExit("GD-2 non-timestamp JSON drift")
++    first_html = first_json.with_suffix(".html").read_bytes()
++    second_html = second_json.with_suffix(".html").read_bytes()
++    if first_html != second_html:
++        raise SystemExit("GD-2 HTML drift")
++    print("GD-2 CLI JSON identical after generated_unix_ms allowlist normalization: true")
++    print("GD-2 CLI HTML byte-identical: true")
++
++    # Real host, explicit temporary owner key, signed JSON + standalone HTML.
++    owner_seed = temp / "owner.seed"
++    cli("--output", "json", "keys", "generate", "--out", str(owner_seed))
++    live_json = temp / "live.json"
++    cli(
++        "--output",
++        "json",
++        "sec",
++        "audit",
++        "--profile",
++        "cis-l1",
++        "--out",
++        str(live_json),
++        "--format",
++        "both",
++        "--sign",
++        "--key",
++        str(owner_seed),
++    )
++    verified = cli("--output", "json", "compliance", "verify", str(live_json))
++    live = json.loads(live_json.read_text(encoding="utf-8"))
++    if not live.get("signed") or not live.get("signature"):
++        raise SystemExit("GD-4 live report was not signed")
++
++    live_html = live_json.with_suffix(".html")
++    html_bytes = live_html.read_bytes()
++    html = html_bytes.decode("utf-8")
++    external_urls = html.count("http://") + html.count("https://")
++    if not html_bytes or external_urls != 0:
++        raise SystemExit("GD-4 HTML standalone proof failed")
++
++    print("GD-4 LIVE MAC SCORE BLOCK")
++    print(json.dumps(live["score"], indent=2, ensure_ascii=False))
++    print(
++        "GD-4 SIGNED OFFLINE VERIFY",
++        json.dumps(
++            {
++                "exit": verified.returncode,
++                "signed": live["signed"],
++                "digest": live["digest"],
++            },
++            sort_keys=True,
++        ),
++    )
++    print(
++        "GD-4 HTML AIR-GAP",
++        json.dumps(
++            {
++                "path": str(live_html),
++                "bytes": len(html_bytes),
++                "external_http_https_occurrences": external_urls,
++                "standalone_local_file": live_html.is_file(),
++            },
++            sort_keys=True,
++        ),
++    )
++
++    # Flip one ASCII byte inside signature_hex while preserving valid JSON.
++    signature_tampered = json.loads(live_json.read_text(encoding="utf-8"))
++    old_signature = signature_tampered["signature"]["signature_hex"]
++    flipped = "0" if old_signature[0] != "0" else "1"
++    signature_tampered["signature"]["signature_hex"] = flipped + old_signature[1:]
++    tampered_path = temp / "live-signature-tampered.json"
++    tampered_path.write_text(json.dumps(signature_tampered, indent=2), encoding="utf-8")
++    tamper_result = cli(
++        "--output", "json", "compliance", "verify", str(tampered_path), expect_success=False
++    )
++    tamper_output = (tamper_result.stdout + tamper_result.stderr).strip()
++    if "sec.signatureMismatch" not in tamper_output and "signature mismatch" not in tamper_output:
++        raise SystemExit(f"GD-3 signature tamper was not typed: {tamper_output}")
++    print(
++        "GD-3 ONE-BYTE SIGNATURE TAMPER",
++        json.dumps({"exit": tamper_result.returncode, "typed_error": tamper_output}),
++    )
++
++    # Unsigned report remains honest and still verifies its deterministic integrity.
++    unsigned_verified = cli("--output", "json", "compliance", "verify", str(first_json))
++    if first.get("signed") or "signature" in first:
++        raise SystemExit("GD-3 unsigned honesty failed")
++    print(
++        "GD-3 UNSIGNED HONESTY",
++        json.dumps(
++            {
++                "exit": unsigned_verified.returncode,
++                "signed": False,
++                "signature_present": False,
++            },
++            sort_keys=True,
++        ),
++    )
+--- /dev/null
++++ b/scripts/phase33-adversarial-audit.py
+@@ -0,0 +1,333 @@
++#!/usr/bin/env python3
++"""Phase 33 compliance-reporting audit: strict 29-gate superset of Phase 32."""
++from __future__ import annotations
++
++import hashlib
++import importlib.util
++import json
++import os
++import re
++import shutil
++import subprocess
++import sys
++import tempfile
++from pathlib import Path
++
++ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
++failures: list[str] = []
++new_gates: list[str] = []
++
++
++def gate(name: str, condition: bool, detail: str = "") -> None:
++    new_gates.append(name)
++    if not condition:
++        failures.append(f"{name}: {detail}")
++
++
++def sha256(path: Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        for block in iter(lambda: handle.read(1024 * 1024), b""):
++            digest.update(block)
++    return digest.hexdigest()
++
++
++# Import and execute the entire P32 audit. No P33 superseded filters are added.
++# One inherited P30 gate regenerates its old patch directory as a side effect.
++# Run the inherited chain against a hard-linked disposable clone so all 817
++# checks see current P33 bytes while the delivered tree remains read-only.
++audit_temp = Path(tempfile.mkdtemp(prefix="aethercore-p33-inherited-"))
++audit_root = audit_temp / "root"
++shutil.copytree(
++    ROOT,
++    audit_root,
++    copy_function=os.link,
++    ignore=shutil.ignore_patterns(
++        "target",
++        "node_modules",
++        ".git",
++        "dist",
++        "state",
++        "support-staging",
++        "__pycache__",
++    ),
++)
++spec = importlib.util.spec_from_file_location(
++    "phase32_audit", audit_root / "scripts" / "phase32-adversarial-audit.py"
++)
++p32 = importlib.util.module_from_spec(spec)
++assert spec.loader is not None
++sys.argv = [sys.argv[0], str(audit_root)]
++try:
++    try:
++        spec.loader.exec_module(p32)
++    except SystemExit:
++        pass
++    inherited_checks = p32.checks
++    failures.extend(p32.failures)
++finally:
++    shutil.rmtree(audit_temp, ignore_errors=True)
++    sys.argv = [sys.argv[0], str(ROOT)]
++
++compliance_path = ROOT / "crates/security-audit/src/compliance.rs"
++compliance = compliance_path.read_text(encoding="utf-8") if compliance_path.is_file() else ""
++compliance_tests_path = ROOT / "crates/security-audit/tests/compliance_red.rs"
++compliance_tests = (
++    compliance_tests_path.read_text(encoding="utf-8") if compliance_tests_path.is_file() else ""
++)
++sec_cli = (ROOT / "apps/aetherctl/src/sec.rs").read_text(encoding="utf-8")
++export_rs = (ROOT / "crates/persistence/src/export.rs").read_text(encoding="utf-8")
++i18n = (ROOT / "apps/aetherctl/src/i18n.rs").read_text(encoding="utf-8")
++
++# 1-4: engine and strict profile assets.
++gate("p33-01-compliance-module-exists", compliance_path.is_file(), "missing compliance.rs")
++gate("p33-02-profile-schema-pinned", 'PROFILE_SCHEMA: &str = "COMPLIANCE_PROFILE_V1"' in compliance)
++gate(
++    "p33-03-strict-profile-deserialization",
++    compliance.count("deny_unknown_fields") >= 7,
++    "all profile/report structs must reject unknown fields",
++)
++profile_paths = [
++    ROOT / "assets/compliance/profiles/cis-l1.json",
++    ROOT / "assets/compliance/profiles/cis-l2.json",
++]
++gate("p33-04-bundled-cis-profiles", all(path.is_file() for path in profile_paths))
++
++# 5: exact coverage of every P32-implemented rule code in each bundled profile.
++p32_code = "\n".join(
++    path.read_text(encoding="utf-8")
++    for path in sorted((ROOT / "crates/security-audit/src").glob("*.rs"))
++    if path.name != "compliance.rs"
++)
++implemented = set(
++    re.findall(r'"((?:ssh|pass|sudo|fs|auth|fw|secrets|cve)\.[\w]+)"', p32_code)
++)
++coverage_failures: list[str] = []
++for path in profile_paths:
++    if not path.is_file():
++        continue
++    profile = json.loads(path.read_text(encoding="utf-8"))
++    mapped = {
++        code
++        for family in profile.get("control_families", [])
++        for control in family.get("controls", [])
++        for code in control.get("rule_codes", [])
++    }
++    if mapped != implemented:
++        coverage_failures.append(
++            f"{path.name}: missing={sorted(implemented - mapped)} extra={sorted(mapped - implemented)}"
++        )
++gate("p33-05-complete-p32-rule-coverage", not coverage_failures, "; ".join(coverage_failures))
++
++# 6-12: typed honesty, totals, score and deterministic report envelope.
++gate(
++    "p33-06-adversarial-rule-reference-tests",
++    "ComplianceError::UnknownRule" in compliance_tests
++    and "profile_rejects_invalid_rule_and_control_shape" in compliance_tests,
++)
++gate(
++    "p33-07-not-verified-first-class",
++    "NotVerified" in compliance and "not_verified_is_not_pass" in compliance_tests,
++)
++gate(
++    "p33-08-total-invariant",
++    "report.controls.len()" in compliance_tests
++    and "report.score.total()" in compliance_tests
++    and "report.score.total() != report.controls.len()" in compliance,
++)
++gate(
++    "p33-09-score-excludes-na-nv",
++    "pass + fail == 0" in compliance
++    and "pass as f64 * 100.0 / (pass + fail) as f64" in compliance,
++)
++gate(
++    "p33-10-zero-verifiable-typed-state",
++    "NoVerifiableControls" in compliance
++    and "zero_verifiable_controls_has_typed_state" in compliance_tests,
++)
++gate("p33-11-report-schema-pinned", 'REPORT_SCHEMA: &str = "aethercore.compliance.v1"' in compliance)
++gate(
++    "p33-12-deterministic-digest",
++    "canonical.generated_unix_ms = 0" in compliance
++    and "canonical.controls" in compliance
++    and "sort_by(|left, right| left.control_id" in compliance
++    and "digest_sorts_semantically_and_excludes_timestamp" in compliance_tests,
++)
++
++# 13-18: Phase29 signing reuse, unsigned honesty, tamper, air-gap, i18n, redaction.
++gate(
++    "p33-13-phase29-signature-primitive-reused",
++    "pub fn sign_digest" in export_rs
++    and "pub fn verify_digest_signature" in export_rs
++    and "aethercore_persistence::export::sign_digest" in sec_cli
++    and "aethercore_persistence::export::verify_digest_signature" in sec_cli
++    and "ed25519_dalek" not in compliance,
++)
++gate(
++    "p33-14-unsigned-report-honesty",
++    "signed != report.signature.is_some()" in compliance
++    and "unsigned integrity: PASS signed=false signature=absent" in sec_cli,
++)
++gate(
++    "p33-15-typed-tamper-rejection",
++    "digest mismatch" in sec_cli
++    and "signature mismatch" in sec_cli
++    and "signature tamper must fail" in sec_cli,
++)
++render_slice = compliance.split("pub fn render_html", 1)[1] if "pub fn render_html" in compliance else ""
++gate(
++    "p33-16-self-contained-bilingual-html",
++    "inline CSS" in compliance
++    and 'dir=\\\"rtl\\\"' in compliance
++    and "http://" not in render_slice
++    and "https://" not in render_slice,
++)
++new_i18n_keys = set(
++    re.findall(r'"((?:compliance|cli\.usage\.compliance|sec\.signatureMismatch)[\w.]*)"', i18n.split("];", 1)[0])
++)
++en_block = i18n.split("pub fn en(", 1)[1].split("pub fn ar(", 1)[0]
++ar_block = i18n.split("pub fn ar(", 1)[1]
++en_keys = set(re.findall(r'"([\w.]+)"\s*=>', en_block))
++ar_keys = set(re.findall(r'"([\w.]+)"\s*=>', ar_block))
++gate(
++    "p33-17-en-ar-i18n-parity",
++    bool(new_i18n_keys) and new_i18n_keys <= en_keys and new_i18n_keys <= ar_keys
++    and "compliance_help_is_present_in_both_languages" in i18n,
++    f"missing EN={sorted(new_i18n_keys-en_keys)} AR={sorted(new_i18n_keys-ar_keys)}",
++)
++gate(
++    "p33-18-no-raw-secret-regression",
++    "evidence_refs.push(finding.id.clone())" in compliance
++    and "finding.evidence" not in compliance
++    and "sensitive raw fact" in compliance_tests,
++)
++
++# 19-22: seal closure and wire freeze.
++archive_builders = sorted((ROOT / "scripts").glob("_build_p*_archive.py"))
++gate(
++    "p33-19-all-archive-builders-exclude-ds-store",
++    bool(archive_builders)
++    and all("DS_Store" in path.read_text(encoding="utf-8") for path in archive_builders),
++    f"missing marker: {[p.name for p in archive_builders if 'DS_Store' not in p.read_text(encoding='utf-8')]}",
++)
++p32_mdr = (ROOT / "docs/phase32/MASTER_DELIVERY_REPORT.md").read_text(encoding="utf-8")
++p32_authoritative_hash = (ROOT.parent / "PHASE32_FINAL_SHA256.txt").read_text(encoding="utf-8").split()[0]
++gate(
++    "p33-20-p32-mdr-hash-pointer-only",
++    "Authoritative archive hash: see PHASE32_FINAL_SHA256.txt" in p32_mdr
++    and p32_authoritative_hash not in p32_mdr,
++)
++p33_mdr = (ROOT / "docs/phase33/MASTER_DELIVERY_REPORT.md").read_text(encoding="utf-8")
++gate(
++    "p33-21-p33-mdr-hash-pointer-only",
++    "Authoritative archive hash: see PHASE33_FINAL_SHA256.txt" in p33_mdr
++    and not re.search(r"\b[0-9a-f]{64}\b", p33_mdr),
++)
++p32_ledger = json.loads(
++    (ROOT / "PHASE_32_BINARY_SAFE_PATCH/PHASE_32_EXPECTED_FULL_SHA256.json").read_text(encoding="utf-8")
++)["files"]
++proto_paths = sorted((ROOT / "crates/contracts/proto").glob("*.proto"))
++proto_unchanged = all(p32_ledger.get(str(path.relative_to(ROOT))) == sha256(path) for path in proto_paths)
++operations = (ROOT / "crates/contracts/proto/operations.proto").read_text(encoding="utf-8")
++request = operations.split("message Request", 1)[1].split("oneof payload", 1)[1].split("\n  }", 1)[0]
++response = operations.split("message Response", 1)[1].split("oneof payload", 1)[1].split("\n  }", 1)[0]
++request_tags = [int(tag) for tag in re.findall(r"^\s{4}\w+\s+\w+\s*=\s*(\d+);", request, re.M)]
++response_tags = [int(tag) for tag in re.findall(r"^\s{4}\w+\s+\w+\s*=\s*(\d+);", response, re.M)]
++gate(
++    "p33-22-zero-new-wire-tags-freeze-90-52",
++    proto_unchanged and max(request_tags) == 90 and max(response_tags) == 52,
++)
++
++# 23-26: capability bans, docs, and exact append-only debt proof against sealed P32.
++mutation_symbols = ["fs::write", "File::create", "OpenOptions", "remove_file", "remove_dir", "rename("]
++gate(
++    "p33-23-compliance-engine-read-only",
++    not any(symbol in compliance for symbol in mutation_symbols),
++)
++network_symbols = ["std::net", "TcpStream", "reqwest", "ureq", "hyper", "curl", "fetch("]
++runtime_text = compliance + sec_cli.split("/// Offline `sec report", 1)[0]
++gate(
++    "p33-24-runtime-renderer-verifier-network-free",
++    not any(symbol in runtime_text for symbol in network_symbols),
++)
++required_docs = [
++    "ARCHITECTURE.md",
++    "QUALIFICATION_DEBT.json",
++    "ISSUES.json",
++    "SCORECARD.md",
++    "MASTER_DELIVERY_REPORT.md",
++    "PROGRESS.md",
++]
++docs_dir = ROOT / "docs/phase33"
++gate(
++    "p33-25-doc-set-complete-nontrivial",
++    all((docs_dir / name).is_file() and (docs_dir / name).stat().st_size > 300 for name in required_docs),
++)
++base_debt_path = Path("/tmp/p33_p32_seal/base/DEBT_REGISTER.json")
++if base_debt_path.is_file():
++    base_debt = json.loads(base_debt_path.read_text(encoding="utf-8"))
++else:
++    archive = ROOT.parent / "AetherCore-Phase32-Master-Delivery.zip"
++    member = "AetherCore-Phase32-Master-Delivery/DEBT_REGISTER.json"
++    extracted = subprocess.run(["tar", "-xOf", str(archive), member], capture_output=True, check=True)
++    base_debt = json.loads(extracted.stdout)
++current_debt = json.loads((ROOT / "DEBT_REGISTER.json").read_text(encoding="utf-8"))
++base_entries = base_debt.get("entries", [])
++current_entries = current_debt.get("entries", [])
++gate(
++    "p33-26-debt-register-append-only",
++    current_entries[: len(base_entries)] == base_entries
++    and [entry.get("id") for entry in current_entries[len(base_entries) :]]
++    == ["QD-033-001", "QD-033-002", "QD-033-003"],
++)
++
++# 27-28: current artifact coverage and deterministic read-only verification x2.
++verify_command = [sys.executable, str(ROOT / "PHASE_33_BINARY_SAFE_PATCH/verify_phase33.py"), str(ROOT)]
++first_patch = subprocess.run(verify_command, capture_output=True, text=True)
++first_full = subprocess.run(verify_command + ["--full-tree"], capture_output=True, text=True)
++manifest = json.loads((ROOT / "PHASE_33_BINARY_SAFE_PATCH/MANIFEST.json").read_text(encoding="utf-8"))
++ledger = json.loads(
++    (ROOT / "PHASE_33_BINARY_SAFE_PATCH/PHASE_33_EXPECTED_FULL_SHA256.json").read_text(encoding="utf-8")
++)
++manifest_post = {
++    entry[1:] if entry.startswith("+") else entry
++    for entry in manifest.get("files", [])
++    if not entry.startswith("-")
++}
++gate(
++    "p33-27-ledger-manifest-full-tree-consistency",
++    first_patch.returncode == 0
++    and first_full.returncode == 0
++    and bool(manifest_post)
++    and manifest_post <= set(ledger.get("files", {}))
++    and not any(rel.startswith("PHASE_33_BINARY_SAFE_PATCH/") for rel in ledger.get("files", {})),
++)
++second_patch = subprocess.run(verify_command, capture_output=True, text=True)
++second_full = subprocess.run(verify_command + ["--full-tree"], capture_output=True, text=True)
++gate(
++    "p33-28-verifier-determinism-x2",
++    first_patch.returncode == second_patch.returncode == 0
++    and first_full.returncode == second_full.returncode == 0
++    and first_patch.stdout == second_patch.stdout
++    and first_full.stdout == second_full.stdout,
++)
++
++# 29: exact count guard. This also prevents accidental omission/addition of a gate.
++gate(
++    "p33-29-exact-audit-total-above-817",
++    inherited_checks == 817 and inherited_checks + 29 > 817 and len(new_gates) == 28,
++    f"inherited={inherited_checks} new={len(new_gates)}",
++)
++
++checks = inherited_checks + len(new_gates)
++result = {
++    "schema": "aethercore.phase33.adversarial-audit.v1",
++    "root": str(ROOT),
++    "inherited_p32_checks": inherited_checks,
++    "new_gates": new_gates,
++    "checks": checks,
++    "failures": failures,
++    "status": "PASS" if not failures else "FAIL",
++}
++print(json.dumps(result, indent=2))
++raise SystemExit(0 if not failures else 1)

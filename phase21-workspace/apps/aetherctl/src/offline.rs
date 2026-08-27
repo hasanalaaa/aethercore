@@ -54,6 +54,8 @@ pub fn command_label(job: &OfflineJob) -> String {
         OfflineJob::KeysFingerprint { .. } => "keys fingerprint".to_string(),
         OfflineJob::DbCheckSqlite { .. } => "db check".to_string(),
         OfflineJob::SecAudit { .. } => "sec audit".to_string(),
+        OfflineJob::ComplianceAudit { .. } => "sec audit --profile".to_string(),
+        OfflineJob::ComplianceVerify { .. } => "compliance verify".to_string(),
         OfflineJob::SecReport { .. } => "sec report".to_string(),
         OfflineJob::SecComplianceSummary { .. } => "compliance summary".to_string(),
         OfflineJob::VulndbUpdate { .. } => "vulndb update".to_string(),
@@ -95,6 +97,22 @@ fn execute(config: &Config, job: OfflineJob) -> Result<serde_json::Value, CliErr
         // Phase 30 (T6): offline read-only SQLite diagnostics via db-diagnostics crate.
         OfflineJob::DbCheckSqlite { path } => db_check_sqlite(&path),
         OfflineJob::SecAudit { targets } => crate::sec::run_offline_audit(&targets),
+        OfflineJob::ComplianceAudit {
+            profile,
+            out,
+            format,
+            sign,
+            key,
+            targets,
+        } => crate::sec::run_compliance_audit(
+            &profile,
+            &out,
+            &format,
+            sign,
+            key.as_deref(),
+            &targets,
+        ),
+        OfflineJob::ComplianceVerify { file } => crate::sec::verify_compliance_report(&file),
         OfflineJob::SecReport { file } => crate::sec::render_saved_report(&file),
         OfflineJob::SecComplianceSummary {
             profile,
@@ -516,7 +534,6 @@ fn export_verify(file: &str) -> Result<serde_json::Value, CliError> {
 /// lowercase hex with 0600 permissions and prints the public-key fingerprint.
 /// Key material is never created anywhere else in the product.
 fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
-    use ed25519_dalek::Signer as _;
     // Seed from the OS CSPRNG (/dev/urandom on macOS/Linux). Explicit owner action only.
     use std::io::Read as _;
     let mut seed = [0u8; 32];

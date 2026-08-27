@@ -12,6 +12,7 @@
 pub mod authlog;
 pub mod census;
 pub mod cis_map;
+pub mod compliance;
 pub mod filesystem;
 pub mod firewall;
 pub mod model;

@@ -1,0 +1,24 @@
+{
+  "schema": "aethercore.phase33.qualification-debt.v1",
+  "policy": "Phase 33 records deferred qualification honestly; no entry is represented as implemented or certified.",
+  "items": [
+    {
+      "id": "QD-033-001",
+      "status": "OPEN",
+      "risk": "low",
+      "detail": "Official CIS benchmark-content licensing/governance. We reference control IDs; we do not republish proprietary benchmark text."
+    },
+    {
+      "id": "QD-033-002",
+      "status": "OPEN",
+      "risk": "medium",
+      "detail": "Continuous compliance scheduling is deferred to the Fleet/automation phase; reports remain explicit point-in-time owner actions."
+    },
+    {
+      "id": "QD-033-003",
+      "status": "OPEN",
+      "risk": "low",
+      "detail": "A custom compliance-profile UI/editor is deferred; Phase 33 accepts only the two bundled strict profiles."
+    }
+  ]
+}

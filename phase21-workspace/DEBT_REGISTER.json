@@ -197,6 +197,9 @@
       "status": "CARRIED",
       "risk": "low",
       "note": "Bottleneck threshold tuning against production workloads."
-    }
+    },
+    {"id":"QD-033-001","originPhase":33,"status":"OPEN","risk":"low","note":"Official CIS benchmark-content licensing/governance. We reference control IDs; we do not republish proprietary benchmark text."},
+    {"id":"QD-033-002","originPhase":33,"status":"OPEN","risk":"medium","note":"Continuous compliance scheduling deferred to Fleet/automation phase."},
+    {"id":"QD-033-003","originPhase":33,"status":"OPEN","risk":"low","note":"Custom compliance-profile UI/editor deferred."}
   ]
 }

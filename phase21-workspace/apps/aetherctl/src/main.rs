@@ -42,6 +42,7 @@ fn main() {
 }
 
 fn dispatch(invocation: cli::Invocation) -> i32 {
+    let _active_language = invocation.lang;
     match invocation.command {
         cli::Command::Offline(job) => offline::run(&invocation.config, job),
         cli::Command::Service(job) => service_cmds::run(&invocation.config, job),

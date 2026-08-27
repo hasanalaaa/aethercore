@@ -37,8 +37,11 @@ SERVICE COMMANDS (require the maintenance-service endpoint):
 SECURITY COMMANDS (Phase 32; offline unless noted):
   sec       audit [--ssh <cfg>] [--sudoers <f>] [--fs <dir>] [--authlog <f>]
               [--secrets <dir>] [--firewall]   (offline direct, read-only)
+  sec       audit --profile <cis-l1|cis-l2> --out <file>
+              [--format <json|html|both>] [--sign --key <seedfile>]
   sec       report --in <report.json>        (re-render a saved report)
   compliance summary --profile cis-l1 --report <file> --map <cis_map.json>
+  compliance verify <report.json>            (offline integrity/signature verification)
   vulndb    update --from <db.json> --dest <dir>   (EXPLICIT owner action)
 ";
 
@@ -118,6 +121,19 @@ pub enum OfflineJob {
         /// (kind, path) pairs parsed from flag form; kind in
         /// {ssh,sudoers,fs,authlog,secrets}; firewall = ("firewall","").
         targets: Vec<(String, String)>,
+    },
+    /// Phase 33: offline CIS compliance report generation.
+    ComplianceAudit {
+        profile: String,
+        out: String,
+        format: String,
+        sign: bool,
+        key: Option<String>,
+        targets: Vec<(String, String)>,
+    },
+    /// Phase 33: offline compliance report verification.
+    ComplianceVerify {
+        file: String,
     },
     /// Phase 32 (T7): re-render a saved SecurityAuditReport.
     SecReport {
@@ -421,6 +437,12 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
             match sub.as_str() {
                 "audit" => {
                     let mut targets: Vec<(String, String)> = Vec::new();
+                    let mut profile = String::from("cis-l1");
+                    let mut out = None;
+                    let mut format = String::from("json");
+                    let mut sign = false;
+                    let mut key = None;
+                    let mut compliance_requested = false;
                     while let Some(flag) = cursor.peek() {
                         let flag = flag.clone();
                         match flag.as_str() {
@@ -448,6 +470,31 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                                 cursor.next();
                                 targets.push(("firewall".into(), String::new()));
                             }
+                            "--profile" => {
+                                cursor.next();
+                                profile = cursor.value_after("--profile")?;
+                                compliance_requested = true;
+                            }
+                            "--out" => {
+                                cursor.next();
+                                out = Some(cursor.value_after("--out")?);
+                                compliance_requested = true;
+                            }
+                            "--format" => {
+                                cursor.next();
+                                format = cursor.value_after("--format")?;
+                                compliance_requested = true;
+                            }
+                            "--sign" => {
+                                cursor.next();
+                                sign = true;
+                                compliance_requested = true;
+                            }
+                            "--key" => {
+                                cursor.next();
+                                key = Some(cursor.value_after("--key")?);
+                                compliance_requested = true;
+                            }
                             other => {
                                 if other.starts_with("--") {
                                     return Err(unknown_flag(other));
@@ -456,13 +503,41 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                             }
                         }
                     }
-                    if targets.is_empty() {
+                    if compliance_requested {
+                        if !matches!(profile.as_str(), "cis-l1" | "cis-l2") {
+                            return Err(usage(
+                                "cli.usage.complianceProfile",
+                                format!("unsupported profile '{profile}'"),
+                            ));
+                        }
+                        if !matches!(format.as_str(), "json" | "html" | "both") {
+                            return Err(usage(
+                                "cli.usage.complianceFormat",
+                                format!("unsupported report format '{format}'"),
+                            ));
+                        }
+                        if sign != key.is_some() {
+                            return Err(usage(
+                                "cli.usage.complianceSigning",
+                                "--sign and --key <seedfile> must be supplied together".to_string(),
+                            ));
+                        }
+                        Command::Offline(OfflineJob::ComplianceAudit {
+                            profile,
+                            out: out.ok_or_else(|| value_missing("--out"))?,
+                            format,
+                            sign,
+                            key,
+                            targets,
+                        })
+                    } else if targets.is_empty() {
                         return Err(usage(
                             "cli.usage.secAuditRequiresTarget",
                             "sec audit requires at least one target flag".to_string(),
                         ));
+                    } else {
+                        Command::Offline(OfflineJob::SecAudit { targets })
                     }
-                    Command::Offline(OfflineJob::SecAudit { targets })
                 }
                 "report" => {
                     cursor.next();
@@ -488,48 +563,56 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                     "compliance requires summary".to_string(),
                 )
             })?;
-            if sub != "summary" {
-                return Err(usage(
-                    "cli.usage.unknownSubcommand",
-                    format!("unknown compliance subcommand '{sub}'"),
-                ));
-            }
-            let mut profile = String::from("cis-l1");
-            let mut report_file = String::new();
-            let mut map_file = String::new();
-            while let Some(flag) = cursor.peek().cloned() {
-                match flag.as_str() {
-                    "--profile" => {
-                        cursor.next();
-                        profile = cursor.value_after("--profile")?;
-                    }
-                    "--report" => {
-                        cursor.next();
-                        report_file = cursor.value_after("--report")?;
-                    }
-                    "--map" => {
-                        cursor.next();
-                        map_file = cursor.value_after("--map")?;
-                    }
-                    other => {
-                        if other.starts_with("--") {
-                            return Err(unknown_flag(other));
+            if sub == "verify" {
+                let file = cursor
+                    .next()
+                    .cloned()
+                    .ok_or_else(|| value_missing("<report.json>"))?;
+                Command::Offline(OfflineJob::ComplianceVerify { file })
+            } else {
+                if sub != "summary" {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown compliance subcommand '{sub}'"),
+                    ));
+                }
+                let mut profile = String::from("cis-l1");
+                let mut report_file = String::new();
+                let mut map_file = String::new();
+                while let Some(flag) = cursor.peek().cloned() {
+                    match flag.as_str() {
+                        "--profile" => {
+                            cursor.next();
+                            profile = cursor.value_after("--profile")?;
                         }
-                        break;
+                        "--report" => {
+                            cursor.next();
+                            report_file = cursor.value_after("--report")?;
+                        }
+                        "--map" => {
+                            cursor.next();
+                            map_file = cursor.value_after("--map")?;
+                        }
+                        other => {
+                            if other.starts_with("--") {
+                                return Err(unknown_flag(other));
+                            }
+                            break;
+                        }
                     }
                 }
+                if report_file.is_empty() || map_file.is_empty() {
+                    return Err(usage(
+                        "cli.usage.complianceRequiresInputs",
+                        "compliance summary requires --report <file> --map <file>".to_string(),
+                    ));
+                }
+                Command::Offline(OfflineJob::SecComplianceSummary {
+                    profile,
+                    report_file,
+                    map_file,
+                })
             }
-            if report_file.is_empty() || map_file.is_empty() {
-                return Err(usage(
-                    "cli.usage.complianceRequiresInputs",
-                    "compliance summary requires --report <file> --map <file>".to_string(),
-                ));
-            }
-            Command::Offline(OfflineJob::SecComplianceSummary {
-                profile,
-                report_file,
-                map_file,
-            })
         }
         // Phase 32 (S3): EXPLICIT owner action — install candidate vulndb + pin.
         "vulndb" => {
@@ -988,17 +1071,6 @@ fn parse_i64(cursor: &mut Cursor, flag: &str) -> Result<i64, CliError> {
     })
 }
 
-fn parse_flag_id(cursor: &mut Cursor, flag: &str) -> Result<Option<String>, CliError> {
-    let mut id: Option<String> = None;
-    while let Some(pending) = cursor.next() {
-        match pending.as_str() {
-            f if f == flag => id = Some(cursor.value_after(flag)?),
-            other => return Err(unknown_flag(other)),
-        }
-    }
-    Ok(id)
-}
-
 fn parse_u32(cursor: &mut Cursor, flag: &str, min: u32, max: u32) -> Result<u32, CliError> {
     let raw = cursor.value_after(flag)?;
     let parsed: u32 = raw.parse().map_err(|_| {
@@ -1081,5 +1153,67 @@ mod tests {
     fn dismiss_requires_insight_id() {
         assert!(parse(&argv(&["insights", "dismiss"])).is_err());
         assert!(parse(&argv(&["insights", "dismiss", "--insight-id", "i1"])).is_ok());
+    }
+
+    #[test]
+    fn phase33_compliance_audit_parses_without_explicit_targets() {
+        let invocation = parse(&argv(&[
+            "sec",
+            "audit",
+            "--profile",
+            "cis-l1",
+            "--out",
+            "/tmp/report.json",
+            "--format",
+            "both",
+        ]))
+        .unwrap();
+        assert!(matches!(
+            invocation.command,
+            Command::Offline(OfflineJob::ComplianceAudit { ref profile, ref format, ref targets, .. })
+                if profile == "cis-l1" && format == "both" && targets.is_empty()
+        ));
+    }
+
+    #[test]
+    fn phase33_sign_requires_explicit_key() {
+        assert!(
+            parse(&argv(&[
+                "sec",
+                "audit",
+                "--profile",
+                "cis-l1",
+                "--out",
+                "/tmp/r.json",
+                "--sign",
+            ]))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn phase33_format_is_closed_enum() {
+        assert!(
+            parse(&argv(&[
+                "sec",
+                "audit",
+                "--profile",
+                "cis-l1",
+                "--out",
+                "/tmp/r.json",
+                "--format",
+                "pdf",
+            ]))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn phase33_offline_verify_parses() {
+        let invocation = parse(&argv(&["compliance", "verify", "/tmp/report.json"])).unwrap();
+        assert!(matches!(
+            invocation.command,
+            Command::Offline(OfflineJob::ComplianceVerify { ref file }) if file == "/tmp/report.json"
+        ));
     }
 }

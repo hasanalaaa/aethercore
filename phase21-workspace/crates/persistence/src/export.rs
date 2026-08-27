@@ -195,7 +195,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 /// Builds a sealed envelope from caller-supplied ordered records and a db fingerprint.
 /// Ordering is enforced here (ascending ordinal, stable kind tiebreak).
 pub fn build_envelope(
-    mut records: Vec<(String, i64, serde_json::Value)>,
+    records: Vec<(String, i64, serde_json::Value)>,
     generated_unix_ms: i64,
     source_db_fingerprint: String,
 ) -> ExportEnvelope {
@@ -248,14 +248,38 @@ pub fn build_envelope_with_correlation(
 /// Signs the envelope's digest in place with an owner-provided Ed25519 keypair.
 /// Keys come from disk (`aetherctl keys generate`) — this function never generates.
 pub fn sign_envelope(envelope: &mut ExportEnvelope, signing_key: &ed25519_dalek::SigningKey) {
+    envelope.signature = Some(sign_digest(&envelope.digest, signing_key));
+    envelope.signed = true;
+}
+
+/// Shared Phase 29 Ed25519 primitive for any already-canonical lowercase-hex
+/// digest. Keys are always caller-provided; this function never generates one.
+pub fn sign_digest(digest: &str, signing_key: &ed25519_dalek::SigningKey) -> ExportSignature {
     use ed25519_dalek::Signer as _;
     let verifying = signing_key.verifying_key();
-    let signature = signing_key.sign(envelope.digest.as_bytes());
-    envelope.signed = true;
-    envelope.signature = Some(ExportSignature {
+    let signature = signing_key.sign(digest.as_bytes());
+    ExportSignature {
         public_key_hex: hex_encode(&verifying.to_bytes()),
         signature_hex: hex_encode(&signature.to_bytes()),
-    });
+    }
+}
+
+/// Verifies a signature produced by [`sign_digest`] and returns the existing
+/// typed Phase 29 failure rather than introducing a second crypto error model.
+pub fn verify_digest_signature(
+    digest: &str,
+    signature: &ExportSignature,
+) -> Result<(), VerifyError> {
+    use ed25519_dalek::{Signature, VerifyingKey};
+    let key_bytes =
+        decode_hex_fixed::<32>(&signature.public_key_hex).map_err(|_| VerifyError::BadSignature)?;
+    let sig_bytes =
+        decode_hex_fixed::<64>(&signature.signature_hex).map_err(|_| VerifyError::BadSignature)?;
+    let key = VerifyingKey::from_bytes(&key_bytes).map_err(|_| VerifyError::BadSignature)?;
+    let signature = Signature::from_slice(&sig_bytes).map_err(|_| VerifyError::BadSignature)?;
+    use ed25519_dalek::Verifier as _;
+    key.verify(digest.as_bytes(), &signature)
+        .map_err(|_| VerifyError::BadSignature)
 }
 
 // ---------------------------------------------------------------------------
@@ -303,21 +327,7 @@ pub fn verify_envelope(envelope: &ExportEnvelope) -> Result<(), VerifyError> {
         });
     }
     if let Some(signature) = &envelope.signature {
-        use ed25519_dalek::{Signature, VerifyingKey};
-        let key_bytes = decode_hex_fixed::<32>(&signature.public_key_hex)
-            .map_err(|_| VerifyError::BadSignature)?;
-        let sig_bytes = decode_hex_fixed::<64>(&signature.signature_hex)
-            .map_err(|_| VerifyError::BadSignature)?;
-        let Ok(key) = VerifyingKey::from_bytes(&key_bytes) else {
-            return Err(VerifyError::BadSignature);
-        };
-        let Ok(sig) = Signature::from_slice(&sig_bytes) else {
-            return Err(VerifyError::BadSignature);
-        };
-        use ed25519_dalek::Verifier as _;
-        if key.verify(envelope.digest.as_bytes(), &sig).is_err() {
-            return Err(VerifyError::BadSignature);
-        }
+        verify_digest_signature(&envelope.digest, signature)?;
     }
     Ok(())
 }
@@ -497,6 +507,20 @@ mod tests {
         assert_eq!(
             verify_envelope(&env),
             Err(VerifyError::SignatureFlagInconsistent)
+        );
+    }
+
+    #[test]
+    fn shared_digest_signature_primitive_supports_compliance_reports() {
+        let key = signing_key_from_seed(&[9_u8; 32]);
+        let signature = sign_digest("compliance-digest", &key);
+        assert_eq!(
+            verify_digest_signature("compliance-digest", &signature),
+            Ok(())
+        );
+        assert_eq!(
+            verify_digest_signature("tampered-digest", &signature),
+            Err(VerifyError::BadSignature)
         );
     }
 

@@ -1,0 +1,17 @@
+{
+  "schema":"COMPLIANCE_PROFILE_V1","profile_id":"cis-l1","title_key":"compliance.profile.cisL1",
+  "control_families":[{"family_id":"general","title_key":"compliance.family.general","controls":[
+    {"control_id":"CIS L1 1.1","rule_codes":["cve.vulnerable_package","fw.config_present","fw.state_not_available"],"applicability":"all"},
+    {"control_id":"CIS L1 1.2","rule_codes":["fs.scan_truncated","secrets.scan_truncated"],"applicability":"all"}]},
+  {"family_id":"ssh","title_key":"compliance.family.ssh","controls":[
+    {"control_id":"CIS L1 5.1","rule_codes":["ssh.permit_root_login","ssh.password_authentication"],"applicability":"unix"},
+    {"control_id":"CIS L1 5.2","rule_codes":["ssh.pubkey_authentication","ssh.x11_forwarding","ssh.max_auth_tries","ssh.client_alive"],"applicability":"unix"}]},
+  {"family_id":"access","title_key":"compliance.family.access","controls":[
+    {"control_id":"CIS L1 6.1","rule_codes":["sudo.nopasswd","sudo.wildcard_all","pass.max_days","pass.min_days","pass.min_len"],"applicability":"all"}]},
+  {"family_id":"filesystem","title_key":"compliance.family.filesystem","controls":[
+    {"control_id":"CIS L1 1.3","rule_codes":["fs.ssh_dir_perms","fs.ssh_key_perms","fs.suid_inventory","fs.world_writable"],"applicability":"all"}]},
+  {"family_id":"secrets","title_key":"compliance.family.secrets","controls":[
+    {"control_id":"CIS L1 1.4","rule_codes":["secrets.aws_key","secrets.dotenv","secrets.generic_assignment","secrets.private_key_block"],"applicability":"all"}]},
+  {"family_id":"auth","title_key":"compliance.family.auth","controls":[{"control_id":"CIS L1 7.1","rule_codes":["auth.failure_burst"],"applicability":"all"}]}
+  ]
+}

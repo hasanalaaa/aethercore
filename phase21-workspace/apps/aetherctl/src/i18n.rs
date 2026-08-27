@@ -26,15 +26,15 @@ impl Lang {
 
 /// Resolves the active language: flag > env > en.
 pub fn resolve(flag: Option<&str>) -> Lang {
-    if let Some(f) = flag {
-        if let Some(l) = Lang::parse(f) {
-            return l;
-        }
+    if let Some(f) = flag
+        && let Some(l) = Lang::parse(f)
+    {
+        return l;
     }
-    if let Ok(env) = std::env::var("AETHERCORE_LANG") {
-        if let Some(l) = Lang::parse(&env) {
-            return l;
-        }
+    if let Ok(env) = std::env::var("AETHERCORE_LANG")
+        && let Some(l) = Lang::parse(&env)
+    {
+        return l;
     }
     Lang::En
 }
@@ -99,6 +99,25 @@ pub const KEYS: &[&str] = &[
     "sec.controlsFail",
     "sec.controlsNotRun",
     "sec.controlsUnmapped",
+    "compliance.profile.cisL1",
+    "compliance.profile.cisL2",
+    "compliance.help",
+    "compliance.family.general",
+    "compliance.family.ssh",
+    "compliance.family.access",
+    "compliance.family.filesystem",
+    "compliance.family.secrets",
+    "compliance.family.auth",
+    "compliance.finding",
+    "compliance.not_verified",
+    "compliance.verified",
+    "compliance.not_applicable",
+    "cli.usage.compliance",
+    "cli.usage.complianceProfile",
+    "cli.usage.complianceFormat",
+    "cli.usage.complianceSigning",
+    "cli.usage.complianceRequiresInputs",
+    "sec.signatureMismatch",
     // Phase 32 finding summary keys (renderer-facing; plural forms included).
     "sec.ssh.permitRootLogin",
     "sec.ssh.permitRootLogin.plural",
@@ -234,6 +253,27 @@ or `report`"
         "sec.secrets.scanTruncated" => "secrets scan hit its bounds; coverage partial",
         "sec.cve.vulnerablePackage" => "installed package matched a known CVE range",
         "sec.cve.vulnerablePackage.plural" => "installed packages matched known CVE ranges",
+        "compliance.profile.cisL1" => "CIS Level 1 compliance",
+        "compliance.profile.cisL2" => "CIS Level 2 compliance",
+        "compliance.help" => {
+            "`sec audit --profile cis-l1|cis-l2 --out <file> [--format json|html|both] [--sign --key <seedfile>]`; `compliance verify <report.json>`"
+        }
+        "compliance.family.general" => "General controls",
+        "compliance.family.ssh" => "SSH controls",
+        "compliance.family.access" => "Access controls",
+        "compliance.family.filesystem" => "Filesystem controls",
+        "compliance.family.secrets" => "Secret-handling controls",
+        "compliance.family.auth" => "Authentication controls",
+        "compliance.finding" => "a mapped security finding failed this control",
+        "compliance.not_verified" => "evidence not verified",
+        "compliance.verified" => "evidence verified",
+        "compliance.not_applicable" => "not applicable to this platform",
+        "cli.usage.compliance" => "invalid compliance command usage",
+        "cli.usage.complianceProfile" => "profile must be `cis-l1` or `cis-l2`",
+        "cli.usage.complianceFormat" => "format must be `json`, `html`, or `both`",
+        "cli.usage.complianceSigning" => "`--sign` requires an explicit `--key <seedfile>`",
+        "cli.usage.complianceRequiresInputs" => "compliance summary requires report and map inputs",
+        "sec.signatureMismatch" => "compliance report signature mismatch",
         _ => "",
     }
 }
@@ -335,6 +375,27 @@ pub fn ar(key: &str) -> &'static str {
         "sec.secrets.scanTruncated" => "بلغ فحص الأسرار حدوده؛ التغطية جزئية",
         "sec.cve.vulnerablePackage" => "حزمة مثبتة تطابق نطاق CVE معروف",
         "sec.cve.vulnerablePackage.plural" => "حزم مثبتة تطابق نطاقات CVE معروفة",
+        "compliance.profile.cisL1" => "امتثال CIS المستوى 1",
+        "compliance.profile.cisL2" => "امتثال CIS المستوى 2",
+        "compliance.help" => {
+            "`sec audit --profile cis-l1|cis-l2 --out <file> [--format json|html|both] [--sign --key <seedfile>]`؛ و`compliance verify <report.json>`"
+        }
+        "compliance.family.general" => "ضوابط عامة",
+        "compliance.family.ssh" => "ضوابط SSH",
+        "compliance.family.access" => "ضوابط الوصول",
+        "compliance.family.filesystem" => "ضوابط نظام الملفات",
+        "compliance.family.secrets" => "ضوابط التعامل مع الأسرار",
+        "compliance.family.auth" => "ضوابط المصادقة",
+        "compliance.finding" => "أخفقت نتيجة أمنية مربوطة هذا الضابط",
+        "compliance.not_verified" => "لم يُتحقق من الدليل",
+        "compliance.verified" => "تم التحقق من الدليل",
+        "compliance.not_applicable" => "لا ينطبق على هذه المنصة",
+        "cli.usage.compliance" => "استخدام غير صالح لأمر الامتثال",
+        "cli.usage.complianceProfile" => "يجب أن يكون الملف `cis-l1` أو `cis-l2`",
+        "cli.usage.complianceFormat" => "يجب أن تكون الصيغة `json` أو `html` أو `both`",
+        "cli.usage.complianceSigning" => "يتطلب `--sign` مفتاحًا صريحًا عبر `--key <seedfile>`",
+        "cli.usage.complianceRequiresInputs" => "يتطلب ملخص الامتثال ملف التقرير والخريطة",
+        "sec.signatureMismatch" => "عدم تطابق توقيع تقرير الامتثال",
         _ => "",
     }
 }
@@ -380,5 +441,11 @@ mod tests {
     fn unknown_key_returns_empty_not_panic() {
         assert_eq!(t(Lang::En, "nope.nope"), "");
         assert_eq!(t(Lang::Ar, "nope.nope"), "");
+    }
+
+    #[test]
+    fn compliance_help_is_present_in_both_languages() {
+        assert!(en("compliance.help").contains("sec audit --profile"));
+        assert!(ar("compliance.help").contains("sec audit --profile"));
     }
 }
