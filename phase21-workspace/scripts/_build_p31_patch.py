@@ -26,7 +26,12 @@ for path in sorted(ROOT.rglob("*")):
     rel = str(path.relative_to(ROOT))
     if any(part in EXCLUDED_DIRS for part in path.parts):
         continue
-    if rel.startswith("PHASE_31_BINARY_SAFE_PATCH") or rel == ".DS_Store":
+    if rel.startswith(("PHASE_30_BINARY_SAFE_PATCH/", "PHASE_31_BINARY_SAFE_PATCH",
+                       "PHASE_32_BINARY_SAFE_PATCH")):
+        # P33 refresh: all patch dirs excluded from the change scan — each is
+        # pinned by its own phase; cross-phase pinning guarantees drift.
+        continue
+    if rel == ".DS_Store" or "__pycache__" in rel:
         continue
     if not path.is_file():
         continue
@@ -55,7 +60,11 @@ for path in sorted(ROOT.rglob("*")):
     rel = str(path.relative_to(ROOT))
     if any(part in EXCLUDED_DIRS for part in path.parts):
         continue
-    if rel.startswith("PHASE_31_BINARY_SAFE_PATCH") or rel == ".DS_Store":
+    if rel.startswith(("PHASE_30_BINARY_SAFE_PATCH/", "PHASE_31_BINARY_SAFE_PATCH",
+                       "PHASE_32_BINARY_SAFE_PATCH")):
+        # P33 refresh: all patch dirs are self-referential deliverables.
+        continue
+    if rel == ".DS_Store" or "__pycache__" in rel:
         continue
     if not path.is_file():
         continue
@@ -105,9 +114,11 @@ def full_tree_mode(root, here):
     problems, checked, seen = [], 0, set()
     for path in sorted(root.rglob("*")):
         rel = str(path.relative_to(root))
-        if rel == SELF:
+        if rel.startswith(("PHASE_30_BINARY_SAFE_PATCH/", "PHASE_31_BINARY_SAFE_PATCH",
+                           "PHASE_32_BINARY_SAFE_PATCH")):
             seen.add(rel); continue
-        if any(part in EXCLUDED_DIRS for part in path.parts) or not path.is_file():
+        if any(part in EXCLUDED_DIRS for part in path.parts) or rel.endswith(".DS_Store") \
+                or "__pycache__" in rel or not path.is_file():
             continue
         seen.add(rel)
         want = entries.get(rel)

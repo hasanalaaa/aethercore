@@ -53,6 +53,10 @@ pub fn command_label(job: &OfflineJob) -> String {
         OfflineJob::KeysGenerate { .. } => "keys generate".to_string(),
         OfflineJob::KeysFingerprint { .. } => "keys fingerprint".to_string(),
         OfflineJob::DbCheckSqlite { .. } => "db check".to_string(),
+        OfflineJob::SecAudit { .. } => "sec audit".to_string(),
+        OfflineJob::SecReport { .. } => "sec report".to_string(),
+        OfflineJob::SecComplianceSummary { .. } => "compliance summary".to_string(),
+        OfflineJob::VulndbUpdate { .. } => "vulndb update".to_string(),
     }
 }
 
@@ -90,6 +94,14 @@ fn execute(config: &Config, job: OfflineJob) -> Result<serde_json::Value, CliErr
         OfflineJob::SelfCheck { load_model } => self_check(load_model),
         // Phase 30 (T6): offline read-only SQLite diagnostics via db-diagnostics crate.
         OfflineJob::DbCheckSqlite { path } => db_check_sqlite(&path),
+        OfflineJob::SecAudit { targets } => crate::sec::run_offline_audit(&targets),
+        OfflineJob::SecReport { file } => crate::sec::render_saved_report(&file),
+        OfflineJob::SecComplianceSummary {
+            profile,
+            report_file,
+            map_file,
+        } => crate::sec::run_compliance_summary(&profile, &report_file, &map_file),
+        OfflineJob::VulndbUpdate { from, dest } => crate::sec::vulndb_update_from(&from, &dest),
         OfflineJob::ServiceDetect => {
             let state = transport::detect_service(config);
             let pid = match &state {

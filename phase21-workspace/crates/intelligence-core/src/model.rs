@@ -56,6 +56,9 @@ pub enum EvidenceSurface {
     TimelinePattern,
     /// Maintenance history row (id = plan/execution id).
     MaintenanceHistory,
+    /// Phase 32: security-audit finding (id = finding id + rule code anchor).
+    /// Citation-resolvable against the audit report's findings_json lane.
+    SecurityFinding,
 }
 
 /// One advisory insight. THE ONLY output type of the reasoner (I1).
@@ -162,6 +165,7 @@ impl TypedEvidencePack {
                 EvidenceSurface::RepairDiagnosis => 1,
                 EvidenceSurface::TimelinePattern => 2,
                 EvidenceSurface::MaintenanceHistory => 3,
+                EvidenceSurface::SecurityFinding => 4,
             }]);
             hasher.update(item.detail.as_bytes());
         }

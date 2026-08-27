@@ -27,6 +27,8 @@ aethercore-persistence = { path = "../../crates/persistence" }
 # Phase 30 (T6): read-only SQLite diagnostics provider (rusqlite bundled, no new deps
 # beyond the workspace-pinned rusqlite; owner-review waiver on file in that crate).
 aethercore-db-diagnostics = { path = "../../crates/db-diagnostics" }
+# Phase 32 (T7): offline `sec` lanes consume the SAME audit crate as the service.
+aethercore-security-audit = { path = "../../crates/security-audit" }
 sha2.workspace = true
 thiserror.workspace = true
 # Phase 28 (owner-review waiver, audit allowlist): prost is the v7 wire codec shared with

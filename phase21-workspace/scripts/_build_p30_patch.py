@@ -21,7 +21,14 @@ def sha256(p: pathlib.Path) -> str:
 
 
 if not SEAL.exists():
-    z = ROOT.parent / "AetherCore-Phase29-Master-Delivery.zip"
+    # P32 hygiene: superseded master archives moved to ROOT.parent/_archive/.
+    # Resolve the seal archive from its canonical location, falling back to
+    # the archive directory (path recorded in docs/phase32/HYGIENE.md).
+    candidates = [
+        ROOT.parent / "AetherCore-Phase29-Master-Delivery.zip",
+        ROOT.parent / "_archive" / "AetherCore-Phase29-Master-Delivery.zip",
+    ]
+    z = next((c for c in candidates if c.exists()), candidates[0])
     if SEAL.exists():
         shutil.rmtree(SEAL)
     SEAL.mkdir(parents=True)

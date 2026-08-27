@@ -31,11 +31,10 @@ def full_tree_mode(root, here):
     problems, checked, seen = [], 0, set()
     for path in sorted(root.rglob("*")):
         rel = str(path.relative_to(root))
-        if rel.startswith("PHASE_31_BINARY_SAFE_PATCH/") or rel.startswith("PHASE_30_BINARY_SAFE_PATCH/"):
-            # Both patch dirs are self-referential deliverables — excluded from this
-            # ledger; their integrity is proven by GG round-trips and phase audits.
+        if rel.startswith(("PHASE_30_BINARY_SAFE_PATCH/", "PHASE_31_BINARY_SAFE_PATCH",
+                           "PHASE_32_BINARY_SAFE_PATCH")):
             seen.add(rel); continue
-        if any(part in EXCLUDED_DIRS for part in path.parts) or rel == ".DS_Store" or not path.is_file():
+        if any(part in EXCLUDED_DIRS for part in path.parts) or rel.endswith(".DS_Store")                 or "__pycache__" in rel or not path.is_file():
             continue
         seen.add(rel)
         want = entries.get(rel)

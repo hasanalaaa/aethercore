@@ -33,6 +33,13 @@ SERVICE COMMANDS (require the maintenance-service endpoint):
   care      status | start [--non-interactive] | cancel | consent-grant
   insights  list | explain [--question <key>] | dismiss --insight-id <id>
   scan      start | cancel --scan-id <id> | status | history [--limit <n>]
+
+SECURITY COMMANDS (Phase 32; offline unless noted):
+  sec       audit [--ssh <cfg>] [--sudoers <f>] [--fs <dir>] [--authlog <f>]
+              [--secrets <dir>] [--firewall]   (offline direct, read-only)
+  sec       report --in <report.json>        (re-render a saved report)
+  compliance summary --profile cis-l1 --report <file> --map <cis_map.json>
+  vulndb    update --from <db.json> --dest <dir>   (EXPLICIT owner action)
 ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +112,27 @@ pub enum OfflineJob {
     /// Phase 30 (T6): offline read-only SQLite diagnostics.
     DbCheckSqlite {
         path: String,
+    },
+    /// Phase 32 (T7): OFFLINE security-audit lanes over explicit targets.
+    SecAudit {
+        /// (kind, path) pairs parsed from flag form; kind in
+        /// {ssh,sudoers,fs,authlog,secrets}; firewall = ("firewall","").
+        targets: Vec<(String, String)>,
+    },
+    /// Phase 32 (T7): re-render a saved SecurityAuditReport.
+    SecReport {
+        file: String,
+    },
+    /// Phase 32 (S5): CIS L1 control-family pass/fail table over a saved report.
+    SecComplianceSummary {
+        profile: String,
+        report_file: String,
+        map_file: String,
+    },
+    /// Phase 32 (S3): explicit owner action — install DB + write fresh manifest pin.
+    VulndbUpdate {
+        from: String,
+        dest: String,
     },
     Help,
 }
@@ -297,297 +325,471 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
         None => return Err(CliError::usage("cli.usage.commandRequired")),
     };
 
-    let command =
-        match name.as_str() {
-            "help" => Command::Offline(OfflineJob::Help),
-            "about" => Command::Offline(OfflineJob::About),
-            "version" => Command::Offline(OfflineJob::Version),
-            "capabilities" => Command::Offline(OfflineJob::Capabilities),
-            "engine-source" => Command::Offline(OfflineJob::EngineSource),
-            "telemetry-once" => {
-                let mut interval_ms = 250u32;
-                while let Some(flag) = cursor.next() {
-                    match flag.as_str() {
-                        "--interval-ms" => {
-                            interval_ms = parse_u32(&mut cursor, "--interval-ms", 250, 60_000)?;
+    let command = match name.as_str() {
+        "help" => Command::Offline(OfflineJob::Help),
+        "about" => Command::Offline(OfflineJob::About),
+        "version" => Command::Offline(OfflineJob::Version),
+        "capabilities" => Command::Offline(OfflineJob::Capabilities),
+        "engine-source" => Command::Offline(OfflineJob::EngineSource),
+        "telemetry-once" => {
+            let mut interval_ms = 250u32;
+            while let Some(flag) = cursor.next() {
+                match flag.as_str() {
+                    "--interval-ms" => {
+                        interval_ms = parse_u32(&mut cursor, "--interval-ms", 250, 60_000)?;
+                    }
+                    other => return Err(unknown_flag(other)),
+                }
+            }
+            Command::Offline(OfflineJob::TelemetryOnce { interval_ms })
+        }
+        "self-check" => {
+            let mut load_model = false;
+            while let Some(flag) = cursor.next() {
+                match flag.as_str() {
+                    "--load-model" => load_model = true,
+                    other => return Err(unknown_flag(other)),
+                }
+            }
+            Command::Offline(OfflineJob::SelfCheck { load_model })
+        }
+        // Phase 29 (T3): export journal (daemon-backed) | export verify <file> (offline).
+        "export" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.exportSubcommandRequired",
+                    "export requires journal|verify".to_string(),
+                )
+            })?;
+            match sub.as_str() {
+                "journal" => {
+                    let mut from_ms = 0i64;
+                    let mut to_ms = 0i64;
+                    let mut out: Option<String> = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--from-ms" => {
+                                from_ms = parse_i64(&mut cursor, "--from-ms")?;
+                            }
+                            "--to-ms" => {
+                                to_ms = parse_i64(&mut cursor, "--to-ms")?;
+                            }
+                            "--out" => out = Some(cursor.value_after("--out")?),
+                            other => return Err(unknown_flag(other)),
                         }
-                        other => return Err(unknown_flag(other)),
                     }
+                    let out = out.ok_or_else(|| {
+                        usage(
+                            "cli.usage.exportRequiresOut",
+                            "export journal requires --out <file>".to_string(),
+                        )
+                    })?;
+                    Command::Service(ServiceJob::ExportJournal {
+                        from_unix_ms: from_ms,
+                        to_unix_ms: to_ms,
+                        out,
+                    })
                 }
-                Command::Offline(OfflineJob::TelemetryOnce { interval_ms })
-            }
-            "self-check" => {
-                let mut load_model = false;
-                while let Some(flag) = cursor.next() {
-                    match flag.as_str() {
-                        "--load-model" => load_model = true,
-                        other => return Err(unknown_flag(other)),
+                "verify" => {
+                    let file = cursor.next().cloned().ok_or_else(|| {
+                        usage(
+                            "cli.usage.exportVerifyRequiresFile",
+                            "export verify requires a file path".to_string(),
+                        )
+                    })?;
+                    if cursor.peek().is_some() {
+                        return Err(unknown_flag(cursor.peek().unwrap_or(&String::new())));
                     }
+                    Command::Offline(OfflineJob::ExportVerify { file })
                 }
-                Command::Offline(OfflineJob::SelfCheck { load_model })
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown export subcommand '{other}' (journal|verify)"),
+                    ));
+                }
             }
-            // Phase 29 (T3): export journal (daemon-backed) | export verify <file> (offline).
-            "export" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage(
-                        "cli.usage.exportSubcommandRequired",
-                        "export requires journal|verify".to_string(),
-                    )
-                })?;
-                match sub.as_str() {
-                    "journal" => {
-                        let mut from_ms = 0i64;
-                        let mut to_ms = 0i64;
-                        let mut out: Option<String> = None;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--from-ms" => {
-                                    from_ms = parse_i64(&mut cursor, "--from-ms")?;
+        }
+        // Phase 32 (T7): sec audit/report + compliance summary + vulndb update.
+        "sec" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.subcommandRequired",
+                    "sec requires audit|report".to_string(),
+                )
+            })?;
+            match sub.as_str() {
+                "audit" => {
+                    let mut targets: Vec<(String, String)> = Vec::new();
+                    while let Some(flag) = cursor.peek() {
+                        let flag = flag.clone();
+                        match flag.as_str() {
+                            "--ssh" => {
+                                cursor.next();
+                                targets.push(("ssh".into(), cursor.value_after("--ssh")?));
+                            }
+                            "--sudoers" => {
+                                cursor.next();
+                                targets.push(("sudoers".into(), cursor.value_after("--sudoers")?));
+                            }
+                            "--fs" => {
+                                cursor.next();
+                                targets.push(("fs".into(), cursor.value_after("--fs")?));
+                            }
+                            "--authlog" => {
+                                cursor.next();
+                                targets.push(("authlog".into(), cursor.value_after("--authlog")?));
+                            }
+                            "--secrets" => {
+                                cursor.next();
+                                targets.push(("secrets".into(), cursor.value_after("--secrets")?));
+                            }
+                            "--firewall" => {
+                                cursor.next();
+                                targets.push(("firewall".into(), String::new()));
+                            }
+                            other => {
+                                if other.starts_with("--") {
+                                    return Err(unknown_flag(other));
                                 }
-                                "--to-ms" => {
-                                    to_ms = parse_i64(&mut cursor, "--to-ms")?;
-                                }
-                                "--out" => out = Some(cursor.value_after("--out")?),
-                                other => return Err(unknown_flag(other)),
+                                break;
                             }
                         }
-                        let out = out.ok_or_else(|| {
-                            usage(
-                                "cli.usage.exportRequiresOut",
-                                "export journal requires --out <file>".to_string(),
-                            )
-                        })?;
-                        Command::Service(ServiceJob::ExportJournal {
-                            from_unix_ms: from_ms,
-                            to_unix_ms: to_ms,
-                            out,
-                        })
                     }
-                    "verify" => {
-                        let file = cursor.next().cloned().ok_or_else(|| {
-                            usage(
-                                "cli.usage.exportVerifyRequiresFile",
-                                "export verify requires a file path".to_string(),
-                            )
-                        })?;
-                        if cursor.peek().is_some() {
-                            return Err(unknown_flag(cursor.peek().unwrap_or(&String::new())));
-                        }
-                        Command::Offline(OfflineJob::ExportVerify { file })
+                    if targets.is_empty() {
+                        return Err(usage(
+                            "cli.usage.secAuditRequiresTarget",
+                            "sec audit requires at least one target flag".to_string(),
+                        ));
+                    }
+                    Command::Offline(OfflineJob::SecAudit { targets })
+                }
+                "report" => {
+                    cursor.next();
+                    let file = cursor.value_after("--in").or_else(|_| {
+                        // tolerate positional form: `sec report <file>`
+                        cursor.peek().cloned().ok_or_else(|| value_missing("--in"))
+                    })?;
+                    Command::Offline(OfflineJob::SecReport { file })
+                }
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown sec subcommand '{other}' (audit|report)"),
+                    ));
+                }
+            }
+        }
+        // Phase 32 (S5): cis-l1 summary over a saved report (offline).
+        "compliance" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.subcommandRequired",
+                    "compliance requires summary".to_string(),
+                )
+            })?;
+            if sub != "summary" {
+                return Err(usage(
+                    "cli.usage.unknownSubcommand",
+                    format!("unknown compliance subcommand '{sub}'"),
+                ));
+            }
+            let mut profile = String::from("cis-l1");
+            let mut report_file = String::new();
+            let mut map_file = String::new();
+            while let Some(flag) = cursor.peek().cloned() {
+                match flag.as_str() {
+                    "--profile" => {
+                        cursor.next();
+                        profile = cursor.value_after("--profile")?;
+                    }
+                    "--report" => {
+                        cursor.next();
+                        report_file = cursor.value_after("--report")?;
+                    }
+                    "--map" => {
+                        cursor.next();
+                        map_file = cursor.value_after("--map")?;
                     }
                     other => {
-                        return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown export subcommand '{other}' (journal|verify)"),
-                        ));
+                        if other.starts_with("--") {
+                            return Err(unknown_flag(other));
+                        }
+                        break;
                     }
                 }
             }
-            // Phase 29 (T3): keys generate --out <path> | keys fingerprint --in <path>.
-            // Explicit owner actions — key material is NEVER created anywhere else.
-            "keys" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage(
-                        "cli.usage.keysSubcommandRequired",
-                        "keys requires generate|fingerprint".to_string(),
-                    )
-                })?;
-                match sub.as_str() {
-                    "generate" => {
-                        let mut out: Option<String> = None;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--out" => out = Some(cursor.value_after("--out")?),
-                                other => return Err(unknown_flag(other)),
-                            }
-                        }
-                        let out = out.ok_or_else(|| {
-                            usage(
-                                "cli.usage.keysGenerateRequiresOut",
-                                "keys generate requires --out <path>".to_string(),
-                            )
-                        })?;
-                        Command::Offline(OfflineJob::KeysGenerate { out })
+            if report_file.is_empty() || map_file.is_empty() {
+                return Err(usage(
+                    "cli.usage.complianceRequiresInputs",
+                    "compliance summary requires --report <file> --map <file>".to_string(),
+                ));
+            }
+            Command::Offline(OfflineJob::SecComplianceSummary {
+                profile,
+                report_file,
+                map_file,
+            })
+        }
+        // Phase 32 (S3): EXPLICIT owner action — install candidate vulndb + pin.
+        "vulndb" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.subcommandRequired",
+                    "vulndb requires update".to_string(),
+                )
+            })?;
+            if sub != "update" {
+                return Err(usage(
+                    "cli.usage.unknownSubcommand",
+                    format!("unknown vulndb subcommand '{sub}'"),
+                ));
+            }
+            let mut from = String::new();
+            let mut dest = String::new();
+            let mut url: Option<String> = None;
+            while let Some(flag) = cursor.peek().cloned() {
+                match flag.as_str() {
+                    "--from" => {
+                        cursor.next();
+                        from = cursor.value_after("--from")?;
                     }
-                    "fingerprint" => {
-                        let input = cursor.next().cloned().ok_or_else(|| {
-                            usage(
-                                "cli.usage.keysFingerprintRequiresIn",
-                                "keys fingerprint requires --in <path>".to_string(),
-                            )
-                        })?;
-                        if input.starts_with("--") {
-                            return Err(usage(
-                                "cli.usage.keysFingerprintRequiresIn",
-                                "keys fingerprint requires --in <path>".to_string(),
-                            ));
-                        }
-                        Command::Offline(OfflineJob::KeysFingerprint { input })
+                    "--url" => {
+                        cursor.next();
+                        url = Some(cursor.value_after("--url")?);
+                    }
+                    "--dest" => {
+                        cursor.next();
+                        dest = cursor.value_after("--dest")?;
                     }
                     other => {
-                        return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown keys subcommand '{other}' (generate|fingerprint)"),
-                        ));
+                        if other.starts_with("--") {
+                            return Err(unknown_flag(other));
+                        }
+                        break;
                     }
                 }
             }
-            "service" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage(
-                        "cli.usage.serviceSubcommandRequired",
-                        "service requires detect|units".to_string(),
-                    )
-                })?;
-                match sub.as_str() {
-                    "detect" => Command::Offline(OfflineJob::ServiceDetect),
-                    "units" => {
-                        let mut print = false;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--print" => print = true,
-                                other => return Err(unknown_flag(other)),
-                            }
+            if url.is_some() {
+                return Err(usage(
+                    "cli.usage.vulndbUrlUnsupported",
+                    "vulndb update accepts only --from <file>; network fetch stays banned"
+                        .to_string(),
+                ));
+            }
+            if from.is_empty() || dest.is_empty() {
+                return Err(usage(
+                    "cli.usage.vulndbUpdateRequiresInputs",
+                    "vulndb update requires --from <file> --dest <dir>".to_string(),
+                ));
+            }
+            Command::Offline(OfflineJob::VulndbUpdate { from, dest })
+        }
+        // Phase 29 (T3): keys generate --out <path> | keys fingerprint --in <path>.
+        // Explicit owner actions — key material is NEVER created anywhere else.
+        "keys" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.keysSubcommandRequired",
+                    "keys requires generate|fingerprint".to_string(),
+                )
+            })?;
+            match sub.as_str() {
+                "generate" => {
+                    let mut out: Option<String> = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--out" => out = Some(cursor.value_after("--out")?),
+                            other => return Err(unknown_flag(other)),
                         }
-                        if !print {
-                            return Err(usage(
-                                "cli.usage.unitsRequiresPrint",
-                                "service units supports only --print".to_string(),
-                            ));
-                        }
-                        Command::Offline(OfflineJob::ServiceUnits)
                     }
-                    other => {
+                    let out = out.ok_or_else(|| {
+                        usage(
+                            "cli.usage.keysGenerateRequiresOut",
+                            "keys generate requires --out <path>".to_string(),
+                        )
+                    })?;
+                    Command::Offline(OfflineJob::KeysGenerate { out })
+                }
+                "fingerprint" => {
+                    let input = cursor.next().cloned().ok_or_else(|| {
+                        usage(
+                            "cli.usage.keysFingerprintRequiresIn",
+                            "keys fingerprint requires --in <path>".to_string(),
+                        )
+                    })?;
+                    if input.starts_with("--") {
                         return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown service subcommand '{other}'"),
+                            "cli.usage.keysFingerprintRequiresIn",
+                            "keys fingerprint requires --in <path>".to_string(),
                         ));
                     }
+                    Command::Offline(OfflineJob::KeysFingerprint { input })
+                }
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown keys subcommand '{other}' (generate|fingerprint)"),
+                    ));
                 }
             }
-            // Phase 30 (T6): db check — OFFLINE read-only SQLite/config diagnostics.
-            "db" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage(
-                        "cli.usage.dbSubcommandRequired",
-                        "db requires check|check-config|slow-log|report".to_string(),
-                    )
-                })?;
-                match sub.as_str() {
-                    "check" => {
-                        let mut sqlite: Option<String> = None;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--sqlite" => sqlite = Some(cursor.value_after("--sqlite")?),
-                                other => return Err(unknown_flag(other)),
-                            }
+        }
+        "service" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.serviceSubcommandRequired",
+                    "service requires detect|units".to_string(),
+                )
+            })?;
+            match sub.as_str() {
+                "detect" => Command::Offline(OfflineJob::ServiceDetect),
+                "units" => {
+                    let mut print = false;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--print" => print = true,
+                            other => return Err(unknown_flag(other)),
                         }
-                        let path = sqlite.ok_or_else(|| {
-                            usage(
-                                "cli.usage.dbCheckRequiresSqlite",
-                                "db check requires --sqlite <file>".to_string(),
-                            )
-                        })?;
-                        Command::Offline(OfflineJob::DbCheckSqlite { path })
                     }
-                    other => {
+                    if !print {
                         return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown db subcommand '{other}'"),
+                            "cli.usage.unitsRequiresPrint",
+                            "service units supports only --print".to_string(),
                         ));
                     }
+                    Command::Offline(OfflineJob::ServiceUnits)
+                }
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown service subcommand '{other}'"),
+                    ));
                 }
             }
-            "doctor" => Command::Service(ServiceJob::Doctor),
-            "perf" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage("cli.usage.perfSubcommandRequired", PERF_SUBS.to_string())
-                })?;
-                match sub.as_str() {
-                    "start" => {
-                        let mut interval_ms = 1000u32;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--interval-ms" => {
-                                    interval_ms =
-                                        parse_u32(&mut cursor, "--interval-ms", 250, 60_000)?;
-                                }
-                                other => return Err(unknown_flag(other)),
-                            }
+        }
+        // Phase 30 (T6): db check — OFFLINE read-only SQLite/config diagnostics.
+        "db" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.dbSubcommandRequired",
+                    "db requires check|check-config|slow-log|report".to_string(),
+                )
+            })?;
+            match sub.as_str() {
+                "check" => {
+                    let mut sqlite: Option<String> = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--sqlite" => sqlite = Some(cursor.value_after("--sqlite")?),
+                            other => return Err(unknown_flag(other)),
                         }
-                        Command::Service(ServiceJob::PerfStart { interval_ms })
                     }
-                    "stop" => Command::Service(ServiceJob::PerfStop),
-                    "snapshot" => Command::Service(ServiceJob::PerfSnapshot),
-                    "report" => Command::Service(ServiceJob::PerfReport),
-                    other => {
-                        return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown perf subcommand '{other}' ({PERF_SUBS})"),
-                        ));
-                    }
+                    let path = sqlite.ok_or_else(|| {
+                        usage(
+                            "cli.usage.dbCheckRequiresSqlite",
+                            "db check requires --sqlite <file>".to_string(),
+                        )
+                    })?;
+                    Command::Offline(OfflineJob::DbCheckSqlite { path })
+                }
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown db subcommand '{other}'"),
+                    ));
                 }
             }
-            "optimize" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage(
-                        "cli.usage.optimizeSubcommandRequired",
-                        OPTIMIZE_SUBS.to_string(),
-                    )
-                })?;
-                match sub.as_str() {
-                    "plan" => {
-                        let mut findings: Option<Vec<String>> = None;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--findings" => {
-                                    let value = cursor.value_after("--findings")?;
-                                    let ids: Vec<String> = value
-                                        .split(',')
-                                        .map(str::trim)
-                                        .filter(|s| !s.is_empty())
-                                        .map(str::to_string)
-                                        .collect();
-                                    findings = Some(ids);
-                                }
-                                other => return Err(unknown_flag(other)),
+        }
+        "doctor" => Command::Service(ServiceJob::Doctor),
+        "perf" => {
+            let sub = cursor
+                .next()
+                .cloned()
+                .ok_or_else(|| usage("cli.usage.perfSubcommandRequired", PERF_SUBS.to_string()))?;
+            match sub.as_str() {
+                "start" => {
+                    let mut interval_ms = 1000u32;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--interval-ms" => {
+                                interval_ms = parse_u32(&mut cursor, "--interval-ms", 250, 60_000)?;
                             }
+                            other => return Err(unknown_flag(other)),
                         }
-                        Command::Service(ServiceJob::OptimizePlan { findings })
                     }
-                    "start" => {
-                        let plan_id = parse_optional_id(&mut cursor, "--plan-id")?;
-                        Command::Service(ServiceJob::OptimizeStart { plan_id })
-                    }
-                    "status" => {
-                        let plan_id = parse_optional_id(&mut cursor, "--plan-id")?;
-                        Command::Service(ServiceJob::OptimizeStatus { plan_id })
-                    }
-                    other => {
-                        return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown optimize subcommand '{other}' ({OPTIMIZE_SUBS})"),
-                        ));
-                    }
+                    Command::Service(ServiceJob::PerfStart { interval_ms })
+                }
+                "stop" => Command::Service(ServiceJob::PerfStop),
+                "snapshot" => Command::Service(ServiceJob::PerfSnapshot),
+                "report" => Command::Service(ServiceJob::PerfReport),
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown perf subcommand '{other}' ({PERF_SUBS})"),
+                    ));
                 }
             }
-            "timeline" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage(
-                        "cli.usage.timelineSubcommandRequired",
-                        TIMELINE_SUBS.to_string(),
-                    )
-                })?;
-                match sub.as_str() {
-                    "page" => {
-                        let mut page_size = 50u32;
-                        let mut before_sequence = 0u64;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--size" => page_size = parse_u32(&mut cursor, "--size", 1, 200)?,
-                                "--before" => {
-                                    let value = cursor.value_after("--before")?;
-                                    before_sequence = value.parse().map_err(|_| {
+        }
+        "optimize" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.optimizeSubcommandRequired",
+                    OPTIMIZE_SUBS.to_string(),
+                )
+            })?;
+            match sub.as_str() {
+                "plan" => {
+                    let mut findings: Option<Vec<String>> = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--findings" => {
+                                let value = cursor.value_after("--findings")?;
+                                let ids: Vec<String> = value
+                                    .split(',')
+                                    .map(str::trim)
+                                    .filter(|s| !s.is_empty())
+                                    .map(str::to_string)
+                                    .collect();
+                                findings = Some(ids);
+                            }
+                            other => return Err(unknown_flag(other)),
+                        }
+                    }
+                    Command::Service(ServiceJob::OptimizePlan { findings })
+                }
+                "start" => {
+                    let plan_id = parse_optional_id(&mut cursor, "--plan-id")?;
+                    Command::Service(ServiceJob::OptimizeStart { plan_id })
+                }
+                "status" => {
+                    let plan_id = parse_optional_id(&mut cursor, "--plan-id")?;
+                    Command::Service(ServiceJob::OptimizeStatus { plan_id })
+                }
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown optimize subcommand '{other}' ({OPTIMIZE_SUBS})"),
+                    ));
+                }
+            }
+        }
+        "timeline" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.timelineSubcommandRequired",
+                    TIMELINE_SUBS.to_string(),
+                )
+            })?;
+            match sub.as_str() {
+                "page" => {
+                    let mut page_size = 50u32;
+                    let mut before_sequence = 0u64;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--size" => page_size = parse_u32(&mut cursor, "--size", 1, 200)?,
+                            "--before" => {
+                                let value = cursor.value_after("--before")?;
+                                before_sequence = value.parse().map_err(|_| {
                                     usage(
                                         "cli.usage.beforeInvalid",
                                         format!(
@@ -595,143 +797,145 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                                         ),
                                     )
                                 })?;
-                                }
-                                other => return Err(unknown_flag(other)),
                             }
+                            other => return Err(unknown_flag(other)),
                         }
-                        Command::Service(ServiceJob::TimelinePage {
-                            page_size,
-                            before_sequence,
-                        })
                     }
-                    "patterns" => Command::Service(ServiceJob::TimelinePatterns),
-                    other => {
-                        return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown timeline subcommand '{other}' ({TIMELINE_SUBS})"),
-                        ));
-                    }
+                    Command::Service(ServiceJob::TimelinePage {
+                        page_size,
+                        before_sequence,
+                    })
+                }
+                "patterns" => Command::Service(ServiceJob::TimelinePatterns),
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown timeline subcommand '{other}' ({TIMELINE_SUBS})"),
+                    ));
                 }
             }
-            "care" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage("cli.usage.careSubcommandRequired", CARE_SUBS.to_string())
-                })?;
-                match sub.as_str() {
-                    "status" => Command::Service(ServiceJob::CareStatus),
-                    "start" => {
-                        let mut non_interactive = false;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--non-interactive" => non_interactive = true,
-                                other => return Err(unknown_flag(other)),
-                            }
+        }
+        "care" => {
+            let sub = cursor
+                .next()
+                .cloned()
+                .ok_or_else(|| usage("cli.usage.careSubcommandRequired", CARE_SUBS.to_string()))?;
+            match sub.as_str() {
+                "status" => Command::Service(ServiceJob::CareStatus),
+                "start" => {
+                    let mut non_interactive = false;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--non-interactive" => non_interactive = true,
+                            other => return Err(unknown_flag(other)),
                         }
-                        Command::Service(ServiceJob::CareStart { non_interactive })
                     }
-                    "cancel" => Command::Service(ServiceJob::CareCancel),
-                    "consent-grant" => Command::Service(ServiceJob::CareConsentGrant),
-                    other => {
-                        return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown care subcommand '{other}' ({CARE_SUBS})"),
-                        ));
-                    }
+                    Command::Service(ServiceJob::CareStart { non_interactive })
+                }
+                "cancel" => Command::Service(ServiceJob::CareCancel),
+                "consent-grant" => Command::Service(ServiceJob::CareConsentGrant),
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown care subcommand '{other}' ({CARE_SUBS})"),
+                    ));
                 }
             }
-            "insights" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage(
-                        "cli.usage.insightsSubcommandRequired",
-                        INSIGHTS_SUBS.to_string(),
-                    )
-                })?;
-                match sub.as_str() {
-                    "list" => Command::Service(ServiceJob::InsightsList),
-                    "explain" => {
-                        let mut question_key = "insight.question.overview".to_string();
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--question" => question_key = cursor.value_after("--question")?,
-                                other => return Err(unknown_flag(other)),
-                            }
+        }
+        "insights" => {
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.insightsSubcommandRequired",
+                    INSIGHTS_SUBS.to_string(),
+                )
+            })?;
+            match sub.as_str() {
+                "list" => Command::Service(ServiceJob::InsightsList),
+                "explain" => {
+                    let mut question_key = "insight.question.overview".to_string();
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--question" => question_key = cursor.value_after("--question")?,
+                            other => return Err(unknown_flag(other)),
                         }
-                        Command::Service(ServiceJob::InsightsExplain { question_key })
                     }
-                    "dismiss" => {
-                        let mut insight_id: Option<String> = None;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--insight-id" => {
-                                    insight_id = Some(cursor.value_after("--insight-id")?)
-                                }
-                                other => return Err(unknown_flag(other)),
+                    Command::Service(ServiceJob::InsightsExplain { question_key })
+                }
+                "dismiss" => {
+                    let mut insight_id: Option<String> = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--insight-id" => {
+                                insight_id = Some(cursor.value_after("--insight-id")?)
                             }
+                            other => return Err(unknown_flag(other)),
                         }
-                        let insight_id = insight_id.ok_or_else(|| {
-                            usage(
-                                "cli.usage.insightIdRequired",
-                                "insights dismiss requires --insight-id <id>".to_string(),
-                            )
-                        })?;
-                        Command::Service(ServiceJob::InsightsDismiss { insight_id })
                     }
-                    other => {
-                        return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown insights subcommand '{other}' ({INSIGHTS_SUBS})"),
-                        ));
-                    }
+                    let insight_id = insight_id.ok_or_else(|| {
+                        usage(
+                            "cli.usage.insightIdRequired",
+                            "insights dismiss requires --insight-id <id>".to_string(),
+                        )
+                    })?;
+                    Command::Service(ServiceJob::InsightsDismiss { insight_id })
+                }
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown insights subcommand '{other}' ({INSIGHTS_SUBS})"),
+                    ));
                 }
             }
-            "scan" => {
-                let sub = cursor.next().cloned().ok_or_else(|| {
-                    usage("cli.usage.scanSubcommandRequired", SCAN_SUBS.to_string())
-                })?;
-                match sub.as_str() {
-                    "start" => Command::Service(ServiceJob::ScanStart),
-                    "cancel" => {
-                        let mut scan_id: Option<String> = None;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--scan-id" => scan_id = Some(cursor.value_after("--scan-id")?),
-                                other => return Err(unknown_flag(other)),
-                            }
+        }
+        "scan" => {
+            let sub = cursor
+                .next()
+                .cloned()
+                .ok_or_else(|| usage("cli.usage.scanSubcommandRequired", SCAN_SUBS.to_string()))?;
+            match sub.as_str() {
+                "start" => Command::Service(ServiceJob::ScanStart),
+                "cancel" => {
+                    let mut scan_id: Option<String> = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--scan-id" => scan_id = Some(cursor.value_after("--scan-id")?),
+                            other => return Err(unknown_flag(other)),
                         }
-                        let scan_id = scan_id.ok_or_else(|| {
-                            usage(
-                                "cli.usage.scanIdRequired",
-                                "scan cancel requires --scan-id <id>".to_string(),
-                            )
-                        })?;
-                        Command::Service(ServiceJob::ScanCancel { scan_id })
                     }
-                    "status" => Command::Service(ServiceJob::ScanStatus),
-                    "history" => {
-                        let mut limit = 20u32;
-                        while let Some(flag) = cursor.next() {
-                            match flag.as_str() {
-                                "--limit" => limit = parse_u32(&mut cursor, "--limit", 1, 200)?,
-                                other => return Err(unknown_flag(other)),
-                            }
+                    let scan_id = scan_id.ok_or_else(|| {
+                        usage(
+                            "cli.usage.scanIdRequired",
+                            "scan cancel requires --scan-id <id>".to_string(),
+                        )
+                    })?;
+                    Command::Service(ServiceJob::ScanCancel { scan_id })
+                }
+                "status" => Command::Service(ServiceJob::ScanStatus),
+                "history" => {
+                    let mut limit = 20u32;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--limit" => limit = parse_u32(&mut cursor, "--limit", 1, 200)?,
+                            other => return Err(unknown_flag(other)),
                         }
-                        Command::Service(ServiceJob::ScanHistory { limit })
                     }
-                    other => {
-                        return Err(usage(
-                            "cli.usage.unknownSubcommand",
-                            format!("unknown scan subcommand '{other}' ({SCAN_SUBS})"),
-                        ));
-                    }
+                    Command::Service(ServiceJob::ScanHistory { limit })
+                }
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown scan subcommand '{other}' ({SCAN_SUBS})"),
+                    ));
                 }
             }
-            other => {
-                return Err(usage(
-                    "cli.usage.unknownCommand",
-                    format!("unknown command '{other}'"),
-                ));
-            }
-        };
+        }
+        other => {
+            return Err(usage(
+                "cli.usage.unknownCommand",
+                format!("unknown command '{other}'"),
+            ));
+        }
+    };
 
     if cursor.peek().is_some() {
         return Err(usage(

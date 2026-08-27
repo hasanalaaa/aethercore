@@ -105,6 +105,8 @@ message Request {
     GetEngineSourceRequest get_engine_source = 88;
     // Phase 29: Enterprise Outputs — signed journal export (additive; next free tag).
     ExportJournalRequest export_journal = 89;
+    // Phase 32: Security Audit Domain (read-only; additive; next free tag).
+    RunSecurityAuditRequest run_security_audit = 90;
   }
 }
 message Response {
@@ -161,7 +163,30 @@ message Response {
     EngineSourceResponse engine_source_response = 50;
     // Phase 29: Enterprise Outputs — signed journal export (additive; next free tag).
     ExportJournalResponse export_journal_response = 51;
+    // Phase 32: Security Audit Domain (additive; next free tag).
+    SecurityAuditResponse security_audit_response = 52;
   }
+}
+message RunSecurityAuditRequest {
+  // Serialized aethercore.security.audit.target.v1 JSON array — typed
+  // AuditTarget selectors. Owner-scoped allowlist is enforced by the router.
+  bytes targets_json = 1;
+}
+message SecurityAuditReportLane {
+  string lane = 1;
+  // "ok" | "notAvailable"
+  string status = 2;
+  string reason = 3;
+  uint64 finding_count = 4;
+  // Serialized findings for this lane (aethercore.security.finding.v1 JSON array).
+  bytes findings_json = 5;
+}
+message SecurityAuditResponse {
+  uint32 schema_version = 1;
+  string platform = 2;
+  // Deterministic SHA-256 over the sorted finding set.
+  string digest = 3;
+  repeated SecurityAuditReportLane lanes = 4;
 }
 message PingRequest {}
 message PongResponse { string service_version = 1; }

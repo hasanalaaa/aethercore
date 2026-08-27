@@ -7,8 +7,8 @@
 //! I4 (resource budget): single in-flight request via an internal supervisor lane
 //! (NOT MutationWorkload), hard inference timeout, on-demand only.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::model::{
@@ -180,6 +180,36 @@ impl LocalReasoner for DeterministicFallbackReasoner {
             ) {
                 out.push(insight);
             }
+        }
+
+        // Rule 4 (Phase 32): security-finding posture summary. Cites the
+        // SecFinding evidence ids verbatim; the surface stays citation-
+        // resolvable through the audit report lane.
+        let security_items: Vec<&EvidenceItem> = pack
+            .items
+            .iter()
+            .filter(|item| matches!(item.surface, crate::model::EvidenceSurface::SecurityFinding))
+            .collect();
+        if !security_items.is_empty()
+            && let Some(insight) = Insight::build(
+                "insight.summary.securityPosture",
+                format!(
+                    "{} security finding(s) in the current posture snapshot; review the cited evidence.",
+                    security_items.len()
+                ),
+                InsightConfidence::Moderate,
+                security_items
+                    .iter()
+                    .take(4)
+                    .map(|item| Citation {
+                        evidence_id: item.evidence_id.clone(),
+                        surface: item.surface,
+                    })
+                    .collect(),
+                InsightEngineKind::RuleFallback,
+            )
+        {
+            out.push(insight);
         }
 
         Ok(out)

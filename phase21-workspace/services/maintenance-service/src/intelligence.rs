@@ -224,6 +224,7 @@ impl IntelligenceCoordinator {
                             EvidenceSurface::RepairDiagnosis => "repairDiagnosis".into(),
                             EvidenceSurface::TimelinePattern => "timelinePattern".into(),
                             EvidenceSurface::MaintenanceHistory => "maintenanceHistory".into(),
+                            EvidenceSurface::SecurityFinding => "securityFinding".into(),
                         },
                     })
                     .collect(),

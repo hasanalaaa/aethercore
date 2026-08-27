@@ -1,0 +1,31 @@
+{
+ "schema": "aethercore.cis-map.v1",
+ "profile": "cis-l1",
+ "entries": [
+  {"rule_code": "ssh.permit_root_login", "control": "CIS L1 5.2.8", "note": ""},
+  {"rule_code": "ssh.password_authentication", "control": "CIS L1 5.2.9", "note": ""},
+  {"rule_code": "ssh.pubkey_authentication", "control": "unmapped", "note": "OpenSSH hardening guidance without a dedicated CIS L1 workstation control id"},
+  {"rule_code": "ssh.x11_forwarding", "control": "unmapped", "note": "server-hardening guidance; no direct CIS L1 control id in this profile"},
+  {"rule_code": "ssh.max_auth_tries", "control": "CIS L1 5.2.10", "note": ""},
+  {"rule_code": "ssh.client_alive", "control": "unmapped", "note": "session hygiene advisory; CIS L1 maps ClientAliveInterval under server profiles not covered here"},
+  {"rule_code": "pass.max_days", "control": "CIS L1 5.5.1", "note": ""},
+  {"rule_code": "pass.min_days", "control": "CIS L1 5.5.2", "note": ""},
+  {"rule_code": "pass.min_len", "control": "unmapped", "note": "length policy enforced via pam_pwquality on Linux and OpenDirectory on macOS; no file-based CIS L1 id"},
+  {"rule_code": "sudo.nopasswd", "control": "CIS L1 1.3.4", "note": ""},
+  {"rule_code": "sudo.wildcard_all", "control": "unmapped", "note": "least-privilege guidance beyond the CIS L1 sudoers controls"},
+  {"rule_code": "fs.world_writable", "control": "CIS L1 6.1.1", "note": ""},
+  {"rule_code": "fs.suid_inventory", "control": "unmapped", "note": "inventory-only advisory; CIS SUID review items are per-control families (6.x) requiring a baseline diff"},
+  {"rule_code": "fs.ssh_dir_perms", "control": "CIS L1 6.1.4", "note": ""},
+  {"rule_code": "fs.ssh_key_perms", "control": "CIS L1 6.1.3", "note": ""},
+  {"rule_code": "auth.failure_burst", "control": "unmapped", "note": "heuristic brute-force suspicion; CIS log-review controls require retention/centralization context"},
+  {"rule_code": "fw.config_present", "control": "unmapped", "note": "config-presence inference only; live firewall-state controls need the elevation lane (QD-032-001)"},
+  {"rule_code": "fw.state_not_available", "control": "unmapped", "note": "honest degradation marker, never a compliance claim"},
+  {"rule_code": "secrets.aws_key", "control": "unmapped", "note": "credential hygiene outside CIS L1 workstation scope"},
+  {"rule_code": "secrets.private_key_block", "control": "unmapped", "note": "credential hygiene outside CIS L1 workstation scope"},
+  {"rule_code": "secrets.generic_assignment", "control": "unmapped", "note": "entropy heuristic; advisory only"},
+  {"rule_code": "secrets.dotenv", "control": "unmapped", "note": "credential hygiene outside CIS L1 workstation scope"},
+  {"rule_code": "cve.vulnerable_package", "control": "unmapped", "note": "vulnerability currency is governed by vulndb freshness (QD-032-003), not a static CIS L1 control"},
+  {"rule_code": "fs.scan_truncated", "control": "unmapped", "note": "honest truncation marker, never a compliance claim"},
+  {"rule_code": "secrets.scan_truncated", "control": "unmapped", "note": "honest truncation marker, never a compliance claim"}
+ ]
+}

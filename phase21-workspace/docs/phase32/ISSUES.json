@@ -1,0 +1,48 @@
+{
+ "schema": "aethercore.phase32.issues.v1",
+ "phase": 32,
+ "issues": [
+  {
+   "id": "ISS-P32-001",
+   "severity": "info",
+   "title": "Baseline gate initially FAIL on post-seal Finder .DS_Store",
+   "detail": "Pre-session phase31 audit reported p30-fulltree-spot-hash-ok: ['.DS_Store']. Root-caused to Finder regenerating the root .DS_Store at 09:25, ~4 minutes before session start and AFTER the P31 seal; the sealed P31 archive contains no root .DS_Store. Swept under Part H authority (hash recorded in HYGIENE.md); baseline restored to checks=727 failures=[] PASS. No ledger edited.",
+   "disposition": "resolved"
+  },
+  {
+   "id": "ISS-P32-002",
+   "severity": "info",
+   "title": "_build_p30_patch.py seal path broken by H2 move",
+   "detail": "The P30 spot-hash gate regenerates its ledger by extracting ROOT.parent/AetherCore-Phase29-Master-Delivery.zip. Part H2 moved that archive to _archive/. Builder now resolves canonical-then-_archive fallback (same pinned bytes). Audits pass identically pre/post move; recorded as a handled conflict per H2 instructions rather than a ledger edit.",
+   "disposition": "resolved"
+  },
+  {
+   "id": "ISS-P32-003",
+   "severity": "minor",
+   "title": "vulndb write helper originally lived inside the read-only crate",
+   "detail": "First implementation put write_manifest_for() in crates/security-audit/src/vulndb.rs. The phase's own audit gate (p32-read-only-contract) flagged fs::write in production src. Fixed by moving the manifest writer into the explicit owner-action CLI path (apps/aetherctl/src/sec.rs) with validate-before-write + rollback \u2014 the export.rs precedent taken to completion. The crate is now strictly write-free.",
+   "disposition": "resolved"
+  },
+  {
+   "id": "ISS-P32-004",
+   "severity": "info",
+   "title": "SBOM component count drift surfaced during P32 audit inheritance",
+   "detail": "p29-sbom-count-consistency failed (598 vs 599) because the committed SBOM.cdx.json predated the new workspace member. Regenerating the deterministic inventory twice (identical bytes) resolved it; the SBOM now includes the security-audit crate's dependency closure.",
+   "disposition": "resolved"
+  },
+  {
+   "id": "ISS-P32-005",
+   "severity": "minor",
+   "title": "Live /etc/sudoers unreadable without elevation on this host",
+   "detail": "GD-4 live audit against the real host: /etc/sudoers is root-readable only (mode 0440), so the sudoers lane returned typed NotAvailable(Permission denied) instead of results. Parser proven via fixtures; elevated run remains open under QD-032-001 umbrella. Recorded honestly rather than simulated.",
+   "disposition": "open (tracked via QD-032-001)"
+  },
+  {
+   "id": "ISS-P32-006",
+   "severity": "info",
+   "title": "Post-seal refresh cycle executed under supervisor direction (P33 Part A)",
+   "detail": "The P32 seal shipped with exactly 2 documented blemishes: crates/.DS_Store entered the full-tree ledger (Finder regenerated it mid-seal) and MASTER_DELIVERY_REPORT.md embedded an inline archive-hash line (self-reference paradox). Phase 33 Part A executed the mandated closure cycle BEFORE any P33 feature work: both .DS_Store files swept with hashes recorded in HYGIENE.md; the MDR inline hash replaced by a pointer line ('Authoritative archive hash: see PHASE32_FINAL_SHA256.txt'); the never-embed rule added verbatim to EXTENSIBILITY.md \u00a7delivery-contract; .DS_Store structural exclusion added to _build_p32_archive.py (and all sibling builders). The previous sealed archive AetherCore-Phase32-Master-Delivery.zip was MOVED to /Users/hasanalaaa/Documents/AetherCore 2/_archive/ preserving those bytes; its retained-byte sha256 is 3db77412340b7d7529da2ddf0a1eb939642693776964f8e9d35e088fe00b9c06 (the earlier 40c89ad53427a74a3cecdf49520ccf79b4285a8f29e8577abd9e5b19411fea3d value was historical builder output embedded inside that artifact, not the digest of the retained bytes). The re-sealed archive supersedes it and its authoritative hash is recorded externally in PHASE32_FINAL_SHA256.txt.",
+   "disposition": "resolved"
+  }
+ ]
+}

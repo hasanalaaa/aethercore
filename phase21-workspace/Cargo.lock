@@ -319,6 +319,7 @@ dependencies = [
  "aethercore-platform-capabilities",
  "aethercore-restore-point",
  "aethercore-security",
+ "aethercore-security-audit",
  "aethercore-startup-manager",
  "aethercore-support-bundle",
  "aethercore-system-repair",
@@ -470,6 +471,18 @@ dependencies = [
  "sha2",
  "thiserror 2.0.20",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "aethercore-security-audit"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -645,6 +658,7 @@ dependencies = [
  "aethercore-performance-telemetry",
  "aethercore-persistence",
  "aethercore-platform-capabilities",
+ "aethercore-security-audit",
  "ed25519-dalek",
  "libc",
  "prost",

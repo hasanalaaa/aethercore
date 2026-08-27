@@ -47,6 +47,7 @@ members = [
   "tools/support-bundle-verify",
   "tools/ga-probe",
   "crates/db-diagnostics",
+  "crates/security-audit",
 ]
 resolver = "3"
 

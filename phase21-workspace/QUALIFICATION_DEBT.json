@@ -1,357 +1,390 @@
 {
-  "schemaVersion": 1,
-  "phase": 19,
-  "policy": "Windows-native qualification remains intentionally deferred through major product-capability buildout; Phase 19 source completion never implies native PASS, GA, universal repairability, or destructive recovery authority.",
-  "generatedFor": "PHASE_19_WINDOWS_REPAIR_INTELLIGENCE_SOURCE_COMPLETE",
-  "items": [
-    {
-      "capabilityId": "P17-QD-001",
-      "subsystem": "DeepScanCoordinator / maintenance-service",
-      "windowsApiDependency": "Windows service runtime, persistent IPC v7, principal identity",
-      "requiredNativeScenario": "Start, observe, cancel, complete, then rapidly restart Deep Scan through the installed non-elevated desktop shell and privileged service boundary; exercise stale cancel/late-worker windows.",
-      "expectedEvidence": "Principal-bound request/response and streamed DeepScanSnapshot events; generation N cleanup/cancellation never clears or overwrites generation N+1 state.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#deep-scan-ipc"
-    },
-    {
-      "capabilityId": "P17-QD-002",
-      "subsystem": "Driver and hardware collection",
-      "windowsApiDependency": "SetupAPI / Configuration Manager / Windows Update Agent through existing Driver Hub",
-      "requiredNativeScenario": "Healthy devices, missing driver, device problem code, applicable driver update and vendor-managed update.",
-      "expectedEvidence": "Authoritative driver/device snapshots normalize to stable privacy-preserving facts and expected findings without duplicate alarms.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#drivers"
-    },
-    {
-      "capabilityId": "P17-QD-003",
-      "subsystem": "Storage and memory telemetry",
-      "windowsApiDependency": "WMI/CIM, storage reliability providers, NVMe/SMART paths used by diagnostic-engine",
-      "requiredNativeScenario": "Healthy disk, warning disk, explicit uncorrected error, unavailable SMART/NVMe metrics, normal and high memory pressure.",
-      "expectedEvidence": "Factual telemetry and bounded findings; unavailable metrics remain diagnostic limitations rather than health failures.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#storage-memory"
-    },
-    {
-      "capabilityId": "P17-QD-004",
-      "subsystem": "WHEA and crash intelligence",
-      "windowsApiDependency": "Windows Event Log / WHEA / minidump metadata through diagnostic-engine",
-      "requiredNativeScenario": "Recent WHEA corrected/uncorrected evidence and bugchecks at strong, moderate, weak, unrelated and stale time separations, including hardware evidence after a crash.",
-      "expectedEvidence": "Corrected/fatal semantics remain distinct; weak coincidence never becomes a Critical combined Finding; correlated Findings expose time distance, contributing evidence, strength and uncertainty without unsupported causation.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#whea-crash"
-    },
-    {
-      "capabilityId": "P17-QD-005",
-      "subsystem": "Windows integrity collection",
-      "windowsApiDependency": "DISM/SFC/CHKDSK assessment paths and Windows servicing preflight through system-repair",
-      "requiredNativeScenario": "Verified healthy servicing result, repairable corruption result, servicing failure and reboot-precondition state.",
-      "expectedEvidence": "Healthy results produce no warning; non-healthy results produce a bounded Windows finding and a sensitive remediation candidate only.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#windows-integrity"
-    },
-    {
-      "capabilityId": "P17-QD-006",
-      "subsystem": "Startup and cleanup collection",
-      "windowsApiDependency": "Registry/Task Scheduler/startup discovery and filesystem cleanup discovery through existing engines",
-      "requiredNativeScenario": "Normal startup, multiple high-impact startup entries, safe reclaimable data and recovery-sensitive exclusions.",
-      "expectedEvidence": "Read-only scan produces recommendations only; no startup or cleanup mutation occurs during Deep Scan.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#startup-cleanup"
-    },
-    {
-      "capabilityId": "P17-QD-007",
-      "subsystem": "Cancellation, timeouts and resource governance",
-      "windowsApiDependency": "Long-running WMI/RPC/Event Log/WUA/native calls plus ReadBudgetManager",
-      "requiredNativeScenario": "Inject stalled collectors, exhaust read budgets, cancel during each batch, rapidly restart scans, and allow an old native worker to exit after the next generation begins.",
-      "expectedEvidence": "No unbounded stall; new work stops on cancellation; partial results are preserved; stale workers cannot alter the current generation or its cancellation token; resource budgets remain bounded.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#resource-failure"
-    },
-    {
-      "capabilityId": "P17-QD-008",
-      "subsystem": "IPC streaming, hydration and backpressure",
-      "windowsApiDependency": "Named-pipe/persistent IPC v7 event bus and renderer reconnect behavior",
-      "requiredNativeScenario": "Disconnect/reconnect renderer during an active scan and stress intermediate progress volume.",
-      "expectedEvidence": "Hydration restores authoritative current state; coalescing prevents event flood; terminal finding state is never lost or duplicated.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#reconnect-backpressure"
-    },
-    {
-      "capabilityId": "P17-QD-009",
-      "subsystem": "Deep Scan Svelte/Tauri experience",
-      "windowsApiDependency": "WebView2/Tauri desktop runtime, Windows input/accessibility settings",
-      "requiredNativeScenario": "Keyboard-only EN/AR flows, RTL, 200% text scale, reduced motion, reduced transparency, increased contrast and screen reader navigation.",
-      "expectedEvidence": "Pointerdown feedback remains interruptible, no fake progress animation, focus order is usable, severity is not color-only, and live announcements are restrained.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#ui-a11y"
-    },
-    {
-      "capabilityId": "P17-QD-010",
-      "subsystem": "Deep Scan performance",
-      "windowsApiDependency": "Representative Windows hardware and provider latency",
-      "requiredNativeScenario": "Run Deep Scan on low/mid/high-spec PCs while measuring CPU, disk, memory, collector durations and event volume.",
-      "expectedEvidence": "The scan remains bounded and does not materially saturate CPU/disk; per-class concurrency and duration telemetry are captured.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#performance"
-    },
-    {
-      "capabilityId": "P17-QD-011",
-      "subsystem": "SQLite migration and history continuity",
-      "windowsApiDependency": "Deployed SQLite WAL database upgraded through schema v10 to v11",
-      "requiredNativeScenario": "Upgrade a representative Phase 17 schema-v10 database containing scans/findings/overrides/sealed plans to v11, restart service, and verify verification/resolution metadata plus all prior rows.",
-      "expectedEvidence": "No prior rows or finding IDs are lost; ignored state and finding JSON remain compatible; new verification fields receive deterministic defaults; schema checksum remains stable.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#persistence-upgrade"
-    },
-    {
-      "capabilityId": "P17-QD-012",
-      "subsystem": "Immutable remediation-plan foundation",
-      "windowsApiDependency": "Service persistence and future MutationSupervisor handoff",
-      "requiredNativeScenario": "Select/deselect candidates before consent, seal a plan, restart service and verify digest/action set identity remains unchanged.",
-      "expectedEvidence": "Sealed plan is immutable and principal-bound; no Phase 17 path executes the proposed actions.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase17-windows-qualification.ps1#remediation-plan"
-    },
-    {
-      "capabilityId": "P18-QD-001",
-      "subsystem": "Machine/OEM authority context",
-      "windowsApiDependency": "Windows registry / SMBIOS-derived machine identity",
-      "requiredNativeScenario": "Validate manufacturer/model/family/build on OEM laptop, OEM desktop and self-built PC; confirm serial/UUID are neither collected nor persisted.",
-      "expectedEvidence": "MachineKind is proven as OEM/SelfBuilt/Unknown without retail-motherboard false OEM classification; serial/UUID remain excluded.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#machine-context"
-    },
-    {
-      "capabilityId": "P18-QD-002",
-      "subsystem": "Official provider network behavior",
-      "windowsApiDependency": "Live WUA plus official vendor/OEM infrastructure",
-      "requiredNativeScenario": "Exercise applicable/empty/timeout/offline/partial provider responses and official redirect/CDN behavior.",
-      "expectedEvidence": "Per-device coverage becomes CompleteForRequiredAuthorities only when every required authority is sufficiently evaluated; offline/manual/unavailable states never claim Up to date.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#provider-network"
-    },
-    {
-      "capabilityId": "P18-QD-003",
-      "subsystem": "Driver package Authenticode and publisher trust",
-      "windowsApiDependency": "WinVerifyTrust / catalog trust on real driver packages",
-      "requiredNativeScenario": "Validate trusted Microsoft/vendor package, unexpected publisher, invalid/unsigned/test-signed package and signer extraction.",
-      "expectedEvidence": "WinVerifyTrust success is accompanied by extracted signer subject/strong certificate identity and provider-approved signer matching; valid wrong-publisher packages fail closed.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#authenticode"
-    },
-    {
-      "capabilityId": "P18-QD-004",
-      "subsystem": "Secure driver staging",
-      "windowsApiDependency": "NTFS ACLs, reparse/symlink/hardlink semantics",
-      "requiredNativeScenario": "Stage a verified package then attack substitution, rename, reparse and hardlink windows before privileged handoff.",
-      "expectedEvidence": "Staging resists substitution and privileged revalidation detects any changed package identity.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#staging-acl"
-    },
-    {
-      "capabilityId": "P18-QD-005",
-      "subsystem": "Driver install, backup and restore",
-      "windowsApiDependency": "WUA / supported driver servicing / restore point / driver backup",
-      "requiredNativeScenario": "Install real independent drivers and missing-device driver; exercise backup, restore point, failure before/after mutation, rollback and reboot aggregation.",
-      "expectedEvidence": "Each item is journaled independently; recovery evidence exists before mutation; failures contain subsequent dependent work.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#install-recovery"
-    },
-    {
-      "capabilityId": "P18-QD-006",
-      "subsystem": "Post-install device verification",
-      "windowsApiDependency": "SetupAPI / Configuration Manager / WUA result",
-      "requiredNativeScenario": "After install and after reboot, re-read device presence, problem code, provider/version/INF and WUA result.",
-      "expectedEvidence": "Success is journaled only when post-install evidence matches the sealed action or an explicit reboot-pending state.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#post-verify"
-    },
-    {
-      "capabilityId": "P18-QD-007",
-      "subsystem": "Official GPU utility flows",
-      "windowsApiDependency": "NVIDIA App / AMD official update tooling / Intel Driver & Support Assistant",
-      "requiredNativeScenario": "Detect installed/not-installed official utilities and exercise launch/support routing without claiming AetherCore direct installation.",
-      "expectedEvidence": "Utility presence is represented only as management authority; update availability remains UnknownUntilVendorCheck unless live vendor evidence proves an update.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#gpu-utilities"
-    },
-    {
-      "capabilityId": "P18-QD-008",
-      "subsystem": "DirectTrusted privileged handoff",
-      "windowsApiDependency": "Future provider-specific driver package executor",
-      "requiredNativeScenario": "When a DirectTrusted provider is introduced, prove frozen package identity, elevated revalidation and supported servicing contract before enabling selection.",
-      "expectedEvidence": "Renderer cannot inject URL/path; exact verified package is the only privileged input and plan substitution fails closed.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#direct-trusted"
-    },
-    {
-      "capabilityId": "P18-QD-009",
-      "subsystem": "Driver UX scale / RTL / accessibility",
-      "windowsApiDependency": "Installed Tauri/WebView2, keyboard, accessibility tree",
-      "requiredNativeScenario": "Exercise 1 and 50+ devices, long names, mixed Arabic/Latin IDs, keyboard-only selection/preferences, reduced motion/transparency/contrast and reboot states.",
-      "expectedEvidence": "No unbounded interaction regression; technical values remain LTR islands; all state is perceivable without color alone.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#driver-ui"
-    },
-    {
-      "capabilityId": "P18.1-QD-001",
-      "subsystem": "Native signer identity extraction",
-      "windowsApiDependency": "WinVerifyTrust/CryptQueryObject/certificate chain APIs",
-      "requiredNativeScenario": "Extract signer subject, certificate thumbprint or stronger key identity, chain status, and test-signing state from real Microsoft/NVIDIA/AMD/Intel/OEM driver packages.",
-      "expectedEvidence": "Typed SignatureVerification is populated with real identity evidence; validity-only evidence cannot satisfy expected publisher policy.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#signer-identity"
-    },
-    {
-      "capabilityId": "P18.1-QD-002",
-      "subsystem": "Provider-specific certificate policy",
-      "windowsApiDependency": "Real vendor signing chains and rotation behavior",
-      "requiredNativeScenario": "Build and validate approved signer sets/rotation policy per implemented direct provider before any DirectTrusted enablement.",
-      "expectedEvidence": "No display-name substring trust; provider policy uses approved certificate/public-key identities with documented rotation handling.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#publisher-policy"
-    },
-    {
-      "capabilityId": "P18.1-QD-003",
-      "subsystem": "Live OEM authority behavior",
-      "windowsApiDependency": "Dell/Lenovo/HP/ASUS/Acer/MSI/Surface official tooling/support ecosystems",
-      "requiredNativeScenario": "On representative OEM machines, validate authority applicability, official utility/manual routing, provider availability and absence of fabricated machine-readable capability.",
-      "expectedEvidence": "DeviceAuthorityCoverage matches real OEM applicability and remains ManualAuthorityRequired/ProviderUnavailable until an adapter genuinely evaluates update availability.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#oem-authorities"
-    },
-    {
-      "capabilityId": "P18.1-QD-004",
-      "subsystem": "Live GPU utility/update evidence",
-      "windowsApiDependency": "NVIDIA App / AMD software / Intel Driver & Support Assistant",
-      "requiredNativeScenario": "Exercise installed/not-installed/unavailable utility states and independently prove update/no-update/unknown results where official tooling exposes them.",
-      "expectedEvidence": "Utility presence never increments update counts; UpdateAvailable appears only with concrete vendor evidence linked to a candidate/update identity.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#gpu-truth"
-    },
-    {
-      "capabilityId": "P18.1-QD-005",
-      "subsystem": "Authority completeness on real machines",
-      "windowsApiDependency": "Live WUA plus applicable OEM/component authorities",
-      "requiredNativeScenario": "Test generic Microsoft-only devices, OEM-specific devices, self-built GPU systems, offline systems, and provider failure/partial cases.",
-      "expectedEvidence": "Strong Up to date is emitted only when all required authorities for that device were sufficiently evaluated; exact reason for incompleteness is preserved.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#authority-completeness"
-    },
-    {
-      "capabilityId": "P18.1-QD-006",
-      "subsystem": "Driver staging adversarial security",
-      "windowsApiDependency": "NTFS ACL/reparse/hardlink/file identity semantics under elevation",
-      "requiredNativeScenario": "Attempt substitution, hardlink, junction/reparse, rename, ACL and time-of-check/time-of-use attacks across user staging and privileged revalidation.",
-      "expectedEvidence": "Exact signed package identity, signer policy, hash, applicability and safe path are revalidated after privilege transition immediately before mutation.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase18-windows-qualification.ps1#staging-attacks"
-    },
-    {
-      "capabilityId": "P19-QD-001",
-      "subsystem": "DISM component-store diagnosis and repair",
-      "windowsApiDependency": "DISM API / DismCheckImageHealth plus DISM RestoreHealth",
-      "requiredNativeScenario": "Healthy, repairable, source-required and non-repairable online images across supported Windows builds; mutate then rescan.",
-      "expectedEvidence": "Structured health classification matches Windows state; RestoreHealth runs only for a still-repairable image; verification proves or rejects success; source-required/non-repairable escalates without false resolution.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#component-store"
-    },
-    {
-      "capabilityId": "P19-QD-002",
-      "subsystem": "SFC protected-file diagnosis and verification",
-      "windowsApiDependency": "sfc.exe plus bounded CBS [SR] evidence",
-      "requiredNativeScenario": "Healthy system, repairable protected-file violation, unresolved violation and non-English Windows UI; exercise /verifyonly and /scannow.",
-      "expectedEvidence": "Localized console prose is never authority; bounded CBS evidence and a fresh verify pass cannot falsely resolve a Finding.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#system-files"
-    },
-    {
-      "capabilityId": "P19-QD-003",
-      "subsystem": "Windows Update diagnosis and targeted service repair",
-      "windowsApiDependency": "Windows Update Agent COM plus Service Control Manager",
-      "requiredNativeScenario": "Online healthy WUA, WU_E_NO_CONNECTION, WSUS/policy errors, wuauserv stopped/disabled, servicing contention and post-service-start retry.",
-      "expectedEvidence": "Offline is not corruption; policy/unknown errors remain bounded; only diagnosis-scoped service authority mutates and WUA discovery verifies the user-visible issue.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#windows-update"
-    },
-    {
-      "capabilityId": "P19-QD-004",
-      "subsystem": "Network, DNS and proxy repair intelligence",
-      "windowsApiDependency": "Windows networking/DNS/WinHTTP policy surfaces selected by future/available providers",
-      "requiredNativeScenario": "DHCP failure, DNS-only failure, malformed proxy, enterprise-managed proxy, offline adapter and Winsock candidate on managed/unmanaged systems.",
-      "expectedEvidence": "Root-cause rules do not infer DNS/Winsock from generic offline state; enterprise proxy is never silently removed; high-impact resets stay consent/reboot gated.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#network-proxy"
-    },
-    {
-      "capabilityId": "P19-QD-005",
-      "subsystem": "Filesystem online/offline repair boundary",
-      "windowsApiDependency": "CHKDSK online scan, boot-time/offline filesystem servicing",
-      "requiredNativeScenario": "Healthy NTFS, online-detected repair need, busy system volume, reboot-required repair and concurrent storage hardware warning.",
-      "expectedEvidence": "Filesystem evidence stays separate from physical disk health; no /f, /r, format, partition or raw-disk path runs automatically; offline repair requires explicit qualified flow.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#filesystem"
-    },
-    {
-      "capabilityId": "P19-QD-006",
-      "subsystem": "Recovery readiness, restore point and WinRE",
-      "windowsApiDependency": "System Restore / VSS integration and REAgentC/WinRE supported state",
-      "requiredNativeScenario": "Restore disabled, restore creation success/failure, WinRE enabled/disabled/unavailable and recovery protection loss before sensitive repair.",
-      "expectedEvidence": "UI never claims recovery protection from resource presence; missing mandatory protection blocks or escalates the relevant action exactly as the sealed graph states.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#recovery-readiness"
-    },
-    {
-      "capabilityId": "P19-QD-007",
-      "subsystem": "Repair reinstall and destructive recovery availability",
-      "windowsApiDependency": "Supported Windows recovery / repair reinstall surfaces",
-      "requiredNativeScenario": "Supported and unsupported Windows editions/builds; preserve-files reset guidance; repair reinstall availability; data-backup warning.",
-      "expectedEvidence": "Availability is detected rather than assumed; Level 4/5 actions remain guided/manual unless separately qualified; destructive recovery never runs silently.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#recovery-escalation"
-    },
-    {
-      "capabilityId": "P19-QD-008",
-      "subsystem": "Reboot resume, mutation contention and interrupted repair",
-      "windowsApiDependency": "SQLite WAL, service restart, MutationSupervisor, machine mutation guard",
-      "requiredNativeScenario": "Reboot barrier, service restart before/after mutation, concurrent driver/update repair, stale consent after state change and fresh post-reboot assessment.",
-      "expectedEvidence": "Pre-reboot plan is never replayed as mutation authority; stale fingerprint/graph fails closed; interrupted mutation reports precise outcome and requires fresh verification/recovery.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#reboot-resume-contention"
-    },
-    {
-      "capabilityId": "P19-QD-009",
-      "subsystem": "Repair UI EN/AR and accessibility",
-      "windowsApiDependency": "Tauri/WebView2, Narrator, keyboard, Windows accessibility preferences",
-      "requiredNativeScenario": "Keyboard-only Repair review/execution in EN/AR, RTL technical islands, 200% text, Narrator, reduced motion/transparency and increased contrast.",
-      "expectedEvidence": "Plan selection/recovery/reboot/error semantics remain understandable; progress announcements are restrained; no animation lockout or fake percentage occurs.",
-      "severityIfUnqualified": "High",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#ui-a11y"
-    },
-    {
-      "capabilityId": "P19-QD-010",
-      "subsystem": "Phase 19 build, migration and privileged boundary qualification",
-      "windowsApiDependency": "Rust/MSVC Windows toolchain, SQLite schema v13, signed installed service/renderer boundary",
-      "requiredNativeScenario": "Compile/test full workspace on supported Windows; upgrade representative v12 DB to v13; fuzz typed repair IPC; attempt command/service/path/plan substitution.",
-      "expectedEvidence": "Workspace compiles/tests; history survives migration; renderer cannot inject executable, command, service, registry/path mutation or bypass recovery/reboot graph invariants.",
-      "severityIfUnqualified": "Critical",
-      "qualificationHook": "scripts/phase19-windows-qualification.ps1#build-migration-security"
-    },
-    {
-      "capabilityId": "P27-QD-001",
-      "subsystem": "macOS native performance telemetry provider (macos_impl.rs)",
-      "windowsApiDependency": "n/a (unix provider)",
-      "requiredNativeScenario": "Validate Mach host_statistics64/vm64/sysctl/proc_pidinfo collectors across Apple Silicon AND Intel Macs, multiple macOS majors, and under heavy load / low-memory conditions; confirm tick-delta correctness across sleep/wake.",
-      "status": "open",
-      "notes": "Validated on this Apple Silicon host only (P27). Intel + macOS-version spread deferred to P28+ qualification."
-    },
-    {
-      "capabilityId": "P27-QD-002",
-      "subsystem": "Linux native performance telemetry provider (linux_impl.rs)",
-      "windowsApiDependency": "n/a (unix provider)",
-      "requiredNativeScenario": "Run the /proc-based provider across a kernel-version matrix (LTS bounds) and representative distros; verify parser tolerance to layout drift (diskstats fields added by newer kernels), cgroup-v2 memory accounting deltas, and thermal-zone absence paths.",
-      "status": "open",
-      "notes": "Proven via fixture tests on macOS; live Linux validation requires real hardware. QD-026-002 notes refined in docs/phase27: storage queue metrics are proxies and stay Degraded."
-    }
-  ]
+ "schemaVersion": 1,
+ "phase": 19,
+ "policy": "Windows-native qualification remains intentionally deferred through major product-capability buildout; Phase 19 source completion never implies native PASS, GA, universal repairability, or destructive recovery authority.",
+ "generatedFor": "PHASE_19_WINDOWS_REPAIR_INTELLIGENCE_SOURCE_COMPLETE",
+ "items": [
+  {
+   "capabilityId": "P17-QD-001",
+   "subsystem": "DeepScanCoordinator / maintenance-service",
+   "windowsApiDependency": "Windows service runtime, persistent IPC v7, principal identity",
+   "requiredNativeScenario": "Start, observe, cancel, complete, then rapidly restart Deep Scan through the installed non-elevated desktop shell and privileged service boundary; exercise stale cancel/late-worker windows.",
+   "expectedEvidence": "Principal-bound request/response and streamed DeepScanSnapshot events; generation N cleanup/cancellation never clears or overwrites generation N+1 state.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#deep-scan-ipc"
+  },
+  {
+   "capabilityId": "P17-QD-002",
+   "subsystem": "Driver and hardware collection",
+   "windowsApiDependency": "SetupAPI / Configuration Manager / Windows Update Agent through existing Driver Hub",
+   "requiredNativeScenario": "Healthy devices, missing driver, device problem code, applicable driver update and vendor-managed update.",
+   "expectedEvidence": "Authoritative driver/device snapshots normalize to stable privacy-preserving facts and expected findings without duplicate alarms.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#drivers"
+  },
+  {
+   "capabilityId": "P17-QD-003",
+   "subsystem": "Storage and memory telemetry",
+   "windowsApiDependency": "WMI/CIM, storage reliability providers, NVMe/SMART paths used by diagnostic-engine",
+   "requiredNativeScenario": "Healthy disk, warning disk, explicit uncorrected error, unavailable SMART/NVMe metrics, normal and high memory pressure.",
+   "expectedEvidence": "Factual telemetry and bounded findings; unavailable metrics remain diagnostic limitations rather than health failures.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#storage-memory"
+  },
+  {
+   "capabilityId": "P17-QD-004",
+   "subsystem": "WHEA and crash intelligence",
+   "windowsApiDependency": "Windows Event Log / WHEA / minidump metadata through diagnostic-engine",
+   "requiredNativeScenario": "Recent WHEA corrected/uncorrected evidence and bugchecks at strong, moderate, weak, unrelated and stale time separations, including hardware evidence after a crash.",
+   "expectedEvidence": "Corrected/fatal semantics remain distinct; weak coincidence never becomes a Critical combined Finding; correlated Findings expose time distance, contributing evidence, strength and uncertainty without unsupported causation.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#whea-crash"
+  },
+  {
+   "capabilityId": "P17-QD-005",
+   "subsystem": "Windows integrity collection",
+   "windowsApiDependency": "DISM/SFC/CHKDSK assessment paths and Windows servicing preflight through system-repair",
+   "requiredNativeScenario": "Verified healthy servicing result, repairable corruption result, servicing failure and reboot-precondition state.",
+   "expectedEvidence": "Healthy results produce no warning; non-healthy results produce a bounded Windows finding and a sensitive remediation candidate only.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#windows-integrity"
+  },
+  {
+   "capabilityId": "P17-QD-006",
+   "subsystem": "Startup and cleanup collection",
+   "windowsApiDependency": "Registry/Task Scheduler/startup discovery and filesystem cleanup discovery through existing engines",
+   "requiredNativeScenario": "Normal startup, multiple high-impact startup entries, safe reclaimable data and recovery-sensitive exclusions.",
+   "expectedEvidence": "Read-only scan produces recommendations only; no startup or cleanup mutation occurs during Deep Scan.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#startup-cleanup"
+  },
+  {
+   "capabilityId": "P17-QD-007",
+   "subsystem": "Cancellation, timeouts and resource governance",
+   "windowsApiDependency": "Long-running WMI/RPC/Event Log/WUA/native calls plus ReadBudgetManager",
+   "requiredNativeScenario": "Inject stalled collectors, exhaust read budgets, cancel during each batch, rapidly restart scans, and allow an old native worker to exit after the next generation begins.",
+   "expectedEvidence": "No unbounded stall; new work stops on cancellation; partial results are preserved; stale workers cannot alter the current generation or its cancellation token; resource budgets remain bounded.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#resource-failure"
+  },
+  {
+   "capabilityId": "P17-QD-008",
+   "subsystem": "IPC streaming, hydration and backpressure",
+   "windowsApiDependency": "Named-pipe/persistent IPC v7 event bus and renderer reconnect behavior",
+   "requiredNativeScenario": "Disconnect/reconnect renderer during an active scan and stress intermediate progress volume.",
+   "expectedEvidence": "Hydration restores authoritative current state; coalescing prevents event flood; terminal finding state is never lost or duplicated.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#reconnect-backpressure"
+  },
+  {
+   "capabilityId": "P17-QD-009",
+   "subsystem": "Deep Scan Svelte/Tauri experience",
+   "windowsApiDependency": "WebView2/Tauri desktop runtime, Windows input/accessibility settings",
+   "requiredNativeScenario": "Keyboard-only EN/AR flows, RTL, 200% text scale, reduced motion, reduced transparency, increased contrast and screen reader navigation.",
+   "expectedEvidence": "Pointerdown feedback remains interruptible, no fake progress animation, focus order is usable, severity is not color-only, and live announcements are restrained.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#ui-a11y"
+  },
+  {
+   "capabilityId": "P17-QD-010",
+   "subsystem": "Deep Scan performance",
+   "windowsApiDependency": "Representative Windows hardware and provider latency",
+   "requiredNativeScenario": "Run Deep Scan on low/mid/high-spec PCs while measuring CPU, disk, memory, collector durations and event volume.",
+   "expectedEvidence": "The scan remains bounded and does not materially saturate CPU/disk; per-class concurrency and duration telemetry are captured.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#performance"
+  },
+  {
+   "capabilityId": "P17-QD-011",
+   "subsystem": "SQLite migration and history continuity",
+   "windowsApiDependency": "Deployed SQLite WAL database upgraded through schema v10 to v11",
+   "requiredNativeScenario": "Upgrade a representative Phase 17 schema-v10 database containing scans/findings/overrides/sealed plans to v11, restart service, and verify verification/resolution metadata plus all prior rows.",
+   "expectedEvidence": "No prior rows or finding IDs are lost; ignored state and finding JSON remain compatible; new verification fields receive deterministic defaults; schema checksum remains stable.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#persistence-upgrade"
+  },
+  {
+   "capabilityId": "P17-QD-012",
+   "subsystem": "Immutable remediation-plan foundation",
+   "windowsApiDependency": "Service persistence and future MutationSupervisor handoff",
+   "requiredNativeScenario": "Select/deselect candidates before consent, seal a plan, restart service and verify digest/action set identity remains unchanged.",
+   "expectedEvidence": "Sealed plan is immutable and principal-bound; no Phase 17 path executes the proposed actions.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase17-windows-qualification.ps1#remediation-plan"
+  },
+  {
+   "capabilityId": "P18-QD-001",
+   "subsystem": "Machine/OEM authority context",
+   "windowsApiDependency": "Windows registry / SMBIOS-derived machine identity",
+   "requiredNativeScenario": "Validate manufacturer/model/family/build on OEM laptop, OEM desktop and self-built PC; confirm serial/UUID are neither collected nor persisted.",
+   "expectedEvidence": "MachineKind is proven as OEM/SelfBuilt/Unknown without retail-motherboard false OEM classification; serial/UUID remain excluded.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#machine-context"
+  },
+  {
+   "capabilityId": "P18-QD-002",
+   "subsystem": "Official provider network behavior",
+   "windowsApiDependency": "Live WUA plus official vendor/OEM infrastructure",
+   "requiredNativeScenario": "Exercise applicable/empty/timeout/offline/partial provider responses and official redirect/CDN behavior.",
+   "expectedEvidence": "Per-device coverage becomes CompleteForRequiredAuthorities only when every required authority is sufficiently evaluated; offline/manual/unavailable states never claim Up to date.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#provider-network"
+  },
+  {
+   "capabilityId": "P18-QD-003",
+   "subsystem": "Driver package Authenticode and publisher trust",
+   "windowsApiDependency": "WinVerifyTrust / catalog trust on real driver packages",
+   "requiredNativeScenario": "Validate trusted Microsoft/vendor package, unexpected publisher, invalid/unsigned/test-signed package and signer extraction.",
+   "expectedEvidence": "WinVerifyTrust success is accompanied by extracted signer subject/strong certificate identity and provider-approved signer matching; valid wrong-publisher packages fail closed.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#authenticode"
+  },
+  {
+   "capabilityId": "P18-QD-004",
+   "subsystem": "Secure driver staging",
+   "windowsApiDependency": "NTFS ACLs, reparse/symlink/hardlink semantics",
+   "requiredNativeScenario": "Stage a verified package then attack substitution, rename, reparse and hardlink windows before privileged handoff.",
+   "expectedEvidence": "Staging resists substitution and privileged revalidation detects any changed package identity.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#staging-acl"
+  },
+  {
+   "capabilityId": "P18-QD-005",
+   "subsystem": "Driver install, backup and restore",
+   "windowsApiDependency": "WUA / supported driver servicing / restore point / driver backup",
+   "requiredNativeScenario": "Install real independent drivers and missing-device driver; exercise backup, restore point, failure before/after mutation, rollback and reboot aggregation.",
+   "expectedEvidence": "Each item is journaled independently; recovery evidence exists before mutation; failures contain subsequent dependent work.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#install-recovery"
+  },
+  {
+   "capabilityId": "P18-QD-006",
+   "subsystem": "Post-install device verification",
+   "windowsApiDependency": "SetupAPI / Configuration Manager / WUA result",
+   "requiredNativeScenario": "After install and after reboot, re-read device presence, problem code, provider/version/INF and WUA result.",
+   "expectedEvidence": "Success is journaled only when post-install evidence matches the sealed action or an explicit reboot-pending state.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#post-verify"
+  },
+  {
+   "capabilityId": "P18-QD-007",
+   "subsystem": "Official GPU utility flows",
+   "windowsApiDependency": "NVIDIA App / AMD official update tooling / Intel Driver & Support Assistant",
+   "requiredNativeScenario": "Detect installed/not-installed official utilities and exercise launch/support routing without claiming AetherCore direct installation.",
+   "expectedEvidence": "Utility presence is represented only as management authority; update availability remains UnknownUntilVendorCheck unless live vendor evidence proves an update.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#gpu-utilities"
+  },
+  {
+   "capabilityId": "P18-QD-008",
+   "subsystem": "DirectTrusted privileged handoff",
+   "windowsApiDependency": "Future provider-specific driver package executor",
+   "requiredNativeScenario": "When a DirectTrusted provider is introduced, prove frozen package identity, elevated revalidation and supported servicing contract before enabling selection.",
+   "expectedEvidence": "Renderer cannot inject URL/path; exact verified package is the only privileged input and plan substitution fails closed.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#direct-trusted"
+  },
+  {
+   "capabilityId": "P18-QD-009",
+   "subsystem": "Driver UX scale / RTL / accessibility",
+   "windowsApiDependency": "Installed Tauri/WebView2, keyboard, accessibility tree",
+   "requiredNativeScenario": "Exercise 1 and 50+ devices, long names, mixed Arabic/Latin IDs, keyboard-only selection/preferences, reduced motion/transparency/contrast and reboot states.",
+   "expectedEvidence": "No unbounded interaction regression; technical values remain LTR islands; all state is perceivable without color alone.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#driver-ui"
+  },
+  {
+   "capabilityId": "P18.1-QD-001",
+   "subsystem": "Native signer identity extraction",
+   "windowsApiDependency": "WinVerifyTrust/CryptQueryObject/certificate chain APIs",
+   "requiredNativeScenario": "Extract signer subject, certificate thumbprint or stronger key identity, chain status, and test-signing state from real Microsoft/NVIDIA/AMD/Intel/OEM driver packages.",
+   "expectedEvidence": "Typed SignatureVerification is populated with real identity evidence; validity-only evidence cannot satisfy expected publisher policy.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#signer-identity"
+  },
+  {
+   "capabilityId": "P18.1-QD-002",
+   "subsystem": "Provider-specific certificate policy",
+   "windowsApiDependency": "Real vendor signing chains and rotation behavior",
+   "requiredNativeScenario": "Build and validate approved signer sets/rotation policy per implemented direct provider before any DirectTrusted enablement.",
+   "expectedEvidence": "No display-name substring trust; provider policy uses approved certificate/public-key identities with documented rotation handling.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#publisher-policy"
+  },
+  {
+   "capabilityId": "P18.1-QD-003",
+   "subsystem": "Live OEM authority behavior",
+   "windowsApiDependency": "Dell/Lenovo/HP/ASUS/Acer/MSI/Surface official tooling/support ecosystems",
+   "requiredNativeScenario": "On representative OEM machines, validate authority applicability, official utility/manual routing, provider availability and absence of fabricated machine-readable capability.",
+   "expectedEvidence": "DeviceAuthorityCoverage matches real OEM applicability and remains ManualAuthorityRequired/ProviderUnavailable until an adapter genuinely evaluates update availability.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#oem-authorities"
+  },
+  {
+   "capabilityId": "P18.1-QD-004",
+   "subsystem": "Live GPU utility/update evidence",
+   "windowsApiDependency": "NVIDIA App / AMD software / Intel Driver & Support Assistant",
+   "requiredNativeScenario": "Exercise installed/not-installed/unavailable utility states and independently prove update/no-update/unknown results where official tooling exposes them.",
+   "expectedEvidence": "Utility presence never increments update counts; UpdateAvailable appears only with concrete vendor evidence linked to a candidate/update identity.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#gpu-truth"
+  },
+  {
+   "capabilityId": "P18.1-QD-005",
+   "subsystem": "Authority completeness on real machines",
+   "windowsApiDependency": "Live WUA plus applicable OEM/component authorities",
+   "requiredNativeScenario": "Test generic Microsoft-only devices, OEM-specific devices, self-built GPU systems, offline systems, and provider failure/partial cases.",
+   "expectedEvidence": "Strong Up to date is emitted only when all required authorities for that device were sufficiently evaluated; exact reason for incompleteness is preserved.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#authority-completeness"
+  },
+  {
+   "capabilityId": "P18.1-QD-006",
+   "subsystem": "Driver staging adversarial security",
+   "windowsApiDependency": "NTFS ACL/reparse/hardlink/file identity semantics under elevation",
+   "requiredNativeScenario": "Attempt substitution, hardlink, junction/reparse, rename, ACL and time-of-check/time-of-use attacks across user staging and privileged revalidation.",
+   "expectedEvidence": "Exact signed package identity, signer policy, hash, applicability and safe path are revalidated after privilege transition immediately before mutation.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase18-windows-qualification.ps1#staging-attacks"
+  },
+  {
+   "capabilityId": "P19-QD-001",
+   "subsystem": "DISM component-store diagnosis and repair",
+   "windowsApiDependency": "DISM API / DismCheckImageHealth plus DISM RestoreHealth",
+   "requiredNativeScenario": "Healthy, repairable, source-required and non-repairable online images across supported Windows builds; mutate then rescan.",
+   "expectedEvidence": "Structured health classification matches Windows state; RestoreHealth runs only for a still-repairable image; verification proves or rejects success; source-required/non-repairable escalates without false resolution.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#component-store"
+  },
+  {
+   "capabilityId": "P19-QD-002",
+   "subsystem": "SFC protected-file diagnosis and verification",
+   "windowsApiDependency": "sfc.exe plus bounded CBS [SR] evidence",
+   "requiredNativeScenario": "Healthy system, repairable protected-file violation, unresolved violation and non-English Windows UI; exercise /verifyonly and /scannow.",
+   "expectedEvidence": "Localized console prose is never authority; bounded CBS evidence and a fresh verify pass cannot falsely resolve a Finding.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#system-files"
+  },
+  {
+   "capabilityId": "P19-QD-003",
+   "subsystem": "Windows Update diagnosis and targeted service repair",
+   "windowsApiDependency": "Windows Update Agent COM plus Service Control Manager",
+   "requiredNativeScenario": "Online healthy WUA, WU_E_NO_CONNECTION, WSUS/policy errors, wuauserv stopped/disabled, servicing contention and post-service-start retry.",
+   "expectedEvidence": "Offline is not corruption; policy/unknown errors remain bounded; only diagnosis-scoped service authority mutates and WUA discovery verifies the user-visible issue.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#windows-update"
+  },
+  {
+   "capabilityId": "P19-QD-004",
+   "subsystem": "Network, DNS and proxy repair intelligence",
+   "windowsApiDependency": "Windows networking/DNS/WinHTTP policy surfaces selected by future/available providers",
+   "requiredNativeScenario": "DHCP failure, DNS-only failure, malformed proxy, enterprise-managed proxy, offline adapter and Winsock candidate on managed/unmanaged systems.",
+   "expectedEvidence": "Root-cause rules do not infer DNS/Winsock from generic offline state; enterprise proxy is never silently removed; high-impact resets stay consent/reboot gated.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#network-proxy"
+  },
+  {
+   "capabilityId": "P19-QD-005",
+   "subsystem": "Filesystem online/offline repair boundary",
+   "windowsApiDependency": "CHKDSK online scan, boot-time/offline filesystem servicing",
+   "requiredNativeScenario": "Healthy NTFS, online-detected repair need, busy system volume, reboot-required repair and concurrent storage hardware warning.",
+   "expectedEvidence": "Filesystem evidence stays separate from physical disk health; no /f, /r, format, partition or raw-disk path runs automatically; offline repair requires explicit qualified flow.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#filesystem"
+  },
+  {
+   "capabilityId": "P19-QD-006",
+   "subsystem": "Recovery readiness, restore point and WinRE",
+   "windowsApiDependency": "System Restore / VSS integration and REAgentC/WinRE supported state",
+   "requiredNativeScenario": "Restore disabled, restore creation success/failure, WinRE enabled/disabled/unavailable and recovery protection loss before sensitive repair.",
+   "expectedEvidence": "UI never claims recovery protection from resource presence; missing mandatory protection blocks or escalates the relevant action exactly as the sealed graph states.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#recovery-readiness"
+  },
+  {
+   "capabilityId": "P19-QD-007",
+   "subsystem": "Repair reinstall and destructive recovery availability",
+   "windowsApiDependency": "Supported Windows recovery / repair reinstall surfaces",
+   "requiredNativeScenario": "Supported and unsupported Windows editions/builds; preserve-files reset guidance; repair reinstall availability; data-backup warning.",
+   "expectedEvidence": "Availability is detected rather than assumed; Level 4/5 actions remain guided/manual unless separately qualified; destructive recovery never runs silently.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#recovery-escalation"
+  },
+  {
+   "capabilityId": "P19-QD-008",
+   "subsystem": "Reboot resume, mutation contention and interrupted repair",
+   "windowsApiDependency": "SQLite WAL, service restart, MutationSupervisor, machine mutation guard",
+   "requiredNativeScenario": "Reboot barrier, service restart before/after mutation, concurrent driver/update repair, stale consent after state change and fresh post-reboot assessment.",
+   "expectedEvidence": "Pre-reboot plan is never replayed as mutation authority; stale fingerprint/graph fails closed; interrupted mutation reports precise outcome and requires fresh verification/recovery.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#reboot-resume-contention"
+  },
+  {
+   "capabilityId": "P19-QD-009",
+   "subsystem": "Repair UI EN/AR and accessibility",
+   "windowsApiDependency": "Tauri/WebView2, Narrator, keyboard, Windows accessibility preferences",
+   "requiredNativeScenario": "Keyboard-only Repair review/execution in EN/AR, RTL technical islands, 200% text, Narrator, reduced motion/transparency and increased contrast.",
+   "expectedEvidence": "Plan selection/recovery/reboot/error semantics remain understandable; progress announcements are restrained; no animation lockout or fake percentage occurs.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#ui-a11y"
+  },
+  {
+   "capabilityId": "P19-QD-010",
+   "subsystem": "Phase 19 build, migration and privileged boundary qualification",
+   "windowsApiDependency": "Rust/MSVC Windows toolchain, SQLite schema v13, signed installed service/renderer boundary",
+   "requiredNativeScenario": "Compile/test full workspace on supported Windows; upgrade representative v12 DB to v13; fuzz typed repair IPC; attempt command/service/path/plan substitution.",
+   "expectedEvidence": "Workspace compiles/tests; history survives migration; renderer cannot inject executable, command, service, registry/path mutation or bypass recovery/reboot graph invariants.",
+   "severityIfUnqualified": "Critical",
+   "qualificationHook": "scripts/phase19-windows-qualification.ps1#build-migration-security"
+  },
+  {
+   "capabilityId": "P27-QD-001",
+   "subsystem": "macOS native performance telemetry provider (macos_impl.rs)",
+   "windowsApiDependency": "n/a (unix provider)",
+   "requiredNativeScenario": "Validate Mach host_statistics64/vm64/sysctl/proc_pidinfo collectors across Apple Silicon AND Intel Macs, multiple macOS majors, and under heavy load / low-memory conditions; confirm tick-delta correctness across sleep/wake.",
+   "status": "open",
+   "notes": "Validated on this Apple Silicon host only (P27). Intel + macOS-version spread deferred to P28+ qualification."
+  },
+  {
+   "capabilityId": "P27-QD-002",
+   "subsystem": "Linux native performance telemetry provider (linux_impl.rs)",
+   "windowsApiDependency": "n/a (unix provider)",
+   "requiredNativeScenario": "Run the /proc-based provider across a kernel-version matrix (LTS bounds) and representative distros; verify parser tolerance to layout drift (diskstats fields added by newer kernels), cgroup-v2 memory accounting deltas, and thermal-zone absence paths.",
+   "status": "open",
+   "notes": "Proven via fixture tests on macOS; live Linux validation requires real hardware. QD-026-002 notes refined in docs/phase27: storage queue metrics are proxies and stay Degraded."
+  },
+  {
+   "capabilityId": "QD-032-001",
+   "subsystem": "Firewall-state provider (crates/security-audit/src/firewall.rs)",
+   "windowsApiDependency": "n/a (unix provider; Windows behavior frozen)",
+   "requiredNativeScenario": "Live firewall rule-state enumeration (pfctl -s all / ufw status verbose / nft list ruleset) requires an elevated probe lane. Verify config-presence inference against REAL enforced state across pf/ufw/nftables hosts, including disabled-but-configured firewalls where config presence overstates posture.",
+   "expectedEvidence": "Elevated probe runbook output joined with audit findings on at least one host per product; documented divergence between config-present and state-enabled.",
+   "severityIfUnqualified": "medium",
+   "qualificationHook": "NOT_EXECUTED(elevated firewall-state probes) recorded in P32 scorecard; config-file presence only.",
+   "status": "open",
+   "notes": "macOS pf.conf exists but packet filter may be disabled (pfctl -d). Findings carry confidence=inferred and Advisory severity only."
+  },
+  {
+   "capabilityId": "QD-032-002",
+   "subsystem": "Password-policy provider (crates/security-audit/src/password.rs)",
+   "windowsApiDependency": "n/a (unix provider)",
+   "requiredNativeScenario": "On macOS, password policy lives in OpenDirectory (pwpolicy / Mobile account profiles), not in login.defs-style files. A live lane needs an OpenDirectory read path plus a Linux shadow-utils comparison matrix. The macOS lane currently reports typed NotAvailable by construction.",
+   "expectedEvidence": "OpenDirectory-backed provider validated against local + bound directory hosts; login.defs values cross-checked with pam_pwquality effective policy on Linux.",
+   "severityIfUnqualified": "low",
+   "qualificationHook": "NotAvailable(sec.notAvailable.platformPaths) emitted honestly on macOS; file lint fully proven on Linux fixtures.",
+   "status": "open",
+   "notes": "Requested-but-unavailable targets echo the typed reason verbatim in the lane report."
+  },
+  {
+   "capabilityId": "QD-032-003",
+   "subsystem": "vulndb freshness governance (assets/vulndb/*)",
+   "windowsApiDependency": "n/a (offline DB)",
+   "requiredNativeScenario": "The seeded NVD-derived DB is a point-in-time snapshot (36 curated entries). A governance process must define: refresh cadence, source-of-truth review before pin rotation, dual-signature or owner-acknowledgement for manifest rewrites, and rollback pins. Runtime network stays banned forever; refreshes arrive ONLY through explicit owner action (aetherctl vulndb update --from).",
+   "expectedEvidence": "Owner-approved governance note defining cadence + reviewer; two consecutive manifest rotations exercised via the CLI path with rollback proof.",
+   "severityIfUnqualified": "medium",
+   "qualificationHook": "Manifest pin verified at load (fail-closed); GD-5 tamper proof; CLI update path validate-before-write with rollback.",
+   "status": "open",
+   "notes": "DB staleness is visible to the user via the report schema (digest changes with every DB swap)."
+  }
+ ]
 }

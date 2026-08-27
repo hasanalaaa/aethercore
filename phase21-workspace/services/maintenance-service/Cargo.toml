@@ -31,6 +31,9 @@ aethercore-performance-optimization = { path = "../../crates/performance-optimiz
 aethercore-pc-intelligence = { path = "../../crates/pc-intelligence" }
 aethercore-persistence = { path = "../../crates/persistence" }
 aethercore-security = { path = "../../crates/security" }
+# Phase 32 (T1): read-only security-audit domain (config lint + offline secrets +
+# air-gapped CVE join). No network I/O; no system mutations.
+aethercore-security-audit = { path = "../../crates/security-audit" }
 aethercore-system-repair = { path = "../../crates/system-repair" }
 aethercore-startup-manager = { path = "../../crates/startup-manager" }
 aethercore-restore-point = { path = "../../crates/restore-point" }

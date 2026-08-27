@@ -1480,15 +1480,18 @@ pub fn handle_request(
                 let fingerprint = format!("{:x}", fp.finalize());
                 // Phase 31 (W9): the request id IS the correlation id for this export;
                 // it is clamped typed by CorrelationId::parse inside the crate.
-                let correlation_id =
-                    aethercore_persistence::export::CorrelationId::parse(&principal_key)
-                        .or_else(|| {
-                            aethercore_persistence::export::CorrelationId::parse(&format!(
-                                "export-{now}"
-                            ))
-                        });
-                let mut envelope = aethercore_persistence::export::
-                    build_envelope_with_correlation(records, now, fingerprint, correlation_id);
+                let correlation_id = aethercore_persistence::export::CorrelationId::parse(
+                    &principal_key,
+                )
+                .or_else(|| {
+                    aethercore_persistence::export::CorrelationId::parse(&format!("export-{now}"))
+                });
+                let mut envelope = aethercore_persistence::export::build_envelope_with_correlation(
+                    records,
+                    now,
+                    fingerprint,
+                    correlation_id,
+                );
                 // Signing happens ONLY with an explicitly provisioned owner key file
                 // pointed at by AETHERCORE_EXPORT_KEY; otherwise digest-only honesty.
                 if let Some(key_path) = std::env::var_os("AETHERCORE_EXPORT_KEY") {
@@ -1518,12 +1521,137 @@ pub fn handle_request(
                     response_payload,
                 )))
             }
+            // ---------------- Phase 32 (T1): read-only security audit ----------------
+            request::Payload::RunSecurityAudit(v) => {
+                // Read-only RPC over the aethercore-security-audit domain:
+                // parses caller-named config/log/dir targets; zero system
+                // mutations, zero elevation, zero network. Targets are owner-
+                // scoped by construction (the calling principal runs the scan
+                // against paths it names); traversal-style entries are
+                // rejected typed before any provider runs.
+                let parsed: Result<Vec<aethercore_security_audit::model::AuditTarget>, String> =
+                    serde_json::from_slice::<Vec<serde_json::Value>>(&v.targets_json)
+                        .map_err(|e| format!("targets parse: {e}"))
+                        .and_then(|vals| {
+                            vals.into_iter()
+                                .map(|val| {
+                                    serde_json::from_value::<
+                                        aethercore_security_audit::model::AuditTarget,
+                                    >(val)
+                                    .map_err(|e| format!("target decode: {e}"))
+                                })
+                                .collect()
+                        });
+                let targets = match parsed {
+                    Ok(t) if !t.is_empty() => t,
+                    Ok(_) => {
+                        // Typed rejection BEFORE any provider runs.
+                        return Err(ServiceError::invalid(
+                            "security",
+                            "sec.invalidTargets",
+                            "targets_json must be a non-empty AuditTarget array",
+                        ));
+                    }
+                    Err(detail) => {
+                        return Err(ServiceError::invalid(
+                            "security",
+                            "sec.invalidTargets",
+                            detail,
+                        ));
+                    }
+                };
+                if let Err(detail) =
+                    aethercore_security_audit::validate_targets(&targets)
+                {
+                    return Err(ServiceError::invalid(
+                        "security",
+                        "sec.traversalRejected",
+                        detail,
+                    ));
+                }
+                let report = aethercore_security_audit::run_audit(&targets);
+                let lanes = report
+                    .lanes
+                    .iter()
+                    .map(|l| v1::SecurityAuditReportLane {
+                        lane: l.lane.clone(),
+                        status: match l.status {
+                            aethercore_security_audit::LaneStatus::Ok { .. } => "ok".to_string(),
+                            aethercore_security_audit::LaneStatus::NotAvailable { .. } => {
+                                "notAvailable".to_string()
+                            }
+                        },
+                        reason: match &l.status {
+                            aethercore_security_audit::LaneStatus::NotAvailable { reason } => {
+                                reason.clone()
+                            }
+                            _ => String::new(),
+                        },
+                        finding_count: l.findings.len() as u64,
+                        findings_json: serde_json::to_vec(&l.findings).unwrap_or_default(),
+                    })
+                    .collect();
+                aethercore_diagnostics::emit_structured(
+                    "info",
+                    aethercore_diagnostics::events::SECURITY_AUDIT_RAN,
+                    serde_json::json!({
+                        "digest": report.digest,
+                        "lanes": report.lanes.len(),
+                    }),
+                );
+                publish(
+                    ctx,
+                    &principal_key,
+                    EventKind::SecurityAudit,
+                    "",
+                    Some(event_envelope::Payload::SecurityAudit(
+                        v1::SecurityAuditResponse {
+                            schema_version: report.schema_version,
+                            platform: report.platform.clone(),
+                            digest: report.digest.clone(),
+                            lanes,
+                        },
+                    )),
+                );
+                Ok(Some(response::Payload::SecurityAuditResponse(
+                    v1::SecurityAuditResponse {
+                        schema_version: report.schema_version,
+                        platform: report.platform.clone(),
+                        digest: report.digest,
+                        lanes: report
+                            .lanes
+                            .iter()
+                            .map(|l| v1::SecurityAuditReportLane {
+                                lane: l.lane.clone(),
+                                status: match l.status {
+                                    aethercore_security_audit::LaneStatus::Ok { .. } => {
+                                        "ok".to_string()
+                                    }
+                                    aethercore_security_audit::LaneStatus::NotAvailable {
+                                        ..
+                                    } => "notAvailable".to_string(),
+                                },
+                                reason: match &l.status {
+                                    aethercore_security_audit::LaneStatus::NotAvailable {
+                                        reason,
+                                    } => reason.clone(),
+                                    _ => String::new(),
+                                },
+                                finding_count: l.findings.len() as u64,
+                                findings_json: serde_json::to_vec(&l.findings).unwrap_or_default(),
+                            })
+                            .collect(),
+                    },
+                )))
+            }
         }
     })();
     match result {
         Ok(payload) => Response {
             header: Some(header),
             status_code: 0,
+            // Wire contract keeps the deprecated placeholder field; empty by design.
+            #[allow(deprecated)]
             error_message: String::new(),
             error: None,
             payload,
@@ -1611,6 +1739,7 @@ fn failure(header: ResponseHeader, error: ServiceError) -> Response {
     Response {
         header: Some(header),
         status_code: error.status,
+        #[allow(deprecated)] // wire-contract placeholder field (proto field 3)
         error_message: detail.clone(),
         error: Some(v1::ErrorInfo {
             code: error.code as i32,

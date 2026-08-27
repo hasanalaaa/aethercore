@@ -208,6 +208,12 @@
       "version": "0.1.0"
     },
     {
+      "name": "aethercore-security-audit",
+      "purl": "pkg:cargo/aethercore-security-audit@0.1.0",
+      "type": "library",
+      "version": "0.1.0"
+    },
+    {
       "name": "aethercore-security",
       "purl": "pkg:cargo/aethercore-security@0.1.0",
       "type": "library",

@@ -52,6 +52,8 @@ enum EventKind {
   EVENT_KIND_INSIGHTS = 27;
   // Phase 26: Universal Platform Foundation (additive; next free tag).
   EVENT_KIND_PLATFORM_CAPABILITIES = 28;
+  // Phase 32: Security Audit Domain (additive; next free tag).
+  EVENT_KIND_SECURITY_AUDIT = 29;
 }
 
 enum MutationLeaseState {
@@ -130,6 +132,8 @@ message EventEnvelope {
     InsightsResponse insights = 36;
     // Phase 26: Universal Platform Foundation (additive; next free tag).
     PlatformCapabilitiesResponse platform_capabilities = 37;
+    // Phase 32: Security Audit Domain (additive; next free tag).
+    SecurityAuditResponse security_audit = 38;
   }
 }
 

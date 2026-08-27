@@ -1,0 +1,254 @@
+[
+ {
+  "cve_id": "CVE-2024-6387",
+  "package": "openssh",
+  "introduced": "",
+  "fixed": "9.8p1",
+  "summary": "regreSSHion: signal handler race condition in sshd can lead to remote code execution as root on glibc-based Linux systems"
+ },
+ {
+  "cve_id": "CVE-2023-38408",
+  "package": "openssh",
+  "introduced": "9.2",
+  "fixed": "9.3p2",
+  "summary": "ssh-agent forwardings to agent sockets under attacker control permit remote code execution"
+ },
+ {
+  "cve_id": "CVE-2023-48795",
+  "package": "openssh",
+  "introduced": "",
+  "fixed": "9.6p1",
+  "summary": "Terrapin: prefix truncation weakness in the SSH transport protocol when strict key exchange is not negotiated"
+ },
+ {
+  "cve_id": "CVE-2021-28041",
+  "package": "openssh",
+  "introduced": "8.4",
+  "fixed": "8.5",
+  "summary": "sshd double free during challenge-response authentication"
+ },
+ {
+  "cve_id": "CVE-2016-10009",
+  "package": "openssh",
+  "introduced": "",
+  "fixed": "7.4",
+  "summary": "agent forwarding abuse allows loading of untrusted PKCS#11 modules"
+ },
+ {
+  "cve_id": "CVE-2023-5678",
+  "package": "openssl",
+  "introduced": "3.0",
+  "fixed": "3.0.12",
+  "summary": "DH key generation DoS via excessive q value validation"
+ },
+ {
+  "cve_id": "CVE-2023-5363",
+  "package": "openssl",
+  "introduced": "3.0",
+  "fixed": "3.0.13",
+  "summary": "incorrect cipher key/IV length handling can leak plaintext bytes"
+ },
+ {
+  "cve_id": "CVE-2022-3602",
+  "package": "openssl",
+  "introduced": "3.0.0",
+  "fixed": "3.0.7",
+  "summary": "X.509 punycode buffer overflow in certificate parsing"
+ },
+ {
+  "cve_id": "CVE-2021-3711",
+  "package": "openssl",
+  "introduced": "1.1.1",
+  "fixed": "1.1.1l",
+  "summary": "SM2 decryption buffer overflow"
+ },
+ {
+  "cve_id": "CVE-2019-1551",
+  "package": "openssl",
+  "introduced": "1.0.2",
+  "fixed": "1.0.2u",
+  "summary": "RSASSA-PSS RSA exponent overflow in DSA/RSA computations"
+ },
+ {
+  "cve_id": "CVE-2023-45853",
+  "package": "zlib",
+  "introduced": "1.2.11",
+  "fixed": "1.3.1",
+  "summary": "MiniZip heap buffer overflow in zipOpenNewFileInZip4_6"
+ },
+ {
+  "cve_id": "CVE-2022-37434",
+  "package": "zlib",
+  "introduced": "1.2.10",
+  "fixed": "1.2.13",
+  "summary": "heap buffer over-read in inflate when header validation is skipped"
+ },
+ {
+  "cve_id": "CVE-2018-25032",
+  "package": "zlib",
+  "introduced": "1.2.10",
+  "fixed": "1.2.12",
+  "summary": "memory corruption on deflate with large window bits values"
+ },
+ {
+  "cve_id": "CVE-2023-27536",
+  "package": "curl",
+  "introduced": "7.19.4",
+  "fixed": "8.0.1",
+  "summary": "GSS delegation leak between connections reusing credentials"
+ },
+ {
+  "cve_id": "CVE-2023-23916",
+  "package": "curl",
+  "introduced": "7.77.0",
+  "fixed": "7.88.0",
+  "summary": "HSTS ignored on multiple requests leading to cleartext downgrade"
+ },
+ {
+  "cve_id": "CVE-2021-22945",
+  "package": "curl",
+  "introduced": "7.62.0",
+  "fixed": "7.79.0",
+  "summary": "UAF and double-free in MQTT server disconnect path"
+ },
+ {
+  "cve_id": "CVE-2021-3156",
+  "package": "sudo",
+  "introduced": "1.8.2",
+  "fixed": "1.9.5p2",
+  "summary": "Baron Samedit: heap buffer overflow in argument parsing permits local root escalation"
+ },
+ {
+  "cve_id": "CVE-2020-11651",
+  "package": "salt",
+  "introduced": "",
+  "fixed": "3000.2",
+  "summary": "authentication bypass in salt-master request handling enables root command execution"
+ },
+ {
+  "cve_id": "CVE-2019-14287",
+  "package": "sudo",
+  "introduced": "1.7.1",
+  "fixed": "1.8.28",
+  "summary": "user with restricted ALL privileges can run commands as root via UID -1"
+ },
+ {
+  "cve_id": "CVE-2016-2563",
+  "package": "polkit",
+  "introduced": "",
+  "fixed": "0.113",
+  "summary": "local privilege escalation via crafted process introspection calls"
+ },
+ {
+  "cve_id": "CVE-2021-4034",
+  "package": "polkit",
+  "introduced": "",
+  "fixed": "0.120",
+  "summary": "PwnKit: pkexec environment variable injection yields local root"
+ },
+ {
+  "cve_id": "CVE-2023-26604",
+  "package": "systemd",
+  "introduced": "44",
+  "fixed": "252.6",
+  "summary": "arbitrary local command execution via pager restart under controlled env"
+ },
+ {
+  "cve_id": "CVE-2021-33910",
+  "package": "systemd",
+  "introduced": "244",
+  "fixed": "2.47",
+  "summary": "size_t-to-int conversion overflow in unit name handling causes denial of service"
+ },
+ {
+  "cve_id": "CVE-2020-13776",
+  "package": "systemd",
+  "introduced": "233",
+  "fixed": "245",
+  "summary": "journald information leak through crafted core dumps"
+ },
+ {
+  "cve_id": "CVE-2024-3094",
+  "package": "xz",
+  "introduced": "5.6.0",
+  "fixed": "5.6.2",
+  "summary": "malicious backdoor in liblzma build artifacts enabling sshd compromise (supply-chain)"
+ },
+ {
+  "cve_id": "CVE-2019-18276",
+  "package": "bash",
+  "introduced": "4.4",
+  "fixed": "5.0",
+  "summary": "privileged shell can be dropped into by setuid binaries when euid tracking fails"
+ },
+ {
+  "cve_id": "CVE-2019-9924",
+  "package": "bash",
+  "introduced": "4.4",
+  "fixed": "5.0",
+  "summary": "restricted shell escape via BASH_ENV inheritance in spawned processes"
+ },
+ {
+  "cve_id": "CVE-2024-6119",
+  "package": "openssl",
+  "introduced": "3.0",
+  "fixed": "3.0.16",
+  "summary": "type confusion in X.509 GENERAL_NAME comparison can crash verifiers"
+ },
+ {
+  "cve_id": "CVE-2023-2975",
+  "package": "openssl",
+  "introduced": "3.0",
+  "fixed": "3.0.10",
+  "summary": "AES-SIV cipher incorrect MAC handling on short inputs"
+ },
+ {
+  "cve_id": "CVE-2023-0464",
+  "package": "openssl",
+  "introduced": "3.0",
+  "fixed": "3.0.14",
+  "summary": "excessive resource use verifying policy constraints in X.509 chains"
+ },
+ {
+  "cve_id": "CVE-2022-1292",
+  "package": "openssl",
+  "introduced": "3.0",
+  "fixed": "3.0.3",
+  "summary": "c_rehash script command injection via crafted certificate filenames"
+ },
+ {
+  "cve_id": "CVE-2021-23840",
+  "package": "openssl",
+  "introduced": "1.1.1",
+  "fixed": "1.1.1j",
+  "summary": "integer overflow in CipherUpdate triggers memory corruption"
+ },
+ {
+  "cve_id": "CVE-2023-1667",
+  "package": "libssh2",
+  "introduced": "0.26",
+  "fixed": "1.11.0",
+  "summary": "SSH packet parse error leaks uninitialized memory to attackers"
+ },
+ {
+  "cve_id": "CVE-2023-48795",
+  "package": "paramiko",
+  "introduced": "1.15",
+  "fixed": "3.4.0",
+  "summary": "Terrapin protocol prefix truncation affects paramiko clients/servers"
+ },
+ {
+  "cve_id": "CVE-2018-1000180",
+  "package": "python",
+  "introduced": "3.0",
+  "fixed": "3.7.1",
+  "summary": "predictable random seeds allow certificate-key forgery in some stdlib usages"
+ },
+ {
+  "cve_id": "CVE-2023-24329",
+  "package": "python",
+  "introduced": "3.0",
+  "fixed": "3.12",
+  "summary": "urllib.parse blank-URL blocklist bypass"
+ }
+]

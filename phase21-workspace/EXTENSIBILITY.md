@@ -87,3 +87,19 @@ Reference implementation: `src/macos_impl.rs` (libc-only), `src/linux_impl.rs` (
 - Byte-level tree integrity: PHASE_3x_BINARY_SAFE_PATCH hash manifests +
   PHASE_3x_EXPECTED_FULL_SHA256.json dual-mode verifiers.
 - Consolidated debt: DEBT_REGISTER.json (append-only; closures cite evidence).
+
+### Delivery contract (§delivery-contract)
+
+- NEVER embed an artifact's own hash inside a file that ships in that artifact
+  again. An inline `sha256: …` line inside the archive it describes can never
+  be verified without first breaking the hash it states (self-reference
+  paradox; hit live in P32 with an inline hash in
+  docs/phase32/MASTER_DELIVERY_REPORT.md). Reports carry a POINTER instead:
+  "Authoritative archive hash: see PHASE{NN}_FINAL_SHA256.txt", where the hash
+  file lives OUTSIDE the sealed archive and is bound by nothing but its own
+  publication.
+- Archive builders exclude `.DS_Store` structurally (`rel.name == ".DS_Store"`
+  skip), so Finder noise regenerated mid-seal can never enter or invalidate a
+  seal. Ledger builders apply the same exclusion.
+- Master archives are built twice in one run; the seal stands only when both
+  SHA-256s are identical (ARCHIVE_TWICE_IDENTICAL).

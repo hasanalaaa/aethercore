@@ -11,6 +11,7 @@ mod exit;
 pub mod i18n;
 mod offline;
 mod render;
+mod sec;
 mod service_cmds;
 mod transport;
 mod units;

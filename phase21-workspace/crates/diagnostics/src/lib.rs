@@ -28,6 +28,7 @@ pub mod events {
     pub const PERF_SAMPLE_TICK: &str = "perf.sample_tick";
     pub const IPC_SESSION_OPENED: &str = "ipc.session_opened";
     pub const EXPORT_PRODUCED: &str = "export.produced";
+    pub const SECURITY_AUDIT_RAN: &str = "security.audit_ran";
     pub const LOG_ROTATED: &str = "log.rotated";
 }
 

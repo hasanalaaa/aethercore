@@ -27,6 +27,8 @@ def build(dest: Path):
         s = str(rel)
         if any(s.startswith(p) for p in SKIP_PREFIXES):
             continue
+        if rel.name == ".DS_Store":  # P33 seal-closure (A2): Finder noise never enters a seal
+            continue
         dest_path = stage_root / rel
         if path.is_dir():
             continue
