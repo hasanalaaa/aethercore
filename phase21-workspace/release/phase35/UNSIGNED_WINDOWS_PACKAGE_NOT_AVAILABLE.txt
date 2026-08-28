@@ -1,0 +1,2 @@
+Windows MSI/Burn runtime packaging is not available on the macOS proof host.
+This marker is intentionally not an installer and must never be labeled production-signed.

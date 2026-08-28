@@ -51,6 +51,28 @@ jobs:
       - name: Verify approved dependency freeze
         shell: pwsh
         run: ./scripts/freeze-dependencies.ps1 -VerifyOnly
+      - name: Phase 35 release authority and adversarial metadata gate
+        shell: pwsh
+        run: |
+          python scripts/phase35-adversarial-audit.py
+          cargo test -p aethercore-release-authority
+      - name: Generate deterministic Phase 35 SBOM and provenance evidence
+        shell: pwsh
+        env:
+          SOURCE_DATE_EPOCH: ${{ vars.SOURCE_DATE_EPOCH }}
+        run: |
+          if (-not $env:SOURCE_DATE_EPOCH) { $env:SOURCE_DATE_EPOCH = '0' }
+          python scripts/phase35-release.py sbom --out out/release/phase35/sbom.cdx.json
+          if (Test-Path out/release/AetherCore.msi) {
+            python scripts/phase35-release.py provenance --out out/release/phase35/provenance.json --package out/release/AetherCore.msi --identity out/release/phase35/release-identity.json --sbom out/release/phase35/sbom.cdx.json
+          } else {
+            Write-Output 'WINDOWS_PACKAGE_BUILD=NotAvailable until the protected packaging step.'
+          }
+      - name: Phase 35 unsigned-artifact honesty gate
+        shell: pwsh
+        run: |
+          if (Test-Path out/release/phase35/private.key) { throw 'private signing key entered release output' }
+          Write-Output 'PRODUCTION_RELEASE_SIGNING requires the protected signing environment.'
       - name: Verify signer configuration
         shell: pwsh
         env:

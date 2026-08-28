@@ -1,0 +1,47 @@
+{
+  "schema": "aethercore.phase35.gd-proofs.v1",
+  "results": {
+    "GD-1": {
+      "name": "release identity",
+      "status": "PASS"
+    },
+    "GD-2": {
+      "name": "release signing",
+      "status": "PASS"
+    },
+    "GD-3": {
+      "name": "metadata anti-downgrade",
+      "status": "PASS"
+    },
+    "GD-4": {
+      "name": "download and staging",
+      "status": "PASS"
+    },
+    "GD-5": {
+      "name": "transaction and recovery",
+      "status": "PASS"
+    },
+    "GD-6": {
+      "name": "offline bundle",
+      "status": "PASS"
+    },
+    "GD-7": {
+      "name": "installer definition",
+      "status": "PASS",
+      "windowsRuntime": "NotAvailable"
+    },
+    "GD-8": {
+      "name": "SBOM and provenance",
+      "status": "PASS"
+    },
+    "GD-9": {
+      "name": "desktop update UX",
+      "status": "PASS"
+    },
+    "GD-10": {
+      "name": "production signing honesty",
+      "status": "PASS"
+    }
+  },
+  "status": "PASS"
+}

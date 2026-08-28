@@ -1,0 +1,16 @@
+{
+  "schema": "aethercore.phase35.p34-p35-delta.v1",
+  "baseArchive": "AetherCore-Phase34-Master-Delivery.zip",
+  "baseSha256": "9c6aabb431fcb117afa19bb519db58dddb338dd63d31c2644db2490b084e419b",
+  "modified": 10,
+  "added": 43,
+  "removed": 0,
+  "manifestEntries": 53,
+  "binaryArtifacts": 7,
+  "fullTreeLedger": 1114,
+  "selfExcludedFromLedger": [
+    ".DS_Store",
+    "crates/.DS_Store"
+  ],
+  "status": "PASS"
+}

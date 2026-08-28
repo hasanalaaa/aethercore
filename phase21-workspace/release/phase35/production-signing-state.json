@@ -1,0 +1,8 @@
+{
+  "schema": "aethercore.phase35.signing-state.v1",
+  "productionReleaseSigning": "NotAvailable",
+  "authenticodeProductionSigning": "NotAvailable",
+  "testKeys": "isolated-to-unit-fixtures",
+  "privateKeyPresent": false,
+  "reason": "No production credential is configured on the macOS proof host; no artifact is labeled production-signed."
+}

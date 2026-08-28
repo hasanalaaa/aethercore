@@ -468,6 +468,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethercore-release-authority"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "aethercore-restore-point"
 version = "0.1.0"
 dependencies = [
@@ -675,6 +688,7 @@ dependencies = [
  "aethercore-performance-telemetry",
  "aethercore-persistence",
  "aethercore-platform-capabilities",
+ "aethercore-release-authority",
  "aethercore-security-audit",
  "ed25519-dalek",
  "libc",

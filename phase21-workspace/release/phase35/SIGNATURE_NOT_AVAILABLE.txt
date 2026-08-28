@@ -1,0 +1,2 @@
+Detached production release signature is NotAvailable on this host.
+The release-authority test suite proves Ed25519 signing and verification with test-only fixtures.

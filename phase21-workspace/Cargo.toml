@@ -40,6 +40,7 @@ members = [
   "crates/platform-capabilities",
   "crates/idle-scheduler",
   "crates/update-engine",
+  "crates/release-authority",
   "crates/update-download",
   "crates/support-bundle",
   "apps/update-broker",

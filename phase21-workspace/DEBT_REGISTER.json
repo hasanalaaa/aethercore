@@ -265,6 +265,34 @@
       "originPhase": 34,
       "risk": "low",
       "status": "OPEN"
+    },
+    {
+      "id": "QD-035-001",
+      "note": "Windows MSI/Burn install, upgrade, repair and uninstall runtime qualification deferred to a native Windows lane.",
+      "originPhase": 35,
+      "risk": "high",
+      "status": "OPEN"
+    },
+    {
+      "id": "QD-035-002",
+      "note": "Windows UAC, service identity/ACL, named-pipe, reboot recovery and rollback behavior require native Phase 36 execution evidence.",
+      "originPhase": 35,
+      "risk": "high",
+      "status": "OPEN"
+    },
+    {
+      "id": "QD-035-003",
+      "note": "Production Authenticode certificate execution and SmartScreen/reputation qualification are unavailable on the proof host.",
+      "originPhase": 35,
+      "risk": "high",
+      "status": "OPEN"
+    },
+    {
+      "id": "QD-035-004",
+      "note": "Live production update endpoint/channel publication and end-to-end online update qualification are not provisioned for Phase 35.",
+      "originPhase": 35,
+      "risk": "medium",
+      "status": "OPEN"
     }
   ],
   "policy": "Single consolidated append-only register aggregating every QD-* from every phase ledger. Entries are never deleted: closures append a status change with closureEvidence. Nothing lost, nothing invented. Register must contain >=27 ids (audit gate p31-debt-register-count).",

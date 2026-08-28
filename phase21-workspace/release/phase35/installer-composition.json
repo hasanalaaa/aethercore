@@ -1,0 +1,16 @@
+{
+  "schema": "aethercore.phase35.installer-composition.v1",
+  "productId": "AetherCore",
+  "versionSource": "Cargo.toml [workspace.package].version",
+  "windowsRuntimeQualification": "NotAvailable",
+  "installer": {
+    "path": "installer/wix/Product.wxs",
+    "format": "WiX v4 MSI/Burn",
+    "upgradeCode": "45598C77-2C32-5BCE-8510-19C7E51EE3B8",
+    "componentGuidPolicy": "stable explicit GUID per owned component",
+    "service": {"name":"AetherCoreMaintenance", "account":"LocalSystem", "start":"auto", "sid":"explicit hardening helper"},
+    "state": {"root":"ProgramData\\AetherCore", "preserveOnUpgrade":true, "preserveOnRepair":true, "removeOnUninstall":"transient product-owned only"}
+  },
+  "included": ["desktop", "consent-broker", "update-broker", "maintenance-service", "update-trust", "install-hardener"],
+  "excluded": ["Graphify", "target", "node_modules", ".DS_Store", "test fixtures", "private signing keys", "developer state", "historical phase patch trees"]
+}

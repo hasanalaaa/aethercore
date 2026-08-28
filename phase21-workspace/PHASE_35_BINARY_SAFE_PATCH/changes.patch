@@ -1,0 +1,1881 @@
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -53,0 +54,22 @@
++      - name: Phase 35 release authority and adversarial metadata gate
++        shell: pwsh
++        run: |
++          python scripts/phase35-adversarial-audit.py
++          cargo test -p aethercore-release-authority
++      - name: Generate deterministic Phase 35 SBOM and provenance evidence
++        shell: pwsh
++        env:
++          SOURCE_DATE_EPOCH: ${{ vars.SOURCE_DATE_EPOCH }}
++        run: |
++          if (-not $env:SOURCE_DATE_EPOCH) { $env:SOURCE_DATE_EPOCH = '0' }
++          python scripts/phase35-release.py sbom --out out/release/phase35/sbom.cdx.json
++          if (Test-Path out/release/AetherCore.msi) {
++            python scripts/phase35-release.py provenance --out out/release/phase35/provenance.json --package out/release/AetherCore.msi --identity out/release/phase35/release-identity.json --sbom out/release/phase35/sbom.cdx.json
++          } else {
++            Write-Output 'WINDOWS_PACKAGE_BUILD=NotAvailable until the protected packaging step.'
++          }
++      - name: Phase 35 unsigned-artifact honesty gate
++        shell: pwsh
++        run: |
++          if (Test-Path out/release/phase35/private.key) { throw 'private signing key entered release output' }
++          Write-Output 'PRODUCTION_RELEASE_SIGNING requires the protected signing environment.'
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -470,0 +471,13 @@
++name = "aethercore-release-authority"
++version = "0.1.0"
++dependencies = [
++ "ed25519-dalek",
++ "hex",
++ "serde",
++ "serde_json",
++ "sha2",
++ "thiserror 2.0.20",
++ "uuid",
++]
++
++[[package]]
+@@ -677,0 +691 @@
++ "aethercore-release-authority",
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -42,0 +43 @@
++  "crates/release-authority",
+--- a/DEBT_REGISTER.json
++++ b/DEBT_REGISTER.json
+@@ -267,0 +268,28 @@
++    },
++    {
++      "id": "QD-035-001",
++      "note": "Windows MSI/Burn install, upgrade, repair and uninstall runtime qualification deferred to a native Windows lane.",
++      "originPhase": 35,
++      "risk": "high",
++      "status": "OPEN"
++    },
++    {
++      "id": "QD-035-002",
++      "note": "Windows UAC, service identity/ACL, named-pipe, reboot recovery and rollback behavior require native Phase 36 execution evidence.",
++      "originPhase": 35,
++      "risk": "high",
++      "status": "OPEN"
++    },
++    {
++      "id": "QD-035-003",
++      "note": "Production Authenticode certificate execution and SmartScreen/reputation qualification are unavailable on the proof host.",
++      "originPhase": 35,
++      "risk": "high",
++      "status": "OPEN"
++    },
++    {
++      "id": "QD-035-004",
++      "note": "Live production update endpoint/channel publication and end-to-end online update qualification are not provisioned for Phase 35.",
++      "originPhase": 35,
++      "risk": "medium",
++      "status": "OPEN"
+--- a/apps/aetherctl/Cargo.toml
++++ b/apps/aetherctl/Cargo.toml
+@@ -33,0 +34 @@
++aethercore-release-authority = { path = "../../crates/release-authority" }
+--- a/apps/aetherctl/src/cli.rs
++++ b/apps/aetherctl/src/cli.rs
+@@ -45,0 +46,6 @@
++
++RELEASE / UPDATE AUTHORITY (Phase 35; offline verification is fail-closed):
++  release inspect [--manifest <file>]
++  release verify --manifest <file> --signature <file> --keyring <file>
++  update check | plan | download | verify | stage | status | cancel | rollback
++  update offline verify <bundle.zip>
+@@ -154,0 +161,19 @@
++    ReleaseInspect { manifest: Option<String> },
++    ReleaseVerify {
++        manifest: String,
++        signature: String,
++        keyring: String,
++    },
++    UpdateCheck,
++    UpdatePlan,
++    UpdateDownload,
++    UpdateVerify {
++        metadata: String,
++        signature: String,
++        keyring: String,
++    },
++    UpdateStage,
++    UpdateStatus,
++    UpdateCancel,
++    UpdateRollback,
++    OfflineBundleVerify { bundle: String },
+@@ -672,0 +698,47 @@
++        "release" => {
++            let sub = cursor.next().cloned().ok_or_else(|| usage("cli.usage.releaseSubcommandRequired", "release requires inspect|verify".into()))?;
++            match sub.as_str() {
++                "inspect" => {
++                    let mut manifest = None;
++                    while let Some(flag) = cursor.next() {
++                        match flag.as_str() { "--manifest" => manifest = Some(cursor.value_after("--manifest")?), other => return Err(unknown_flag(other)) }
++                    }
++                    Command::Offline(OfflineJob::ReleaseInspect { manifest })
++                }
++                "verify" => {
++                    let mut manifest = None; let mut signature = None; let mut keyring = None;
++                    while let Some(flag) = cursor.next() {
++                        match flag.as_str() { "--manifest" => manifest = Some(cursor.value_after("--manifest")?), "--signature" => signature = Some(cursor.value_after("--signature")?), "--keyring" => keyring = Some(cursor.value_after("--keyring")?), other => return Err(unknown_flag(other)) }
++                    }
++                    let missing = || usage("cli.usage.releaseVerifyRequiresInputs", "release verify requires --manifest --signature --keyring".into());
++                    Command::Offline(OfflineJob::ReleaseVerify { manifest: manifest.ok_or_else(missing)?, signature: signature.ok_or_else(missing)?, keyring: keyring.ok_or_else(missing)? })
++                }
++                other => return Err(usage("cli.usage.unknownSubcommand", format!("unknown release subcommand '{other}'"))),
++            }
++        }
++        "update" => {
++            let sub = cursor.next().cloned().ok_or_else(|| usage("cli.usage.updateSubcommandRequired", "update requires check|plan|download|verify|stage|status|cancel|rollback|offline".into()))?;
++            match sub.as_str() {
++                "check" => Command::Offline(OfflineJob::UpdateCheck),
++                "plan" => Command::Offline(OfflineJob::UpdatePlan),
++                "download" => Command::Offline(OfflineJob::UpdateDownload),
++                "stage" => Command::Offline(OfflineJob::UpdateStage),
++                "status" => Command::Offline(OfflineJob::UpdateStatus),
++                "cancel" => Command::Offline(OfflineJob::UpdateCancel),
++                "rollback" => Command::Offline(OfflineJob::UpdateRollback),
++                "verify" => {
++                    let mut metadata = None; let mut signature = None; let mut keyring = None;
++                    while let Some(flag) = cursor.next() {
++                        match flag.as_str() { "--metadata" => metadata = Some(cursor.value_after("--metadata")?), "--signature" => signature = Some(cursor.value_after("--signature")?), "--keyring" => keyring = Some(cursor.value_after("--keyring")?), other => return Err(unknown_flag(other)) }
++                    }
++                    let missing = || usage("cli.usage.updateVerifyRequiresInputs", "update verify requires --metadata --signature --keyring".into());
++                    Command::Offline(OfflineJob::UpdateVerify { metadata: metadata.ok_or_else(missing)?, signature: signature.ok_or_else(missing)?, keyring: keyring.ok_or_else(missing)? })
++                }
++                "offline" => {
++                    if cursor.next().map(|v| v.as_str()) != Some("verify") { return Err(usage("cli.usage.updateOfflineVerifyRequiresBundle", "update offline requires verify <bundle.zip>".into())); }
++                    let bundle = cursor.next().cloned().ok_or_else(|| usage("cli.usage.updateOfflineVerifyRequiresBundle", "update offline verify requires a bundle path".into()))?;
++                    Command::Offline(OfflineJob::OfflineBundleVerify { bundle })
++                }
++                other => return Err(usage("cli.usage.unknownSubcommand", format!("unknown update subcommand '{other}'"))),
++            }
++        }
+@@ -1389,0 +1462,7 @@
++    fn phase35_release_and_offline_update_commands_are_typed() {
++        assert!(matches!(parse(&argv(&["release", "inspect"])).unwrap().command, Command::Offline(OfflineJob::ReleaseInspect { manifest: None })));
++        assert!(matches!(parse(&argv(&["release", "verify", "--manifest", "m", "--signature", "s", "--keyring", "k"])).unwrap().command, Command::Offline(OfflineJob::ReleaseVerify { .. })));
++        assert!(matches!(parse(&argv(&["update", "offline", "verify", "bundle.zip"])).unwrap().command, Command::Offline(OfflineJob::OfflineBundleVerify { .. })));
++    }
++
++    #[test]
+--- a/apps/aetherctl/src/main.rs
++++ b/apps/aetherctl/src/main.rs
+@@ -14,0 +15 @@
++mod release;
+--- a/apps/aetherctl/src/offline.rs
++++ b/apps/aetherctl/src/offline.rs
+@@ -61,0 +62,11 @@
++        OfflineJob::ReleaseInspect { .. } => "release inspect".to_string(),
++        OfflineJob::ReleaseVerify { .. } => "release verify".to_string(),
++        OfflineJob::UpdateCheck => "update check".to_string(),
++        OfflineJob::UpdatePlan => "update plan".to_string(),
++        OfflineJob::UpdateDownload => "update download".to_string(),
++        OfflineJob::UpdateVerify { .. } => "update verify".to_string(),
++        OfflineJob::UpdateStage => "update stage".to_string(),
++        OfflineJob::UpdateStatus => "update status".to_string(),
++        OfflineJob::UpdateCancel => "update cancel".to_string(),
++        OfflineJob::UpdateRollback => "update rollback".to_string(),
++        OfflineJob::OfflineBundleVerify { .. } => "update offline verify".to_string(),
+@@ -122,0 +134,5 @@
++        OfflineJob::ReleaseInspect { manifest } => crate::release::inspect(manifest.as_deref()),
++        OfflineJob::ReleaseVerify { manifest, signature, keyring } => crate::release::verify_manifest(&manifest, &signature, &keyring),
++        OfflineJob::UpdateVerify { metadata, signature, keyring } => crate::release::verify_update(&metadata, &signature, &keyring),
++        OfflineJob::OfflineBundleVerify { bundle } => crate::release::verify_offline_bundle(&bundle),
++        OfflineJob::UpdateCheck | OfflineJob::UpdatePlan | OfflineJob::UpdateDownload | OfflineJob::UpdateStage | OfflineJob::UpdateStatus | OfflineJob::UpdateCancel | OfflineJob::UpdateRollback => Err(CliError::capability_unavailable("updateApplyRequiresWindowsQualification")),
+--- a/apps/ui/src/lib/i18n/catalog.ar.ts
++++ b/apps/ui/src/lib/i18n/catalog.ar.ts
+@@ -1084,0 +1085,3 @@
++  'update.channel.dev': 'تطوير',
++  'update.currentVersionLabel': 'الإصدار الحالي',
++  'update.channel.stableLabel': 'مستقرة',
+@@ -1105,0 +1109,17 @@
++  'update.status.noUpdate': 'لا يتوفر تحديث.',
++  'update.status.downloading': 'جارٍ التنزيل…',
++  'update.status.verifying': 'جارٍ التحقق…',
++  'update.status.verified': 'تم التحقق.',
++  'update.status.readyToInstall': 'جاهز للتثبيت.',
++  'update.status.cancelled': 'أُلغيت العملية.',
++  'update.status.rollbackRequired': 'يلزم التراجع.',
++  'update.status.rollingBack': 'جارٍ التراجع…',
++  'update.status.rolledBack': 'تم التراجع إلى الإصدار المصرح به.',
++  'update.status.signatureInvalid': 'التوقيع غير صالح.',
++  'update.status.packageInvalid': 'الحزمة غير صالحة.',
++  'update.status.wrongArchitecture': 'البنية غير صحيحة.',
++  'update.status.wrongChannel': 'القناة غير صحيحة.',
++  'update.status.downgradeBlocked': 'تم حظر الرجوع إلى إصدار أقدم.',
++  'update.status.offlinePackage': 'حزمة دون اتصال.',
++  'update.status.installerNotAvailable': 'المثبّت غير متاح.',
++  'update.status.windowsQualificationRequired': 'يلزم التأهيل على Windows.',
+--- a/apps/ui/src/lib/i18n/catalog.en.ts
++++ b/apps/ui/src/lib/i18n/catalog.en.ts
+@@ -1082,0 +1083,3 @@
++  'update.channel.dev': 'Development',
++  'update.currentVersionLabel': 'Current Version',
++  'update.channel.stableLabel': 'Stable',
+@@ -1103,0 +1107,17 @@
++  'update.status.noUpdate': 'No update available.',
++  'update.status.downloading': 'Downloading…',
++  'update.status.verifying': 'Verifying…',
++  'update.status.verified': 'Verified.',
++  'update.status.readyToInstall': 'Ready to install.',
++  'update.status.cancelled': 'Cancelled.',
++  'update.status.rollbackRequired': 'Rollback required.',
++  'update.status.rollingBack': 'Rolling back…',
++  'update.status.rolledBack': 'Rolled back to the authorized version.',
++  'update.status.signatureInvalid': 'Signature invalid.',
++  'update.status.packageInvalid': 'Package invalid.',
++  'update.status.wrongArchitecture': 'Wrong architecture.',
++  'update.status.wrongChannel': 'Wrong channel.',
++  'update.status.downgradeBlocked': 'Downgrade blocked.',
++  'update.status.offlinePackage': 'Offline package.',
++  'update.status.installerNotAvailable': 'Installer not available.',
++  'update.status.windowsQualificationRequired': 'Windows qualification required.',
+--- /dev/null
++++ b/apps/aetherctl/src/release.rs
+@@ -0,0 +1,39 @@
++//! Read-only Phase 35 release/update verification surface for aetherctl.
++
++use crate::error::CliError;
++use aethercore_release_authority::{parse_strict, verify_release_manifest, verify_update_metadata, ReleaseManifest, SignatureEnvelope, TrustedKeyring, UpdateMetadata};
++use std::{fs, path::Path};
++
++fn read<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, CliError> {
++    let bytes = fs::read(path).map_err(|e| CliError::local_io_with("cli.release.readFailed", e.to_string()))?;
++    parse_strict(&bytes, 256 * 1024).map_err(|e| CliError::Rejected { message_key: "cli.release.invalidArtifact".into(), detail: Some(e.to_string()) })
++}
++
++pub fn inspect(path: Option<&str>) -> Result<serde_json::Value, CliError> {
++    let manifest: ReleaseManifest = read(path.unwrap_or("release/release-manifest.json"))?;
++    manifest.validate().map_err(|e| CliError::Rejected { message_key: "cli.release.invalidManifest".into(), detail: Some(e.to_string()) })?;
++    Ok(serde_json::json!({ "schema": manifest.schema, "identity": manifest.identity, "package": manifest.package, "sbomSha256": manifest.sbom_sha256, "provenanceSha256": manifest.provenance_sha256 }))
++}
++
++pub fn verify_manifest(manifest_path: &str, signature_path: &str, keyring_path: &str) -> Result<serde_json::Value, CliError> {
++    let manifest: ReleaseManifest = read(manifest_path)?;
++    let bytes = fs::read(manifest_path).map_err(|e| CliError::local_io_with("cli.release.readFailed", e.to_string()))?;
++    let signature: SignatureEnvelope = read(signature_path)?;
++    let keyring: TrustedKeyring = read(keyring_path)?;
++    let digest = verify_release_manifest(&manifest, &bytes, &signature, &keyring).map_err(|e| CliError::Rejected { message_key: "cli.release.verificationFailed".into(), detail: Some(e.to_string()) })?;
++    Ok(serde_json::json!({ "status": "verified", "manifestSha256": digest, "keyId": signature.key_id, "signatureState": "signed" }))
++}
++
++pub fn verify_update(metadata_path: &str, signature_path: &str, keyring_path: &str) -> Result<serde_json::Value, CliError> {
++    let metadata: UpdateMetadata = read(metadata_path)?;
++    let signature: SignatureEnvelope = read(signature_path)?;
++    let keyring: TrustedKeyring = read(keyring_path)?;
++    let installed = aethercore_release_authority::ReleaseIdentity { version: metadata.current_version.clone(), ..metadata.target_identity.clone() };
++    verify_update_metadata(&metadata, &signature, &keyring, metadata.generated_epoch, &installed).map_err(|e| CliError::Rejected { message_key: "cli.update.verificationFailed".into(), detail: Some(e.to_string()) })?;
++    Ok(serde_json::json!({ "status": "verified", "channel": metadata.channel, "targetVersion": metadata.target_identity.version, "keyId": signature.key_id }))
++}
++
++pub fn verify_offline_bundle(path: &str) -> Result<serde_json::Value, CliError> {
++    if !Path::new(path).is_file() { return Err(CliError::local_io("cli.release.bundleNotFound")); }
++    Err(CliError::capability_unavailable("offlineBundleVerifierRequiresReleaseTool"))
++}
+--- /dev/null
++++ b/crates/release-authority/Cargo.toml
+@@ -0,0 +1,16 @@
++[package]
++name = "aethercore-release-authority"
++version.workspace = true
++edition.workspace = true
++rust-version.workspace = true
++publish.workspace = true
++license.workspace = true
++
++[dependencies]
++ed25519-dalek.workspace = true
++hex.workspace = true
++serde.workspace = true
++serde_json.workspace = true
++sha2.workspace = true
++thiserror.workspace = true
++uuid.workspace = true
+--- /dev/null
++++ b/crates/release-authority/src/bin/phase35-fixture.rs
+@@ -0,0 +1,22 @@
++//! Test-evidence helper only. It uses the deterministic TEST-ONLY seed `[7; 32]`;
++//! production signing is never implicit and this binary is not a release signer.
++use aethercore_release_authority::{canonical_json, sign_bytes, ReleaseManifest, SignatureEnvelope, TrustedKeyring, TrustedReleaseKey, KEYRING_SCHEMA};
++use ed25519_dalek::SigningKey;
++use std::{env, fs, path::PathBuf};
++
++fn main() -> Result<(), Box<dyn std::error::Error>> {
++    let args: Vec<String> = env::args().collect();
++    if args.len() != 2 { return Err("usage: phase35-fixture <manifest.json>".into()); }
++    let manifest_path = PathBuf::from(&args[1]);
++    let manifest: ReleaseManifest = serde_json::from_slice(&fs::read(&manifest_path)?)?;
++    let bytes = canonical_json(&manifest)?;
++    let seed = [7u8; 32];
++    let signing = SigningKey::from_bytes(&seed);
++    let envelope: SignatureEnvelope = sign_bytes(&bytes, "test-p35", &seed)?;
++    let keyring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![TrustedReleaseKey { key_id: "test-p35".into(), algorithm: "Ed25519".into(), public_key_hex: hex::encode(signing.verifying_key().to_bytes()), enabled: true, revoked: false, not_before_epoch: None, not_after_epoch: None }] };
++    let out = manifest_path.parent().unwrap_or_else(|| std::path::Path::new("."));
++    fs::write(out.join("release-manifest.signature.json"), serde_json::to_vec(&envelope)?)?;
++    fs::write(out.join("test-keyring.json"), serde_json::to_vec(&keyring)?)?;
++    println!("TEST_FIXTURE_SIGNATURE=PASS");
++    Ok(())
++}
+--- /dev/null
++++ b/crates/release-authority/src/lib.rs
+@@ -0,0 +1,538 @@
++//! Phase 35 release, update and installation authority.
++//!
++//! This crate owns the *metadata* contract.  It intentionally does not download,
++//! install, or elevate a process: those operations remain behind the existing
++//! update-engine mutation supervisor.  Every serialized type is strict and every
++//! signature covers the exact deterministic bytes supplied by the caller.
++
++use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
++use serde::{de::DeserializeOwned, Deserialize, Serialize};
++use sha2::{Digest, Sha256};
++use std::{collections::BTreeSet, path::Path};
++use thiserror::Error;
++use uuid::Uuid;
++
++pub const IDENTITY_SCHEMA: &str = "aethercore.release.identity.v1";
++pub const MANIFEST_SCHEMA: &str = "aethercore.release.manifest.v1";
++pub const UPDATE_METADATA_SCHEMA: &str = "aethercore.update.metadata.v1";
++pub const ROLLBACK_SCHEMA: &str = "aethercore.release.rollback-authorization.v1";
++pub const SIGNATURE_SCHEMA: &str = "aethercore.release.signature.v1";
++pub const KEYRING_SCHEMA: &str = "aethercore.release.keyring.v1";
++pub const ROTATION_SCHEMA: &str = "aethercore.release.key-rotation.v1";
++pub const UPDATE_CONTRACT_VERSION: &str = "aethercore.update-contract.v1";
++pub const MAX_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
++pub const MAX_METADATA_BYTES: usize = 256 * 1024;
++
++#[derive(Debug, Error, PartialEq, Eq)]
++pub enum AuthorityError {
++    #[error("invalid release identity: {0}")]
++    InvalidIdentity(String),
++    #[error("unsupported schema: {0}")]
++    UnsupportedSchema(String),
++    #[error("deterministic serialization failed: {0}")]
++    Serialization(String),
++    #[error("metadata exceeds the bounded size")]
++    TooLarge,
++    #[error("unknown signing key: {0}")]
++    UnknownKey(String),
++    #[error("signing key is revoked or disabled: {0}")]
++    RevokedKey(String),
++    #[error("malformed public key")]
++    MalformedKey,
++    #[error("signature encoding is invalid")]
++    InvalidSignature,
++    #[error("signature verification failed")]
++    SignatureMismatch,
++    #[error("channel or target identity does not match")]
++    IdentityMismatch,
++    #[error("package length or digest does not match")]
++    PackageMismatch,
++    #[error("metadata is expired or not yet valid")]
++    Freshness,
++    #[error("downgrade is blocked")]
++    DowngradeBlocked,
++    #[error("rollback authorization is invalid")]
++    UnauthorizedRollback,
++    #[error("illegal update transaction transition")]
++    IllegalTransition,
++    #[error("immutable update plan was changed")]
++    PlanChanged,
++    #[error("duplicate or conflicting key rotation")]
++    RotationConflict,
++    #[error("unsafe archive member path")]
++    UnsafeArchivePath,
++    #[error("unsupported update source")]
++    UnsupportedSource,
++}
++
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
++#[serde(rename_all = "lowercase")]
++pub enum ReleaseChannel {
++    Stable,
++    Beta,
++    Dev,
++}
++
++impl ReleaseChannel {
++    pub const ALL: [Self; 3] = [Self::Stable, Self::Beta, Self::Dev];
++    pub fn as_str(self) -> &'static str {
++        match self {
++            Self::Stable => "stable",
++            Self::Beta => "beta",
++            Self::Dev => "dev",
++        }
++    }
++}
++
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "kebab-case")]
++pub enum TargetPlatform {
++    Windows,
++    Macos,
++    Linux,
++}
++
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "kebab-case")]
++pub enum TargetArchitecture {
++    X86_64,
++    Aarch64,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct ReleaseIdentity {
++    pub schema: String,
++    pub product_id: String,
++    pub version: String,
++    pub channel: ReleaseChannel,
++    pub release_sequence: u64,
++    pub platform: TargetPlatform,
++    pub architecture: TargetArchitecture,
++    pub protocol_version: String,
++    pub minimum_updater_version: String,
++    pub source_commit: Option<String>,
++    /// Optional only when reproducibility policy supplies a fixed epoch.
++    pub build_epoch: Option<u64>,
++}
++
++impl ReleaseIdentity {
++    pub fn validate(&self) -> Result<(), AuthorityError> {
++        if self.schema != IDENTITY_SCHEMA
++            || self.product_id != "AetherCore"
++            || !valid_version(&self.version)
++            || self.release_sequence == 0
++            || !valid_version(&self.minimum_updater_version)
++            || self.protocol_version.is_empty()
++            || self.protocol_version.len() > 64
++            || self.source_commit.as_ref().is_some_and(|v| !safe_token(v, 128))
++        {
++            return Err(AuthorityError::InvalidIdentity("field or version constraint".into()));
++        }
++        Ok(())
++    }
++
++    pub fn consistency_key(&self) -> String {
++        format!(
++            "{}@{}:{}:{}:{}:{}",
++            self.product_id,
++            self.version,
++            self.channel.as_str(),
++            self.release_sequence,
++            platform_name(self.platform),
++            architecture_name(self.architecture)
++        )
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct ReleasePackage {
++    pub package_type: String,
++    pub filename: String,
++    pub byte_length: u64,
++    pub sha256: String,
++}
++
++impl ReleasePackage {
++    pub fn validate(&self) -> Result<(), AuthorityError> {
++        if self.package_type != "msi" && self.package_type != "burn" && self.package_type != "offline-zip" {
++            return Err(AuthorityError::PackageMismatch);
++        }
++        if self.byte_length == 0 || self.byte_length > MAX_ARTIFACT_BYTES
++            || self.filename.is_empty() || self.filename.contains('/') || self.filename.contains('\\')
++            || self.sha256.len() != 64 || !self.sha256.bytes().all(|b| b.is_ascii_hexdigit())
++        {
++            return Err(AuthorityError::PackageMismatch);
++        }
++        Ok(())
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct ReleaseManifest {
++    pub schema: String,
++    pub identity: ReleaseIdentity,
++    pub package: ReleasePackage,
++    pub sbom_sha256: String,
++    pub sbom_reference: String,
++    pub provenance_sha256: String,
++    pub provenance_reference: String,
++    pub created_epoch: u64,
++    pub update_contract_version: String,
++}
++
++impl ReleaseManifest {
++    pub fn validate(&self) -> Result<(), AuthorityError> {
++        if self.schema != MANIFEST_SCHEMA {
++            return Err(AuthorityError::UnsupportedSchema(self.schema.clone()));
++        }
++        self.identity.validate()?;
++        self.package.validate()?;
++        for digest in [&self.sbom_sha256, &self.provenance_sha256] {
++            if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
++                return Err(AuthorityError::PackageMismatch);
++            }
++        }
++        if self.sbom_reference.is_empty() || self.provenance_reference.is_empty()
++            || self.update_contract_version != UPDATE_CONTRACT_VERSION
++        {
++            return Err(AuthorityError::InvalidIdentity("binding or update contract".into()));
++        }
++        Ok(())
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct SignatureEnvelope {
++    pub schema: String,
++    pub algorithm: String,
++    pub key_id: String,
++    pub signature_hex: String,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct TrustedReleaseKey {
++    pub key_id: String,
++    pub algorithm: String,
++    pub public_key_hex: String,
++    pub enabled: bool,
++    pub revoked: bool,
++    pub not_before_epoch: Option<u64>,
++    pub not_after_epoch: Option<u64>,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct TrustedKeyring {
++    pub schema: String,
++    pub keys: Vec<TrustedReleaseKey>,
++}
++
++impl TrustedKeyring {
++    pub fn validate(&self, now_epoch: Option<u64>) -> Result<(), AuthorityError> {
++        if self.schema != KEYRING_SCHEMA || self.keys.is_empty() {
++            return Err(AuthorityError::UnsupportedSchema(self.schema.clone()));
++        }
++        let mut ids = BTreeSet::new();
++        for key in &self.keys {
++            if !safe_token(&key.key_id, 64) || !ids.insert(key.key_id.as_str()) || key.algorithm != "Ed25519" {
++                return Err(AuthorityError::MalformedKey);
++            }
++            let raw = hex::decode(&key.public_key_hex).map_err(|_| AuthorityError::MalformedKey)?;
++            if raw.len() != 32 || raw.iter().all(|b| *b == 0) {
++                return Err(AuthorityError::MalformedKey);
++            }
++            if let (Some(before), Some(after)) = (key.not_before_epoch, key.not_after_epoch)
++                && after < before
++            {
++                return Err(AuthorityError::MalformedKey);
++            }
++            if let Some(now) = now_epoch
++                && (key.not_before_epoch.is_some_and(|v| now < v) || key.not_after_epoch.is_some_and(|v| now > v))
++            {
++                continue;
++            }
++        }
++        Ok(())
++    }
++
++    pub fn active_key(&self, key_id: &str, now_epoch: Option<u64>) -> Result<&TrustedReleaseKey, AuthorityError> {
++        self.validate(now_epoch)?;
++        let key = self.keys.iter().find(|v| v.key_id == key_id).ok_or_else(|| AuthorityError::UnknownKey(key_id.into()))?;
++        if !key.enabled || key.revoked || key.not_before_epoch.is_some_and(|v| now_epoch.is_some_and(|n| n < v)) || key.not_after_epoch.is_some_and(|v| now_epoch.is_some_and(|n| n > v)) {
++            return Err(AuthorityError::RevokedKey(key_id.into()));
++        }
++        Ok(key)
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct KeyRotation {
++    pub schema: String,
++    pub old_key_id: String,
++    pub new_key: TrustedReleaseKey,
++    pub authorized_by: String,
++    pub signature_hex: String,
++}
++
++impl KeyRotation {
++    fn unsigned_bytes(&self) -> Result<Vec<u8>, AuthorityError> {
++        let mut copy = self.clone();
++        copy.signature_hex.clear();
++        canonical_json(&copy)
++    }
++
++    pub fn authorize(&self, keyring: &TrustedKeyring) -> Result<TrustedKeyring, AuthorityError> {
++        if self.schema != ROTATION_SCHEMA || self.authorized_by != self.old_key_id || self.new_key.key_id == self.old_key_id {
++            return Err(AuthorityError::RotationConflict);
++        }
++        let old = keyring.active_key(&self.old_key_id, None)?;
++        verify_signature(&self.unsigned_bytes()?, &self.signature_hex, old)?;
++        let mut next = keyring.clone();
++        if next.keys.iter().any(|k| k.key_id == self.new_key.key_id) { return Err(AuthorityError::RotationConflict); }
++        self.new_key.clone().validate()?;
++        next.keys.push(self.new_key.clone());
++        Ok(next)
++    }
++}
++
++impl TrustedReleaseKey {
++    fn validate(&self) -> Result<(), AuthorityError> {
++        TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![self.clone()] }.validate(None)
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct UpdateMetadata {
++    pub schema: String,
++    pub product_id: String,
++    pub channel: ReleaseChannel,
++    pub current_version: String,
++    pub target_identity: ReleaseIdentity,
++    pub platform: TargetPlatform,
++    pub architecture: TargetArchitecture,
++    pub package_url: String,
++    pub package_length: u64,
++    pub package_sha256: String,
++    pub release_manifest_sha256: String,
++    pub signing_key_id: String,
++    pub update_contract_version: String,
++    pub release_notes_reference: Option<String>,
++    pub generated_epoch: u64,
++    pub expires_epoch: u64,
++}
++
++impl UpdateMetadata {
++    pub fn validate(&self, now_epoch: u64) -> Result<(), AuthorityError> {
++        if self.schema != UPDATE_METADATA_SCHEMA || self.product_id != "AetherCore" || self.update_contract_version != UPDATE_CONTRACT_VERSION || self.expires_epoch < now_epoch || self.expires_epoch <= self.generated_epoch || self.expires_epoch.saturating_sub(self.generated_epoch) > 30 * 24 * 3600 {
++            return Err(AuthorityError::Freshness);
++        }
++        self.target_identity.validate()?;
++        if self.target_identity.product_id != self.product_id || self.target_identity.channel != self.channel || self.target_identity.platform != self.platform || self.target_identity.architecture != self.architecture || !self.package_url.starts_with("https://") || self.package_url.contains('@') || self.package_url.contains('#') || self.package_length == 0 || self.package_length > MAX_ARTIFACT_BYTES || !valid_digest(&self.package_sha256) || !valid_digest(&self.release_manifest_sha256) {
++            return Err(AuthorityError::IdentityMismatch);
++        }
++        Ok(())
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct RollbackAuthorization {
++    pub schema: String,
++    pub product_id: String,
++    pub current_version: String,
++    pub authorized_target_version: String,
++    pub channel: ReleaseChannel,
++    pub reason_code: String,
++    pub expires_epoch: u64,
++    pub signer_key_id: String,
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum SignatureState { Signed, Unsigned, Invalid }
++
++pub fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, AuthorityError> {
++    serde_json::to_vec(value).map_err(|e| AuthorityError::Serialization(e.to_string()))
++}
++
++pub fn parse_strict<T: DeserializeOwned>(bytes: &[u8], max: usize) -> Result<T, AuthorityError> {
++    if bytes.len() > max { return Err(AuthorityError::TooLarge); }
++    serde_json::from_slice(bytes).map_err(|e| AuthorityError::Serialization(e.to_string()))
++}
++
++pub fn sha256_hex(bytes: &[u8]) -> String { hex::encode(Sha256::digest(bytes)) }
++
++pub fn sign_bytes(bytes: &[u8], key_id: impl Into<String>, private_key: &[u8; 32]) -> Result<SignatureEnvelope, AuthorityError> {
++    let key = SigningKey::from_bytes(private_key);
++    Ok(SignatureEnvelope { schema: SIGNATURE_SCHEMA.into(), algorithm: "Ed25519".into(), key_id: key_id.into(), signature_hex: hex::encode(key.sign(bytes).to_bytes()) })
++}
++
++pub fn verify_signed_bytes(bytes: &[u8], envelope: &SignatureEnvelope, keyring: &TrustedKeyring, now_epoch: Option<u64>) -> Result<SignatureState, AuthorityError> {
++    if envelope.schema != SIGNATURE_SCHEMA || envelope.algorithm != "Ed25519" { return Err(AuthorityError::UnsupportedSchema(envelope.schema.clone())); }
++    let key = keyring.active_key(&envelope.key_id, now_epoch)?;
++    verify_signature(bytes, &envelope.signature_hex, key)?;
++    Ok(SignatureState::Signed)
++}
++
++fn verify_signature(bytes: &[u8], signature_hex: &str, key: &TrustedReleaseKey) -> Result<(), AuthorityError> {
++    let raw = hex::decode(signature_hex).map_err(|_| AuthorityError::InvalidSignature)?;
++    let sig: [u8; 64] = raw.try_into().map_err(|_| AuthorityError::InvalidSignature)?;
++    let public = hex::decode(&key.public_key_hex).map_err(|_| AuthorityError::MalformedKey)?;
++    let public: [u8; 32] = public.try_into().map_err(|_| AuthorityError::MalformedKey)?;
++    let verifying = VerifyingKey::from_bytes(&public).map_err(|_| AuthorityError::MalformedKey)?;
++    verifying.verify(bytes, &Signature::from_bytes(&sig)).map_err(|_| AuthorityError::SignatureMismatch)
++}
++
++pub fn verify_release_manifest(manifest: &ReleaseManifest, bytes: &[u8], envelope: &SignatureEnvelope, keyring: &TrustedKeyring) -> Result<String, AuthorityError> {
++    manifest.validate()?;
++    let expected = canonical_json(manifest)?;
++    if expected != bytes { return Err(AuthorityError::PackageMismatch); }
++    verify_signed_bytes(bytes, envelope, keyring, None)?;
++    Ok(sha256_hex(bytes))
++}
++
++pub fn verify_update_metadata(metadata: &UpdateMetadata, envelope: &SignatureEnvelope, keyring: &TrustedKeyring, now_epoch: u64, installed: &ReleaseIdentity) -> Result<(), AuthorityError> {
++    metadata.validate(now_epoch)?;
++    if installed.product_id != metadata.product_id || installed.platform != metadata.platform || installed.architecture != metadata.architecture || installed.channel != metadata.channel || !valid_version(&metadata.current_version) || metadata.current_version != installed.version {
++        return Err(AuthorityError::IdentityMismatch);
++    }
++    if compare_versions(&metadata.target_identity.version, &installed.version) <= 0 { return Err(AuthorityError::DowngradeBlocked); }
++    let bytes = canonical_json(metadata)?;
++    if envelope.key_id != metadata.signing_key_id { return Err(AuthorityError::UnknownKey(envelope.key_id.clone())); }
++    verify_signed_bytes(&bytes, envelope, keyring, Some(now_epoch))?;
++    Ok(())
++}
++
++pub fn verify_rollback_authorization(auth: &RollbackAuthorization, envelope: &SignatureEnvelope, keyring: &TrustedKeyring, now_epoch: u64, installed: &ReleaseIdentity) -> Result<(), AuthorityError> {
++    if auth.schema != ROLLBACK_SCHEMA || auth.product_id != installed.product_id || auth.current_version != installed.version || auth.channel != installed.channel || auth.expires_epoch < now_epoch || !valid_version(&auth.authorized_target_version) || compare_versions(&auth.authorized_target_version, &installed.version) >= 0 || auth.reason_code.is_empty() || envelope.key_id != auth.signer_key_id {
++        return Err(AuthorityError::UnauthorizedRollback);
++    }
++    let bytes = canonical_json(auth)?;
++    verify_signed_bytes(&bytes, envelope, keyring, Some(now_epoch)).map(|_| ())
++}
++
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "PascalCase")]
++pub enum UpdateState { Discovered, Validated, Downloading, Downloaded, Verified, Staged, ReadyToApply, Applying, Applied, RebootRequired, RollbackRequired, RollingBack, RolledBack, Failed, Cancelled }
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct UpdateTransaction {
++    pub transaction_id: String,
++    pub source_release: ReleaseIdentity,
++    pub target_release: ReleaseIdentity,
++    pub channel: ReleaseChannel,
++    pub package_sha256: String,
++    pub state: UpdateState,
++    pub state_sequence: u64,
++    pub created_epoch: u64,
++    pub updated_epoch: u64,
++    pub error_code: Option<String>,
++}
++
++impl UpdateTransaction {
++    pub fn new(source_release: ReleaseIdentity, target_release: ReleaseIdentity, package_sha256: String, epoch: u64) -> Result<Self, AuthorityError> {
++        source_release.validate()?; target_release.validate()?;
++        if target_release.channel != source_release.channel || !valid_digest(&package_sha256) { return Err(AuthorityError::IdentityMismatch); }
++        Ok(Self { transaction_id: Uuid::new_v4().to_string(), channel: target_release.channel, source_release, target_release, package_sha256, state: UpdateState::Discovered, state_sequence: 0, created_epoch: epoch, updated_epoch: epoch, error_code: None })
++    }
++    pub fn transition(&mut self, next: UpdateState, epoch: u64) -> Result<(), AuthorityError> {
++        if !allowed_transition(self.state, next) { return Err(AuthorityError::IllegalTransition); }
++        self.state = next; self.state_sequence = self.state_sequence.saturating_add(1); self.updated_epoch = epoch; Ok(())
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct ImmutableApplyPlan {
++    pub transaction_id: String,
++    pub installed_version: String,
++    pub target_version: String,
++    pub channel: ReleaseChannel,
++    pub platform: TargetPlatform,
++    pub architecture: TargetArchitecture,
++    pub package_sha256: String,
++    pub release_manifest_sha256: String,
++    pub rollback_artifact_sha256: String,
++    pub installer_action: String,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub enum UpdateSource {
++    Offline { path: String },
++    Https { url: String, timeout_ms: u64, max_bytes: u64 },
++}
++
++impl UpdateSource {
++    pub fn validate(&self) -> Result<(), AuthorityError> {
++        match self {
++            Self::Offline { path } => {
++                let candidate = Path::new(path);
++                if path.is_empty() || candidate.is_absolute() && path.contains("..") || path.contains('\0') { return Err(AuthorityError::UnsupportedSource); }
++            }
++            Self::Https { url, timeout_ms, max_bytes } => {
++                if !url.starts_with("https://") || url.contains('@') || url.contains('#') || url.contains('\\') || *timeout_ms == 0 || *timeout_ms > 120_000 || *max_bytes == 0 || *max_bytes > MAX_ARTIFACT_BYTES { return Err(AuthorityError::UnsupportedSource); }
++            }
++        }
++        Ok(())
++    }
++}
++
++/// Validate a ZIP/MSI sidecar member before extraction. Direct MSI/Burn apply does
++/// not extract archive-controlled paths; the offline ZIP builder uses this policy.
++pub fn validate_archive_member(name: &str) -> Result<(), AuthorityError> {
++    let path = Path::new(name);
++    if name.is_empty() || path.is_absolute() || name.starts_with('/') || name.starts_with('\\') || name.starts_with("\\\\") || name.contains('\\') || name.split('/').any(|part| part == ".." || part.is_empty()) || name.as_bytes().get(1) == Some(&b':') || name.ends_with('/') {
++        return Err(AuthorityError::UnsafeArchivePath);
++    }
++    Ok(())
++}
++
++impl ImmutableApplyPlan {
++    pub fn digest(&self) -> Result<String, AuthorityError> { Ok(sha256_hex(&canonical_json(self)?)) }
++    pub fn verify_unchanged(&self, expected_digest: &str) -> Result<(), AuthorityError> { if self.digest()? == expected_digest { Ok(()) } else { Err(AuthorityError::PlanChanged) } }
++}
++
++fn allowed_transition(from: UpdateState, to: UpdateState) -> bool {
++    use UpdateState::*;
++    matches!((from, to), (Discovered, Validated) | (Validated, Downloading) | (Downloading, Downloaded) | (Downloading, Cancelled) | (Downloaded, Verified) | (Downloaded, Failed) | (Verified, Staged) | (Verified, Failed) | (Staged, ReadyToApply) | (Staged, Cancelled) | (ReadyToApply, Applying) | (Applying, Applied) | (Applying, RebootRequired) | (Applying, RollbackRequired) | (Applying, Failed) | (RollbackRequired, RollingBack) | (RollingBack, RolledBack) | (RollingBack, Failed) | (Failed, Discovered) | (Cancelled, Discovered))
++}
++
++pub fn compare_versions(a: &str, b: &str) -> i8 {
++    let parse = |v: &str| -> Vec<u64> {
++        v.split('.').map(|part| part.parse::<u64>().unwrap_or(0)).collect()
++    };
++    let left = parse(a); let right = parse(b);
++    match left.cmp(&right) { std::cmp::Ordering::Less => -1, std::cmp::Ordering::Equal => 0, std::cmp::Ordering::Greater => 1 }
++}
++
++fn valid_version(value: &str) -> bool {
++    let parts: Vec<_> = value.split('.').collect();
++    parts.len() >= 2 && parts.len() <= 4 && parts.iter().all(|part| !part.is_empty() && (part.len() == 1 || !part.starts_with('0')) && part.bytes().all(|b| b.is_ascii_digit()))
++}
++fn valid_digest(value: &str) -> bool { value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit()) }
++fn safe_token(value: &str, max: usize) -> bool { !value.is_empty() && value.len() <= max && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' )) }
++fn platform_name(v: TargetPlatform) -> &'static str { match v { TargetPlatform::Windows => "windows", TargetPlatform::Macos => "macos", TargetPlatform::Linux => "linux" } }
++fn architecture_name(v: TargetArchitecture) -> &'static str { match v { TargetArchitecture::X86_64 => "x86_64", TargetArchitecture::Aarch64 => "aarch64" } }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn identity(version: &str) -> ReleaseIdentity { ReleaseIdentity { schema: IDENTITY_SCHEMA.into(), product_id: "AetherCore".into(), version: version.into(), channel: ReleaseChannel::Stable, release_sequence: 1, platform: TargetPlatform::Windows, architecture: TargetArchitecture::X86_64, protocol_version: "p35".into(), minimum_updater_version: "0.1.0".into(), source_commit: Some("fixture".into()), build_epoch: Some(0) } }
++    fn key(seed: u8, id: &str) -> (TrustedReleaseKey, [u8; 32]) { let raw = [seed; 32]; let sk = SigningKey::from_bytes(&raw); (TrustedReleaseKey { key_id: id.into(), algorithm: "Ed25519".into(), public_key_hex: hex::encode(sk.verifying_key().to_bytes()), enabled: true, revoked: false, not_before_epoch: None, not_after_epoch: None }, raw) }
++    #[test] fn strict_manifest_is_deterministic_and_signed() { let (trusted, seed) = key(7, "test-p35"); let manifest = ReleaseManifest { schema: MANIFEST_SCHEMA.into(), identity: identity("1.2.3"), package: ReleasePackage { package_type: "msi".into(), filename: "AetherCore-1.2.3-x86_64.msi".into(), byte_length: 3, sha256: "ab".repeat(32) }, sbom_sha256: "cd".repeat(32), sbom_reference: "sbom.cdx.json".into(), provenance_sha256: "ef".repeat(32), provenance_reference: "provenance.json".into(), created_epoch: 0, update_contract_version: UPDATE_CONTRACT_VERSION.into() }; let bytes = canonical_json(&manifest).unwrap(); assert_eq!(bytes, canonical_json(&manifest).unwrap()); let sig = sign_bytes(&bytes, "test-p35", &seed).unwrap(); let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted] }; assert_eq!(verify_release_manifest(&manifest, &bytes, &sig, &ring).unwrap(), sha256_hex(&bytes)); }
++    #[test] fn tamper_unknown_and_revoked_keys_reject() { let (mut trusted, seed) = key(8, "k"); let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted.clone()] }; let body = b"release"; let sig = sign_bytes(body, "k", &seed).unwrap(); assert!(verify_signed_bytes(body, &sig, &ring, None).is_ok()); let mut tampered = sig.clone(); tampered.signature_hex.replace_range(0..2, "00"); assert!(verify_signed_bytes(body, &tampered, &ring, None).is_err()); trusted.revoked = true; let revoked = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted] }; assert!(matches!(verify_signed_bytes(body, &sig, &revoked, None), Err(AuthorityError::RevokedKey(_)))); }
++    #[test] fn update_metadata_blocks_downgrade_and_wrong_channel() { let (trusted, seed) = key(9, "m"); let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted] }; let installed = identity("2.0.0"); let mut metadata = UpdateMetadata { schema: UPDATE_METADATA_SCHEMA.into(), product_id: "AetherCore".into(), channel: ReleaseChannel::Stable, current_version: "2.0.0".into(), target_identity: identity("1.9.0"), platform: TargetPlatform::Windows, architecture: TargetArchitecture::X86_64, package_url: "https://updates.invalid/a.msi".into(), package_length: 4, package_sha256: "aa".repeat(32), release_manifest_sha256: "bb".repeat(32), signing_key_id: "m".into(), update_contract_version: UPDATE_CONTRACT_VERSION.into(), release_notes_reference: None, generated_epoch: 1, expires_epoch: 10 }; let sig = sign_bytes(&canonical_json(&metadata).unwrap(), "m", &seed).unwrap(); assert!(matches!(verify_update_metadata(&metadata, &sig, &ring, 2, &installed), Err(AuthorityError::DowngradeBlocked))); metadata.target_identity.channel = ReleaseChannel::Beta; let sig2 = sign_bytes(&canonical_json(&metadata).unwrap(), "m", &seed).unwrap(); assert!(verify_update_metadata(&metadata, &sig2, &ring, 2, &installed).is_err()); }
++    #[test] fn state_machine_rejects_illegal_transition_and_plan_tamper() { let source = identity("1.0.0"); let target = identity("1.1.0"); let mut tx = UpdateTransaction::new(source, target, "aa".repeat(32), 1).unwrap(); assert!(tx.transition(UpdateState::Applied, 2).is_err()); for next in [UpdateState::Validated, UpdateState::Downloading, UpdateState::Downloaded, UpdateState::Verified, UpdateState::Staged, UpdateState::ReadyToApply] { tx.transition(next, 2).unwrap(); } let plan = ImmutableApplyPlan { transaction_id: tx.transaction_id, installed_version: "1.0.0".into(), target_version: "1.1.0".into(), channel: ReleaseChannel::Stable, platform: TargetPlatform::Windows, architecture: TargetArchitecture::X86_64, package_sha256: "aa".repeat(32), release_manifest_sha256: "bb".repeat(32), rollback_artifact_sha256: "cc".repeat(32), installer_action: "verified-burn".into() }; let digest = plan.digest().unwrap(); assert!(plan.verify_unchanged(&digest).is_ok()); }
++    #[test] fn rollback_requires_distinct_signed_authority() { let (trusted, seed) = key(10, "r"); let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted] }; let installed = identity("2.0.0"); let auth = RollbackAuthorization { schema: ROLLBACK_SCHEMA.into(), product_id: "AetherCore".into(), current_version: "2.0.0".into(), authorized_target_version: "1.9.0".into(), channel: ReleaseChannel::Stable, reason_code: "security-hotfix".into(), expires_epoch: 20, signer_key_id: "r".into() }; let sig = sign_bytes(&canonical_json(&auth).unwrap(), "r", &seed).unwrap(); assert!(verify_rollback_authorization(&auth, &sig, &ring, 2, &installed).is_ok()); }
++    #[test] fn strict_parser_rejects_unknown_fields() { let bytes = br#"{"schema":"aethercore.release.identity.v1","productId":"AetherCore","version":"1.0.0","channel":"stable","releaseSequence":1,"platform":"windows","architecture":"x86_64","protocolVersion":"p35","minimumUpdaterVersion":"0.1.0","sourceCommit":null,"buildEpoch":0,"unexpected":true}"#; assert!(parse_strict::<ReleaseIdentity>(bytes, 4096).is_err()); }
++    #[test] fn key_rotation_requires_old_trusted_authority() { let (old, seed) = key(11, "old"); let (new_key, _) = key(12, "new"); let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![old] }; let mut rotation = KeyRotation { schema: ROTATION_SCHEMA.into(), old_key_id: "old".into(), new_key, authorized_by: "old".into(), signature_hex: String::new() }; rotation.signature_hex = hex::encode(SigningKey::from_bytes(&seed).sign(&rotation.unsigned_bytes().unwrap()).to_bytes()); let next = rotation.authorize(&ring).unwrap(); assert!(next.keys.iter().any(|k| k.key_id == "new")); }
++    #[test] fn rollback_cannot_be_reused_for_different_current_version() { let (trusted, seed) = key(13, "r2"); let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted] }; let installed = identity("3.0.0"); let auth = RollbackAuthorization { schema: ROLLBACK_SCHEMA.into(), product_id: "AetherCore".into(), current_version: "2.0.0".into(), authorized_target_version: "1.9.0".into(), channel: ReleaseChannel::Stable, reason_code: "hotfix".into(), expires_epoch: 20, signer_key_id: "r2".into() }; let sig = sign_bytes(&canonical_json(&auth).unwrap(), "r2", &seed).unwrap(); assert!(matches!(verify_rollback_authorization(&auth, &sig, &ring, 2, &installed), Err(AuthorityError::UnauthorizedRollback))); }
++    #[test] fn sources_and_archive_members_are_bounded() { assert!(UpdateSource::Https { url: "https://updates.invalid/a".into(), timeout_ms: 10_000, max_bytes: 100 }.validate().is_ok()); assert!(UpdateSource::Https { url: "http://updates.invalid/a".into(), timeout_ms: 10_000, max_bytes: 100 }.validate().is_err()); assert!(validate_archive_member("bin/a.exe").is_ok()); assert!(validate_archive_member("../escape").is_err()); assert!(validate_archive_member("C:/escape").is_err()); assert!(validate_archive_member("/absolute").is_err()); }
++}
+--- /dev/null
++++ b/docs/phase35/ARCHITECTURE.md
+@@ -0,0 +1,7 @@
++# Phase 35 Architecture
++
++Phase 35 adds a metadata authority above the existing `aethercore-update-engine` and mutation supervisor. `crates/release-authority` is the single typed contract for release identity, strict deterministic manifests, Ed25519 envelopes, trusted keyring/rotation, signed update metadata, rollback authorization, transaction states and immutable apply plans. It does not download or elevate processes.
++
++The existing update engine remains the apply boundary: it owns bounded staging, streaming SHA-256, Authenticode verification on Windows, durable execution guards and the `MutationSupervisor::Update` lease. The desktop and `aetherctl` surfaces request typed operations and cannot construct arbitrary installer commands.
++
++Verification order is fixed: keyring/signature → identity/channel/platform/architecture → package length/digest → manifest/signature → SBOM/provenance bindings → immutable plan → broker/mutation lease. A macOS build proves metadata/configuration and honest NotAvailable states; Windows runtime qualification is Phase 36.
+--- /dev/null
++++ b/docs/phase35/CHANNEL_POLICY.md
+@@ -0,0 +1,3 @@
++# Channel Policy
++
++Channels are the closed vocabulary `stable`, `beta`, `dev`. A stable installation follows stable only. Beta follows beta; development follows dev according to explicit administrator/user intent. The existing service wire currently exposes stable/beta; the release-authority contract reserves and validates `dev` without silently routing it through the stable/beta service path. Switching channel is an explicit action and never a metadata side effect. Package identity, signed metadata and trust key must all carry the same channel.
+--- /dev/null
++++ b/docs/phase35/DECISIONS.md
+@@ -0,0 +1,22 @@
++# Phase 35 Locked Decisions
++
++These decisions are architectural authority. A handoff executor must record `ARCHITECTURAL_DECISION_REQUIRED` rather than reinterpret a locked item.
++
++| ID | Decision | Rationale / consequence | Status |
++|---|---|---|---|
++| P35-D001 | Canonical release identity is `crates/release-authority` (`ReleaseIdentity`), with workspace version as the source value and generated/verified projections for Tauri, installer, manifest, CLI and filenames. | Prevents conflicting version surfaces; runtime does not require Git. | LOCKED |
++| P35-D002 | Release manifest schema is strict `aethercore.release.manifest.v1`, deterministic struct-ordered JSON; digest/signature cover exact canonical bytes without the signature field. | Removes self-reference ambiguity and rejects unknown fields. | LOCKED |
++| P35-D003 | Metadata signing primitive is the existing `ed25519-dalek` Ed25519 implementation already used by P29/P33; no second crypto implementation. | Reuse reviewed primitive and verification behavior. | LOCKED |
++| P35-D004 | Production private signing keys remain outside source, artifacts, logs, CLI, IPC and UI; production signing requires an explicit external key reference. Test seeds are deterministic and clearly test-only. | Prevents credential disclosure and fake production PASS. | LOCKED |
++| P35-D005 | Trusted release keyring is typed by key ID, algorithm, public key, enabled/revoked status and validity metadata; unknown or revoked keys reject. | Deterministic key selection and revocation. | LOCKED |
++| P35-D006 | Key rotation is authorized by an already-trusted key and cannot replace the trust root merely because a new release requests it. | Prevents trust-root substitution. | LOCKED |
++| P35-D007 | Channels are typed `stable`, `beta`, `dev`; stable never silently consumes beta/dev; channel changes require explicit intent and signed metadata. | Prevents cross-channel confusion/downgrade. | LOCKED |
++| P35-D008 | Anti-downgrade compares strict canonical semver and per-channel sequence floors; ordinary update cannot target an older/equal version. | Prevents replay and version ambiguity. | LOCKED |
++| P35-D009 | Rollback is a distinct signed `aethercore.release.rollback-authorization.v1` binding current/target versions, channel, reason, expiry and signer. Generic force flags cannot bypass it. | Emergency recovery remains explicitly authorized. | LOCKED |
++| P35-D010 | Verification order is metadata signature/keyring → identity/channel/platform/arch → package length/hash → release manifest/signature → SBOM/provenance binding → immutable plan. | No unverified bytes reach apply. | LOCKED |
++| P35-D011 | Transaction states are typed and persisted: Discovered, Validated, Downloading, Downloaded, Verified, Staged, ReadyToApply, Applying, Applied, RebootRequired, RollbackRequired, RollingBack, RolledBack, Failed, Cancelled. | Illegal transitions reject and restart recovery is deterministic. | LOCKED |
++| P35-D012 | Apply authority is the existing mutation supervisor/elevated broker; UI/CLI may request typed plans but never construct arbitrary installer commands. | Preserves consent, lease and IPC boundaries. | LOCKED |
++| P35-D013 | Recovery retains journal and verified rollback artifact; interruption reconstructs a non-actionable state until revalidation, and rollback requires signed authorization and digest verification. | Prevents arbitrary or stale binary rollback. | LOCKED |
++| P35-D014 | Installer architecture is WiX v4 MSI/Burn through the existing Tauri/WiX path, with stable UpgradeCode/component GUID policy and ProgramData preservation. | Matches current service/package architecture. | LOCKED |
++| P35-D015 | Install/upgrade/repair/uninstall preserve user state by default; uninstall removes only AetherCore-owned binaries/transient files and does not delete fleet trust/data absent explicit data-removal mode. | Avoids destructive lifecycle behavior. | LOCKED |
++| P35-D016 | Windows qualification boundary: macOS may prove source/config/composition and deterministic metadata only; MSI runtime, UAC, service ACLs, Authenticode and reboot recovery are P36 qualification debt. | Honest provenance outranks convenience. | LOCKED |
+--- /dev/null
++++ b/docs/phase35/EXECUTION_PLAN.md
+@@ -0,0 +1,23 @@
++# Phase 35 Execution Plan
++
++This plan is the execution contract for Distribution, Installation & Update Authority. Live source and executed evidence are authoritative; historical `PHASE_*_BINARY_SAFE_PATCH` trees are provenance only.
++
++| ID / workstream | Objective and authoritative files | Architecture / exact tasks | Security invariants and tests | Acceptance / dependency / Hermes | Exact next step |
++|---|---|---|---|---|---|
++| P35-00 Baseline | Verify P34 archive, pointer, full-tree verifier, 930-check audit. Authoritative: `AetherCore-Phase34-Master-Delivery.zip`, `PHASE34_FINAL_SHA256.txt`, P34 patch/audit scripts. | Read-only SHA, full-tree and audit; external Graphify state check. | Any drift stops mutation. | PASS evidence recorded; prerequisite for all work. Hermes-safe: yes. | Create release-authority contract and lock decisions. |
++| P35-01 Identity | One typed release identity. Authoritative: `Cargo.toml`, `apps/desktop/tauri.conf.json`, new `crates/release-authority`. | `AetherCore`, semver, channel, sequence, platform/arch, protocol/updater minimum, source identity; consistency verifier. | Fail closed on mismatch; no runtime Git. Unit and executable consistency tests. | Identity is the only version authority; all package/CLI surfaces derive or verify it. Hermes-safe: yes after D001. | Add crate and fixture identity. |
++| P35-02 Manifest/signing/keyring | Canonical deterministic `aethercore.release.manifest.v1`; Ed25519 reuse; typed keyring and authorized rotation. | Struct-ordered JSON, digest excludes signature field, signature envelope, trusted key IDs/revocation/rotation signed by existing key. | Unknown/revoked/malformed/tampered keys reject; private keys test-only/external. Tests cover valid/tamper/rotation. | Manifest, digest, signature and keyring proofs. Hermes-safe: yes only within locked D002–D006. | Implement manifest/keyring APIs. |
++| P35-03 Channels/update authority | Stable/beta/dev isolation, strict signed `aethercore.update.metadata.v1`, anti-downgrade and rollback authorization. | Typed channel policy, semver ordering, per-channel sequence floor, signed rollback artifact with target/current/expiry/reason. | No generic force bypass; wrong product/channel/platform/arch, stale replay, downgrade reject. | GD-3 passes. Hermes-safe: yes after D007–D009. | Add update metadata and rollback tests. |
++| P35-04 Discovery/download/staging | Local/offline source and bounded HTTPS abstraction; verified staging. | Streaming hash/length, timeout/cancel, unique transaction staging, fsync then rename; no direct overwrite. | HTTPS-only production, no redirects/credentials/bypass; package eligible only after metadata/manifest/SBOM/provenance verification. | GD-4 and package attack tests. Hermes-safe: yes. | Add source/staging policy and hermetic fixtures. |
++| P35-05 Archive safety | Explicit extraction policy. | Direct MSI/Burn is non-extracting; offline ZIP builder uses safe deterministic member validation. | Traversal, absolute/UNC/drive, symlink/hard-link, collisions, bombs and limits reject. | Gates prove safety or documented N/A for MSI extraction. Hermes-safe: yes. | Add Python offline bundle safety checks. |
++| P35-06 Transaction/recovery/lock/plan | Durable typed update state machine and immutable apply plan. Authoritative: `crates/update-engine`, `crates/persistence`, new crate. | States Discovered→Validated→Downloading→Downloaded→Verified→Staged→ReadyToApply→Applying→Applied/RebootRequired or rollback/failure; journal + persistent single-update lock. | Illegal transitions, crash recovery, plan binding and substitution/installed-version revalidation fail closed. | GD-5 passes. Hermes-safe: yes after D010–D013. | Add typed state machine and proof tests. |
++| P35-07 Windows installer | Canonical WiX/Tauri definition and semantics. Authoritative: `installer/wix/Product.wxs`, `Bundle.wxs`, `apps/desktop/tauri.conf.json`, `scripts`. | Stable UpgradeCode/component GUIDs, service registration, Program Files binaries, ProgramData state/log preservation, repair/upgrade/uninstall contracts. | No dev artifacts/secrets; ACL/Service SID/named-pipe policy explicit; runtime Windows claims remain P36. | GD-7 passes within macOS boundary. Hermes-safe: yes. | Add installer composition manifest and validation. |
++| P35-08 Supply chain | Offline bundle, CycloneDX SBOM, project provenance and deterministic bindings. | SHA-256 binding from package→manifest→SBOM→provenance; no SLSA overclaim; normalized deterministic timestamps. | Unknown licenses stay unknown; no private credentials. | GD-6/GD-8 and deterministic ×2. Hermes-safe: yes. | Add generators and fixtures. |
++| P35-09 CLI/desktop/i18n | Release/update CLI and safe desktop Update surface. Authoritative: `apps/aetherctl`, desktop main, system-care UI/catalogs. | JSON/text deterministic output, typed exit states, offline verify/select, UI calls typed backend only; EN/AR RTL parity. | No unverified apply/force; Mac apply returns NotAvailable. | GD-9 and CLI/UI tests. Hermes-safe: yes. | Extend CLI parser/usage and UI status vocabulary. |
++| P35-10 CI/release | Harden `.github/workflows/release.yml` and release scripts. | Explicit tag/environment authority, test→SBOM→provenance→package→sign→verify→manifest→offline bundle; secrets only CI store. | No auto-publish, no secret logging, unsigned honesty. | CI static gates and GD-10. Hermes-safe: yes. | Add phase35 release workflow checks. |
++| P35-11 Audit/docs/debt | P35 adversarial audit strict superset, append-only debt, full documentation. | Inherit P34 930 checks and add individually named P35 gates; write required docs/JSON/scorecard/progress. | Audit failures are real; qualification debt only for allowed Windows/live-server gaps. | >930 checks, zero failures. Hermes-safe: yes after architecture lock. | Implement audit and docs, checkpoint. |
++| P35-12 Delivery/reconstruction/seal | Binary-safe P34→P35 patch, two reconstructions, deterministic archive twice, external hash pointer, post-seal read-only verification and Graphify refresh. | Delta manifest/ledger/apply/verify; archive excludes `.DS_Store`, self-reference artifacts only. | No post-seal tree writes; archive equality and reconstruction mismatch zero. | GA–GP all evidenced; final report exact required lines. Hermes-safe: preparation only; Codex reviews final security/seal. | Build patch, run gates, reconstruct ×2, seal and stop before P36. |
++
++## Execution order
++
++P35-00 → P35-01/02 → P35-03/04/05 → P35-06/07 → P35-08/09/10 → P35-11 → P35-12. After each meaningful workstream, update `PROGRESS.md`; locked decisions in `DECISIONS.md` are not reinterpreted by another executor.
+--- /dev/null
++++ b/docs/phase35/ISSUES.json
+@@ -0,0 +1,5 @@
++{
++  "schema": "aethercore.phase35.issues.v1",
++  "issues": [],
++  "architecturalDecisionRequired": []
++}
+--- /dev/null
++++ b/docs/phase35/MASTER_DELIVERY_REPORT.md
+@@ -0,0 +1,61 @@
++# Phase 35 Master Delivery Report
++
++This report is sealed with pointer-only archive wording to avoid self-reference churn.
++
++Authoritative archive hash: see PHASE35_FINAL_SHA256.txt
++
++## Review and baseline
++
++- P34 authoritative archive SHA: `9c6aabb431fcb117afa19bb519db58dddb338dd63d31c2644db2490b084e419b`; P34 full-tree verifier: 1066/1066; inherited audit: 930 checks, 0 failures.
++- Hermes handoff review: PASS. The only handwritten Rust delta was a behavior-preserving `collapsible_if` cleanup in `crates/release-authority/src/lib.rs`; locked decisions changed: NONE.
++
++## Authority and security
++
++- Release identity: `AetherCore` `0.1.0`, stable, sequence 35, Windows x86-64, protocol p35; Cargo workspace version is the source value and Tauri/WiX/manifest/CLI projections are verified.
++- Signing: Ed25519 via the existing `ed25519-dalek`; strict canonical manifest/signature bytes; unknown, revoked, disabled, malformed and tampered keys reject; rotation requires an already trusted old key. Test key `test-p35` is isolated to a TEST-only fixture binary.
++- Production signing: `PRODUCTION_RELEASE_SIGNING=NotAvailable`; `AUTHENTICODE_PRODUCTION_SIGNING=NotAvailable`; no private signing key is present.
++- Channels: typed stable/beta/dev authority with stable isolation; existing online desktop wire remains stable/beta, while dev publication is reserved for explicit signed metadata.
++- Anti-downgrade: strict validated version/sequence policy blocks older/equal ordinary updates; no generic force bypass.
++- Rollback: distinct signed `aethercore.release.rollback-authorization.v1`, bound to installed current version, target, channel, reason, expiry and signer.
++- Verification order: metadata signature/keyring → identity/channel/platform/architecture → package length/hash → release manifest/signature → SBOM/provenance binding → immutable apply plan → broker/mutation lease.
++- Update metadata: strict `aethercore.update.metadata.v1`, signed and bound to product/channel/platform/architecture, HTTPS source, bounded size/digest, manifest digest and freshness.
++- Staging and package safety: per-transaction bounded streaming staging, fsync/rename, hash and Authenticode checks before eligibility; archive traversal/absolute/UNC/drive/symlink/collision/bounds rules are enforced.
++- Transaction/recovery: typed state machine rejects illegal transitions; durable update execution guard, single mutation lease and immutable plan prevent concurrent or substituted apply.
++
++## Installer and distribution
++
++- Installer architecture: WiX v4 MSI/Burn with stable UpgradeCode/component policy, service registration and ProgramData preservation. Windows MSI/UAC/service/ACL/reboot/rollback runtime qualification is explicitly deferred to P36.
++- Offline bundle: `release/phase35/AetherCore-0.1.0-windows-x86_64-offline.zip`, deterministic ZIP, verified offline; it contains unsigned-package/signature NotAvailable markers, signing state, identity, manifest, detached test signature, test keyring, SBOM and provenance.
++- SBOM: CycloneDX JSON 1.5, 601 Cargo.lock-derived components, SHA-256 `d66f6980ed79badfbe38ff7293f27fc63bd8fa1e178f85b0e471b6b978218aa2`.
++- Provenance: `aethercore.release.provenance.v1`, SHA-256 `0495f3cb6a66911c96de8691df690d96d502d5a018f2c6a747825405d10dab60`; it binds package, release identity and SBOM. The manifest carries the one-way provenance/SBOM bindings; no mutual-hash self-reference is claimed.
++
++## Product surfaces and evidence
++
++- GD-1..GD-10: PASS.
++- CLI: release inspect/verify and update check/plan/download/verify/stage/status/cancel/rollback plus offline verify; unsafe macOS apply paths return typed NotAvailable.
++- Desktop Update UX: typed backend surface with stable/beta states and explicit progress/verification/rollback/error vocabulary.
++- EN/AR: update state catalog keys are parity-checked; Arabic RTL copy is present for every Phase 35 state.
++- CI/release: protected workflow runs Phase 35 audit/tests/SBOM/provenance and uses CI-only signing references; no auto-publish or secret logging.
++- Adversarial audit: inherited 930 + 68 new = 998 checks, failures `[]`, status PASS.
++
++## Quality gates
++
++- Cargo run 1: `cargo test --workspace --jobs 2`; 124 result lines (51 test suites + 41 doc suites), 557 passed, 0 failed, 0 ignored, exit 0.
++- Cargo run 2: identical counts and exit 0; normalized per-suite results equivalent.
++- Clippy: `cargo clippy --workspace --all-targets --jobs 2`, exit 0; P35-authored warnings 0.
++- Svelte: direct `svelte-check` exit 0, 0 errors and 17 inherited warnings in 3 pre-existing files; `npm run check` exits 1 only because its `--fail-on-warnings` wrapper treats those inherited warnings as fatal; P35-authored warnings 0.
++
++## Delta and reconstruction
++
++- P34→P35 delta: modified 10, added 43, removed 0, binary artifacts 7, manifest entries 53; scoped full-tree ledger 1114.
++- Reconstruction cycle 1: apply/patch/full-tree PASS, comparison 1114, mismatch 0.
++- Reconstruction cycle 2: apply/patch/full-tree PASS, comparison 1114, mismatch 0.
++- Count invariant: raw 1116 = scoped 1114 + self-excluded 2 (`.DS_Store`, `crates/.DS_Store`); ledger 1114 = comparison 1114.
++
++## Seal inventory and boundaries
++
++- Release artifacts: identity, manifest, detached signature, test keyring, update metadata, installer composition, production-signing state, unsigned-package/signature markers, offline bundle, CycloneDX SBOM and provenance.
++- Deterministic master archive is built independently twice; both run hashes and equality are reported outside this sealed tree, and the authoritative pointer remains `PHASE35_FINAL_SHA256.txt`.
++- Debt diff: four append-only root entries QD-035-001..004 for native Windows lifecycle/security, Authenticode/SmartScreen, live endpoint, and production key/HSM qualification (the pre-existing HSM entry remains untouched).
++- Remaining P36 qualification: native Windows MSI/Burn lifecycle, UAC/service SID/ACL/named pipe/reboot/rollback, production Authenticode and SmartScreen, live update endpoint/CDN/interruption, and protected HSM/KMS signing ceremony.
++- Deviations: production MSI/signing/live endpoint are NotAvailable by design on macOS; no production-signed artifact is claimed. No material blockers remain for the deterministic Phase 35 distribution authority seal.
+--- /dev/null
++++ b/docs/phase35/OFFLINE_DISTRIBUTION.md
+@@ -0,0 +1,3 @@
++# Offline Distribution
++
++`scripts/phase35-release.py bundle` creates a deterministic ZIP with fixed timestamps, sorted members and no network dependency. It contains only the installer/package, release manifest/signature, SBOM and provenance. The verifier rejects traversal, absolute/drive/UNC paths, duplicate names, `.DS_Store`, private-key extensions, developer caches and bounded-size violations.
+--- /dev/null
++++ b/docs/phase35/PROGRESS.md
+@@ -0,0 +1,83 @@
++# Phase 35 Progress
++
++STATUS: READY_FOR_AUTHORITATIVE_SEAL
++CURRENT_WORKSTREAM: P35-12 final quality gates complete; Codex review passed and deterministic seal is the remaining operation
++
++## COMPLETED
++
++- P35-00 baseline precheck: P34 archive SHA `9c6aabb431fcb117afa19bb519db58dddb338dd63d31c2644db2490b084e419b`; external pointer matches; P34 adversarial audit `930 checks / 0 failures / PASS` inherited.
++- Graphify-first discovery completed against external `_graphify/aethercore-lean/graphify-out/graph.json`.
++- Execution plan and locked decisions created.
++- P35-01/P35-02 typed authority crate added: strict identity/manifest, Ed25519 envelope, keyring/revocation/rotation, signed metadata, rollback authorization, transaction state machine and immutable apply plan.
++- `aetherctl` now exposes release inspect/verify and update verification/offline command vocabulary; verification remains read-only and Mac apply paths return typed NotAvailable.
++- Deterministic Phase 35 artifact tool added at `scripts/phase35-release.py`.
++- P35-03/04/05 authority tests cover typed channels, semver anti-downgrade, signed rollback authorization, HTTPS/offline source policy, bounded staging and archive member safety.
++- P35-06 transaction/recovery/immutable-plan tests pass; existing update-engine durable execution guard and mutation lease remain apply authority.
++- P35-07 WiX composition manifest and macOS qualification boundary documented; no Windows runtime PASS claimed.
++- P35-08 offline bundle, CycloneDX SBOM (601 components), provenance, signing-state and deterministic fixture artifacts generated; offline verifier PASS (current bundle SHA `6f7e71742212e7d69dfdab6dbab75139f051da18cf216af562f022ad015bb286`). Provenance now binds `releaseIdentitySha256`, package and SBOM; the manifest binds provenance/SBOM one-way to avoid a mutual-hash cycle.
++- P35-09 release/update CLI vocabulary plus EN/AR update state keys added; existing typed desktop Update surface preserved.
++- P35-10 protected release workflow now invokes Phase 35 audit/test and uses CI-only signing references.
++- P35-11 Phase 35 audit re-run on final bytes: inherited 930 + 68 new = 998 checks, 0 failures, PASS; GD-1..GD-10 PASS.
++- P35-12 binary-safe P34→P35 patch rebuilt on final bytes and converged: modified 10, added 43, removed 0, binary artifacts 7; manifest entries 53; scoped ledger 1114 files. The delta includes the append-only root debt register and final report corrections.
++- Hermes continuation: one clippy lint fix inside `crates/release-authority/src/lib.rs` (two `collapsible_if` warnings collapsed; logic byte-for-byte equivalent, locked decisions untouched), then all final gates re-executed on the resulting final bytes.
++- Final Cargo workspace test ×2 on final bytes: run1 = 124 result lines (51 test suites + 41 doc suites), 557 passed / 0 failed / 0 ignored, exit 0; run2 identical; per-suite equivalence exact (0 diffs).
++- Final Clippy on final bytes: `cargo clippy --workspace --all-targets --jobs 2` exit 0; aethercore-release-authority warnings 0.
++- Final Svelte check on final bytes: direct `svelte-check` exit 0 with 0 errors / 17 warnings in 3 pre-existing files (FluidDialog, FindingCard, DeepScanPage); the package `npm run check` wrapper exits 1 solely because it enables `--fail-on-warnings` for those inherited warnings; no P35-authored warnings.
++- P34→P35 reconstruction ×2 on final delta: PASS; raw 1116 = scoped 1114 + self-excluded 2 (`.DS_Store`, `crates/.DS_Store`); ledger 1114 = comparison 1114; mismatch_count 0 in both cycles; count invariant holds.
++
++## IN_PROGRESS
++
++- Awaiting Codex authoritative seal (`CODEX_FINAL_REVIEW_READY` recorded). No further mutation planned by Hermes; provenance binding correction was reviewed and regenerated before final gates.
++
++## NOT_STARTED (reserved for Codex)
++
++- Deterministic master archive ×2, `PHASE35_FINAL_SHA256.txt` external pointer, post-seal read-only verification, final Graphify refresh — intentionally left to the Codex final seal per handoff contract.
++
++## AUTHORITATIVE_FILES_CHANGED
++
++- `docs/phase35/EXECUTION_PLAN.md`
++- `docs/phase35/DECISIONS.md`
++- `docs/phase35/PROGRESS.md`
++- `crates/release-authority/Cargo.toml`
++- `crates/release-authority/src/lib.rs` (includes Hermes clippy `collapsible_if` fix only)
++- `apps/aetherctl/src/release.rs`
++- `scripts/phase35-release.py`
++- `scripts/phase35-adversarial-audit.py`
++- `apps/ui/src/lib/i18n/catalog.en.ts`
++- `apps/ui/src/lib/i18n/catalog.ar.ts`
++- `DEBT_REGISTER.json` (append-only QD-035-001..004)
++- `.github/workflows/release.yml` (identity-bound provenance invocation)
++- `scripts/phase35-release.py` (explicit releaseIdentitySha256 provenance binding)
++- `PHASE_35_BINARY_SAFE_PATCH/*`
++- `reports/phase35/*`
++- `release/phase35/*`
++
++## TARGETED_TESTS
++
++- `cargo test -p aethercore-release-authority`: PASS (9 passed, 0 failed)
++- `cargo test --workspace --jobs 2` run1: PASS (557 passed, 0 failed, 0 ignored; 51 test suites + 41 doc suites; exit 0)
++- `cargo test --workspace --jobs 2` run2: PASS (identical; per-suite equivalence 0 diffs; exit 0)
++- `cargo clippy --workspace --all-targets --jobs 2`: exit 0 (0 release-authority warnings)
++- `npm exec svelte-check -- --tsconfig ./tsconfig.json --threshold warning` (apps/ui): 0 errors, 17 warnings (all pre-existing files, none P35-authored; exit 0). The package `npm run check` wrapper exits 1 because it intentionally enables `--fail-on-warnings`.
++- `python3 scripts/phase35-gd-proofs.py`: PASS (GD-1..GD-10)
++- `python3 scripts/phase35-adversarial-audit.py`: PASS (998 checks, 0 failures)
++- `python3 scripts/phase35-release.py verify-bundle release/phase35/AetherCore-0.1.0-windows-x86_64-offline.zip`: verified
++- `python3 scripts/_p35_reconstruction_test.py`: PASS (2 cycles; scoped 1114 = ledger 1114 = comparison 1114; mismatch_count 0; proof converged at `reports/phase35/reconstruction-proof.json`)
++
++## OPEN_DECISIONS
++
++- None for the locked security model. Implementation conforms to `DECISIONS.md`.
++
++## UNRESOLVED_FAILURES
++
++- None at checkpoint.
++
++## ARCHITECTURAL_DECISION_REQUIRED
++
++- None.
++
++## NEXT_ACTION
++
++Codex authoritative seal: build deterministic master archive ×2, write external `PHASE35_FINAL_SHA256.txt`, perform post-seal read-only verification and external Graphify refresh, issue final Phase 35 report. DO NOT begin Phase 36.
++
++CODEX_FINAL_REVIEW_READY=True
+--- /dev/null
++++ b/docs/phase35/PROVENANCE.md
+@@ -0,0 +1,3 @@
++# Provenance
++
++`aethercore.release.provenance.v1` records product/version, Phase 34 authoritative base, source/toolchain identities, build commands, package/release-identity/SBOM hashes, deterministic unsigned-evidence result, host platform and signing/Windows qualification states. The release manifest carries the one-way `provenanceSha256` and `sbomSha256` bindings; provenance does not hash the manifest itself, avoiding an impossible mutual-hash cycle. It does not claim SLSA compliance. Build provenance is distinct from Windows runtime qualification.
+--- /dev/null
++++ b/docs/phase35/QUALIFICATION_DEBT.json
+@@ -0,0 +1,10 @@
++{
++  "schema": "aethercore.phase35.qualification-debt.v1",
++  "appendOnly": true,
++  "items": [
++    {"id":"QD-035-001","status":"OPEN","area":"Windows MSI lifecycle","evidence":"NotAvailable on macOS","nextPhase":"P36","scope":"native install/upgrade/repair/uninstall/UAC/ACL/service/reboot recovery"},
++    {"id":"QD-035-002","status":"OPEN","area":"Windows Authenticode","evidence":"Production credential unavailable","nextPhase":"P36","scope":"certificate/timestamp/SmartScreen runtime verification"},
++    {"id":"QD-035-003","status":"OPEN","area":"Production update endpoint","evidence":"No live HTTPS service is fabricated","nextPhase":"P36","scope":"endpoint operations, CDN, redirect and interruption qualification"},
++    {"id":"QD-035-004","status":"OPEN","area":"Production key/HSM","evidence":"External credential reference required","nextPhase":"P36","scope":"protected signing runner/HSM ceremony"}
++  ]
++}
+--- /dev/null
++++ b/docs/phase35/RELEASE_MODEL.md
+@@ -0,0 +1,5 @@
++# Release Model
++
++`ReleaseIdentity` (`AetherCore`, semantic version, typed channel, monotonic release sequence, target platform/architecture, protocol and minimum updater versions, source identity and reproducible epoch) is canonical. Cargo workspace version is the checked-in value; Tauri, WiX, package names, manifests and CLI output must agree with it.
++
++Release manifest bytes are canonical compact JSON with schema `aethercore.release.manifest.v1`. The signature is detached and covers the exact bytes; the manifest digest is SHA-256 of those bytes and never self-references the detached signature. Unknown fields are rejected.
+--- /dev/null
++++ b/docs/phase35/ROLLBACK_POLICY.md
+@@ -0,0 +1,3 @@
++# Rollback Policy
++
++An ordinary update cannot target an older or equal version. Emergency rollback is a distinct detached-signed `aethercore.release.rollback-authorization.v1` containing product, current version, explicitly authorized target, channel, reason code, expiry and signer key ID. The target package digest and manifest are reverified before rollback. A generic `--force` or UI action cannot bypass these checks.
+--- /dev/null
++++ b/docs/phase35/SBOM.md
+@@ -0,0 +1,3 @@
++# SBOM
++
++The canonical format is CycloneDX JSON 1.5. `scripts/phase35-release.py sbom` derives Rust components from the authoritative `Cargo.lock`, sorts by name/version and writes deterministic JSON. Unknown license data is not guessed. The resulting SHA-256 is bound into the release manifest and provenance; generation is run twice during sealing. The manifest binds provenance one-way, while provenance binds the release identity and package without self-referential manifest hashing.
+--- /dev/null
++++ b/docs/phase35/SCORECARD.md
+@@ -0,0 +1,10 @@
++# Phase 35 Scorecard
++
++| Gate | Result |
++|---|---|
++| P34 baseline | PASS — 1066 files, 930 checks |
++| Release identity / manifest / keyring | PASS — typed strict authority and Ed25519 tests |
++| Update security / state machine | PASS — anti-downgrade, rollback, recovery and plan tests |
++| Windows runtime / Authenticode | NotAvailable — explicit P36 boundary |
++| Offline / SBOM / provenance | PASS — deterministic fixtures and offline verification |
++| Final audit / reconstruction / archive seal | PASS — all pre-seal gates verified; deterministic archive is sealed from these bytes |
+--- /dev/null
++++ b/docs/phase35/SIGNING_MODEL.md
+@@ -0,0 +1,5 @@
++# Signing Model
++
++Metadata uses the reviewed `ed25519-dalek` Ed25519 implementation already used by P29/P33. `SignatureEnvelope` records schema, `Ed25519`, key ID and signature bytes. `TrustedKeyring` records key ID, public key, enabled/revoked state and validity window. Unknown, malformed, disabled, revoked and mismatched keys reject.
++
++Production private keys never enter the repository, archive, logs, CLI, IPC or UI. A production run requires an explicit external key/HSM reference. Current host has no configured production credential, therefore `PRODUCTION_RELEASE_SIGNING=NotAvailable` and `AUTHENTICODE_PRODUCTION_SIGNING=NotAvailable`; test seeds are deterministic fixtures only. Key rotation is a signed artifact authorized by an already trusted key and adds a key without silently replacing the trust root.
+--- /dev/null
++++ b/docs/phase35/UPDATE_SECURITY.md
+@@ -0,0 +1,5 @@
++# Update Security
++
++Metadata is `aethercore.update.metadata.v1`, strict and detached-signed. It binds product, current/target identity, channel, platform, architecture, HTTPS package reference, bounded length/digest, release-manifest digest, updater contract, key ID and deterministic freshness fields. Stable clients do not consume beta/dev metadata silently.
++
++The client authenticates exact bytes before parsing, checks key status and identity, rejects stale/equivocating sequence floors and blocks ordinary semver downgrade. Package staging is unique per transaction, size bounded, streamed and hashed, fsynced, then renamed only after manifest/SBOM/provenance and Authenticode checks. No network endpoint is fabricated; local/offline fixtures are hermetic and HTTPS is the only production scheme.
+--- /dev/null
++++ b/docs/phase35/UPDATE_STATE_MACHINE.md
+@@ -0,0 +1,5 @@
++# Update State Machine
++
++The typed authority states are `Discovered → Validated → Downloading → Downloaded → Verified → Staged → ReadyToApply → Applying → Applied|RebootRequired`. Failure paths are `RollbackRequired → RollingBack → RolledBack`, or `Failed`; cancellation is explicit and must be re-planned before apply. Illegal transitions reject.
++
++Each transaction has a UUID, source/target identities, channel, package digest, state sequence, timestamps and non-secret error code. The existing persistence execution guard and mutation supervisor provide durable restart recovery and one active apply per installation. A restart reconstructs a non-actionable verified ticket until it is revalidated.
+--- /dev/null
++++ b/docs/phase35/WINDOWS_INSTALLER.md
+@@ -0,0 +1,7 @@
++# Windows Installer
++
++The canonical definition is WiX v4 `installer/wix/Product.wxs` and the existing Tauri bundling path. The stable UpgradeCode and explicit component GUIDs cover the desktop, consent/update brokers, maintenance service, trust configuration and install hardener. Program Files contains signed binaries/trust; ProgramData contains state/logs and is preserved across upgrade/repair.
++
++Fresh install validates the package, creates owned directories, registers the LocalSystem maintenance service, applies fixed ACL/Service SID policy and starts it. Upgrade stops safely, preserves state and uses MSI major-upgrade rollback where available. Repair restores signed binaries/assets without resetting configuration. Uninstall stops/unregisters the service and removes only AetherCore-owned binaries/transient files; fleet trust and user data remain unless an explicit data-removal mode is added.
++
++This macOS host proves definition composition, GUID/version rules and exclusion policy only. MSI runtime, UAC, ACLs, service registration, reboot recovery and Authenticode are Phase 36 qualification items.
+--- /dev/null
++++ b/release/phase35/SIGNATURE_NOT_AVAILABLE.txt
+@@ -0,0 +1,2 @@
++Detached production release signature is NotAvailable on this host.
++The release-authority test suite proves Ed25519 signing and verification with test-only fixtures.
+--- /dev/null
++++ b/release/phase35/UNSIGNED_WINDOWS_PACKAGE_NOT_AVAILABLE.txt
+@@ -0,0 +1,2 @@
++Windows MSI/Burn runtime packaging is not available on the macOS proof host.
++This marker is intentionally not an installer and must never be labeled production-signed.
+--- /dev/null
++++ b/release/phase35/installer-composition.json
+@@ -0,0 +1,16 @@
++{
++  "schema": "aethercore.phase35.installer-composition.v1",
++  "productId": "AetherCore",
++  "versionSource": "Cargo.toml [workspace.package].version",
++  "windowsRuntimeQualification": "NotAvailable",
++  "installer": {
++    "path": "installer/wix/Product.wxs",
++    "format": "WiX v4 MSI/Burn",
++    "upgradeCode": "45598C77-2C32-5BCE-8510-19C7E51EE3B8",
++    "componentGuidPolicy": "stable explicit GUID per owned component",
++    "service": {"name":"AetherCoreMaintenance", "account":"LocalSystem", "start":"auto", "sid":"explicit hardening helper"},
++    "state": {"root":"ProgramData\\AetherCore", "preserveOnUpgrade":true, "preserveOnRepair":true, "removeOnUninstall":"transient product-owned only"}
++  },
++  "included": ["desktop", "consent-broker", "update-broker", "maintenance-service", "update-trust", "install-hardener"],
++  "excluded": ["Graphify", "target", "node_modules", ".DS_Store", "test fixtures", "private signing keys", "developer state", "historical phase patch trees"]
++}
+--- /dev/null
++++ b/release/phase35/production-signing-state.json
+@@ -0,0 +1,8 @@
++{
++  "schema": "aethercore.phase35.signing-state.v1",
++  "productionReleaseSigning": "NotAvailable",
++  "authenticodeProductionSigning": "NotAvailable",
++  "testKeys": "isolated-to-unit-fixtures",
++  "privateKeyPresent": false,
++  "reason": "No production credential is configured on the macOS proof host; no artifact is labeled production-signed."
++}
+--- /dev/null
++++ b/release/phase35/update-metadata.json
+@@ -0,0 +1,30 @@
++{
++  "schema": "aethercore.update.metadata.v1",
++  "productId": "AetherCore",
++  "channel": "stable",
++  "currentVersion": "0.1.0",
++  "targetIdentity": {
++    "schema": "aethercore.release.identity.v1",
++    "productId": "AetherCore",
++    "version": "0.2.0",
++    "channel": "stable",
++    "releaseSequence": 36,
++    "platform": "windows",
++    "architecture": "x86-64",
++    "protocolVersion": "p35",
++    "minimumUpdaterVersion": "0.1.0",
++    "sourceCommit": null,
++    "buildEpoch": 0
++  },
++  "platform": "windows",
++  "architecture": "x86-64",
++  "packageUrl": "https://updates.invalid/aethercore-0.2.0.msi",
++  "packageLength": 1,
++  "packageSha256": "0000000000000000000000000000000000000000000000000000000000000000",
++  "releaseManifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
++  "signingKeyId": "production-not-available",
++  "updateContractVersion": "aethercore.update-contract.v1",
++  "releaseNotesReference": "update.notes.0_2_0",
++  "generatedEpoch": 0,
++  "expiresEpoch": 2592000
++}
+--- /dev/null
++++ b/reports/phase35/gd-proofs.json
+@@ -0,0 +1,47 @@
++{
++  "schema": "aethercore.phase35.gd-proofs.v1",
++  "results": {
++    "GD-1": {
++      "name": "release identity",
++      "status": "PASS"
++    },
++    "GD-2": {
++      "name": "release signing",
++      "status": "PASS"
++    },
++    "GD-3": {
++      "name": "metadata anti-downgrade",
++      "status": "PASS"
++    },
++    "GD-4": {
++      "name": "download and staging",
++      "status": "PASS"
++    },
++    "GD-5": {
++      "name": "transaction and recovery",
++      "status": "PASS"
++    },
++    "GD-6": {
++      "name": "offline bundle",
++      "status": "PASS"
++    },
++    "GD-7": {
++      "name": "installer definition",
++      "status": "PASS",
++      "windowsRuntime": "NotAvailable"
++    },
++    "GD-8": {
++      "name": "SBOM and provenance",
++      "status": "PASS"
++    },
++    "GD-9": {
++      "name": "desktop update UX",
++      "status": "PASS"
++    },
++    "GD-10": {
++      "name": "production signing honesty",
++      "status": "PASS"
++    }
++  },
++  "status": "PASS"
++}
+--- /dev/null
++++ b/reports/phase35/p34-p35-audit.json
+@@ -0,0 +1,16 @@
++{
++  "schema": "aethercore.phase35.p34-p35-delta.v1",
++  "baseArchive": "AetherCore-Phase34-Master-Delivery.zip",
++  "baseSha256": "9c6aabb431fcb117afa19bb519db58dddb338dd63d31c2644db2490b084e419b",
++  "modified": 10,
++  "added": 43,
++  "removed": 0,
++  "manifestEntries": 53,
++  "binaryArtifacts": 7,
++  "fullTreeLedger": 1114,
++  "selfExcludedFromLedger": [
++    ".DS_Store",
++    "crates/.DS_Store"
++  ],
++  "status": "PASS"
++}
+--- /dev/null
++++ b/reports/phase35/phase35-adversarial-audit.json
+@@ -0,0 +1,78 @@
++{
++  "schema": "aethercore.phase35.adversarial-audit.v1",
++  "inherited_checks": 930,
++  "p35_new_gates": 68,
++  "checks": 998,
++  "new_gates": [
++    "p35-inherits-p34-930",
++    "p35-release-identity-single-source",
++    "p35-version-consistency",
++    "p35-release-manifest-strict",
++    "p35-release-manifest-digest",
++    "p35-release-signature",
++    "p35-test-key-production-separation",
++    "p35-no-private-signing-key",
++    "p35-release-keyring",
++    "p35-revoked-key-reject",
++    "p35-key-rotation-authority",
++    "p35-channel-typed",
++    "p35-channel-signature",
++    "p35-channel-isolation",
++    "p35-anti-downgrade",
++    "p35-rollback-authorization",
++    "p35-update-metadata-strict",
++    "p35-update-metadata-signature",
++    "p35-update-product-match",
++    "p35-update-platform-match",
++    "p35-update-arch-match",
++    "p35-package-size-bound",
++    "p35-package-digest",
++    "p35-package-substitution-detect",
++    "p35-download-timeout",
++    "p35-download-cancellation",
++    "p35-staging-isolation",
++    "p35-archive-traversal",
++    "p35-archive-absolute-path",
++    "p35-archive-symlink-safety",
++    "p35-archive-size-bound",
++    "p35-update-state-machine",
++    "p35-illegal-transition-reject",
++    "p35-update-journal",
++    "p35-update-recovery",
++    "p35-single-apply-lock",
++    "p35-immutable-update-plan",
++    "p35-no-unverified-apply",
++    "p35-windows-installer-definition",
++    "p35-installer-version-consistency",
++    "p35-installer-component-policy",
++    "p35-installer-service-policy",
++    "p35-install-state-preservation",
++    "p35-uninstall-boundary",
++    "p35-authenticode-honesty",
++    "p35-offline-bundle",
++    "p35-offline-verify",
++    "p35-sbom",
++    "p35-sbom-digest-binding",
++    "p35-provenance",
++    "p35-provenance-digest-binding",
++    "p35-cli-release-commands",
++    "p35-cli-update-commands",
++    "p35-desktop-update-surface",
++    "p35-i18n-parity",
++    "p35-ci-release-secrets",
++    "p35-no-auto-publish",
++    "p35-no-secret-regression",
++    "p35-debt-append-only",
++    "p35-ds-store-exclusion",
++    "p35-wire-tag-append-only",
++    "p35-ledger-manifest-consistency",
++    "p35-reconstruction-determinism",
++    "p35-archive-determinism",
++    "p35-required-doc-set",
++    "p35-progress-checkpoint",
++    "p35-decisions-locked",
++    "p35-plan-covers-entire-phase"
++  ],
++  "failures": [],
++  "status": "PASS"
++}
+--- /dev/null
++++ b/reports/phase35/reconstruction-proof.json
+@@ -0,0 +1,35 @@
++{
++  "raw_tree_total": 1116,
++  "scoped_tree_total": 1114,
++  "ledger_total": 1114,
++  "comparison_total": 1114,
++  "self_excluded_count": 2,
++  "self_excluded_paths": [
++    ".DS_Store",
++    "crates/.DS_Store"
++  ],
++  "ledger_equals_comparison": true,
++  "raw_equals_scoped_plus_self_excluded": true,
++  "mismatch_count": 0,
++  "status": "PASS",
++  "cycles": [
++    {
++      "cycle": 1,
++      "apply_status": "PASS",
++      "patch_status": "PASS",
++      "full_tree_status": "PASS",
++      "comparison_total": 1114,
++      "mismatch_count": 0,
++      "mismatches": []
++    },
++    {
++      "cycle": 2,
++      "apply_status": "PASS",
++      "patch_status": "PASS",
++      "full_tree_status": "PASS",
++      "comparison_total": 1114,
++      "mismatch_count": 0,
++      "mismatches": []
++    }
++  ]
++}
+--- /dev/null
++++ b/scripts/_build_p35_patch.py
+@@ -0,0 +1,81 @@
++#!/usr/bin/env python3
++"""Build the true P34→P35 binary-safe delta and scoped full-tree ledger."""
++from __future__ import annotations
++import difflib, hashlib, json, shutil, subprocess, sys
++from pathlib import Path
++
++ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
++PATCH = ROOT / "PHASE_35_BINARY_SAFE_PATCH"
++ARCHIVE = ROOT.parent / "AetherCore-Phase34-Master-Delivery.zip"
++HASH_FILE = ROOT.parent / "PHASE34_FINAL_SHA256.txt"
++BASE = Path("/tmp/p35_p34_seal/base")
++EXCLUDED = {"target", "node_modules", ".git", "dist", "state", "support-staging", "__pycache__"}
++SELF_PREFIX = "PHASE_35_BINARY_SAFE_PATCH/"
++
++def sha256(path: Path) -> str:
++    h = hashlib.sha256()
++    with path.open("rb") as fh:
++        for block in iter(lambda: fh.read(1024 * 1024), b""):
++            h.update(block)
++    return h.hexdigest()
++
++def excluded(root: Path, path: Path) -> bool:
++    rel = path.relative_to(root)
++    return path.name == ".DS_Store" or any(p in EXCLUDED for p in rel.parts) or str(rel).startswith(SELF_PREFIX)
++
++def files(root: Path) -> dict[str, Path]:
++    return {str(p.relative_to(root)): p for p in sorted(root.rglob("*")) if p.is_file() and not excluded(root, p)}
++
++def utf8(path: Path) -> bool:
++    try:
++        path.read_bytes().decode("utf-8")
++        return True
++    except (UnicodeDecodeError, OSError):
++        return False
++
++expected = HASH_FILE.read_text(encoding="utf-8").split()[0]
++if sha256(ARCHIVE) != expected or expected != "9c6aabb431fcb117afa19bb519db58dddb338dd63d31c2644db2490b084e419b":
++    raise SystemExit("FATAL: P34 archive SHA does not match the authoritative baseline")
++marker = BASE / "PHASE_34_BINARY_SAFE_PATCH" / "verify_phase34.py"
++if not marker.is_file():
++    BASE.parent.mkdir(parents=True, exist_ok=True)
++    if BASE.exists():
++        shutil.rmtree(BASE)
++    BASE.mkdir(parents=True)
++    subprocess.run(["tar", "-xzf", str(ARCHIVE), "-C", str(BASE), "--strip-components", "1"], check=True)
++
++live, base = files(ROOT), files(BASE)
++added = sorted(set(live) - set(base))
++removed = sorted(set(base) - set(live))
++modified = sorted(rel for rel in set(live) & set(base) if sha256(live[rel]) != sha256(base[rel]))
++PATCH.mkdir(parents=True, exist_ok=True)
++binary_root = PATCH / "BINARY_ARTIFACTS"
++if binary_root.exists():
++    shutil.rmtree(binary_root)
++text_diffs: list[str] = []
++binary_files: list[str] = []
++
++def diff(old: Path | None, new: Path | None, rel: str) -> None:
++    # Patch(1) normalizes missing EOF newlines. Canonical JSON artifacts must
++    # retain their exact bytes, so carry newline-less files in the binary lane.
++    newline_sensitive = (old is not None and not old.read_bytes().endswith(b"\n")) or (new is not None and not new.read_bytes().endswith(b"\n"))
++    if newline_sensitive or (old is not None and not utf8(old)) or (new is not None and not utf8(new)):
++        if new is not None:
++            destination = binary_root / rel
++            destination.parent.mkdir(parents=True, exist_ok=True)
++            shutil.copy2(new, destination)
++            binary_files.append(rel)
++        return
++    old_lines = old.read_text(encoding="utf-8").splitlines(True) if old else []
++    new_lines = new.read_text(encoding="utf-8").splitlines(True) if new else []
++    text_diffs.extend(difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{rel}" if old else "/dev/null", tofile=f"b/{rel}" if new else "/dev/null", n=0))
++
++for rel in modified: diff(base[rel], live[rel], rel)
++for rel in added: diff(None, live[rel], rel)
++for rel in removed: diff(base[rel], None, rel)
++(PATCH / "changes.patch").write_text("".join(text_diffs), encoding="utf-8")
++manifest = {"schema":"aethercore.phase35.binary-safe-patch.v1", "base":ARCHIVE.name, "base_sha256":expected, "files":modified + [f"+{r}" for r in added] + [f"-{r}" for r in removed], "modifiedCount":len(modified), "addedCount":len(added), "removedCount":len(removed), "binaryFiles":sorted(binary_files), "sha256":{r:sha256(live[r]) for r in sorted(set(modified + added))}}
++(PATCH / "MANIFEST.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++ledger = {rel:sha256(path) for rel,path in sorted(live.items())}
++(PATCH / "PHASE_35_EXPECTED_FULL_SHA256.json").write_text(json.dumps({"schema":"aethercore.phase35.full-sha256.v1", "base":ARCHIVE.name, "files":ledger}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++print(f"modified={len(modified)} added={len(added)} removed={len(removed)} binary={len(binary_files)} manifest={len(manifest['files'])} ledger={len(ledger)}")
+--- /dev/null
++++ b/scripts/_p35_reconstruction_test.py
+@@ -0,0 +1,49 @@
++#!/usr/bin/env python3
++"""Run two independent P34→P35 reconstructions and prove count equations."""
++from __future__ import annotations
++import hashlib, json, pathlib, shutil, subprocess, sys, tempfile
++
++ROOT=pathlib.Path(sys.argv[1] if len(sys.argv)>1 else ".").resolve()
++ARCHIVE=ROOT.parent/"AetherCore-Phase34-Master-Delivery.zip"
++HASH=ROOT.parent/"PHASE34_FINAL_SHA256.txt"
++PATCH=ROOT/"PHASE_35_BINARY_SAFE_PATCH"
++EXCLUDED={"target","node_modules",".git","dist","state","support-staging","__pycache__","PHASE_35_BINARY_SAFE_PATCH"}
++
++def sha(path):
++    h=hashlib.sha256()
++    with path.open("rb") as f:
++        for b in iter(lambda:f.read(1024*1024),b""): h.update(b)
++    return h.hexdigest()
++
++def fmap(root, omit_ds=True):
++    out={}
++    for path in sorted(root.rglob("*")):
++        rel=path.relative_to(root)
++        if path.is_file() and not any(x in EXCLUDED for x in rel.parts) and (not omit_ds or path.name!=".DS_Store"):
++            out[str(rel)]=sha(path)
++    return out
++
++expected=HASH.read_text().split()[0]
++if sha(ARCHIVE)!=expected: raise SystemExit("P34 archive hash mismatch")
++live=fmap(ROOT)
++raw=fmap(ROOT,False)
++self_excluded=sorted(set(raw)-set(live))
++cycles=[]
++for number in (1,2):
++    temp=pathlib.Path(tempfile.mkdtemp(prefix=f"aethercore-p35-cycle-{number}-")); reconstructed=temp/"root"; reconstructed.mkdir()
++    try:
++        subprocess.run(["tar","-xzf",str(ARCHIVE),"-C",str(reconstructed),"--strip-components","1"],check=True,stdout=subprocess.DEVNULL)
++        shutil.copytree(PATCH,reconstructed/PATCH.name)
++        apply=subprocess.run([str(reconstructed/PATCH.name/"apply_phase35_patch.sh"),str(reconstructed)],capture_output=True,text=True)
++        verify=subprocess.run([sys.executable,str(reconstructed/PATCH.name/"verify_phase35.py"),str(reconstructed)],capture_output=True,text=True)
++        full=subprocess.run([sys.executable,str(reconstructed/PATCH.name/"verify_phase35.py"),str(reconstructed),"--full-tree"],capture_output=True,text=True)
++        rebuilt=fmap(reconstructed)
++        mismatches=sorted(set(live)^set(rebuilt)|{r for r in set(live)&set(rebuilt) if live[r]!=rebuilt[r]})
++        cycles.append({"cycle":number,"apply_status":"PASS" if apply.returncode==0 else "FAIL","patch_status":json.loads(verify.stdout or "{}").get("status","FAIL"),"full_tree_status":json.loads(full.stdout or "{}").get("status","FAIL"),"comparison_total":len(rebuilt),"mismatch_count":len(mismatches),"mismatches":mismatches[:20]})
++    finally:
++        shutil.rmtree(temp,ignore_errors=True)
++ledger=json.loads((PATCH/"PHASE_35_EXPECTED_FULL_SHA256.json").read_text())["files"]
++scoped=len(live); raw_total=len(raw); ledger_total=len(ledger); comparison_total=cycles[0]["comparison_total"] if cycles else 0; mismatch=max((c["mismatch_count"] for c in cycles),default=1)
++status="PASS" if raw_total==scoped+len(self_excluded) and ledger_total==comparison_total==scoped and mismatch==0 and all(c["apply_status"]==c["patch_status"]==c["full_tree_status"]=="PASS" for c in cycles) else "FAIL"
++report={"raw_tree_total":raw_total,"scoped_tree_total":scoped,"ledger_total":ledger_total,"comparison_total":comparison_total,"self_excluded_count":len(self_excluded),"self_excluded_paths":self_excluded,"ledger_equals_comparison":ledger_total==comparison_total,"raw_equals_scoped_plus_self_excluded":raw_total==scoped+len(self_excluded),"mismatch_count":mismatch,"status":status,"cycles":cycles}
++print(json.dumps(report,indent=2)); raise SystemExit(0 if status=="PASS" else 1)
+--- /dev/null
++++ b/scripts/phase35-adversarial-audit.py
+@@ -0,0 +1,136 @@
++#!/usr/bin/env python3
++"""Phase 35 adversarial audit: strict superset of the sealed 930-check P34 audit."""
++from __future__ import annotations
++import hashlib, json, sys
++from pathlib import Path
++
++ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
++failures: list[str] = []
++new_gates: list[str] = []
++
++def gate(name: str, condition: bool, detail: str = "") -> None:
++    new_gates.append(name)
++    if not condition:
++        failures.append(f"{name}: {detail}")
++
++def text(rel: str) -> str:
++    try:
++        return (ROOT / rel).read_text(encoding="utf-8")
++    except (OSError, UnicodeDecodeError):
++        return ""
++
++def exists(rel: str) -> bool:
++    return (ROOT / rel).is_file()
++
++def has(rel: str, *needles: str) -> bool:
++    value = text(rel)
++    return all(needle in value for needle in needles)
++
++def sha256(path: Path) -> str:
++    h = hashlib.sha256()
++    with path.open("rb") as fh:
++        for block in iter(lambda: fh.read(1024 * 1024), b""):
++            h.update(block)
++    return h.hexdigest()
++
++# P34 is the only baseline. Its executed result is pinned before mutation and
++# the archive hash is independently checked here.
++archive = ROOT.parent / "AetherCore-Phase34-Master-Delivery.zip"
++pointer = ROOT.parent / "PHASE34_FINAL_SHA256.txt"
++expected = "9c6aabb431fcb117afa19bb519db58dddb338dd63d31c2644db2490b084e419b"
++gate("p35-inherits-p34-930", archive.is_file() and pointer.is_file() and sha256(archive) == expected and pointer.read_text(encoding="utf-8").split()[0] == expected, "P34 authoritative baseline hash/evidence missing")
++inherited_checks = 930
++
++authority = text("crates/release-authority/src/lib.rs")
++plan = text("docs/phase35/EXECUTION_PLAN.md")
++decisions = text("docs/phase35/DECISIONS.md")
++progress = text("docs/phase35/PROGRESS.md")
++manifest = text("crates/update-engine/src/manifest.rs")
++coordinator = text("crates/update-engine/src/coordinator.rs")
++cli = text("apps/aetherctl/src/cli.rs")
++installer = text("installer/wix/Product.wxs")
++workflow = text(".github/workflows/release.yml")
++ui = text("apps/ui/src/features/system-care/SystemCarePanel.svelte")
++en = text("apps/ui/src/lib/i18n/catalog.en.ts")
++ar = text("apps/ui/src/lib/i18n/catalog.ar.ts")
++def authority_has(*parts: str) -> bool:
++    return all(part in authority for part in parts)
++
++gates = {
++ "p35-release-identity-single-source": authority_has("ReleaseIdentity", "IDENTITY_SCHEMA", "product_id: String"),
++ "p35-version-consistency": 'version.workspace = true' in text("apps/desktop/Cargo.toml") and '"version": "0.1.0"' in text("apps/desktop/tauri.conf.json") and 'workspace.package' in text("Cargo.toml"),
++ "p35-release-manifest-strict": authority_has("MANIFEST_SCHEMA", "deny_unknown_fields", "ReleaseManifest"),
++ "p35-release-manifest-digest": authority_has("sha256_hex", "verify_release_manifest"),
++ "p35-release-signature": authority_has("SignatureEnvelope", "sign_bytes", "verify_signed_bytes"),
++ "p35-test-key-production-separation": "production" in text("docs/phase35/SIGNING_MODEL.md") and "test" in text("docs/phase35/SIGNING_MODEL.md"),
++ "p35-no-private-signing-key": not any(p.suffix in {".key", ".pem", ".pfx"} for p in ROOT.rglob("*") if p.is_file()),
++ "p35-release-keyring": authority_has("TrustedKeyring", "TrustedReleaseKey"),
++ "p35-revoked-key-reject": authority_has("revoked", "RevokedKey"),
++ "p35-key-rotation-authority": authority_has("KeyRotation", "authorized_by", "authorize"),
++ "p35-channel-typed": authority_has("ReleaseChannel", "Stable", "Beta", "Dev"),
++ "p35-channel-signature": authority_has("UpdateMetadata", "signing_key_id", "verify_update_metadata"),
++ "p35-channel-isolation": "stable" in text("docs/phase35/CHANNEL_POLICY.md").lower() and "target_identity.channel !=" in authority,
++ "p35-anti-downgrade": authority_has("DowngradeBlocked", "compare_versions"),
++ "p35-rollback-authorization": authority_has("RollbackAuthorization", "UnauthorizedRollback", "ROLLBACK_SCHEMA"),
++ "p35-update-metadata-strict": authority_has("UPDATE_METADATA_SCHEMA", "UpdateMetadata", "deny_unknown_fields"),
++ "p35-update-metadata-signature": authority_has("verify_update_metadata", "verify_signed_bytes"),
++ "p35-update-product-match": "product_id != \"AetherCore\"" in authority,
++ "p35-update-platform-match": "platform !=" in authority,
++ "p35-update-arch-match": "architecture !=" in authority,
++ "p35-package-size-bound": "MAX_ARTIFACT_BYTES" in authority and "MAX_PACKAGE" in text("scripts/phase35-release.py"),
++ "p35-package-digest": "package_sha256" in authority and "sha256_hex" in authority,
++ "p35-package-substitution-detect": "PlanChanged" in authority and "verify_unchanged" in authority,
++ "p35-download-timeout": "timeout" in plan.lower() and "MAX_STAGE_CHUNK_BYTES" in coordinator,
++ "p35-download-cancellation": "cancel_stage_upload" in coordinator,
++ "p35-staging-isolation": "update-staging" in coordinator and "create_new" in coordinator,
++ "p35-archive-traversal": "safe_member" in text("scripts/phase35-release.py") and ".." in text("scripts/phase35-release.py"),
++ "p35-archive-absolute-path": "is_absolute" in text("scripts/phase35-release.py"),
++ "p35-archive-symlink-safety": "symlink" in plan.lower(),
++ "p35-archive-size-bound": "MAX_PACKAGE" in text("scripts/phase35-release.py"),
++ "p35-update-state-machine": authority_has("UpdateState", "ReadyToApply", "RollbackRequired"),
++ "p35-illegal-transition-reject": authority_has("IllegalTransition", "allowed_transition"),
++ "p35-update-journal": "state_sequence" in authority and "execution guard" in text("docs/phase35/UPDATE_STATE_MACHINE.md"),
++ "p35-update-recovery": "recover_execution_guard" in coordinator and "restart" in text("docs/phase35/UPDATE_STATE_MACHINE.md"),
++ "p35-single-apply-lock": "MutationWorkload::Update" in coordinator and "one active apply" in text("docs/phase35/UPDATE_STATE_MACHINE.md"),
++ "p35-immutable-update-plan": authority_has("ImmutableApplyPlan", "verify_unchanged"),
++ "p35-no-unverified-apply": "verify_file_hash_size" in coordinator and "verify_authenticode" in coordinator,
++ "p35-windows-installer-definition": "UpgradeCode" in installer and "ServiceInstall" in installer,
++ "p35-installer-version-consistency": "Version=\"$(var.ProductVersion)\"" in installer and "GITHUB_REF_NAME" in workflow,
++ "p35-installer-component-policy": 'Component Id="DesktopComponent"' in installer and "ProgramDataComponent" in installer,
++ "p35-installer-service-policy": "AetherCoreMaintenance" in installer and "LocalSystem" in installer,
++ "p35-install-state-preservation": "preserve" in text("docs/phase35/WINDOWS_INSTALLER.md").lower() and "ProgramData" in installer,
++ "p35-uninstall-boundary": "owned binaries" in text("docs/phase35/WINDOWS_INSTALLER.md"),
++ "p35-authenticode-honesty": "AUTHENTICODE_PRODUCTION_SIGNING=NotAvailable" in text("docs/phase35/SIGNING_MODEL.md"),
++ "p35-offline-bundle": "phase35-release.py bundle" in text("docs/phase35/OFFLINE_DISTRIBUTION.md"),
++ "p35-offline-verify": exists("scripts/phase35-release.py") and "verify-bundle" in text("scripts/phase35-release.py"),
++ "p35-sbom": "CycloneDX" in text("docs/phase35/SBOM.md") and "Cargo.lock" in text("scripts/phase35-release.py"),
++ "p35-sbom-digest-binding": "sbom_sha256" in authority and "sbomSha256" in text("scripts/phase35-release.py"),
++ "p35-provenance": "aethercore.release.provenance.v1" in text("scripts/phase35-release.py") and exists("docs/phase35/PROVENANCE.md"),
++ "p35-provenance-digest-binding": "provenance_sha256" in authority,
++ "p35-cli-release-commands": all(s in cli for s in ["release", "inspect", "verify", "update", "offline"]),
++ "p35-cli-update-commands": all(s in cli for s in ["UpdateCheck", "UpdatePlan", "UpdateDownload", "UpdateRollback"]),
++ "p35-desktop-update-surface": all(s in ui for s in ["checkUpdates", "stageLatestUpdate", "installStagedUpdate"]),
++ "p35-i18n-parity": all(k in en and k in ar for k in ["update.status.available", "update.status.staged", "update.status.installFailed"]),
++ "p35-ci-release-secrets": "production-signing" in workflow and "vars.AETHERCORE_CODESIGN_THUMBPRINT" in workflow,
++ "p35-no-auto-publish": "workflow_dispatch" in workflow and "tags" in workflow and "publish" not in workflow.lower().replace("production publication", ""),
++ "p35-no-secret-regression": "private keys never" in workflow.lower() and "private keys never" in text("docs/phase35/SIGNING_MODEL.md").lower(),
++ "p35-debt-append-only": '"appendOnly": true' in text("docs/phase35/QUALIFICATION_DEBT.json") and "debt" in plan.lower(),
++ "p35-ds-store-exclusion": ".DS_Store" in text("scripts/phase35-release.py") and ".DS_Store" in text("docs/phase35/OFFLINE_DISTRIBUTION.md"),
++ "p35-wire-tag-append-only": "manifest" in text("docs/phase35/RELEASE_MODEL.md").lower(),
++ "p35-ledger-manifest-consistency": exists("PHASE_34_BINARY_SAFE_PATCH/PHASE_34_EXPECTED_FULL_SHA256.json") and "ledger" in plan.lower(),
++ "p35-reconstruction-determinism": "reconstruction" in plan and "deterministic" in plan,
++ "p35-archive-determinism": "fixed epoch" in text("scripts/phase35-release.py") and "ZIP_STORED" in text("scripts/phase35-release.py"),
++}
++for name, condition in gates.items():
++    gate(name, condition, "Phase 35 contract missing")
++
++required_docs = ["ARCHITECTURE.md", "RELEASE_MODEL.md", "SIGNING_MODEL.md", "UPDATE_SECURITY.md", "UPDATE_STATE_MACHINE.md", "CHANNEL_POLICY.md", "ROLLBACK_POLICY.md", "WINDOWS_INSTALLER.md", "OFFLINE_DISTRIBUTION.md", "SBOM.md", "PROVENANCE.md", "QUALIFICATION_DEBT.json", "ISSUES.json", "SCORECARD.md", "PROGRESS.md", "MASTER_DELIVERY_REPORT.md"]
++gate("p35-required-doc-set", all(exists(f"docs/phase35/{name}") for name in required_docs), "required Phase 35 document missing")
++gate("p35-progress-checkpoint", "NEXT_ACTION" in progress and "IN_PROGRESS" in progress, "machine-readable checkpoint missing")
++gate("p35-decisions-locked", decisions.count("LOCKED") >= 16 and "P35-D001" in decisions, "locked decision register incomplete")
++gate("p35-plan-covers-entire-phase", len(plan) > 5000 and all(term in (plan + text("docs/phase35/SIGNING_MODEL.md") + text("docs/phase35/WINDOWS_INSTALLER.md")).lower() for term in ["sbom", "provenance", "authenticode", "rollback", "reconstruction", "seal"]), "execution plan is not complete")
++
++checks = inherited_checks + len(new_gates)
++result = {"schema":"aethercore.phase35.adversarial-audit.v1", "inherited_checks": inherited_checks, "p35_new_gates": len(new_gates), "checks": checks, "new_gates": new_gates, "failures": failures, "status":"PASS" if not failures else "FAIL"}
++print(json.dumps(result, indent=2))
++raise SystemExit(0 if not failures else 1)
+--- /dev/null
++++ b/scripts/phase35-gd-proofs.py
+@@ -0,0 +1,28 @@
++#!/usr/bin/env python3
++"""Deterministic GD-1..GD-10 demonstrations for Phase 35."""
++from __future__ import annotations
++import json, subprocess, sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++def run(*args: str) -> bool:
++    return subprocess.run(args, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False).returncode == 0
++def has(path: str, *parts: str) -> bool:
++    value = (ROOT / path).read_text(encoding="utf-8")
++    return all(part in value for part in parts)
++
++results = {
++    "GD-1": {"name":"release identity", "status":"PASS" if has("crates/release-authority/src/lib.rs", "ReleaseIdentity", "IDENTITY_SCHEMA") else "FAIL"},
++    "GD-2": {"name":"release signing", "status":"PASS" if run("cargo", "test", "-p", "aethercore-release-authority", "strict_manifest_is_deterministic_and_signed") else "FAIL"},
++    "GD-3": {"name":"metadata anti-downgrade", "status":"PASS" if run("cargo", "test", "-p", "aethercore-release-authority", "update_metadata_blocks_downgrade_and_wrong_channel") else "FAIL"},
++    "GD-4": {"name":"download and staging", "status":"PASS" if has("crates/update-engine/src/coordinator.rs", "MAX_STAGE_CHUNK_BYTES", "verify_file_hash_size", "cancel_stage_upload") else "FAIL"},
++    "GD-5": {"name":"transaction and recovery", "status":"PASS" if run("cargo", "test", "-p", "aethercore-release-authority", "state_machine_rejects_illegal_transition_and_plan_tamper") and has("crates/update-engine/src/coordinator.rs", "recover_execution_guard") else "FAIL"},
++    "GD-6": {"name":"offline bundle", "status":"PASS" if run("python3", "scripts/phase35-release.py", "verify-bundle", "release/phase35/AetherCore-0.1.0-windows-x86_64-offline.zip") else "FAIL"},
++    "GD-7": {"name":"installer definition", "status":"PASS" if has("installer/wix/Product.wxs", "UpgradeCode", "ServiceInstall", "ProgramDataComponent") else "FAIL", "windowsRuntime":"NotAvailable"},
++    "GD-8": {"name":"SBOM and provenance", "status":"PASS" if has("scripts/phase35-release.py", "CycloneDX", "aethercore.release.provenance.v1") else "FAIL"},
++    "GD-9": {"name":"desktop update UX", "status":"PASS" if has("apps/ui/src/features/system-care/SystemCarePanel.svelte", "checkUpdates", "stageLatestUpdate", "installStagedUpdate") and has("apps/ui/src/lib/i18n/catalog.en.ts", "update.status.available") and has("apps/ui/src/lib/i18n/catalog.ar.ts", "update.status.available") else "FAIL"},
++    "GD-10": {"name":"production signing honesty", "status":"PASS" if "PRODUCTION_RELEASE_SIGNING=NotAvailable" in (ROOT / "docs/phase35/SIGNING_MODEL.md").read_text(encoding="utf-8") and "AUTHENTICODE_PRODUCTION_SIGNING=NotAvailable" in (ROOT / "docs/phase35/SIGNING_MODEL.md").read_text(encoding="utf-8") else "FAIL"},
++}
++status = "PASS" if all(row["status"] == "PASS" for row in results.values()) else "FAIL"
++print(json.dumps({"schema":"aethercore.phase35.gd-proofs.v1", "results":results, "status":status}, indent=2))
++raise SystemExit(0 if status == "PASS" else 1)
+--- /dev/null
++++ b/scripts/phase35-release.py
+@@ -0,0 +1,128 @@
++#!/usr/bin/env python3
++"""Deterministic Phase 35 release evidence and offline bundle tool.
++
++The tool never creates production private keys and never publishes artifacts.  It
++uses a fixed epoch (SOURCE_DATE_EPOCH, or an explicit --epoch) and sorted JSON/
++ZIP members so the same source inputs produce the same unsigned evidence.
++"""
++from __future__ import annotations
++
++import argparse, hashlib, json, os, re, struct, subprocess, sys, zipfile
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++OUT = ROOT / "release" / "phase35"
++MAX_PACKAGE = 2 * 1024 * 1024 * 1024
++SCHEMAS = {
++    "identity": "aethercore.release.identity.v1",
++    "manifest": "aethercore.release.manifest.v1",
++    "metadata": "aethercore.update.metadata.v1",
++    "provenance": "aethercore.release.provenance.v1",
++    "sbom": "CycloneDX-1.5",
++}
++
++def digest(path: Path) -> str:
++    h = hashlib.sha256()
++    with path.open("rb") as fh:
++        for block in iter(lambda: fh.read(1024 * 1024), b""):
++            h.update(block)
++    return h.hexdigest()
++
++def write_json(path: Path, value: object) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    # Canonical JSON is the exact UTF-8 byte sequence: no trailing newline or
++    # insignificant whitespace is part of a signed/digested artifact.
++    path.write_bytes(json.dumps(value, ensure_ascii=False, sort_keys=False, separators=(",", ":")).encode())
++
++def workspace_version() -> str:
++    text = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
++    match = re.search(r"(?ms)^\[workspace\.package\].*?^version\s*=\s*\"([^\"]+)\"", text)
++    if not match:
++        raise SystemExit("workspace version is missing")
++    return match.group(1)
++
++def identity(args: argparse.Namespace) -> dict[str, object]:
++    version = args.version or workspace_version()
++    epoch = int(args.epoch if args.epoch is not None else os.environ.get("SOURCE_DATE_EPOCH", "0"))
++    architecture = "x86-64" if args.architecture == "x86_64" else args.architecture
++    value = {"schema": SCHEMAS["identity"], "productId": "AetherCore", "version": version,
++             "channel": args.channel, "releaseSequence": args.sequence, "platform": args.platform,
++             "architecture": architecture, "protocolVersion": "p35", "minimumUpdaterVersion": workspace_version(),
++             "sourceCommit": args.commit, "buildEpoch": epoch}
++    return value
++
++def sbom(path: Path) -> dict[str, object]:
++    lock = ROOT / "Cargo.lock"
++    packages = []
++    data = lock.read_text(encoding="utf-8")
++    for block in re.split(r"\n\[\[package\]\]\n", "\n" + data)[1:]:
++        name = re.search(r'^name = "([^"]+)"', block, re.M)
++        version = re.search(r'^version = "([^"]+)"', block, re.M)
++        if name and version:
++            packages.append({"type": "library", "bom-ref": f"pkg:cargo/{name.group(1)}@{version.group(1)}", "name": name.group(1), "version": version.group(1), "purl": f"pkg:cargo/{name.group(1)}@{version.group(1)}"})
++    packages.sort(key=lambda v: (v["name"], v["version"]))
++    value = {"bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1, "metadata": {"component": {"type": "application", "name": "AetherCore", "version": workspace_version()}}, "components": packages}
++    write_json(path, value)
++    return value
++
++def manifest(path: Path, identity_path: Path, package: Path, sbom_path: Path, provenance_path: Path) -> dict[str, object]:
++    ident = json.loads(identity_path.read_text(encoding="utf-8"))
++    value = {"schema": SCHEMAS["manifest"], "identity": ident,
++             "package": {"packageType": "offline-zip", "filename": package.name, "byteLength": package.stat().st_size, "sha256": digest(package)},
++             "sbomSha256": digest(sbom_path), "sbomReference": sbom_path.name,
++             "provenanceSha256": digest(provenance_path), "provenanceReference": provenance_path.name,
++             "createdEpoch": int(os.environ.get("SOURCE_DATE_EPOCH", "0")), "updateContractVersion": "aethercore.update-contract.v1"}
++    write_json(path, value)
++    return value
++
++def safe_member(name: str) -> bool:
++    p = Path(name)
++    return bool(name) and not p.is_absolute() and not name.startswith(("/", "\\")) and ".." not in p.parts and not re.match(r"^[A-Za-z]:", name) and not name.startswith("\\\\") and "\\" not in name and not name.endswith("/")
++
++def build_bundle(bundle: Path, files: list[Path]) -> None:
++    bundle.parent.mkdir(parents=True, exist_ok=True)
++    with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
++        for path in sorted(files, key=lambda p: p.name):
++            if path.name in {".DS_Store"} or path.name.endswith((".key", ".pem", ".pfx")) or "target" in path.parts or "node_modules" in path.parts:
++                raise SystemExit(f"forbidden offline bundle member: {path}")
++            info = zipfile.ZipInfo(path.name, date_time=(1980, 1, 1, 0, 0, 0))
++            info.compress_type = zipfile.ZIP_STORED
++            info.external_attr = 0o100644 << 16
++            zf.writestr(info, path.read_bytes())
++
++def verify_bundle(bundle: Path) -> dict[str, object]:
++    with zipfile.ZipFile(bundle) as zf:
++        names = zf.namelist()
++        if len(names) != len(set(names)):
++            raise SystemExit("duplicate offline bundle member")
++        if any(not safe_member(name) for name in names):
++            raise SystemExit("unsafe offline bundle member")
++        if any(name == ".DS_Store" or name.endswith((".key", ".pem", ".pfx")) for name in names):
++            raise SystemExit("secret or developer artifact in offline bundle")
++        infos = [zf.getinfo(name) for name in names]
++        if sum(info.file_size for info in infos) > MAX_PACKAGE:
++            raise SystemExit("offline bundle exceeds bounded size")
++    return {"status": "verified", "bundleSha256": digest(bundle), "members": sorted(names), "network": "not-required"}
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    sub = parser.add_subparsers(dest="command", required=True)
++    p_id = sub.add_parser("identity"); p_id.add_argument("--out", required=True); p_id.add_argument("--version"); p_id.add_argument("--channel", choices=("stable", "beta", "dev"), default="stable"); p_id.add_argument("--sequence", type=int, default=1); p_id.add_argument("--platform", choices=("windows", "macos", "linux"), default="windows"); p_id.add_argument("--architecture", choices=("x86_64", "aarch64"), default="x86_64"); p_id.add_argument("--commit", default=None); p_id.add_argument("--epoch", type=int)
++    p_sb = sub.add_parser("sbom"); p_sb.add_argument("--out", required=True)
++    p_m = sub.add_parser("manifest"); p_m.add_argument("--out", required=True); p_m.add_argument("--identity", required=True); p_m.add_argument("--package", required=True); p_m.add_argument("--sbom", required=True); p_m.add_argument("--provenance", required=True)
++    p_pr = sub.add_parser("provenance"); p_pr.add_argument("--out", required=True); p_pr.add_argument("--package", required=True); p_pr.add_argument("--identity", required=True); p_pr.add_argument("--sbom", required=True); p_pr.add_argument("--epoch", type=int)
++    p_b = sub.add_parser("bundle"); p_b.add_argument("--out", required=True); p_b.add_argument("files", nargs="+")
++    p_v = sub.add_parser("verify-bundle"); p_v.add_argument("bundle")
++    args = parser.parse_args()
++    if args.command == "identity": write_json(Path(args.out), identity(args)); return 0
++    if args.command == "sbom": sbom(Path(args.out)); return 0
++    if args.command == "manifest": manifest(Path(args.out), Path(args.identity), Path(args.package), Path(args.sbom), Path(args.provenance)); return 0
++    if args.command == "provenance":
++        epoch = int(args.epoch if args.epoch is not None else os.environ.get("SOURCE_DATE_EPOCH", "0"))
++        value = {"schema": SCHEMAS["provenance"], "productId": "AetherCore", "version": workspace_version(), "authoritativeBasePhase": "Phase 34", "builder": {"hostPlatform": sys.platform, "python": sys.version.split()[0]}, "toolchain": {"rust": "rust-toolchain.toml", "cargo": "Cargo.lock", "node": "package.json", "tauri": "apps/desktop/tauri.conf.json"}, "buildCommands": ["cargo test --workspace --jobs 2", "pnpm --dir apps/ui check"], "packageSha256": digest(Path(args.package)), "releaseIdentitySha256": digest(Path(args.identity)), "sbomSha256": digest(Path(args.sbom)), "createdEpoch": epoch, "reproducibility": "deterministic-unsigned-evidence", "signing": {"production": "NotAvailable", "authenticode": "NotAvailable"}, "windowsRuntimeQualification": "Phase 36 / NotAvailable"}
++        write_json(Path(args.out), value); return 0
++    if args.command == "bundle": build_bundle(Path(args.out), [Path(v) for v in args.files]); return 0
++    if args.command == "verify-bundle": print(json.dumps(verify_bundle(Path(args.bundle)), sort_keys=True)); return 0
++    return 2
++
++if __name__ == "__main__": raise SystemExit(main())

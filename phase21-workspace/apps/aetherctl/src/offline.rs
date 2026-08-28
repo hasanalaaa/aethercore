@@ -59,6 +59,17 @@ pub fn command_label(job: &OfflineJob) -> String {
         OfflineJob::SecReport { .. } => "sec report".to_string(),
         OfflineJob::SecComplianceSummary { .. } => "compliance summary".to_string(),
         OfflineJob::VulndbUpdate { .. } => "vulndb update".to_string(),
+        OfflineJob::ReleaseInspect { .. } => "release inspect".to_string(),
+        OfflineJob::ReleaseVerify { .. } => "release verify".to_string(),
+        OfflineJob::UpdateCheck => "update check".to_string(),
+        OfflineJob::UpdatePlan => "update plan".to_string(),
+        OfflineJob::UpdateDownload => "update download".to_string(),
+        OfflineJob::UpdateVerify { .. } => "update verify".to_string(),
+        OfflineJob::UpdateStage => "update stage".to_string(),
+        OfflineJob::UpdateStatus => "update status".to_string(),
+        OfflineJob::UpdateCancel => "update cancel".to_string(),
+        OfflineJob::UpdateRollback => "update rollback".to_string(),
+        OfflineJob::OfflineBundleVerify { .. } => "update offline verify".to_string(),
     }
 }
 
@@ -120,6 +131,11 @@ fn execute(config: &Config, job: OfflineJob) -> Result<serde_json::Value, CliErr
             map_file,
         } => crate::sec::run_compliance_summary(&profile, &report_file, &map_file),
         OfflineJob::VulndbUpdate { from, dest } => crate::sec::vulndb_update_from(&from, &dest),
+        OfflineJob::ReleaseInspect { manifest } => crate::release::inspect(manifest.as_deref()),
+        OfflineJob::ReleaseVerify { manifest, signature, keyring } => crate::release::verify_manifest(&manifest, &signature, &keyring),
+        OfflineJob::UpdateVerify { metadata, signature, keyring } => crate::release::verify_update(&metadata, &signature, &keyring),
+        OfflineJob::OfflineBundleVerify { bundle } => crate::release::verify_offline_bundle(&bundle),
+        OfflineJob::UpdateCheck | OfflineJob::UpdatePlan | OfflineJob::UpdateDownload | OfflineJob::UpdateStage | OfflineJob::UpdateStatus | OfflineJob::UpdateCancel | OfflineJob::UpdateRollback => Err(CliError::capability_unavailable("updateApplyRequiresWindowsQualification")),
         OfflineJob::ServiceDetect => {
             let state = transport::detect_service(config);
             let pid = match &state {

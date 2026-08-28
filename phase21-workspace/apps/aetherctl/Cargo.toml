@@ -31,6 +31,7 @@ aethercore-db-diagnostics = { path = "../../crates/db-diagnostics" }
 aethercore-security-audit = { path = "../../crates/security-audit" }
 # Phase 34 (Fleet): typed fleet domain/transport/orchestrator/scheduler.
 aethercore-fleet = { path = "../../crates/fleet" }
+aethercore-release-authority = { path = "../../crates/release-authority" }
 sha2.workspace = true
 thiserror.workspace = true
 # Phase 28 (owner-review waiver, audit allowlist): prost is the v7 wire codec shared with

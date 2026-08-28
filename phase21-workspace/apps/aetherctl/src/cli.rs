@@ -43,6 +43,12 @@ SECURITY COMMANDS (Phase 32; offline unless noted):
   compliance summary --profile cis-l1 --report <file> --map <cis_map.json>
   compliance verify <report.json>            (offline integrity/signature verification)
   vulndb    update --from <db.json> --dest <dir>   (EXPLICIT owner action)
+
+RELEASE / UPDATE AUTHORITY (Phase 35; offline verification is fail-closed):
+  release inspect [--manifest <file>]
+  release verify --manifest <file> --signature <file> --keyring <file>
+  update check | plan | download | verify | stage | status | cancel | rollback
+  update offline verify <bundle.zip>
 ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +158,25 @@ pub enum OfflineJob {
         from: String,
         dest: String,
     },
+    ReleaseInspect { manifest: Option<String> },
+    ReleaseVerify {
+        manifest: String,
+        signature: String,
+        keyring: String,
+    },
+    UpdateCheck,
+    UpdatePlan,
+    UpdateDownload,
+    UpdateVerify {
+        metadata: String,
+        signature: String,
+        keyring: String,
+    },
+    UpdateStage,
+    UpdateStatus,
+    UpdateCancel,
+    UpdateRollback,
+    OfflineBundleVerify { bundle: String },
     Help,
 }
 
@@ -669,6 +694,53 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                 ));
             }
             Command::Offline(OfflineJob::VulndbUpdate { from, dest })
+        }
+        "release" => {
+            let sub = cursor.next().cloned().ok_or_else(|| usage("cli.usage.releaseSubcommandRequired", "release requires inspect|verify".into()))?;
+            match sub.as_str() {
+                "inspect" => {
+                    let mut manifest = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() { "--manifest" => manifest = Some(cursor.value_after("--manifest")?), other => return Err(unknown_flag(other)) }
+                    }
+                    Command::Offline(OfflineJob::ReleaseInspect { manifest })
+                }
+                "verify" => {
+                    let mut manifest = None; let mut signature = None; let mut keyring = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() { "--manifest" => manifest = Some(cursor.value_after("--manifest")?), "--signature" => signature = Some(cursor.value_after("--signature")?), "--keyring" => keyring = Some(cursor.value_after("--keyring")?), other => return Err(unknown_flag(other)) }
+                    }
+                    let missing = || usage("cli.usage.releaseVerifyRequiresInputs", "release verify requires --manifest --signature --keyring".into());
+                    Command::Offline(OfflineJob::ReleaseVerify { manifest: manifest.ok_or_else(missing)?, signature: signature.ok_or_else(missing)?, keyring: keyring.ok_or_else(missing)? })
+                }
+                other => return Err(usage("cli.usage.unknownSubcommand", format!("unknown release subcommand '{other}'"))),
+            }
+        }
+        "update" => {
+            let sub = cursor.next().cloned().ok_or_else(|| usage("cli.usage.updateSubcommandRequired", "update requires check|plan|download|verify|stage|status|cancel|rollback|offline".into()))?;
+            match sub.as_str() {
+                "check" => Command::Offline(OfflineJob::UpdateCheck),
+                "plan" => Command::Offline(OfflineJob::UpdatePlan),
+                "download" => Command::Offline(OfflineJob::UpdateDownload),
+                "stage" => Command::Offline(OfflineJob::UpdateStage),
+                "status" => Command::Offline(OfflineJob::UpdateStatus),
+                "cancel" => Command::Offline(OfflineJob::UpdateCancel),
+                "rollback" => Command::Offline(OfflineJob::UpdateRollback),
+                "verify" => {
+                    let mut metadata = None; let mut signature = None; let mut keyring = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() { "--metadata" => metadata = Some(cursor.value_after("--metadata")?), "--signature" => signature = Some(cursor.value_after("--signature")?), "--keyring" => keyring = Some(cursor.value_after("--keyring")?), other => return Err(unknown_flag(other)) }
+                    }
+                    let missing = || usage("cli.usage.updateVerifyRequiresInputs", "update verify requires --metadata --signature --keyring".into());
+                    Command::Offline(OfflineJob::UpdateVerify { metadata: metadata.ok_or_else(missing)?, signature: signature.ok_or_else(missing)?, keyring: keyring.ok_or_else(missing)? })
+                }
+                "offline" => {
+                    if cursor.next().map(|v| v.as_str()) != Some("verify") { return Err(usage("cli.usage.updateOfflineVerifyRequiresBundle", "update offline requires verify <bundle.zip>".into())); }
+                    let bundle = cursor.next().cloned().ok_or_else(|| usage("cli.usage.updateOfflineVerifyRequiresBundle", "update offline verify requires a bundle path".into()))?;
+                    Command::Offline(OfflineJob::OfflineBundleVerify { bundle })
+                }
+                other => return Err(usage("cli.usage.unknownSubcommand", format!("unknown update subcommand '{other}'"))),
+            }
         }
         // Phase 29 (T3): keys generate --out <path> | keys fingerprint --in <path>.
         // Explicit owner actions — key material is NEVER created anywhere else.
@@ -1384,6 +1456,13 @@ mod tests {
     fn timeout_must_be_positive_integer() {
         assert!(parse(&argv(&["--timeout-ms", "abc", "about"])).is_err());
         assert!(parse(&argv(&["--timeout-ms", "0", "about"])).is_err());
+    }
+
+    #[test]
+    fn phase35_release_and_offline_update_commands_are_typed() {
+        assert!(matches!(parse(&argv(&["release", "inspect"])).unwrap().command, Command::Offline(OfflineJob::ReleaseInspect { manifest: None })));
+        assert!(matches!(parse(&argv(&["release", "verify", "--manifest", "m", "--signature", "s", "--keyring", "k"])).unwrap().command, Command::Offline(OfflineJob::ReleaseVerify { .. })));
+        assert!(matches!(parse(&argv(&["update", "offline", "verify", "bundle.zip"])).unwrap().command, Command::Offline(OfflineJob::OfflineBundleVerify { .. })));
     }
 
     #[test]

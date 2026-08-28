@@ -12,6 +12,7 @@ mod fleet;
 pub mod i18n;
 mod offline;
 mod render;
+mod release;
 mod sec;
 mod service_cmds;
 mod transport;

@@ -1,0 +1,30 @@
+{
+  "schema": "aethercore.update.metadata.v1",
+  "productId": "AetherCore",
+  "channel": "stable",
+  "currentVersion": "0.1.0",
+  "targetIdentity": {
+    "schema": "aethercore.release.identity.v1",
+    "productId": "AetherCore",
+    "version": "0.2.0",
+    "channel": "stable",
+    "releaseSequence": 36,
+    "platform": "windows",
+    "architecture": "x86-64",
+    "protocolVersion": "p35",
+    "minimumUpdaterVersion": "0.1.0",
+    "sourceCommit": null,
+    "buildEpoch": 0
+  },
+  "platform": "windows",
+  "architecture": "x86-64",
+  "packageUrl": "https://updates.invalid/aethercore-0.2.0.msi",
+  "packageLength": 1,
+  "packageSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "releaseManifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "signingKeyId": "production-not-available",
+  "updateContractVersion": "aethercore.update-contract.v1",
+  "releaseNotesReference": "update.notes.0_2_0",
+  "generatedEpoch": 0,
+  "expiresEpoch": 2592000
+}

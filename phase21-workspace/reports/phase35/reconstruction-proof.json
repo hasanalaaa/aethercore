@@ -1,0 +1,35 @@
+{
+  "raw_tree_total": 1116,
+  "scoped_tree_total": 1114,
+  "ledger_total": 1114,
+  "comparison_total": 1114,
+  "self_excluded_count": 2,
+  "self_excluded_paths": [
+    ".DS_Store",
+    "crates/.DS_Store"
+  ],
+  "ledger_equals_comparison": true,
+  "raw_equals_scoped_plus_self_excluded": true,
+  "mismatch_count": 0,
+  "status": "PASS",
+  "cycles": [
+    {
+      "cycle": 1,
+      "apply_status": "PASS",
+      "patch_status": "PASS",
+      "full_tree_status": "PASS",
+      "comparison_total": 1114,
+      "mismatch_count": 0,
+      "mismatches": []
+    },
+    {
+      "cycle": 2,
+      "apply_status": "PASS",
+      "patch_status": "PASS",
+      "full_tree_status": "PASS",
+      "comparison_total": 1114,
+      "mismatch_count": 0,
+      "mismatches": []
+    }
+  ]
+}

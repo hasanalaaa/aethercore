@@ -1,0 +1,10 @@
+{
+  "schema": "aethercore.phase35.qualification-debt.v1",
+  "appendOnly": true,
+  "items": [
+    {"id":"QD-035-001","status":"OPEN","area":"Windows MSI lifecycle","evidence":"NotAvailable on macOS","nextPhase":"P36","scope":"native install/upgrade/repair/uninstall/UAC/ACL/service/reboot recovery"},
+    {"id":"QD-035-002","status":"OPEN","area":"Windows Authenticode","evidence":"Production credential unavailable","nextPhase":"P36","scope":"certificate/timestamp/SmartScreen runtime verification"},
+    {"id":"QD-035-003","status":"OPEN","area":"Production update endpoint","evidence":"No live HTTPS service is fabricated","nextPhase":"P36","scope":"endpoint operations, CDN, redirect and interruption qualification"},
+    {"id":"QD-035-004","status":"OPEN","area":"Production key/HSM","evidence":"External credential reference required","nextPhase":"P36","scope":"protected signing runner/HSM ceremony"}
+  ]
+}
