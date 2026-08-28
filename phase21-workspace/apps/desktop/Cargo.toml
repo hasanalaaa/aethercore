@@ -16,6 +16,8 @@ aethercore-ipc = { path = "../../crates/ipc" }
 aethercore-update-engine = { path = "../../crates/update-engine" }
 aethercore-update-download = { path = "../../crates/update-download" }
 aethercore-support-bundle = { path = "../../crates/support-bundle" }
+# Phase 34 (Fleet): read-only inventory snapshot for the Fleet page.
+aethercore-fleet = { path = "../../crates/fleet" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

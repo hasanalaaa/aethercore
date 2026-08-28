@@ -106,6 +106,12 @@
       "version": "0.1.0"
     },
     {
+      "name": "aethercore-fleet",
+      "purl": "pkg:cargo/aethercore-fleet@0.1.0",
+      "type": "library",
+      "version": "0.1.0"
+    },
+    {
       "name": "aethercore-ga-probe",
       "purl": "pkg:cargo/aethercore-ga-probe@0.1.0",
       "type": "library",

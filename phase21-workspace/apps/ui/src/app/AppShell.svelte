@@ -24,6 +24,7 @@
   import TimelinePanel from '../features/timeline/TimelinePage.svelte';
   import CarePanel from '../features/care/CarePanel.svelte';
   import InsightsPanel from '../features/insights/InsightsPanel.svelte';
+  import FleetPage from '../features/fleet/FleetPage.svelte';
 
   let windowCleanup: WindowUxCleanup | undefined;
   let kernelCleanup: KernelSessionCleanup | undefined;
@@ -77,6 +78,7 @@
         {:else if $shellState.activePage === 'performance'}<PerformancePage />
         {:else if $shellState.activePage === 'hardware'}<HardwarePage />
         {:else if $shellState.activePage === 'crash'}<CrashPage />
+        {:else if $shellState.activePage === 'fleet'}<FleetPage />
         {:else if $shellState.activePage === 'activity'}
           <ActivityPage />
           <TimelinePanel />

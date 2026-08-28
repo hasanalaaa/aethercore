@@ -1,0 +1,30 @@
+{
+  "issues": [
+    {
+      "detail": "No disposable remote SSH host was available during the phase; GD live connection recorded honestly as NotAvailable. All transport semantics covered by deterministic tests.",
+      "id": "P34-I-001",
+      "severity": "info",
+      "title": "Live SSH target NotAvailable"
+    },
+    {
+      "detail": "Carried from Phase 33.1: SQL migrations are manifest-tracked but produce no graph nodes. Not a product defect.",
+      "id": "P34-I-002",
+      "severity": "low",
+      "title": "Graphify 0.9.50 lacks SQL schema extraction"
+    },
+    {
+      "detail": "Upstream graphify warning for workspace-virtual manifests; no symbols are missed in member crates.",
+      "id": "P34-I-003",
+      "severity": "low",
+      "title": "Root virtual Cargo.toml zero AST nodes"
+    },
+    {
+      "detail": "The provisional reconstruction prose had a stale file count. The corrective artifact now runs two independent cycles and proves raw_tree_total = scoped_tree_total + self_excluded_count (1071 = 1066 + 5), ledger_equals_comparison, and zero mismatches; all self-excluded paths are listed explicitly.",
+      "id": "P34-I-004",
+      "severity": "info",
+      "title": "Reconstruction count discrepancy resolved (transcription error)"
+    }
+  ],
+  "phase": 34,
+  "schema": "aethercore.phase34.issues.v1"
+}

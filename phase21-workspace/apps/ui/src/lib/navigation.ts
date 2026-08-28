@@ -1,8 +1,8 @@
 import type { MessageKey } from './i18n';
 
 /** Stable semantic route identifiers. Display labels live exclusively in the message catalogs. */
-export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity';
-export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'check' | 'warning' | 'service';
+export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'fleet';
+export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'check' | 'warning' | 'service' | 'fleet';
 
 export type NavigationItem = {
   id: PageId;
@@ -23,4 +23,5 @@ export const NAVIGATION: readonly NavigationItem[] = [
   { id: 'hardware', icon: 'hardware', labelKey: 'nav.hardware', descriptionKey: 'nav.hardwareDescription', shortcut: 'Ctrl+Shift+8' },
   { id: 'crash', icon: 'crash', labelKey: 'nav.crash', descriptionKey: 'nav.crashDescription', shortcut: 'Ctrl+Shift+9' },
   { id: 'activity', icon: 'activity', labelKey: 'nav.activity', descriptionKey: 'nav.activityDescription', shortcut: 'Ctrl+Shift+0' },
+  { id: 'fleet', icon: 'fleet', labelKey: 'nav.fleet', descriptionKey: 'nav.fleetDescription', shortcut: 'Ctrl+Shift+F' },
 ] as const;

@@ -31,6 +31,8 @@
     <path d="m5 12 4 4 10-10"/>
   {:else if name === 'warning'}
     <path d="M12 4 3.8 19h16.4L12 4Z"/><path d="M12 9v4M12 16.5v.1"/>
+  {:else if name === 'fleet'}
+    <rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 10h3.6l2.4 3v4h-3"/><circle cx="7.5" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/>
   {:else}
     <rect x="5" y="6" width="14" height="12" rx="3"/><path d="M8 10h8M8 14h8"/>
   {/if}

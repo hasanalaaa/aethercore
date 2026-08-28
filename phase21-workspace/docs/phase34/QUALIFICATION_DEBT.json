@@ -1,0 +1,62 @@
+{
+  "items": [
+    {
+      "area": "windows-openssh",
+      "detail": "ssh binary discovery, argv quoting and exit-code mapping are proven on macOS only. Windows OpenSSH (ssh.exe, path discovery, argv rules, stderr shapes) requires native qualification.",
+      "id": "QD-034-001",
+      "risk": "medium",
+      "status": "OPEN",
+      "title": "Windows OpenSSH availability/behavior qualification"
+    },
+    {
+      "area": "windows-credentials",
+      "detail": "ssh-agent and identity-file resolution behaviors on Windows are unqualified.",
+      "id": "QD-034-002",
+      "risk": "medium",
+      "status": "OPEN",
+      "title": "Windows credential/agent integration"
+    },
+    {
+      "area": "live-remote-roundtrip",
+      "detail": "No disposable SSH test target was available on the proof host; live network transport is covered by deterministic hermetic proofs only. A live round trip (both macOS->Linux and Windows) remains to be qualified.",
+      "id": "QD-034-003",
+      "risk": "medium",
+      "status": "OPEN",
+      "title": "Real remote-host round trip"
+    },
+    {
+      "area": "enterprise-ssh-ca",
+      "detail": "Certificate auth reference exists in the domain, but enterprise CA principals, principals= restrictions and KRLs are unqualified.",
+      "id": "QD-034-004",
+      "risk": "low",
+      "status": "OPEN",
+      "title": "Enterprise SSH certificates/CA environments"
+    },
+    {
+      "area": "fleet-scale",
+      "detail": "Inventory is conservatively capped at 256 hosts and concurrency at 16. Soak and scale qualification beyond lab sizes is deferred.",
+      "id": "QD-034-005",
+      "risk": "low",
+      "status": "OPEN",
+      "title": "Large-fleet scale/soak qualification"
+    },
+    {
+      "area": "background-scheduler-windows",
+      "detail": "Scheduling semantics are proven deterministically on macOS; a continuously running Windows scheduler service requires native qualification.",
+      "id": "QD-034-006",
+      "risk": "low",
+      "status": "OPEN",
+      "title": "Continuous background scheduling on Windows"
+    },
+    {
+      "area": "remote-remediation",
+      "detail": "Phase 34 is read-only by design. Any future remote mutation path requires its own adversarial phase with consent and rollback architecture.",
+      "id": "QD-034-007",
+      "risk": "low",
+      "status": "OPEN",
+      "title": "Remote remediation deliberately deferred"
+    }
+  ],
+  "phase": 34,
+  "schema": "aethercore.phase34.qualification-debt.v1"
+}

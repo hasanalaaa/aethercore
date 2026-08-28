@@ -567,8 +567,7 @@ mod phase33_tests {
             .expect("signature hex");
         let replacement = if signature.starts_with('0') { "1" } else { "0" };
         let tampered_hex = format!("{replacement}{}", &signature[1..]);
-        signature_tampered["signature"]["signature_hex"] =
-            serde_json::json!(tampered_hex);
+        signature_tampered["signature"]["signature_hex"] = serde_json::json!(tampered_hex);
         let signature_tampered_path = dir.join("signature-tampered.json");
         std::fs::write(
             &signature_tampered_path,

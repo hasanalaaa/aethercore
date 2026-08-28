@@ -48,6 +48,7 @@ members = [
   "tools/ga-probe",
   "crates/db-diagnostics",
   "crates/security-audit",
+  "crates/fleet",
 ]
 resolver = "3"
 

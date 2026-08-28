@@ -21,6 +21,8 @@ const MIGRATION_0011: &str =
 const MIGRATION_0012: &str = include_str!("../migrations/0012_phase18_driver_authority.sql");
 const MIGRATION_0013: &str = include_str!("../migrations/0013_phase19_windows_repair.sql");
 const MIGRATION_0014: &str = include_str!("../migrations/0014_phase22_care_orchestration.sql");
+/// Phase 34 — fleet & secure remote operations (additive tables only).
+const MIGRATION_0015: &str = include_str!("../migrations/0015_phase34_fleet.sql");
 
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "0001_init", MIGRATION_0001),
@@ -37,6 +39,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (12, "0012_phase18_driver_authority", MIGRATION_0012),
     (13, "0013_phase19_windows_repair", MIGRATION_0013),
     (14, "0014_phase22_care_orchestration", MIGRATION_0014),
+    (15, "0015_phase34_fleet", MIGRATION_0015),
 ];
 
 #[derive(Debug, Error)]
@@ -1777,6 +1780,251 @@ impl Database {
             .map_err(|_| PersistenceError::Poisoned)?;
         let count:i64=conn.query_row("SELECT COUNT(*) FROM plan_events e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? AND (e.event_kind LIKE '%recovery%' OR e.to_state='RecoveryRequired')",[owner_principal_key],|r|r.get(0))?;
         Ok(count.max(0).min(u32::MAX as i64) as u32)
+    }
+
+    // =====================================================================
+    // Phase 34 — Fleet & Secure Remote Operations (additive methods only).
+    // Persistence stores NON-SECRET fleet configuration and metadata only.
+    // There is no column or API that can store password, private-key body,
+    // passphrase or API key material — the audit gates check this.
+    // =====================================================================
+
+    /// Upserts one fleet host row from its strict-domain JSON serialization.
+    /// Phase 34 corrective: the JSON is parsed through the AUTHORITATIVE
+    /// strict `FleetHost` type (`deny_unknown_fields` + full re-validation),
+    /// and the DB columns are derived through an EXHAUSTIVE match on
+    /// `AuthReference`. Malformed or secret-shaped auth representations are
+    /// typed rejections — never silently defaulted to `"agent"`. Secrets are
+    /// structurally absent from that schema.
+    pub fn upsert_fleet_host(&self, host_json: &str, updated_unix_ms: i64) -> Result<()> {
+        let invalid = |message: String| {
+            PersistenceError::Sqlite(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, message),
+            )))
+        };
+        let host = aethercore_fleet::FleetHost::from_bytes(host_json.as_bytes())
+            .map_err(|error| invalid(format!("strict fleet host parse: {error}")))?;
+        let (auth_ref_kind, auth_ref_path) = match &host.auth {
+            aethercore_fleet::AuthReference::Agent => ("agent".to_string(), None),
+            aethercore_fleet::AuthReference::KeyFile { path } => {
+                ("key_file".to_string(), Some(path.clone()))
+            }
+            aethercore_fleet::AuthReference::Certificate { path } => {
+                ("certificate".to_string(), Some(path.clone()))
+            }
+        };
+        let (trusted_fingerprint, trusted_key_type, trusted_unix_ms): (
+            Option<String>,
+            Option<String>,
+            Option<i64>,
+        ) = match &host.trust {
+            Some(trust) => (
+                Some(trust.host_key_sha256.clone()),
+                Some(trust.key_type.clone()),
+                Some(trust.trusted_unix_ms),
+            ),
+            None => (None, None, None),
+        };
+        let tags_json =
+            serde_json::to_string(&host.tags.iter().collect::<std::collections::BTreeSet<_>>())
+                .map_err(|error| invalid(format!("tags serialize: {error}")))?;
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "INSERT INTO fleet_hosts (host_id, display_name, hostname, port, username, auth_ref_kind, auth_ref_path, trusted_fingerprint, trusted_key_type, trusted_unix_ms, enabled, tags_json, updated_unix_ms)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+             ON CONFLICT(host_id) DO UPDATE SET
+               display_name=excluded.display_name, hostname=excluded.hostname,
+               port=excluded.port, username=excluded.username,
+               auth_ref_kind=excluded.auth_ref_kind, auth_ref_path=excluded.auth_ref_path,
+               trusted_fingerprint=excluded.trusted_fingerprint,
+               trusted_key_type=excluded.trusted_key_type,
+               trusted_unix_ms=excluded.trusted_unix_ms,
+               enabled=excluded.enabled, tags_json=excluded.tags_json,
+               updated_unix_ms=excluded.updated_unix_ms",
+            rusqlite::params![
+                host.host_id,
+                host.display_name,
+                host.hostname,
+                i64::from(host.port),
+                host.username,
+                auth_ref_kind,
+                auth_ref_path,
+                trusted_fingerprint,
+                trusted_key_type,
+                trusted_unix_ms,
+                host.enabled,
+                tags_json,
+                updated_unix_ms
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Deletes a fleet host row (explicit administrative action).
+    pub fn delete_fleet_host(&self, host_id: &str) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute("DELETE FROM fleet_hosts WHERE host_id=?1", [host_id])?;
+        Ok(())
+    }
+
+    /// All fleet host rows as strict-domain JSON strings (deterministic order).
+    /// Phase 34 corrective: the auth columns are restored into the same typed
+    /// domain through an EXHAUSTIVE match — an unknown `auth_ref_kind` value
+    /// in the DB is a hard rejection, never a silent `"agent"` fallback.
+    pub fn fleet_hosts(&self) -> Result<Vec<String>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        let mut statement = conn.prepare(
+            "SELECT host_id, display_name, hostname, port, username, auth_ref_kind, auth_ref_path,
+                    trusted_fingerprint, trusted_key_type, trusted_unix_ms, enabled, tags_json
+             FROM fleet_hosts ORDER BY host_id ASC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let auth_ref_kind: String = row.get(5)?;
+            let auth_ref_path: Option<String> = row.get(6)?;
+            // Exhaustive typed restoration of AuthReference. Any auth_ref_kind
+            // outside the domain's three variants is a read-time rejection.
+            let auth_value = match (auth_ref_kind.as_str(), auth_ref_path) {
+                ("agent", None) => serde_json::json!("agent"),
+                ("key_file", Some(path)) => serde_json::json!({"key_file": {"path": path}}),
+                ("certificate", Some(path)) => {
+                    serde_json::json!({"certificate": {"path": path}})
+                }
+                // key_file/certificate without a path reference, an unexpected
+                // path with agent, or any unknown kind: rejected.
+                _ => {
+                    return Err(rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        format!("corrupt fleet row: unknown auth_ref_kind/auth_ref_path combination {auth_ref_kind:?}").into(),
+                    ))
+                }
+            };
+            let mut host = serde_json::json!({
+                "schema": "aethercore.fleet.host.v1",
+                "host_id": row.get::<_, String>(0)?,
+                "display_name": row.get::<_, String>(1)?,
+                "hostname": row.get::<_, String>(2)?,
+                "port": row.get::<_, i64>(3)?,
+                "username": row.get::<_, String>(4)?,
+                "auth": auth_value,
+                "enabled": row.get::<_, i64>(10)? != 0,
+                "tags": serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(11)?)
+                    .unwrap_or(serde_json::json!([])),
+            });
+            if let (Some(fp), Some(kt), Some(ts)) = (
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<i64>>(9)?,
+            ) {
+                host["trust"] = serde_json::json!({
+                    "host_key_sha256": fp, "key_type": kt, "trusted_unix_ms": ts,
+                });
+            }
+            Ok(host.to_string())
+        })?;
+        let mut hosts = Vec::new();
+        for row in rows {
+            hosts.push(row?);
+        }
+        Ok(hosts)
+    }
+
+    /// Upserts a fleet schedule row.
+    #[allow(clippy::too_many_arguments)]
+    pub fn upsert_fleet_schedule(
+        &self,
+        schedule_id: &str,
+        scope_json: &str,
+        profile_id: &str,
+        enabled: bool,
+        cadence_kind: &str,
+        cadence_value: i64,
+        next_run_unix_ms: i64,
+        last_result_json: Option<&str>,
+        updated_unix_ms: i64,
+    ) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "INSERT INTO fleet_schedules (schedule_id, scope_json, profile_id, enabled, cadence_kind, cadence_value, next_run_unix_ms, last_result_json, updated_unix_ms)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+             ON CONFLICT(schedule_id) DO UPDATE SET
+               scope_json=excluded.scope_json, profile_id=excluded.profile_id,
+               enabled=excluded.enabled, cadence_kind=excluded.cadence_kind,
+               cadence_value=excluded.cadence_value,
+               next_run_unix_ms=excluded.next_run_unix_ms,
+               last_result_json=excluded.last_result_json,
+               updated_unix_ms=excluded.updated_unix_ms",
+            rusqlite::params![
+                schedule_id,
+                scope_json,
+                profile_id,
+                enabled,
+                cadence_kind,
+                cadence_value,
+                next_run_unix_ms,
+                last_result_json,
+                updated_unix_ms
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_fleet_schedule(&self, schedule_id: &str) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "DELETE FROM fleet_schedules WHERE schedule_id=?1",
+            [schedule_id],
+        )?;
+        Ok(())
+    }
+
+    /// Appends one fleet run-history record; returns its sequence number.
+    /// History is append-only: failures update nothing here, they append.
+    #[allow(clippy::too_many_arguments)]
+    pub fn append_fleet_run(
+        &self,
+        schedule_id: Option<&str>,
+        trigger_kind: &str,
+        started_unix_ms: i64,
+        hosts_attempted: i64,
+        hosts_ok: i64,
+        hosts_failed: i64,
+        outcome_summary: &str,
+    ) -> Result<i64> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "INSERT INTO fleet_run_history (schedule_id, trigger_kind, started_unix_ms, finished_unix_ms, hosts_attempted, hosts_ok, hosts_failed, outcome_summary)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            rusqlite::params![
+                schedule_id,
+                trigger_kind,
+                started_unix_ms,
+                started_unix_ms,
+                hosts_attempted,
+                hosts_ok,
+                hosts_failed,
+                outcome_summary
+            ],
+        )?;
+        Ok(conn.last_insert_rowid())
     }
 }
 

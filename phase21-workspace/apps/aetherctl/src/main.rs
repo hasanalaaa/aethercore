@@ -8,6 +8,7 @@ mod cli;
 mod envelope;
 mod error;
 mod exit;
+mod fleet;
 pub mod i18n;
 mod offline;
 mod render;
@@ -46,5 +47,6 @@ fn dispatch(invocation: cli::Invocation) -> i32 {
     match invocation.command {
         cli::Command::Offline(job) => offline::run(&invocation.config, job),
         cli::Command::Service(job) => service_cmds::run(&invocation.config, job),
+        cli::Command::Fleet(job) => fleet::run(&invocation.config, job),
     }
 }

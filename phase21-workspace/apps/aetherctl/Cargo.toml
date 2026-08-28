@@ -29,6 +29,8 @@ aethercore-persistence = { path = "../../crates/persistence" }
 aethercore-db-diagnostics = { path = "../../crates/db-diagnostics" }
 # Phase 32 (T7): offline `sec` lanes consume the SAME audit crate as the service.
 aethercore-security-audit = { path = "../../crates/security-audit" }
+# Phase 34 (Fleet): typed fleet domain/transport/orchestrator/scheduler.
+aethercore-fleet = { path = "../../crates/fleet" }
 sha2.workspace = true
 thiserror.workspace = true
 # Phase 28 (owner-review waiver, audit allowlist): prost is the v7 wire codec shared with

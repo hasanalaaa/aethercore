@@ -17,10 +17,15 @@ serde.workspace = true
 # Phase 29 (T1, owner-review waiver): ed25519-dalek signs/verifies EXPORT_V1 digests —
 # local cryptography only, no network I/O. Keys are NEVER generated implicitly.
 ed25519-dalek.workspace = true
+# Phase 34 corrective: fleet host rows are parsed through the AUTHORITATIVE strict
+# domain type (FleetHost/AuthReference) instead of loose JSON field guessing. The
+# fleet crate is pure domain logic (no I/O, no network) — no dependency cycle.
+aethercore-fleet = { path = "../fleet" }
 
 [dev-dependencies]
 
 uuid.workspace = true
+tempfile = "3"
 
 
 criterion.workspace = true

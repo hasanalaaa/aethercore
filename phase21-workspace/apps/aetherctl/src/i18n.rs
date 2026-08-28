@@ -151,6 +151,15 @@ pub const KEYS: &[&str] = &[
     "sec.secrets.scanTruncated",
     "sec.cve.vulnerablePackage",
     "sec.cve.vulnerablePackage.plural",
+    // Phase 34: fleet surface.
+    "fleet.rejected",
+    "fleet.noHosts",
+    "fleet.unknownHost",
+    "fleet.unknownSchedule",
+    "fleet.unknownProfile",
+    "fleet.schedulesInvalid",
+    "fleet.scheduleRunDue",
+    "fleet.help",
 ];
 
 /// EN catalog — keyed by the same stable keys.
@@ -253,6 +262,16 @@ or `report`"
         "sec.secrets.scanTruncated" => "secrets scan hit its bounds; coverage partial",
         "sec.cve.vulnerablePackage" => "installed package matched a known CVE range",
         "sec.cve.vulnerablePackage.plural" => "installed packages matched known CVE ranges",
+        "fleet.rejected" => "fleet operation rejected",
+        "fleet.noHosts" => "no enabled hosts match the requested scope",
+        "fleet.unknownHost" => "unknown fleet host id",
+        "fleet.unknownSchedule" => "unknown fleet schedule id",
+        "fleet.unknownProfile" => "unknown compliance profile (expected cis-l1 or cis-l2)",
+        "fleet.schedulesInvalid" => "fleet schedules file is malformed",
+        "fleet.scheduleRunDue" => "executed due fleet schedules (read-only compliance)",
+        "fleet.help" => {
+            "fleet subcommands manage remote AetherCore hosts: add/list/show/remove inventory, trust pinning, read-only probe/audit/compliance and schedules"
+        }
         "compliance.profile.cisL1" => "CIS Level 1 compliance",
         "compliance.profile.cisL2" => "CIS Level 2 compliance",
         "compliance.help" => {
@@ -375,6 +394,16 @@ pub fn ar(key: &str) -> &'static str {
         "sec.secrets.scanTruncated" => "بلغ فحص الأسرار حدوده؛ التغطية جزئية",
         "sec.cve.vulnerablePackage" => "حزمة مثبتة تطابق نطاق CVE معروف",
         "sec.cve.vulnerablePackage.plural" => "حزم مثبتة تطابق نطاقات CVE معروفة",
+        "fleet.rejected" => "تم رفض عملية الأسطول",
+        "fleet.noHosts" => "لا يوجد مضيفون مفعّلون مطابقون للنطاق المطلوب",
+        "fleet.unknownHost" => "معرّف مضيف أسطول غير معروف",
+        "fleet.unknownSchedule" => "معرّف جدولة أسطول غير معروف",
+        "fleet.unknownProfile" => "ملف توافق غير معروف (المتوقع cis-l1 أو cis-l2)",
+        "fleet.schedulesInvalid" => "ملف جدولة الأسطول تالف",
+        "fleet.scheduleRunDue" => "تم تنفيذ جدولات الأسطول المستحقة (توافق للقراءة فقط)",
+        "fleet.help" => {
+            "تدير أوامر الأسطول المضيفين البعيدين لـ AetherCore: قائمة الجرد، تثبيت الثقة، الفحص/التدقيق/التوافق للقراءة فقط، والجدولة"
+        }
         "compliance.profile.cisL1" => "امتثال CIS المستوى 1",
         "compliance.profile.cisL2" => "امتثال CIS المستوى 2",
         "compliance.help" => {

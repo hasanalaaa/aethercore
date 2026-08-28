@@ -84,6 +84,8 @@ pub struct Invocation {
 pub enum Command {
     Offline(OfflineJob),
     Service(ServiceJob),
+    /// Phase 34: fleet management & secure remote operations.
+    Fleet(crate::fleet::FleetJob),
 }
 
 #[derive(Debug, Clone)]
@@ -1012,6 +1014,7 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                 }
             }
         }
+        "fleet" => parse_fleet(&mut cursor)?,
         other => {
             return Err(usage(
                 "cli.usage.unknownCommand",
@@ -1086,6 +1089,251 @@ fn parse_u32(cursor: &mut Cursor, flag: &str, min: u32, max: u32) -> Result<u32,
         ));
     }
     Ok(parsed)
+}
+
+/// Phase 34: parses `fleet <subcommand> ...` into typed FleetJob values.
+fn parse_fleet(cursor: &mut Cursor) -> Result<Command, CliError> {
+    use crate::fleet::FleetJob as F;
+    let sub = cursor.next().cloned().ok_or_else(|| {
+        usage(
+            "cli.usage.subcommandRequired",
+            "fleet requires a subcommand".to_string(),
+        )
+    })?;
+    let mut hosts_scope: Vec<String> = Vec::new();
+    let mut tags: Vec<String> = Vec::new();
+    let collect_scope = |hosts_scope: &mut Vec<String>, tags: &[String]| {
+        let mut scope: Vec<String> = hosts_scope.clone();
+        for tag in tags {
+            scope.push(format!("group:{tag}"));
+        }
+        scope
+    };
+    match sub.as_str() {
+        "add" => {
+            let mut host_id = String::new();
+            let mut display_name = String::new();
+            let mut hostname = String::new();
+            let mut port: u16 = 22;
+            let mut username = String::new();
+            let mut auth = aethercore_fleet::AuthReference::Agent;
+            while let Some(flag) = cursor.next() {
+                match flag.as_str() {
+                    "--id" => host_id = cursor.value_after("--id")?,
+                    "--name" => display_name = cursor.value_after("--name")?,
+                    "--host" => hostname = cursor.value_after("--host")?,
+                    "--port" => {
+                        let value = cursor.value_after("--port")?;
+                        port = value.parse().map_err(|_| {
+                            usage(
+                                "cli.usage.integerInvalid",
+                                format!("--port expects 1..=65535, got '{value}'"),
+                            )
+                        })?;
+                    }
+                    "--user" => username = cursor.value_after("--user")?,
+                    "--auth" => {
+                        let value = cursor.value_after("--auth")?;
+                        match value.as_str() {
+                            "agent" => auth = aethercore_fleet::AuthReference::Agent,
+                            "key" | "cert" => {
+                                let kind = value.clone();
+                                let path = cursor.value_after("--auth")?;
+                                // `--auth key --key-path <p>` preferred; also accept next value
+                                if path == "--key-path" {
+                                    let real = cursor.value_after("--key-path")?;
+                                    auth = if kind == "key" {
+                                        aethercore_fleet::AuthReference::KeyFile { path: real }
+                                    } else {
+                                        aethercore_fleet::AuthReference::Certificate { path: real }
+                                    };
+                                } else {
+                                    return Err(usage(
+                                        "cli.usage.flagNeedsValue",
+                                        "--auth key|cert requires --key-path <path>".to_string(),
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(usage(
+                                    "cli.usage.unknownFlag",
+                                    format!("--auth expects agent|key|cert, got '{other}'"),
+                                ));
+                            }
+                        }
+                    }
+                    "--key-path" => {
+                        return Err(usage(
+                            "cli.usage.flagNeedsValue",
+                            "--key-path requires --auth key|cert first".to_string(),
+                        ));
+                    }
+                    "--tag" => tags.push(cursor.value_after("--tag")?),
+                    other => return Err(unknown_flag(other)),
+                }
+            }
+            Ok(Command::Fleet(F::Add {
+                host_id,
+                display_name,
+                hostname,
+                port,
+                username,
+                auth,
+                tags,
+            }))
+        }
+        "list" => Ok(Command::Fleet(F::List)),
+        "show" | "remove" | "untrust" => {
+            let mut host_id = String::new();
+            while let Some(flag) = cursor.next() {
+                match flag.as_str() {
+                    "--id" => host_id = cursor.value_after("--id")?,
+                    other => return Err(unknown_flag(other)),
+                }
+            }
+            if host_id.is_empty() {
+                return Err(usage(
+                    "cli.usage.flagNeedsValue",
+                    format!("{sub} requires --id <hostId>"),
+                ));
+            }
+            Ok(Command::Fleet(match sub.as_str() {
+                "show" => F::Show { host_id },
+                "remove" => F::Remove { host_id },
+                _ => F::Untrust { host_id },
+            }))
+        }
+        "trust" => {
+            let mut host_id = String::new();
+            let mut fingerprint = String::new();
+            let mut key_type = String::from("ssh-ed25519");
+            let mut public_key_base64 = String::new();
+            while let Some(flag) = cursor.next() {
+                match flag.as_str() {
+                    "--id" => host_id = cursor.value_after("--id")?,
+                    "--fingerprint" => fingerprint = cursor.value_after("--fingerprint")?,
+                    "--key-type" => key_type = cursor.value_after("--key-type")?,
+                    "--public-key" => public_key_base64 = cursor.value_after("--public-key")?,
+                    other => return Err(unknown_flag(other)),
+                }
+            }
+            if host_id.is_empty() || fingerprint.is_empty() || public_key_base64.is_empty() {
+                return Err(usage(
+                    "cli.usage.flagNeedsValue",
+                    "trust requires --id <hostId> --fingerprint <sha256> --public-key <base64>"
+                        .to_string(),
+                ));
+            }
+            Ok(Command::Fleet(F::Trust {
+                host_id,
+                fingerprint,
+                key_type,
+                public_key_base64,
+            }))
+        }
+        "probe" | "audit" | "compliance" => {
+            let mut profile = String::from("cis-l1");
+            while let Some(flag) = cursor.peek().cloned() {
+                match flag.as_str() {
+                    "--host" => {
+                        cursor.next();
+                        hosts_scope.push(cursor.value_after("--host")?);
+                    }
+                    "--group" => {
+                        cursor.next();
+                        tags.push(cursor.value_after("--group")?);
+                    }
+                    "--profile" => {
+                        cursor.next();
+                        profile = cursor.value_after("--profile")?;
+                    }
+                    other => {
+                        if other.starts_with("--") {
+                            return Err(unknown_flag(other));
+                        }
+                        break;
+                    }
+                }
+            }
+            let scope = collect_scope(&mut hosts_scope, &tags);
+            Ok(Command::Fleet(match sub.as_str() {
+                "probe" => F::Probe { scope },
+                "audit" => F::Audit { scope },
+                _ => F::Compliance { scope, profile },
+            }))
+        }
+        "schedule" => {
+            let sched_sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.subcommandRequired",
+                    "fleet schedule requires add|list|remove|due|run-due".to_string(),
+                )
+            })?;
+            match sched_sub.as_str() {
+                "list" => Ok(Command::Fleet(F::ScheduleList)),
+                "due" => Ok(Command::Fleet(F::ScheduleDue)),
+                "run-due" => Ok(Command::Fleet(F::ScheduleRunDue)),
+                "add" => {
+                    let mut schedule_id = String::new();
+                    let mut profile = String::from("cis-l1");
+                    let mut every_hours: u32 = 24;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--id" => schedule_id = cursor.value_after("--id")?,
+                            "--profile" => profile = cursor.value_after("--profile")?,
+                            "--every-hours" => {
+                                let value = cursor.value_after("--every-hours")?;
+                                every_hours = value.parse().map_err(|_| {
+                                    usage(
+                                        "cli.usage.integerInvalid",
+                                        format!("--every-hours expects an integer, got '{value}'"),
+                                    )
+                                })?;
+                            }
+                            "--host" => {
+                                hosts_scope.push(cursor.value_after("--host")?);
+                            }
+                            "--group" => {
+                                tags.push(cursor.value_after("--group")?);
+                            }
+                            other => return Err(unknown_flag(other)),
+                        }
+                    }
+                    let scope = collect_scope(&mut hosts_scope, &tags);
+                    Ok(Command::Fleet(F::ScheduleAdd {
+                        schedule_id,
+                        scope,
+                        profile,
+                        every_hours,
+                    }))
+                }
+                "remove" => {
+                    let mut schedule_id = String::new();
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--id" => schedule_id = cursor.value_after("--id")?,
+                            other => return Err(unknown_flag(other)),
+                        }
+                    }
+                    if schedule_id.is_empty() {
+                        return Err(usage(
+                            "cli.usage.flagNeedsValue",
+                            "schedule remove requires --id <schedId>".to_string(),
+                        ));
+                    }
+                    Ok(Command::Fleet(F::ScheduleRemove { schedule_id }))
+                }
+                other => Err(usage(
+                    "cli.usage.unknownSubcommand",
+                    format!("unknown fleet schedule subcommand '{other}'"),
+                )),
+            }
+        }
+        other => Err(usage(
+            "cli.usage.unknownSubcommand",
+            format!("unknown fleet subcommand '{other}'"),
+        )),
+    }
 }
 
 #[cfg(test)]
