@@ -105,6 +105,20 @@ Two legitimate reasons a rebuild differs:
   recovery source for the working install.
 - Copy every piece of evidence to the Mac BEFORE any step that could need a
   restore. Snapshot restore is all-or-nothing; there is no incremental point.
+- **FILE TRANSFER IS SOLVED — do not use base64 chunking.** Parallels shares the
+  Mac's Desktop/Documents/Downloads. `prlctl exec` runs as SYSTEM, so the mapped
+  drive letters `Y:`/`Z:` are NOT visible, but the UNC path IS:
+  `\\Mac\Home\Documents\...`. Staging dir on the Mac:
+  `~/Documents/p36-stage/` -> `\\Mac\Home\Documents\p36-stage\`.
+  Read AND write both work from the VM. `prlctl exec` round trip is ~0.3 s.
+- **Never inline PowerShell inside a cmd string through zsh.** Quoting breaks in
+  three layers. Write a `.ps1` (or `.cmd`) into `~/Documents/p36-stage/` and
+  invoke it by UNC path. Helper: `~/Documents/p36-stage/vmr <name>` runs
+  `<name>.ps1` in the VM.
+- Long jobs: launch with `start "" /b cmd /c \\Mac\Home\...\job.cmd`. The
+  `prlctl exec` call will still block until its 2 min tool timeout and report a
+  timeout — that is expected and harmless; the job keeps running. Poll a
+  status file.
 
 ## 5. RULES
 
@@ -138,8 +152,8 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 | Gate | What it proves | Status | Evidence |
 |---|---|---|---|
 | Stage 0 | Session brain committed | PASS | this file, committed |
-| A1 | Recorded canonical build script | NOT-STARTED | |
-| A2 | Rebuild artifacts hashed + sized | NOT-STARTED | |
+| A1 | Recorded canonical build script | PASS | `phase21-workspace/scripts/build-arm64-msi.cmd`, committed |
+| A2 | Rebuild artifacts hashed + sized | IN-PROGRESS | target/release moved to `target/release-preA2-hold`; build running, log `C:\AetherCore-P36\logs\a2-build.log` |
 | A3 | wix build + validate, zero ICE | NOT-STARTED | |
 | A4 | Reinstall-vs-upgrade decision justified | NOT-STARTED | |
 | A5 | Install from realigned MSI verified | NOT-STARTED | |
@@ -162,3 +176,57 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 (one line per ~10 shell commands, naming the current gate)
 
 - cmd ~6 — Stage 0, writing session brain.
+- cmd ~20 — Gate A1, authoring canonical ARM64 build recipe.
+- cmd ~30 — Gate A2, full rebuild launched in VM background.
+
+## 9. FACTS ESTABLISHED THIS SESSION (do not re-derive)
+
+### ProductCode is a pure function of version + arch
+`scripts/build-installer.ps1` derives it as the first 16 bytes of
+`SHA256("AetherCore/MSI/ProductCode/v1" + "AetherCore/<version>/<arch>")`
+read as a .NET `Guid`. Verified:
+
+| version | arch | ProductCode |
+|---|---|---|
+| 0.1.0 | arm64 | `{FC8A3841-759D-B452-1864-161F84F56C03}` <- **the installed one** |
+| 0.1.0 | x64   | `{2D5CF2F8-EEFA-65EE-3780-E5A924AB1FB1}` |
+| 0.1.1 | arm64 | `{84140FFD-5CBC-175D-928D-E493493F5F51}` |
+| 0.2.0 | arm64 | `{4D5C3F4C-9607-B91A-3F9D-687552404614}` |
+
+Consequence (this IS the Gate A4 answer): a rebuild of 0.1.0 for arm64 has the
+IDENTICAL ProductCode and the IDENTICAL version, so Windows Installer cannot
+major-upgrade it. Realignment must be a same-version reinstall:
+`REINSTALL=ALL REINSTALLMODE=amus`. `MajorUpgrade` in Product.wxs does not set
+`AllowSameVersionUpgrades`, confirming same-version is not an upgrade path.
+Stage B4 bumps to 0.1.1, which yields a new ProductCode under the same
+UpgradeCode `{45598C77-2C32-5BCE-8510-19C7E51EE3B8}` and so is a true
+major upgrade with `Schedule="afterInstallInitialize"`.
+
+### The MSI payload is SEVEN files, and aetherctl.exe is NOT one of them
+`installer/wix/Product.wxs` authors exactly:
+`aethercore-desktop.exe`, `aethercore-consent-broker.exe`,
+`aethercore-update-broker.exe`, `aethercore-install-hardener.exe`,
+`aethercore-maintenance-service.exe`, `libomp140.aarch64.dll`,
+`update-trust.json`.
+
+`C:\Program Files\AetherCore` currently holds EIGHT files — those seven plus
+`aetherctl.exe` (3,611,136 B). **Observation recorded, not diagnosed:**
+`aetherctl.exe` is an unmanaged file hand-placed in INSTALLFOLDER. It is not in
+any MSI component, so no MSI action installs, repairs, or removes it. This
+matters for Stage A5 ("registered package and installed files agree"), for
+Stage B2 (uninstall will leave INSTALLFOLDER non-empty), and for B3 (a clean
+MSI-only install will NOT contain aetherctl, so verb exercising must invoke it
+from a path outside INSTALLFOLDER).
+
+### Toolchain / path facts
+- WiX: `dotnet tool run wix` -> `6.0.2+b3f3403` (pinned, restored).
+- libomp source on this VM (the ONLY copy under vs2022):
+  `C:\AetherCore-P36\toolchain\vs2022\VC\Redist\MSVC\14.44.35112\debug_nonredist\arm64\Microsoft.VC143.OpenMP.LLVM\libomp140.aarch64.dll`
+- `release/update-trust.template.json` is 83 bytes,
+  `{"schema":"aethercore.update-trust.v1","enabled":false,"channels":[]}`, and is
+  byte-identical to the installed `update-trust.json`. Update trust ships
+  DISABLED with ZERO channels — most of Gate D3 is already established.
+- `scripts/build-release.ps1` is x64-only and requires the signed dependency
+  freeze, the online supply-chain audit and an Authenticode signer. It cannot
+  run on this VM. `scripts/build-arm64-msi.cmd` is the ARM64 payload+package
+  equivalent.
