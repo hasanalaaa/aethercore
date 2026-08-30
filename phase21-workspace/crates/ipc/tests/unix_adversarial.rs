@@ -3,6 +3,8 @@
 //! Attacked here: stale socket path, permission-denied connect, oversized frame,
 //! mid-frame disconnect, live-socket stomp. Typed errors only; no panics.
 
+#![cfg(unix)]
+
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::time::Duration;

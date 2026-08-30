@@ -1,0 +1,11 @@
+{
+  "schema": "aethercore.phase18.1.source-integrity.v1",
+  "phase": "18.1",
+  "manifestAlgorithm": "SHA-256",
+  "manifestPath": "MANIFEST.sha256",
+  "manifestSelfExcluded": true,
+  "expectedManifestCoverage": "Every source file except MANIFEST.sha256 and .git metadata",
+  "binarySafePatchRequired": true,
+  "windowsQualified": false,
+  "manifestEntryCount": 551
+}

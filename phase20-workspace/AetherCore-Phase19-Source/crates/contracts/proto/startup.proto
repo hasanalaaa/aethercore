@@ -1,0 +1,101 @@
+syntax = "proto3";
+package aethercore.v1;
+
+import "common.proto";
+
+message StartStartupScanRequest {}
+message GetStartupSnapshotRequest {}
+message StartupDecisionInput { string item_id = 1; string decision = 2; }
+message CreateStartupPlanRequest {
+  string scan_id = 1;
+  uint64 inventory_epoch = 2;
+  repeated StartupDecisionInput decisions = 3;
+  bool confirm_service_changes = 4;
+}
+message StartStartupChangesRequest { string plan_id = 1; }
+message GetStartupStatusRequest { string plan_id = 1; }
+message GetStartupHistoryRequest { uint32 limit = 1; }
+message CreateStartupRestorePlanRequest { string change_id = 1; bool confirm_service_changes = 2; }
+message StartupSummaryInfo {
+  uint32 total = 1;
+  uint32 registry = 2;
+  uint32 startup_folders = 3;
+  uint32 scheduled_tasks = 4;
+  uint32 services = 5;
+  uint32 protected = 6;
+  uint32 manageable = 7;
+  uint32 high_impact = 8;
+}
+message StartupItemInfo {
+  string item_id = 1;
+  string kind = 2;
+  string scope = 3;
+  string display_name = 4;
+  string publisher = 5;
+  string command = 6;
+  string source = 7;
+  bool enabled = 8;
+  bool manageable = 9;
+  bool protected = 10;
+  string protection_reason = 11;
+  string impact = 12;
+  string confidence = 13;
+  string evidence_detail = 14;
+  string recommendation = 15;
+  bool service_change = 16;
+}
+message StartupSnapshot {
+  string scan_id = 1;
+  string state = 2;
+  uint64 inventory_epoch = 3;
+  int64 started_unix_ms = 4;
+  int64 completed_unix_ms = 5;
+  string error_message = 6;
+  StartupSummaryInfo summary = 7;
+  repeated StartupItemInfo items = 8;
+  repeated string warnings = 9;
+  DiscoveryState state_code = 10;
+}
+message StartupExecutionItemInfo {
+  string item_id = 1;
+  string display_name = 2;
+  string kind = 3;
+  string stage = 4;
+  string result_code = 5;
+  string detail = 6;
+}
+message StartupStatus {
+  string plan_id = 1;
+  string plan_state = 2;
+  string stage = 3;
+  bool progress_known = 4;
+  uint32 overall_percent = 5;
+  string current_item_id = 6;
+  string detail = 7;
+  bool mutation_started = 8;
+  bool recovery_required = 9;
+  string failure_message = 10;
+  int64 started_unix_ms = 11;
+  int64 updated_unix_ms = 12;
+  int64 completed_unix_ms = 13;
+  repeated StartupExecutionItemInfo items = 14;
+  OperationState state_code = 15;
+}
+message StartupHistoryEntryInfo {
+  string change_id = 1;
+  string origin_change_id = 2;
+  string plan_id = 3;
+  string item_id = 4;
+  string kind = 5;
+  string display_name = 6;
+  string direction = 7;
+  string state = 8;
+  string detail = 9;
+  int64 created_unix_ms = 10;
+  int64 updated_unix_ms = 11;
+  int64 restored_unix_ms = 12;
+  bool restorable = 13;
+}
+message StartupSnapshotResponse { StartupSnapshot snapshot = 1; }
+message StartupStatusResponse { StartupStatus status = 1; }
+message StartupHistoryResponse { repeated StartupHistoryEntryInfo entries = 1; }

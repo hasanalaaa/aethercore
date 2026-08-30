@@ -1,0 +1,11 @@
+{
+  "schema": "aethercore.phase19.binary-reconstruction-proof.v1",
+  "baseline": "Phase 18.1 supplied source bytes",
+  "patch": "Phase18.1-to-Phase19.binary.patch",
+  "sourceFileCount": 593,
+  "reconstructedFileCount": 593,
+  "missing": [],
+  "extra": [],
+  "mismatched": [],
+  "exactByteMatch": true
+}

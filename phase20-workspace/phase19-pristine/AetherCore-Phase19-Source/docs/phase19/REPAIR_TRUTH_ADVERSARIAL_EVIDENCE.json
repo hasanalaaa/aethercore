@@ -1,0 +1,58 @@
+{
+  "schema": "aethercore.phase19.repair-truth-adversarial.v1",
+  "phase": 19,
+  "method": "Read-only source/semantic adversarial inspection of the final working tree. Windows-native runtime attack execution remains qualification debt.",
+  "allPassed": true,
+  "checks": [
+    {
+      "id": "P19-TRUTH-001",
+      "attack": "Failed/unknown collector is labeled corruption",
+      "passed": true,
+      "evidence": [
+        "Unknown probe results remain unknown; PC Intelligence uses an explicit actionable result-code allowlist."
+      ]
+    },
+    {
+      "id": "P19-TRUTH-002",
+      "attack": "WUA offline is labeled update-store corruption",
+      "passed": true,
+      "evidence": [
+        "Explicit offline is a symptom; it does not create component-store corruption."
+      ]
+    },
+    {
+      "id": "P19-TRUTH-003",
+      "attack": "Mutation exit zero is treated as resolved",
+      "passed": true,
+      "evidence": [
+        "SucceededVerified is written only after evidence-specific verification."
+      ]
+    },
+    {
+      "id": "P19-TRUTH-004",
+      "attack": "Starting wuauserv is treated as Windows Update fixed",
+      "passed": true,
+      "evidence": [
+        "Service query and fresh WUA discovery are both required."
+      ]
+    },
+    {
+      "id": "P19-TRUTH-005",
+      "attack": "Filesystem scan is converted into physical disk failure",
+      "passed": true,
+      "evidence": [
+        "Filesystem and storage-hardware domains remain separate."
+      ]
+    },
+    {
+      "id": "P19-TRUTH-006",
+      "attack": "Interrupted repair is collapsed to generic failure/success",
+      "passed": true,
+      "evidence": [
+        "Interrupted state preserves mutation boundary and requires fresh review/verification."
+      ]
+    }
+  ],
+  "conclusion": "The checked source paths preserve Unknown, partial failure and verification authority instead of manufacturing diagnosis/success.",
+  "nativeWindowsQualified": false
+}

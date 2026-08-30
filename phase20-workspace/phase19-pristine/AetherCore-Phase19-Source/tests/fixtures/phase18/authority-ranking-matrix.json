@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "rows": [
+    {
+      "machine": "OEM",
+      "match": "ExactHardwareId",
+      "authority": "Oem",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "OEM",
+      "match": "ExactHardwareId",
+      "authority": "WindowsUpdate",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "OEM",
+      "match": "ExactHardwareId",
+      "authority": "ComponentVendor",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "OEM",
+      "match": "CompatibleId",
+      "authority": "Oem",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "OEM",
+      "match": "CompatibleId",
+      "authority": "WindowsUpdate",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "OEM",
+      "match": "CompatibleId",
+      "authority": "ComponentVendor",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "SelfBuilt",
+      "match": "ExactHardwareId",
+      "authority": "Oem",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "SelfBuilt",
+      "match": "ExactHardwareId",
+      "authority": "WindowsUpdate",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "SelfBuilt",
+      "match": "ExactHardwareId",
+      "authority": "ComponentVendor",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "SelfBuilt",
+      "match": "CompatibleId",
+      "authority": "Oem",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "SelfBuilt",
+      "match": "CompatibleId",
+      "authority": "WindowsUpdate",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "SelfBuilt",
+      "match": "CompatibleId",
+      "authority": "ComponentVendor",
+      "trust": "Trusted",
+      "firmware": false,
+      "invariant": "deterministic applicability/authority ordering; incompatible never recommended"
+    },
+    {
+      "machine": "OEM",
+      "match": "ExactHardwareId",
+      "authority": "Oem",
+      "trust": "Unsigned",
+      "firmware": false,
+      "invariant": "unsigned cannot outrank trusted candidate"
+    },
+    {
+      "machine": "Any",
+      "match": "ExactHardwareId",
+      "authority": "WindowsUpdate",
+      "trust": "WindowsManaged",
+      "firmware": true,
+      "invariant": "firmware excluded from generic Update All"
+    },
+    {
+      "machine": "Any",
+      "match": "Unknown",
+      "authority": "ManualOfficial",
+      "trust": "NotApplicable",
+      "firmware": false,
+      "invariant": "ManualOfficial cannot become DirectTrusted"
+    },
+    {
+      "machine": "Any",
+      "match": "ExactHardwareId",
+      "authority": "WindowsUpdate",
+      "trust": "WindowsManaged",
+      "firmware": false,
+      "coverage": "Partial",
+      "invariant": "provider failure cannot yield fully up-to-date claim"
+    }
+  ]
+}

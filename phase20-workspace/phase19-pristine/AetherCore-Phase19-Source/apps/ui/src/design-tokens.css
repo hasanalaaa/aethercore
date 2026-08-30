@@ -1,0 +1,119 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
+
+  --ac-font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --ac-font-text: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --ac-font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+
+  --ac-type-display: clamp(2rem, 2.6vw, 2.75rem);
+  --ac-type-title: clamp(1.375rem, 1.8vw, 1.75rem);
+  --ac-type-headline: 1rem;
+  --ac-type-body: 0.9375rem;
+  --ac-type-callout: 0.875rem;
+  --ac-type-caption: 0.8125rem;
+  --ac-type-technical: 0.75rem;
+
+  --ac-text-1: #f7f9fb;
+  --ac-text-2: #d2d9e0;
+  --ac-text-3: #a4afb9;
+  --ac-text-4: #788590;
+  --ac-text-inverse: #081018;
+
+  --ac-bg-base: #080c11;
+  --ac-bg-mica-fallback: rgba(10, 15, 21, 0.88);
+  --ac-material-structural: rgba(14, 20, 27, 0.74);
+  --ac-material-base: rgba(20, 28, 36, 0.68);
+  --ac-material-elevated: rgba(25, 34, 43, 0.76);
+  --ac-material-focused: rgba(22, 30, 39, 0.92);
+  --ac-layer-hover: rgba(255, 255, 255, 0.055);
+  --ac-layer-pressed: rgba(255, 255, 255, 0.09);
+  --ac-scrim: rgba(2, 5, 8, 0.58);
+
+  --ac-blur-structural: 28px;
+  --ac-blur-elevated: 34px;
+  --ac-blur-focused: 42px;
+  --ac-saturation: 135%;
+
+  --ac-border-subtle: rgba(255, 255, 255, 0.075);
+  --ac-border-default: rgba(255, 255, 255, 0.115);
+  --ac-border-strong: rgba(255, 255, 255, 0.18);
+  --ac-highlight: rgba(255, 255, 255, 0.085);
+
+  --ac-accent: #8ec5f5;
+  --ac-accent-strong: #c5e5ff;
+  --ac-accent-muted: rgba(92, 167, 224, 0.18);
+  --ac-positive: #83d5b2;
+  --ac-positive-muted: rgba(79, 176, 132, 0.16);
+  --ac-warning: #e8bd78;
+  --ac-warning-muted: rgba(220, 164, 77, 0.14);
+  --ac-danger: #ef9a9a;
+  --ac-danger-muted: rgba(218, 91, 91, 0.14);
+
+  --ac-radius-xs: 0.4375rem;
+  --ac-radius-sm: 0.625rem;
+  --ac-radius-md: 0.875rem;
+  --ac-radius-lg: 1.125rem;
+  --ac-radius-xl: 1.5rem;
+  --ac-radius-pill: 999px;
+
+  --ac-space-1: 0.25rem;
+  --ac-space-2: 0.5rem;
+  --ac-space-3: 0.75rem;
+  --ac-space-4: 1rem;
+  --ac-space-5: 1.25rem;
+  --ac-space-6: 1.5rem;
+  --ac-space-7: 2rem;
+  --ac-space-8: 2.5rem;
+  --ac-space-9: 3rem;
+  --ac-space-10: 4rem;
+
+  --ac-shadow-card: 0 1px 0 rgba(255,255,255,.035) inset, 0 18px 42px rgba(0,0,0,.18);
+  --ac-shadow-float: 0 28px 76px rgba(0,0,0,.46), 0 1px 0 rgba(255,255,255,.09) inset;
+  --ac-shadow-focus: 0 0 0 2px var(--ac-bg-base), 0 0 0 4px rgba(142,197,245,.86);
+
+  /* Motion timings remain for non-physical color/opacity state changes only. */
+  --ac-feedback-fast: 90ms;
+  --ac-feedback-normal: 140ms;
+  --ac-ease-state: cubic-bezier(.2,.8,.2,1);
+
+  --ac-sidebar-width: 15.5rem;
+  --ac-content-max: 95rem;
+  --ac-control-height: 2.5rem;
+  --ac-target-min: 2.5rem;
+  --ac-display-scale: 1;
+
+  --line: var(--ac-border-subtle);
+  --muted: var(--ac-text-3);
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --ac-border-subtle: rgba(255,255,255,.2);
+    --ac-border-default: rgba(255,255,255,.3);
+    --ac-border-strong: rgba(255,255,255,.48);
+    --ac-text-3: #c5cdd5;
+    --ac-text-4: #adb7c0;
+    --ac-material-base: rgba(12,18,24,.96);
+    --ac-material-elevated: rgba(14,21,28,.98);
+    --ac-material-focused: rgba(9,14,20,.99);
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --ac-material-structural: Canvas;
+    --ac-material-base: Canvas;
+    --ac-material-elevated: Canvas;
+    --ac-material-focused: Canvas;
+    --ac-text-1: CanvasText;
+    --ac-text-2: CanvasText;
+    --ac-text-3: GrayText;
+    --ac-border-subtle: ButtonBorder;
+    --ac-border-default: ButtonBorder;
+    --ac-accent: Highlight;
+  }
+}

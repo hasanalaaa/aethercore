@@ -1,0 +1,30 @@
+{
+  "schema": "aethercore.critical-coverage-policy.v1",
+  "metric": "llvm-cov line coverage on platform-neutral critical Rust modules",
+  "rationale": "Thresholds are deliberately below 100%; the gate targets security/state-machine boundaries and malformed/recovery branches without turning coverage into a vanity metric.",
+  "files": {
+    "crates/operation-engine/src/lib.rs": 85.0,
+    "crates/operation-kernel/src/mutation.rs": 90.0,
+    "crates/operation-kernel/src/cancellation.rs": 90.0,
+    "crates/operation-kernel/src/work_budget.rs": 90.0,
+    "crates/collector-runtime/src/lib.rs": 80.0,
+    "crates/ipc/src/lib.rs": 90.0,
+    "crates/update-engine/src/manifest.rs": 90.0,
+    "crates/support-bundle/src/lib.rs": 85.0,
+    "crates/idle-scheduler/src/policy.rs": 90.0
+  },
+  "required_test_markers": [
+    "consent_intent_is_principal_bound_and_one_shot",
+    "ordinary_transition_cannot_bypass_one_shot_authorization",
+    "duplicated_plan_columns_cannot_diverge_from_hashed_material",
+    "deterministic_malformed_frame_corpus_never_panics",
+    "signature_authenticates_exact_manifest_bytes_before_parse",
+    "preview_redacts_paths_accounts_serials_and_emails",
+    "poisoned_mutex_recovers_without_weakening_mutation_exclusion",
+    "poisoned_budget_mutex_recovers_and_preserves_capacity",
+    "poisoned_registry_mutex_recovers_without_rebinding_or_leaking_tokens",
+    "poisoned_commit_fence_mutex_recovers_with_single_publication_boundary",
+    "claim_reserves_intent_before_machine_lease_and_releases_reservation_on_busy",
+    "durable_execution_recovery_restores_installing_snapshot_and_release_identity"
+  ]
+}

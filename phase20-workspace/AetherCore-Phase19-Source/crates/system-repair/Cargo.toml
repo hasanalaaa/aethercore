@@ -1,0 +1,21 @@
+[package]
+name = "aethercore-system-repair"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+aethercore-operation-engine = { path = "../operation-engine" }
+aethercore-operation-kernel = { path = "../operation-kernel" }
+aethercore-persistence = { path = "../persistence" }
+aethercore-windows-update = { path = "../windows-update" }
+aethercore-windows-repair-intelligence = { path = "../windows-repair-intelligence" }
+serde_json.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+aethercore-windows-foundation = { path = "../windows-foundation" }
+windows.workspace = true

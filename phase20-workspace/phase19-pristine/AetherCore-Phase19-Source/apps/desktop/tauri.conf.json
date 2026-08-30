@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AetherCore",
+  "version": "0.1.0",
+  "identifier": "com.aethercore.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../ui dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm --dir ../ui build",
+    "frontendDist": "../ui/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "AetherCore",
+        "width": 1380,
+        "height": 880,
+        "minWidth": 900,
+        "minHeight": 560,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": true,
+        "center": true,
+        "theme": "Dark",
+        "noRedirectionBitmap": true,
+        "backgroundColor": "#00000000",
+        "windowEffects": {
+          "effects": [
+            "mica"
+          ]
+        },
+        "zoomHotkeysEnabled": true,
+        "scrollBarStyle": "fluentOverlay"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": [
+      "msi",
+      "nsis"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
+  }
+}

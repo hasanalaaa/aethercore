@@ -1,0 +1,12 @@
+# AetherCore Zenith Remaining Risks
+
+No finite audit justifies a claim of zero possible defects. Known residual items after this pass are:
+
+1. **Windows-native qualification is outstanding in this execution environment.** Rust/Win32/WebView2/PowerShell/WiX/signing tests must run on qualified Windows hosts before release claims.
+2. **Named-pipe endpoint hardening still needs installed-service proof.** Source now enforces service-SID ownership, service-SID-only server authority, unrestricted service-specific SID type, running own-process service state, first-instance startup, successor-before-handoff namespace continuity, exact non-generic AU rights and identification SQOS. `verify-maintenance-service-token.ps1` and `verify-ipc-pipe-security.ps1` are wired into enterprise stress, but neither has executed in this environment. Pre-squat/startup collision behavior, rapid disconnect/squatter races, accept-failure reclaim behavior, and live kernel DACL/owner evidence are mandatory. Runtime and probe both pin `GetSecurityInfo(SE_FILE_OBJECT, ...)`; successful owner/DACL retrieval through that exact contract must be proven on qualified Windows rather than replaced by an unverified object-type substitution. The probe rejects policy supersets rather than accepting minimum-rights containment.
+3. **Synchronous named-pipe cancellation still needs native timing proof.** Producer memory is bounded, teardown/backpressure now request cross-thread `CancelSynchronousIo`, reader/writer directions cross-cancel, and the client pump fences post-shutdown writes. Windows slow-peer/service-stop tests must prove retirement and leak behavior; overlapped I/O is the fallback if that evidence is insufficient.
+4. **Approved dependency freeze is not present in the supplied baseline.** `Cargo.lock`, `pnpm-lock.yaml`, and release freeze evidence must be generated/reviewed on the trusted dependency-freeze workstation; release workflows intentionally fail closed until then.
+5. **Visual/assistive-technology behavior requires physical qualification.** Source structure cannot prove Narrator announcements, WebView2 pointer edge cases, mixed DPI, high contrast, reduced transparency, Arabic font shaping, or refresh-rate smoothness.
+6. **Hardware/provider diversity remains empirical.** OEM NVMe/ATA/WMI/Event Log behavior cannot be proven by static source audit alone.
+
+These are qualification boundaries, not hidden PASS claims.

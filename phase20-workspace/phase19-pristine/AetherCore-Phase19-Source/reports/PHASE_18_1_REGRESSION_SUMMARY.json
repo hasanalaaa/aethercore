@@ -1,0 +1,46 @@
+{
+  "schema": "aethercore.phase18.1.regression-summary.v1",
+  "phase": "18.1",
+  "status": "PASS",
+  "sourceGates": {
+    "phase17": {
+      "status": "PASS",
+      "passedChecks": 24,
+      "notExecutedChecks": 3
+    },
+    "phase17_1": {
+      "status": "PASS",
+      "passedChecks": 22,
+      "notExecutedChecks": 3
+    },
+    "phase18": {
+      "status": "PASS",
+      "checkCount": 26
+    },
+    "phase18_1": {
+      "status": "PASS",
+      "checkCount": 28
+    },
+    "phase15SecurityRegression": {
+      "status": "PASS",
+      "checkCount": 106
+    },
+    "globalStaticValidation": {
+      "status": "PASS",
+      "checkCount": 342
+    }
+  },
+  "catalogParity": {
+    "enKeys": 1196,
+    "arKeys": 1196,
+    "exactParity": true
+  },
+  "hostExecution": {
+    "cargo": false,
+    "rustc": false,
+    "rustTests": "NOT_EXECUTED",
+    "windowsNativeQualification": "NOT_EXECUTED",
+    "windowsQualified": false
+  },
+  "claim": "Source semantic closure only; no Windows-native PASS is claimed."
+}

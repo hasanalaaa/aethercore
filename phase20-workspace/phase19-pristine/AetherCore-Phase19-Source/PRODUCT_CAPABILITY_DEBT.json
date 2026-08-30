@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "phase": 19,
+  "policy": "Product capability debt tracks intentionally deferred completeness work. It is separate from native QUALIFICATION_DEBT.json and must not be interpreted as a qualification result.",
+  "generatedFor": "PHASE_19_WINDOWS_REPAIR_INTELLIGENCE_SOURCE_COMPLETE",
+  "items": [
+    {
+      "capabilityId": "PCD-DRIVER-OFFICIAL-AUTOMATION",
+      "originPhase": "18.1",
+      "targetPhase": "Future driver completeness",
+      "capability": "Broader automated official OEM/component driver authorities",
+      "reason": "Phase 18.1 intentionally models many providers as ManualOfficial/official utility rather than fabricating unsupported direct adapters.",
+      "completionTruth": "Do not claim world-wide automated driver coverage until each additional official authority has an implemented, security-qualified provider path."
+    },
+    {
+      "capabilityId": "PCD-REPAIR-NETWORK-PROVIDER-DEPTH",
+      "originPhase": "19",
+      "targetPhase": "Future repair-provider depth",
+      "capability": "Additional structured DNS/DHCP/proxy/Winsock native collectors and narrowly supported repair authorities",
+      "reason": "Phase 19 models these domains and safety rules but deliberately does not ship broad reset/tweak fallbacks where authoritative root-cause evidence is unavailable.",
+      "completionTruth": "Add only supported typed providers/actions with native proof; never convert this debt into a generic network reset."
+    },
+    {
+      "capabilityId": "PCD-RECOVERY-OFFICIAL-AUTOMATION",
+      "originPhase": "19",
+      "targetPhase": "Future recovery integration",
+      "capability": "Broader official repair-reinstall/WinRE guided integration across Windows versions",
+      "reason": "Availability and safety differ by Windows version/configuration; destructive recovery remains guided rather than silently automated.",
+      "completionTruth": "Detect supported official paths per machine and retain Level 4/5 consent/data-safety boundaries."
+    },
+    {
+      "capabilityId": "PCD-PERFORMANCE-INTELLIGENCE",
+      "originPhase": "19 roadmap",
+      "targetPhase": "20",
+      "capability": "Performance Intelligence, bottleneck analysis and safe optimization engine",
+      "reason": "Explicitly outside Phase 19 responsibility.",
+      "completionTruth": "Keep performance symptoms separate from Windows corruption/repair findings."
+    },
+    {
+      "capabilityId": "PCD-TIMELINE-INTELLIGENCE",
+      "originPhase": "19 roadmap",
+      "targetPhase": "21",
+      "capability": "Full Timeline Intelligence UX and recurrence reasoning",
+      "reason": "Phase 19 persists structured repair events but intentionally does not build the full timeline product yet.",
+      "completionTruth": "Future timeline consumes issue/repair/reboot/verification/recurrence/escalation events without rewriting their historical truth."
+    },
+    {
+      "capabilityId": "PCD-ONE-CLICK-ORCHESTRATION",
+      "originPhase": "19 roadmap",
+      "targetPhase": "Future One-Click Care",
+      "capability": "Whole-PC one-click orchestration across safe auto and user-approved domains",
+      "reason": "Phase 19 explicitly rejects RunEveryRepairCommand and only builds diagnosis-linked sealed repair plans.",
+      "completionTruth": "Future orchestration may run only SAFE_AUTO plus explicitly approved dependent actions under shared mutation/recovery policy."
+    }
+  ]
+}

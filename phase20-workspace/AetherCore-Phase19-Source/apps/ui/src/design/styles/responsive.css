@@ -1,0 +1,25 @@
+@media (max-width: 73.75rem) {
+  :root { --ac-sidebar-width:13.25rem; }
+  .nav-copy small { display:none; }
+  .app-nav-item { min-height:2.75rem; }
+  main { padding-inline:1.5rem; }
+}
+@media (max-width: 63.75rem) {
+  :root { --ac-sidebar-width:4.75rem; }
+  .app-sidebar { padding-inline:.625rem; }
+  .brand-copy,.command-trigger span,.command-trigger kbd,.nav-copy,.sidebar-controls span,.service-copy,.service-version { display:none; }
+  .app-brand { justify-content:center; padding-inline:0; }
+  .command-trigger,.locale-button,.app-nav-item { grid-template-columns:1fr; justify-content:center; padding-inline:0; }
+  .app-service { grid-template-columns:1fr; justify-items:center; }
+  main { padding-inline:1.35rem; }
+}
+@media (forced-colors: active) {
+  .app-sidebar,.ac-fluid-dialog,.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.storage-card,.startup-card,.cleanup-card { background:Canvas; border:1px solid ButtonBorder; box-shadow:none; backdrop-filter:none; }
+  .ac-dialog-backdrop,.error-banner { backdrop-filter:none; -webkit-backdrop-filter:none; }
+  .primary,.install-button { background:ButtonFace; color:ButtonText; border:1px solid ButtonBorder; }
+  .app-nav-item.active { outline:2px solid Highlight; outline-offset:-2px; }
+}
+[dir="rtl"] .app-sidebar { box-shadow:inset 1px 0 rgba(255,255,255,.018); }
+[dir="rtl"] .evidence-list,[dir="rtl"] .triage-card ul { padding-inline-start:1.1rem; padding-inline-end:0; }
+
+[dir="rtl"] .safe-toggle input:checked+span:after { transform:translateX(-12px); }

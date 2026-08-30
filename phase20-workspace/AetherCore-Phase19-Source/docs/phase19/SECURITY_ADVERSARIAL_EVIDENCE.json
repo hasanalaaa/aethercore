@@ -1,0 +1,59 @@
+{
+  "schema": "aethercore.phase19.security-adversarial.v1",
+  "phase": 19,
+  "method": "Read-only source/semantic adversarial inspection of the final working tree. Windows-native runtime attack execution remains qualification debt.",
+  "allPassed": true,
+  "checks": [
+    {
+      "id": "P19-SEC-001",
+      "attack": "Renderer injects executable path or raw command",
+      "passed": true,
+      "evidence": [
+        "SystemRepairAction carries trusted repair_action_ids and sealed graph/state fields only.",
+        "windows_impl uses Command::new(exe) where exe is constructed from trusted System32 paths."
+      ]
+    },
+    {
+      "id": "P19-SEC-002",
+      "attack": "Renderer injects PowerShell",
+      "passed": true,
+      "evidence": [
+        "No PowerShell execution exists in the Phase 19 Windows repair runtime."
+      ]
+    },
+    {
+      "id": "P19-SEC-003",
+      "attack": "Renderer chooses arbitrary service mutation",
+      "passed": true,
+      "evidence": [
+        "Only fixed wuauserv authority is implemented in the supported service repair."
+      ]
+    },
+    {
+      "id": "P19-SEC-004",
+      "attack": "Plan is substituted after consent",
+      "passed": true,
+      "evidence": [
+        "Assessment/fingerprint/graph identity is revalidated before one-shot consent consumption."
+      ]
+    },
+    {
+      "id": "P19-SEC-005",
+      "attack": "Missing recovery protection is ignored",
+      "passed": true,
+      "evidence": [
+        "Execution-aware graph validation fails when an executable protected action lacks represented protection."
+      ]
+    },
+    {
+      "id": "P19-SEC-006",
+      "attack": "Action crosses a required reboot boundary automatically",
+      "passed": true,
+      "evidence": [
+        "Transitive dependency walk rejects auto-execution through a reboot barrier."
+      ]
+    }
+  ],
+  "conclusion": "All source-level command/service/plan/recovery/reboot substitution attacks checked here fail closed.",
+  "nativeWindowsQualified": false
+}

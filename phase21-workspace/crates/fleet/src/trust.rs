@@ -472,9 +472,18 @@ pub const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 pub fn ssh_binary() -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
+        // P36 (Hermes): on Windows the binary is ssh.exe; the extension-less
+        // check made ssh_binary() always None and broke honest detection.
         let candidate = dir.join("ssh");
         if candidate.is_file() {
             return Some(candidate);
+        }
+        #[cfg(windows)]
+        {
+            let candidate = dir.join("ssh.exe");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
     }
     None

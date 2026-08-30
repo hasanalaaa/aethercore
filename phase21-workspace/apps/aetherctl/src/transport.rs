@@ -422,6 +422,7 @@ impl ServiceClient {
                 .request(wire_request, self.timeout)
                 .map_err(|error| CliError::Rejected {
                     message_key: format!("cli.windowsLane.{error}"),
+                    detail: Some(error.to_string()),
                 })?;
             Ok(CallOutcome {
                 status_code: response.status_code,

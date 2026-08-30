@@ -14,22 +14,28 @@ mod care;
 mod composition;
 #[cfg(unix)]
 mod composition;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 mod errors;
 mod intelligence;
-#[cfg(unix)]
+// P36 (Hermes): router/protocol/streaming/performance are platform-neutral wire
+// mapping and routing modules. They were module-gated to unix in P31 when only the
+// unix composition consumed them; the Windows composition (composition.rs,
+// scheduler.rs, server.rs) references the same crate-root modules, so they must
+// compile on Windows too. Items that are genuinely unix-only inside them keep
+// their own #[cfg(unix)] gates.
+#[cfg(any(unix, windows))]
 mod performance;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 mod protocol;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 mod router;
 #[cfg(windows)]
 mod scheduler;
 #[cfg(windows)]
 mod server;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 mod streaming;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 mod support;
 mod timeline;
 // Phase 27/31: unix composition — the same router served over a UDS transport.
@@ -287,7 +293,8 @@ mod ctrlc_handler {
     use std::sync::OnceLock;
 
     use anyhow::Result;
-    use windows::Win32::{Foundation::BOOL, System::Console::SetConsoleCtrlHandler};
+    use windows::Win32::System::Console::SetConsoleCtrlHandler;
+    use windows::core::BOOL;
 
     static HANDLER: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
 

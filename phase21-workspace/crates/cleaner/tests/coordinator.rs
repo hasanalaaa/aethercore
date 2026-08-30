@@ -102,6 +102,13 @@ fn wait_scan(cleaner: &CleanupEngine) -> aethercore_cleaner::CleanupSnapshot {
 
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+/// P36 (Hermes): on Windows the machine-mutation lock is a real machine-wide
+/// file lock. Tests in this binary that drive cleanup to execution contend for
+/// it when the harness runs them in parallel threads, producing spurious
+/// MutationBusy failures. Serialize the execution-driving tests on a test-local
+/// mutex; this changes no product behavior and keeps the real lock semantics.
+static CLEANUP_EXECUTION_SERIALIZER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn authorize(engine: &OperationEngine, plan_id: &str, digest: &str) {
     let intent = engine.begin_consent_intent(plan_id, OWNER).expect("consent intent");
     engine.approve_consent_intent(&intent.intent_id, OWNER, 4242).expect("consent approval");
@@ -109,6 +116,7 @@ fn authorize(engine: &OperationEngine, plan_id: &str, digest: &str) {
 
 #[test]
 fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
+    let _serialized = CLEANUP_EXECUTION_SERIALIZER.lock().unwrap_or_else(|p| p.into_inner());
     let root = temp_root("partial");
     std::fs::create_dir_all(&root).expect("root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
@@ -155,6 +163,7 @@ fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
 
 #[test]
 fn cleanup_failure_after_deletion_barrier_requires_recovery_review() {
+    let _serialized = CLEANUP_EXECUTION_SERIALIZER.lock().unwrap_or_else(|p| p.into_inner());
     let root = temp_root("failure");
     std::fs::create_dir_all(&root).expect("root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));

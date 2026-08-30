@@ -11,7 +11,9 @@ use super::{
     CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform,
     PerfSnapshot, PowerSample, ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
 };
-use windows::Win32::System::Power::{CallNtPowerInformation, PROCESSOR_POWER_INFORMATION};
+use windows::Win32::System::Power::{
+    CallNtPowerInformation, POWER_INFORMATION_LEVEL, PROCESSOR_POWER_INFORMATION,
+};
 
 /// PDH function table loaded through delayed binding so a missing PDH DLL degrades into a
 /// typed fault rather than a load failure of the service binary.
@@ -19,7 +21,7 @@ mod pdh {
     use windows::core::{PCWSTR, PWSTR};
 
     #[link(name = "pdh")]
-    extern "system" {
+    unsafe extern "system" {
         pub fn PdhOpenQueryW(datasource: PCWSTR, userdata: usize, query: *mut isize) -> i32;
         pub fn PdhCloseQuery(query: isize) -> i32;
         pub fn PdhAddEnglishCounterW(
@@ -35,6 +37,9 @@ mod pdh {
             lptype: *mut u32,
             value: *mut i64,
         ) -> i32;
+        // P36 (Hermes): the WW spelling does not exist in pdh.dll; bind the
+        // real export PdhExpandWildCardPathW (single W) to fix LNK2019 on ARM64.
+        #[link_name = "PdhExpandWildCardPathW"]
         pub fn PdhExpandWildCardPathWW(
             szsearchpath: PCWSTR,
             psearchresultlist: *mut PWSTR,
@@ -42,7 +47,7 @@ mod pdh {
         ) -> i32;
     }
 
-    pub const PDH_MORE_DATA: i32 = 0x8000_07D2;
+    pub const PDH_MORE_DATA: i32 = 0x8000_07D2u32 as i32;
     /// PERF_SIZE_LARGE | PERF_TYPE_NUMBER (u64 formatted value).
     pub const PDH_FMT_LARGE: u32 = 0x0000_0400;
 }
@@ -58,7 +63,7 @@ impl QueryHandle {
     fn open() -> Option<Self> {
         let mut handle = 0isize;
         unsafe {
-            if pdh_ok(pdh::PdhOpenQueryW(None, 0, &mut handle)) {
+            if pdh_ok(pdh::PdhOpenQueryW(windows::core::PCWSTR::null(), 0, &mut handle)) {
                 Some(Self(handle))
             } else {
                 None
@@ -191,7 +196,7 @@ fn sample_power(faults: &mut Vec<CollectorFault>) -> PowerSample {
         buffer.resize(buffer_len, 0);
         let status = unsafe {
             CallNtPowerInformation(
-                11, // ProcessorInformation
+                POWER_INFORMATION_LEVEL(11), // ProcessorInformation
                 None,
                 0,
                 Some(buffer.as_mut_ptr().cast()),
@@ -357,10 +362,10 @@ fn sample_storage(faults: &mut Vec<CollectorFault>) -> Vec<StorageQueueSample> {
     // Walk the double-NUL-terminated list.
     let mut cursor = 0usize;
     while cursor < buffer.len() {
-        let end = buffer[cursor..]
-            .iter()
-            .position(|c| *c == 0)
-            .map(|p| cursor + p)?;
+        let Some(end_rel) = buffer[cursor..].iter().position(|c| *c == 0) else {
+            break;
+        };
+        let end = cursor + end_rel;
         let instance = String::from_utf16_lossy(&buffer[cursor..end]);
         if instance.is_empty() {
             break;

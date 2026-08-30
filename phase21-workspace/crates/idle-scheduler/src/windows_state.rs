@@ -24,10 +24,10 @@ use windows::{
                 System::{
             Com::{
                 CoCreateInstance, CoSetProxyBlanket, CLSCTX_ALL, CLSCTX_INPROC_SERVER, EOAC_NONE,
-                RPC_C_AUTHN_LEVEL_CALL, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE,
-                RPC_C_IMP_LEVEL_IMPERSONATE,
+                RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
             },
             Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS},
+            Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
             Variant::VARIANT,
             Wmi::{IWbemClassObject, IWbemLocator, IWbemServices, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY, WBEM_S_FALSE, WBEM_S_TIMEDOUT, WbemLocator},
             RemoteDesktop::{

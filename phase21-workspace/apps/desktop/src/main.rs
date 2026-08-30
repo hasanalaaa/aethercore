@@ -175,6 +175,13 @@ fn normalize_event(event: v1::EventEnvelope) -> UiKernelEvent {
         }
         Some(Payload::CareStatus(v)) => ("careStatus", serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::Insights(v)) => ("insights", serde_json::to_value(v).unwrap_or_default()),
+        Some(Payload::PlatformCapabilities(v)) => (
+            "platformCapabilities",
+            serde_json::to_value(v).unwrap_or_default(),
+        ),
+        Some(Payload::SecurityAudit(v)) => {
+            ("securityAudit", serde_json::to_value(v).unwrap_or_default())
+        }
         None => ("unknown", serde_json::Value::Null),
     };
     UiKernelEvent {

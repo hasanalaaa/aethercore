@@ -1,0 +1,326 @@
+{
+  "schema": "aethercore.phase19.source-audit.v1",
+  "phase": 19,
+  "status": "PASS",
+  "checkCount": 35,
+  "passedChecks": 35,
+  "failedChecks": 0,
+  "checks": [
+    {
+      "id": "P19-ARCH-001",
+      "ok": true,
+      "detail": "Phase 19 domain, runtime, persistence, UI and debt surfaces present",
+      "evidence": [
+        "crates/windows-repair-intelligence/Cargo.toml",
+        "crates/windows-repair-intelligence/src/model.rs",
+        "crates/windows-repair-intelligence/src/diagnosis.rs",
+        "crates/windows-repair-intelligence/src/graph.rs",
+        "crates/windows-repair-intelligence/src/planner.rs",
+        "crates/windows-repair-intelligence/tests/synthetic_lab.rs",
+        "crates/system-repair/src/dism_api.rs",
+        "crates/system-repair/src/windows_impl.rs",
+        "crates/persistence/migrations/0013_phase19_windows_repair.sql",
+        "apps/ui/src/features/repair/RepairPage.svelte",
+        "PRODUCT_CAPABILITY_DEBT.json",
+        "QUALIFICATION_DEBT.json"
+      ]
+    },
+    {
+      "id": "P19-ARCH-002",
+      "ok": true,
+      "detail": "workspace includes the Windows repair intelligence domain",
+      "evidence": [
+        "Cargo.toml"
+      ]
+    },
+    {
+      "id": "P19-FACT-001",
+      "ok": true,
+      "detail": "typed Windows repair facts replace string-only domain state",
+      "evidence": [
+        "crates/windows-repair-intelligence/src/model.rs"
+      ]
+    },
+    {
+      "id": "P19-DIAG-001",
+      "ok": true,
+      "detail": "root/contributing/symptom roles and diagnosis confidence are typed",
+      "evidence": [
+        "crates/windows-repair-intelligence/src/model.rs"
+      ]
+    },
+    {
+      "id": "P19-DIAG-002",
+      "ok": true,
+      "detail": "diagnosis rules distinguish evidence-backed causes from unknown/offline symptoms",
+      "evidence": [
+        "crates/windows-repair-intelligence/src/diagnosis.rs"
+      ]
+    },
+    {
+      "id": "P19-GRAPH-001",
+      "ok": true,
+      "detail": "RepairGraph validates dependencies/cycles and produces deterministic order",
+      "evidence": [
+        "crates/windows-repair-intelligence/src/graph.rs"
+      ]
+    },
+    {
+      "id": "P19-GRAPH-002",
+      "ok": true,
+      "detail": "destructive recovery cannot become SAFE_AUTO",
+      "evidence": [
+        "crates/windows-repair-intelligence/src/graph.rs"
+      ]
+    },
+    {
+      "id": "P19-SAFE-001",
+      "ok": true,
+      "detail": "all six Phase 19 safety tiers exist",
+      "evidence": [
+        "crates/windows-repair-intelligence/src/model.rs"
+      ]
+    },
+    {
+      "id": "P19-SAFE-002",
+      "ok": true,
+      "detail": "generic tweak/destructive repair bundles absent from Phase 19 runtime",
+      "evidence": [
+        "crates/system-repair/src/lib.rs",
+        "crates/system-repair/src/windows_impl.rs"
+      ]
+    },
+    {
+      "id": "P19-CMD-001",
+      "ok": true,
+      "detail": "repair command execution uses trusted executable paths, argument arrays, timeout and bounded output; no generic shell",
+      "evidence": [
+        "crates/system-repair/src/windows_impl.rs"
+      ]
+    },
+    {
+      "id": "P19-DISM-001",
+      "ok": true,
+      "detail": "component-store state uses DISM API health state rather than localized console prose",
+      "evidence": [
+        "crates/system-repair/src/dism_api.rs"
+      ]
+    },
+    {
+      "id": "P19-SFC-001",
+      "ok": true,
+      "detail": "SFC normalization isolates bounded CBS evidence and fails to Unknown when proof is insufficient",
+      "evidence": [
+        "crates/system-repair/src/windows_impl.rs"
+      ]
+    },
+    {
+      "id": "P19-WUA-001",
+      "ok": true,
+      "detail": "Windows Update health uses WUA discovery and narrowly classifies explicit no-connection as offline",
+      "evidence": [
+        "crates/windows-update/src/windows_impl.rs"
+      ]
+    },
+    {
+      "id": "P19-SVC-001",
+      "ok": true,
+      "detail": "service repair is diagnosis-scoped to trusted server-side wuauserv authority",
+      "evidence": [
+        "crates/system-repair/src/windows_impl.rs"
+      ]
+    },
+    {
+      "id": "P19-PLAN-001",
+      "ok": true,
+      "detail": "sealed operation action carries graph identity, state fingerprint, safety and reboot boundaries",
+      "evidence": [
+        "crates/operation-engine/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P19-PLAN-002",
+      "ok": true,
+      "detail": "sensitive execution revalidates assessment/fingerprint/graph before authorization consumption",
+      "evidence": [
+        "crates/system-repair/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P19-MUT-001",
+      "ok": true,
+      "detail": "repair mutations integrate process-wide MutationSupervisor lease and machine mutation guard",
+      "evidence": [
+        "crates/system-repair/src/lib.rs",
+        "crates/system-repair/src/windows_impl.rs"
+      ]
+    },
+    {
+      "id": "P19-VERIFY-001",
+      "ok": true,
+      "detail": "successful mutation cannot resolve truth without evidence-specific verification",
+      "evidence": [
+        "crates/system-repair/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P19-PROGRESS-001",
+      "ok": true,
+      "detail": "active Windows repair progress is task/state driven and indeterminate; no synthetic percent is presented as known",
+      "evidence": [
+        "crates/system-repair/src/lib.rs",
+        "apps/ui/src/features/repair/RepairPage.svelte"
+      ]
+    },
+    {
+      "id": "P19-OUTCOME-001",
+      "ok": true,
+      "detail": "precise repair outcome taxonomy exists",
+      "evidence": [
+        "crates/windows-repair-intelligence/src/model.rs"
+      ]
+    },
+    {
+      "id": "P19-JOURNAL-001",
+      "ok": true,
+      "detail": "repair journal and reboot-reassessment ticket persistence are source-backed",
+      "evidence": [
+        "crates/persistence/migrations/0013_phase19_windows_repair.sql",
+        "crates/system-repair/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P19-REBOOT-001",
+      "ok": true,
+      "detail": "reboot is a first-class barrier and persisted resume token requires fresh reassessment",
+      "evidence": [
+        "crates/windows-repair-intelligence/src/lib.rs",
+        "crates/system-repair/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P19-RESTART-001",
+      "ok": true,
+      "detail": "service restart recovery never blindly replays a repair",
+      "evidence": [
+        "crates/system-repair/src/lib.rs"
+      ]
+    },
+    {
+      "id": "P19-PCINTEL-001",
+      "ok": true,
+      "detail": "Deep Scan no longer turns an unavailable/unknown repair probe into generic corruption",
+      "evidence": [
+        "crates/pc-intelligence/src/normalize.rs",
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P19-IPC-001",
+      "ok": true,
+      "detail": "typed repair intelligence crosses IPC rather than being re-inferred in renderer",
+      "evidence": [
+        "crates/contracts/proto/repair.proto",
+        "services/maintenance-service/src/protocol.rs"
+      ]
+    },
+    {
+      "id": "P19-UI-001",
+      "ok": true,
+      "detail": "Repair surface is localized Windows Health UI driven by service truth",
+      "evidence": [
+        "apps/ui/src/features/repair/RepairPage.svelte"
+      ]
+    },
+    {
+      "id": "P19-UI-002",
+      "ok": true,
+      "detail": "review UI exposes only runtime-authorized graph actions and respects reboot barriers",
+      "evidence": [
+        "apps/ui/src/features/repair/RepairPage.svelte",
+        "apps/ui/src/app/PlanDialogs.svelte"
+      ]
+    },
+    {
+      "id": "P19-DESIGN-001",
+      "ok": true,
+      "detail": "Apple-design input feedback and reduced motion/transparency/contrast accommodations remain source-backed",
+      "evidence": [
+        "apps/ui/src/design/motion/fluid-press.ts",
+        "apps/ui/src/design/styles/feature-layout.css"
+      ]
+    },
+    {
+      "id": "P19-I18N-001",
+      "ok": true,
+      "detail": "EN/AR exact key parity=True; total=1289; repair keys=130",
+      "evidence": [
+        "apps/ui/src/lib/i18n/catalog.en.ts",
+        "apps/ui/src/lib/i18n/catalog.ar.ts"
+      ]
+    },
+    {
+      "id": "P19-LAB-001",
+      "ok": true,
+      "detail": "P19-01..P19-24 source scenarios present; tests=33; missing=[]",
+      "evidence": [
+        "crates/windows-repair-intelligence/tests/synthetic_lab.rs"
+      ]
+    },
+    {
+      "id": "P19-LAB-002",
+      "ok": true,
+      "detail": "required graph/truth/safety invariants are source-backed",
+      "evidence": [
+        "crates/windows-repair-intelligence/tests/synthetic_lab.rs"
+      ]
+    },
+    {
+      "id": "P19-DEBT-001",
+      "ok": true,
+      "detail": "Phase 19 native qualification debt explicitly retained",
+      "evidence": [
+        "QUALIFICATION_DEBT.json"
+      ]
+    },
+    {
+      "id": "P19-DEBT-002",
+      "ok": true,
+      "detail": "product capability debt is separate and preserves driver automation/performance work",
+      "evidence": [
+        "PRODUCT_CAPABILITY_DEBT.json"
+      ]
+    },
+    {
+      "id": "P19-EVIDENCE-001",
+      "ok": true,
+      "detail": "static/Phase17/Phase17.1 verification gates are read-only by default",
+      "evidence": [
+        "scripts/static_validate.py",
+        "scripts/phase17-intelligence-audit.py",
+        "scripts/phase17_1-integrity-audit.py"
+      ]
+    },
+    {
+      "id": "P19-QUALITY-001",
+      "ok": true,
+      "detail": "no TODO/FIXME/HACK in Phase19 production/audit scope; found=[]",
+      "evidence": [
+        "crates/windows-repair-intelligence",
+        "crates/system-repair/src/dism_api.rs",
+        "crates/system-repair/src/windows_impl.rs"
+      ]
+    }
+  ],
+  "execution": {
+    "cargoAvailable": false,
+    "rustcAvailable": false,
+    "svelteCheckInstalled": false,
+    "sourceSemanticAudit": true,
+    "nativeWindowsQualified": false
+  },
+  "limitations": [
+    "Cargo/Rust tests cannot execute when cargo/rustc are absent.",
+    "Live DISM/SFC/WUA/service/network/recovery/reboot behavior and WebView2/Narrator remain native qualification debt."
+  ]
+}

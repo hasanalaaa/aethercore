@@ -1,0 +1,23 @@
+[package]
+name = "aethercore-pc-intelligence"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+aethercore-collector-runtime = { path = "../collector-runtime" }
+aethercore-cleaner = { path = "../cleaner" }
+aethercore-diagnostic-engine = { path = "../diagnostic-engine" }
+aethercore-driver-hub = { path = "../driver-hub" }
+aethercore-operation-kernel = { path = "../operation-kernel" }
+aethercore-persistence = { path = "../persistence" }
+aethercore-startup-manager = { path = "../startup-manager" }
+aethercore-system-repair = { path = "../system-repair" }
+aethercore-update-engine = { path = "../update-engine" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true

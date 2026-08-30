@@ -11,10 +11,11 @@ use windows::{
         Foundation::E_ACCESSDENIED,
         Storage::FileSystem::{CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING},
         System::{
-            Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoSetProxyBlanket, EOAC_NONE, RPC_C_AUTHN_LEVEL_CALL, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, RPC_C_IMP_LEVEL_IMPERSONATE},
+            Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoSetProxyBlanket, EOAC_NONE, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE},
             IO::DeviceIoControl,
             Ioctl::{IDEREGS, IOCTL_STORAGE_QUERY_PROPERTY, READ_ATTRIBUTES, SENDCMDINPARAMS, SENDCMDOUTPARAMS, SMART_CMD, SMART_CYL_HI, SMART_CYL_LOW, SMART_RCV_DRIVE_DATA, STORAGE_PROPERTY_QUERY, STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA, StorageDeviceProtocolSpecificProperty, PropertyStandardQuery, ProtocolTypeNvme},
-            Memory::{GlobalMemoryStatusEx, MEMORYSTATUSEX},
+            Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
+            SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX},
             Variant::VARIANT,
             Wmi::{IWbemLocator, IWbemServices, WBEM_E_ACCESS_DENIED, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY, WBEM_S_FALSE, WBEM_S_TIMEDOUT, WbemLocator},
         },
@@ -23,7 +24,7 @@ use windows::{
 };
 
 use crate::{
-    HardwareTelemetrySnapshot, MemoryTelemetry, NvmeHealthValues, Result, StorageDeviceTelemetry,
+    AtaSmartAttribute, HardwareTelemetrySnapshot, MemoryTelemetry, NvmeHealthValues, Result, StorageDeviceTelemetry,
     StorageReliability, TelemetryError, checked_protocol_window, classify_memory_pressure,
     classify_storage, parse_ata_driver_response, parse_nvme_health_log,
 };
@@ -340,7 +341,7 @@ fn get_variant(o: &windows::Win32::System::Wmi::IWbemClassObject, name: &str) ->
     Some(value)
 }
 fn prop_string(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<String> { BSTR::try_from(&get_variant(o,n)?).ok().map(|v| v.to_string()) }
-fn prop_u8(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<u8> { u8::try_from(&get_variant(o,n)?).ok().or_else(|| u16::try_from(&get_variant(o,n)?).ok().and_then(|v|u8::try_from(v).ok())) }
+fn prop_u8(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<u8> { u16::try_from(&get_variant(o,n)?).ok().and_then(|v|u8::try_from(v).ok()) }
 fn prop_u16(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<u16> { u16::try_from(&get_variant(o,n)?).ok().or_else(|| u32::try_from(&get_variant(o,n)?).ok().and_then(|v|u16::try_from(v).ok())) }
 fn prop_u64(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<u64> { u64::try_from(&get_variant(o,n)?).ok().or_else(|| u32::try_from(&get_variant(o,n)?).ok().map(u64::from)) }
 

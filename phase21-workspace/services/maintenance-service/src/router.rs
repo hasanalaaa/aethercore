@@ -1668,7 +1668,8 @@ fn is_safe_request_id(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b':'))
 }
 
-#[cfg(unix)]
+// P36 (Hermes): broker authorization gates are platform-neutral trust checks over
+// PrincipalContext; the named-pipe transport enforces the same broker contract.
 fn require_broker(
     peer: &aethercore_security::PrincipalContext,
 ) -> std::result::Result<(), ServiceError> {
@@ -1692,7 +1693,6 @@ fn require_broker(
     Ok(())
 }
 
-#[cfg(unix)]
 fn expected_broker_path() -> Result<PathBuf> {
     let service = std::env::current_exe().context("resolve service executable path")?;
     let dir = service
@@ -1701,7 +1701,6 @@ fn expected_broker_path() -> Result<PathBuf> {
     Ok(dir.join("aethercore-consent-broker.exe"))
 }
 
-#[cfg(unix)]
 fn require_update_broker(
     peer: &aethercore_security::PrincipalContext,
 ) -> std::result::Result<(), ServiceError> {
@@ -1720,7 +1719,6 @@ fn require_update_broker(
     }
     Ok(())
 }
-#[cfg(unix)]
 fn expected_update_broker_path() -> Result<PathBuf> {
     let service = std::env::current_exe().context("resolve service executable path")?;
     let dir = service

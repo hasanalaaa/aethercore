@@ -213,12 +213,20 @@ fn reset_acl_tree(exe: &Path, root: &Path) -> anyhow::Result<()> {
 
 #[cfg(windows)]
 fn run_icacls(exe: &Path, root: &Path, grants: &[&str]) -> anyhow::Result<()> {
+    // P36 Tranche 1 defect fix (Hermes): /T must NOT be combined with /inheritance:r +
+    // (OI)(CI) grants. With /T, icacls applies the full argument set to every descendant:
+    // on FILES, /inheritance:r leaves a protected empty DACL (D:PAI) and the (OI)(CI)
+    // grant silently no-ops (inheritance flags are invalid on files), leaving critical
+    // executables unreadable even to SYSTEM — the service then fails to start
+    // (SCM access denied, MSI Error 1920). Without /T, the directory-level (OI)(CI)
+    // ACEs propagate to every inheritable child (the preceding reset_acl_tree pass has
+    // already restored all children to pure inheritance), which is the declared policy.
     let mut command = Command::new(exe);
     command.arg(root).arg("/inheritance:r").arg("/grant:r");
     for grant in grants {
         command.arg(grant);
     }
-    command.args(["/T", "/C", "/L", "/Q"]);
+    command.args(["/C", "/L", "/Q"]);
     let output = command.output()?;
     if !output.status.success() {
         anyhow::bail!(

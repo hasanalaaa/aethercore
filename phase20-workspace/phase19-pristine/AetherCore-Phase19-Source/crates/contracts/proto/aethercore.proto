@@ -1,0 +1,13 @@
+syntax = "proto3";
+package aethercore.v1;
+
+// Phase 10 compatibility aggregator. Definitions live in domain-specific schemas.
+import "common.proto";
+import "operations.proto";
+import "drivers.proto";
+import "repair.proto";
+import "cleanup.proto";
+import "startup.proto";
+import "diagnostics.proto";
+import "intelligence.proto";
+import "events.proto";

@@ -37,7 +37,8 @@ pub(crate) fn consent_intent_proto(
     }
 }
 
-#[cfg(unix)]
+// P36 (Hermes): the wire snapshot mapping is platform-neutral; the unix gate from
+// the P31 unix-composition split no longer reflects its only consumer set.
 pub(crate) fn snapshot(
     engine: &OperationEngine,
     owner_principal_key: &str,

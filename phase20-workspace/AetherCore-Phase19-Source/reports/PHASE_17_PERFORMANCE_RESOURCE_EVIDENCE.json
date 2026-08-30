@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "phase": 17,
+  "sourceControls": {
+    "status": "PASS",
+    "expensiveBatchMax": 3,
+    "secondaryBatchMax": 2,
+    "collectorDeadlineMinutes": 10,
+    "cancellationObservationMs": 100,
+    "streamCoalescingMs": 120,
+    "metrics": [
+      "duration_ms",
+      "collector_duration_ms",
+      "peak_active_tasks",
+      "streamed_event_count",
+      "persistence_write_count",
+      "normalized_payload_bytes_estimate"
+    ]
+  },
+  "windowsRuntimePerformance": {
+    "status": "NOT_EXECUTED",
+    "reason": "Windows-native qualification intentionally deferred and current host is not used for native performance claims"
+  }
+}

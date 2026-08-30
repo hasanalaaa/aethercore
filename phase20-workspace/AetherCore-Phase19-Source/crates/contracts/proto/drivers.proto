@@ -1,0 +1,198 @@
+syntax = "proto3";
+package aethercore.v1;
+
+import "common.proto";
+
+message StartDriverScanRequest {}
+message GetDriverHubSnapshotRequest {}
+message SetDriverCandidatePolicyRequest { string scan_id = 1; uint64 inventory_epoch = 2; string candidate_id = 3; string policy = 4; }
+message CreateDriverInstallPlanRequest { string scan_id = 1; uint64 inventory_epoch = 2; repeated string candidate_ids = 3; }
+message StartDriverInstallRequest { string plan_id = 1; }
+message GetDriverInstallStatusRequest { string plan_id = 1; }
+message GetRecoveryHistoryRequest { uint32 limit = 1; }
+message DriverHubSummary {
+  uint32 device_count = 1;
+  uint32 missing_driver_count = 2;
+  uint32 problem_device_count = 3;
+  uint32 update_offer_count = 4;
+  uint32 matched_device_count = 5;
+  uint32 matched_candidate_count = 6;
+  uint32 selectable_update_count = 7;
+  uint32 vendor_managed_gpu_count = 8;
+  uint32 vendor_managed_display_count = 9;
+  uint32 recommended_update_count = 10;
+  uint32 optional_update_count = 11;
+  uint32 vendor_managed_update_count = 12;
+  uint32 status_unknown_count = 13;
+  uint32 management_authority_count = 14;
+}
+message InstalledDriverInfo {
+  string provider = 1;
+  string version = 2;
+  string inf_path = 3;
+  string date = 4;
+}
+message GpuManagementInfo {
+  string vendor = 1;
+  bool app_installed = 2;
+  string app_name = 3;
+  string official_url = 4;
+  string provider_id = 5;
+  string management_status = 6;
+  string update_availability = 7;
+}
+message DriverManagementAuthorityInfo {
+  string provider_id = 1;
+  string authority_type = 2;
+  string display_name = 3;
+  string official_authority = 4;
+  string official_url = 5;
+  string availability = 6;
+  string update_availability = 7;
+  string installation_mode = 8;
+  string update_evidence_candidate_id = 9;
+}
+message DriverCandidateInfo {
+  string candidate_id = 1;
+  string update_id = 2;
+  int32 revision = 3;
+  string title = 4;
+  string provider = 5;
+  string manufacturer = 6;
+  string model = 7;
+  string driver_class = 8;
+  string matched_hardware_id = 9;
+  string match_quality = 10;
+  string driver_date_iso = 11;
+  uint64 min_download_bytes = 12;
+  uint64 max_download_bytes = 13;
+  string target_version = 14;
+  string target_version_source = 15;
+  bool selectable = 16;
+  bool selected_by_default = 17;
+  bool vendor_managed = 18;
+  bool firmware_managed = 19;
+  string selection_policy = 20;
+  string authority_type = 21;
+  string authority_provider_id = 22;
+  string authority_name = 23;
+  string official_source = 24;
+  string applicability = 25;
+  string trust_state = 26;
+  string recommendation_state = 27;
+  repeated string recommendation_reasons = 28;
+  string acquisition_mode = 29;
+  string installation_mode = 30;
+  string official_support_url = 31;
+  bool recommended = 32;
+}
+message DriverDeviceInfo {
+  string instance_id = 1;
+  string display_name = 2;
+  string description = 3;
+  string class_name = 4;
+  string class_guid = 5;
+  string manufacturer = 6;
+  string enumerator = 7;
+  string location = 8;
+  repeated string hardware_ids = 9;
+  repeated string compatible_ids = 10;
+  uint32 raw_status = 11;
+  uint32 problem_code = 12;
+  bool has_problem = 13;
+  bool missing_driver = 14;
+  InstalledDriverInfo driver = 15;
+  string device_state = 16;
+  GpuManagementInfo gpu = 17;
+  repeated DriverCandidateInfo candidates = 18;
+  bool display_managed = 19;
+  string recommended_candidate_id = 20;
+  string update_status = 21;
+  string authority_coverage = 22;
+  repeated string required_authorities = 23;
+  repeated string evaluated_authorities = 24;
+  repeated string unavailable_authorities = 25;
+  repeated string unsupported_authorities = 26;
+  repeated string manual_authorities = 27;
+  repeated DriverManagementAuthorityInfo management_authorities = 28;
+}
+message UnmatchedDriverOfferInfo {
+  string update_id = 1;
+  int32 revision = 2;
+  string title = 3;
+  string hardware_id = 4;
+  string provider = 5;
+  string driver_class = 6;
+  uint64 min_download_bytes = 7;
+  uint64 max_download_bytes = 8;
+}
+message DriverHubSnapshot {
+  string scan_id = 1;
+  string state = 2;
+  uint64 inventory_epoch = 3;
+  int64 started_unix_ms = 4;
+  int64 completed_unix_ms = 5;
+  string error_message = 6;
+  DriverHubSummary summary = 7;
+  repeated DriverDeviceInfo devices = 8;
+  repeated UnmatchedDriverOfferInfo unmatched_offers = 9;
+  repeated string warnings = 10;
+  DiscoveryState state_code = 11;
+  string authority_coverage = 12;
+  repeated string provider_status = 13;
+}
+message DriverHubSnapshotResponse { DriverHubSnapshot snapshot = 1; }
+message DriverInstallItemStatus {
+  string candidate_id = 1;
+  string instance_id = 2;
+  string title = 3;
+  string stage = 4;
+  bool progress_known = 5;
+  uint32 progress_percent = 6;
+  string result_code = 7;
+  int32 hresult = 8;
+  bool reboot_required = 9;
+  bool verified = 10;
+  string before_version = 11;
+  string after_version = 12;
+  uint32 before_problem_code = 13;
+  uint32 after_problem_code = 14;
+  string backup_path = 15;
+  string detail = 16;
+}
+message DriverInstallStatus {
+  string plan_id = 1;
+  string plan_state = 2;
+  string stage = 3;
+  bool progress_known = 4;
+  uint32 overall_percent = 5;
+  string current_candidate_id = 6;
+  string detail = 7;
+  bool reboot_required = 8;
+  bool restore_point_verified = 9;
+  int64 restore_point_sequence = 10;
+  string backup_root = 11;
+  bool mutation_started = 12;
+  bool recovery_required = 13;
+  string failure_message = 14;
+  int64 started_unix_ms = 15;
+  int64 updated_unix_ms = 16;
+  int64 completed_unix_ms = 17;
+  repeated DriverInstallItemStatus items = 18;
+  uint64 bytes_downloaded = 19;
+  uint64 bytes_total = 20;
+  OperationState state_code = 21;
+}
+message RecoveryEntry {
+  int64 seq = 1;
+  string plan_id = 2;
+  string severity = 3;
+  string kind = 4;
+  string summary = 5;
+  string detail = 6;
+  int64 restore_point_sequence = 7;
+  string backup_root = 8;
+  int64 created_unix_ms = 9;
+}
+message DriverInstallStatusResponse { DriverInstallStatus status = 1; }
+message RecoveryHistoryResponse { repeated RecoveryEntry entries = 1; }

@@ -3,21 +3,22 @@ use std::sync::OnceLock;
 use aethercore_windows_foundation::ComApartment;
 use windows::{
     Win32::{
-        Foundation::BOOL,
+        Foundation::FreeLibrary,
         System::{
             Com::{
                 CLSCTX_INPROC_SERVER, CoCreateInstance,
                 CoInitializeSecurity, CoSetProxyBlanket, EOAC_NONE, RPC_C_AUTHN_LEVEL_CALL,
-                RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE,
+                RPC_C_AUTHN_LEVEL_DEFAULT,
                 RPC_C_IMP_LEVEL_IMPERSONATE,
             },
-            LibraryLoader::{FreeLibrary, GetProcAddress, LoadLibraryW},
+            LibraryLoader::{GetProcAddress, LoadLibraryW},
+            Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
             Wmi::{
                 IWbemLocator, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY, WBEM_S_FALSE, WBEM_S_TIMEDOUT, WbemLocator,
             },
         },
     },
-    core::{BSTR, PCWSTR},
+    core::{BSTR, BOOL, PCWSTR},
 };
 
 use crate::{RestorePointError, RestorePointEvidence, Result, description_for_plan};

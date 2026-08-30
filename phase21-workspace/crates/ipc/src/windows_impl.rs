@@ -261,7 +261,20 @@ fn production_pipe_security_descriptor(service_sid: &str) -> String {
     // The service-specific SID is both the object owner and the only principal allowed to create
     // server instances. Authenticated Users receive only the exact client mask. This keeps the
     // endpoint identity service-scoped without requiring a write-restricted process token.
-    format!("O:{service_sid}D:P(A;;GA;;;{service_sid})(A;;0x00120003;;;AU)")
+    //
+    // P36 Tranche 1 defect fix (Hermes): the previous AU ACE used the hex mask
+    // 0x00120003, but Windows' SDDL parser SILENTLY DROPS the SYNCHRONIZE (0x00100000)
+    // bit from hex access masks, so the materialized DACL granted AU only 0x120003.
+    // Every client — including the real desktop app — opens with
+    // PIPE_CLIENT_ACCESS_MASK = 0x00120003 (synchronous I/O requires SYNCHRONIZE) and
+    // was denied: the production pipe was unusable as encoded. Lab-proven (A/B, live
+    // DACL dump) remedy: express the client rights with named SDDL rights
+    // FR (FILE_GENERIC_READ = READ_DATA|READ_ATTRIBUTES|READ_EA|READ_CONTROL|SYNCHRONIZE)
+    // plus hex 0x2 (FILE_WRITE_DATA only, which FR does not include), so the AU grant
+    // materializes as 0x12008B: it fully covers the client mask while still NOT granting
+    // FILE_CREATE_PIPE_INSTANCE (0x4), FILE_APPEND_DATA, or any generic server authority —
+    // the declared policy is unchanged, only the encoding is now expressible.
+    format!("O:{service_sid}D:P(A;;GA;;;{service_sid})(A;;FR;;;AU)(A;;0x00000002;;;AU)")
 }
 
 fn security_descriptor_for_pipe(pipe_name: &str) -> Result<String> {
@@ -666,7 +679,7 @@ impl PipeServerListener {
             let _ = LocalFree(Some(HLOCAL(sd.0)));
             if handle == INVALID_HANDLE_VALUE {
                 return Err(IpcError::Windows(
-                    windows::core::Error::from_win32().to_string(),
+                    windows::core::Error::from_thread().to_string(),
                 ));
             }
             Ok(Self {
@@ -886,7 +899,8 @@ impl SessionClient {
             }
             _ => return Err(IpcError::Protocol("server hello required".into())),
         };
-        let pending = Arc::new(Mutex::new(HashMap::new()));
+        let pending: Arc<Mutex<HashMap<String, mpsc::SyncSender<Response>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let alive = Arc::new(AtomicBool::new(true));
         let disconnect_notified = Arc::new(AtomicBool::new(false));
         let (writer_tx, writer_rx) =
@@ -1182,14 +1196,22 @@ mod enterprise_tests {
         assert_eq!(PIPE_CLIENT_ACCESS_MASK & FILE_CREATE_PIPE_INSTANCE, 0);
         let service_sid = "S-1-5-80-1-2-3-4-5";
         let descriptor = production_pipe_security_descriptor(service_sid);
+        // P36 Tranche 1: the AU grant must use NAMED SDDL rights (FR + hex 0x2). The previous
+        // hex 0x00120003 form was silently stripped of SYNCHRONIZE by the SDDL parser, making
+        // the production pipe unusable. FR|0x2 materializes as 0x12008B: covers the client mask
+        // (READ_DATA|WRITE_DATA|READ_CONTROL|SYNCHRONIZE) without FILE_CREATE_PIPE_INSTANCE.
         assert_eq!(
             descriptor,
-            "O:S-1-5-80-1-2-3-4-5D:P(A;;GA;;;S-1-5-80-1-2-3-4-5)(A;;0x00120003;;;AU)"
+            "O:S-1-5-80-1-2-3-4-5D:P(A;;GA;;;S-1-5-80-1-2-3-4-5)(A;;FR;;;AU)(A;;0x00000002;;;AU)"
         );
+        // The AU ACE must not contain rights beyond the client mask: no append (0x4 bit family),
+        // no create-instance, no generic write/all, no trustee expansion to BA/SY.
+        assert!(!descriptor.contains("0x00120003")); // broken encoding must not return
         assert!(!descriptor.contains(";;;BA)"));
         assert!(!descriptor.contains(";;;SY)"));
         assert!(!descriptor.contains("(A;;GW;;;AU)"));
         assert!(!descriptor.contains("(A;;GRGW;;;AU)"));
+        assert!(!descriptor.contains("(A;;GA;;;AU)"));
     }
 
     #[test]
@@ -1237,7 +1259,12 @@ mod enterprise_tests {
             cancellation: SyncIoCancellation::noop_for_test(),
             peer_reader: Arc::new(Mutex::new(None)),
         };
-        let frame = ServerFrame { payload: None };
+        let frame = ServerFrame {
+            payload: Some(server_frame::Payload::Response(Response {
+                status_code: 1,
+                ..Default::default()
+            })),
+        };
         assert!(matches!(
             writer.write(&frame),
             Err(IpcError::OutboundBackpressure)
@@ -1275,7 +1302,11 @@ mod enterprise_tests {
             let counter = counter.clone();
             workers.push(thread::spawn(move || try_reserve_bytes(&counter, 1, 7)));
         }
-        let admitted = workers.into_iter().filter(|w| w.join().unwrap()).count();
+        let admitted = workers
+            .into_iter()
+            .map(|w| w.join().unwrap())
+            .filter(|admitted| *admitted)
+            .count();
         assert_eq!(admitted, 7);
         assert_eq!(counter.load(Ordering::Acquire), 7);
     }

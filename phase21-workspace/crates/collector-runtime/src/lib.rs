@@ -475,8 +475,23 @@ mod tests {
         assert!(worker_gate.is_active());
         let second = run_isolated_gated(&gate, "test", "gate", Duration::from_millis(15), |_control| Ok::<_, CollectorFault>(()));
         assert!(matches!(second, Err(CollectorFault { kind: FaultKind::Unavailable, .. })));
-        thread::sleep(Duration::from_millis(60));
-        assert!(!worker_gate.is_active());
+        // P36 (Hermes): wait until the worker really exits instead of assuming a fixed
+        // 60 ms suffices — on a loaded ARM64 VM thread-scheduling jitter can exceed it
+        // without changing the quarantined-until-exit contract being proven here.
+        let released = {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                if !worker_gate.is_active() {
+                    break true;
+                }
+                if Instant::now() >= deadline {
+                    break false;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+        };
+        assert!(!worker_gate.is_active(), "worker gate never released within 5s");
+        assert!(released);
     }
 
     #[test]

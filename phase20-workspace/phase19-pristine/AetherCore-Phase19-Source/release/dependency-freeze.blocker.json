@@ -1,0 +1,9 @@
+{
+  "schema": "aethercore.release-blocker.v1",
+  "id": "OMEGA-RB-001",
+  "severity": "release_blocker",
+  "status": "OPEN",
+  "area": "dependency_freeze",
+  "reason": "The supplied baseline does not contain Cargo.lock, pnpm-lock.yaml, dependency-locks.sha256, dependency-manifests.sha256, or dependency-freeze.json.",
+  "closure": "Resolve and review dependencies only on the trusted dependency-freeze workstation; run scripts/freeze-dependencies.ps1 -Refresh, review the graph, commit the generated freeze set, then rerun all --locked gates. This blocker file is removed only by a successful refresh."
+}

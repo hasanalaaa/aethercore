@@ -1,0 +1,11 @@
+{
+  "context": "HOST_MACOS_PARALLELS_CONTROL",
+  "vm": "Windows 11",
+  "snapshot_name": "P36-CLEAN-BASELINE",
+  "snapshot_id": "{6b721a10-8ac1-4339-9699-bd5145efda0a}",
+  "date": "2026-08-28 23:26:48",
+  "state": "poweron",
+  "current": true,
+  "creation_command": "prlctl snapshot Windows 11 --name P36-CLEAN-BASELINE --description ...",
+  "verification_command": "prlctl snapshot-list Windows 11 --json"
+}

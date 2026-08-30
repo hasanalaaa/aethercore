@@ -34,8 +34,18 @@ fn is_sanctioned(path: &str) -> bool {
 }
 
 fn mode_bits(meta: &std::fs::Metadata) -> u32 {
-    use std::os::unix::fs::PermissionsExt;
-    meta.permissions().mode()
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode()
+    }
+    #[cfg(windows)]
+    {
+        // Windows has no POSIX mode bits; report read-only as the single
+        // security-relevant distinction this provider consumes.
+        let readonly = meta.permissions().readonly();
+        0o444 | if readonly { 0 } else { 0o222 }
+    }
 }
 
 fn walk(dir: &Path, budget: &mut WalkBudget, findings_dirs: &mut Vec<PathBuf>) {

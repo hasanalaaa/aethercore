@@ -1,0 +1,23 @@
+[package]
+name = "aethercore-driver-hub"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+aethercore-collector-runtime = { path = "../collector-runtime" }
+aethercore-operation-kernel = { path = "../operation-kernel" }
+aethercore-gpu-policy = { path = "../gpu-policy" }
+aethercore-windows-pnp = { path = "../windows-pnp" }
+aethercore-windows-update = { path = "../windows-update" }
+chrono.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+aethercore-driver-authority = { path = "../driver-authority" }
+aethercore-persistence = { path = "../persistence" }

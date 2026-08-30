@@ -1,0 +1,21 @@
+{
+  "context": "HOST_MACOS_PARALLELS_CONTROL",
+  "vm": "Windows 11",
+  "snapshot_name": "P36-PRE-NATIVE-MUTATION",
+  "snapshot_id": "{e9434b5f-ba68-452d-ac4c-cbcc863ffb4b}",
+  "date": "2026-08-29 16:08:11",
+  "state": "poweron",
+  "current": true,
+  "parent": "{6b721a10-8ac1-4339-9699-bd5145efda0a}",
+  "parent_name": "P36-CLEAN-BASELINE",
+  "gates_verified_before_creation": {
+    "cargo_check_workspace_locked": "EXIT=0",
+    "cargo_test_workspace_locked": "EXIT=0 (562 passed / 0 failed, 209 binaries)",
+    "wix_msi_validate": "EXIT=0 (ICE38/ICE43/ICE57 root-cause fixed, no suppression)",
+    "dependency_freeze_disposition": "recorded (P36-D017 bounded exception; blocker OMEGA-RB-001 stays OPEN)",
+    "administrator_standarduser_context_method": "established (task-based probes; High vs Medium integrity labels proven)"
+  },
+  "creation_command": "prlctl snapshot \"Windows 11\" --name P36-PRE-NATIVE-MUTATION --description \"P36 pre-mutation checkpoint: workspace check EXIT=0, workspace tests EXIT=0 (562/0), WiX ICE38/43/57 validate EXIT=0, freeze disposition + Admin/StdUser context method recorded. Rollback boundary for MSI/service/ACL/IPC qualification.\"",
+  "verification_command": "prlctl snapshot-list \"Windows 11\" --json",
+  "rollback_boundary_for": ["MSI install", "service registration", "Service SID", "NTFS ACLs", "named-pipe IPC", "StandardUser denial", "repair/uninstall/upgrade"]
+}

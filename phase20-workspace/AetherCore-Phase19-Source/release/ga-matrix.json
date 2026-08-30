@@ -1,0 +1,101 @@
+{
+  "schema": "aethercore.ga-matrix.v1",
+  "minimum_windows_build": 22621,
+  "architecture": "x64",
+  "required_os_lanes": [
+    {
+      "id": "minimum-supported",
+      "build_min": 22621,
+      "build_max": 22630
+    },
+    {
+      "id": "servicing-family-22631",
+      "build_min": 22631,
+      "build_max": 26099
+    },
+    {
+      "id": "servicing-family-26100-plus",
+      "build_min": 26100,
+      "build_max": 99999
+    }
+  ],
+  "required_coverage": {
+    "locales": [
+      "en-US",
+      "ar-IQ"
+    ],
+    "directions": [
+      "ltr",
+      "rtl"
+    ],
+    "dpi_percent": [
+      100,
+      125,
+      150,
+      200
+    ],
+    "refresh_hz": [
+      60,
+      120,
+      144
+    ],
+    "accessibility": [
+      "keyboard-only",
+      "narrator",
+      "reduced-motion",
+      "reduced-transparency",
+      "high-contrast"
+    ],
+    "input": [
+      "mouse",
+      "keyboard",
+      "touch-or-pen"
+    ],
+    "update_channels": [
+      "stable",
+      "beta"
+    ]
+  },
+  "stress": {
+    "required_profile": "extended",
+    "minimum_duration_minutes": 1440,
+    "max_private_bytes_growth_mib": 96,
+    "max_private_bytes_growth_percent": 25,
+    "max_handle_growth": 192,
+    "max_thread_growth": 24,
+    "max_request_failure_count": 0,
+    "max_stream_reset_count": 0
+  },
+  "required_manual_surfaces": [
+    "overview",
+    "drivers",
+    "repair",
+    "cleanup",
+    "startup",
+    "hardware",
+    "crash",
+    "activity",
+    "system-care-update",
+    "system-care-support-export",
+    "consent-dialog",
+    "command-palette"
+  ],
+  "required_release_controls": [
+    "installer-install",
+    "installer-repair",
+    "installer-uninstall",
+    "burn-bootstrapper",
+    "desktop-asInvoker",
+    "consent-broker-requireAdministrator",
+    "update-broker-requireAdministrator",
+    "service-LocalSystem-restricted-sid",
+    "program-files-acl",
+    "program-data-acl",
+    "authenticode-valid",
+    "update-trust-enabled",
+    "sbom-present",
+    "dependency-freeze-verified",
+    "reproducibility-control",
+    "support-bundle-strict-verifier"
+  ]
+}

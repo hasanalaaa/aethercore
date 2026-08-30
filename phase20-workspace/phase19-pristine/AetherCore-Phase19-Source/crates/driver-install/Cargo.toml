@@ -1,0 +1,26 @@
+[package]
+name = "aethercore-driver-install"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sha2.workspace = true
+hex.workspace = true
+aethercore-driver-backup = { path = "../driver-backup" }
+aethercore-driver-hub = { path = "../driver-hub" }
+aethercore-operation-engine = { path = "../operation-engine" }
+aethercore-operation-kernel = { path = "../operation-kernel" }
+aethercore-persistence = { path = "../persistence" }
+aethercore-restore-point = { path = "../restore-point" }
+aethercore-windows-pnp = { path = "../windows-pnp" }
+aethercore-windows-update = { path = "../windows-update" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true

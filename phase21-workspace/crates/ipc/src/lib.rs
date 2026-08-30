@@ -130,22 +130,26 @@ pub(crate) fn write_response<W: std::io::Write>(writer: &mut W, response: &Respo
 pub(crate) fn read_response<R: std::io::Read>(reader: &mut R) -> Result<Response> {
     read_message_with_limit(reader, MAX_RESPONSE_FRAME_BYTES)
 }
-pub(crate) fn write_client_frame<W: std::io::Write>(
+// P36 Tranche 1 closure (Hermes): the frame codec is a public, side-effect-free surface
+// (length-prefix + protobuf over any reader/writer; decode_* byte equivalents were already
+// public). The pub visibility serves the raw-wire diagnostic probes used by Windows
+// qualification; production call sites are unchanged.
+pub fn write_client_frame<W: std::io::Write>(
     writer: &mut W,
     frame: &ClientFrame,
 ) -> Result<()> {
     write_message_with_limit(writer, frame, MAX_CLIENT_SESSION_FRAME_BYTES)
 }
-pub(crate) fn read_client_frame<R: std::io::Read>(reader: &mut R) -> Result<ClientFrame> {
+pub fn read_client_frame<R: std::io::Read>(reader: &mut R) -> Result<ClientFrame> {
     read_message_with_limit(reader, MAX_CLIENT_SESSION_FRAME_BYTES)
 }
-pub(crate) fn write_server_frame<W: std::io::Write>(
+pub fn write_server_frame<W: std::io::Write>(
     writer: &mut W,
     frame: &ServerFrame,
 ) -> Result<()> {
     write_message_with_limit(writer, frame, MAX_SERVER_SESSION_FRAME_BYTES)
 }
-pub(crate) fn read_server_frame<R: std::io::Read>(reader: &mut R) -> Result<ServerFrame> {
+pub fn read_server_frame<R: std::io::Read>(reader: &mut R) -> Result<ServerFrame> {
     read_message_with_limit(reader, MAX_SERVER_SESSION_FRAME_BYTES)
 }
 
@@ -168,6 +172,18 @@ pub fn decode_client_frame_bytes(frame: &[u8]) -> Result<ClientFrame> {
     }
     Ok(message)
 }
+
+// ---------------------------------------------------------------------------
+// P36 Tranche 1 closure (Hermes): raw-wire diagnostic surface for the Windows
+// named-pipe qualification probes (`crates/ipc/examples/ipc_rawwire_probe.rs`).
+// Re-exports the crate-internal frame codec verbatim - no reimplementation, no
+// behavior change to production paths. Diagnostic-only surface.
+// ---------------------------------------------------------------------------
+#[cfg(windows)]
+pub mod probe {
+    pub use super::{read_client_frame, read_server_frame, write_client_frame, write_server_frame, IpcError, Result};
+}
+
 
 // ---------------------------------------------------------------------------
 // Phase 26 — Transport abstraction (additive; Windows behavior byte-unchanged)

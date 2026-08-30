@@ -1,0 +1,175 @@
+syntax = "proto3";
+package aethercore.v1;
+
+import "common.proto";
+import "drivers.proto";
+import "repair.proto";
+import "cleanup.proto";
+import "startup.proto";
+import "diagnostics.proto";
+import "intelligence.proto";
+import "update.proto";
+import "support_bundle.proto";
+
+// Request/Response remain the stable v7 RPC payloads. Session framing lives in events.proto.
+
+message Request {
+  RequestHeader header = 1;
+  // Phase 1 demo/challenge/authorization payload tags are permanently retired.
+  reserved 12 to 15;
+  oneof payload {
+    PingRequest ping = 10;
+    GetSnapshotRequest get_snapshot = 11;
+    StartDriverScanRequest start_driver_scan = 16;
+    GetDriverHubSnapshotRequest get_driver_hub_snapshot = 17;
+    CreateDriverInstallPlanRequest create_driver_install_plan = 18;
+    StartDriverInstallRequest start_driver_install = 19;
+    GetDriverInstallStatusRequest get_driver_install_status = 20;
+    GetRecoveryHistoryRequest get_recovery_history = 21;
+    StartRepairAssessmentRequest start_repair_assessment = 22;
+    GetRepairAssessmentRequest get_repair_assessment = 23;
+    CreateSystemRepairPlanRequest create_system_repair_plan = 24;
+    StartSystemRepairRequest start_system_repair = 25;
+    GetSystemRepairStatusRequest get_system_repair_status = 26;
+    StartCleanupScanRequest start_cleanup_scan = 27;
+    GetCleanupSnapshotRequest get_cleanup_snapshot = 28;
+    CreateCleanupPlanRequest create_cleanup_plan = 29;
+    StartCleanupRequest start_cleanup = 30;
+    GetCleanupStatusRequest get_cleanup_status = 31;
+    StartStartupScanRequest start_startup_scan = 32;
+    GetStartupSnapshotRequest get_startup_snapshot = 33;
+    CreateStartupPlanRequest create_startup_plan = 34;
+    StartStartupChangesRequest start_startup_changes = 35;
+    GetStartupStatusRequest get_startup_status = 36;
+    GetStartupHistoryRequest get_startup_history = 37;
+    CreateStartupRestorePlanRequest create_startup_restore_plan = 38;
+    StartDiagnosticsScanRequest start_diagnostics_scan = 39;
+    GetDiagnosticsSnapshotRequest get_diagnostics_snapshot = 40;
+    GetDiagnosticsHistoryRequest get_diagnostics_history = 41;
+    BeginConsentIntentRequest begin_consent_intent = 42;
+    GetConsentIntentRequest get_consent_intent = 43;
+    ApproveConsentIntentRequest approve_consent_intent = 44;
+    HydrateSessionRequest hydrate_session = 45;
+    CheckForUpdatesRequest check_for_updates = 46 [deprecated = true];
+    GetUpdateSnapshotRequest get_update_snapshot = 47;
+    StageUpdateRequest stage_update = 48 [deprecated = true];
+    BeginUpdateInstallIntentRequest begin_update_install_intent = 49;
+    GetUpdateInstallIntentRequest get_update_install_intent = 50;
+    ClaimUpdateInstallRequest claim_update_install = 51;
+    CompleteUpdateInstallRequest complete_update_install = 52;
+    CreateSupportBundlePreviewRequest create_support_bundle_preview = 53;
+    PrepareSupportBundleRequest prepare_support_bundle = 54;
+    ReadSupportBundleChunkRequest read_support_bundle_chunk = 55;
+    DiscardSupportBundleRequest discard_support_bundle = 56;
+    MarkSupportBundleExportedRequest mark_support_bundle_exported = 57;
+    GetUpdateCheckDescriptorRequest get_update_check_descriptor = 58;
+    SubmitUpdateManifestRequest submit_update_manifest = 59;
+    BeginUpdateStageUploadRequest begin_update_stage_upload = 60;
+    WriteUpdateStageChunkRequest write_update_stage_chunk = 61;
+    FinalizeUpdateStageUploadRequest finalize_update_stage_upload = 62;
+    CancelUpdateStageUploadRequest cancel_update_stage_upload = 63;
+    CancelUpdateInstallIntentRequest cancel_update_install_intent = 64;
+    StartDeepScanRequest start_deep_scan = 65;
+    CancelDeepScanRequest cancel_deep_scan = 66;
+    GetDeepScanSnapshotRequest get_deep_scan_snapshot = 67;
+    GetDeepScanHistoryRequest get_deep_scan_history = 68;
+    SealRemediationPlanRequest seal_remediation_plan = 69;
+    SetDriverCandidatePolicyRequest set_driver_candidate_policy = 70;
+  }
+}
+message Response {
+  ResponseHeader header = 1;
+  uint32 status_code = 2;
+  string error_message = 3 [deprecated = true];
+  ErrorInfo error = 4;
+  // Phase 1 demo/challenge/authorization response tags are permanently retired.
+  reserved 13, 14;
+  oneof payload {
+    PongResponse pong = 10;
+    SnapshotResponse snapshot = 11;
+    PlanResponse plan = 12;
+    DriverHubSnapshotResponse driver_hub_snapshot = 15;
+    DriverInstallStatusResponse driver_install_status = 16;
+    RecoveryHistoryResponse recovery_history = 17;
+    RepairAssessmentResponse repair_assessment = 18;
+    SystemRepairStatusResponse system_repair_status = 19;
+    CleanupSnapshotResponse cleanup_snapshot = 20;
+    CleanupStatusResponse cleanup_status = 21;
+    StartupSnapshotResponse startup_snapshot = 22;
+    StartupStatusResponse startup_status = 23;
+    StartupHistoryResponse startup_history = 24;
+    DiagnosticsSnapshotResponse diagnostics_snapshot = 25;
+    DiagnosticsHistoryResponse diagnostics_history = 26;
+    ConsentIntentResponse consent_intent = 27;
+    ConsentApprovalResponse consent_approval = 28;
+    UpdateSnapshotResponse update_snapshot = 29;
+    UpdateInstallIntentResponse update_install_intent = 30;
+    UpdateExecutionTicketResponse update_execution_ticket = 31;
+    UpdateCompletionResponse update_completion = 32;
+    SupportBundlePreviewResponse support_bundle_preview = 33;
+    SupportBundleReadyResponse support_bundle_ready = 34;
+    SupportBundleChunkResponse support_bundle_chunk = 35;
+    UpdateCheckDescriptorResponse update_check_descriptor = 36;
+    UpdateStageUploadDescriptorResponse update_stage_upload_descriptor = 37;
+    DeepScanSnapshotResponse deep_scan_snapshot = 38;
+    DeepScanHistoryResponse deep_scan_history = 39;
+    PcRemediationPlanResponse pc_remediation_plan = 40;
+  }
+}
+message PingRequest {}
+message PongResponse { string service_version = 1; }
+message GetSnapshotRequest {}
+// A renderer/bootstrap synchronization request. It republishes principal-scoped current state
+// through the ordered Event Bus and is intentionally not a polling/snapshot side channel.
+message HydrateSessionRequest {}
+message BeginConsentIntentRequest {
+  string plan_id = 1;
+  reserved 2;
+}
+message GetConsentIntentRequest {
+  string intent_id = 1;
+}
+message ApproveConsentIntentRequest {
+  string intent_id = 1;
+}
+message ConsentIntentResponse {
+  string intent_id = 1;
+  string plan_id = 2;
+  string plan_digest = 3;
+  string title = 4;
+  string risk = 5;
+  uint32 action_count = 6;
+  int64 expires_unix_ms = 7;
+  RiskLevel risk_code = 8;
+}
+message ConsentApprovalResponse {
+  string intent_id = 1;
+  string plan_id = 2;
+  int64 approved_unix_ms = 3;
+}
+message PlanSnapshot {
+  string id = 1;
+  string title = 2;
+  string state = 3 [deprecated = true];
+  string digest = 4;
+  string risk = 5 [deprecated = true];
+  int64 created_unix_ms = 6;
+  int64 updated_unix_ms = 7;
+  bool requires_authorization = 8;
+  int64 consent_ready_until_unix_ms = 9;
+  uint32 action_count = 10;
+  uint64 inventory_epoch = 11;
+  string scan_id = 12;
+  string kind = 13;
+  OperationState state_code = 14;
+  RiskLevel risk_code = 15;
+}
+message ServiceSnapshot {
+  string service_version = 1;
+  string health = 2;
+  int64 server_time_unix_ms = 3;
+  PlanSnapshot active_plan = 4;
+  uint64 journal_event_count = 5;
+}
+message SnapshotResponse { ServiceSnapshot snapshot = 1; }
+message PlanResponse { PlanSnapshot plan = 1; }

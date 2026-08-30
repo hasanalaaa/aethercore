@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "phase": 17,
+  "uiSourceIntegration": {
+    "status": "PASS",
+    "basis": "executed static source audit",
+    "runtimeBuildStatus": "NOT_EXECUTED"
+  },
+  "localization": {
+    "status": "PASS",
+    "basis": "catalog parity and used-key static audit",
+    "phase17Keys": 176,
+    "missingEnglish": [],
+    "missingArabic": [],
+    "runtimeRenderStatus": "NOT_EXECUTED"
+  },
+  "accessibility": {
+    "status": "PASS_SOURCE_ONLY",
+    "basis": "semantic/source invariant audit",
+    "runtimeAssistiveTechnologyStatus": "NOT_EXECUTED"
+  },
+  "notExecutedReasons": [
+    "installed svelte-check dependency unavailable",
+    "browser/runtime assistive-technology validation unavailable on this host"
+  ]
+}

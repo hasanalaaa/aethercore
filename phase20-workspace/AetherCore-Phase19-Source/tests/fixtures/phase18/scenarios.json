@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 2,
+  "phase": 18,
+  "scenarios": [
+    {
+      "id": "D18-01",
+      "name": "Healthy Current Device",
+      "input": "healthy current driver; all device-required official authorities sufficiently evaluated; no concrete candidate",
+      "expected": "no recommendation; UpToDate only with complete required-authority coverage"
+    },
+    {
+      "id": "D18-02",
+      "name": "Missing Driver",
+      "input": "problem code 28; exact trusted WUA offer",
+      "expected": "Recommended WindowsManaged install"
+    },
+    {
+      "id": "D18-03",
+      "name": "OEM vs Newer Generic",
+      "input": "OEM machine-specific 2.x and generic component 9.x",
+      "expected": "OEM recommended when machine-specific policy/evidence supports it"
+    },
+    {
+      "id": "D18-04",
+      "name": "Self-Built Desktop GPU",
+      "input": "self-built context; concrete component-vendor candidate versus OEM candidate",
+      "expected": "component-vendor candidate receives stronger authority context after trust/applicability"
+    },
+    {
+      "id": "D18-05",
+      "name": "NVIDIA Management vs Concrete Update",
+      "input": "NVIDIA display device; official management authority exists; optional concrete WUA offer may exist",
+      "expected": "management authority is separate; only a concrete offer may become RecommendedUpdateAvailable"
+    },
+    {
+      "id": "D18-06",
+      "name": "Multiple Official Candidates",
+      "input": "trusted OEM/WUA/vendor candidates",
+      "expected": "exactly one recommended; alternatives retained"
+    },
+    {
+      "id": "D18-07",
+      "name": "Unsigned Candidate",
+      "input": "high-specificity unsigned package",
+      "expected": "NotRecommended; TRUST_REJECTED"
+    },
+    {
+      "id": "D18-08",
+      "name": "Unexpected Publisher",
+      "input": "valid signature but publisher outside provider policy",
+      "expected": "UnexpectedPublisher; valid signature alone is insufficient"
+    },
+    {
+      "id": "D18-09",
+      "name": "Redirect to Untrusted Domain",
+      "input": "official URL redirects to attacker.example",
+      "expected": "acquisition fails closed"
+    },
+    {
+      "id": "D18-10",
+      "name": "Candidate Changes After Consent",
+      "input": "sealed package/candidate identity mutated",
+      "expected": "plan invalidated; new consent required"
+    },
+    {
+      "id": "D18-11",
+      "name": "Offline",
+      "input": "inventory available; provider network unavailable",
+      "expected": "inventory retained; update status unknown; no up-to-date claim"
+    },
+    {
+      "id": "D18-12",
+      "name": "Provider Partial Failure",
+      "input": "a device-required authority is manual/unavailable/not sufficiently evaluated",
+      "expected": "device-aware coverage incomplete; no strong UpToDate claim"
+    },
+    {
+      "id": "D18-13",
+      "name": "Firmware Candidate",
+      "input": "trusted firmware offer",
+      "expected": "FirmwareProtected; excluded from Update All"
+    },
+    {
+      "id": "D18-14",
+      "name": "Ignore Exact Version",
+      "input": "ignore exact version X from Provider A; Provider B same version and any newer version remain discoverable",
+      "expected": "only Provider A exact version X suppressed; different authority/newer version visible"
+    },
+    {
+      "id": "D18-15",
+      "name": "Rollback Available",
+      "input": "current driver plus backup/restore evidence",
+      "expected": "explicit recovery action available"
+    },
+    {
+      "id": "D18-16",
+      "name": "Reboot Aggregation",
+      "input": "multiple independent successful updates require reboot",
+      "expected": "single aggregate reboot state unless provider/dependency boundary requires earlier reboot"
+    }
+  ],
+  "supersededSemanticsBy": "tests/fixtures/phase18_1/scenarios.json"
+}

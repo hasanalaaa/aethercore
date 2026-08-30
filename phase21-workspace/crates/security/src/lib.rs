@@ -218,14 +218,14 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
     use aethercore_windows_foundation::OwnedHandle;
     use windows::{
         Win32::{
-            Foundation::{BOOL, ERROR_INSUFFICIENT_BUFFER, HANDLE},
+            Foundation::{ERROR_INSUFFICIENT_BUFFER, HANDLE},
             Security::{
                 CheckTokenMembership, GetTokenInformation, IsValidSid, LookupAccountNameW,
-                OpenProcessToken, PSID, SID_NAME_USE, TOKEN_QUERY, TokenRestrictedSids,
+                PSID, SID_NAME_USE, TOKEN_QUERY, TokenRestrictedSids,
             },
-            System::Threading::GetCurrentProcess,
+            System::Threading::{GetCurrentProcess, OpenProcessToken},
         },
-        core::{PCWSTR, PWSTR},
+        core::{BOOL, PCWSTR, PWSTR},
     };
 
     const MAX_ACCOUNT_SID_BYTES: u32 = 4 * 1024;

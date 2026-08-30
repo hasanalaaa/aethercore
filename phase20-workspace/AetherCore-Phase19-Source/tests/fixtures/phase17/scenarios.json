@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "ruleEngineVersion": "phase17-rules-v1",
+  "scenarios": [
+    {"id":"healthy-pc","purpose":"No actionable issue","expectedFindingCodes":[],"expectedDiagnosticLimitation":false},
+    {"id":"missing-driver","purpose":"Present device has explicit missing-driver evidence","expectedFindingCodes":["DRIVER_MISSING"],"expectedDiagnosticLimitation":false},
+    {"id":"storage-concern","purpose":"Explicit storage reliability evidence","expectedFindingCodes":["STORAGE_RELIABILITY_CONCERN"],"expectedDiagnosticLimitation":false},
+    {"id":"recent-driver-regression","purpose":"Driver change followed by crash within seven days","expectedFindingCodes":["POSSIBLE_DRIVER_REGRESSION"],"expectedDiagnosticLimitation":false},
+    {"id":"windows-corruption","purpose":"Servicing evidence is not healthy","expectedFindingCodes":["WINDOWS_INTEGRITY_ATTENTION"],"expectedDiagnosticLimitation":false},
+    {"id":"slow-startup","purpose":"At least three high-impact startup entries","expectedFindingCodes":["HIGH_STARTUP_FOOTPRINT"],"expectedDiagnosticLimitation":false},
+    {"id":"partial-diagnostics-failure","purpose":"Collector unavailable without implying machine failure","expectedFindingCodes":[],"expectedDiagnosticLimitation":true}
+  ]
+}

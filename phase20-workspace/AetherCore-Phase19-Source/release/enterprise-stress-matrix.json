@@ -1,0 +1,53 @@
+{
+  "schema": "aethercore.enterprise-stress-matrix.v1",
+  "source_regressions": [
+    "support-preview-owner-linearization",
+    "support-preview-global-reservation",
+    "support-preparation-global-reservation",
+    "support-preparation-owner-linearization",
+    "update-observer-lock-reentrancy",
+    "event-bus-owner-scoped-backpressure-metrics",
+    "ipc-bounded-outbound-backpressure-fail-closed",
+    "ipc-client-bounded-outbound-backpressure-preserves-session"
+  ],
+  "runtime_profiles": {
+    "standard": {
+      "soak_profile": "standard",
+      "service_restart_cycles": 12,
+      "libfuzzer_seconds": 120,
+      "resource_trend": {
+        "minimum_duration_minutes": 120,
+        "minimum_samples": 10,
+        "max_private_mib_per_hour": 8.0,
+        "max_handles_per_hour": 16.0,
+        "max_threads_per_hour": 2.0,
+        "max_private_quartile_growth_mib": 96.0,
+        "max_handle_quartile_growth": 192.0,
+        "max_thread_quartile_growth": 24.0
+      }
+    },
+    "release": {
+      "soak_profile": "extended",
+      "minimum_soak_minutes": 1440,
+      "service_restart_cycles": 24,
+      "libfuzzer_seconds": 300,
+      "resource_trend": {
+        "minimum_duration_minutes": 1440,
+        "minimum_samples": 50,
+        "max_private_mib_per_hour": 2.0,
+        "max_handles_per_hour": 4.0,
+        "max_threads_per_hour": 0.5,
+        "max_private_quartile_growth_mib": 48.0,
+        "max_handle_quartile_growth": 96.0,
+        "max_thread_quartile_growth": 12.0
+      }
+    }
+  },
+  "pass_policy": {
+    "request_failures": 0,
+    "unexpected_stream_resets": 0,
+    "targeted_regression_failures": 0,
+    "inherit_ga_leak_thresholds": true,
+    "sustained_resource_trend_required": true
+  }
+}

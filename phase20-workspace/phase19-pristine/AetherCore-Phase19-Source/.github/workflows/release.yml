@@ -1,0 +1,81 @@
+name: Signed Release Candidate
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: read
+
+# Private keys never transit workflow secrets. This job is intentionally restricted to an
+# isolated, patched self-hosted Windows signing runner with a non-exportable certificate already
+# provisioned in the Windows certificate store. GitHub's selected action releases are immutable
+# release tags; Dependabot is enabled to review future updates rather than floating major tags.
+jobs:
+  signed-release:
+    environment: production-signing
+    runs-on: [self-hosted, windows, x64, aethercore-signing]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify clean source and release tag
+        shell: pwsh
+        run: |
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked source tree is dirty before release build.' }
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) { throw 'Index is dirty before release build.' }
+          $cargo = Get-Content Cargo.toml -Raw
+          if ($cargo -notmatch '(?ms)\[workspace\.package\].*?version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"') { throw 'Workspace version not found.' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$($Matches[1])") {
+            throw "Release tag $env:GITHUB_REF_NAME does not match Cargo version v$($Matches[1])."
+          }
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
+          rustup override set 1.97.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.16.0
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.22.0
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore approved UI dependency graph
+        run: pnpm --dir apps/ui install --frozen-lockfile
+      - name: Verify approved dependency freeze
+        shell: pwsh
+        run: ./scripts/freeze-dependencies.ps1 -VerifyOnly
+      - name: Verify signer configuration
+        shell: pwsh
+        env:
+          AETHERCORE_CODESIGN_THUMBPRINT: ${{ vars.AETHERCORE_CODESIGN_THUMBPRINT }}
+          AETHERCORE_TIMESTAMP_URL: ${{ vars.AETHERCORE_TIMESTAMP_URL }}
+        run: |
+          if (-not $env:AETHERCORE_CODESIGN_THUMBPRINT) { throw 'Signing certificate thumbprint is not configured in the protected environment.' }
+          if ($env:AETHERCORE_TIMESTAMP_URL -notmatch '^https://') { throw 'HTTPS timestamp service is not configured.' }
+          if (-not $env:AETHERCORE_UPDATE_TRUST_PATH) { throw 'Protected AETHERCORE_UPDATE_TRUST_PATH is not configured.' }
+      - name: Zenith adversarial source gate before signing and packaging
+        shell: pwsh
+        run: ./scripts/zenith-adversarial-audit.ps1
+      - name: Zenith recursive architecture gate before signing and packaging
+        shell: pwsh
+        run: ./scripts/zenith-recursive-audit.ps1
+      - name: Full Enterprise convergence gate, signing and release-candidate packaging
+        shell: pwsh
+        env:
+          AETHERCORE_CODESIGN_THUMBPRINT: ${{ vars.AETHERCORE_CODESIGN_THUMBPRINT }}
+          AETHERCORE_TIMESTAMP_URL: ${{ vars.AETHERCORE_TIMESTAMP_URL }}
+          AETHERCORE_UPDATE_TRUST_PATH: ${{ vars.AETHERCORE_UPDATE_TRUST_PATH }}
+        run: ./scripts/verify-enterprise.ps1 -ReleasePackaging -RequireSigning -UpdateTrustPath $env:AETHERCORE_UPDATE_TRUST_PATH
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: aethercore-enterprise-converged-signed-release-candidate
+          path: out/release/**
+          if-no-files-found: error
+          retention-days: 30

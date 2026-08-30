@@ -1,0 +1,175 @@
+{
+  "phase": "P36",
+  "tranche": "NATIVE_MUTATION_TRANCHE1",
+  "executor": "Hermes Agent (GLM-5.3-Flash)",
+  "date": "2026-08-29",
+  "vm": "Windows 11 ARM64 (Parallels, build 26200)",
+  "rollback_snapshot": {
+    "name": "P36-PRE-NATIVE-MUTATION",
+    "id": "{e9434b5f-ba68-452d-ac4c-cbcc863ffb4b}",
+    "verified_before_start": true,
+    "restored": false
+  },
+  "before_state": {
+    "products_installed": false,
+    "service_registered": false,
+    "programFiles_aetherCore_exists": false,
+    "programData": "pre-existing test residue only (state/machine-mutation.lock 0 bytes from cargo tests)",
+    "stale_processes": false,
+    "evidence": "C:\\AetherCore-P36\\logs\\tranche1-before-state.txt"
+  },
+  "MSI_BUILD": {
+    "result": "PASS",
+    "msi_path": "C:\\AetherCore-P36\\incoming\\AetherCore-0.1.0-arm64.msi",
+    "msi_sha256": "1C99CB1A2FD268652BA570ADD5A33C15007EE78FC3C8AF93BBEA424BFC2CD230",
+    "msi_bytes": 6238208,
+    "wix_version": "6.0.2",
+    "wix_arch": "arm64",
+    "productCode": "{FC8A3841-759D-B452-1864-161F84F56C03}",
+    "upgradeCode": "{45598C77-2C32-5BCE-8510-19C7E51EE3B8}",
+    "version": "0.1.0",
+    "ice_validation": "EXIT=0, zero findings, no suppression (wix msi validate)",
+    "authenticode": "UNAVAILABLE - no certificate provisioned in VM; recorded honestly, not claimed",
+    "payload": {
+      "aethercore-desktop.exe": { "sha256": "BA90091440E984896DE5A5F7F03227F4AEB9945DE21AA21DFF1A692128093FC3", "bytes": 6375424, "pe": "IMAGE_FILE_MACHINE_ARM64 (0xAA64)" },
+      "aethercore-maintenance-service.exe": { "sha256": "9A629E42844191D9D3691B0E5FD787ADA7FF9447A03B590EC311AE6B64D549B9", "bytes": 9822208, "pe": "IMAGE_FILE_MACHINE_ARM64 (0xAA64)" },
+      "aethercore-consent-broker.exe": { "sha256": "CEC3FF0266D51450CBC2B14821186E5E290DFC05732BFAF8E12EF5A3D10AEF27", "bytes": 612864, "pe": "IMAGE_FILE_MACHINE_ARM64 (0xAA64)" },
+      "aethercore-update-broker.exe": { "sha256": "7589EEA5F505975488BF7ACD8A5A61478769C5B08E518965C0BAB5B3B4B284AB", "bytes": 698880, "pe": "IMAGE_FILE_MACHINE_ARM64 (0xAA64)" },
+      "aethercore-install-hardener.exe": { "sha256": "6B66F04E689D0B03D82CD9A1343949B37ED0864E28CD21B59F87EF3E1B1AA03F", "bytes": 246784, "pe": "IMAGE_FILE_MACHINE_ARM64 (0xAA64)" },
+      "libomp140.aarch64.dll": { "sha256": "D2649698FC68466EE88CF58AE3AB0FAB106F29326E83AAAA5643D30651A962E3", "bytes": 599504, "note": "Microsoft VC143 OpenMP runtime (debug_nonredist arm64), required by service import table" },
+      "update-trust.json": { "sha256": "D4AD925D86F64560BD80C77EAE8C606FE810C5F670A7CD42DF0836B0653C8B37", "bytes": 83, "source": "release/update-trust.template.json", "enabled": false, "channels": 0 }
+    },
+    "pe_architecture_verification": "llvm-readobj --file-headers on every exe: ALL ARM64 (0xAA64); no x86/x64 product binaries included",
+    "synthetic_payload_used": false
+  },
+  "MSI_INSTALL": {
+    "result": "PASS",
+    "install_exit_code": 0,
+    "uninstall_before_install_exit_code": 0,
+    "verbose_log": "C:\\AetherCore-P36\\logs\\tranche1-msi-final-install.log",
+    "installed_files_verified": true,
+    "installed_hashes_match_payload": true,
+    "start_menu_shortcut": {
+      "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\AetherCore\\AetherCore.lnk",
+      "exists": true,
+      "target": "C:\\Program Files\\AetherCore\\aethercore-desktop.exe",
+      "workingDir": "C:\\Program Files\\AetherCore\\",
+      "note": "advertised shortcut + DISABLEADVTSHORTCUTS=1 materialized an ordinary .lnk as authored"
+    },
+    "programMenu_HKCU_marker": {
+      "value": "HKCU\\Software\\AetherCore\\ProgramMenu=1 written to the INSTALLING context hive (SYSTEM here)",
+      "trust_role": "none - consumed by no trust check; folder-ownership marker only (per reviewed authoring)"
+    },
+    "private_signing_key_installed": false,
+    "private_key_scan": "scan of install tree for PEM PRIVATE KEY blocks: 0 hits",
+    "update_trust_material": "enabled=false, channels=[] (honest default; no trust authority provisioned)"
+  },
+  "SERVICE_REGISTRATION": {
+    "result": "PASS",
+    "service_name": "AetherCoreMaintenance",
+    "display_name": "AetherCore Maintenance Service",
+    "binary_path": "C:\\Program Files\\AetherCore\\aethercore-maintenance-service.exe",
+    "account": "LocalSystem",
+    "type": "WIN32_OWN_PROCESS (ownProcess)",
+    "start_type": "AUTO_START (DELAYED) - set by hardener per authored policy",
+    "error_control": "NORMAL",
+    "state_after_install": "RUNNING (clean start by MSI StartServices)",
+    "binary_in_machine_owned_dir": true,
+    "evidence": "C:\\AetherCore-P36\\evidence\\tranche1-service-registration.json"
+  },
+  "SERVICE_SID": {
+    "result": "PASS",
+    "sid_type": "SERVICE_SID_TYPE_UNRESTRICTED (sc qsidtype)",
+    "service_sid": "S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229",
+    "sid_status": "Active (sc showsid)",
+    "service_sd": "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)",
+    "note": "exact hardener SDDL applied by deferred custom action; runtime token verification (verify_maintenance_service_token, CheckTokenMembership on service SID) passes - service reaches RUNNING"
+  },
+  "ACL": {
+    "result": "PASS (Windows-native evidence only; security-audit mode_bits NOT used)",
+    "method": "Get-Acl SDDL + icacls + sc sdshow",
+    "install_dir_sddl": "O:SYG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;OICI;0x1200a9;;;NT SERVICE\\AetherCoreMaintenance)",
+    "critical_exes": "inherit 0x1200a9 (read/execute) for Users + service SID; FA for SYSTEM/BA; NO Users write",
+    "update_trust_json": "inheritance from install dir: Users RX, Administrators FA, SYSTEM FA - StandardUser write DENIED (runtime-verified)",
+    "programData_dir": "O:BAG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;NT SERVICE\\AetherCoreMaintenance) - no Users ACE at all",
+    "machine_mutation_lock": "protected DACL: SYSTEM/BA/service-SID FA only; StandardUser write DENIED (runtime-verified)",
+    "standarduser_write_denials": "exe write-open, trust write-open, file-create in install dir, lock write-open: ALL Access denied (error 5)",
+    "admin_boundaries": "update-trust.json + mutation lock grant Administrators FA per locked policy (machine-state administration authority); service exe write denied while running (in-use) and inherits Users-RX-only DACL at rest",
+    "defect_found_and_fixed": "install-hardener run_icacls combined /T with /inheritance:r+(OI)(CI) grants: on FILES, /inheritance:r leaves a protected EMPTY DACL (D:PAI) and (OI)(CI) grants silently no-op - left service exe unreadable even to SYSTEM (MSI Error 1920 access-denied). Fixed by removing /T from the grant pass; directory (OI)(CI) ACEs propagate. Evidence: controlled icacls characterization (acltest) + forced-cleanup recovery required takeown"
+  },
+  "IPC": {
+    "result": "PASS after defect fix",
+    "pipe_name": "\\\\.\\pipe\\AetherCore.Maintenance.v7",
+    "serviced_by": "AetherCoreMaintenance (own-process LocalSystem service; pipe disappears when service stops - verified)",
+    "protocol": "v7 handshake verified (ServerHello: session id, sequence, replay floor, max_inflight=8)",
+    "system_client_connect": "CONNECT=OK (product client path, exact PIPE_CLIENT_ACCESS_MASK 0x00120003, SECURITY_IDENTIFICATION)",
+    "standarduser_connect": "SUCCESS with exact production mask (as designed - client endpoint access for non-elevated desktop)",
+    "admin_connect": "SUCCESS",
+    "defect_found_and_fixed": "production_pipe_security_descriptor used hex mask 0x00120003 in the AU ACE; Windows SDDL parser SILENTLY DROPS SYNCHRONIZE (0x00100000) from hex masks -> materialized DACL granted AU only 0x120003 -> EVERY client (SYSTEM/Admin/StandardUser/desktop app) denied; production pipe was unusable as encoded. Proven by A/B lab pipes (dev-SDDL open OK; prod-DACL deny; AU-GA pipe open OK) + live DACL dump (0x120003 after round-trip). Fix: named SDDL rights FR + hex 0x00000002 for AU (materializes 0x12008B: covers client mask incl. SYNCHRONIZE; still NO FILE_CREATE_PIPE_INSTANCE/append/generic authority). Negative property re-verified in lab: create-instance-capable mask DENIED on fixed DACL. Unit test updated to pin encoding + deny-list.",
+    "fail_closed": "update check/status with trust disabled: capability not available (updateApplyRequiresWindowsQualification) - fail-closed honored",
+    "broker_identity_path_checks": "require_broker/expected_broker_path compiled into service binary (P36-D019 delta, Codex-ACCEPTED); broker executables installed beside service in machine-owned dir"
+  },
+  "STANDARDUSER_DENIAL": {
+    "result": "PASS",
+    "context": "hasanalaaa3a44\\p36standarduser, Medium Mandatory Level (S-1-16-8192), no S-1-5-32-544 in token (actual-token task probe)",
+    "write_service_exe": "DENIED - Access to the path is denied (0x5)",
+    "write_trust_json": "DENIED - Access to the path is denied (0x5)",
+    "create_file_in_install_dir": "DENIED - Access to the path is denied (0x5)",
+    "write_machine_mutation_lock": "DENIED - Access to the path is denied (0x5)",
+    "sc_stop_service": "DENIED - [SC] OpenService FAILED 5: Access is denied",
+    "sc_config_service": "DENIED - [SC] OpenService FAILED 5: Access is denied",
+    "pipe_client_connect": "SUCCESS (correct: client endpoint access is the intended non-elevated path; no server authority)",
+    "harmless_probes_only": true,
+    "artifacts_cleaned": "probe temp file deleted on DENIED-success paths; no corruption performed"
+  },
+  "ADMIN_BEHAVIOR": {
+    "result": "PASS",
+    "context": "hasanalaaa3a44\\p36admin, High integrity via RunLevel Highest task (actual-token)",
+    "pipe_client_connect": "SUCCESS",
+    "service_exe_write_while_running": "DENIED by file-in-use lock (service running) - kernel-level protection, expected",
+    "update_trust_json_write": "SUCCESS - by locked policy: Administrators hold FA on machine state (documented machine-administration authority; not a privilege escalation path - trust content still gated by release process)",
+    "mutation_lock_write": "SUCCESS - by locked policy (Administrators FA, same rationale)",
+    "sc_stop_service": "SUCCESS (exit 0) - Administrators hold STOP per service SD; service restarted cleanly afterward",
+    "note": "Admin capabilities match the locked policy surface; no attempt was made to 'fix' the ACL surface"
+  },
+  "FILES_CHANGED": [
+    "installer/wix/Product.wxs (2 deltas: Launch condition WindowsBuild->OSCURRENTBUILD RegistrySearch [MSI WindowsBuild compat-capped at 9600 for unmanifested packages - condition could never pass on ANY modern Windows, verified in install log]; +libomp140.aarch64.dll File in ServiceComponent [service import table requires it; STATUS_DLL_NOT_FOUND without it])",
+    "apps/install-hardener/src/main.rs (1 delta: run_icacls removes /T from /inheritance:r+(OI)(CI) grant pass - /T on files left protected EMPTY DACLs, MSI Error 1920)",
+    "crates/ipc/src/windows_impl.rs (1 delta: production_pipe_security_descriptor AU ACE hex 0x00120003 -> 'FR'+'0x00000002' named rights - SDDL parser silently dropped SYNCHRONIZE from hex mask; unit test updated to pin new encoding)",
+    "crates/ipc/examples/ipc_probe.rs (NEW: diagnostic example binary for connect error exposure)"
+  ],
+  "MACHINE_MUTATIONS": [
+    "AetherCore 0.1.0 ARM64 installed per-machine (Program Files\\AetherCore, ProgramData\\AetherCore, HKLM uninstall entry, service AetherCoreMaintenance)",
+    "test accounts P36StandardUser/P36Admin passwords rotated per probe (values never persisted)",
+    "one-shot scheduled tasks created and deleted per probe (P36T1Probe*, P36T1P2*)",
+    "diagnostic pipes P36LabA-F created and closed",
+    "C:\\ProgramData\\AetherCore\\logs + state\\aethercore.db created by service runs (post-MSI-install legitimate state)"
+  ],
+  "TESTS": {
+    "cargo_test_p_aethercore_ipc_locked": "17 passed / 0 failed (ARM64, after SD fix)",
+    "cargo_build_release_all_payload": "EXIT=0 (maintenance-service, consent-broker, update-broker, install-hardener, desktop via tauri build --no-bundle)",
+    "wix_msi_validate": "EXIT=0, zero ICE findings, no suppression",
+    "msi_install": "exit 0 (after fixes), service clean start, RUNNING",
+    "pe_architecture": "5/5 exes ARM64 via llvm-readobj",
+    "ipc_handshake": "ServerHello v7 round-trip OK as SYSTEM/Admin/StandardUser-raw-open"
+  },
+  "RESULTS": {
+    "REAL_ARM64_MSI": "PASS",
+    "MSI_INSTALL": "PASS",
+    "SERVICE_REGISTRATION": "PASS",
+    "SERVICE_SID": "PASS",
+    "NTFS_ACL": "PASS",
+    "NAMED_PIPE_IPC": "PASS (after SD encoding fix)",
+    "STANDARDUSER_DENIAL": "PASS",
+    "ADMIN_BEHAVIOR": "PASS"
+  },
+  "BLOCKERS": [
+    "BUILD_REPRODUCIBILITY_DEBT_OPEN=True - the 8 ARM64 build requirements remain manual invocation state (per pre-mutation review); now +2 items: MSI needs the OpenMP runtime DLL shipped beside the service exe, and the /T icacls defect shows hardener behavior must be encoded in tooling tests",
+    "release/dependency-freeze blocker OMEGA-RB-001 remains OPEN by design (P36-D017)",
+    "aetherctl doctor hung (killed after 25 min) under P36StandardUser during probe v1 - CLI-side hang vs service-side is UNDIAGNOSED (raw pipe open works for the same token; aetherctl about/offline paths work); logged as open follow-up, not a Tranche-1 gate",
+    "Authenticode signing unavailable in VM (no certificate provisioned) - recorded honestly"
+  ],
+  "ARCHITECTURAL_DECISION_REQUIRED": false,
+  "BUILD_REPRODUCIBILITY_DEBT_OPEN": true,
+  "NEXT_ACTION": "Tranche 2 (separately authorized): repair cycle, uninstall cycle, upgrade cycle, rollback/recovery fault injection. Then physical x64 qualification (P36-D004/D015). No Phase 37 (P36-D016). All three Tranche-1 source deltas (Product.wxs, install-hardener main.rs, ipc windows_impl.rs) are SECURITY-SENSITIVE and require Codex review before any release packaging."
+}

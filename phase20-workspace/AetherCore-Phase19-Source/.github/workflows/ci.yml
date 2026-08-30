@@ -1,0 +1,65 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
+          rustup override set 1.97.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.16.0
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.22.0
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - name: Verify approved dependency freeze
+        shell: pwsh
+        run: ./scripts/freeze-dependencies.ps1 -VerifyOnly
+      - name: Frozen dependency restore
+        run: pnpm --dir apps/ui install --frozen-lockfile
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Rust unit/integration tests
+        run: cargo test --locked --workspace
+      - name: UI accessibility/type gate
+        run: pnpm --dir apps/ui check
+      - name: UI production build
+        run: pnpm --dir apps/ui build
+      - name: Locked Rust workspace check
+        run: cargo check --workspace --locked
+      - name: Platform-neutral invariants
+        run: python scripts/static_validate.py
+      - name: Enterprise convergence master source/native qualification gate
+        shell: pwsh
+        run: ./scripts/verify-enterprise.ps1 -SkipOnlineSupplyChain
+      - name: Zenith adversarial source interaction and accessibility gate
+        shell: pwsh
+        run: ./scripts/zenith-adversarial-audit.ps1
+      - name: Zenith recursive architecture and resource-safety gate
+        shell: pwsh
+        run: ./scripts/zenith-recursive-audit.ps1
+      - name: Supply-chain audit
+        shell: pwsh
+        run: ./scripts/audit-dependencies.ps1
+      - name: Build unsigned production packaging candidate
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -SkipOnlineSupplyChain
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: aethercore-enterprise-converged-unsigned-candidate
+          path: out/release/**
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,15 @@
+/target/
+/.devdata/
+/out/
+/apps/ui/node_modules/
+/apps/ui/dist/
+*.db
+*.db-shm
+*.db-wal
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+__pycache__/
+*.pyc

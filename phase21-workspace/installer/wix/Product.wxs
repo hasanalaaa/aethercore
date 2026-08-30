@@ -15,13 +15,41 @@
     <SummaryInformation Description="AetherCore Windows maintenance and diagnostics suite" Manufacturer="AetherCore" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version of AetherCore is already installed." />
+    <!-- P36 Tranche 1 (Hermes): MSI WindowsBuild is compat-capped at 9600 (Windows 8.1
+         values) for unmanifested packages on ALL modern Windows - the previous
+         "WindowsBuild >= 22621" condition could never pass at runtime (verified in
+         tranche1-msi-install.log: Property(S): WindowsBuild = 9600 on build 26200).
+         Root-cause remedy: read the real build number from the registry
+         (HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuildNumber), which
+         is authoritative on every supported OS. Guard intent unchanged: require
+         Windows 11 build 22621 or newer. -->
+    <Property Id="OSCURRENTBUILD" Value="0">
+      <RegistrySearch Id="OsCurrentBuildNumber"
+                      Root="HKLM"
+                      Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="CurrentBuildNumber"
+                      Type="raw"
+                      Bitness="always64" />
+    </Property>
     <Launch
-        Condition="VersionNT64 AND MsiNTProductType = 1 AND WindowsBuild &gt;= 22621"
-        Message="AetherCore requires Windows 11 x64 build 22621 or newer." />
+        Condition="VersionNT64 AND MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621"
+        Message="AetherCore requires Windows 11 build 22621 or newer." />
 
     <!-- Direct MSI installs are supported for managed environments, but the consumer bundle is
          preferred because it also guarantees the Evergreen WebView2 prerequisite. Do not author
          ARPNOREPAIR: Windows Installer repair is intentionally part of the recovery contract. -->
+
+    <!-- P36 (Hermes): ICE38/ICE43/ICE57 root-cause fix. The shortcut is non-advertised
+         (Advertise="no") while the owning component's KeyPath is a file under
+         ProgramFiles64Folder. Windows Installer treats ProgramMenuFolder under a
+         per-machine install as the All Users profile, so the ICEs require the
+         component's KeyPath to be a HKCU registry entry. Authoring the shortcut as
+         ADVERTISED (Advertise="yes") is the documented root-cause remedy: an
+         advertised shortcut may legally use the file KeyPath and no per-user
+         KeyPath is needed. DISABLEADVTSHORTCUTS=1 makes Windows Installer materialize
+         it as an ordinary .lnk at install time, so behavior remains a plain shortcut
+         ("find target" still works). No ICE suppression is used. -->
+    <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="AetherCore">
@@ -32,7 +60,7 @@
                       Name="AetherCore"
                       Description="AetherCore"
                       WorkingDirectory="INSTALLFOLDER"
-                      Advertise="no" />
+                      Advertise="yes" />
           </File>
         </Component>
 
@@ -57,6 +85,13 @@
 
         <Component Id="ServiceComponent" Guid="{C6DA3E84-2EEC-4D98-9F5F-B1F47C366309}" Bitness="always64">
           <File Id="MaintenanceServiceExe" Source="$(var.PayloadDir)\aethercore-maintenance-service.exe" KeyPath="yes" />
+          <!-- P36 Tranche 1 (Hermes): the ARM64 clang-cl build imports libomp140.aarch64.dll
+               (verified via llvm-readobj coff-imports). The service's DLL search path does
+               not include the build Redist dir, so the runtime DLL must be installed beside
+               the service executable or SCM start fails with STATUS_DLL_NOT_FOUND (0xC0000135)
+               which surfaces as Error 1920 and 1053. Non-System32 Microsoft VC runtime DLL
+               colocated with its consumer; update-trust and binary authority unchanged. -->
+          <File Id="OpenMPRuntimeDll" Source="$(var.PayloadDir)\libomp140.aarch64.dll" />
           <ServiceInstall
               Id="MaintenanceServiceInstall"
               Name="AetherCoreMaintenance"
@@ -98,9 +133,17 @@
 
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="AetherCoreProgramMenu" Name="AetherCore">
+        <!-- P36 (Hermes): ICE38 root-cause fix. This component installs into
+             ProgramMenuFolder (resolved to the All Users profile under the
+             per-machine scope), so the ICEs require its KeyPath to be a registry
+             entry under HKCU. The shortcut now lives in DesktopComponent as an
+             advertised shortcut; this component only owns folder creation/removal,
+             and its HKCU KeyPath satisfies ICE38/ICE43 without any suppression.
+             The previous HKLM root here mixed per-machine data with a
+             per-user-profile directory (the ICE57 mixing class). -->
         <Component Id="ProgramMenuComponent" Guid="{89E168CE-E5CD-45DA-97C8-20452172818C}">
           <RemoveFolder Id="RemoveAetherCoreProgramMenu" On="uninstall" />
-          <RegistryValue Root="HKLM"
+          <RegistryValue Root="HKCU"
                          Key="Software\AetherCore"
                          Name="ProgramMenu"
                          Type="integer"

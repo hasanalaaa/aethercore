@@ -1,0 +1,20 @@
+syntax = "proto3";
+package aethercore.v1;
+
+enum SchedulerRunState {
+  SCHEDULER_RUN_STATE_UNSPECIFIED = 0;
+  SCHEDULER_RUN_STATE_STARTED = 1;
+  SCHEDULER_RUN_STATE_COMPLETED = 2;
+  SCHEDULER_RUN_STATE_PREEMPTED = 3;
+  SCHEDULER_RUN_STATE_SKIPPED = 4;
+  SCHEDULER_RUN_STATE_FAILED = 5;
+}
+
+message SchedulerEvent {
+  string workload = 1;
+  SchedulerRunState state = 2;
+  string reason = 3;
+  int64 changed_unix_ms = 4;
+  uint32 evidence_count = 5;
+  uint32 warning_count = 6;
+}

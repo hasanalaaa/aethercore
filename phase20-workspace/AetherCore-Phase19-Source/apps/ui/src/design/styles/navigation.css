@@ -1,0 +1,68 @@
+.app-brand {
+  display:flex; align-items:center; gap:.75rem; min-height:3.4rem; padding-inline:.5rem; margin-block-end:.9rem;
+}
+.brand-mark {
+  inline-size:2.25rem; block-size:2.25rem; flex:0 0 auto; display:grid; place-items:center;
+  border:1px solid var(--ac-border-default); border-radius:.75rem;
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.018));
+  box-shadow:inset 0 1px rgba(255,255,255,.055);
+}
+.brand-mark span {
+  inline-size:.75rem; block-size:.75rem; border:2px solid var(--ac-accent-strong); border-radius:50%;
+  box-shadow:0 0 1rem rgba(142,197,245,.42);
+}
+.brand-copy { min-inline-size:0; }
+.brand-copy strong { display:block; color:var(--ac-text-1); font-size:.9375rem; font-weight:650; letter-spacing:-.006em; }
+.brand-copy small { display:block; margin-block-start:.12rem; color:var(--ac-text-4); font-size:.75rem; line-height:1.25; }
+
+.command-trigger,.locale-button,.app-nav-item {
+  min-block-size:var(--ac-target-min); inline-size:100%; border:1px solid transparent; border-radius:.72rem;
+  background:transparent; color:var(--ac-text-3); cursor:pointer;
+}
+.command-trigger {
+  display:grid; grid-template-columns:1.25rem minmax(0,1fr) auto; align-items:center; gap:.6rem;
+  margin-block-end:.9rem; padding:.58rem .7rem; text-align:start;
+  border-color:var(--ac-border-subtle); background:rgba(255,255,255,.024);
+}
+.command-trigger:hover { background:var(--ac-layer-hover); color:var(--ac-text-2); border-color:var(--ac-border-default); }
+.command-trigger span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.command-trigger kbd {
+  min-inline-size:2.85rem; padding:.18rem .34rem; border:1px solid var(--ac-border-subtle); border-radius:.34rem;
+  background:rgba(0,0,0,.18); color:var(--ac-text-4); font:500 .6875rem/1.2 var(--ac-font-text); text-align:center;
+}
+
+.app-sidebar nav { display:grid; gap:.2rem; }
+.app-nav-item {
+  display:grid; grid-template-columns:1.75rem minmax(0,1fr); align-items:center; gap:.55rem;
+  padding:.48rem .58rem; text-align:start;
+}
+.app-nav-item:hover { color:var(--ac-text-2); background:var(--ac-layer-hover); }
+.app-nav-item.active {
+  color:var(--ac-text-1); border-color:rgba(142,197,245,.11);
+  background:linear-gradient(180deg,rgba(142,197,245,.105),rgba(142,197,245,.065));
+  box-shadow:inset 0 1px rgba(255,255,255,.035);
+}
+.nav-icon { inline-size:1.75rem; block-size:1.75rem; display:grid; place-items:center; border-radius:.48rem; color:var(--ac-text-4); }
+.app-nav-item.active .nav-icon { color:var(--ac-accent-strong); background:rgba(142,197,245,.08); }
+.nav-copy { min-inline-size:0; }
+.nav-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8125rem; font-weight:600; }
+.nav-copy small { display:block; margin-block-start:.08rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ac-text-4); font-size:.6875rem; line-height:1.25; }
+
+.sidebar-controls { margin-block-start:auto; padding-block-start:1rem; }
+.locale-button {
+  display:grid; grid-template-columns:1.25rem minmax(0,1fr); align-items:center; gap:.55rem;
+  padding:.5rem .6rem; text-align:start;
+}
+.locale-button:hover { background:var(--ac-layer-hover); color:var(--ac-text-2); }
+
+.app-service {
+  display:grid; grid-template-columns:.6rem minmax(0,1fr) auto; align-items:center; gap:.55rem;
+  margin-block-start:.65rem; padding:.72rem .55rem .1rem; border-block-start:1px solid var(--ac-border-subtle);
+}
+.status-dot { inline-size:.45rem; block-size:.45rem; border-radius:50%; background:var(--ac-danger); box-shadow:0 0 .6rem rgba(239,154,154,.18); }
+.status-dot.online { background:var(--ac-positive); box-shadow:0 0 .7rem rgba(131,213,178,.35); }
+.service-copy { min-inline-size:0; }
+.service-copy small,.service-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.service-copy small { color:var(--ac-text-4); font-size:.6875rem; }
+.service-copy strong { margin-block-start:.08rem; color:var(--ac-text-2); font-size:.75rem; font-weight:600; }
+.service-version { color:var(--ac-text-4); font-size:.6875rem; font-family:var(--ac-font-mono); direction:ltr; unicode-bidi:isolate; }

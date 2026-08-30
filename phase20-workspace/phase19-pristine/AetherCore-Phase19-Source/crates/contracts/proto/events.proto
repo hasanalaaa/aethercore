@@ -1,0 +1,164 @@
+syntax = "proto3";
+package aethercore.v1;
+
+import "common.proto";
+import "operations.proto";
+import "drivers.proto";
+import "repair.proto";
+import "cleanup.proto";
+import "startup.proto";
+import "diagnostics.proto";
+import "intelligence.proto";
+import "scheduler.proto";
+import "update.proto";
+import "support_bundle.proto";
+
+enum EventKind {
+  EVENT_KIND_UNSPECIFIED = 0;
+  EVENT_KIND_SERVICE_SNAPSHOT = 1;
+  EVENT_KIND_PLAN_CHANGED = 2;
+  EVENT_KIND_DRIVER_DISCOVERY = 3;
+  EVENT_KIND_DRIVER_INSTALL = 4;
+  EVENT_KIND_RECOVERY_HISTORY = 5;
+  EVENT_KIND_REPAIR_ASSESSMENT = 6;
+  EVENT_KIND_SYSTEM_REPAIR = 7;
+  EVENT_KIND_CLEANUP_DISCOVERY = 8;
+  EVENT_KIND_CLEANUP_EXECUTION = 9;
+  EVENT_KIND_STARTUP_DISCOVERY = 10;
+  EVENT_KIND_STARTUP_EXECUTION = 11;
+  EVENT_KIND_STARTUP_HISTORY = 12;
+  EVENT_KIND_DIAGNOSTICS = 13;
+  EVENT_KIND_DIAGNOSTICS_HISTORY = 14;
+  EVENT_KIND_CONSENT_CHANGED = 15;
+  EVENT_KIND_MUTATION_LEASE = 16;
+  EVENT_KIND_PROGRESS_TELEMETRY = 17;
+  EVENT_KIND_SCHEDULER = 18;
+  EVENT_KIND_UPDATE = 19;
+  EVENT_KIND_SUPPORT_BUNDLE = 20;
+  EVENT_KIND_DEEP_SCAN = 21;
+}
+
+enum MutationLeaseState {
+  MUTATION_LEASE_STATE_UNSPECIFIED = 0;
+  MUTATION_LEASE_STATE_ACQUIRED = 1;
+  MUTATION_LEASE_STATE_RELEASED = 2;
+}
+
+enum MutationWorkloadKind {
+  MUTATION_WORKLOAD_KIND_UNSPECIFIED = 0;
+  MUTATION_WORKLOAD_KIND_DRIVER_INSTALL = 1;
+  MUTATION_WORKLOAD_KIND_SYSTEM_REPAIR = 2;
+  MUTATION_WORKLOAD_KIND_CLEANUP = 3;
+  MUTATION_WORKLOAD_KIND_STARTUP = 4;
+  MUTATION_WORKLOAD_KIND_UPDATE = 5;
+}
+
+message MutationLeaseEvent {
+  string lease_id = 1;
+  MutationWorkloadKind workload = 2;
+  string plan_id = 3;
+  MutationLeaseState state = 4;
+  int64 acquired_unix_ms = 5;
+  int64 changed_unix_ms = 6;
+}
+
+message ProgressTelemetryEvent {
+  string plan_id = 1;
+  string stage = 2;
+  bool progress_known = 3;
+  uint32 overall_percent = 4;
+  string current_item_id = 5;
+  string detail = 6;
+  uint64 bytes_completed = 7;
+  uint64 bytes_total = 8;
+}
+
+message EventEnvelope {
+  // Sequence numbers are monotonic per authenticated principal, never global across users.
+  uint64 sequence = 1;
+  int64 emitted_unix_ms = 2;
+  EventKind kind = 3;
+  string plan_id = 4;
+  oneof payload {
+    ServiceSnapshot service_snapshot = 10;
+    PlanSnapshot plan = 11;
+    DriverHubSnapshot driver_hub_snapshot = 12;
+    DriverInstallStatus driver_install_status = 13;
+    RecoveryHistoryResponse recovery_history = 14;
+    RepairAssessmentSnapshot repair_assessment = 15;
+    SystemRepairStatus system_repair_status = 16;
+    CleanupSnapshot cleanup_snapshot = 17;
+    CleanupStatus cleanup_status = 18;
+    StartupSnapshot startup_snapshot = 19;
+    StartupStatus startup_status = 20;
+    StartupHistoryResponse startup_history = 21;
+    DiagnosticsSnapshot diagnostics_snapshot = 22;
+    DiagnosticsHistoryResponse diagnostics_history = 23;
+    ConsentIntentResponse consent_intent = 24;
+    MutationLeaseEvent mutation_lease = 25;
+    ProgressTelemetryEvent progress_telemetry = 26;
+    SchedulerEvent scheduler = 27;
+    UpdateSnapshot update_snapshot = 28;
+    SupportBundleEvent support_bundle = 29;
+    DeepScanSnapshot deep_scan_snapshot = 30;
+  }
+}
+
+message ClientHello {
+  uint32 protocol_version = 1;
+  string client_name = 2;
+  string client_version = 3;
+  uint64 replay_after_sequence = 4;
+}
+
+message ServerHello {
+  uint32 protocol_version = 1;
+  string session_id = 2;
+  string service_version = 3;
+  int64 server_time_unix_ms = 4;
+  uint64 current_sequence = 5;
+  uint32 max_inflight_requests = 6;
+  uint64 replay_floor_sequence = 7;
+  bool replay_complete = 8;
+}
+
+message SessionRequest {
+  Request request = 1;
+  int64 deadline_unix_ms = 2;
+  string cancellation_id = 3;
+}
+
+message CancelRequest { string cancellation_id = 1; }
+message ClientGoodbye {}
+
+enum StreamResetReason {
+  STREAM_RESET_REASON_UNSPECIFIED = 0;
+  STREAM_RESET_REASON_REPLAY_WINDOW_EXCEEDED = 1;
+  STREAM_RESET_REASON_SUBSCRIBER_LAGGED = 2;
+  STREAM_RESET_REASON_SEQUENCE_RESET = 3;
+}
+
+message StreamReset {
+  StreamResetReason reason = 1;
+  uint64 current_sequence = 2;
+  uint64 replay_floor_sequence = 3;
+  string message_key = 4;
+}
+
+message ClientFrame {
+  oneof payload {
+    ClientHello hello = 1;
+    SessionRequest request = 2;
+    CancelRequest cancel = 3;
+    ClientGoodbye goodbye = 4;
+  }
+}
+
+message ServerFrame {
+  oneof payload {
+    ServerHello hello = 1;
+    Response response = 2;
+    EventEnvelope event = 3;
+    StreamReset stream_reset = 4;
+  }
+}

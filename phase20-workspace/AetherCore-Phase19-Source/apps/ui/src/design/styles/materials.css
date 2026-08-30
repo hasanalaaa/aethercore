@@ -1,0 +1,60 @@
+.app-shell { display:grid; grid-template-columns:var(--ac-sidebar-width) minmax(0,1fr); min-height:100vh; isolation:isolate; background:transparent; }
+.app-sidebar {
+  position:fixed; inset-block:0; inset-inline-start:0; width:var(--ac-sidebar-width); z-index:20;
+  display:flex; flex-direction:column; padding:1.35rem .875rem .875rem;
+  border-inline-end:1px solid var(--ac-border-subtle);
+  background:var(--ac-material-structural);
+  backdrop-filter:blur(var(--ac-blur-structural)) saturate(var(--ac-saturation));
+  -webkit-backdrop-filter:blur(var(--ac-blur-structural)) saturate(var(--ac-saturation));
+  box-shadow:inset -1px 0 rgba(255,255,255,.018);
+}
+main { grid-column:2; width:100%; max-width:none; margin:0; padding:clamp(1.8rem,3.2vw,3rem) clamp(1.75rem,3.6vw,3.5rem) 4.5rem; min-height:100vh; }
+main > * { max-width:var(--ac-content-max); margin-inline:auto; }
+
+.ac-material { border:1px solid var(--ac-border-subtle); }
+.ac-material-base { background:var(--ac-material-base); box-shadow:var(--ac-shadow-card); }
+.ac-material-structural { background:var(--ac-material-structural); backdrop-filter:blur(var(--ac-blur-structural)) saturate(var(--ac-saturation)); }
+.ac-material-elevated { background:var(--ac-material-elevated); backdrop-filter:blur(var(--ac-blur-elevated)) saturate(var(--ac-saturation)); box-shadow:var(--ac-shadow-card); }
+.ac-material-focused { background:var(--ac-material-focused); backdrop-filter:blur(var(--ac-fluid-surface-blur,var(--ac-blur-focused))) saturate(var(--ac-saturation)); box-shadow:var(--ac-shadow-float); }
+
+.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.pending-install-card,.install-progress-card,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,
+.storage-card,.startup-card,.cleanup-card,.repair-check,.module-live,.module-card,.warning-strip,.protection-card,.phase4-action-card,.recovery-panel {
+  border-color:var(--ac-border-subtle);
+  background:linear-gradient(180deg,rgba(25,33,41,.70),rgba(17,23,29,.68));
+  box-shadow:var(--ac-shadow-card);
+}
+.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,.recovery-panel { border-radius:var(--ac-radius-lg); }
+.storage-card,.startup-card,.cleanup-card,.repair-check,.pending-install-card,.install-progress-card { border-radius:var(--ac-radius-md); }
+.driver-metrics article,.cleanup-summary article,.hardware-summary article,.metric-grid>div,.memory-facts>div,.repair-summary article,.review-facts>div {
+  border-color:var(--ac-border-subtle); background:rgba(255,255,255,.028); border-radius:var(--ac-radius-md);
+}
+.service-pill,.diagnostic-severity,.startup-title span,.startup-title em,.cleanup-copy em { border-color:var(--ac-border-subtle); background:rgba(255,255,255,.028); }
+
+.primary,.install-button { background:linear-gradient(180deg,#e2f3ff,#bedff8); border-color:rgba(255,255,255,.32); color:#091119; box-shadow:inset 0 1px rgba(255,255,255,.68),0 7px 20px rgba(34,104,153,.12); }
+.secondary,.scan-button { background:rgba(255,255,255,.04); border-color:var(--ac-border-default); color:var(--ac-text-2); }
+button:disabled { cursor:not-allowed; opacity:.45; }
+
+.error-banner { position:sticky; inset-block-start:.75rem; z-index:12; border:1px solid rgba(239,154,154,.24); background:rgba(69,27,30,.88); backdrop-filter:blur(18px); box-shadow:var(--ac-shadow-float); border-radius:var(--ac-radius-md); }
+
+.ac-dialog-backdrop {
+  position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:2rem;
+  background:rgba(2,5,8,var(--ac-dialog-scrim-alpha,.58));
+  backdrop-filter:blur(var(--ac-dialog-blur,16px)) saturate(108%);
+  -webkit-backdrop-filter:blur(var(--ac-dialog-blur,16px)) saturate(108%);
+}
+.ac-fluid-dialog { width:min(42rem,calc(100vw - 3rem)); max-height:min(80vh,52rem); overflow:auto; border-radius:1.25rem; padding:1.4rem; }
+.command-backdrop { place-items:start center; padding-block-start:min(18vh,9.5rem); }
+.command-palette { width:min(40rem,calc(100vw - 3rem)); padding:0; overflow:hidden; }
+.command-search { min-height:3.75rem; display:grid; grid-template-columns:1.4rem minmax(0,1fr) auto; align-items:center; gap:.65rem; padding:0 1rem; border-block-end:1px solid var(--ac-border-subtle); color:var(--ac-text-3); }
+.command-search input { inline-size:100%; block-size:100%; border:0; padding:0; background:transparent; color:var(--ac-text-1); box-shadow:none; font-size:1rem; }
+.command-results { max-height:min(26rem,50vh); overflow:auto; padding:.45rem; }
+.command-results button { width:100%; min-height:3.35rem; display:grid; grid-template-columns:2.1rem minmax(0,1fr) auto; align-items:center; gap:.55rem; text-align:start; border:1px solid transparent; border-radius:.65rem; background:transparent; color:var(--ac-text-2); padding:.4rem .55rem; cursor:pointer; }
+.command-results button.selected { background:rgba(142,197,245,.10); border-color:rgba(142,197,245,.13); color:var(--ac-text-1); }
+.command-result-icon { inline-size:1.9rem; block-size:1.9rem; display:grid; place-items:center; border-radius:.5rem; background:rgba(255,255,255,.04); color:var(--ac-accent-strong); }
+.command-results strong,.command-results small { display:block; }.command-results strong { font-size:.875rem; font-weight:590; }.command-results small { margin-block-start:.15rem; color:var(--ac-text-4); font-size:.75rem; }
+.command-palette footer { padding:.65rem .95rem; border-block-start:1px solid var(--ac-border-subtle); color:var(--ac-text-4); font-size:.75rem; }
+
+[data-transparency="reduced"] .app-sidebar,
+[data-transparency="reduced"] .ac-material,
+[data-transparency="reduced"] .error-banner { backdrop-filter:none; -webkit-backdrop-filter:none; background:#10161d; }
+[data-transparency="reduced"] .ac-dialog-backdrop { backdrop-filter:none; -webkit-backdrop-filter:none; }

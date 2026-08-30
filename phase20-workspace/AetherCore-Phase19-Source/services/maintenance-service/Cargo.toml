@@ -1,0 +1,39 @@
+[package]
+name = "aethercore-maintenance-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+aethercore-collector-runtime = { path = "../../crates/collector-runtime" }
+aethercore-idle-scheduler = { path = "../../crates/idle-scheduler" }
+aethercore-update-engine = { path = "../../crates/update-engine" }
+aethercore-support-bundle = { path = "../../crates/support-bundle" }
+aethercore-cleaner = { path = "../../crates/cleaner" }
+aethercore-contracts = { path = "../../crates/contracts" }
+aethercore-diagnostics = { path = "../../crates/diagnostics" }
+aethercore-diagnostic-engine = { path = "../../crates/diagnostic-engine" }
+aethercore-driver-hub = { path = "../../crates/driver-hub" }
+aethercore-driver-install = { path = "../../crates/driver-install" }
+aethercore-ipc = { path = "../../crates/ipc" }
+aethercore-operation-engine = { path = "../../crates/operation-engine" }
+aethercore-operation-kernel = { path = "../../crates/operation-kernel" }
+aethercore-performance-telemetry = { path = "../../crates/performance-telemetry" }
+aethercore-performance-bottleneck = { path = "../../crates/performance-bottleneck" }
+aethercore-performance-optimization = { path = "../../crates/performance-optimization" }
+aethercore-pc-intelligence = { path = "../../crates/pc-intelligence" }
+aethercore-persistence = { path = "../../crates/persistence" }
+aethercore-security = { path = "../../crates/security" }
+aethercore-system-repair = { path = "../../crates/system-repair" }
+aethercore-startup-manager = { path = "../../crates/startup-manager" }
+aethercore-restore-point = { path = "../../crates/restore-point" }
+anyhow.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+windows-service = "0.8.1"

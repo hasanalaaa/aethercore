@@ -1,0 +1,126 @@
+{
+  "phase": 17,
+  "status": "SOURCE_REVIEW_COMPLETE_WITH_QUALIFICATION_DEBT",
+  "issues": [
+    {
+      "id": "P17-ISSUE-001",
+      "severity": "High",
+      "state": "Resolved",
+      "area": "Correlation",
+      "summary": "Draft rule conflated AetherCore self-update failure with Windows Update servicing failure.",
+      "resolution": "Removed P17-CORR-002; future servicing correlation requires a genuine Windows Update fact source."
+    },
+    {
+      "id": "P17-ISSUE-002",
+      "severity": "Moderate",
+      "state": "Resolved",
+      "area": "Summary",
+      "summary": "Sensitive/hardware remediation could be counted as optional optimization.",
+      "resolution": "Optional count now requires low/informational severity plus SafeAuto/SafeReview; result groups are mutually exclusive."
+    },
+    {
+      "id": "P17-ISSUE-003",
+      "severity": "Moderate",
+      "state": "Resolved",
+      "area": "Resource failure",
+      "summary": "Collector worker spawn failure could disappear without a terminal collector status.",
+      "resolution": "Spawn failure now returns an explicit unavailable TaskResult and diagnostic limitation."
+    },
+    {
+      "id": "P17-ISSUE-004",
+      "severity": "Low",
+      "state": "Resolved",
+      "area": "UI localization",
+      "summary": "Reboot/reversibility enum values and raw limitation prose could leak English into Arabic primary UI.",
+      "resolution": "Mapped reboot/reversibility and collector terminal states to EN/AR keys; raw internal warnings are not used as primary limitation copy."
+    },
+    {
+      "id": "P17-ISSUE-005",
+      "severity": "Low",
+      "state": "Resolved",
+      "area": "Progress",
+      "summary": "Default Deep Scan task count was six while coordinator schedules seven collector tasks.",
+      "resolution": "Default task count corrected to seven."
+    },
+    {
+      "id": "P17-ISSUE-006",
+      "severity": "High",
+      "state": "QualificationDebt",
+      "area": "Toolchain",
+      "summary": "Rust/Cargo and installed UI dependencies are unavailable on the current host.",
+      "resolution": "No compile/test PASS is claimed; deterministic source/static/SQLite evidence is produced and native/toolchain gates remain explicit."
+    },
+    {
+      "id": "P17-ISSUE-007",
+      "severity": "Moderate",
+      "state": "Resolved",
+      "area": "UI information architecture",
+      "summary": "A low-risk finding could appear in both Recommended and Optional result groups.",
+      "resolution": "Grouping now uses disjoint sets: High/Critical is Needs Action; eligible low/informational low-risk remediation is Optional; remaining lower-severity findings are Recommended."
+    },
+    {
+      "id": "P17-ISSUE-008",
+      "severity": "High",
+      "state": "Resolved",
+      "area": "Persistence truthfulness",
+      "summary": "Finding lifecycle/history persistence failures could be ignored while the scan still appeared fully completed.",
+      "resolution": "Persistence failures now preserve current results but downgrade an otherwise completed scan to Partial and expose a localized continuity limitation."
+    },
+    {
+      "id": "P17-ISSUE-009",
+      "severity": "High",
+      "state": "Resolved",
+      "area": "Correlation evidence",
+      "summary": "The driver-regression rule initially had synthetic DriverChange evidence but no production normalization source.",
+      "resolution": "Recent verified driver-install journal entries are now queried with owner-principal scoping and normalized into DriverChange facts."
+    },
+    {
+      "id": "P17-ISSUE-010",
+      "severity": "High",
+      "state": "Resolved",
+      "area": "Driver authority",
+      "summary": "A non-selectable driver update offer could produce an executable InstallDriver remediation candidate before Phase 18 authority resolution.",
+      "resolution": "Non-selectable/non-vendor offers are informational with no remediation; vendor-managed offers are ManualVendorAction; InstallDriver is created only for selectable offers."
+    },
+    {
+      "id": "P17-ISSUE-011",
+      "severity": "Moderate",
+      "state": "Resolved",
+      "area": "Health summary",
+      "summary": "Counting all unreferenced facts as healthy could inflate Healthy checks with neutral inventory/history observations.",
+      "resolution": "Healthy count now uses explicit per-payload healthy predicates only."
+    },
+    {
+      "id": "P17-ISSUE-012",
+      "severity": "Low",
+      "state": "Resolved",
+      "area": "Diagnostic limitations",
+      "summary": "CompletedWithWarnings could be rendered as failed and was not consistently included in the visible limitation count.",
+      "resolution": "CompletedWithWarnings has a dedicated localized label and is included in the limitation view/count without becoming a machine-health finding."
+    },
+    {
+      "id": "P17-ISSUE-013",
+      "severity": "Moderate",
+      "state": "Resolved",
+      "area": "Legacy source gates",
+      "summary": "Adding the ninth Deep Scan surface and its filter controls regressed three existing Phase 0-16 static UI gates.",
+      "resolution": "Deep Scan filters now use fluidPress, the reduced-transparency rule no longer uses !important, and the legacy surface gate recognizes the Phase 17 ninth production surface while requiring all original eight. Re-run result: 342/342 PASS."
+    },
+    {
+      "id": "P17-ISSUE-014",
+      "severity": "Low",
+      "state": "Resolved",
+      "area": "Localization",
+      "summary": "The Arabic Deep Scan Windows filter reused the English literal and failed the existing localization audit.",
+      "resolution": "Localized the visible filter label as ويندوز; technical Windows identifiers remain isolated as technical content."
+    },
+    {
+      "id": "P17-ISSUE-015",
+      "severity": "Moderate",
+      "state": "Resolved",
+      "area": "Streaming audit",
+      "summary": "The Zenith watcher audit hard-coded nine stream watchers and failed after the valid Deep Scan watcher became the tenth.",
+      "resolution": "The existing non-panicking spawn_watcher invariant is preserved for all watchers, and the gate now requires all ten including Deep Scan."
+    }
+  ]
+}

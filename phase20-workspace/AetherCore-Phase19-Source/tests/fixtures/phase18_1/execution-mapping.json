@@ -1,0 +1,90 @@
+{
+  "schema": "aethercore.phase18.1.synthetic-driver-lab-map.v1",
+  "mappings": [
+    {
+      "scenarioId": "D18-01",
+      "testFile": "crates/driver-hub/src/lib.rs",
+      "testFunction": "d18_01_healthy_current_device_is_up_to_date_only_when_required_authorities_complete"
+    },
+    {
+      "scenarioId": "D18-02",
+      "testFile": "crates/driver-hub/src/lib.rs",
+      "testFunction": "d18_02_missing_driver_with_exact_wua_offer_has_concrete_recommendation"
+    },
+    {
+      "scenarioId": "D18-03",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "machine_specific_oem_can_beat_newer_generic"
+    },
+    {
+      "scenarioId": "D18-04",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "component_vendor_is_contextually_strong_on_self_built"
+    },
+    {
+      "scenarioId": "D18-05",
+      "testFile": "crates/driver-hub/src/lib.rs",
+      "testFunction": "d18_04_known_nvidia_display_keeps_management_separate_from_wua_package"
+    },
+    {
+      "scenarioId": "D18-06",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "d18_06_multiple_official_candidates_keep_one_recommended_and_alternatives"
+    },
+    {
+      "scenarioId": "D18-07",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "d18_07_unsigned_candidate_is_rejected_with_trust_reason"
+    },
+    {
+      "scenarioId": "D18-08",
+      "testFile": "crates/driver-acquisition/src/lib.rs",
+      "testFunction": "d18_08_valid_signature_wrong_publisher_fails_closed"
+    },
+    {
+      "scenarioId": "D18-09",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "hostile_redirect_fails_closed"
+    },
+    {
+      "scenarioId": "D18-10",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "sealed_plan_detects_candidate_substitution"
+    },
+    {
+      "scenarioId": "D18-11",
+      "testFile": "crates/driver-hub/src/lib.rs",
+      "testFunction": "offline_scan_keeps_inventory_and_marks_update_truth_unknown"
+    },
+    {
+      "scenarioId": "D18-12",
+      "testFile": "crates/driver-authority/src/truth.rs",
+      "testFunction": "oem_and_gpu_require_device_aware_authority_coverage"
+    },
+    {
+      "scenarioId": "D18-13",
+      "testFile": "crates/driver-hub/src/lib.rs",
+      "testFunction": "firmware_offers_are_visible_but_never_selectable"
+    },
+    {
+      "scenarioId": "D18-14",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "ignore_exact_version_is_provider_scoped"
+    },
+    {
+      "scenarioId": "D18-15",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "d18_15_recovery_is_available_only_with_installed_driver_and_recovery_evidence"
+    },
+    {
+      "scenarioId": "D18-16",
+      "testFile": "crates/driver-authority/src/lib.rs",
+      "testFunction": "d18_16_reboot_aggregation_preserves_independent_batch_progress"
+    },
+    {
+      "scenarioId": "D18.1-GPU-01",
+      "testFile": "crates/driver-hub/src/lib.rs",
+      "testFunction": "d18_1_gpu_01_nvidia_utility_without_update_evidence_never_fabricates_update"
+    }
+  ]
+}

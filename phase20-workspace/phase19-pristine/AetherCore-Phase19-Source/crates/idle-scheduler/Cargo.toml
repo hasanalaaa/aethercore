@@ -1,0 +1,21 @@
+[package]
+name = "aethercore-idle-scheduler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+aethercore-windows-foundation = { path = "../windows-foundation" }
+aethercore-collector-runtime = { path = "../collector-runtime" }
+aethercore-contracts = { path = "../contracts" }
+aethercore-operation-kernel = { path = "../operation-kernel" }
+aethercore-security = { path = "../security" }
+chrono.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true

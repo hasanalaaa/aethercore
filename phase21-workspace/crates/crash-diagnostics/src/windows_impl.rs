@@ -186,7 +186,7 @@ fn collect_events(control: &CollectorControl) -> Result<(Vec<EventEvidence>, Vec
             None,
             PCWSTR(channel.as_ptr()),
             PCWSTR(query.as_ptr()),
-            EvtQueryChannelPath | EvtQueryReverseDirection,
+            EvtQueryChannelPath.0 | EvtQueryReverseDirection.0,
         )
     }
     .map_err(win)?;

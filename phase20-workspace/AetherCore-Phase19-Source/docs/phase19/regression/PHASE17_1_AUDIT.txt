@@ -1,0 +1,26 @@
+{"phase": "17.1", "status": "PASS", "executedChecks": 22, "passedChecks": 22, "failedChecks": 0, "notExecutedChecks": 3, "nativeWindowsQualified": false, "releaseCandidateClaim": false}
+PASS         P17.1-STATIC-001 Phase 17.1 surgical files present
+PASS         P17.1-LIFE-001 required integrity markers present
+PASS         P17.1-LIFE-002 required integrity markers present
+PASS         P17.1-LIFE-003 absence-only global resolver removed
+PASS         P17.1-LIFE-004 deterministic lifecycle regression cases are source-backed
+PASS         P17.1-FP-001 required integrity markers present
+PASS         P17.1-FP-002 identity-only Phase 17 fingerprint implementation absent
+PASS         P17.1-FP-003 fingerprint determinism/value/privacy tests are source-backed
+PASS         P17.1-GEN-001 required integrity markers present
+PASS         P17.1-GEN-002 shared token cleanup replaced by generation-bound ownership
+PASS         P17.1-GEN-003 race cases use direct generation transitions rather than arbitrary sleeps
+PASS         P17.1-CORR-001 required integrity markers present
+PASS         P17.1-CORR-002 bounded windows=True, weak suppressed=True, strong bounded=True, causal ordering=True
+PASS         P17.1-CORR-003 correlation regression matrix is source-backed
+PASS         P17.1-IPC-001 PcFinding schema evolution is additive after field 25
+PASS         P17.1-IPC-002 required integrity markers present
+PASS         P17.1-UI-001 existing Finding card minimally represents verification/correlation truth without new locked motion
+PASS         P17.1-I18N-001 catalog parity=True; new 17.1 keys complete=True; total=1289
+PASS         P17.1-MIG-001 v10 row preserved with deterministic v11 defaults=True; row=('finding-1', 'Ignored', '{"id":"finding-1","ignored":true}', 'NotRechecked', None, '', '')
+PASS         P17.1-FIX-001 integrity fixtures=24, categories=['correlation', 'findingLifecycle', 'fingerprint', 'generationOwnership']
+PASS         P17.1-QD-001 qualification debt reused without duplicate entries; items=37
+PASS         P17.1-QUAL-001 no placeholder markers in Phase 17.1 production scope
+NOT_EXECUTED P17.1-RUST-001 Rust toolchain unavailable (cargo=False, rustc=False)
+NOT_EXECUTED P17.1-UI-RUNTIME-001 installed svelte-check dependency unavailable on host
+NOT_EXECUTED P17.1-WINDOWS-001 Windows-native qualification remains intentionally deferred; no native PASS is claimed.

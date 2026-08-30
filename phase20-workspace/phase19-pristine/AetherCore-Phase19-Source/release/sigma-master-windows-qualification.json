@@ -1,0 +1,24 @@
+{
+  "schema": "aethercore.sigma-master-windows-qualification.v1",
+  "policy": "fail-closed",
+  "purpose": "Final Windows production qualification plan executed only against an approved frozen dependency graph and signed release candidate.",
+  "required_toolchain": {
+    "rust": "rust-toolchain.toml",
+    "pnpm": "root package.json packageManager",
+    "powershell": "PowerShell 7+",
+    "windows": "x64 host matching release/ga-matrix.json"
+  },
+  "gates": [
+    {"id":"build","required":true,"checks":["dependency-freeze-verify","cargo-fmt","cargo-check-locked","cargo-test-locked","cargo-clippy-deny-warnings","ui-check","ui-build"]},
+    {"id":"evidence-integrity","required":true,"checks":["sigma-evidence-integrity-regression","omega-evidence-read-only-twice"]},
+    {"id":"service-identity","required":true,"checks":["install","start","stop","restart","LocalSystem","service-SID","integrity-level","pipe-owner","pipe-DACL"]},
+    {"id":"ipc-adversarial","required":true,"checks":["idle-peer","connect-never-read","prefix-then-stall","partial-payload-then-stall","cancel-before-read","cancel-after-read-begins","cancel-during-write","stop-under-stall","peer-termination","reconnect-storm","worker-exhaustion"]},
+    {"id":"resource-bounds","required":true,"checks":["HANDLE-count","thread-count","private-bytes","working-set","USER-handles","GDI-handles"]},
+    {"id":"hardware","required":true,"checks":["NVMe","SATA-SMART","storage-fallback","WHEA","event-log","minidump","memory-pressure"]},
+    {"id":"update","required":true,"checks":["stable-manifest","beta-manifest","invalid-signature","wrong-hash","Authenticode-failure","downgrade","interrupted-staging","valid-installer-handoff"]},
+    {"id":"installer","required":true,"checks":["clean-install","repair","upgrade","rollback","uninstall","ACL-drift-repair","WebView2"]},
+    {"id":"accessibility-i18n","required":true,"checks":["keyboard","Narrator","100-DPI","125-DPI","150-DPI","200-DPI","high-contrast","reduced-motion","Arabic-RTL"]},
+    {"id":"stress-resilience","required":true,"checks":["service-restart-matrix","stress-soak","resource-trend","fault-injection","reconnect-under-load"]},
+    {"id":"release","required":true,"checks":["reproducible-double-build","SBOM","license-policy","advisories","artifact-signatures","package-hash-inventory"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "aethercore.phase18.1.status.v1",
+  "phase": "18.1",
+  "status": "PHASE_18_1_DRIVER_TRUTH_AND_PROVIDER_COVERAGE_CLOSED",
+  "sourceSemanticClosure": true,
+  "windowsQualified": false,
+  "universalAutomaticDriverCoverageClaim": false,
+  "directTrustedProductionInstallEnabled": false,
+  "nextPhaseStarted": false,
+  "truthfulClaim": "AetherCore has a global official-authority architecture with explicit, machine-readable coverage and no false update/completeness claims."
+}

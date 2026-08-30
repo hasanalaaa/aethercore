@@ -1,0 +1,22 @@
+{
+  "name": "aethercore-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.22.0",
+  "scripts": {
+    "bootstrap": "powershell -ExecutionPolicy Bypass -File ./scripts/bootstrap.ps1",
+    "verify": "powershell -ExecutionPolicy Bypass -File ./scripts/verify.ps1",
+    "dev": "powershell -ExecutionPolicy Bypass -File ./scripts/run-dev.ps1",
+    "release": "powershell -ExecutionPolicy Bypass -File ./scripts/build-release.ps1",
+    "ui:dev": "pnpm --dir apps/ui dev",
+    "ui:build": "pnpm --dir apps/ui build",
+    "verify:phase2": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-phase2.ps1",
+    "verify:phase6": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-phase6.ps1",
+    "verify:phase7": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-phase7.ps1",
+    "verify:phase11": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-phase11.ps1",
+    "verify:phase12": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-phase12.ps1",
+    "verify:phase13": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-phase13.ps1",
+    "verify:zenith": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-zenith.ps1",
+    "verify:zenith-recursive": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-zenith-recursive.ps1"
+  }
+}

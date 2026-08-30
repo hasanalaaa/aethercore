@@ -548,8 +548,16 @@ mod tests {
         let (host, store, dir) = trust_fixture();
         let spawns = std::sync::Arc::new(AtomicUsize::new(0));
         let seen = std::sync::Arc::clone(&spawns);
+        // P36 (Hermes): the ssh-binary stub must be a real exit-0 program on the
+        // current host; /usr/bin/true only exists on unix. A 0-byte batch stub
+        // (@exit 0) accepts arbitrary args and exits 0, matching /usr/bin/true.
+        let ssh_stub = Path::new(if cfg!(windows) {
+            r"C:\AetherCore-P36\incoming\ssh-true.cmd"
+        } else {
+            "/usr/bin/true"
+        });
         let transport = TrustedSshTransport::new(store, Duration::from_secs(2))
-            .with_ssh_binary(Path::new("/usr/bin/true"))
+            .with_ssh_binary(ssh_stub)
             .with_spawn_hook(move |argv| {
                 seen.fetch_add(1, Ordering::SeqCst);
                 assert!(argv.iter().any(|arg| arg == "StrictHostKeyChecking=yes"));

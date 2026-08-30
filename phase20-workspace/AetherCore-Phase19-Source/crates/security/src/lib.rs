@@ -1,0 +1,454 @@
+use sha2::{Digest, Sha256};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrincipalContext {
+    pub pid: u32,
+    pub image_path: String,
+    pub elevated: bool,
+    /// Canonical binary SID encoded as lowercase hex. This avoids locale/account-name lookups.
+    pub user_sid: String,
+    /// TOKEN_STATISTICS.AuthenticationId packed as high/low 32-bit parts.
+    pub authentication_id: u64,
+    /// Windows Terminal Services session that owns the named-pipe client.
+    pub session_id: u32,
+}
+
+impl PrincipalContext {
+    /// Opaque ownership key persisted in the safety ledger. The service derives it from the
+    /// kernel-observed client token; callers never supply it over IPC.
+    pub fn binding_key(&self) -> String {
+        let material = format!(
+            "sid={}|auth={:016x}|session={}",
+            self.user_sid, self.authentication_id, self.session_id
+        );
+        hex::encode(Sha256::digest(material.as_bytes()))
+    }
+
+    pub fn same_logon_principal(&self, other: &Self) -> bool {
+        self.user_sid == other.user_sid
+            && self.authentication_id == other.authentication_id
+            && self.session_id == other.session_id
+    }
+}
+
+
+#[derive(Debug, thiserror::Error)]
+pub enum SecurityError {
+    #[error("unsupported platform")]
+    Unsupported,
+    #[error("windows api error: {0}")]
+    Windows(String),
+    #[error("invalid access token data: {0}")]
+    InvalidToken(&'static str),
+}
+
+#[cfg(windows)]
+pub fn inspect_named_pipe_client(
+    raw_handle: std::os::windows::io::RawHandle,
+) -> Result<PrincipalContext, SecurityError> {
+    use std::ffi::c_void;
+
+    use aethercore_windows_foundation::{OwnedHandle, ThreadImpersonation};
+    use windows::{
+        Win32::{
+            Foundation::HANDLE,
+            Security::TOKEN_QUERY,
+            System::{
+                Pipes::{GetNamedPipeClientProcessId, GetNamedPipeClientSessionId},
+                Threading::{
+                    GetCurrentThread, OpenProcess, OpenThreadToken, PROCESS_NAME_WIN32,
+                    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+                },
+            },
+        },
+        core::PWSTR,
+    };
+
+    unsafe {
+        let pipe = HANDLE(raw_handle as *mut c_void);
+
+        // PID and Terminal Services session are kernel-reported properties of this server-side pipe
+        // connection. PID is used only to resolve the executable image; security ownership is read
+        // from the impersonated client token below so PID reuse cannot substitute a different SID or
+        // logon session into the persisted principal binding.
+        let mut pid = 0u32;
+        GetNamedPipeClientProcessId(pipe, &mut pid).map_err(winerr)?;
+        let mut session_id = 0u32;
+        GetNamedPipeClientSessionId(pipe, &mut session_id).map_err(winerr)?;
+
+        let process = OwnedHandle::new(
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).map_err(winerr)?,
+        );
+        let mut buffer = vec![0u16; 32768];
+        let mut size = buffer.len() as u32;
+        let image = QueryFullProcessImageNameW(
+            process.get(),
+            PROCESS_NAME_WIN32,
+            PWSTR(buffer.as_mut_ptr()),
+            &mut size,
+        )
+        .map(|()| String::from_utf16_lossy(&buffer[..size as usize]))
+        .map_err(winerr)?;
+
+        // Bind ownership to the effective security token of the exact named-pipe client, not to a
+        // token reopened through a process ID. RAII provides a fallback revert on every early return,
+        // while the explicit revert below still makes a failed RevertToSelf security-fatal.
+        let impersonation = ThreadImpersonation::named_pipe_client(pipe).map_err(winerr)?;
+        let result = (|| {
+            let mut raw_token = HANDLE::default();
+            OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut raw_token).map_err(winerr)?;
+            let token = OwnedHandle::new(raw_token);
+            principal_from_token(token.get(), pid, image, session_id)
+        })();
+
+        // Reverting the thread security context is mandatory even when token inspection failed.
+        // A RevertToSelf failure is more security-significant than the original inspection error
+        // because returning while still impersonating would contaminate later service work.
+        impersonation.revert().map_err(winerr)?;
+        result
+    }
+}
+
+#[cfg(windows)]
+pub fn inspect_session_token(
+    token: windows::Win32::Foundation::HANDLE,
+    session_id: u32,
+) -> Result<PrincipalContext, SecurityError> {
+    principal_from_token(token, 0, "active-console-session".into(), session_id)
+}
+
+#[cfg(windows)]
+fn principal_from_token(
+    token: windows::Win32::Foundation::HANDLE,
+    pid: u32,
+    image_path: String,
+    session_id: u32,
+) -> Result<PrincipalContext, SecurityError> {
+    use windows::Win32::Security::{
+        GetLengthSid, GetTokenInformation, TOKEN_ELEVATION, TOKEN_STATISTICS, TOKEN_USER,
+        TokenElevation, TokenStatistics, TokenUser,
+    };
+
+    unsafe {
+    let mut elevation = TOKEN_ELEVATION::default();
+    let mut returned = 0u32;
+    GetTokenInformation(
+        token,
+        TokenElevation,
+        Some((&mut elevation as *mut TOKEN_ELEVATION).cast()),
+        std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+        &mut returned,
+    )
+    .map_err(winerr)?;
+
+    let mut statistics = TOKEN_STATISTICS::default();
+    GetTokenInformation(
+        token,
+        TokenStatistics,
+        Some((&mut statistics as *mut TOKEN_STATISTICS).cast()),
+        std::mem::size_of::<TOKEN_STATISTICS>() as u32,
+        &mut returned,
+    )
+    .map_err(winerr)?;
+
+    // TOKEN_USER is variable-sized because the SID storage follows the structure.
+    let mut needed = 0u32;
+    let _ = GetTokenInformation(token, TokenUser, None, 0, &mut needed);
+    if needed < std::mem::size_of::<TOKEN_USER>() as u32 || needed > 64 * 1024 {
+        return Err(SecurityError::InvalidToken("TokenUser size"));
+    }
+    // Use pointer-sized storage rather than Vec<u8> so TOKEN_USER is correctly aligned on both
+    // x86 and x64. The SID pointer returned by Windows must point back inside this owned buffer.
+    let word = std::mem::size_of::<usize>();
+    let words = (needed as usize).div_ceil(word);
+    let mut user_buffer = vec![0usize; words];
+    GetTokenInformation(
+        token,
+        TokenUser,
+        Some(user_buffer.as_mut_ptr().cast()),
+        needed,
+        &mut returned,
+    )
+    .map_err(winerr)?;
+    let user = &*(user_buffer.as_ptr().cast::<TOKEN_USER>());
+    if user.User.Sid.is_invalid() {
+        return Err(SecurityError::InvalidToken("missing user SID"));
+    }
+    let buffer_start = user_buffer.as_ptr() as usize;
+    let buffer_end = buffer_start
+        .checked_add(user_buffer.len().saturating_mul(word))
+        .ok_or(SecurityError::InvalidToken("TokenUser buffer range"))?;
+    let sid_start = user.User.Sid.0 as usize;
+    if sid_start < buffer_start || sid_start.checked_add(8).is_none_or(|minimum_end| minimum_end > buffer_end) {
+        return Err(SecurityError::InvalidToken("user SID pointer outside TokenUser buffer"));
+    }
+    let sid_len = GetLengthSid(user.User.Sid) as usize;
+    let sid_end = sid_start
+        .checked_add(sid_len)
+        .ok_or(SecurityError::InvalidToken("user SID range"))?;
+    if sid_len == 0 || sid_end > buffer_end {
+        return Err(SecurityError::InvalidToken("invalid user SID length"));
+    }
+    let sid_bytes = std::slice::from_raw_parts(user.User.Sid.0.cast::<u8>(), sid_len);
+
+    let high = statistics.AuthenticationId.HighPart as i64 as u64;
+    let authentication_id = (high << 32) | statistics.AuthenticationId.LowPart as u64;
+
+    Ok(PrincipalContext {
+        pid,
+        image_path,
+        elevated: elevation.TokenIsElevated != 0,
+        user_sid: hex::encode(sid_bytes),
+        authentication_id,
+        session_id,
+    })
+    }
+}
+
+#[cfg(windows)]
+pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), SecurityError> {
+    use std::ffi::c_void;
+
+    use aethercore_windows_foundation::OwnedHandle;
+    use windows::{
+        core::{PCWSTR, PWSTR},
+        Win32::{
+            Foundation::{BOOL, ERROR_INSUFFICIENT_BUFFER, HANDLE},
+            Security::{
+                CheckTokenMembership, GetTokenInformation, IsValidSid, LookupAccountNameW,
+                OpenProcessToken, PSID, SID_NAME_USE, TOKEN_QUERY, TokenRestrictedSids,
+            },
+            System::Threading::GetCurrentProcess,
+        },
+    };
+
+    const MAX_ACCOUNT_SID_BYTES: u32 = 4 * 1024;
+    const MAX_ACCOUNT_DOMAIN_CHARS: u32 = 32 * 1024;
+    const MAX_TOKEN_GROUP_BUFFER_BYTES: u32 = 1024 * 1024;
+
+    unsafe {
+        let account_name = format!(r"NT SERVICE\{service_name}");
+        let account: Vec<u16> = account_name.encode_utf16().chain(Some(0)).collect();
+        let mut sid_bytes = 0u32;
+        let mut domain_chars = 0u32;
+        let mut sid_use = SID_NAME_USE::default();
+        match LookupAccountNameW(
+            PCWSTR::null(),
+            PCWSTR(account.as_ptr()),
+            None,
+            &mut sid_bytes,
+            None,
+            &mut domain_chars,
+            &mut sid_use,
+        ) {
+            Err(error) if error.code() == ERROR_INSUFFICIENT_BUFFER.to_hresult() => {}
+            Err(error) => return Err(winerr(error)),
+            Ok(()) => return Err(SecurityError::InvalidToken("service SID lookup unexpectedly needed no buffer")),
+        }
+        if sid_bytes == 0 || sid_bytes > MAX_ACCOUNT_SID_BYTES {
+            return Err(SecurityError::InvalidToken("service SID size outside safety bound"));
+        }
+        if domain_chars > MAX_ACCOUNT_DOMAIN_CHARS {
+            return Err(SecurityError::InvalidToken("service SID domain size outside safety bound"));
+        }
+
+        let sid_words = usize::try_from(sid_bytes)
+            .ok()
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<u64>() - 1))
+            .map(|bytes| bytes / std::mem::size_of::<u64>())
+            .ok_or(SecurityError::InvalidToken("service SID allocation overflow"))?;
+        let mut sid = vec![0u64; sid_words];
+        let sid_capacity = sid
+            .len()
+            .checked_mul(std::mem::size_of::<u64>())
+            .ok_or(SecurityError::InvalidToken("service SID capacity overflow"))?;
+        let mut domain = vec![0u16; domain_chars as usize];
+        let domain_buffer = if domain.is_empty() {
+            None
+        } else {
+            Some(PWSTR(domain.as_mut_ptr()))
+        };
+        let sid_ptr = PSID(sid.as_mut_ptr().cast::<c_void>());
+        LookupAccountNameW(
+            PCWSTR::null(),
+            PCWSTR(account.as_ptr()),
+            Some(sid_ptr),
+            &mut sid_bytes,
+            domain_buffer,
+            &mut domain_chars,
+            &mut sid_use,
+        )
+        .map_err(winerr)?;
+        if sid_bytes == 0 || usize::try_from(sid_bytes).map_or(true, |bytes| bytes > sid_capacity) {
+            return Err(SecurityError::InvalidToken("service SID length exceeded allocated buffer"));
+        }
+        if !IsValidSid(sid_ptr).as_bool() {
+            return Err(SecurityError::InvalidToken("service SID lookup returned invalid SID"));
+        }
+
+        // CheckTokenMembership proves the service SID is not merely configured/present: it must be
+        // enabled in the effective service token and therefore usable by normal access checks.
+        let mut is_member = BOOL::default();
+        CheckTokenMembership(None, sid_ptr, &mut is_member).map_err(winerr)?;
+        if !is_member.as_bool() {
+            return Err(SecurityError::InvalidToken("service SID is not enabled in effective token"));
+        }
+
+        let mut raw_token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token).map_err(winerr)?;
+        let token = OwnedHandle::new(raw_token);
+        let mut needed = 0u32;
+        let _ = GetTokenInformation(token.get(), TokenRestrictedSids, None, 0, &mut needed);
+        if needed < std::mem::size_of::<u32>() as u32 || needed > MAX_TOKEN_GROUP_BUFFER_BYTES {
+            return Err(SecurityError::InvalidToken("restricted SID list size outside safety bound"));
+        }
+        let word = std::mem::size_of::<usize>();
+        let words = (needed as usize).div_ceil(word);
+        let mut restricted = vec![0usize; words];
+        let mut returned = 0u32;
+        GetTokenInformation(
+            token.get(),
+            TokenRestrictedSids,
+            Some(restricted.as_mut_ptr().cast()),
+            needed,
+            &mut returned,
+        )
+        .map_err(winerr)?;
+        if returned < std::mem::size_of::<u32>() as u32 || returned > needed {
+            return Err(SecurityError::InvalidToken("restricted SID list length changed outside buffer"));
+        }
+        let restricted_count = *(restricted.as_ptr().cast::<u32>());
+        if restricted_count != 0 {
+            return Err(SecurityError::InvalidToken("maintenance service token contains restricting SIDs"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn winerr(e: windows::core::Error) -> SecurityError {
+    SecurityError::Windows(e.to_string())
+}
+
+#[cfg(not(windows))]
+pub fn inspect_named_pipe_client(
+    _: *mut std::ffi::c_void,
+) -> Result<PrincipalContext, SecurityError> {
+    Err(SecurityError::Unsupported)
+}
+
+pub fn is_expected_broker(peer: &PrincipalContext, expected_path: &std::path::Path) -> bool {
+    // Absolute-ness is judged on Windows path semantics (drive letter or UNC root), not on the
+    // host parser, so the guard behaves identically when audited on a non-Windows host.
+    let text = expected_path.to_string_lossy();
+    let bytes = text.as_bytes();
+    let looks_absolute_windows = (bytes.len() >= 3
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/'))
+        || text.starts_with(r"\\");
+    // Accept either Windows-absolute (drive/UNC) or host-absolute expected paths so the identical
+    // validation logic is exercisable when audited on a non-Windows host.
+    if !peer.elevated || !(looks_absolute_windows || expected_path.is_absolute()) {
+        return false;
+    }
+
+    let expected = normalize_windows_path(&expected_path.to_string_lossy());
+    let actual = normalize_windows_path(&peer.image_path);
+    actual == expected
+}
+
+fn normalize_windows_path(value: &str) -> String {
+    // Strip both the `\\?\` extended-length prefix and the `\\?\UNC\` server form before
+    // canonicalizing separators and case, so an extended-prefix peer image still compares
+    // equal to its plain installed path.
+    let normalized = value.replace('/', "\\");
+    let without_extended_prefix = normalized
+        .strip_prefix(r"\\?\UNC\")
+        .map(|rest| format!(r"\\{rest}"))
+        .unwrap_or_else(|| normalized.strip_prefix(r"\\?\").unwrap_or(&normalized).to_string());
+    without_extended_prefix.to_ascii_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn principal(path: &str, elevated: bool, auth: u64, session: u32) -> PrincipalContext {
+        PrincipalContext {
+            pid: 42,
+            image_path: path.into(),
+            elevated,
+            user_sid: "01050000000000051500000001020304".into(),
+            authentication_id: auth,
+            session_id: session,
+        }
+    }
+
+    #[test]
+    fn principal_binding_is_logon_and_session_scoped() {
+        let a = principal(r"C:\A.exe", false, 10, 1);
+        let same = principal(r"C:\B.exe", true, 10, 1);
+        let other_session = principal(r"C:\B.exe", true, 10, 2);
+        let other_logon = principal(r"C:\B.exe", true, 11, 1);
+        let mut other_user = principal(r"C:\B.exe", true, 10, 1);
+        other_user.user_sid = "010500000000000515000000ffffffff".into();
+        assert_eq!(a.binding_key(), same.binding_key());
+        assert_ne!(a.binding_key(), other_session.binding_key());
+        assert_ne!(a.binding_key(), other_logon.binding_key());
+        assert_ne!(a.binding_key(), other_user.binding_key());
+        assert!(a.same_logon_principal(&same));
+        assert!(!a.same_logon_principal(&other_session));
+        assert!(!a.same_logon_principal(&other_user));
+    }
+
+    #[test]
+    fn broker_validation_requires_elevation_and_exact_path() {
+        let expected_buf = std::env::temp_dir()
+            .join("AetherCore")
+            .join("aethercore-consent-broker.exe");
+        let expected = expected_buf.as_path();
+        let good = principal(&expected.display().to_string(), true, 1, 1);
+        assert!(is_expected_broker(&good, expected));
+
+        let not_elevated = PrincipalContext { elevated: false, ..good.clone() };
+        assert!(!is_expected_broker(&not_elevated, expected));
+
+        let renamed = principal(
+            &std::env::temp_dir()
+                .join("Other")
+                .join("aethercore-consent-broker.exe")
+                .display()
+                .to_string(),
+            true,
+            1,
+            1,
+        );
+        assert!(!is_expected_broker(&renamed, expected));
+    }
+
+    #[test]
+    fn broker_validation_accepts_extended_path_prefix() {
+        let expected = std::path::Path::new(r"C:\Program Files\AetherCore\aethercore-consent-broker.exe");
+        let peer = principal(
+            r"\\?\C:\Program Files\AetherCore\aethercore-consent-broker.exe",
+            true,
+            1,
+            1,
+        );
+        assert!(is_expected_broker(&peer, expected));
+    }
+
+    #[test]
+    fn broker_validation_rejects_common_prefix_and_relative_expected_path() {
+        let expected = std::path::Path::new(r"C:\Program Files\AetherCore\aethercore-consent-broker.exe");
+        let prefix_attack = principal(
+            r"C:\Program Files\AetherCoreEvil\aethercore-consent-broker.exe",
+            true,
+            1,
+            1,
+        );
+        assert!(!is_expected_broker(&prefix_attack, expected));
+        let relative = std::path::Path::new(r"AetherCore\aethercore-consent-broker.exe");
+        assert!(!is_expected_broker(&prefix_attack, relative));
+    }
+}

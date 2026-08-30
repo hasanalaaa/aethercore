@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "summary": {
+    "phase": "17.1",
+    "status": "PASS",
+    "executedChecks": 22,
+    "passedChecks": 22,
+    "failedChecks": 0,
+    "notExecutedChecks": 3,
+    "nativeWindowsQualified": false,
+    "releaseCandidateClaim": false
+  },
+  "checks": [
+    {
+      "id": "P17.1-STATIC-001",
+      "status": "PASS",
+      "detail": "Phase 17.1 surgical files present",
+      "evidence": [
+        "crates/pc-intelligence/src/lifecycle.rs",
+        "crates/pc-intelligence/src/fingerprint.rs",
+        "crates/pc-intelligence/src/run_ownership.rs",
+        "crates/pc-intelligence/src/rules.rs",
+        "crates/persistence/migrations/0011_phase17_1_intelligence_integrity.sql",
+        "tests/fixtures/phase17_1/integrity_scenarios.json",
+        "docs/phase17_1/FINDING_LIFECYCLE_INTEGRITY.md",
+        "docs/phase17_1/CANONICAL_STATE_FINGERPRINT.md",
+        "docs/phase17_1/SCAN_GENERATION_OWNERSHIP.md",
+        "docs/phase17_1/CORRELATION_STRENGTH.md"
+      ]
+    },
+    {
+      "id": "P17.1-LIFE-001",
+      "status": "PASS",
+      "detail": "required integrity markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/model.rs"
+      ]
+    },
+    {
+      "id": "P17.1-LIFE-002",
+      "status": "PASS",
+      "detail": "required integrity markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/lifecycle.rs"
+      ]
+    },
+    {
+      "id": "P17.1-LIFE-003",
+      "status": "PASS",
+      "detail": "absence-only global resolver removed",
+      "evidence": [
+        "crates/persistence/src/lib.rs",
+        "crates/pc-intelligence/src/coordinator.rs"
+      ]
+    },
+    {
+      "id": "P17.1-LIFE-004",
+      "status": "PASS",
+      "detail": "deterministic lifecycle regression cases are source-backed",
+      "evidence": [
+        "crates/pc-intelligence/src/lifecycle.rs"
+      ]
+    },
+    {
+      "id": "P17.1-FP-001",
+      "status": "PASS",
+      "detail": "required integrity markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/fingerprint.rs"
+      ]
+    },
+    {
+      "id": "P17.1-FP-002",
+      "status": "PASS",
+      "detail": "identity-only Phase 17 fingerprint implementation absent",
+      "evidence": [
+        "crates/pc-intelligence/src/coordinator.rs"
+      ]
+    },
+    {
+      "id": "P17.1-FP-003",
+      "status": "PASS",
+      "detail": "fingerprint determinism/value/privacy tests are source-backed",
+      "evidence": [
+        "crates/pc-intelligence/src/fingerprint.rs"
+      ]
+    },
+    {
+      "id": "P17.1-GEN-001",
+      "status": "PASS",
+      "detail": "required integrity markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/run_ownership.rs"
+      ]
+    },
+    {
+      "id": "P17.1-GEN-002",
+      "status": "PASS",
+      "detail": "shared token cleanup replaced by generation-bound ownership",
+      "evidence": [
+        "crates/pc-intelligence/src/coordinator.rs"
+      ]
+    },
+    {
+      "id": "P17.1-GEN-003",
+      "status": "PASS",
+      "detail": "race cases use direct generation transitions rather than arbitrary sleeps",
+      "evidence": [
+        "crates/pc-intelligence/src/run_ownership.rs"
+      ]
+    },
+    {
+      "id": "P17.1-CORR-001",
+      "status": "PASS",
+      "detail": "required integrity markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/model.rs"
+      ]
+    },
+    {
+      "id": "P17.1-CORR-002",
+      "status": "PASS",
+      "detail": "bounded windows=True, weak suppressed=True, strong bounded=True, causal ordering=True",
+      "evidence": [
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P17.1-CORR-003",
+      "status": "PASS",
+      "detail": "correlation regression matrix is source-backed",
+      "evidence": [
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P17.1-IPC-001",
+      "status": "PASS",
+      "detail": "PcFinding schema evolution is additive after field 25",
+      "evidence": [
+        "crates/contracts/proto/intelligence.proto"
+      ]
+    },
+    {
+      "id": "P17.1-IPC-002",
+      "status": "PASS",
+      "detail": "required integrity markers present",
+      "evidence": [
+        "services/maintenance-service/src/protocol.rs"
+      ]
+    },
+    {
+      "id": "P17.1-UI-001",
+      "status": "PASS",
+      "detail": "existing Finding card minimally represents verification/correlation truth without new locked motion",
+      "evidence": [
+        "apps/ui/src/features/intelligence/FindingCard.svelte"
+      ]
+    },
+    {
+      "id": "P17.1-I18N-001",
+      "status": "PASS",
+      "detail": "catalog parity=True; new 17.1 keys complete=True; total=1196",
+      "evidence": [
+        "apps/ui/src/lib/i18n/catalog.en.ts",
+        "apps/ui/src/lib/i18n/catalog.ar.ts"
+      ]
+    },
+    {
+      "id": "P17.1-MIG-001",
+      "status": "PASS",
+      "detail": "v10 row preserved with deterministic v11 defaults=True; row=('finding-1', 'Ignored', '{\"id\":\"finding-1\",\"ignored\":true}', 'NotRechecked', None, '', '')",
+      "evidence": [
+        "crates/persistence/migrations/0010_phase17_intelligence.sql",
+        "crates/persistence/migrations/0011_phase17_1_intelligence_integrity.sql"
+      ]
+    },
+    {
+      "id": "P17.1-FIX-001",
+      "status": "PASS",
+      "detail": "integrity fixtures=24, categories=['correlation', 'findingLifecycle', 'fingerprint', 'generationOwnership']",
+      "evidence": [
+        "tests/fixtures/phase17_1/integrity_scenarios.json"
+      ]
+    },
+    {
+      "id": "P17.1-QD-001",
+      "status": "PASS",
+      "detail": "qualification debt reused without duplicate entries; items=27",
+      "evidence": [
+        "QUALIFICATION_DEBT.json"
+      ]
+    },
+    {
+      "id": "P17.1-QUAL-001",
+      "status": "PASS",
+      "detail": "no placeholder markers in Phase 17.1 production scope",
+      "evidence": [
+        "crates/pc-intelligence/src/lifecycle.rs",
+        "crates/pc-intelligence/src/fingerprint.rs",
+        "crates/pc-intelligence/src/run_ownership.rs",
+        "crates/persistence/migrations/0011_phase17_1_intelligence_integrity.sql",
+        "apps/ui/src/features/intelligence/FindingCard.svelte"
+      ]
+    },
+    {
+      "id": "P17.1-RUST-001",
+      "status": "NOT_EXECUTED",
+      "detail": "Rust toolchain unavailable (cargo=False, rustc=False)",
+      "evidence": []
+    },
+    {
+      "id": "P17.1-UI-RUNTIME-001",
+      "status": "NOT_EXECUTED",
+      "detail": "installed svelte-check dependency unavailable on host",
+      "evidence": []
+    },
+    {
+      "id": "P17.1-WINDOWS-001",
+      "status": "NOT_EXECUTED",
+      "detail": "Windows-native qualification remains intentionally deferred; no native PASS is claimed.",
+      "evidence": [
+        "QUALIFICATION_DEBT.json"
+      ]
+    }
+  ]
+}

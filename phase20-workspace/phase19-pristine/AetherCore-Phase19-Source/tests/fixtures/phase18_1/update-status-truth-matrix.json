@@ -1,0 +1,149 @@
+{
+  "schema": "aethercore.phase18.1.driver-truth-matrix.v1",
+  "rows": [
+    {
+      "id": "T01",
+      "installed": "Healthy",
+      "concreteCandidate": false,
+      "coverage": "CompleteForRequiredAuthorities",
+      "allRequiredEvaluated": true,
+      "managementAuthority": false,
+      "managementUpdateEvidence": "None",
+      "expectedStatus": "UpToDate",
+      "strongUpToDate": true,
+      "expectedRecommendedCount": 0
+    },
+    {
+      "id": "T02",
+      "installed": "Healthy",
+      "concreteCandidate": false,
+      "coverage": "ManualAuthorityRequired",
+      "allRequiredEvaluated": false,
+      "managementAuthority": true,
+      "managementUpdateEvidence": "UnknownUntilVendorCheck",
+      "expectedStatus": "NoUpdateFoundFromCheckedSources",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 0
+    },
+    {
+      "id": "T03",
+      "installed": "Healthy",
+      "concreteCandidate": true,
+      "coverage": "ManualAuthorityRequired",
+      "allRequiredEvaluated": false,
+      "managementAuthority": true,
+      "managementUpdateEvidence": "UnknownUntilVendorCheck",
+      "expectedStatus": "RecommendedUpdateAvailable",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 1
+    },
+    {
+      "id": "T04",
+      "installed": "Healthy",
+      "concreteCandidate": false,
+      "coverage": "Offline",
+      "allRequiredEvaluated": false,
+      "managementAuthority": false,
+      "managementUpdateEvidence": "None",
+      "expectedStatus": "UpdateStatusUnknownOffline",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 0
+    },
+    {
+      "id": "T05",
+      "installed": "Healthy",
+      "concreteCandidate": false,
+      "coverage": "ProviderUnavailable",
+      "allRequiredEvaluated": false,
+      "managementAuthority": false,
+      "managementUpdateEvidence": "None",
+      "expectedStatus": "ProviderUnavailable",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 0
+    },
+    {
+      "id": "T06",
+      "installed": "Healthy",
+      "concreteCandidate": false,
+      "coverage": "Unknown",
+      "allRequiredEvaluated": false,
+      "managementAuthority": false,
+      "managementUpdateEvidence": "None",
+      "expectedStatus": "UpdateStatusUnknown",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 0
+    },
+    {
+      "id": "T07",
+      "installed": "Missing",
+      "concreteCandidate": false,
+      "coverage": "CompleteForRequiredAuthorities",
+      "allRequiredEvaluated": true,
+      "managementAuthority": false,
+      "managementUpdateEvidence": "None",
+      "expectedStatus": "NoTrustedCandidate",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 0
+    },
+    {
+      "id": "T08",
+      "installed": "Missing",
+      "concreteCandidate": true,
+      "coverage": "CompleteForRequiredAuthorities",
+      "allRequiredEvaluated": true,
+      "managementAuthority": false,
+      "managementUpdateEvidence": "None",
+      "expectedStatus": "MissingDriverCandidateAvailable",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 1
+    },
+    {
+      "id": "T09",
+      "installed": "Problem",
+      "concreteCandidate": false,
+      "coverage": "CompleteForRequiredAuthorities",
+      "allRequiredEvaluated": true,
+      "managementAuthority": false,
+      "managementUpdateEvidence": "None",
+      "expectedStatus": "DeviceProblemNoTrustedCandidate",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 0
+    },
+    {
+      "id": "T10",
+      "installed": "Problem",
+      "concreteCandidate": true,
+      "coverage": "Partial",
+      "allRequiredEvaluated": false,
+      "managementAuthority": false,
+      "managementUpdateEvidence": "None",
+      "expectedStatus": "RecommendedUpdateAvailable",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 1
+    },
+    {
+      "id": "T11",
+      "installed": "Healthy",
+      "concreteCandidate": false,
+      "coverage": "Partial",
+      "allRequiredEvaluated": false,
+      "managementAuthority": true,
+      "managementUpdateEvidence": "UnknownUntilVendorCheck",
+      "expectedStatus": "NoUpdateFoundFromCheckedSources",
+      "strongUpToDate": false,
+      "expectedRecommendedCount": 0
+    },
+    {
+      "id": "T12",
+      "installed": "Healthy",
+      "concreteCandidate": false,
+      "coverage": "CompleteForRequiredAuthorities",
+      "allRequiredEvaluated": true,
+      "managementAuthority": true,
+      "managementUpdateEvidence": "NoUpdateReported",
+      "expectedStatus": "UpToDate",
+      "strongUpToDate": true,
+      "expectedRecommendedCount": 0
+    }
+  ]
+}

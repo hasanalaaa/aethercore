@@ -11,9 +11,9 @@ use aethercore_operation_engine::StartupChangeAction;
 use aethercore_windows_foundation::{ComApartment, MachineMutationGuard, OwnedServiceHandle};
 use sha2::{Digest, Sha256};
 use windows::{
-    core::{BSTR, GUID, PCWSTR, PWSTR, VARIANT},
+    core::{BSTR, BOOL, GUID, PCWSTR, PWSTR},
     Win32::{
-        Foundation::{BOOL, ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS},
+        Foundation::{ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS},
         Storage::FileSystem::{
             MoveFileExW, FILE_ATTRIBUTE_REPARSE_POINT, MOVEFILE_COPY_ALLOWED,
             MOVEFILE_WRITE_THROUGH,
@@ -33,6 +33,7 @@ use windows::{
                 SERVICE_NO_CHANGE, SERVICE_QUERY_CONFIG, SERVICE_START_TYPE,
             },
             TaskScheduler::{IRegisteredTask, ITaskFolder, ITaskService},
+            Variant::VARIANT,
         },
     },
 };

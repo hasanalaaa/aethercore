@@ -1,0 +1,38 @@
+AetherCore Phase 13 — Engine Reliability Evolution
+Validation Summary
+
+SOURCE / AUTHORING QUALIFICATION
+- Phase 0–13 aggregate static invariants: 251/251 PASS
+- Dedicated Phase 13 reliability audit: 61/61 PASS
+- EN/AR catalog parity preserved: 921/921 PASS
+- Intl.PluralRules runtime regression: PASS
+- Strict project-owned TypeScript audit: 32/32 PASS
+- Svelte structural + embedded TypeScript syntax audit: 24/24 PASS
+- CSS PostCSS parsing: 9/9 PASS
+- Rust lexical/delimiter sweep: 63/63 PASS
+- Config/script parsing: TOML 31, JSON 7, YAML 4, WiX/XML 2, Python 4 — PASS
+- Product sanitation: TODO/FIXME/HACK 0; collector WBEM_INFINITE 0; Event XML scraping 0; raw provider-fault detail rendering 0
+- Phase 12 -> Phase 13 patch: git apply --check PASS
+
+PHASE 13 RELIABILITY CLOSURE
+- Shared collector runtime with monotonic deadlines, hierarchical cancellation, watchdog panic containment and IsolationGate quarantine.
+- Finite semisynchronous WMI enumeration with explicit WBEM_S_TIMEDOUT / WBEM_S_FALSE handling and fail-closed result-count validation.
+- Direct storage IOCTL caller watchdogs with quarantine semantics; no claim of forced termination for arbitrary blocked vendor-driver calls.
+- Byte-level ATA SMART and NVMe health parsers with returned-byte, offset, overlap and truncation validation.
+- Structured Windows Event Log rendering through EvtRender system/user value contexts, bounded buffers/property counts and immediate RAII ownership of returned event handles.
+- Minidump partial-failure isolation and permission-denied classification.
+- Typed provider faults carried through diagnostics/Protobuf/UI while raw technical detail is not rendered in normal UI surfaces.
+- Provider fault detail is UTF-8 safely bounded to a final maximum of 4 KiB before snapshot/journal/IPC transport.
+- Diagnostic provider/supervisor/spawn/persistence failures finalize visibly instead of silently leaving Collecting or claiming durable history.
+
+NATIVE QUALIFICATION BOUNDARY
+This authoring environment does not provide Cargo/Rust Windows SDK compilation, PowerShell, live Windows WMI/EventLog/vendor-driver IOCTL execution, SCM/UAC, WiX, WebView2 lifecycle or Authenticode. No Windows-native certification is claimed here.
+
+Authoritative Windows gate:
+  .\scripts\verify-phase13.ps1
+
+Optional read-only real-provider probes on a controlled/disposable Windows lab machine:
+  .\scripts\verify-phase13.ps1 -LiveReadOnlyFaultInjection
+
+Signed disposable-VM lifecycle:
+  .\scripts\verify-phase13.ps1 -InstallerLifecycle -RequireSigning

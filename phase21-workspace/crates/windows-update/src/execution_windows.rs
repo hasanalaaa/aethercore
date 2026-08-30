@@ -34,25 +34,25 @@ struct MachineMutationLease(MachineMutationGuard);
 
 #[windows::core::implement(IDownloadProgressChangedCallback)]
 struct DownloadProgressCallback;
-impl IDownloadProgressChangedCallback_Impl for DownloadProgressCallback {
+impl IDownloadProgressChangedCallback_Impl for DownloadProgressCallback_Impl {
     fn Invoke(&self, _downloadjob: Ref<'_, IDownloadJob>, _callbackargs: Ref<'_, IDownloadProgressChangedCallbackArgs>) -> windows::core::Result<()> { Ok(()) }
 }
 
 #[windows::core::implement(IDownloadCompletedCallback)]
 struct DownloadCompletedCallback;
-impl IDownloadCompletedCallback_Impl for DownloadCompletedCallback {
+impl IDownloadCompletedCallback_Impl for DownloadCompletedCallback_Impl {
     fn Invoke(&self, _downloadjob: Ref<'_, IDownloadJob>, _callbackargs: Ref<'_, IDownloadCompletedCallbackArgs>) -> windows::core::Result<()> { Ok(()) }
 }
 
 #[windows::core::implement(IInstallationProgressChangedCallback)]
 struct InstallationProgressCallback;
-impl IInstallationProgressChangedCallback_Impl for InstallationProgressCallback {
+impl IInstallationProgressChangedCallback_Impl for InstallationProgressCallback_Impl {
     fn Invoke(&self, _installationjob: Ref<'_, IInstallationJob>, _callbackargs: Ref<'_, IInstallationProgressChangedCallbackArgs>) -> windows::core::Result<()> { Ok(()) }
 }
 
 #[windows::core::implement(IInstallationCompletedCallback)]
 struct InstallationCompletedCallback;
-impl IInstallationCompletedCallback_Impl for InstallationCompletedCallback {
+impl IInstallationCompletedCallback_Impl for InstallationCompletedCallback_Impl {
     fn Invoke(&self, _installationjob: Ref<'_, IInstallationJob>, _callbackargs: Ref<'_, IInstallationCompletedCallbackArgs>) -> windows::core::Result<()> { Ok(()) }
 }
 
@@ -154,7 +154,7 @@ where
         let _ = install_job.CleanUp();
 
         let overall_code = result.ResultCode().map_err(wua_err)?;
-        let overall_hresult = result.HResult().map_err(wua_err)?.0;
+        let overall_hresult = result.HResult().map_err(wua_err)?;
         let overall_reboot = result.RebootRequired().map_err(wua_err)?.as_bool();
         let mut updates = Vec::with_capacity(identities.len());
         for (index, identity) in identities.iter().enumerate() {
@@ -162,7 +162,7 @@ where
             updates.push(WuaUpdateResult {
                 identity: identity.clone(),
                 result_code: result_code_name(item.ResultCode().map_err(wua_err)?).into(),
-                hresult: item.HResult().map_err(wua_err)?.0,
+                hresult: item.HResult().map_err(wua_err)?,
                 reboot_required: item.RebootRequired().map_err(wua_err)?.as_bool(),
             });
         }

@@ -1,0 +1,10 @@
+{
+  "schema": "aethercore.release-blocker.v1",
+  "id": "OMEGA-RB-002",
+  "status": "OPEN",
+  "severity": "release_blocker",
+  "area": "named_pipe_teardown",
+  "condition": "The production transport still uses synchronous named-pipe I/O plus CancelSynchronousIo. Source inspection cannot prove the required cancellation-before-syscall race has a bounded shutdown time on Windows.",
+  "required_evidence": "out/omega-pipe-teardown.json",
+  "closure": "On qualified Windows, execute the slow/non-reading-peer teardown campaign and retain all required scenarios with bounded teardown/resources. If any scenario violates the bound, replace synchronous I/O with overlapped/event-driven cancellation before release and rerun the same campaign."
+}

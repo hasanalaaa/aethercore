@@ -1,0 +1,126 @@
+syntax = "proto3";
+package aethercore.v1;
+
+import "common.proto";
+
+message StartDiagnosticsScanRequest {}
+
+enum ProviderFaultKind {
+  PROVIDER_FAULT_KIND_UNSPECIFIED = 0;
+  PROVIDER_FAULT_KIND_TIMEOUT = 1;
+  PROVIDER_FAULT_KIND_CANCELLED = 2;
+  PROVIDER_FAULT_KIND_UNAVAILABLE = 3;
+  PROVIDER_FAULT_KIND_PERMISSION_DENIED = 4;
+  PROVIDER_FAULT_KIND_MALFORMED_RESPONSE = 5;
+  PROVIDER_FAULT_KIND_PROVIDER_FAILURE = 6;
+  PROVIDER_FAULT_KIND_IO = 7;
+  PROVIDER_FAULT_KIND_INTERNAL = 8;
+}
+message ProviderFaultInfo {
+  string provider = 1;
+  string operation = 2;
+  string detail = 3;
+  string kind = 4;
+  ProviderFaultKind kind_code = 5;
+}
+message GetDiagnosticsSnapshotRequest {}
+message GetDiagnosticsHistoryRequest { uint32 limit = 1; }
+message AtaSmartAttributeInfo {
+  uint32 id = 1;
+  uint32 current = 2;
+  uint32 worst = 3;
+  string raw_value_decimal = 4;
+  string raw_value_hex = 5;
+}
+message StorageReliabilityInfo {
+  bool has_temperature = 1; int32 temperature_c = 2;
+  bool has_temperature_max = 3; int32 temperature_max_c = 4;
+  bool has_wear = 5; uint32 wear_percent_used = 6;
+  bool has_power_on_hours = 7; uint64 power_on_hours = 8;
+  bool has_read_errors_uncorrected = 9; uint64 read_errors_uncorrected = 10;
+  bool has_write_errors_uncorrected = 11; uint64 write_errors_uncorrected = 12;
+  bool has_nvme_critical_warning = 13; uint32 nvme_critical_warning = 14;
+  bool has_nvme_available_spare = 15; uint32 nvme_available_spare_percent = 16;
+  bool has_nvme_percentage_used = 17; uint32 nvme_percentage_used = 18;
+  string nvme_media_errors = 19;
+  string nvme_unsafe_shutdowns = 20;
+  string nvme_error_log_entries = 21;
+  bool has_read_latency_max = 22; uint64 read_latency_max_ms = 23;
+  bool has_write_latency_max = 24; uint64 write_latency_max_ms = 25;
+  bool has_flush_latency_max = 26; uint64 flush_latency_max_ms = 27;
+}
+message StorageDeviceTelemetryInfo {
+  string device_id = 1;
+  string friendly_name = 2;
+  string firmware_version = 3;
+  string serial_number = 4;
+  string bus_type = 5;
+  string media_type = 6;
+  uint64 size_bytes = 7;
+  string windows_health_status = 8;
+  repeated string operational_status = 9;
+  StorageReliabilityInfo reliability = 10;
+  string severity = 11;
+  string summary = 12;
+  repeated string reasons = 13;
+  repeated string source_notes = 14;
+  repeated AtaSmartAttributeInfo ata_smart_attributes = 15;
+}
+message MemoryTelemetryInfo {
+  uint64 total_physical_bytes = 1;
+  uint64 available_physical_bytes = 2;
+  uint32 memory_load_percent = 3;
+  string pressure_label = 4;
+  string pressure_explanation = 5;
+}
+message HardwareEventInfo {
+  uint32 event_id = 1;
+  string provider = 2;
+  int64 recorded_unix_ms = 3;
+  string category = 4;
+  string severity = 5;
+  string confidence = 6;
+  string summary = 7;
+  string detail = 8;
+}
+message CrashRecordInfo {
+  string crash_id = 1;
+  int64 recorded_unix_ms = 2;
+  bool has_bugcheck_code = 3;
+  uint32 bugcheck_code = 4;
+  string bugcheck_hex = 5;
+  repeated string parameters = 6;
+  string dump_file = 7;
+  uint64 dump_size_bytes = 8;
+  string source = 9;
+  string confidence = 10;
+  string summary = 11;
+}
+message DiagnosticCardInfo {
+  string card_id = 1;
+  string domain = 2;
+  string severity = 3;
+  string confidence = 4;
+  string title = 5;
+  string summary = 6;
+  repeated string evidence = 7;
+  repeated string actions = 8;
+}
+message DiagnosticsSnapshot {
+  string scan_id = 1;
+  string state = 2;
+  int64 started_unix_ms = 3;
+  int64 completed_unix_ms = 4;
+  repeated StorageDeviceTelemetryInfo storage = 5;
+  MemoryTelemetryInfo memory = 6;
+  repeated HardwareEventInfo events = 7;
+  repeated CrashRecordInfo crashes = 8;
+  repeated DiagnosticCardInfo cards = 9;
+  repeated string warnings = 10;
+  uint32 event_window_days = 11;
+  DiscoveryState state_code = 12;
+  repeated ProviderFaultInfo provider_faults = 13;
+}
+message DiagnosticHistoryEntryInfo { string scan_id = 1; string state = 2; int64 collected_unix_ms = 3; uint32 warning_count = 4; uint32 card_count = 5; }
+message DiagnosticsSnapshotResponse { DiagnosticsSnapshot snapshot = 1; }
+message DiagnosticsHistoryResponse { repeated DiagnosticHistoryEntryInfo entries = 1; }

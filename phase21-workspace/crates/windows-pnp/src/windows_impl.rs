@@ -230,7 +230,7 @@ fn read_driver_metadata(set: HDEVINFO, info: &SP_DEVINFO_DATA) -> Option<Install
         SetupDiOpenDevRegKey(
             set,
             info,
-            DICS_FLAG_GLOBAL,
+            DICS_FLAG_GLOBAL.0,
             0,
             DIREG_DRV,
             KEY_READ.0,

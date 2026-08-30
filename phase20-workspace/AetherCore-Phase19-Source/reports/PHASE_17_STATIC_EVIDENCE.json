@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "summary": {
+    "phase": 17,
+    "status": "PASS",
+    "executedChecks": 24,
+    "passedChecks": 24,
+    "failedChecks": 0,
+    "notExecutedChecks": 3,
+    "nativeWindowsQualified": false,
+    "releaseCandidateClaim": false
+  },
+  "checks": [
+    {
+      "id": "P17-STATIC-001",
+      "status": "PASS",
+      "detail": "required Phase 17 source files present",
+      "evidence": [
+        "crates/pc-intelligence/Cargo.toml",
+        "crates/pc-intelligence/src/model.rs",
+        "crates/pc-intelligence/src/rules.rs",
+        "crates/pc-intelligence/src/normalize.rs",
+        "crates/pc-intelligence/src/sources.rs",
+        "crates/pc-intelligence/src/coordinator.rs",
+        "crates/pc-intelligence/tests/scenarios.rs",
+        "crates/contracts/proto/intelligence.proto",
+        "crates/persistence/migrations/0010_phase17_intelligence.sql",
+        "apps/ui/src/features/intelligence/DeepScanPage.svelte",
+        "apps/ui/src/features/intelligence/FindingCard.svelte",
+        "QUALIFICATION_DEBT.json",
+        "tests/fixtures/phase17/scenarios.json"
+      ]
+    },
+    {
+      "id": "P17-STATIC-002",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "Cargo.toml"
+      ]
+    },
+    {
+      "id": "P17-STATIC-003",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/model.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-004",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/coordinator.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-004B",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/sources.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-004C",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/coordinator.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-004D",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "crates/pc-intelligence/src/normalize.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-005",
+      "status": "PASS",
+      "detail": "13 versioned rules, 2 cross-domain correlations; unsupported self-update/servicing correlation absent",
+      "evidence": [
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-006",
+      "status": "PASS",
+      "detail": "no generic PC health percentage/score in intelligence core",
+      "evidence": [
+        "crates/pc-intelligence/src/model.rs",
+        "crates/pc-intelligence/src/rules.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-007",
+      "status": "PASS",
+      "detail": "Deep Scan uses production interaction primitives and no time/keyframe fake-progress loop",
+      "evidence": [
+        "apps/ui/src/features/intelligence/DeepScanPage.svelte",
+        "apps/ui/src/features/intelligence/FindingCard.svelte",
+        "apps/ui/src/features/intelligence/controller.ts"
+      ]
+    },
+    {
+      "id": "P17-STATIC-008",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "crates/contracts/proto/operations.proto"
+      ]
+    },
+    {
+      "id": "P17-STATIC-008B",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "crates/contracts/proto/intelligence.proto"
+      ]
+    },
+    {
+      "id": "P17-STATIC-009",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "crates/contracts/proto/events.proto"
+      ]
+    },
+    {
+      "id": "P17-STATIC-010",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "services/maintenance-service/src/router.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-011",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "services/maintenance-service/src/streaming.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-012",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "apps/desktop/src/main.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-013",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "apps/ui/src/platform/stream-state.ts"
+      ]
+    },
+    {
+      "id": "P17-STATIC-014",
+      "status": "PASS",
+      "detail": "all required integration markers present",
+      "evidence": [
+        "apps/ui/src/app/AppShell.svelte"
+      ]
+    },
+    {
+      "id": "P17-STATIC-015",
+      "status": "PASS",
+      "detail": "catalog parity=True; phase keys=219; missing EN=[]; missing AR=[]",
+      "evidence": [
+        "apps/ui/src/lib/i18n/catalog.en.ts",
+        "apps/ui/src/lib/i18n/catalog.ar.ts"
+      ]
+    },
+    {
+      "id": "P17-STATIC-016",
+      "status": "PASS",
+      "detail": "executed 12 migrations in-memory; Phase17 tables present=True; sealed-plan FK RESTRICT=True",
+      "evidence": [
+        "crates/persistence/migrations/0010_phase17_intelligence.sql"
+      ]
+    },
+    {
+      "id": "P17-STATIC-017",
+      "status": "PASS",
+      "detail": "qualification debt items=27, unique=True, required fields complete=True",
+      "evidence": [
+        "QUALIFICATION_DEBT.json"
+      ]
+    },
+    {
+      "id": "P17-STATIC-018",
+      "status": "PASS",
+      "detail": "synthetic scenarios=7; mandatory scenarios present=True",
+      "evidence": [
+        "tests/fixtures/phase17/scenarios.json",
+        "crates/pc-intelligence/tests/scenarios.rs"
+      ]
+    },
+    {
+      "id": "P17-STATIC-019",
+      "status": "PASS",
+      "detail": "no placeholder markers or production mock-logic markers in Phase17 source",
+      "evidence": [
+        "crates/pc-intelligence",
+        "apps/ui/src/features/intelligence",
+        "crates/contracts/proto/intelligence.proto",
+        "crates/persistence/migrations/0010_phase17_intelligence.sql",
+        "crates/persistence/migrations/0011_phase17_1_intelligence_integrity.sql"
+      ]
+    },
+    {
+      "id": "P17-STATIC-020",
+      "status": "PASS",
+      "detail": "critical fact/finding core uses closed typed payloads rather than serde_json::Value",
+      "evidence": [
+        "crates/pc-intelligence/src/model.rs"
+      ]
+    },
+    {
+      "id": "P17-RUST-001",
+      "status": "NOT_EXECUTED",
+      "detail": "Rust toolchain unavailable on host (cargo=False, rustc=False)",
+      "evidence": [
+        "crates/pc-intelligence/tests/scenarios.rs"
+      ]
+    },
+    {
+      "id": "P17-UI-001",
+      "status": "NOT_EXECUTED",
+      "detail": "installed svelte-check dependency unavailable on host",
+      "evidence": [
+        "apps/ui/src/features/intelligence/DeepScanPage.svelte"
+      ]
+    },
+    {
+      "id": "P17-WINDOWS-001",
+      "status": "NOT_EXECUTED",
+      "detail": "Windows-native qualification is intentionally deferred by program strategy and this host is not used to claim native PASS.",
+      "evidence": [
+        "QUALIFICATION_DEBT.json",
+        "scripts/phase17-windows-qualification.ps1"
+      ]
+    }
+  ]
+}

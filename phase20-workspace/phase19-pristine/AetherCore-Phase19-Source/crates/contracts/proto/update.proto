@@ -1,0 +1,110 @@
+syntax = "proto3";
+package aethercore.v1;
+
+enum UpdateChannel {
+  UPDATE_CHANNEL_UNSPECIFIED = 0;
+  UPDATE_CHANNEL_STABLE = 1;
+  UPDATE_CHANNEL_BETA = 2;
+}
+enum UpdateState {
+  UPDATE_STATE_UNSPECIFIED = 0;
+  UPDATE_STATE_DISABLED = 1;
+  UPDATE_STATE_IDLE = 2;
+  UPDATE_STATE_CHECKING = 3;
+  UPDATE_STATE_UP_TO_DATE = 4;
+  UPDATE_STATE_AVAILABLE = 5;
+  UPDATE_STATE_STAGING = 6;
+  UPDATE_STATE_STAGED = 7;
+  UPDATE_STATE_AWAITING_CONSENT = 8;
+  UPDATE_STATE_INSTALLING = 9;
+  UPDATE_STATE_COMPLETED = 10;
+  UPDATE_STATE_FAILED = 11;
+}
+enum UpdatePackageKind {
+  UPDATE_PACKAGE_KIND_UNSPECIFIED = 0;
+  UPDATE_PACKAGE_KIND_BURN = 1;
+}
+message CheckForUpdatesRequest { UpdateChannel channel = 1; }
+message GetUpdateSnapshotRequest {}
+message StageUpdateRequest { string release_id = 1; }
+message BeginUpdateInstallIntentRequest { string release_id = 1; }
+message GetUpdateInstallIntentRequest { string intent_id = 1; }
+message ClaimUpdateInstallRequest { string intent_id = 1; }
+message CompleteUpdateInstallRequest { string ticket_id = 1; int32 exit_code = 2; }
+message CancelUpdateInstallIntentRequest { string intent_id = 1; }
+message UpdateReleaseInfo {
+  string release_id = 1;
+  string version = 2;
+  UpdateChannel channel = 3;
+  int64 published_unix_ms = 4;
+  string notes_message_key = 5;
+  uint32 minimum_windows_build = 6;
+  uint64 size_bytes = 7;
+  string sha256 = 8;
+  UpdatePackageKind package_kind = 9;
+}
+message UpdateSnapshot {
+  UpdateState state = 1;
+  UpdateChannel channel = 2;
+  string current_version = 3;
+  UpdateReleaseInfo latest_release = 4;
+  UpdateReleaseInfo staged_release = 5;
+  bool progress_known = 6;
+  uint32 overall_percent = 7;
+  uint64 bytes_completed = 8;
+  uint64 bytes_total = 9;
+  string status_message_key = 10;
+  int64 checked_unix_ms = 11;
+  int64 updated_unix_ms = 12;
+}
+message UpdateSnapshotResponse { UpdateSnapshot snapshot = 1; }
+message UpdateInstallIntentResponse {
+  string intent_id = 1;
+  UpdateReleaseInfo release = 2;
+  int64 expires_unix_ms = 3;
+}
+message UpdateExecutionTicketResponse {
+  string ticket_id = 1;
+  UpdateReleaseInfo release = 2;
+  string staged_path = 3;
+  string expected_sha256 = 4;
+  uint64 expected_size = 5;
+  int64 expires_unix_ms = 6;
+}
+message UpdateCompletionResponse {
+  string ticket_id = 1;
+  string release_id = 2;
+  int32 exit_code = 3;
+  bool succeeded = 4;
+  bool reboot_recommended = 5;
+}
+message GetUpdateCheckDescriptorRequest { UpdateChannel channel = 1; }
+message UpdateCheckDescriptorResponse {
+  UpdateChannel channel = 1;
+  string manifest_url = 2;
+  string signature_url = 3;
+  uint32 max_manifest_bytes = 4;
+  uint32 max_signature_bytes = 5;
+}
+message SubmitUpdateManifestRequest {
+  UpdateChannel channel = 1;
+  bytes manifest_bytes = 2;
+  bytes signature_bytes = 3;
+}
+message BeginUpdateStageUploadRequest { string release_id = 1; }
+message UpdateStageUploadDescriptorResponse {
+  string upload_id = 1;
+  UpdateReleaseInfo release = 2;
+  string package_url = 3;
+  uint64 expected_size = 4;
+  string expected_sha256 = 5;
+  uint32 max_chunk_bytes = 6;
+  int64 expires_unix_ms = 7;
+}
+message WriteUpdateStageChunkRequest {
+  string upload_id = 1;
+  uint64 offset = 2;
+  bytes data = 3;
+}
+message FinalizeUpdateStageUploadRequest { string upload_id = 1; }
+message CancelUpdateStageUploadRequest { string upload_id = 1; }

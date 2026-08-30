@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Bundle
+      Id="AetherCore.Setup"
+      Name="AetherCore Setup"
+      Manufacturer="AetherCore"
+      Version="$(var.ProductVersion)"
+      Compressed="yes"
+      DisableModify="no"
+      DisableRemove="no"
+      Condition="VersionNT64 AND NTProductType = 1 AND WindowsBuildNumber &gt;= 22621">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+          Theme="hyperlinkLicense"
+          LicenseUrl=""
+          ShowVersion="yes"
+          SuppressOptionsUI="yes" />
+    </BootstrapperApplication>
+
+    <Variable Name="WebView2MachineVersion" Type="string" Value="" />
+    <Variable Name="WebView2UserVersion" Type="string" Value="" />
+
+    <!-- Microsoft documents pv > 0.0.0.0 in either location as the presence test. -->
+    <util:RegistrySearch
+        Id="WebView2MachineSearch"
+        Variable="WebView2MachineVersion"
+        Root="HKLM"
+        Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        Value="pv"
+        Result="value" />
+    <util:RegistrySearch
+        Id="WebView2UserSearch"
+        Variable="WebView2UserVersion"
+        Root="HKCU"
+        Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        Value="pv"
+        Result="value" />
+
+    <Chain>
+      <ExePackage
+          Id="WebView2EvergreenBootstrapper"
+          SourceFile="$(var.WebView2Bootstrapper)"
+          DisplayName="Microsoft Edge WebView2 Runtime"
+          InstallArguments="/silent /install"
+          PerMachine="yes"
+          Permanent="yes"
+          Vital="yes"
+          DetectCondition="((NOT (WebView2MachineVersion = &quot;&quot;)) AND NOT (WebView2MachineVersion = &quot;0.0.0.0&quot;)) OR ((NOT (WebView2UserVersion = &quot;&quot;)) AND NOT (WebView2UserVersion = &quot;0.0.0.0&quot;))" />
+      <MsiPackage Id="AetherCoreMsi" SourceFile="$(var.MsiPath)" Vital="yes" Visible="no" />
+    </Chain>
+  </Bundle>
+</Wix>

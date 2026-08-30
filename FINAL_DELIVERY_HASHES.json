@@ -1,0 +1,16 @@
+{
+  "schema": "aethercore.phase19.final-delivery-hashes.v1",
+  "masterDelivery": {
+    "file": "AetherCore_Phase19_Windows_Repair_Intelligence_Master_Delivery.zip",
+    "sha256": "7d192ce6a566529e833d9947d917c8bb0a68c3d72910291c727b4641712c78d0",
+    "size": 1393206
+  },
+  "sourceZip": {
+    "file": "AetherCore-Phase19-Source.zip",
+    "sha256": "584aa123df7fe6d4c55ccfd826d4aa7b4d35818c81a5a9de4c396f2993b30987"
+  },
+  "patch": {
+    "file": "Phase18.1-to-Phase19.binary.patch",
+    "sha256": "caa39900e7c47530778839caed8b8c924901d76e5ec3c1e3e6541f0fac70349a"
+  }
+}
