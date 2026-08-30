@@ -372,3 +372,49 @@ deterministic scheme predicts for 0.1.1/arm64. Zero ICE. Same UpgradeCode.
 Payload is the same set of binaries; only the package version differs.
 `aethercore-desktop.exe` re-linked to `c351ccf0…` (same size) because a Tauri
 rebuild is not byte-reproducible — expected, not a criterion.
+
+## 13. HOST DISK EXHAUSTION — NO NEW SNAPSHOTS CAN BE TAKEN
+
+Observed 2026-08-31 while attempting `P36-PRE-UPGRADE`:
+
+```
+Unable to create the snapshot. There is not enough free space on the physical disk.
+```
+
+Host state: `/System/Volumes/Data` 926 Gi total, 892 Gi used, **6.8 Gi free
+(100% capacity)**. `~/Parallels/Windows 11.pvm` is 118 G; `~/Downloads` is
+275 G and `~/Library/Caches` is 12 G.
+
+**Not remediated, deliberately.** Deleting any snapshot or backup is forbidden
+by this brief, and `~/Downloads` / `~/Library/Caches` are the user's data, not
+this session's to delete. Freeing host space is a HUMAN action.
+
+### Consequence and the adaptation used
+
+Every snapshot taken up to `P36-POST-UNINSTALL` still exists and still
+restores. From B4 onward the pre-action snapshot is an EXISTING snapshot plus,
+where needed, a recorded automated replay:
+
+- B4 recovery = restore `P36-POST-UNINSTALL {86fc5a29-34fc-4e46-8c91-43b151082246}`
+  then re-run `\\Mac\Home\Documents\p36-stage\b3.cmd` (the exact clean-install
+  step that already passed B3 with exit 0).
+- Stage C recovery = restore `P36-MSI-ALIGNED {7d0696ae-ebc7-4c67-b076-438855d175f3}`,
+  which is a fully verified working install, before each injection.
+
+The four-line rule is still satisfiable: ACTION / SNAPSHOT / EXPECTED /
+RECOVERY all have real values. What is lost is a fresh per-step restore point,
+so each recovery costs one extra automated step instead of one restore.
+
+### B4 — major upgrade 0.1.0 -> 0.1.1 (revised record)
+```
+ACTION=    msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.1-arm64.msi /qn /l*v
+           C:\AetherCore-P36\logs\b4-upgrade.log
+SNAPSHOT=  P36-POST-UNINSTALL {86fc5a29-34fc-4e46-8c91-43b151082246}
+           (no fresher snapshot is possible — see host disk exhaustion above)
+EXPECTED=  exit 0; RemoveExistingProducts runs; exactly ONE ARP entry afterwards,
+           {84140FFD-5CBC-175D-928D-E493493F5F51} version 0.1.1, with the 0.1.0
+           key {FC8A3841-...} gone; HKLM InstallVersion 0.1.1; every security
+           property unchanged; 8/8 verbs RETURNED.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id {86fc5a29-34fc-4e46-8c91-43b151082246}
+           then: prlctl exec "Windows 11" cmd.exe /c "\\Mac\Home\Documents\p36-stage\b3.cmd"
+```
