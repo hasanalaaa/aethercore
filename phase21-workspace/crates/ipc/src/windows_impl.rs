@@ -4,7 +4,7 @@ use std::{
     fs::File,
     os::windows::{
         fs::OpenOptionsExt,
-        io::{AsRawHandle, FromRawHandle},
+        io::{AsRawHandle, IntoRawHandle},
     },
     sync::{
         Arc, Mutex, OnceLock,
@@ -27,8 +27,8 @@ use prost::Message;
 use windows::{
     Win32::{
         Foundation::{
-            CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_PIPE_BUSY,
-            ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, LocalFree,
+            CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_IO_PENDING,
+            ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, LocalFree,
         },
         Security::{
             Authorization::{
@@ -38,9 +38,12 @@ use windows::{
             IsValidSid, LookupAccountNameW, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
             SECURITY_ATTRIBUTES, SID_NAME_USE,
         },
-        Storage::FileSystem::{FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX},
+        Storage::FileSystem::{
+            FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, PIPE_ACCESS_DUPLEX, ReadFile,
+            WriteFile,
+        },
         System::{
-            IO::CancelSynchronousIo,
+            IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED},
             Pipes::{
                 ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
                 PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
@@ -50,7 +53,7 @@ use windows::{
                 SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_RUNNING,
                 SERVICE_STATUS_PROCESS, SERVICE_WIN32_OWN_PROCESS,
             },
-            Threading::{GetCurrentThreadId, OpenThread, THREAD_TERMINATE},
+            Threading::CreateEventW,
         },
     },
     core::{PCWSTR, PWSTR},
@@ -88,6 +91,10 @@ fn open_pipe() -> Result<File> {
         options
             .access_mode(PIPE_CLIENT_ACCESS_MASK)
             .share_mode(0)
+            // Without this the client file object is FO_SYNCHRONOUS_IO and the I/O manager
+            // serializes every operation on it, so a queued write parks behind the reader
+            // thread's outstanding read. Both ends of the pipe must be overlapped.
+            .custom_flags(FILE_FLAG_OVERLAPPED.0)
             // Prevent a server from impersonating this client while endpoint identity is still
             // being authenticated. OpenOptionsExt adds SECURITY_SQOS_PRESENT automatically.
             .security_qos_flags(PIPE_CLIENT_SECURITY_QOS);
@@ -469,72 +476,160 @@ fn try_acquire_slot(counter: &AtomicUsize, limit: usize) -> bool {
     }
 }
 
-/// Owns a real HANDLE to a writer thread so another thread can cancel a synchronous pipe write.
+/// A kernel handle held by value so it can cross threads.
 ///
 /// `windows::Win32::Foundation::HANDLE` is intentionally `!Send + !Sync`; storing the opaque
-/// numeric value here keeps the cross-thread contract explicit. The handle was opened with only
-/// `THREAD_TERMINATE`, which is the access right required by `CancelSynchronousIo`.
-struct SyncIoCancellation {
-    thread_handle: usize,
+/// numeric value keeps the cross-thread contract explicit, as the previous thread-handle
+/// cancellation token did.
+struct PipeHandle(usize);
+
+impl PipeHandle {
+    fn get(&self) -> HANDLE {
+        HANDLE(self.0 as *mut c_void)
+    }
 }
 
-impl SyncIoCancellation {
-    fn for_thread(thread_id: u32) -> Result<Arc<Self>> {
-        let handle =
-            unsafe { OpenThread(THREAD_TERMINATE, false, thread_id) }.map_err(|error| {
-                IpcError::Windows(format!("open IPC I/O thread for cancellation: {error}"))
-            })?;
-        Ok(Arc::new(Self {
-            thread_handle: handle.0 as usize,
-        }))
+impl Drop for PipeHandle {
+    fn drop(&mut self) {
+        if self.0 != 0 {
+            unsafe {
+                let _ = CloseHandle(self.get());
+            }
+        }
     }
+}
 
+/// Auto-reset: `GetOverlappedResult`'s wait consumes the signal, so every operation starts from a
+/// non-signalled event without an explicit reset.
+fn new_completion_event() -> Result<PipeHandle> {
+    let handle = unsafe { CreateEventW(None, false, false, PCWSTR::null()) }
+        .map_err(|error| IpcError::Windows(format!("create overlapped IPC event: {error}")))?;
+    Ok(PipeHandle(handle.0 as usize))
+}
+
+/// Preserve the raw Win32 code, so a cancelled operation still surfaces as
+/// `ERROR_OPERATION_ABORTED` through `IpcError::Io` exactly as the synchronous path did.
+fn win32_io_error(error: windows::core::Error) -> std::io::Error {
+    std::io::Error::from_raw_os_error(error.code().0 & 0xFFFF)
+}
+
+/// Aborts every outstanding operation on a connected pipe, from any thread.
+///
+/// `CancelIoEx` with a null OVERLAPPED cancels all in-flight I/O on the handle rather than the
+/// calls issued by one thread. Every call site here already cancelled both directions, so this
+/// reproduces the teardown `CancelSynchronousIo` performed against the two I/O threads.
+#[derive(Clone)]
+struct PipeCancel(Arc<PipeHandle>);
+
+impl PipeCancel {
     fn cancel(&self) {
-        if self.thread_handle == 0 {
+        if self.0.0 == 0 {
             return;
         }
-        let handle = HANDLE(self.thread_handle as *mut c_void);
         unsafe {
-            let _ = CancelSynchronousIo(handle);
+            let _ = CancelIoEx(self.0.get(), None);
         }
     }
 
     #[cfg(test)]
-    fn noop_for_test() -> Arc<Self> {
-        Arc::new(Self { thread_handle: 0 })
+    fn noop_for_test() -> Self {
+        Self(Arc::new(PipeHandle(0)))
     }
 }
 
-impl Drop for SyncIoCancellation {
-    fn drop(&mut self) {
-        if self.thread_handle == 0 {
-            return;
+/// One direction of overlapped I/O over a shared named-pipe file object.
+///
+/// The reader and the writer thread hold separate `PipeIo` values referencing the same kernel
+/// file object through the shared `Arc`. Each owns its own event, and each operation gets its own
+/// `OVERLAPPED` on the calling stack, so a concurrent read and write never share completion state.
+struct PipeIo {
+    handle: Arc<PipeHandle>,
+    event: PipeHandle,
+}
+
+impl PipeIo {
+    fn from_connected(handle: HANDLE) -> Result<Self> {
+        Ok(Self {
+            handle: Arc::new(PipeHandle(handle.0 as usize)),
+            event: new_completion_event()?,
+        })
+    }
+
+    /// The opposite direction on the same file object, with its own event.
+    fn split_direction(&self) -> Result<Self> {
+        Ok(Self {
+            handle: self.handle.clone(),
+            event: new_completion_event()?,
+        })
+    }
+
+    fn cancel(&self) -> PipeCancel {
+        PipeCancel(self.handle.clone())
+    }
+
+    fn raw(&self) -> HANDLE {
+        self.handle.get()
+    }
+
+    /// Issue one overlapped operation and wait for it to finish.
+    ///
+    /// The `OVERLAPPED` lives on this frame, so every path must leave the kernel done with it:
+    /// `GetOverlappedResult` with `bWait` returns only once the operation completes or aborts.
+    fn transfer<F>(&mut self, issue: F) -> std::io::Result<usize>
+    where
+        F: FnOnce(HANDLE, *mut OVERLAPPED) -> windows::core::Result<()>,
+    {
+        let mut overlapped = OVERLAPPED {
+            hEvent: self.event.get(),
+            ..Default::default()
+        };
+        let handle = self.handle.get();
+        match issue(handle, &mut overlapped) {
+            Ok(()) => {}
+            Err(error) if error.code() == ERROR_IO_PENDING.to_hresult() => {}
+            Err(error) => return Err(win32_io_error(error)),
         }
-        let handle = HANDLE(self.thread_handle as *mut c_void);
-        unsafe {
-            let _ = CloseHandle(handle);
+        let mut transferred = 0u32;
+        unsafe { GetOverlappedResult(handle, &overlapped, &mut transferred, true) }
+            .map_err(win32_io_error)?;
+        Ok(transferred as usize)
+    }
+}
+
+impl std::io::Read for PipeIo {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
         }
+        // A byte-mode pipe may satisfy a read partially; `read_exact` in the frame codec loops.
+        self.transfer(|handle, overlapped| unsafe {
+            ReadFile(handle, Some(buf), None, Some(overlapped))
+        })
     }
 }
 
-fn writer_thread_id(receiver: mpsc::Receiver<u32>) -> Result<u32> {
-    match receiver.recv_timeout(Duration::from_secs(1)) {
-        Ok(thread_id) => Ok(thread_id),
-        Err(mpsc::RecvTimeoutError::Timeout) => Err(IpcError::Io(std::io::Error::new(
-            std::io::ErrorKind::TimedOut,
-            "IPC I/O thread registration timed out",
-        ))),
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(IpcError::Io(std::io::Error::new(
-            std::io::ErrorKind::BrokenPipe,
-            "IPC I/O thread exited before cancellation registration",
-        ))),
+impl std::io::Write for PipeIo {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        // A byte-mode pipe can also accept a write partially, so drain the whole buffer here
+        // instead of depending on the caller to loop.
+        let mut written = 0usize;
+        while written < buf.len() {
+            let chunk = &buf[written..];
+            let count = self.transfer(|handle, overlapped| unsafe {
+                WriteFile(handle, Some(chunk), None, Some(overlapped))
+            })?;
+            if count == 0 {
+                return Err(std::io::Error::from(std::io::ErrorKind::WriteZero));
+            }
+            written += count;
+        }
+        Ok(written)
     }
-}
 
-fn cancel_registered_io(slot: &Mutex<Option<Arc<SyncIoCancellation>>>) {
-    let cancellation = slot.lock().unwrap_or_else(|p| p.into_inner()).clone();
-    if let Some(cancellation) = cancellation {
-        cancellation.cancel();
+    fn flush(&mut self) -> std::io::Result<()> {
+        // The bytes are already handed to the kernel. FlushFileBuffers would additionally block
+        // until the peer drains them, which the frame codec must never do.
+        Ok(())
     }
 }
 
@@ -543,8 +638,7 @@ pub struct PipeServerWriter {
     tx: mpsc::SyncSender<QueuedServerFrame>,
     alive: Arc<AtomicBool>,
     queued_bytes: Arc<AtomicUsize>,
-    cancellation: Arc<SyncIoCancellation>,
-    peer_reader: Arc<Mutex<Option<Arc<SyncIoCancellation>>>>,
+    cancel: PipeCancel,
 }
 impl PipeServerWriter {
     pub fn write(&self, frame: &ServerFrame) -> Result<()> {
@@ -615,8 +709,9 @@ impl PipeServerWriter {
     }
     fn shutdown(&self) {
         self.alive.store(false, Ordering::Release);
-        self.cancellation.cancel();
-        cancel_registered_io(&self.peer_reader);
+        // One call aborts both directions of the file object - the writer's pending write and
+        // the session loop's pending read - which is what the two cancellations here did.
+        self.cancel.cancel();
     }
 }
 
@@ -661,10 +756,13 @@ impl PipeServerListener {
                 bInheritHandle: false.into(),
             };
             let mode = PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
+            // FILE_FLAG_OVERLAPPED is what stops the I/O manager serializing this session's
+            // read and write on the one file object. Without it a response write parks behind
+            // the session loop's outstanding read and no request ever completes.
             let open_mode = if first_instance {
-                PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED
             } else {
-                PIPE_ACCESS_DUPLEX
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED
             };
             let handle = CreateNamedPipeW(
                 PCWSTR(name.as_ptr()),
@@ -689,105 +787,78 @@ impl PipeServerListener {
     }
 
     pub fn accept(self) -> Result<PipeServerSession> {
+        // Under FILE_FLAG_OVERLAPPED, ConnectNamedPipe requires a real OVERLAPPED and reports
+        // the wait as ERROR_IO_PENDING instead of blocking. ERROR_PIPE_CONNECTED still means a
+        // client arrived before the call. All three outcomes accept exactly one session, so the
+        // service accept loop keeps its existing shape and successor-listener ordering.
+        let event = new_completion_event()?;
+        let mut overlapped = OVERLAPPED {
+            hEvent: event.get(),
+            ..Default::default()
+        };
         unsafe {
-            match ConnectNamedPipe(self.handle.get(), None) {
+            match ConnectNamedPipe(self.handle.get(), Some(&mut overlapped)) {
                 Ok(()) => {}
                 Err(e) if e.code() == ERROR_PIPE_CONNECTED.to_hresult() => {}
+                Err(e) if e.code() == ERROR_IO_PENDING.to_hresult() => {
+                    let mut transferred = 0u32;
+                    GetOverlappedResult(self.handle.get(), &overlapped, &mut transferred, true)
+                        .map_err(|e| IpcError::Windows(e.to_string()))?;
+                }
                 Err(e) => return Err(IpcError::Windows(e.to_string())),
             }
-            PipeServerSession::from_connected_reader(File::from_raw_handle(
-                self.handle.into_raw().0,
-            ))
         }
+        PipeServerSession::from_connected_reader(self.handle.into_raw())
     }
 }
 
 pub struct PipeServerSession {
-    reader: File,
+    reader: PipeIo,
     writer: PipeServerWriter,
-    reader_cancellation: Arc<Mutex<Option<Arc<SyncIoCancellation>>>>,
 }
 impl PipeServerSession {
-    fn from_connected_reader(reader: File) -> Result<Self> {
-        let mut writer_file = reader.try_clone()?;
+    fn from_connected_reader(handle: HANDLE) -> Result<Self> {
+        let reader = PipeIo::from_connected(handle)?;
+        // Same kernel file object, independent completion state. This is what lets the writer
+        // thread complete a response while the session loop is parked in a read.
+        let mut writer_io = reader.split_direction()?;
+        let cancel = reader.cancel();
         let (tx, rx) = mpsc::sync_channel::<QueuedServerFrame>(SERVER_OUTBOUND_QUEUE_CAPACITY);
         let writer_alive = Arc::new(AtomicBool::new(true));
         let queued_bytes = Arc::new(AtomicUsize::new(0));
-        let reader_cancellation = Arc::new(Mutex::new(None));
         let pump_alive = writer_alive.clone();
         let pump_bytes = queued_bytes.clone();
-        let pump_peer_reader = reader_cancellation.clone();
-        let (thread_id_tx, thread_id_rx) = mpsc::sync_channel(1);
-        let writer_thread = thread::Builder::new()
+        let pump_cancel = cancel.clone();
+        thread::Builder::new()
             .name("aether-ipc-server-writer".into())
             .spawn(move || {
-                if thread_id_tx.send(unsafe { GetCurrentThreadId() }).is_err() {
-                    return;
-                }
                 while let Ok(queued) = rx.recv() {
                     if !pump_alive.load(Ordering::Acquire) {
                         release_bytes(&pump_bytes, queued.bytes);
                         break;
                     }
-                    let result = write_server_frame(&mut writer_file, &queued.frame);
+                    let result = write_server_frame(&mut writer_io, &queued.frame);
                     release_bytes(&pump_bytes, queued.bytes);
                     if result.is_err() {
                         break;
                     }
                 }
                 pump_alive.store(false, Ordering::Release);
-                cancel_registered_io(&pump_peer_reader);
+                pump_cancel.cancel();
             })
             .map_err(IpcError::Io)?;
-        let thread_id = match writer_thread_id(thread_id_rx) {
-            Ok(value) => value,
-            Err(error) => {
-                writer_alive.store(false, Ordering::Release);
-                drop(tx);
-                let _ = writer_thread.join();
-                return Err(error);
-            }
-        };
-        let cancellation = match SyncIoCancellation::for_thread(thread_id) {
-            Ok(value) => value,
-            Err(error) => {
-                writer_alive.store(false, Ordering::Release);
-                drop(tx);
-                let _ = writer_thread.join();
-                return Err(error);
-            }
-        };
-        drop(writer_thread);
         Ok(Self {
             reader,
             writer: PipeServerWriter {
                 tx,
                 alive: writer_alive,
                 queued_bytes,
-                cancellation,
-                peer_reader: reader_cancellation.clone(),
+                cancel,
             },
-            reader_cancellation,
         })
     }
-    /// Bind the blocking read side to the session worker so writer-side failure can cancel it.
-    /// Must be called exactly once by the thread that will execute `read`.
-    pub fn bind_reader_to_current_thread(&self) -> Result<()> {
-        let cancellation = SyncIoCancellation::for_thread(unsafe { GetCurrentThreadId() })?;
-        let mut slot = self
-            .reader_cancellation
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        if slot.is_some() {
-            return Err(IpcError::Protocol(
-                "server reader thread already bound".into(),
-            ));
-        }
-        *slot = Some(cancellation);
-        Ok(())
-    }
     pub fn raw_handle(&self) -> std::os::windows::io::RawHandle {
-        self.reader.as_raw_handle()
+        self.reader.raw().0
     }
     pub fn read(&mut self) -> Result<ClientFrame> {
         if !self.writer.is_alive() {
@@ -810,8 +881,7 @@ struct PipeClientWriter {
     tx: mpsc::SyncSender<QueuedClientFrame>,
     alive: Arc<AtomicBool>,
     queued_bytes: Arc<AtomicUsize>,
-    cancellation: Arc<SyncIoCancellation>,
-    peer_reader: Arc<Mutex<Option<Arc<SyncIoCancellation>>>>,
+    cancel: PipeCancel,
 }
 impl PipeClientWriter {
     fn write(&self, frame: &ClientFrame) -> Result<()> {
@@ -842,8 +912,8 @@ impl PipeClientWriter {
     }
     fn shutdown(&self) {
         self.alive.store(false, Ordering::Release);
-        self.cancellation.cancel();
-        cancel_registered_io(&self.peer_reader);
+        // Aborts the pending write and the reader thread's pending read in one call.
+        self.cancel.cancel();
     }
 }
 
@@ -875,8 +945,12 @@ impl SessionClient {
         on_stream_reset: Arc<dyn Fn(v1::StreamReset) + Send + Sync + 'static>,
         on_disconnect: Arc<dyn Fn() + Send + Sync + 'static>,
     ) -> Result<Arc<Self>> {
-        let mut reader = open_pipe()?;
-        let mut writer_file = reader.try_clone()?;
+        // `open_pipe` performs endpoint authentication on a `File`; take the handle over
+        // afterwards so the verification path stays exactly as qualified.
+        let mut reader = PipeIo::from_connected(HANDLE(open_pipe()?.into_raw_handle()))?;
+        // Independent completion state per direction on the one file object.
+        let mut writer_io = reader.split_direction()?;
+        let cancel = reader.cancel();
         write_client_frame(
             &mut reader,
             &ClientFrame {
@@ -906,20 +980,15 @@ impl SessionClient {
         let (writer_tx, writer_rx) =
             mpsc::sync_channel::<QueuedClientFrame>(CLIENT_OUTBOUND_QUEUE_CAPACITY);
         let writer_bytes = Arc::new(AtomicUsize::new(0));
-        let reader_cancellation = Arc::new(Mutex::new(None));
         let writer_alive = alive.clone();
         let writer_pending = pending.clone();
         let writer_notified = disconnect_notified.clone();
         let writer_disconnect = on_disconnect.clone();
-        let writer_peer_reader = reader_cancellation.clone();
+        let writer_cancel = cancel.clone();
         let pump_bytes = writer_bytes.clone();
-        let (thread_id_tx, thread_id_rx) = mpsc::sync_channel(1);
-        let writer_thread = thread::Builder::new()
+        thread::Builder::new()
             .name("aether-ipc-client-writer".into())
             .spawn(move || {
-                if thread_id_tx.send(unsafe { GetCurrentThreadId() }).is_err() {
-                    return;
-                }
                 while let Ok(queued) = writer_rx.recv() {
                     if !writer_alive.load(Ordering::Acquire) {
                         release_bytes(&pump_bytes, queued.bytes);
@@ -928,7 +997,7 @@ impl SessionClient {
                         }
                         break;
                     }
-                    let result = write_client_frame(&mut writer_file, &queued.frame);
+                    let result = write_client_frame(&mut writer_io, &queued.frame);
                     release_bytes(&pump_bytes, queued.bytes);
                     if result.is_err() {
                         break;
@@ -939,47 +1008,20 @@ impl SessionClient {
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
                     .clear();
-                cancel_registered_io(&writer_peer_reader);
+                writer_cancel.cancel();
                 notify_disconnect_once(&writer_notified, &writer_disconnect);
             })
             .map_err(IpcError::Io)?;
-        let thread_id = match writer_thread_id(thread_id_rx) {
-            Ok(value) => value,
-            Err(error) => {
-                alive.store(false, Ordering::Release);
-                drop(writer_tx);
-                let _ = writer_thread.join();
-                return Err(error);
-            }
-        };
-        let cancellation = match SyncIoCancellation::for_thread(thread_id) {
-            Ok(value) => value,
-            Err(error) => {
-                alive.store(false, Ordering::Release);
-                drop(writer_tx);
-                let _ = writer_thread.join();
-                return Err(error);
-            }
-        };
         let reader_alive = alive.clone();
         let reader_pending = pending.clone();
         let reader_notified = disconnect_notified.clone();
         let reader_disconnect = on_disconnect.clone();
-        let reader_writer_cancellation = cancellation.clone();
-        let (reader_thread_id_tx, reader_thread_id_rx) = mpsc::sync_channel(1);
-        let (reader_start_tx, reader_start_rx) = mpsc::channel();
-        let reader_thread = match thread::Builder::new()
+        let reader_cancel = cancel.clone();
+        // Cancellation targets the pipe handle, which exists before either thread starts, so the
+        // reader needs no registration handshake before entering its loop.
+        if let Err(error) = thread::Builder::new()
             .name("aether-ipc-client-reader".into())
             .spawn(move || {
-                if reader_thread_id_tx
-                    .send(unsafe { GetCurrentThreadId() })
-                    .is_err()
-                {
-                    return;
-                }
-                if reader_start_rx.recv().is_err() {
-                    return;
-                }
                 let mut reader = reader;
                 while let Ok(frame) = read_server_frame(&mut reader) {
                     match frame.payload {
@@ -1004,71 +1046,29 @@ impl SessionClient {
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
                     .clear();
-                reader_writer_cancellation.cancel();
+                reader_cancel.cancel();
                 notify_disconnect_once(&reader_notified, &reader_disconnect);
-            }) {
-            Ok(value) => value,
-            Err(error) => {
-                alive.store(false, Ordering::Release);
-                cancellation.cancel();
-                drop(writer_tx);
-                let _ = writer_thread.join();
-                return Err(IpcError::Io(error));
-            }
-        };
-        let reader_thread_id = match writer_thread_id(reader_thread_id_rx) {
-            Ok(value) => value,
-            Err(error) => {
-                alive.store(false, Ordering::Release);
-                cancellation.cancel();
-                drop(reader_start_tx);
-                drop(writer_tx);
-                let _ = writer_thread.join();
-                let _ = reader_thread.join();
-                return Err(error);
-            }
-        };
-        let reader_cancel = match SyncIoCancellation::for_thread(reader_thread_id) {
-            Ok(value) => value,
-            Err(error) => {
-                alive.store(false, Ordering::Release);
-                cancellation.cancel();
-                drop(reader_start_tx);
-                drop(writer_tx);
-                let _ = writer_thread.join();
-                let _ = reader_thread.join();
-                return Err(error);
-            }
-        };
-        *reader_cancellation
-            .lock()
-            .unwrap_or_else(|p| p.into_inner()) = Some(reader_cancel);
-        if reader_start_tx.send(()).is_err() {
+            })
+        {
             alive.store(false, Ordering::Release);
-            cancellation.cancel();
+            cancel.cancel();
             drop(writer_tx);
-            let _ = writer_thread.join();
-            let _ = reader_thread.join();
-            return Err(IpcError::Disconnected);
-        };
+            return Err(IpcError::Io(error));
+        }
         let max_inflight = (hello.max_inflight_requests as usize).max(1);
-        let client = Arc::new(Self {
+        Ok(Arc::new(Self {
             writer: PipeClientWriter {
                 tx: writer_tx,
                 alive: alive.clone(),
                 queued_bytes: writer_bytes,
-                cancellation,
-                peer_reader: reader_cancellation,
+                cancel,
             },
-            pending: pending.clone(),
-            alive: alive.clone(),
+            pending,
+            alive,
             inflight: AtomicUsize::new(0),
             max_inflight,
             hello,
-        });
-        drop(writer_thread);
-        drop(reader_thread);
-        Ok(client)
+        }))
     }
 
     fn try_acquire_inflight(&self) -> Result<ClientInflightGuard<'_>> {
@@ -1233,8 +1233,7 @@ mod enterprise_tests {
             tx,
             alive: alive.clone(),
             queued_bytes: queued_bytes.clone(),
-            cancellation: SyncIoCancellation::noop_for_test(),
-            peer_reader: Arc::new(Mutex::new(None)),
+            cancel: PipeCancel::noop_for_test(),
         };
         let frame = ServerFrame { payload: None };
         assert!(writer.write(&frame).is_ok());
@@ -1256,8 +1255,7 @@ mod enterprise_tests {
             tx,
             alive: alive.clone(),
             queued_bytes,
-            cancellation: SyncIoCancellation::noop_for_test(),
-            peer_reader: Arc::new(Mutex::new(None)),
+            cancel: PipeCancel::noop_for_test(),
         };
         let frame = ServerFrame {
             payload: Some(server_frame::Payload::Response(Response {
@@ -1281,8 +1279,7 @@ mod enterprise_tests {
             tx,
             alive: alive.clone(),
             queued_bytes: queued_bytes.clone(),
-            cancellation: SyncIoCancellation::noop_for_test(),
-            peer_reader: Arc::new(Mutex::new(None)),
+            cancel: PipeCancel::noop_for_test(),
         };
         let frame = ClientFrame { payload: None };
         assert!(writer.write(&frame).is_ok());

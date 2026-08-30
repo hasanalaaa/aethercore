@@ -190,9 +190,6 @@ fn serve_session(
     mut session: aethercore_ipc::PipeServerSession,
     context: ServiceContext,
 ) -> anyhow::Result<()> {
-    session
-        .bind_reader_to_current_thread()
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     // Principal identity is captured once from the exact connected pipe token and is immutable for
     // the lifetime of this session. Every RPC and every event subscription uses this owner key.
     let peer = aethercore_security::inspect_named_pipe_client(session.raw_handle())

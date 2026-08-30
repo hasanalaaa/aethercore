@@ -73,8 +73,12 @@ PHYSICAL_X64_WINDOWS_QUALIFICATION_STILL_REQUIRED: True
   `Professional`, `sfc /verifyonly` reported no integrity violations, CBS log
   is present, Windows Update services are running, OpenSSH 9.5p2 is present,
   Firewall profiles and Defender real-time/tamper protection are enabled. The
-  AetherCore service is correctly reported `NOT_INSTALLED` because MSI install
-  is deferred. Evidence: `C:\\AetherCore-P36\\evidence\\native-queries.json`.
+  AetherCore service was reported `NOT_INSTALLED` at that time because MSI
+  install was still deferred. Evidence:
+  `C:\\AetherCore-P36\\evidence\\native-queries.json`. **SUPERSEDED 2026-08-29
+  by tranche 1** — the real ARM64 MSI is now installed and
+  `AetherCoreMaintenance` is RUNNING; see `INSTALL_STATE` at the top of this
+  file. This bullet is retained as a dated pre-mutation observation only.
 - UAC is enabled (`EnableLUA=1`, administrator consent level `5`); the VM's
   existing `PromptOnSecureDesktop=0` value was observed and left unchanged.
 - Installer source inspection confirms the authored per-machine scope,
@@ -292,8 +296,11 @@ Validation (synthetic smoke payload, clearly marked NOT-release):
   synthetic ProductCode `{A36C0DE0-1111-4000-8000-000000000036}`, synthetic
   75-byte placeholder payload files explicitly marked NOT FOR RELEASE.
 - Logs: `wix-build-fixed.{log,status}`, `wix-validate-fixed.{log,status}`.
-- NOT installed, NOT promoted to release packaging (P36-D018 respected); the
-  synthetic compile/validate is source/schema evidence only.
+- The **synthetic smoke MSI** was NOT installed and NOT promoted to release
+  packaging (P36-D018 respected); the synthetic compile/validate is
+  source/schema evidence only. This bullet scopes the synthetic smoke artifact
+  only — it says nothing about the real ARM64 product MSI, which **is**
+  installed (see `INSTALL_STATE`).
 
 ## Administrator/StandardUser/UAC evidence method (established 2026-08-29)
 
@@ -511,6 +518,13 @@ HERMES_PRE_MUTATION_REVIEW_COMPLETE=True
 
 STOP — no MSI install, no service registration, no product ACL change, no
 named-pipe mutation, no Phase 37.
+
+> **SUPERSEDED 2026-08-29.** The above was the end-of-session-3 boundary, before
+> native mutation tranche 1 was authorized and executed. The real ARM64 MSI is
+> now installed, `AetherCoreMaintenance` is registered and RUNNING, and tranche 1
+> is COMPLETE. Do not read this STOP line as a current instruction; the current
+> state and the current boundary are the `INSTALL_STATE` block at the top of this
+> file. Phase 37 remains out of scope.
 
 ## FAILURES
 
