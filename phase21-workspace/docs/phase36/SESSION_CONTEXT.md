@@ -158,7 +158,7 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 | A4 | Reinstall-vs-upgrade decision justified | PASS | same ProductCode + same version -> `REINSTALL=ALL REINSTALLMODE=amus`; see `STAGE_A_EVIDENCE.md` A4 |
 | A5 | Install from realigned MSI verified | PASS | `amus` refused 1638 (PackagecodeChanging); `vamus` exit 0; all five payload exes replaced with the A2 rebuild; every security property SAME |
 | GATE A | Package == installed files, security intact, 8 verb runs | **PASS** | `STAGE_A_EVIDENCE.md`; snapshot P36-MSI-ALIGNED `{7d0696ae-ebc7-4c67-b076-438855d175f3}` |
-| B1 | Repair preserves everything | NOT-STARTED | |
+| B1 | Repair preserves everything | PASS | `msiexec /f` exit 0; zero differing fields vs A5 state; 8/8 verbs — `STAGE_B_EVIDENCE.md` |
 | B2 | Uninstall: what goes, what survives | NOT-STARTED | |
 | B3 | Clean reinstall on empty box | NOT-STARTED | |
 | B4 | Upgrade v1 -> v2 | NOT-STARTED | |
