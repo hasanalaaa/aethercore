@@ -1,0 +1,23 @@
+=== POST-UNINSTALL SURVIVAL SURVEY ===
+CAPTURED_UTC=2026-08-30T23:53:42.1900470Z
+INSTALLFOLDER_EXISTS=True
+INSTALLFOLDER_ITEM=C:\Program Files\AetherCore\aetherctl.exe 3611136
+INSTALLFOLDER_ICACLS=C:\Program Files\AetherCore S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229:(OI)(CI)(RX) |                             BUILTIN\Users:(OI)(CI)(RX) |                             BUILTIN\Administrators:(OI)(CI)(F) |                             NT AUTHORITY\SYSTEM:(OI)(CI)(F) |  | Successfully processed 1 files; Failed processing 0 files
+SERVICE_QUERY=[SC] EnumQueryServicesStatus:OpenService FAILED 1060:  The specified service does not exist as an installed service. 
+SERVICE_REGKEY=False
+PIPE_COUNT=0
+PROGRAMDATA_AetherCore=True files=3
+PROGRAMDATA_state=True files=2
+PROGRAMDATA_logs=True files=1
+PROGRAMDATA_support-staging=True files=0
+PROGRAMDATA_ITEM=C:\ProgramData\AetherCore\logs
+PROGRAMDATA_ITEM=C:\ProgramData\AetherCore\state
+PROGRAMDATA_ITEM=C:\ProgramData\AetherCore\support-staging
+PROGRAMDATA_ITEM=C:\ProgramData\AetherCore\logs\service.jsonl
+PROGRAMDATA_ITEM=C:\ProgramData\AetherCore\state\aethercore.db
+PROGRAMDATA_ITEM=C:\ProgramData\AetherCore\state\machine-mutation.lock
+ARP_COUNT=0
+HKLM_SOFTWARE_AETHERCORE=False
+HKLM_INSTALLVERSION=
+STARTMENU_FOLDER=False
+SERVICE_SID_QUERY= NAME: AetherCoreMaintenance  SERVICE SID: S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229 STATUS: Inactive
