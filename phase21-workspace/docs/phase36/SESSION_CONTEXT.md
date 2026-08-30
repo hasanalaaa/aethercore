@@ -324,3 +324,49 @@ EXPECTED=  msiexec exit 0, then the FULL Gate-A list identical to
            rebuild hashes, 8/8 verbs RETURNED.
 RECOVERY=  prlctl snapshot-switch "Windows 11" --id {7d0696ae-ebc7-4c67-b076-438855d175f3}
 ```
+
+### B2 — uninstall
+```
+ACTION=    msiexec /x {FC8A3841-759D-B452-1864-161F84F56C03} /qn /l*v
+           C:\AetherCore-P36\logs\b2-uninstall.log
+SNAPSHOT=  P36-PRE-UNINSTALL {b92fa0f0-3150-468f-814e-d0cc8538cb7c}
+EXPECTED=  msiexec exit 0. Service AetherCoreMaintenance stopped and REMOVED
+           (sc query -> 1060 service does not exist). The named pipe gone.
+           The seven MSI-authored files gone from INSTALLFOLDER. ARP entry gone.
+           HKLM\SOFTWARE\AetherCore\InstallVersion gone. Start Menu folder gone.
+           SURVIVING, and to be recorded either way: C:\ProgramData\AetherCore
+           and its state/logs/support-staging contents (no RemoveFile authored
+           for them), and the unmanaged aetherctl.exe, which no MSI component
+           owns and which will therefore keep INSTALLFOLDER alive.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id {b92fa0f0-3150-468f-814e-d0cc8538cb7c}
+```
+
+### B3 — clean reinstall on the emptied box
+```
+ACTION=    msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.0-arm64.msi /qn /l*v
+SNAPSHOT=  P36-POST-UNINSTALL (taken after B2, before B3)
+EXPECTED=  exit 0, then the full Gate-A list matches verify-A5-postinstall.json
+           except that aetherctl.exe is absent unless it survived B2.
+RECOVERY=  restore P36-PRE-UNINSTALL {b92fa0f0-3150-468f-814e-d0cc8538cb7c}
+```
+
+### B4 — major upgrade 0.1.0 -> 0.1.1
+```
+ACTION=    msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.1-arm64.msi /qn /l*v
+SNAPSHOT=  P36-PRE-UPGRADE (taken after B3, before B4)
+EXPECTED=  exit 0. RemoveExistingProducts runs (MajorUpgrade
+           Schedule="afterInstallInitialize"). Exactly ONE ARP entry afterwards,
+           key {84140FFD-5CBC-175D-928D-E493493F5F51}, version 0.1.1 — no mixed
+           state, the 0.1.0 key {FC8A3841-...} gone. HKLM InstallVersion 0.1.1.
+           All security properties unchanged, 8/8 verbs RETURNED.
+RECOVERY=  restore P36-PRE-UPGRADE
+```
+
+### v2 package (built ahead, while the box was stable)
+`AetherCore-0.1.1-arm64.msi`, 6,209,536 B,
+SHA-256 `ad3df284b4b7e9072df3134a1bf67c4591a18d63a50e5264c0ee2abc029a2620`,
+ProductCode `{84140FFD-5CBC-175D-928D-E493493F5F51}` — exactly the value the
+deterministic scheme predicts for 0.1.1/arm64. Zero ICE. Same UpgradeCode.
+Payload is the same set of binaries; only the package version differs.
+`aethercore-desktop.exe` re-linked to `c351ccf0…` (same size) because a Tauri
+rebuild is not byte-reproducible — expected, not a criterion.
