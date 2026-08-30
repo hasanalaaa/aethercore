@@ -283,3 +283,29 @@ Implemented in `scripts/p36vm/verify-install.ps1`.
   `C:\AetherCore-P36\tools\aetherctl.exe` and
   `C:\AetherCore-P36\tools\verbs-inner.ps1` staged.
 - Mac-side helper `~/Documents/p36-stage/vmr <name>` runs `<name>.ps1` in the VM.
+
+## 12. DESTRUCTIVE ACTION LOG
+
+Every entry is written and committed BEFORE the action runs.
+
+### A5 — install the realigned MSI over the existing install
+```
+ACTION=    msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.0-arm64.msi
+           REINSTALL=ALL REINSTALLMODE=amus /qn /l*v C:\AetherCore-P36\logs\a5-install.log
+SNAPSHOT=  P36-MSI-BUILT {a2f665b8-0df6-46eb-9842-b7efca505671}
+EXPECTED=  msiexec exit 0. Then the full Gate-A list matches section 10:
+           service LocalSystem AUTO_START(DELAYED) RUNNING; Service SID
+           UNRESTRICTED; pipe SDDL identical; install-dir icacls identical
+           (Users RX, no write); libomp140.aarch64.dll present; no ipc_probe;
+           ARP still {FC8A3841-...} 0.1.0; and the five payload .exe hashes in
+           INSTALLFOLDER now equal the A2 REBUILT hashes, not the old ones.
+           Then 8/8 verb runs RETURNED across both actual-token contexts.
+           doctor returning diagnostics.stateUnavailable is a PASS.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id {a2f665b8-0df6-46eb-9842-b7efca505671}
+```
+
+### Snapshot ledger (append-only)
+| name | id | taken before |
+|---|---|---|
+| P36-TRANCHE2-BASELINE | `{357848ae-3a9b-4753-8312-dd944e6b432a}` | this session |
+| P36-MSI-BUILT | `{a2f665b8-0df6-46eb-9842-b7efca505671}` | A5 install |
