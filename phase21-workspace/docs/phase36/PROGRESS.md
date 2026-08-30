@@ -659,3 +659,18 @@ probes, never from the SYSTEM bridge.
 Post-seal drift is now fully classified in `docs/phase36/DRIFT_LEDGER.md`
 (91 files, 0 UNKNOWN). The six diagnostic IPC probes were moved out of product
 source to `tools/p36-probes/`.
+
+## Operational note — scheduled task battery policy
+
+Scheduled tasks registered on this VM without explicit settings sit
+permanently in `Queued` due to battery policy. Registering with
+`New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries
+-DontStopIfGoingOnBatteries` is required for any actual-token probe to run.
+
+## P36 IPC double-connect closeout (2026-08-30)
+
+`fix/servicejob-double-connect` merged into `main` (`fc7665d`, `--no-ff`) and
+pushed to `origin/main`. See `docs/phase36/DOUBLE_CONNECT_CLOSEOUT.md` for the
+defect, verification, verb measurements, and the retirement of gate 2d.
+DBT-P36-008 (`ipc_probe.exe` in the install image) closed in
+`docs/phase36/DRIFT_LEDGER.md`.

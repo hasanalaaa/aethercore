@@ -139,8 +139,13 @@ comment. Tracked as debt below.
 | DBT-P36-004 | Icon set is `COMPILE_ONLY_PLACEHOLDER=True`, AI-generated, not the product mark. | Owner must supply real artwork before release packaging |
 | DBT-P36-005 | maintenance-service module un-gating (`main.rs`, `protocol.rs`, `router.rs`) compiles router/protocol/streaming/performance/support and the broker trust gates into the Windows service binary for the first time. Recorded SECURITY-SENSITIVE. | Codex review before release packaging; do not expand |
 | DBT-P36-006 | `crates/security-audit/src/filesystem.rs` `mode_bits()` Windows fallback is a POSIX-style mapping, **not** Windows ACL evidence. | Native ACL qualification remains open |
-| DBT-P36-008 | `ipc_probe.exe` is present in the **installed** product directory `C:\Program Files\AetherCore\` on the qualification VM (observed 2026-08-30 by `dir /b`). A diagnostic probe reached the install image. | Confirm it is not an MSI component; remove from the install payload before any release packaging |
 | DBT-P36-007 | The P35 full-tree ledger is now permanently stale (91 files). | Re-baseline at the next seal, not before |
+
+## Closed
+
+| ID | Item | Resolution |
+|---|---|---|
+| DBT-P36-008 | `ipc_probe.exe` was present in the **installed** product directory `C:\Program Files\AetherCore\` on the qualification VM (observed 2026-08-30 by `dir /b`). Origin: hand-copied from `target\release\examples` during tranche-1 probing; no build script or deploy step references it — it never was an MSI component. | Confirmed not an MSI component. Removed from the install image, backed up to `C:\AetherCore-P36\backup-p36-overlapped`. Service remained RUNNING throughout, verbs still return. Closed 2026-08-30. |
 
 ## Result
 
