@@ -13,12 +13,18 @@ $r.sc_qc      = (& "$env:SystemRoot\System32\sc.exe" qc AetherCoreMaintenance 2>
 $r.sc_qsidtype= (& "$env:SystemRoot\System32\sc.exe" qsidtype AetherCoreMaintenance 2>&1 | Out-String).Trim()
 $r.sc_sdshow  = (& "$env:SystemRoot\System32\sc.exe" sdshow AetherCoreMaintenance 2>&1 | Out-String).Trim()
 
-# --- 3. pipe DACL. FileStream/Get-Acl both fail; File.Open works. -----------
+# --- 3. pipe DACL --------------------------------------------------------
+# Get-Acl fails on a pipe, and [IO.File]::Open goes through FileStream, which
+# refuses a non-file device ("FileStream was asked to open a device that was
+# not a file"). NamedPipeClientStream is the method that actually returns the
+# descriptor, and it is the method that produced the tranche-1/2 evidence.
+$r.pipe_sddl = 'ERROR: not read'
 try {
-    $fs = [System.IO.File]::Open('\\.\pipe\AetherCore.Maintenance.v7',
-        [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-    $r.pipe_sddl = $fs.GetAccessControl().Sddl
-    $fs.Close()
+    $pc = New-Object System.IO.Pipes.NamedPipeClientStream(
+        '.', 'AetherCore.Maintenance.v7', [IO.Pipes.PipeDirection]::In)
+    $pc.Connect(5000)
+    $r.pipe_sddl = $pc.GetAccessControl().GetSecurityDescriptorSddlForm('All')
+    $pc.Dispose()
 } catch { $r.pipe_sddl = 'ERROR: ' + $_.Exception.Message }
 $r.pipe_present = [bool](Get-ChildItem '\\.\pipe\' -EA SilentlyContinue |
     Where-Object { $_.Name -like 'AetherCore.Maintenance*' })

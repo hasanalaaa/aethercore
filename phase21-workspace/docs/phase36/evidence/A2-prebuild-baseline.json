@@ -1,0 +1,128 @@
+﻿[
+    {
+        "dir":  "C:\\Program Files\\AetherCore",
+        "name":  "aethercore-consent-broker.exe",
+        "size":  612864,
+        "sha256":  "cec3ff0266d51450cbc2b14821186e5e290dfc05732bfaf8e12ef5a3d10aef27"
+    },
+    {
+        "dir":  "C:\\Program Files\\AetherCore",
+        "name":  "aethercore-desktop.exe",
+        "size":  6375424,
+        "sha256":  "ba90091440e984896de5a5f7f03227f4aeb9945de21aa21dff1a692128093fc3"
+    },
+    {
+        "dir":  "C:\\Program Files\\AetherCore",
+        "name":  "aethercore-install-hardener.exe",
+        "size":  246784,
+        "sha256":  "6b66f04e689d0b03d82cd9a1343949b37ed0864e28cd21b59f87ef3e1b1aa03f"
+    },
+    {
+        "dir":  "C:\\Program Files\\AetherCore",
+        "name":  "aethercore-maintenance-service.exe",
+        "size":  9810944,
+        "sha256":  "c70d923b48af18434391ca7ce4ef6fa0297ba146901b86581cb31703d393e7ca"
+    },
+    {
+        "dir":  "C:\\Program Files\\AetherCore",
+        "name":  "aethercore-update-broker.exe",
+        "size":  698880,
+        "sha256":  "7589eea5f505975488bf7acd8a5a61478769c5b08e518965c0bab5b3b4b284ab"
+    },
+    {
+        "dir":  "C:\\Program Files\\AetherCore",
+        "name":  "aetherctl.exe",
+        "size":  3611136,
+        "sha256":  "1fc95bece78805dcfb99a2aa23d0828fef9601b3d3bec7c5f26986b2eceb4279"
+    },
+    {
+        "dir":  "C:\\Program Files\\AetherCore",
+        "name":  "libomp140.aarch64.dll",
+        "size":  599504,
+        "sha256":  "d2649698fc68466ee88cf58ae3ab0fab106f29326e83aaaa5643d30651a962e3"
+    },
+    {
+        "dir":  "C:\\Program Files\\AetherCore",
+        "name":  "update-trust.json",
+        "size":  83,
+        "sha256":  "d4ad925d86f64560bd80c77eae8c606fe810c5f670a7cd42df0836b0653c8b37"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\workspace\\AetherCore-Phase35-Master-Delivery\\target\\release",
+        "name":  "aethercore-consent-broker.exe",
+        "size":  612864,
+        "sha256":  "cec3ff0266d51450cbc2b14821186e5e290dfc05732bfaf8e12ef5a3d10aef27"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\workspace\\AetherCore-Phase35-Master-Delivery\\target\\release",
+        "name":  "aethercore-desktop.exe",
+        "size":  6375424,
+        "sha256":  "ba90091440e984896de5a5f7f03227f4aeb9945de21aa21dff1a692128093fc3"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\workspace\\AetherCore-Phase35-Master-Delivery\\target\\release",
+        "name":  "aethercore-install-hardener.exe",
+        "size":  246784,
+        "sha256":  "6b66f04e689d0b03d82cd9a1343949b37ed0864e28cd21b59f87ef3e1b1aa03f"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\workspace\\AetherCore-Phase35-Master-Delivery\\target\\release",
+        "name":  "aethercore-maintenance-service.exe",
+        "size":  9810944,
+        "sha256":  "c70d923b48af18434391ca7ce4ef6fa0297ba146901b86581cb31703d393e7ca"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\workspace\\AetherCore-Phase35-Master-Delivery\\target\\release",
+        "name":  "aethercore-update-broker.exe",
+        "size":  698880,
+        "sha256":  "7589eea5f505975488bf7acd8a5a61478769c5b08e518965c0bab5b3b4b284ab"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\workspace\\AetherCore-Phase35-Master-Delivery\\target\\release",
+        "name":  "aetherctl.exe",
+        "size":  3611136,
+        "sha256":  "1fc95bece78805dcfb99a2aa23d0828fef9601b3d3bec7c5f26986b2eceb4279"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\incoming",
+        "name":  "adksetup-10.1.26100.2454.exe",
+        "size":  2234632,
+        "sha256":  "7f61e29f2314bcdd7e0abf67a8367d83a05aa4a7b9223f85c5fd2582a35cc6f4"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\incoming",
+        "name":  "AetherCore-0.1.0-arm64.msi",
+        "size":  6238208,
+        "sha256":  "1c99cb1a2fd268652ba570add5a33c15007ee78fc3c8af93bbea424bfc2cd230"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\incoming",
+        "name":  "LLVM-22.1.8-woa64.exe",
+        "size":  389159445,
+        "sha256":  "76f44ef1ba6eeb5a65904e9500f042f588fade49952778ce48f0374daa934396"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\incoming",
+        "name":  "rustup-init.exe",
+        "size":  11462144,
+        "sha256":  "3af309e6c3062aa11df0e932954f69d13b734d8a431e593812f3ecd9ff9e6ef6"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\incoming",
+        "name":  "tranche1-msi-evidence.json",
+        "size":  999,
+        "sha256":  "206a23f023ffbf501111677a9513581eda958947f6af463784b543b0689dce64"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\incoming",
+        "name":  "vs_BuildTools.exe",
+        "size":  4473896,
+        "sha256":  "2aeac090a9cfb2c56474aa9a6c5817ad8cfb879539e0ed1aecec33de9fc2dc4f"
+    },
+    {
+        "dir":  "C:\\AetherCore-P36\\incoming",
+        "name":  "wix-smoke-fixed.msi",
+        "size":  40960,
+        "sha256":  "51a0ac9e5a72979d21b03c416bdc42841f958f80a11051f2de8d9362f031088f"
+    }
+]

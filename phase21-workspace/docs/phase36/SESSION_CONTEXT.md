@@ -153,9 +153,9 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 |---|---|---|---|
 | Stage 0 | Session brain committed | PASS | this file, committed |
 | A1 | Recorded canonical build script | PASS | `phase21-workspace/scripts/build-arm64-msi.cmd`, committed |
-| A2 | Rebuild artifacts hashed + sized | IN-PROGRESS | target/release moved to `target/release-preA2-hold`; build running, log `C:\AetherCore-P36\logs\a2-build.log` |
-| A3 | wix build + validate, zero ICE | NOT-STARTED | |
-| A4 | Reinstall-vs-upgrade decision justified | NOT-STARTED | |
+| A2 | Rebuild artifacts hashed + sized | PASS | `STAGE_A_EVIDENCE.md` A2 table; `evidence/A2-build.log`; old tree preserved at `target/release-preA2-hold` |
+| A3 | wix build + validate, zero ICE | PASS | exit 0 both; 0 matches for `ICE\d+` in the log; MSI sha `3f370294…6c94fd34`, 6,205,440 B, copied to Mac |
+| A4 | Reinstall-vs-upgrade decision justified | PASS | same ProductCode + same version -> `REINSTALL=ALL REINSTALLMODE=amus`; see `STAGE_A_EVIDENCE.md` A4 |
 | A5 | Install from realigned MSI verified | NOT-STARTED | |
 | GATE A | Package == installed files, security intact, 8 verb runs | NOT-STARTED | |
 | B1 | Repair preserves everything | NOT-STARTED | |
@@ -178,6 +178,7 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 - cmd ~6 — Stage 0, writing session brain.
 - cmd ~20 — Gate A1, authoring canonical ARM64 build recipe.
 - cmd ~30 — Gate A2, full rebuild launched in VM background.
+- cmd ~50 — Gates A2/A3 PASS, A4 decided. Next: A5 install.
 
 ## 9. FACTS ESTABLISHED THIS SESSION (do not re-derive)
 
@@ -230,3 +231,55 @@ from a path outside INSTALLFOLDER).
   freeze, the online supply-chain audit and an Authenticode signer. It cannot
   run on this VM. `scripts/build-arm64-msi.cmd` is the ARM64 payload+package
   equivalent.
+
+## 10. GATE-A EXPECTED VALUES (reference baseline, captured pre-realignment)
+
+Source: `evidence/verify-A0-baseline.json`, captured 2026-08-31 against the
+working hand-deployed install. Every later verification compares to THIS.
+
+- `sc qc`: `TYPE 10 WIN32_OWN_PROCESS`, `START_TYPE 2 AUTO_START (DELAYED)`,
+  `ERROR_CONTROL 1 NORMAL`,
+  `BINARY_PATH_NAME "C:\Program Files\AetherCore\aethercore-maintenance-service.exe"`,
+  `SERVICE_START_NAME LocalSystem`. `sc query`: `STATE 4 RUNNING`.
+- `sc qsidtype`: `SERVICE_SID_TYPE: UNRESTRICTED`.
+- Pipe SDDL (read with `NamedPipeClientStream`, see below):
+  `O:S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229)`
+- `icacls "C:\Program Files\AetherCore"`:
+  ```
+  NT SERVICE\AetherCoreMaintenance:(OI)(CI)(RX)
+  BUILTIN\Users:(OI)(CI)(RX)
+  BUILTIN\Administrators:(OI)(CI)(F)
+  NT AUTHORITY\SYSTEM:(OI)(CI)(F)
+  ```
+  Users has RX and no write. This is the "unchanged" reference.
+- ARP: one entry, key `{FC8A3841-759D-B452-1864-161F84F56C03}`, name `AetherCore`,
+  version `0.1.0`. `HKLM\SOFTWARE\AetherCore\InstallVersion = 0.1.0`.
+- `C:\ProgramData\AetherCore` exists with 5 files; `state` 4, `logs` 1,
+  `support-staging` 0.
+- `libomp140.aarch64.dll` present; no `ipc_probe*` anywhere under INSTALLFOLDER.
+
+### CORRECTION to the pipe-DACL recipe in section 4
+The `[System.IO.File]::Open` form in the original brief does NOT work on this
+box — it goes through `FileStream`, which refuses a non-file device:
+`"FileStream was asked to open a device that was not a file."`
+The method that DOES work, and that produced the tranche-1/2 evidence, is:
+```powershell
+$pc = New-Object System.IO.Pipes.NamedPipeClientStream('.','AetherCore.Maintenance.v7',[IO.Pipes.PipeDirection]::In)
+$pc.Connect(5000)
+$pc.GetAccessControl().GetSecurityDescriptorSddlForm('All')
+$pc.Dispose()
+```
+Implemented in `scripts/p36vm/verify-install.ps1`.
+
+## 11. QUALIFICATION TOOLING (committed, reusable)
+
+- `scripts/build-arm64-msi.cmd` — the canonical ARM64 build recipe.
+- `scripts/p36vm/verify-install.ps1 -Label <x>` — the entire Gate-A
+  verification list in one read-only pass; writes
+  `\\Mac\Home\Documents\p36-stage\out\verify-<x>.json`.
+- `scripts/p36vm/verbs-outer.ps1 -Label <x>` — runs the four typed verbs
+  (`service detect`, `doctor`, `optimize status`, `scan status`) under BOTH
+  actual-token contexts via one-shot Scheduled Tasks; needs
+  `C:\AetherCore-P36\tools\aetherctl.exe` and
+  `C:\AetherCore-P36\tools\verbs-inner.ps1` staged.
+- Mac-side helper `~/Documents/p36-stage/vmr <name>` runs `<name>.ps1` in the VM.
