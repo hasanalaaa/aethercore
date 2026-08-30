@@ -311,3 +311,16 @@ RECOVERY=  prlctl snapshot-switch "Windows 11" --id {a2f665b8-0df6-46eb-9842-b7e
 | P36-TRANCHE2-BASELINE | `{357848ae-3a9b-4753-8312-dd944e6b432a}` | this session |
 | P36-MSI-BUILT | `{a2f665b8-0df6-46eb-9842-b7efca505671}` | A5 install |
 | P36-MSI-ALIGNED | `{7d0696ae-ebc7-4c67-b076-438855d175f3}` | Stage B — **the lifecycle recovery point** |
+
+### B1 — repair
+```
+ACTION=    msiexec /f {FC8A3841-759D-B452-1864-161F84F56C03} /qn /l*v
+           C:\AetherCore-P36\logs\b1-repair.log
+SNAPSHOT=  P36-MSI-ALIGNED {7d0696ae-ebc7-4c67-b076-438855d175f3}
+EXPECTED=  msiexec exit 0, then the FULL Gate-A list identical to
+           evidence/verify-A5-postinstall.json: service RUNNING LocalSystem
+           AUTO_START(DELAYED), SID UNRESTRICTED, pipe SDDL identical,
+           install-dir icacls identical, seven payload files with the A2
+           rebuild hashes, 8/8 verbs RETURNED.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id {7d0696ae-ebc7-4c67-b076-438855d175f3}
+```
