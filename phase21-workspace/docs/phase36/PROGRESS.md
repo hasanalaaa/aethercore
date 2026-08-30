@@ -1,8 +1,23 @@
 # Phase 36 Progress
 
-STATUS: EXECUTING — EMERGENCY HANDOFF CHECKPOINT (Hermes 2026-08-29)
-CURRENT_WORKSTREAM: P36-04 native qualification gates — workspace ARM64 check PASS; workspace tests blocked on one missing SDK lib
+STATUS: EXECUTING — TRANCHE 1 COMPLETE, VM IS IN A MUTATED (INSTALLED) STATE
+CURRENT_WORKSTREAM: P36-04 native qualification gates — tranche 1 sealed; ServiceJob IPC defect under investigation
 EXECUTION_CONTEXT: Host macOS -> Parallels `Windows 11` via `prlctl exec`; bridge context is `SYSTEM`
+
+INSTALL_STATE: INSTALLED — the real ARM64 MSI is installed and the service is RUNNING.
+Verified 2026-08-30 by `sc query` / `sc qc` over the `prlctl exec` bridge:
+
+```
+SERVICE_NAME: AetherCoreMaintenance
+STATE              : 4  RUNNING
+START_TYPE         : 2  AUTO_START (DELAYED)
+BINARY_PATH_NAME   : "C:\Program Files\AetherCore\aethercore-maintenance-service.exe"
+SERVICE_START_NAME : LocalSystem
+```
+
+`P36-PRE-NATIVE-MUTATION` was NOT restored. `P36-CLEAN-BASELINE` remains the
+rollback boundary. The earlier "do not install or mutate" instruction is
+SUPERSEDED — the install already happened under tranche-1 authorization.
 VM_WINDOWS_NATIVE_ARM64: True
 PHYSICAL_X64_WINDOWS_QUALIFICATION_STILL_REQUIRED: True
 
@@ -616,8 +631,17 @@ qualification, Phase 37. `P36-PRE-NATIVE-MUTATION` was NOT restored.
 
 ## NEXT ACTION
 
-Continue with targeted non-destructive tests and source review. Retain
-`P36-CLEAN-BASELINE` as the rollback boundary; do not install or mutate until
-the MSI/IPC source blockers are resolved in a separately authorized change.
-Keep all bridge output context-labeled as `SYSTEM` until explicit Administrator
-and StandardUser sessions are available.
+SUPERSEDED (the MSI/IPC source blockers named below were resolved and the
+install was performed under tranche-1 authorization; see INSTALL_STATE above).
+
+Current next action: close the open ServiceJob IPC defect — every `aetherctl`
+ServiceJob verb hangs on Windows while OfflineJob verbs return. Retain
+`P36-CLEAN-BASELINE` as the rollback boundary; tranche-2 destructive work
+(repair/uninstall/upgrade cycles, rollback fault injection) stays unauthorized.
+Keep all bridge output context-labeled as `SYSTEM`; StandardUser and
+Administrator results must come from the established one-shot Scheduled Task
+probes, never from the SYSTEM bridge.
+
+Post-seal drift is now fully classified in `docs/phase36/DRIFT_LEDGER.md`
+(91 files, 0 UNKNOWN). The six diagnostic IPC probes were moved out of product
+source to `tools/p36-probes/`.
