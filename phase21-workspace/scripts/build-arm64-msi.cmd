@@ -73,9 +73,17 @@ cargo build --release ^
   -p aetherctl || exit /b 1
 
 rem --- [3] Tauri desktop, separate invocation by necessity -------------------
+rem   tauri.conf.json declares beforeBuildCommand "pnpm --dir ../ui build". The
+rem   Tauri CLI runs that command from its own discovered app directory, not
+rem   from the tauri.conf.json directory, so "../ui" does not resolve here and
+rem   the build fails with ENOENT on <root>\ui. Step [1] has already produced
+rem   apps/ui/dist, so the pre-build hook is redundant: it is disabled with a
+rem   recorded config overlay rather than by changing tauri.conf.json, which is
+rem   shared with the x64 release pipeline. frontendDist ("../ui/dist") is a
+rem   config path and IS resolved relative to tauri.conf.json, so it still works.
 echo === [3/6] tauri desktop build
 pushd "%SRC%\apps\desktop" || exit /b 1
-call "%SRC%\apps\ui\node_modules\.bin\tauri.cmd" build --no-bundle
+call "%SRC%\apps\ui\node_modules\.bin\tauri.cmd" build --no-bundle --config "%SRC%\installer\tauri.no-before-build.json"
 if errorlevel 1 (popd & exit /b 1)
 popd
 
