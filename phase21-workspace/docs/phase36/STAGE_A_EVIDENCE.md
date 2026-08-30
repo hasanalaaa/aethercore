@@ -131,3 +131,111 @@ the file versions are unchanged), `m` (all HKLM registry), `u` (all HKCU),
 `s` (reinstall shortcuts). A version bump is reserved for Stage B4, where
 0.1.1 produces a genuinely different ProductCode under the same UpgradeCode and
 so exercises the real major-upgrade path.
+
+## A5 — install the realigned MSI — PASS (after one recorded refusal)
+
+Snapshot taken first: `P36-MSI-BUILT {a2f665b8-0df6-46eb-9842-b7efca505671}`.
+
+### Attempt 1 — `REINSTALLMODE=amus` — REFUSED, exit 1638
+
+Observed vs expected: expected exit 0, observed **1638**
+(`ERROR_PRODUCT_VERSION`, "Another version of this product is already
+installed"). The machine was not modified — Windows Installer refused before
+any action ran, and the service stayed RUNNING.
+
+Raw cause line from the verbose log (`evidence/A5-install-key.txt`):
+
+```
+PROPERTY CHANGE: Adding PackagecodeChanging property. Its value is '1'.
+Note: 1: 1729
+Product: AetherCore -- Configuration failed.
+Reconfiguration success or error status: 1638.
+```
+
+The rebuilt package has the same ProductCode and the same ProductVersion but a
+**new PackageCode** (WiX generates one per build). Windows Installer will not
+reconfigure from the cached package when the package identity has changed.
+
+### Attempt 2 — `REINSTALLMODE=vamus` — exit 0
+
+Adding `v` re-caches the changed package from source, which is the documented
+mode for exactly this case. It remains the same-version reinstall decided in
+A4; only the source-resolution flag changed.
+
+```
+msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.0-arm64.msi \
+        REINSTALL=ALL REINSTALLMODE=vamus /qn /l*v ...
+MSIEXEC_EXIT=0
+```
+
+Log evidence (`evidence/A5-install-vamus-key.txt`): `InstallFiles` return 1,
+`HardenInstalledSecurity` ran with sufficient privileges and returned 1,
+`StartServices` returned 1, and every payload file logged
+`Overwrite; Won't patch; REINSTALLMODE specifies all files to be overwritten`.
+
+### Verification — every item of the Gate A list
+
+Compared field-by-field against `evidence/verify-A0-baseline.json`
+(post: `evidence/verify-A5-postinstall.json`):
+
+| property | result |
+|---|---|
+| `sc qc` — LocalSystem, AUTO_START (DELAYED), correct binary path | **SAME** |
+| `sc query` — STATE 4 RUNNING | **SAME** |
+| `sc qsidtype` — SERVICE_SID_TYPE UNRESTRICTED | **SAME** |
+| pipe SDDL | **SAME**, byte-for-byte |
+| install-dir `icacls` (Users RX, no write; service SID RX) | **SAME** |
+| `libomp140.aarch64.dll` present | **SAME** (true) |
+| `ipc_probe.exe` absent | **SAME** (absent) |
+| ARP entry `{FC8A3841-…}` AetherCore 0.1.0 | **SAME** |
+| `HKLM\SOFTWARE\AetherCore\InstallVersion` | **SAME** (0.1.0) |
+| `C:\ProgramData\AetherCore` + state/logs/support-staging | intact |
+
+### The realignment itself — the defect this stage existed to close
+
+| file in INSTALLFOLDER | changed by the install? | equals the A2 rebuild? |
+|---|---|---|
+| aethercore-consent-broker.exe | **REPLACED** | yes |
+| aethercore-desktop.exe | **REPLACED** | yes |
+| aethercore-install-hardener.exe | **REPLACED** | yes |
+| aethercore-maintenance-service.exe | **REPLACED** | yes |
+| aethercore-update-broker.exe | **REPLACED** | yes |
+| libomp140.aarch64.dll | unchanged | yes (byte-identical either way) |
+| update-trust.json | unchanged | yes (byte-identical either way) |
+| aetherctl.exe | unchanged | **not an MSI payload file** |
+
+The registered package and the installed files now agree. A future `msiexec /f`
+repair or reinstall can no longer revert the IPC fixes, because the package
+itself now carries binaries built from `main` at `218e0d8`.
+
+**Recorded observation, not diagnosed:** `aetherctl.exe` (3,611,136 B, SHA-256
+`1fc95bec…`) sits in `C:\Program Files\AetherCore` but is not authored in
+`installer/wix/Product.wxs`. No MSI component owns it, so no MSI action
+installs, repairs or removes it. Expected for A5's "package and installed files
+agree" would be an exact set match; observed is the seven authored files plus
+this one unmanaged file. Consequences are carried forward to B2 and B3.
+
+### Verb runs — 8/8 RETURNED
+
+Run with the **rebuilt** `aetherctl.exe`
+(SHA-256 `ba2286f4af718fe9acec60d3f728cf9be719885aa1e1d25b5cd24c7060aac766`,
+the artifact this recipe produces) against the newly installed service, under
+both actual-token contexts via one-shot Scheduled Tasks:
+
+| context | whoami | IsInRole(Administrator) | service detect | doctor | optimize status | scan status |
+|---|---|---|---|---|---|---|
+| P36StandardUser (RunLevel Limited) | `hasanalaaa3a44\p36standarduser` | False | RETURNED | RETURNED | RETURNED | RETURNED |
+| P36Admin (RunLevel Highest) | `hasanalaaa3a44\p36admin` | True | RETURNED | RETURNED | RETURNED | RETURNED |
+
+`doctor` returns the typed `diagnostics.stateUnavailable` rejection, which is a
+PASS by the brief. Transcripts: `evidence/verbs-A5-postinstall-{STD,ADMIN}.txt`.
+Baseline for comparison: `evidence/verbs-A0-baseline-{STD,ADMIN}.txt` (also 8/8).
+
+## GATE A — PASS
+
+Registered package and installed files agree (with the one recorded
+`aetherctl.exe` exception), every security property is unchanged, and eight
+verb runs return.
+
+Snapshot `P36-MSI-ALIGNED {7d0696ae-ebc7-4c67-b076-438855d175f3}` — this is the
+lifecycle recovery point for Stage B.

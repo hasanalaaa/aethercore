@@ -1,0 +1,6 @@
+MSI (s) (08:98) [02:37:11:317]: Command Line: REINSTALL=ALL REINSTALLMODE=amus CURRENTDIRECTORY=C:\ CLIENTUILEVEL=3 CLIENTPROCESSID=7476 
+MSI (s) (08:98) [02:37:11:319]: PROPERTY CHANGE: Adding PackagecodeChanging property. Its value is '1'.
+MSI (s) (08:98) [02:37:11:321]: Note: 1: 1729 
+MSI (s) (08:98) [02:37:11:321]: Windows Installer reconfigured the product. Product Name: AetherCore. Product Version: 0.1.0. Product Language: 1033. Manufacturer: AetherCore. Reconfiguration success or error status: 1638.
+MSI (s) (08:98) [02:37:11:321]: MainEngineThread is returning 1638
+MSI (c) (34:9C) [02:37:11:321]: MainEngineThread is returning 1638

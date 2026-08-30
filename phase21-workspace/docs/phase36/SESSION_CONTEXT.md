@@ -156,8 +156,8 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 | A2 | Rebuild artifacts hashed + sized | PASS | `STAGE_A_EVIDENCE.md` A2 table; `evidence/A2-build.log`; old tree preserved at `target/release-preA2-hold` |
 | A3 | wix build + validate, zero ICE | PASS | exit 0 both; 0 matches for `ICE\d+` in the log; MSI sha `3f370294…6c94fd34`, 6,205,440 B, copied to Mac |
 | A4 | Reinstall-vs-upgrade decision justified | PASS | same ProductCode + same version -> `REINSTALL=ALL REINSTALLMODE=amus`; see `STAGE_A_EVIDENCE.md` A4 |
-| A5 | Install from realigned MSI verified | NOT-STARTED | |
-| GATE A | Package == installed files, security intact, 8 verb runs | NOT-STARTED | |
+| A5 | Install from realigned MSI verified | PASS | `amus` refused 1638 (PackagecodeChanging); `vamus` exit 0; all five payload exes replaced with the A2 rebuild; every security property SAME |
+| GATE A | Package == installed files, security intact, 8 verb runs | **PASS** | `STAGE_A_EVIDENCE.md`; snapshot P36-MSI-ALIGNED `{7d0696ae-ebc7-4c67-b076-438855d175f3}` |
 | B1 | Repair preserves everything | NOT-STARTED | |
 | B2 | Uninstall: what goes, what survives | NOT-STARTED | |
 | B3 | Clean reinstall on empty box | NOT-STARTED | |
@@ -166,7 +166,7 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 | C2 | Service fails to start during install | NOT-STARTED | |
 | C3 | Required file missing/corrupt at start | NOT-STARTED | |
 | C4 | Rollback via failing custom action | NOT-STARTED | |
-| D1 | `aetherctl update stage` real path | NOT-STARTED | |
+| D1 | `aetherctl update stage` real path | BLOCKED-BY-DESIGN | `apps/aetherctl/src/offline.rs:138` — unconditional match arm; see Stage D |
 | D2 | stage -> apply -> rollback | NOT-STARTED | |
 | D3 | update trust disabled by default, no network | NOT-STARTED | |
 | E | Seal, snapshot P36-VM-QUALIFIED | NOT-STARTED | |
@@ -179,6 +179,7 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 - cmd ~20 — Gate A1, authoring canonical ARM64 build recipe.
 - cmd ~30 — Gate A2, full rebuild launched in VM background.
 - cmd ~50 — Gates A2/A3 PASS, A4 decided. Next: A5 install.
+- cmd ~72 — GATE A PASS. Snapshot P36-MSI-ALIGNED taken. Next: Stage B1 repair.
 
 ## 9. FACTS ESTABLISHED THIS SESSION (do not re-derive)
 
@@ -309,3 +310,4 @@ RECOVERY=  prlctl snapshot-switch "Windows 11" --id {a2f665b8-0df6-46eb-9842-b7e
 |---|---|---|
 | P36-TRANCHE2-BASELINE | `{357848ae-3a9b-4753-8312-dd944e6b432a}` | this session |
 | P36-MSI-BUILT | `{a2f665b8-0df6-46eb-9842-b7efca505671}` | A5 install |
+| P36-MSI-ALIGNED | `{7d0696ae-ebc7-4c67-b076-438855d175f3}` | Stage B — **the lifecycle recovery point** |
