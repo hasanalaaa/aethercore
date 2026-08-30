@@ -13,7 +13,9 @@
 use crate::cli::{Config, ServiceJob};
 use crate::error::CliError;
 use crate::render;
-use crate::transport::{self, CallOutcome, ServiceClient, ServiceState};
+use crate::transport::{CallOutcome, ServiceClient};
+#[cfg(unix)]
+use crate::transport::{self, ServiceState};
 
 use aethercore_contracts::v1::{request, response};
 
@@ -51,12 +53,35 @@ pub fn command_label(job: &ServiceJob) -> String {
 }
 
 fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliError> {
-    // Detection first so an offline daemon yields the precise typed state.
-    let state = transport::detect_service(config);
-    if !matches!(state, ServiceState::Reachable { .. }) {
-        return Err(CliError::ServiceUnreachable {
-            message_key: state.message_key().to_string(),
-        });
+    // ONE IPC session per command (P36 defect fix).
+    //
+    // On Windows the Hello handshake happens inside SessionClient::connect, so the
+    // pre-probe below opened a full second session per verb: detect_service (windows)
+    // is itself a ServiceClient::connect whose result is discarded via `Ok(_)`, and
+    // ServiceClient has no Drop, so the discarded session's Arc stays alive in its
+    // reader thread and the pipe instance is never released. Every ServiceJob verb
+    // therefore emitted two Hellos, the server logged "duplicate client hello ignored"
+    // (services/maintenance-service/src/server.rs), and the client burned its whole
+    // --timeout-ms budget before dispatching any Request. `update stage` is an
+    // OfflineJob and never took this path, which is the only reason it appeared to work.
+    //
+    // The probe is redundant on Windows: ServiceClient::connect already returns the
+    // same typed unreachable errors (cli.detect.offline and the windowsLane keys), so
+    // reachability is derived from the single connect below.
+    //
+    // Unix keeps the pre-probe verbatim — detect_service is the sole producer of
+    // ServiceState::StaleEndpointRecovered from the endpoint-exists/no-live-pid
+    // signature, and of the read_live_pid fallback when the socket file is absent.
+    // Neither is reconstructible from connect() alone, so unix behaviour and every
+    // unix message key are unchanged.
+    #[cfg(unix)]
+    {
+        let state = transport::detect_service(config);
+        if !matches!(state, ServiceState::Reachable { .. }) {
+            return Err(CliError::ServiceUnreachable {
+                message_key: state.message_key().to_string(),
+            });
+        }
     }
     let mut client = ServiceClient::connect(config)?;
     match job {
