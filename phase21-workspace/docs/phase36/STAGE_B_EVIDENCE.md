@@ -95,3 +95,41 @@ support-staging area are retained across uninstall/reinstall by design.
 
 The one thing that survives *without* being intended by the package is
 `aetherctl.exe`, which was never in the package to begin with.
+
+## B3 — Clean reinstall on the emptied box — PASS
+
+```
+msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.0-arm64.msi /qn /l*v ...
+B3_EXIT=0
+```
+
+No hand steps. No `REINSTALL`, no `REINSTALLMODE`, no manual file copy, no
+manual `sc create`, no ACL command. Just the package.
+
+Full verification (`evidence/verify-B3-cleaninstall.json`) compared to the
+Gate-A post-install state: **zero differing fields**.
+
+| property | result |
+|---|---|
+| `sc_qc` / `sc_qsidtype` / `sc query` | identical — LocalSystem, AUTO_START (DELAYED), UNRESTRICTED, RUNNING |
+| pipe SDDL | identical |
+| install-dir `icacls` | identical |
+| `HKLM\SOFTWARE\AetherCore\InstallVersion` | 0.1.0 |
+| ARP | single entry `{FC8A3841-…}` AetherCore 0.1.0 |
+| every installed file SHA-256 | identical |
+| verbs | **8/8 RETURNED** (`evidence/verbs-B3-cleaninstall-{STD,ADMIN}.txt`) |
+
+Two things to read correctly:
+
+- `C:\ProgramData\AetherCore\state` is back to 4 files. It held 2 immediately
+  after uninstall. The service recreated the other two on start, which
+  identifies the two files noted in B2 as runtime-managed, not MSI-managed.
+- The installed file SET matches Gate A **including `aetherctl.exe`** — but the
+  MSI did not install it. It survived the uninstall (B2) and was still sitting
+  in `C:\Program Files\AetherCore` when the clean install ran. **A genuinely
+  bare machine would receive seven files, not eight**, and would have no
+  `aetherctl.exe`; the four typed verbs would then have to be driven from a
+  copy staged outside INSTALLFOLDER, which is exactly how this session drives
+  them (`C:\AetherCore-P36\tools\aetherctl.exe`).
+
+The MSI alone reproduces a working install of everything the MSI authors.
