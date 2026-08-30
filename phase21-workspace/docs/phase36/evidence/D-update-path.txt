@@ -1,0 +1,46 @@
+=== D1/D3 UPDATE PATH PROBE ===
+CAPTURED_UTC=2026-08-30T23:49:05.3402380Z
+CTL_SHA256=ba2286f4af718fe9acec60d3f728cf9be719885aa1e1d25b5cd24c7060aac766
+WHOAMI=nt authority\system
+--- aetherctl update stage ---
+EXIT=
+STDOUT=
+STDERR=aetherctl: capability not available (updateApplyRequiresWindowsQualification) [CapabilityUnavailable]
+
+--- aetherctl update check ---
+EXIT=
+STDOUT=
+STDERR=aetherctl: capability not available (updateApplyRequiresWindowsQualification) [CapabilityUnavailable]
+
+--- aetherctl update plan ---
+EXIT=
+STDOUT=
+STDERR=aetherctl: capability not available (updateApplyRequiresWindowsQualification) [CapabilityUnavailable]
+
+--- aetherctl update download ---
+EXIT=
+STDOUT=
+STDERR=aetherctl: capability not available (updateApplyRequiresWindowsQualification) [CapabilityUnavailable]
+
+--- aetherctl update status ---
+EXIT=
+STDOUT=
+STDERR=aetherctl: capability not available (updateApplyRequiresWindowsQualification) [CapabilityUnavailable]
+
+--- aetherctl update cancel ---
+EXIT=
+STDOUT=
+STDERR=aetherctl: capability not available (updateApplyRequiresWindowsQualification) [CapabilityUnavailable]
+
+--- aetherctl update rollback ---
+EXIT=
+STDOUT=
+STDERR=aetherctl: capability not available (updateApplyRequiresWindowsQualification) [CapabilityUnavailable]
+
+--- installed update-trust.json ---
+{
+  "schema": "aethercore.update-trust.v1",
+  "enabled": false,
+  "channels": []
+}
+

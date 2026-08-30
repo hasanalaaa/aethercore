@@ -166,9 +166,9 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 | C2 | Service fails to start during install | NOT-STARTED | |
 | C3 | Required file missing/corrupt at start | NOT-STARTED | |
 | C4 | Rollback via failing custom action | NOT-STARTED | |
-| D1 | `aetherctl update stage` real path | BLOCKED-BY-DESIGN | `apps/aetherctl/src/offline.rs:138` — unconditional match arm; see Stage D |
-| D2 | stage -> apply -> rollback | NOT-STARTED | |
-| D3 | update trust disabled by default, no network | NOT-STARTED | |
+| D1 | `aetherctl update stage` real path | BLOCKED-BY-DESIGN | unconditional match arm `apps/aetherctl/src/offline.rs:138`; all 7 update verbs return CapabilityUnavailable on the VM — `STAGE_D_EVIDENCE.md` |
+| D2 | stage -> apply -> rollback | BLOCKED | consequence of D1: nothing stageable, so nothing to apply or roll back |
+| D3 | update trust disabled by default, no network | PASS | installed update-trust.json `enabled:false, channels:[]`; typed refusal precedes any transport; MSI is self-contained (EmbedCab) |
 | E | Seal, snapshot P36-VM-QUALIFIED | NOT-STARTED | |
 
 ## 8. PACE LOG
