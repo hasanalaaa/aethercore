@@ -1191,3 +1191,30 @@ the old CWD-relative resolution this lane could only have been
   `Start-Process -PassThru` + `WaitForExit(ms)` does not populate `ExitCode` on
   this PowerShell. `RESULT=RETURNED` and the captured stdout are unaffected and
   are what the gate asserts. Harness gap; fix before S3 needs exit codes.
+
+## 16.5 DESTRUCTIVE ACTION RECORD — GATE S2: prove uninstall leaves no trace
+
+```
+ACTION=    (a) build 0.1.3 with the Stage 2 authoring (RemoveFolderEx,
+               ForceDeleteOnUninstall x2, UNINSTALL.txt, ARPCOMMENTS)
+           (b) uninstall 0.1.2 and clear leftovers -> bare box
+           (c) install 0.1.3 clean
+           (d) CREATE REAL STATE: run the mutating/reading verbs so the service
+               fills C:\ProgramData\AetherCore, and plant one deliberately DEEP
+               path under recovery\driver-backups\ (declared synthetic - a real
+               driver install is out of scope on this VM) to prove the removal
+               reaches unknown names at unknown depth
+           (e) record the full ProgramData tree and the registry footprint
+           (f) msiexec /x <0.1.3 ProductCode> /qn
+           (g) sweep the machine for ANY remaining trace, and report every
+               survivor
+           (h) run the uninstall a SECOND time to prove idempotence
+SNAPSHOT=  P37-PRE-STAGE1 {e94d539e-8046-443b-871c-9d6711c34fd2}
+EXPECTED=  (f) exit 0. (g) ZERO product traces: no C:\Program Files\AetherCore,
+           no C:\ProgramData\AetherCore, no AetherCoreMaintenance service, no
+           AetherCore pipe, no ARP entry, no HKLM\SOFTWARE\AetherCore, no
+           HKCU\Software\AetherCore, no Start Menu folder, no scheduled task,
+           no firewall rule. (h) the second uninstall does NOT fail on things
+           already gone.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id {e94d539e-8046-443b-871c-9d6711c34fd2}
+```
