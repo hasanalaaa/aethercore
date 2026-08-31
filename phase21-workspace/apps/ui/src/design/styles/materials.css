@@ -8,8 +8,12 @@
   -webkit-backdrop-filter:blur(var(--ac-blur-structural)) saturate(var(--ac-saturation));
   box-shadow:inset -1px 0 rgba(255,255,255,.018);
 }
-main { grid-column:2; width:100%; max-width:none; margin:0; padding:clamp(1.8rem,3.2vw,3rem) clamp(1.75rem,3.6vw,3.5rem) 4.5rem; min-height:100vh; }
-main > * { max-width:var(--ac-content-max); margin-inline:auto; }
+main { grid-column:2; width:100%; max-width:none; margin:0; padding:clamp(1.8rem,3.2vw,3rem) clamp(1.75rem,3.6vw,3.5rem) 4.5rem; min-height:100vh; container:ac-main / inline-size; }
+/* No reading-width cap on the shell itself. Capping it centred the dashboard and left dead space
+   beside it on wide windows; a dashboard should use the width it is given. Prose keeps its own
+   measure so sentences stay readable at any width. */
+main > * { inline-size:100%; }
+main .sub, main .footnote { max-inline-size:74ch; }
 
 .shell-context { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-block-end:1.25rem; padding-block-end:.9rem; border-block-end:1px solid var(--ac-border-subtle); }
 .shell-context-copy { display:flex; align-items:baseline; gap:.7rem; min-inline-size:0; }

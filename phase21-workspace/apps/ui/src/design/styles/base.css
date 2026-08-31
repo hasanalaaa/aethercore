@@ -1,6 +1,12 @@
 html, body, #app { min-height: 100%; }
 html { background: var(--ac-bg-base); font-size: 100%; }
 * { box-sizing: border-box; }
+
+/* Intrinsic fluidity. A grid or flex child defaults to min-width:auto and therefore refuses to
+   shrink below its own content, so the container overflows and clips instead of reflowing. This is
+   the single most common cause of clipped text here. Zero specificity via :where(), so any element
+   that genuinely needs a floor still wins by declaring one. */
+:where(body *) { min-inline-size: 0; }
 body {
   margin: 0;
   min-width: 20rem;
