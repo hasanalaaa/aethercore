@@ -113,6 +113,37 @@ pub fn classify_windows_sku(product_type: u32, installation_type: &str) -> Windo
     }
 }
 
+/// Maps the documented `ProductOptions\ProductType` REG_SZ to the numeric
+/// `wProductType` (`VER_NT_*`) that `classify_windows_sku` expects.
+///
+/// WHY THIS EXISTS. `current_windows_sku()` originally read a `ProductType`
+/// **DWORD** from `SOFTWARE\Microsoft\Windows NT\CurrentVersion`. No such value
+/// exists on Windows -- measured on Windows 11 Pro build 26200, where that name
+/// is ABSENT. The read therefore always failed and the function returned
+/// `WindowsSku::Unknown` on EVERY Windows host, workstation and server alike, so
+/// the SKU-aware capability table introduced with Windows Server admission never
+/// once selected the workstation table on a workstation.
+///
+/// The authoritative registry source for the numeric product type is
+/// `SYSTEM\CurrentControlSet\Control\ProductOptions\ProductType`, a REG_SZ whose
+/// documented values map onto `VER_NT_WORKSTATION` (1),
+/// `VER_NT_DOMAIN_CONTROLLER` (2) and `VER_NT_SERVER` (3) -- the same numbering
+/// Windows Installer exposes as `MsiNTProductType`, which is what
+/// `installer/wix/Product.wxs` already gates on. Anything unrecognised maps to 0,
+/// which `classify_windows_sku` turns into `Unknown`, preserving fail-closed
+/// behaviour.
+pub fn product_type_code(product_type_sz: &str) -> u32 {
+    if product_type_sz.eq_ignore_ascii_case("WinNT") {
+        1
+    } else if product_type_sz.eq_ignore_ascii_case("LanmanNT") {
+        2
+    } else if product_type_sz.eq_ignore_ascii_case("ServerNT") {
+        3
+    } else {
+        0
+    }
+}
+
 /// Reads the live Windows SKU without falling back to a workstation claim.
 pub fn current_windows_sku() -> WindowsSku {
     #[cfg(windows)]
@@ -128,60 +159,54 @@ pub fn current_windows_sku() -> WindowsSku {
         fn wide(value: &str) -> Vec<u16> {
             value.encode_utf16().chain(std::iter::once(0)).collect()
         }
-        let key = wide(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
-        let product_name = wide("ProductType");
-        let installation_name = wide("InstallationType");
-        let mut product_type = 0u32;
-        let mut product_bytes = std::mem::size_of::<u32>() as u32;
-        let product_status = unsafe {
-            RegGetValueW(
-                HKEY_LOCAL_MACHINE,
-                PCWSTR(key.as_ptr()),
-                PCWSTR(product_name.as_ptr()),
-                RRF_RT_REG_DWORD,
-                None,
-                Some((&mut product_type as *mut u32).cast::<c_void>()),
-                Some(&mut product_bytes),
-            )
-        };
-        if product_status.is_err() {
-            return WindowsSku::Unknown;
-        }
-
-        let mut bytes = 0u32;
-        let status = unsafe {
-            RegGetValueW(
-                HKEY_LOCAL_MACHINE,
-                PCWSTR(key.as_ptr()),
-                PCWSTR(installation_name.as_ptr()),
-                RRF_RT_REG_SZ,
-                None,
-                None,
-                Some(&mut bytes),
-            )
-        };
-        let installation_type = if status.is_ok() && bytes >= 2 && bytes <= 4096 {
+        fn read_sz(subkey: &str, value: &str) -> Option<String> {
+            let key = wide(subkey);
+            let name = wide(value);
+            let mut bytes = 0u32;
+            let status = unsafe {
+                RegGetValueW(
+                    HKEY_LOCAL_MACHINE,
+                    PCWSTR(key.as_ptr()),
+                    PCWSTR(name.as_ptr()),
+                    RRF_RT_REG_SZ,
+                    None,
+                    None,
+                    Some(&mut bytes),
+                )
+            };
+            if status.is_err() || bytes < 2 || bytes > 4096 {
+                return None;
+            }
             let mut buffer = vec![0u16; (bytes as usize).div_ceil(2)];
             let status = unsafe {
                 RegGetValueW(
                     HKEY_LOCAL_MACHINE,
                     PCWSTR(key.as_ptr()),
-                    PCWSTR(installation_name.as_ptr()),
+                    PCWSTR(name.as_ptr()),
                     RRF_RT_REG_SZ,
                     None,
                     Some(buffer.as_mut_ptr().cast::<c_void>()),
                     Some(&mut bytes),
                 )
             };
-            if status.is_ok() {
-                let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
-                String::from_utf16_lossy(&buffer[..end])
-            } else {
-                String::new()
+            if status.is_err() {
+                return None;
             }
-        } else {
-            String::new()
+            let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
+            Some(String::from_utf16_lossy(&buffer[..end]))
+        }
+
+        // The numeric wProductType lives in ProductOptions as a REG_SZ, not as a
+        // DWORD under CurrentVersion. See product_type_code() for why.
+        let Some(product_type_sz) =
+            read_sz(r"SYSTEM\CurrentControlSet\Control\ProductOptions", "ProductType")
+        else {
+            return WindowsSku::Unknown;
         };
+        let product_type = product_type_code(&product_type_sz);
+        let installation_type =
+            read_sz(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallationType")
+                .unwrap_or_default();
         classify_windows_sku(product_type, &installation_type)
     }
     #[cfg(not(windows))]

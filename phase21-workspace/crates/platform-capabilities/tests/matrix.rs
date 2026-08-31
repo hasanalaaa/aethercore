@@ -153,3 +153,55 @@ fn server_matrix_reports_client_only_surfaces_honestly() {
         Availability::Degraded { .. }
     ));
 }
+
+/// Regression test for the SKU-detection defect found in Phase 38.
+///
+/// `current_windows_sku()` read a `ProductType` **DWORD** from
+/// `SOFTWARE\Microsoft\Windows NT\CurrentVersion`. That value does not exist on
+/// Windows -- measured ABSENT on Windows 11 Pro build 26200 -- so the read
+/// always failed and the function returned `Unknown` on EVERY Windows host.
+/// Consequences observed on a real install of 0.1.7: `aetherctl about` reported
+/// `"platform":"windowsUnknownSku"` instead of `"windows"`, and the capability
+/// matrix fell back to the SERVER table on a workstation.
+///
+/// The numeric product type actually lives in ProductOptions as a REG_SZ. This
+/// pins that mapping, and it is discriminating on every host because it tests
+/// the pure function rather than the registry.
+#[test]
+fn product_type_code_maps_the_documented_registry_strings() {
+    use aethercore_platform_capabilities::{
+        classify_windows_sku, product_type_code, WindowsSku,
+    };
+
+    // The documented ProductOptions\ProductType values, and their VER_NT_* codes.
+    assert_eq!(product_type_code("WinNT"), 1, "workstation");
+    assert_eq!(product_type_code("LanmanNT"), 2, "domain controller");
+    assert_eq!(product_type_code("ServerNT"), 3, "server");
+
+    // Windows writes these with this exact casing, but the registry is not
+    // case-sensitive and neither is the mapping.
+    assert_eq!(product_type_code("winnt"), 1);
+    assert_eq!(product_type_code("SERVERNT"), 3);
+
+    // Fail closed: anything unrecognised must NOT be claimed as a workstation.
+    assert_eq!(product_type_code(""), 0);
+    assert_eq!(product_type_code("Whatever"), 0);
+    assert_eq!(classify_windows_sku(product_type_code(""), ""), WindowsSku::Unknown);
+
+    // End to end, the combination this box actually reports:
+    // ProductOptions\ProductType = "WinNT", CurrentVersion\InstallationType = "Client".
+    assert_eq!(
+        classify_windows_sku(product_type_code("WinNT"), "Client"),
+        WindowsSku::Workstation,
+        "a Windows workstation must classify as Workstation, not Unknown"
+    );
+    // And the Server / Server Core split still works.
+    assert_eq!(
+        classify_windows_sku(product_type_code("ServerNT"), "Server"),
+        WindowsSku::Server
+    );
+    assert_eq!(
+        classify_windows_sku(product_type_code("ServerNT"), "Server Core"),
+        WindowsSku::ServerCore
+    );
+}
