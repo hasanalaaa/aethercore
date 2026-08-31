@@ -1935,3 +1935,100 @@ exist here.
 | 25 | Killing the installer engine mid-`FileCopy` runs no rollback and leaves orphaned files. | tranche 3 #3 | Inherent: the rollback executor is the process killed. The runbook answer is "run the installer again", which does clean it. |
 | 26 | `C:\Windows\Installer\MSICD74.tmp` from that hard kill is never removed by any later transaction. | tranche 3 #4 | Cleaning `C:\Windows\Installer` by hand is outside authorization. |
 | 27 | A plain `msiexec /i` onto a box holding the C1 orphans failed 1603 / Error 1920 where the identical command passed on a clean box. **Cause not diagnosed**, per the stop rule. | tranche 3 #5 | The observation is the deliverable. Still undiagnosed. |
+
+## 17.11 GATE — VERSION SINGLE SOURCE PROVEN END TO END: **PASS**
+
+`msiexec /i AetherCore-0.1.7-arm64.msi /qn`, then read the machine:
+
+| check | expected | observed | result |
+|---|---|---|---|
+| ARP entries named AetherCore | exactly 1 | `ARP_COUNT=1` | PASS |
+| ARP key | `{5DE146C7-DF44-4F60-7D38-552B4FC48736}` | same | PASS |
+| ARP version | 0.1.7 | `0.1.7` | PASS |
+| `HKLM\SOFTWARE\AetherCore\InstallVersion` | 0.1.7 | `0.1.7` | PASS |
+| INSTALLFOLDER file count | 16 | `FILE_COUNT=16` | PASS |
+| `sc qc` | TYPE 10, AUTO_START (DELAYED), ERROR_CONTROL 1, LocalSystem | identical | PASS |
+| `sc query` | STATE 4 RUNNING | `RUNNING` | PASS |
+| `sc qsidtype` | UNRESTRICTED | `UNRESTRICTED` | PASS |
+| pipe SDDL | identical to §10 | `O:S-1-5-80-4285065559-…-1187574229G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-…)` | PASS |
+| install-dir `icacls` | identical to §10, Users RX no write | identical | PASS |
+
+**THE PROOF the brief asked for:**
+
+```
+MSI declares (Property table):     ProductVersion = 0.1.7
+ARP shows:                          0.1.7
+HKLM InstallVersion:                0.1.7
+Cargo.toml [workspace.package]:     0.1.7
+installed `aetherctl about`:        {"version":"0.1.7", ...}
+CTL_SHA256 = 8c6e7c342a7f5db85865be5e070f3c03743ae78967e24991199754ab80067d82
+```
+
+`CTL_SHA256` equals the `aetherctl.exe` hash in the build manifest, so the
+binary answering is the one this MSI installed, not a leftover. **MATCH.**
+Before this change an MSI built as 0.1.6 installed an aetherctl that answered
+`about` with 0.1.0.
+
+## 17.12 REGRESSION FOUND BY READING THE INSTALL — Windows SKU detection
+
+The same `about` output carried a deviation from expected:
+
+```
+observed: "platform":"windowsUnknownSku"
+expected: "platform":"windows"
+```
+
+Root cause, measured on the VM (see commit `2450ffb`): `current_windows_sku()`
+read a `ProductType` **DWORD** from `SOFTWARE\Microsoft\Windows NT\CurrentVersion`.
+That value is **ABSENT** on Windows; the numeric product type lives in
+`SYSTEM\CurrentControlSet\Control\ProductOptions\ProductType` as a REG_SZ
+(`WinNT` here). The failed read hit an early `return WindowsSku::Unknown`
+before the `InstallationType` read — which was correct and would have answered
+`Client`. So SKU detection returned **Unknown on every Windows host**, and the
+SKU-aware capability table shipped with Windows Server admission (`63edc11`)
+never selected the workstation table on a workstation.
+
+**Checked first, and stated plainly: this is NOT a security regression.**
+`available_on_windows_sku` maps `Unknown` to `windows_server_table(false)` with
+the note "Unknown Windows must not be overstated as a workstation" — it fails
+CLOSED. Nothing was reported available that should not be, and every ACL, the
+pipe DACL, the service configuration and the Service SID on the 0.1.7 install
+match the §10 baseline exactly.
+
+What it DID do, measured by running both binaries side by side on the same box:
+
+| | native | degraded | notAvailable |
+|---|---|---|---|
+| installed 0.1.7 (SKU=Unknown -> server table) | 11 | 2 | 3 |
+| rebuilt with the fix (SKU=Workstation) | **16** | 0 | 0 |
+
+Five of sixteen capabilities were mis-reported on a workstation, each carrying
+a literal **Windows Server** reason key that a user would see:
+
+```
+thermalPowerClamp  notAvailable(cap.reason.windowsServerNoThermalPower)  -> native
+systemRepairWua    degraded    (cap.note.windowsServerWsusPolicy)        -> native
+gameModeProfile    notAvailable(cap.reason.windowsServerNoGameMode)      -> native
+restorePoints      notAvailable(cap.reason.windowsServerNoRestorePoints) -> native
+windowsUpdate      degraded    (cap.note.windowsServerWsusPolicy)        -> native
+```
+
+A system-maintenance product telling a Windows 11 workstation that restore
+points and Windows Update are unavailable is a serious functional misreport,
+even though it errs safe.
+
+Verified on the VM after the fix, compiled for Windows (macOS cannot compile
+the `cfg(windows)` branch):
+
+```
+cargo test -p aethercore-platform-capabilities   TESTEXIT=0  (7 passed on Windows)
+cargo build --release -p aetherctl               BUILDEXIT=0
+about     -> {"platform":"windows", "version":"0.1.7", ...}
+sec audit -> platform = windows        <- this is what feeds host_fingerprint
+capabilities -> 16 native, 0 degraded, 0 notAvailable
+```
+
+**Why the previous session's "no regression" claim missed it:** the Server
+branch gate asserted that 18/18 verbs RETURNED and that files/ACLs matched. It
+did not compare capability STATES, and `about`'s platform field was not an
+assertion. Returning is not the same as returning the right answer.
