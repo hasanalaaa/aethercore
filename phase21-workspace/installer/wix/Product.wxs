@@ -21,8 +21,8 @@
          tranche1-msi-install.log: Property(S): WindowsBuild = 9600 on build 26200).
          Root-cause remedy: read the real build number from the registry
          (HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuildNumber), which
-         is authoritative on every supported OS. Guard intent unchanged: require
-         Windows 11 build 22621 or newer. -->
+         is authoritative on every supported OS. Clients require build 22621+;
+         Windows Server 2019 and newer require build 17763+. -->
     <Property Id="OSCURRENTBUILD" Value="0">
       <RegistrySearch Id="OsCurrentBuildNumber"
                       Root="HKLM"
@@ -31,7 +31,7 @@
                       Type="raw"
                       Bitness="always64" />
     </Property>
-    <Property Id="WINDOWSINSTALLATIONTYPE" Value="">
+    <Property Id="WINDOWSINSTALLATIONTYPE">
       <RegistrySearch Id="WindowsInstallationType"
                       Root="HKLM"
                       Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
@@ -40,8 +40,10 @@
                       Bitness="always64" />
     </Property>
     <Launch
-        Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 26100))"
-        Message="AetherCore requires Windows 11 build 22621+ or Windows Server 2025+ (64-bit)." />
+        Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 17763))"
+        Message="AetherCore supports 64-bit Windows 11 build 22621+ and Windows Server 2019, 2022, or 2025+ (build 17763+)." />
+    <Launch Condition="MsiNTProductType &lt;&gt; 2"
+            Message="AetherCore does not support domain controllers." />
 
     <!-- Direct MSI installs are supported for managed environments, but the consumer bundle is
          preferred because it also guarantees the Evergreen WebView2 prerequisite. Do not author
@@ -267,7 +269,7 @@
 
     <Feature Id="Complete" Title="AetherCore" Level="1">
       <Feature Id="Desktop" Title="AetherCore desktop" Level="1">
-        <Condition Level="0">WINDOWSINSTALLATIONTYPE ~= &quot;Server Core&quot;</Condition>
+        <Level Condition="WINDOWSINSTALLATIONTYPE ~= &quot;Server Core&quot;" Value="0" />
         <ComponentRef Id="DesktopComponent" />
         <ComponentRef Id="ProgramMenuComponent" />
       </Feature>

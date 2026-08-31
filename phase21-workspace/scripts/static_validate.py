@@ -826,13 +826,13 @@ checks["phase8_msi_upgrade_and_os_gate"] = {
     "ok": all(token in product_wxs for token in [
         'UpgradeCode="{45598C77-2C32-5BCE-8510-19C7E51EE3B8}"',
         'MajorUpgrade Schedule="afterInstallInitialize"',
-        'Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 26100))"',
+        'Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 17763))"',
     ])
-    and 'Condition="VersionNT64 AND ((NTProductType = 1 AND WindowsBuildNumber &gt;= 22621) OR (NTProductType = 3 AND WindowsBuildNumber &gt;= 26100))"' in bundle_wxs
+    and 'Condition="VersionNT64 AND ((NTProductType = 1 AND WindowsBuildNumber &gt;= 22621) OR (NTProductType = 3 AND WindowsBuildNumber &gt;= 17763))"' in bundle_wxs
     and 'Name="InstallationType"' in product_wxs
     and 'Variable="WindowsInstallationType"' in bundle_wxs
     and 'InstallCondition="NOT (WindowsInstallationType ~= &quot;Server Core&quot;)"' in bundle_wxs,
-    "note": "MSI and Burn admit Windows 11 clients and Windows Server 2025+ member servers; Server Core omits the WebView2 prerequisite and the desktop feature.",
+    "note": "MSI and Burn admit Windows 11 clients and Windows Server 2019+ member servers; domain controllers remain refused, and Server Core omits the WebView2 prerequisite and desktop feature.",
 }
 checks["phase8_hardener_fixed_operation_only"] = {
     "ok": all(token in hardener for token in ['mode == OsStr::new("apply")', 'System32', 'AetherCoreMaintenance'])

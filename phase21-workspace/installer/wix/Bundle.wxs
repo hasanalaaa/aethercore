@@ -10,7 +10,7 @@
       Compressed="yes"
       DisableModify="no"
       DisableRemove="no"
-      Condition="VersionNT64 AND ((NTProductType = 1 AND WindowsBuildNumber &gt;= 22621) OR (NTProductType = 3 AND WindowsBuildNumber &gt;= 26100))">
+      Condition="VersionNT64 AND ((NTProductType = 1 AND WindowsBuildNumber &gt;= 22621) OR (NTProductType = 3 AND WindowsBuildNumber &gt;= 17763))">
 
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication
@@ -22,7 +22,7 @@
 
     <Variable Name="WebView2MachineVersion" Type="string" Value="" />
     <Variable Name="WebView2UserVersion" Type="string" Value="" />
-    <Variable Name="WindowsInstallationType" Type="string" Value="" />
+    <Variable Name="WindowsInstallationType" Type="string" />
 
     <!-- Microsoft documents pv > 0.0.0.0 in either location as the presence test. -->
     <util:RegistrySearch
