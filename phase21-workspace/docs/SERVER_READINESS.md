@@ -8,10 +8,11 @@ CPUs, 9,657,057,280 B RAM**, with AetherCore 0.1.5/0.1.6 installed from the MSI.
 ## Windows Server implementation update (feat/windows-server)
 
 The pre-change measurements below remain the historical baseline. The live
-source now admits Windows 11 clients (build 22621+) and Windows Server 2025+
-member servers (build 26100+) in both `installer/wix/Product.wxs` and
-`installer/wix/Bundle.wxs`; domain controllers and older Server builds remain
-refused. `WINDOWSINSTALLATIONTYPE=Server Core` levels out the desktop feature
+source now admits Windows 11 clients (build 22621+) and Windows Server 2019,
+2022, or 2025+ member servers (build 17763+) in both
+`installer/wix/Product.wxs` and `installer/wix/Bundle.wxs`; domain controllers
+are explicitly refused by policy, and older Server builds remain refused.
+`WINDOWSINSTALLATIONTYPE=Server Core` levels out the desktop feature
 and Start Menu component in the MSI, and Burn skips the WebView2 prerequisite.
 
 The SKU-aware matrix in `crates/platform-capabilities` classifies the documented
@@ -27,26 +28,28 @@ so Windows compliance reports no longer claim the platform is `other`.
 These are hermetic/source-level changes only. No Windows Server SKU is present
 in this environment, so installation, WSUS, PnP, restore-point and Server Core
 runtime qualification remain open; execute the checklist in
-`docs/WINDOWS_SERVER_SUPPORT.md` on a disposable Server 2025 Evaluation VM.
+`docs/WINDOWS_SERVER_SUPPORT.md` on disposable Server 2019, 2022, or 2025+
+Evaluation VMs.
 
 ---
 
 ## 4a. What breaks on Windows Server, versus Windows 11 client
 
-### The installer refuses to run on any Server SKU. This is the headline.
+### The installer admits supported member servers and refuses domain controllers
 
 Read out of the **built package**, not the source, via the MSI `LaunchCondition`
 table:
 
 ```
-LAUNCH_CONDITION = VersionNT64 AND MsiNTProductType = 1 AND OSCURRENTBUILD >= 22621
-MESSAGE          = AetherCore requires Windows 11 build 22621 or newer.
+LAUNCH_CONDITION = VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD >= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD >= 17763))
+MESSAGE          = AetherCore supports 64-bit Windows 11 build 22621+ and Windows Server 2019, 2022, or 2025+ (build 17763+).
+DC_CONDITION     = MsiNTProductType <> 2
+DC_MESSAGE       = AetherCore does not support domain controllers.
 ```
 
-`MsiNTProductType` is **1 only for a workstation**. A member server is 3 and a
-domain controller is 2. So the package's own launch condition rejects every
-Windows Server SKU before a single file is copied. `installer/wix/Bundle.wxs:13`
-carries the same gate for the bootstrapper (`NTProductType = 1`).
+`MsiNTProductType` is 1 for a workstation, 3 for a member server, and 2 for a
+domain controller. The package admits supported member servers and has an
+explicit domain-controller refusal policy.
 
 This host reads `Win32_OperatingSystem.ProductType = 1`, `Caption = Microsoft
 Windows 11 Pro`, `CurrentBuildNumber = 26200` — a workstation, which is why it
@@ -58,19 +61,13 @@ The build floor compounds it. `OSCURRENTBUILD >= 22621` is checked against
 | SKU | ProductType | CurrentBuildNumber | passes today? |
 |---|---|---|---|
 | Windows 11 22H2+ client | 1 | 22621+ | **yes** |
-| Windows Server 2019 | 3 | 17763 | no — both conditions fail |
-| Windows Server 2022 | 3 | 20348 | no — both conditions fail |
-| Windows Server 2025 | 3 | 26100 | no — **build passes, product type still fails** |
+| Windows Server 2019 | 3 | 17763 | **yes** |
+| Windows Server 2022 | 3 | 20348 | **yes** |
+| Windows Server 2025+ | 3 | 26100+ | **yes** |
 | a domain controller | 2 | any | no |
 
-Server 2025 is the interesting row: it clears the build floor, so the *only*
-thing keeping AetherCore off a current server is the workstation assertion.
-
-**What this means:** server support is not a porting problem waiting to be
-discovered. It is one authored condition, plus whatever qualification follows
-from relaxing it. Nothing downstream of the condition has ever executed on a
-Server SKU, so relaxing it without a qualification pass would be trading a
-clear refusal for an unknown.
+The server floor is deliberately 17763, covering Server 2019, 2022, and 2025+;
+Server 2016 is not in the supported set.
 
 ### Server Core (no GUI)
 

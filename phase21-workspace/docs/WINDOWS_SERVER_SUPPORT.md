@@ -8,7 +8,7 @@ environment, so runtime claims below are qualification targets, not results.
 
 | Surface | Finding (source evidence) | Server decision |
 |---|---|---|
-| Installer | `installer/wix/Product.wxs` currently requires `MsiNTProductType = 1`; `installer/wix/Bundle.wxs` requires `NTProductType = 1`. Server 2025 can meet the build floor but is rejected by SKU. | Remove the workstation-only predicate. Keep the build floor: Windows 11 client 22621+ and Windows Server 2025+ (26100+). Older Server builds remain refused. |
+| Installer | `installer/wix/Product.wxs` and `installer/wix/Bundle.wxs` admit 64-bit clients and member servers, with separate domain-controller refusal. | Supported set is Windows 11 client build 22621+ and Windows Server 2019, 2022, or 2025+ member servers (build 17763+). Domain controllers are refused by policy. Older Server builds and non-64-bit packages remain refused. |
 | Desktop / shell | `apps/desktop` is a Tauri/WebView2 application. `installer/wix/Bundle.wxs` chains the Evergreen WebView2 bootstrapper. Server Core has no GUI/shell. | Desktop feature and Start Menu shortcut are unavailable on Server Core. Service and `aetherctl` remain the complete product. Burn must not install WebView2 on Server Core. |
 | Interactive session | `crates/idle-scheduler/src/windows_state.rs:106-110` requires `WTSGetActiveConsoleSessionId` and `WTSQueryUserToken`; it returns `no active console session` without a logged-on console. `services/maintenance-service/src/main.rs:271-278` already treats scheduler start failure as non-fatal. | No interactive-session requirement for service/CLI. Autonomous idle scheduling is unavailable when no console session exists and must remain an honest warning, not a failed install. |
 | Windows Update / WSUS | `crates/windows-update/src/windows_impl.rs:39-47,76-87` uses WUA COM and `SetOnline`; WUA retains the machine's configured source. `crates/windows-update/src/execution_windows.rs:59-78` checks WUA installer busy/reboot state before mutation. | Supported on Server, but results are policy-controlled under WSUS. Report WUA discovery/update as degraded with the WSUS-policy note; preserve typed HRESULT/offline/busy/reboot outcomes. |
@@ -20,8 +20,8 @@ environment, so runtime claims below are qualification targets, not results.
 
 ## Server product shape
 
-* **Supported:** Windows Server 2025 or newer, x64/ARM64 builds that meet the
-  package architecture, service session-0 operation, `aetherctl`, read-only
+* **Supported:** Windows Server 2019, 2022, or 2025+ member servers, x64/ARM64
+  builds at or above 17763 that meet the package architecture, service session-0 operation, `aetherctl`, read-only
   diagnostics, DISM/SFC, PnP inventory/backup, local intelligence, fleet and
   consented service operations. Windows Update remains available but is marked
   policy-dependent when WSUS controls the source.
@@ -29,8 +29,9 @@ environment, so runtime claims below are qualification targets, not results.
   all Server SKUs; System Restore/restore points on all Server SKUs; the desktop
   feature and Start Menu shortcut on Server Core; autonomous idle scheduling in
   a zero-console-session Server Core deployment.
-* **Refused:** Server builds below 26100, non-64-bit packages, and any driver
-  mutation that cannot prove a fresh restore point and WUA/PnP preflight. No
+* **Refused:** domain controllers (policy), Server builds below 17763,
+  non-64-bit packages, and any driver mutation that cannot prove a fresh restore
+  point and WUA/PnP preflight. No
   capability is simulated and no security boundary is weakened.
 
 The capability matrix will expose `windowsServer` / `windowsServerCore` as the

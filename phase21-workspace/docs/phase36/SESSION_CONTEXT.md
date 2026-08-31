@@ -191,6 +191,13 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 
 ## 9. FACTS ESTABLISHED THIS SESSION (do not re-derive)
 
+## 10. P37 SERVER-BRANCH VM ACTION RECORD
+
+- ACTION: build and validate the revised Server MSI, then rerun the ARM64 client gate.
+- SNAPSHOT: preserve current VM state before mutation; recovery point remains P37-SHIPPING-QUALIFIED `{a1696567-7528-4136-a445-848dccd3d2c1}`.
+- EXPECTED: build exit 0, `wix msi validate` exit 0 with zero ICE findings; client gate at 0.1.6 baseline (16 files, service RUNNING, matching ACLs, 18/18 verbs in both token contexts).
+- RECOVERY: `prlctl snapshot-switch "Windows 11" --id {a1696567-7528-4136-a445-848dccd3d2c1}`.
+
 ### ProductCode is a pure function of version + arch
 `scripts/build-installer.ps1` derives it as the first 16 bytes of
 `SHA256("AetherCore/MSI/ProductCode/v1" + "AetherCore/<version>/<arch>")`
