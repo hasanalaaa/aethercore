@@ -53,6 +53,17 @@ SERVICE COMMANDS (require the maintenance-service endpoint):
   insights  list | explain [--question <key>] | dismiss --insight-id <id>
   scan      start | cancel --scan-id <id> | status | history [--limit <n>]
 
+FLEET / SERVER (Phase 34; SSH out to hosts you have explicitly trusted):
+  fleet     add --id <id> --name <n> --host <h> [--port <p>] --user <u> [--tag <t>]
+  fleet     list | show --id <id> | remove --id <id>
+  fleet     trust add --id <id> --key-type <t> --public-key <b64> [--fingerprint <f>]
+  fleet     probe [--host <id>]... [--group <tag>]...
+  fleet     audit --profile <cis-l1|cis-l2> [--host <id>]... [--group <tag>]...
+  fleet     schedule add --id <id> --profile <p> --every-hours <n> [--host <id>]...
+  fleet     schedule list | schedule due | schedule run-due
+  A host that is not in the trust store is never contacted: every verb returns
+  outcome not_verified for it rather than opening a connection.
+
 SECURITY COMMANDS (Phase 32; offline unless noted):
   sec       audit [--ssh <cfg>] [--sudoers <f>] [--fs <dir>] [--authlog <f>]
               [--secrets <dir>] [--firewall]   (offline direct, read-only)

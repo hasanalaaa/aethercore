@@ -415,14 +415,18 @@ fn execute(_config: &Config, job: FleetJob) -> Result<serde_json::Value, CliErro
                     aethercore_fleet::FleetDomainError::DuplicateScheduleId(sched.schedule_id),
                 ));
             }
-            schedules.push(serde_json::json!({
-                "scheduleId": sched.schedule_id,
-                "scope": sched.scope,
-                "profileId": sched.profile_id,
-                "enabled": sched.enabled,
-                "cadence": {"everyHours": every_hours},
-                "nextRunUnixMs": sched.next_run_unix_ms,
-            }));
+            // Serialize the TYPED value. This used to hand-build the object and it
+            // silently dropped `schema`, which FleetSchedule declares without a
+            // serde default and under deny_unknown_fields - so every schedule this
+            // command wrote was unreadable by `fleet schedule run-due`, which failed
+            // with `fleet.schedulesInvalid: missing field \`schema\``. The unit tests
+            // never caught it because they construct FleetSchedule directly and never
+            // go through this writer. Round-tripping the typed value makes the writer
+            // and the reader incapable of drifting again.
+            schedules.push(serde_json::to_value(&sched).map_err(|error| CliError::LocalIo {
+                message_key: "fleet.schedulesInvalid".to_string(),
+                detail: Some(error.to_string()),
+            })?);
             std::fs::create_dir_all(path.parent().unwrap()).map_err(|error| CliError::LocalIo {
                 message_key: "local.io.write".to_string(),
                 detail: Some(error.to_string()),
@@ -733,6 +737,28 @@ mod tests {
         })
         .unwrap();
         assert_eq!(value["hosts"][0]["outcome"], "not_verified");
+    }
+
+    #[test]
+    fn what_schedule_add_persists_is_what_run_due_can_read() {
+        // The gate that caught this: `fleet schedule add` then `fleet schedule run-due`
+        // returned exit 5, fleet.schedulesInvalid, "missing field `schema`". The writer
+        // hand-built its JSON and dropped a field the reader requires. This asserts the
+        // round trip the CLI actually performs, which the scheduler_runner tests do not
+        // exercise because they construct FleetSchedule values directly.
+        let sched = aethercore_fleet::FleetSchedule::new(
+            "s1",
+            vec!["h1".into(), "h2".into()],
+            "cis-l1",
+            FleetCadence::EveryHours(24),
+            1_000,
+        )
+        .unwrap();
+        let persisted = serde_json::to_value(&sched).unwrap();
+        assert_eq!(persisted["schema"], "aethercore.fleet.schedule.v1");
+        let read_back: aethercore_fleet::FleetSchedule =
+            serde_json::from_value(persisted).expect("run-due must be able to read this back");
+        assert_eq!(read_back, sched);
     }
 
     #[test]
