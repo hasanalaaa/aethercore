@@ -1,9 +1,15 @@
 html, body, #app { min-height: 100%; }
 html { background: var(--ac-bg-base); font-size: 100%; }
 * { box-sizing: border-box; }
+
+/* Intrinsic fluidity. A grid or flex child defaults to min-width:auto and therefore refuses to
+   shrink below its own content, so the container overflows and clips instead of reflowing. This is
+   the single most common cause of clipped text here. Zero specificity via :where(), so any element
+   that genuinely needs a floor still wins by declaring one. */
+:where(body *) { min-inline-size: 0; }
 body {
   margin: 0;
-  min-width: 52rem;
+  min-width: 20rem;
   min-height: 100vh;
   overflow-x: auto;
   color: var(--ac-text-1);
@@ -11,11 +17,14 @@ body {
   font-size: var(--ac-type-body);
   line-height: 1.5;
   background:
-    radial-gradient(70rem 42rem at 88% -15%, rgba(74,132,178,.15), transparent 63%),
-    radial-gradient(48rem 38rem at -10% 88%, rgba(75,128,113,.075), transparent 68%),
-    rgba(8,12,17,.72);
+    radial-gradient(56rem 34rem at 92% -10%, color-mix(in srgb, var(--ac-accent) 12%, transparent), transparent 65%),
+    linear-gradient(155deg, color-mix(in srgb, var(--ac-bg-base) 86%, #05070a), var(--ac-bg-base));
   -webkit-font-smoothing: antialiased;
 }
+@media (prefers-color-scheme: light) {
+  :root:not([data-system-theme="dark"]) body { background: radial-gradient(64rem 42rem at 88% -15%, rgba(155,93,44,.12), transparent 63%), #f3efe7; }
+}
+[data-system-theme="light"] body { background: radial-gradient(64rem 42rem at 88% -15%, rgba(155,93,44,.12), transparent 63%), #f3efe7; }
 button, input, textarea, select { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 button, [role="button"], input, summary { outline: none; }

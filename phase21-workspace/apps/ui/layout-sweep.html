@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8" />
+<title>AetherCore — fluid layout sweep (development only)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#0c1117; color:#c8d1da; }
+  #ui { position:fixed; inset-block-start:0; inset-inline-start:0; z-index:2; width:100%; padding:.6rem .8rem; background:#0c1117; border-block-end:1px solid #252e37; }
+  #out { position:fixed; inset-block-start:2.6rem; inset-inline-start:0; z-index:2; width:100%; height:calc(100vh - 2.6rem); overflow:auto; padding:.6rem .8rem; background:#0c1117; white-space:pre-wrap; }
+  #stage { position:fixed; inset-block-start:0; inset-inline-start:0; height:900px; border:0; opacity:0; pointer-events:none; }
+  button { font:inherit; padding:.25rem .7rem; }
+  b.bad { color:#ef9a9a; } b.ok { color:#9ce1c5; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <button id="run" type="button">Run sweep</button>
+  <span id="status"></span>
+</div>
+<pre id="out"></pre>
+<iframe id="stage" title="layout fixture under test"></iframe>
+<script type="module">
+/*
+ * Continuous fluidity gate. Fixed sample widths cannot prove a fluid layout — the last four-width
+ * screenshot pass reported green while widths between the samples were clipping — so this steps the
+ * viewport across the whole supported range and asserts at every step, in both languages and both
+ * themes, on every page, that:
+ *   1. nothing overflows horizontally, and
+ *   2. no text value is crushed into one word per line.
+ */
+const MIN = 600, MAX = 1920, STEP = 20;
+const FIXTURE = './layout-fixture.html';
+const stage = document.getElementById('stage');
+const out = document.getElementById('out');
+const status = document.getElementById('status');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function load(locale, theme) {
+  localStorage.setItem('aethercore.locale', locale);
+  localStorage.setItem('aethercore.theme', theme);
+  stage.style.width = '1280px';
+  return new Promise((resolve) => {
+    stage.onload = () => resolve(stage.contentWindow.document);
+    stage.src = `${FIXTURE}?locale=${locale}&theme=${theme}&t=${Date.now()}`;
+  });
+}
+
+/** Widest element crossing the inline end edge — the thing that actually caused the overflow. */
+function culprits(doc, limit = 3) {
+  const view = doc.documentElement.clientWidth;
+  const rtl = doc.documentElement.dir === 'rtl';
+  const seen = new Map();
+  for (const el of doc.querySelectorAll('body *')) {
+    const box = el.getBoundingClientRect();
+    if (!box.width && !box.height) continue;
+    const over = Math.round(rtl ? -box.left : box.right - view);
+    if (over <= 1) continue;
+    const key = `${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).trim().split(/\s+/).slice(0, 2).join('.') : ''}`;
+    if (!seen.has(key) || seen.get(key) < over) seen.set(key, over);
+  }
+  return [...seen].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([k, v]) => `${k}+${v}px`);
+}
+
+/**
+ * A value wrapped onto as many lines as it has words is crushed, not wrapped. Probes are collected
+ * once per page — line height does not change with width — so each width costs only reads.
+ */
+function probesFor(doc) {
+  const probes = [];
+  for (const el of doc.querySelectorAll('main :is(strong, span, h1, h2, h3, p, small, button, td, th)')) {
+    if (el.children.length) continue;
+    const words = (el.textContent || '').trim().split(/\s+/).filter(Boolean);
+    if (words.length < 2) continue;
+    /* A single long token legitimately claims its own line; that is wrapping, not crushing. */
+    if (Math.max(...words.map((word) => word.length)) >= 12) continue;
+    const style = getComputedStyle(el);
+    const lineHeight = parseFloat(style.lineHeight);
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0) continue;
+    /* Padding and borders do not change with width; subtracting them once keeps the per-width
+       check to a single cheap read, and stops a padded one-line pill reading as two lines. */
+    const chrome = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
+      .reduce((total, part) => total + (parseFloat(style[part]) || 0), 0);
+    probes.push({ el, words: words.length, lineHeight, chrome, label: `${el.tagName.toLowerCase()}.${String(el.className).trim().split(/\s+/)[0] || '-'}` });
+  }
+  return probes;
+}
+
+function crushed(probes, limit = 3) {
+  const found = [];
+  for (const probe of probes) {
+    const height = probe.el.getBoundingClientRect().height - probe.chrome;
+    if (height <= 0) continue;
+    const lines = Math.round(height / probe.lineHeight);
+    if (lines > 1 && lines >= probe.words) {
+      found.push(`${probe.label}"${(probe.el.textContent || '').trim().slice(0, 24)}"×${lines}`);
+      if (found.length >= limit) break;
+    }
+  }
+  return found;
+}
+
+async function run(options = {}) {
+  const only = options.combos;
+  out.textContent = '';
+  const widths = [];
+  for (let w = MAX; w >= MIN; w -= STEP) widths.push(w);
+  const combos = only || [['ar', 'dark'], ['ar', 'light'], ['en', 'dark'], ['en', 'light']];
+  const report = [];
+  let checks = 0, failures = 0;
+
+  for (const [locale, theme] of combos) {
+    const doc = await load(locale, theme);
+    await sleep(700);
+    const navItems = [...doc.querySelectorAll('.app-nav-item')];
+    const failedWidths = new Set();
+    const notes = new Set();
+    for (let page = 0; page < navItems.length; page += 1) {
+      navItems[page].click();
+      await sleep(220);
+      const label = navItems[page].getAttribute('data-page') || `page${page}`;
+      /* Diagnosing every failing width costs a full-DOM measure; the first few name the cause. */
+      let detailBudget = 14;
+      const probes = probesFor(doc);
+      for (const width of widths) {
+        stage.style.width = `${width}px`;
+        const root = doc.documentElement;
+        const overflow = Math.max(root.scrollWidth, doc.body.scrollWidth) - root.clientWidth;
+        checks += 1;
+        if (overflow > 1) {
+          failures += 1; failedWidths.add(width);
+          if (detailBudget > 0) { detailBudget -= 1; notes.add(`${label} @${width}px overflow ${overflow}px → ${culprits(doc).join(', ')}`); }
+          continue;
+        }
+        const squeezed = crushed(probes);
+        if (squeezed.length) {
+          failures += 1; failedWidths.add(width);
+          if (detailBudget > 0) { detailBudget -= 1; notes.add(`${label} @${width}px crushed → ${squeezed.join(', ')}`); }
+        }
+      }
+      status.textContent = ` ${locale}/${theme} ${page + 1}/${navItems.length} — ${failures} failures`;
+      await sleep(0);
+    }
+    const sorted = [...failedWidths].sort((a, b) => a - b);
+    report.push(`${locale.toUpperCase()}/${theme.toUpperCase()}: ${sorted.length ? `FAIL at ${sorted.length} widths [${sorted.join(', ')}]` : 'PASS'}`);
+    for (const note of [...notes].slice(0, 40)) report.push(`   ${note}`);
+    /* Publish after every combo so a long run can be read before it finishes. */
+    out.textContent = report.join('\n');
+    window.__sweepReport = out.textContent;
+  }
+  stage.style.width = '1280px';
+  report.push(`\n${checks} assertions, ${failures} failures across ${MIN}–${MAX}px in ${STEP}px steps.`);
+  out.textContent = report.join('\n');
+  status.textContent = failures ? ' DONE — FAIL' : ' DONE — PASS';
+  window.__sweepReport = out.textContent;
+  window.__sweepDone = true;
+}
+
+document.getElementById('run').addEventListener('click', run);
+window.__sweepRun = run;
+</script>
+</body>
+</html>

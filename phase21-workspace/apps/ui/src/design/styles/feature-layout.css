@@ -171,7 +171,7 @@ header .sub {
 
 .scan-steps {
   display:grid;
-  grid-template-columns:repeat(4,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));
   gap:8px;
   margin-top:17px
 }
@@ -232,7 +232,7 @@ header .sub {
 
 .driver-metrics {
   display:grid;
-  grid-template-columns:repeat(4,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));
   gap:11px;
   margin:15px 0
 }
@@ -383,7 +383,8 @@ header .sub {
 }
 
 .search-box {
-  width:310px;
+  inline-size:min(19.375rem,100%);
+  flex:1 1 12rem;
   border:1px solid #252e37;
   background:#11161b;
   border-radius:9px;
@@ -409,7 +410,7 @@ header .sub {
 
 .device-table-head {
   display:grid;
-  grid-template-columns:minmax(290px,1.4fr) minmax(145px,.7fr) minmax(175px,.85fr) 130px 30px;
+  grid-template-columns:minmax(0,2.2fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,.9fr) auto;
   gap:15px;
   padding:11px 17px;
   color:#59646f;
@@ -442,7 +443,7 @@ header .sub {
 
 .device-main {
   display:grid;
-  grid-template-columns:minmax(290px,1.4fr) minmax(145px,.7fr) minmax(175px,.85fr) 130px 30px;
+  grid-template-columns:minmax(0,2.2fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,.9fr) auto;
   gap:15px;
   align-items:center;
   padding:14px 17px
@@ -565,7 +566,7 @@ header .sub {
 
 .candidate-row {
   display:grid;
-  grid-template-columns:16px 1fr minmax(160px,.35fr) auto;
+  grid-template-columns:1rem minmax(0,1fr) minmax(0,.35fr) auto;
   align-items:center;
   gap:11px;
   padding:10px 0;
@@ -655,7 +656,7 @@ header .sub {
 
 .gpu-policy {
   display:grid;
-  grid-template-columns:32px 1fr auto;
+  grid-template-columns:2rem minmax(0,1fr) auto;
   gap:11px;
   align-items:center;
   margin:0 17px 12px;
@@ -700,7 +701,7 @@ header .sub {
 
 .device-details {
   display:grid;
-  grid-template-columns:repeat(2,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(16rem,100%),1fr));
   gap:8px 16px;
   padding:12px 17px 15px;
   border-top:1px solid #1b232b;
@@ -791,9 +792,30 @@ header .sub {
   background:linear-gradient(135deg,rgba(24,31,39,.9),rgba(13,16,20,.92));
   padding:28px;
   display:grid;
-  grid-template-columns:115px 1fr auto;
+  grid-template-columns:auto minmax(0,1fr) auto;
   align-items:center;
-  gap:26px
+  gap:26px;
+  container:ac-hero / inline-size
+}
+
+/* Orb, copy and stat strip stop fitting side by side well before the window looks narrow, because
+   the card only ever gets what the content area has left. An element cannot query its own
+   container, so the card answers to ac-main and the strip inside it answers to the card. */
+@container ac-main (max-width:46rem) {
+  .hero-card {
+    grid-template-columns:minmax(0,1fr)
+  }
+  .hero-metrics {
+    border-inline-start:0;
+    border-block-start:1px solid #252c34;
+    padding-block-start:9px
+  }
+}
+
+@container ac-hero (max-width:21rem) {
+  .hero-metrics {
+    grid-template-columns:repeat(auto-fit,minmax(min(7rem,100%),1fr))
+  }
 }
 
 .orb {
@@ -833,7 +855,7 @@ header .sub {
 
 .hero-metrics {
   display:grid;
-  grid-template-columns:repeat(3,96px);
+  grid-template-columns:repeat(3,minmax(0,max-content));
   border-inline-start:1px solid #252c34
 }
 
@@ -857,7 +879,7 @@ header .sub {
 
 .grid {
   display:grid;
-  grid-template-columns:minmax(0,1.25fr) minmax(330px,.55fr);
+  grid-template-columns:minmax(0,1.25fr) minmax(0,.55fr);
   gap:18px;
   margin-top:18px
 }
@@ -1022,7 +1044,7 @@ header .sub {
 
 .module-row {
   display:grid;
-  grid-template-columns:repeat(4,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));
   gap:12px;
   margin-top:18px
 }
@@ -1082,18 +1104,34 @@ header .sub {
   }
 }
 
-@media(max-width:1230px) {
-  .device-table-head,.device-main {
-    grid-template-columns:minmax(260px,1.3fr) 140px minmax(155px,.8fr) 115px 28px
-  }
-  .driver-metrics {
-    grid-template-columns:repeat(2,1fr)
-  }
+/* These respond to the space the content area actually has, not to the window: the rail collapses
+   at its own breakpoints, so the same window width can leave very different room for content. */
+@container ac-main (max-width:55rem) {
   .grid {
-    grid-template-columns:1fr
+    grid-template-columns:minmax(0,1fr)
   }
-  .module-row {
-    grid-template-columns:repeat(2,1fr)
+}
+
+/* Below this the row can no longer hold five legible columns, so it stops being a table row and
+   becomes a card. Nothing is dropped — the columns stack under the device identity. */
+@container ac-main (max-width:52rem) {
+  .device-table-head {
+    display:none
+  }
+  .device-main {
+    grid-template-columns:minmax(0,1fr) auto;
+    row-gap:.55rem;
+    align-items:start
+  }
+  .device-main>.device-identity {
+    grid-column:1
+  }
+  .device-main>.expand-button {
+    grid-column:2;
+    grid-row:1
+  }
+  .device-main>:not(.device-identity):not(.expand-button) {
+    grid-column:1/-1
   }
 }
 
@@ -1201,7 +1239,7 @@ header .sub {
 
 .protection-grid {
   display:grid;
-  grid-template-columns:repeat(4,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));
   gap:8px;
   margin-top:14px
 }
@@ -1287,7 +1325,7 @@ header .sub {
 
 .install-item {
   display:grid;
-  grid-template-columns:1.3fr .55fr .35fr;
+  grid-template-columns:minmax(0,1.3fr) minmax(0,.55fr) minmax(0,.35fr);
   gap:12px;
   padding:9px 11px;
   background:#0e1317;
@@ -1420,7 +1458,7 @@ header .sub {
 
 .review-facts {
   display:grid;
-  grid-template-columns:repeat(2,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));
   gap:8px;
   margin:17px 0
 }
@@ -1474,12 +1512,6 @@ header .sub {
   justify-content:flex-end;
   gap:8px;
   margin-top:17px
-}
-
-@media(max-width:1230px) {
-  .protection-grid {
-    grid-template-columns:repeat(2,1fr)
-  }
 }
 
 .pending-install-card {
@@ -1555,7 +1587,7 @@ header .sub {
 
 .repair-check-grid {
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(15rem,100%),1fr));
   gap:11px;
   margin-bottom:14px
 }
@@ -1696,7 +1728,7 @@ header .sub {
 
 .phase4-safety-row {
   display:grid;
-  grid-template-columns:repeat(2,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));
   gap:8px;
   margin-top:13px
 }
@@ -1737,7 +1769,7 @@ header .sub {
 
 .phase4-step-list>div {
   display:grid;
-  grid-template-columns:12px 1fr auto;
+  grid-template-columns:.75rem minmax(0,1fr) auto;
   gap:9px;
   align-items:center;
   padding:9px 11px;
@@ -1800,7 +1832,7 @@ header .sub {
 
 .cleanup-summary {
   display:grid;
-  grid-template-columns:repeat(4,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));
   gap:11px;
   margin-bottom:14px
 }
@@ -1844,7 +1876,7 @@ header .sub {
 
 .cleanup-card {
   display:grid;
-  grid-template-columns:17px 1fr auto;
+  grid-template-columns:1.0625rem minmax(0,1fr) auto;
   gap:12px;
   align-items:center;
   border:1px solid #232c34;
@@ -1937,7 +1969,7 @@ header .sub {
 
 .cleanup-result-grid {
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));
   gap:8px;
   margin-top:13px
 }
@@ -1949,15 +1981,9 @@ header .sub {
   padding:9px
 }
 
-@media(max-width:1230px) {
-  .repair-check-grid {
-    grid-template-columns:1fr
-  }
+@container ac-main (max-width:48rem) {
   .phase4-action-card {
-    grid-template-columns:1fr
-  }
-  .cleanup-summary {
-    grid-template-columns:repeat(2,1fr)
+    grid-template-columns:minmax(0,1fr)
   }
 }
 
@@ -1969,7 +1995,7 @@ header .sub {
 
 .startup-card {
   display:grid;
-  grid-template-columns:minmax(0,1fr) 150px 300px;
+  grid-template-columns:minmax(0,1fr) minmax(0,auto) minmax(0,auto);
   gap:15px;
   align-items:center;
   border:1px solid #232c34;
@@ -2063,7 +2089,7 @@ header .sub {
 
 .decision-group {
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(6rem,100%),1fr));
   gap:5px
 }
 
@@ -2188,9 +2214,9 @@ header .sub {
   border-color:#304a45
 }
 
-@media(max-width:1280px) {
+@container ac-main (max-width:56rem) {
   .startup-card {
-    grid-template-columns:1fr 120px
+    grid-template-columns:minmax(0,1fr)
   }
   .decision-group {
     grid-column:1/-1
@@ -2202,7 +2228,7 @@ header .sub {
 
 /* Phase 6 — evidence-based hardware telemetry and crash diagnostics */ .hardware-summary {
   display:grid;
-  grid-template-columns:repeat(4,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));
   gap:11px;
   margin-bottom:14px
 }
@@ -2236,7 +2262,7 @@ header .sub {
 
 .storage-grid {
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(20rem,100%),1fr));
   gap:11px
 }
 
@@ -2286,7 +2312,7 @@ header .sub {
 
 .metric-grid {
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(10.5rem,100%),1fr));
   gap:7px;
   margin-top:13px
 }
@@ -2361,7 +2387,7 @@ header .sub {
 
 .memory-facts {
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(min(10.5rem,100%),1fr));
   gap:8px
 }
 
@@ -2469,7 +2495,7 @@ header .sub {
 
 .crash-card {
   display:grid;
-  grid-template-columns:1fr 170px;
+  grid-template-columns:minmax(0,1fr) minmax(0,auto);
   gap:15px;
   align-items:center;
   border-top:1px solid #1e272e;
@@ -2514,7 +2540,7 @@ header .sub {
 
 .event-row {
   display:grid;
-  grid-template-columns:10px 1fr auto;
+  grid-template-columns:.625rem minmax(0,1fr) auto;
   gap:9px;
   align-items:start;
   border-top:1px solid #1e272e;
@@ -2564,18 +2590,6 @@ header .sub {
   margin-bottom:0
 }
 
-@media(max-width:1280px) {
-  .storage-grid {
-    grid-template-columns:1fr
-  }
-  .hardware-summary {
-    grid-template-columns:repeat(2,1fr)
-  }
-  .metric-grid {
-    grid-template-columns:repeat(2,1fr)
-  }
-}
-
 .diagnostic-history-list {
   margin-top:18px;
   border:1px solid var(--line);
@@ -2612,7 +2626,7 @@ header .sub {
   white-space:nowrap
 }
 
-@media(max-width:760px) {
+@container ac-main (max-width:34rem) {
   .diagnostic-history-row {
     align-items:flex-start;
     flex-direction:column;
@@ -2648,7 +2662,7 @@ header .sub {
 
 .ata-smart-grid {
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(9rem,100%),1fr));
   gap:6px
 }
 
@@ -2675,16 +2689,10 @@ header .sub {
   overflow-wrap:anywhere
 }
 
-@media(max-width:1280px) {
-  .ata-smart-grid {
-    grid-template-columns:repeat(2,minmax(0,1fr))
-  }
-}
-
 /* Phase 13 — provider isolation evidence. Raw provider detail stays out of normal UI;
    only localized fault class plus technically isolated provider/operation identifiers are shown. */ .provider-fault-panel {
   display:grid;
-  grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);
+  grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);
   gap:18px;
   border:1px solid #4a4030;
   background:#15130f;
@@ -2712,7 +2720,7 @@ header .sub {
 
 .provider-fault-row {
   display:grid;
-  grid-template-columns:minmax(150px,.7fr) minmax(0,1.3fr);
+  grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);
   align-items:center;
   gap:12px;
   border:1px solid #342f26;
@@ -2732,9 +2740,9 @@ header .sub {
   overflow-wrap:anywhere
 }
 
-@media(max-width:860px) {
+@container ac-main (max-width:40rem) {
   .provider-fault-panel,.provider-fault-row {
-    grid-template-columns:1fr
+    grid-template-columns:minmax(0,1fr)
   }
 }
 
@@ -2791,7 +2799,7 @@ header .sub {
 
 /* Phase 15 — secure update and privacy-first support export */ .system-care-grid {
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(20rem,100%),1fr));
   gap:var(--space-4);
   margin-block:var(--space-4)
 }
@@ -2889,12 +2897,6 @@ header .sub {
   gap:.35rem
 }
 
-@media(max-width:900px) {
-  .system-care-grid {
-    grid-template-columns:1fr
-  }
-}
-
 /* Phase 18 — authority-first driver review. Motion remains compositor-only and interruptible through fluidPress. */
 .authority-coverage {
   display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:13px;
@@ -2932,11 +2934,11 @@ header .sub {
 .candidate-preferences>div>span{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
 .candidate-preferences button{border:0;border-radius:999px;padding:.38rem .65rem;background:var(--surface-muted);color:var(--text-secondary);font:inherit;cursor:pointer}
 .candidate-preferences button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
-@media (max-width:760px){.candidate-preferences>div{align-items:flex-start;flex-direction:column}.candidate-preferences>div>span{justify-content:flex-start}}
+@container ac-main (max-width:34rem){.candidate-preferences>div{align-items:flex-start;flex-direction:column}.candidate-preferences>div>span{justify-content:flex-start}}
 
 /* Phase 19 — evidence-driven Windows Health */
 .windows-health-hero .scan-orb.attention { box-shadow:0 0 0 1px color-mix(in srgb,var(--ac-warning) 28%,transparent),0 18px 48px color-mix(in srgb,var(--ac-warning) 12%,transparent); }
-.repair-health-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.7rem; margin:1rem 0 1.25rem; }
+.repair-health-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(15rem,100%),1fr)); gap:.7rem; margin:1rem 0 1.25rem; }
 .repair-health-grid article { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.75rem; min-height:4.4rem; padding:.9rem 1rem; border:1px solid var(--ac-line); border-radius:var(--ac-radius-md); background:color-mix(in srgb,var(--ac-surface) 84%,transparent); backdrop-filter:blur(18px) saturate(140%); }
 .health-state-dot { width:.58rem; height:.58rem; border-radius:999px; background:var(--ac-text-tertiary); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-text-tertiary) 10%,transparent); }
 .repair-health-grid article.healthy .health-state-dot { background:var(--ac-success); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-success) 11%,transparent); }
@@ -2950,16 +2952,15 @@ header .sub {
 .repair-diagnosis-list article>div { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
 .role-chip { font-size:.7rem; font-weight:700; padding:.18rem .45rem; border-radius:999px; background:var(--ac-fill-secondary); }
 .repair-diagnosis-list details { margin-top:.65rem; }
-.recovery-readiness-card { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(18rem,1fr); gap:1.2rem; align-items:center; }
-.recovery-facts { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+.recovery-readiness-card { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:1.2rem; align-items:center; }
+.recovery-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(10rem,100%),1fr)); gap:.5rem; }
 .recovery-facts div { padding:.7rem .8rem; border-radius:var(--ac-radius-sm); background:var(--ac-fill-secondary); }
 .recovery-facts span,.recovery-facts strong { display:block; }
 .repair-evidence-disclosure>summary { cursor:pointer; font-weight:700; }
 .repair-plan-preview { display:grid; gap:.5rem; }
 .repair-plan-preview>div { display:grid; grid-template-columns:auto 1fr auto; gap:.65rem; align-items:center; padding:.68rem .75rem; border-radius:var(--ac-radius-sm); background:var(--ac-fill-secondary); }
 .healthy-repair-card,.recovery-escalation-card { grid-template-columns:1fr; }
-@media (max-width:980px) { .repair-health-grid { grid-template-columns:1fr 1fr; } .recovery-readiness-card { grid-template-columns:1fr; } }
-@media (max-width:640px) { .repair-health-grid { grid-template-columns:1fr; } .recovery-facts { grid-template-columns:1fr; } }
+@container ac-main (max-width:50rem) { .recovery-readiness-card { grid-template-columns:minmax(0,1fr); } }
 @media (prefers-reduced-transparency:reduce) { .repair-health-grid article,.repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { backdrop-filter:none; background:var(--ac-surface); } }
 @media (prefers-contrast:more) { .repair-health-grid article,.repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { border-width:2px; background:var(--ac-surface); } }
 .repair-dialog-plan { display:grid; gap:.45rem; margin:.9rem 0; }
@@ -3046,4 +3047,20 @@ header .sub {
 }
 .analyze-button {
   margin-inline-start: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+   Fluid controls
+   A control label is not prose. Letting a button shrink below its content turns
+   "Review and install" into one word per line, which reads as broken rather than
+   as compact. Controls therefore keep their content width, and every content row
+   wraps rather than squeezing what it holds. The wrap rule carries zero
+   specificity, so a row that must stay on one line can still say so.
+   --------------------------------------------------------------------------- */
+main :where(*) {
+  flex-wrap:wrap;
+}
+main :is(button,.service-pill,.diagnostic-severity,.role-chip,.selection-count) {
+  flex-shrink:0;
+  max-inline-size:100%;
 }

@@ -4,10 +4,49 @@
   .app-nav-item { min-height:2.75rem; }
   main { padding-inline:1.5rem; }
 }
+
+/* 1280px: wide reading layout. 960px: intentional icon rail. */
+@media (max-width: 68.75rem) {
+  :root { --ac-sidebar-width:4.75rem; }
+  .app-sidebar { padding-inline:.625rem; }
+  .brand-copy,.command-trigger span,.command-trigger kbd,.nav-copy,.nav-group h2,.nav-availability,.policy-card,.sidebar-controls span,.service-copy,.service-version { display:none; }
+  .app-brand { justify-content:center; padding-inline:0; }
+  .command-trigger,.locale-button,.app-nav-item { grid-template-columns:1fr; justify-content:center; padding-inline:0; }
+  .app-service { grid-template-columns:1fr; justify-items:center; }
+  main { padding-inline:1.35rem; }
+  .app-nav-item.active { padding-inline-start:0; border-inline-start:0; box-shadow:inset 2px 0 var(--ac-accent); }
+}
+
+/* 800px: preserve the rail, tighten the content rhythm. */
+@media (max-width: 50rem) {
+  main { padding:1.25rem 1rem 5rem; }
+  .shell-context { align-items:flex-start; flex-direction:column; gap:.65rem; }
+  .shell-state-group { justify-content:flex-start; }
+  .disconnected-card { grid-template-columns:auto minmax(0,1fr); }
+  .disconnected-card button { grid-column:2; justify-self:start; }
+}
+
+/* 640px: the rail becomes a compact bottom dock; labels remain in aria/title. */
+@media (max-width: 42.5rem) {
+  .app-shell { display:block; }
+  .app-sidebar { inset-block:auto 0; inset-inline:0; inline-size:100%; block-size:4.35rem; flex-direction:row; align-items:center; gap:.45rem; padding:.45rem .65rem; border-inline-end:0; border-block-start:1px solid var(--ac-border-subtle); }
+  .app-sidebar::before { inset-block:auto; inset-inline:8% 8%; inset-block-start:0; inline-size:auto; block-size:2px; }
+  .app-brand { display:none; }
+  .app-sidebar nav { display:flex; flex:1; gap:.3rem; overflow-x:auto; overflow-y:hidden; }
+  .nav-group { display:contents; }
+  .app-nav-item { flex:0 0 2.8rem; min-block-size:3.2rem; }
+  .command-trigger,.sidebar-controls,.app-service { flex:0 0 2.8rem; margin:0; padding:0; border:0; }
+  .command-trigger { min-block-size:3.2rem; }
+  .sidebar-controls { display:flex; padding:0; }
+  .theme-button { display:none; }
+  main { padding-block-end:6rem; }
+  .disconnected-card { grid-template-columns:auto minmax(0,1fr); padding:.9rem; }
+  .disconnected-card button { grid-column:1 / -1; justify-self:stretch; }
+}
 @media (max-width: 63.75rem) {
   :root { --ac-sidebar-width:4.75rem; }
   .app-sidebar { padding-inline:.625rem; }
-  .brand-copy,.command-trigger span,.command-trigger kbd,.nav-copy,.sidebar-controls span,.service-copy,.service-version { display:none; }
+  .brand-copy,.command-trigger span,.command-trigger kbd,.nav-copy,.nav-group h2,.nav-availability,.policy-card,.sidebar-controls span,.service-copy,.service-version { display:none; }
   .app-brand { justify-content:center; padding-inline:0; }
   .command-trigger,.locale-button,.app-nav-item { grid-template-columns:1fr; justify-content:center; padding-inline:0; }
   .app-service { grid-template-columns:1fr; justify-items:center; }

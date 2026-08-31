@@ -27,6 +27,8 @@
     <circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/>
   {:else if name === 'language'}
     <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.2 2.4 3.2 5.4 3.2 9S14.2 18.6 12 21c-2.2-2.4-3.2-5.4-3.2-9S9.8 5.4 12 3Z"/>
+  {:else if name === 'theme'}
+    <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/><path d="M17.5 4.5v3M16 6h3"/>
   {:else if name === 'check'}
     <path d="m5 12 4 4 10-10"/>
   {:else if name === 'warning'}

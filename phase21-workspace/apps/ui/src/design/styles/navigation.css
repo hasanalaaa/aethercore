@@ -3,13 +3,16 @@
 }
 .brand-mark {
   inline-size:2.25rem; block-size:2.25rem; flex:0 0 auto; display:grid; place-items:center;
-  border:1px solid var(--ac-border-default); border-radius:.75rem;
-  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.018));
-  box-shadow:inset 0 1px rgba(255,255,255,.055);
+  border:1px solid rgba(125,220,255,.3); border-radius:.75rem;
+  background:linear-gradient(145deg,rgba(28,48,83,.95),rgba(8,16,36,.98));
+  box-shadow:inset 0 1px rgba(255,255,255,.08),0 8px 20px rgba(0,0,0,.2);
 }
-.brand-mark span {
-  inline-size:.75rem; block-size:.75rem; border:2px solid var(--ac-accent-strong); border-radius:50%;
-  box-shadow:0 0 1rem rgba(142,197,245,.42);
+.brand-mark svg { inline-size:1.7rem; block-size:1.7rem; overflow:visible; }
+.brand-mark path {
+  fill:none; stroke:url(#aethercore-mark); stroke-width:1.45;
+  stroke-linejoin:round;
+}
+.brand-mark .brand-spark { fill:var(--ac-warning); stroke:var(--ac-warning); stroke-width:.55;
 }
 .brand-copy { min-inline-size:0; }
 .brand-copy strong { display:block; color:var(--ac-text-1); font-size:.9375rem; font-weight:650; letter-spacing:-.006em; }
@@ -31,7 +34,9 @@
   background:rgba(0,0,0,.18); color:var(--ac-text-4); font:500 .6875rem/1.2 var(--ac-font-text); text-align:center;
 }
 
-.app-sidebar nav { display:grid; gap:.2rem; }
+.app-sidebar nav { display:grid; gap:1rem; min-block-size:0; overflow:auto; scrollbar-width:thin; }
+.nav-group { display:grid; gap:.2rem; }
+.nav-group h2 { margin:0 .6rem .28rem; color:var(--ac-text-4); font:650 .625rem/1.2 var(--ac-font-text); letter-spacing:.12em; text-transform:uppercase; }
 .app-nav-item {
   display:grid; grid-template-columns:1.75rem minmax(0,1fr); align-items:center; gap:.55rem;
   padding:.48rem .58rem; text-align:start;
@@ -44,11 +49,16 @@
 }
 .nav-icon { inline-size:1.75rem; block-size:1.75rem; display:grid; place-items:center; border-radius:.48rem; color:var(--ac-text-4); }
 .app-nav-item.active .nav-icon { color:var(--ac-accent-strong); background:rgba(142,197,245,.08); }
+.nav-availability { align-self:start; color:var(--ac-warning); font-size:1.1rem; line-height:1; }
 .nav-copy { min-inline-size:0; }
 .nav-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8125rem; font-weight:600; }
 .nav-copy small { display:block; margin-block-start:.08rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ac-text-4); font-size:.6875rem; line-height:1.25; }
 
+.policy-card { display:grid; grid-template-columns:1.65rem minmax(0,1fr); align-items:start; gap:.55rem; margin-block-start:1rem; padding:.7rem .65rem; border:1px solid color-mix(in srgb,var(--ac-warning) 30%,var(--ac-border-subtle)); border-radius:var(--ac-radius-md); background:var(--ac-warning-muted); }
+.policy-mark { display:grid; place-items:center; inline-size:1.55rem; block-size:1.55rem; border:1px solid color-mix(in srgb,var(--ac-warning) 44%,transparent); border-radius:.45rem; color:var(--ac-warning); }
+.policy-card strong,.policy-card small { display:block; }.policy-card strong { color:var(--ac-text-2); font-size:.72rem; font-weight:680; }.policy-card small { margin-block-start:.2rem; color:var(--ac-text-3); font-size:.67rem; line-height:1.35; }
 .sidebar-controls { margin-block-start:auto; padding-block-start:1rem; }
+.theme-button { margin-block-start:.25rem; }
 .locale-button {
   display:grid; grid-template-columns:1.25rem minmax(0,1fr); align-items:center; gap:.55rem;
   padding:.5rem .6rem; text-align:start;
@@ -66,3 +76,11 @@
 .service-copy small { color:var(--ac-text-4); font-size:.6875rem; }
 .service-copy strong { margin-block-start:.08rem; color:var(--ac-text-2); font-size:.75rem; font-weight:600; }
 .service-version { color:var(--ac-text-4); font-size:.6875rem; font-family:var(--ac-font-mono); direction:ltr; unicode-bidi:isolate; }
+
+/* Evidence-first shell: the rail is a quiet instrument, not a card stack. */
+.app-sidebar { border-inline-end-color:color-mix(in srgb,var(--ac-accent) 28%,var(--ac-border-subtle)); }
+.app-sidebar::before { content:""; position:absolute; inset-block:1.3rem; inset-inline-start:-1px; inline-size:2px; background:linear-gradient(var(--ac-accent),transparent 72%); opacity:.72; }
+.brand-mark { border-radius:.55rem; background:linear-gradient(145deg,color-mix(in srgb,var(--ac-accent) 26%,#101821),#0b1118); }
+.command-trigger { border-radius:.55rem; background:color-mix(in srgb,var(--ac-accent) 7%,transparent); }
+.app-nav-item { border-radius:.55rem; }
+.app-nav-item.active { border-inline-start:2px solid var(--ac-accent); padding-inline-start:calc(.58rem - 2px); background:color-mix(in srgb,var(--ac-accent) 12%,transparent); }
