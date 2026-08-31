@@ -1547,3 +1547,70 @@ Gate S2's sweep sampled `C:\Users\*` and its AppData roots but **not** the
 SYSTEM, SysWOW64, LocalService or NetworkService profiles, which is exactly
 where the surviving fleet state was. The sweep script has been hardened to walk
 all of them, and Gate S2 is re-run against 0.1.6 in §16.10.
+
+## 16.10 GATE S2 — RE-GATED: **PASS** (2026-08-31)
+
+Package `AetherCore-0.1.6-arm64.msi`, ProductCode
+`{863BF31B-B840-63F9-5B30-35528662C54F}`, exit 0, **zero `ICE\d+`**, validate
+exit 0. It carries the aetherctl with the Gate S4 fixes.
+
+The stale `%APPDATA%\aethercore` from the superseded build was deleted first
+(§16.8 record). Then:
+
+**Fleet state is machine state now, and the surface still works from there**
+
+```
+PROGRAMDATA_FLEET=True
+   585  C:\ProgramData\AetherCore\fleet\inventory.json
+   256  C:\ProgramData\AetherCore\fleet\schedules.json
+     0  C:\ProgramData\AetherCore\fleet\trust\known_hosts
+SYSTEM_APPDATA_AETHERCORE=False        <- does not reappear
+fleet list        -> ok:true, both hosts
+fleet schedule run-due -> ok:true, {"ran":0,"runs":[]}   exit 0
+```
+
+Full ProgramData tree before uninstalling — 8 files including the fleet trust
+store and a live scan's WAL:
+
+```
+   585  fleet\inventory.json          4,096  state\aethercore.db
+   256  fleet\schedules.json         32,768  state\aethercore.db-shm
+     0  fleet\trust\known_hosts     671,592  state\aethercore.db-wal
+     0  logs\service.jsonl                0  state\machine-mutation.lock
+```
+
+**Uninstall: exit 0. The HARDENED sweep — now walking the SYSTEM, SysWOW64,
+LocalService and NetworkService profiles as well as `C:\Users` — reports ZERO
+survivors on all 14 checks**, including check 14, which is the one that missed
+the fleet state the first time.
+
+### Final state of the machine
+
+Reinstalled 0.1.6, exit 0. `C:\Program Files\AetherCore` holds **SIXTEEN** files
+(the fifteen from §16.4 plus `UNINSTALL.txt`, 3,206 B). Service RUNNING, pipe
+SDDL and install-dir ACLs identical to the §10 baseline, gguf sha256
+`6a1a2eb6…9407e`.
+
+`verbs-outer.ps1 -Label FINAL`: **18/18 RETURNED** across both token contexts,
+`insights list` reports `engineLabel: "localModel"` in both, and `--help` now
+prints the usage block to **stdout** from the MSI-installed binary — the Stage 3
+fix proven on the shipped payload, not just on a dev build.
+
+Snapshot `P37-SHIPPING-QUALIFIED {a1696567-7528-4136-a445-848dccd3d2c1}`.
+
+### Snapshot ledger (Phase 37 additions)
+
+| name | id | taken before |
+|---|---|---|
+| P37-PRE-STAGE1 | `{e94d539e-8046-443b-871c-9d6711c34fd2}` | the Stage 1 source refresh and rebuild |
+| P37-SHIPPING-QUALIFIED | `{a1696567-7528-4136-a445-848dccd3d2c1}` | **the Phase 37 seal** |
+
+### Package ledger (Phase 37)
+
+| version | ProductCode | why it exists |
+|---|---|---|
+| 0.1.2 | `{2D97C23D-D2A1-83FE-3675-90F95D55540B}` | Gate S1: aetherctl + assets authored |
+| 0.1.3 | `{76F8CD00-C012-423D-0890-DD8F311608F0}` | Stage 2 first attempt (`util:RemoveFolderEx`) — **superseded, do not ship** |
+| 0.1.4 | `{ABF18F00-3B3F-601A-8ACE-E1F7F25077DF}` | RemoveFolderEx + registry fallback — **superseded, failed case C with 1603** |
+| 0.1.5 | `{02F801D6-C117-CBB4-09A0-B51CB9E455C3}` | deferred `purge-data`; Gates S2 and S3 |
+| **0.1.6** | `{863BF31B-B840-63F9-5B30-35528662C54F}` | **the current package**: adds the three Gate S4 fleet fixes |
