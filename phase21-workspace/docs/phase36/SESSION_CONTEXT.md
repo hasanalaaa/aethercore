@@ -8,7 +8,9 @@ Last updated: 2026-08-31
 
 ## 1. GIT STATE
 
-- Repo: `/Users/hasanalaaa/Documents/AetherCore 2` (private, `hasanalaaa/aethercore`)
+- Repo: `/Users/hasanalaaa/dev/aethercore` (private, `hasanalaaa/aethercore`)
+  **RELOCATED 2026-08-31** from `/Users/hasanalaaa/Documents/AetherCore 2`, which was
+  inside the iCloud CloudDocs container. See section 14.
 - Branch: `main`
 - Session start commit: `218e0d8` (pushed). Contains BOTH Windows IPC fixes:
   the overlapped-IO transport conversion and the single-connect-per-verb
@@ -109,11 +111,12 @@ Two legitimate reasons a rebuild differs:
   Mac's Desktop/Documents/Downloads. `prlctl exec` runs as SYSTEM, so the mapped
   drive letters `Y:`/`Z:` are NOT visible, but the UNC path IS:
   `\\Mac\Home\Documents\...`. Staging dir on the Mac:
-  `~/Documents/p36-stage/` -> `\\Mac\Home\Documents\p36-stage\`.
+  `~/dev/p36-stage/` -> `\\Mac\dev\p36-stage\`.  (was `~/Documents/p36-stage`
+  -> `\\Mac\Home\Documents\p36-stage\` before the 2026-08-31 move; see section 14)
   Read AND write both work from the VM. `prlctl exec` round trip is ~0.3 s.
 - **Never inline PowerShell inside a cmd string through zsh.** Quoting breaks in
-  three layers. Write a `.ps1` (or `.cmd`) into `~/Documents/p36-stage/` and
-  invoke it by UNC path. Helper: `~/Documents/p36-stage/vmr <name>` runs
+  three layers. Write a `.ps1` (or `.cmd`) into `~/dev/p36-stage/` and
+  invoke it by UNC path. Helper: `~/dev/p36-stage/vmr <name>` runs
   `<name>.ps1` in the VM.
 - Long jobs: launch with `start "" /b cmd /c \\Mac\Home\...\job.cmd`. The
   `prlctl exec` call will still block until its 2 min tool timeout and report a
@@ -282,13 +285,13 @@ Implemented in `scripts/p36vm/verify-install.ps1`.
 - `scripts/build-arm64-msi.cmd` — the canonical ARM64 build recipe.
 - `scripts/p36vm/verify-install.ps1 -Label <x>` — the entire Gate-A
   verification list in one read-only pass; writes
-  `\\Mac\Home\Documents\p36-stage\out\verify-<x>.json`.
+  `\\Mac\dev\p36-stage\out\verify-<x>.json`.
 - `scripts/p36vm/verbs-outer.ps1 -Label <x>` — runs the four typed verbs
   (`service detect`, `doctor`, `optimize status`, `scan status`) under BOTH
   actual-token contexts via one-shot Scheduled Tasks; needs
   `C:\AetherCore-P36\tools\aetherctl.exe` and
   `C:\AetherCore-P36\tools\verbs-inner.ps1` staged.
-- Mac-side helper `~/Documents/p36-stage/vmr <name>` runs `<name>.ps1` in the VM.
+- Mac-side helper `~/dev/p36-stage/vmr <name>` runs `<name>.ps1` in the VM.
 
 ## 12. DESTRUCTIVE ACTION LOG
 
@@ -705,3 +708,143 @@ Stages 1–4 are NOT started. They edit `installer/wix/Product.wxs`, rebuild the
 workspace, and mutate the VM — none of which can produce attributable evidence
 while a second agent is committing to the same tree. **Human decision required
 before Stage 1.**
+
+---
+
+# 14. REPOSITORY RELOCATED OUT OF iCLOUD (2026-08-31)
+
+## Why
+
+`/Users/hasanalaaa/Documents/AetherCore 2` was inside the iCloud CloudDocs
+container. Proof (not inference): `~/Documents/AetherCore 2` and
+`~/Library/Mobile Documents/com~apple~CloudDocs/Documents/AetherCore 2` are the
+**same inode, 63148279**. `~/dev` is not in the container — `brctl status` has
+zero references to it.
+
+iCloud evicts file contents and leaves `compressed,dataless` placeholders.
+Reading one blocks on a network fetch. Measured cost: **2.5 seconds per git
+object** (100 loose objects took 251 s). At the worst point **823 of 2501
+objects in `.git` were dataless.**
+
+Three failures this session traced to exactly this, and to nothing else:
+
+1. `pnpm --dir apps/ui build` failed with
+   `ETIMEDOUT: connection timed out, read` inside
+   `node_modules/.pnpm/aria-query@5.3.1/...`. 1062 of 1565 files under
+   `node_modules` were dataless. **This was previously reported as a broken
+   symlink for `@jridgewell/remapping`. That diagnosis was wrong** — there were
+   zero dangling symlinks tree-wide and `@jridgewell/remapping@2.3.5` was
+   present the whole time.
+2. `git worktree add` stalled at 22% (603/2651 files) after 25 minutes.
+3. `git ls-tree -r p35` took minutes instead of milliseconds.
+
+## What was done
+
+Everything was pushed to `origin` first, so the new location was created by a
+fresh `git clone` rather than by copying iCloud stubs. Nothing depended on
+iCloud returning an object.
+
+| | old | new |
+|---|---|---|
+| repo | `~/Documents/AetherCore 2` | **`~/dev/aethercore`** |
+| design worktree | (stalled, never completed) | **`~/dev/aethercore-design`** |
+| VM staging | `~/Documents/p36-stage` | **`~/dev/p36-stage`** |
+| VM-visible repo | `\\Mac\Home\Documents\AetherCore 2\` | **`\\Mac\dev\aethercore\`** |
+| VM-visible staging | `\\Mac\Home\Documents\p36-stage\` | **`\\Mac\dev\p36-stage\`** |
+
+Verification, each measured rather than assumed:
+
+- `git fsck --full` on the new clone: **exit 0, no output.**
+- All four branches resolve; all **12 tags resolve to the same commits** as the
+  old repo (`p19 p20 p21 p22 p23 p23.1 p31 p32 p33 p34 p35 p36-tranche1`).
+- **0 dataless files** in the new `.git`.
+- Worktree created in **0.315 s** (against 25 min stalled at 22% in iCloud).
+  `.git` file inside it reads
+  `gitdir: /Users/hasanalaaa/dev/aethercore/.git/worktrees/aethercore-design`,
+  and `git rev-parse`/`git log`/`git status` all run inside it.
+- Object-read throughput, full read of every object in the repo:
+
+  | | rate |
+  |---|---|
+  | old repo, cold iCloud objects | **0.4 objects/sec** (100 objects / 251 s) |
+  | new repo | **21,169 objects/sec** (2,498 objects / 118 ms) |
+
+## Parallels share — CHANGED, and this is the part that will bite a new session
+
+`prlctl list -i` reported `Host defined sharing: Off`. The VM only ever saw
+Desktop / Documents / Downloads through **Shared Profile**, which is why
+`\\Mac\Home` lists exactly those three and why `\\Mac\Home\dev` did not exist.
+
+A host shared folder was added:
+
+```
+prlctl set "Windows 11" --shf-host-add dev --path /Users/hasanalaaa/dev
+```
+
+Shared Profile was left **on**, so `\\Mac\Home\Documents\...` still works for
+anything historical. Both directions proven on the new path:
+
+- VM reads the Mac: `type \\Mac\dev\p36-stage\PROBE.txt` returned the token
+  written on the Mac; `dir \\Mac\dev\aethercore\phase21-workspace\installer\wix`
+  listed `Product.wxs`, `Bundle.wxs`, `README.md`.
+- VM writes the Mac: a file written by the guest to
+  `\\Mac\dev\p36-stage\out\VM_WRITE_TEST.txt` read back identically on the Mac.
+
+## Absolute paths: what was rewritten and what deliberately was NOT
+
+30 tracked files contain the old absolute path. They are **not** all the same
+kind of thing, and rewriting all of them would corrupt evidence.
+
+**Rewritten — operational, would send a future session or script to the wrong
+place:**
+
+- `docs/phase36/SESSION_CONTEXT.md` — the repo path, the staging dir, the UNC
+  path, and the `vmr` helper path.
+- 9 scripts that hard-coded the root as a fallback
+  (`_build_p27/p28/p29/p30/p31/p32_archive.py`, `_build_p27_patch.py`,
+  `_p27_roundtrip.py`, `_p33_part_a_seal.py`). These were **not** repointed at
+  the new absolute path, which would only rot again. They now derive it:
+  `Path(__file__).resolve().parents[1]` for the workspace and `parents[2]` for
+  the repo root. Verified to resolve to
+  `/Users/hasanalaaa/dev/aethercore/phase21-workspace` and
+  `/Users/hasanalaaa/dev/aethercore`; all 9 pass `py_compile`.
+
+**Deliberately NOT rewritten — historical records whose bytes are the
+evidence:**
+
+- `PHASE20_FINAL_SHA256.txt` and the other seal pointer files.
+- `PHASE_2x/3x_BINARY_SAFE_PATCH/changes.patch` — patch bodies covered by a
+  `MANIFEST.json` SHA; editing them invalidates the manifest.
+- `docs/phase2x/MASTER_DELIVERY_REPORT.md`, `docs/phase32/HYGIENE.md`,
+  `docs/phase32/ISSUES.json`.
+- `_handoff/p36-codex-to-hermes/*` — `CODEX_SESSION.jsonl` is sealed by
+  `CODEX_SESSION_SHA256.txt`.
+- The destructive-action records in section 12 above. They record the command
+  that was ACTUALLY RUN at the time, from the path that existed then. A
+  recovery command in a historical record is a fact, not an instruction — if you
+  need to re-run one, translate `\\Mac\Home\Documents\p36-stage\` to
+  `\\Mac\dev\p36-stage\` yourself.
+
+## What stayed behind in iCloud, on purpose
+
+`~/Documents/AetherCore 2` still exists and was NOT deleted. It holds the
+delivery archives that Gate 0 kept: the Phase 26–30 zips and
+`_archive/AetherCore-Phase32-…-pre-provenance-fix-…zip`. Most are dataless and
+cost zero local bytes; materialising ~13 GB out of iCloud purely to relocate
+files that are fine where they are would have been pointless. `~/Parallels` was
+not touched.
+
+## CORRECTION to the Gate 0 record
+
+Gate 0 above states the two duplicate `.gguf` copies are **APFS clones**. That
+was wrong. They — and the canonical copy — are **`compressed,dataless` iCloud
+placeholders**. `du` reports 0 blocks for both reasons, which is why the two are
+indistinguishable by size alone.
+
+The Gate 0 conclusion is unchanged and still correct: deleting the duplicates
+reclaims no local space. The reason differs, and the difference matters —
+**the canonical model was never on this disk.** It is 1,117,320,736 B,
+SHA-256 `6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e`
+(pinned in `assets/models/models.manifest.json`, fail-closed loader). Its
+materialisation out of iCloud is tracked separately; the desktop build cannot
+run without it.

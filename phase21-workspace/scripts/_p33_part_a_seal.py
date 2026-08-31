@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import sys
 
-ROOT = pathlib.Path("/Users/hasanalaaa/Documents/AetherCore 2/phase21-workspace")
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT.parent
 
 

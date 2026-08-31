@@ -10,12 +10,12 @@ from pathlib import Path
 ROOT = (
     Path(sys.argv[1]).resolve()
     if len(sys.argv) > 1
-    else Path("/Users/hasanalaaa/Documents/AetherCore 2/phase21-workspace")
+    else Path(__file__).resolve().parents[1]
 )
 OUT = (
     Path(sys.argv[2]).resolve()
     if len(sys.argv) > 2
-    else Path("/Users/hasanalaaa/Documents/AetherCore 2")
+    else Path(__file__).resolve().parents[2]
 )
 NAME = "AetherCore-Phase32-Master-Delivery"
 EXCLUDE_DIRS = {"target", "node_modules", ".git", "dist", "state", "support-staging"}

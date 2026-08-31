@@ -6,8 +6,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-ROOT = Path("/Users/hasanalaaa/Documents/AetherCore 2/phase21-workspace")
-OUT = Path("/Users/hasanalaaa/Documents/AetherCore 2")
+ROOT = Path(__file__).resolve().parents[1]
+OUT = Path(__file__).resolve().parents[2]
 NAME = "AetherCore-Phase28-Master-Delivery"
 EXCLUDE_DIRS = {"target", "node_modules", ".git", "dist", "state", "support-staging"}
 SKIP_PREFIXES = ("C:\\ProgramData",)

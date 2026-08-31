@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path("/Users/hasanalaaa/Documents/AetherCore 2/phase21-workspace")
+ROOT = Path(__file__).resolve().parents[1]
 SEAL = Path("/tmp/p26_sealed_snapshot")
 PATCH_DIR = ROOT / "PHASE_27_BINARY_SAFE_PATCH"
 WORK = Path("/tmp/p27_patch_roundtrip")
