@@ -944,7 +944,7 @@ collision the v2 gates are written here as `S0`..`S4`.
 | Gate | What it proves | Status | Evidence |
 |---|---|---|---|
 | S0 | design/shell-v2 merged, checks green, dev-only files absent from bundle | **PASS** | §16.1 below; merge `1cf86be`, icon cherry-pick `e8170dd` |
-| S1 | aetherctl authored in Product.wxs; full file audit; clean-box install proves 8 files and every verb | NOT-STARTED | |
+| S1 | aetherctl authored in Product.wxs; full file audit; clean-box install proves every file and every verb | **PASS** | §16.4; 15 files, engineLabel=localModel, 18/18 verbs, zero ICE |
 | S2 | uninstall leaves zero product trace, user-chosen exports kept, idempotent | NOT-STARTED | |
 | S3 | terminal-first CLI install on a clean machine, one documented command | NOT-STARTED | |
 | S4 | server-readiness assessment with evidence per claim | NOT-STARTED | |
@@ -1075,3 +1075,119 @@ EXPECTED=  (a) exit 0. (c) zero AetherCore files, no service, no pipe, no ARP
                reports engineLabel **localModel**, not ruleFallback
 RECOVERY=  prlctl snapshot-switch "Windows 11" --id {e94d539e-8046-443b-871c-9d6711c34fd2}
 ```
+
+## 16.4 GATE S1 — RESULT: **PASS** (2026-08-31)
+
+Bare-box install of `AetherCore-0.1.2-arm64.msi`
+(`872d6997…c95b9e`, 1,099,640,832 B), built with zero `ICE\d+` matches and
+`wix msi validate` exit 0.
+
+### The box really was bare first
+
+`msiexec /x {FC8A3841-…}` exit 0, then the leftovers were deleted by hand (Stage
+2 is the gate that makes the UNINSTALLER do that; Gate 1 only needs a clean
+machine). Sweep before installing:
+
+```
+INSTALLDIR_EXISTS=False   PROGRAMDATA_EXISTS=False
+HKLM_KEY=False            HKCU_KEY=False
+SERVICE=OpenService FAILED 1060: the specified service does not exist
+PIPE_COUNT=0              ARP_COUNT=0
+STARTMENU=False           TASKS=0            FIREWALL_RULES=0
+```
+
+### Install: `msiexec /i … /qn`, exit 0 in 59 s
+
+`C:\Program Files\AetherCore` now holds **FIFTEEN** files (it held eight, and
+only seven of those were owned by the package):
+
+| bytes | path |
+|---|---|
+| 586,240 | `aethercore-consent-broker.exe` |
+| 6,380,544 | `aethercore-desktop.exe` |
+| 246,784 | `aethercore-install-hardener.exe` |
+| 9,811,968 | `aethercore-maintenance-service.exe` |
+| 672,768 | `aethercore-update-broker.exe` |
+| **3,959,808** | **`aetherctl.exe`** — the named defect, now MSI-owned |
+| 11,358 | `assets\models\licenses\Apache-2.0.txt` |
+| 11,343 | `assets\models\licenses\Qwen-GGUF-NOTICE.txt` |
+| 898 | `assets\models\models.manifest.json` |
+| **1,117,320,736** | **`assets\models\qwen2.5-1.5b-instruct-q4_k_m.gguf`** |
+| 3,103 | `assets\vulndb\cis_map.json` |
+| 6,704 | `assets\vulndb\vulndb.json` |
+| 142 | `assets\vulndb\vulndb.manifest.json` |
+| 599,504 | `libomp140.aarch64.dll` |
+| 83 | `update-trust.json` |
+
+Installed gguf sha256 `6a1a2eb6…9407e` = the pin compiled into
+`llama.rs` and the pin in `models.manifest.json`.
+
+### Security properties: ZERO differing fields vs the §10 baseline
+
+- `sc qc`: TYPE 10, START_TYPE 2 AUTO_START (DELAYED), ERROR_CONTROL 1 NORMAL,
+  BINARY_PATH_NAME the installed service, SERVICE_START_NAME LocalSystem;
+  `sc query` STATE 4 RUNNING.
+- `sc qsidtype`: UNRESTRICTED.
+- pipe SDDL: `O:S-1-5-80-4285065559-…-1187574229G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-…)`
+  — identical to §10.
+- `icacls`: `NT SERVICE\AetherCoreMaintenance:(OI)(CI)(RX)`,
+  `BUILTIN\Users:(OI)(CI)(RX)`, `BUILTIN\Administrators:(OI)(CI)(F)`,
+  `NT AUTHORITY\SYSTEM:(OI)(CI)(F)`. Users still RX with no write.
+- ARP: exactly one entry `{2D97C23D-D2A1-83FE-3675-90F95D55540B}` 0.1.2;
+  `HKLM\SOFTWARE\AetherCore\InstallVersion = 0.1.2`.
+- `libomp140.aarch64.dll` present; no `ipc_probe*` anywhere.
+
+### Every verb returns, from the INSTALLED aetherctl, under both token contexts
+
+`verbs-outer.ps1 -Label S1` ran nine verbs as `p36standarduser`
+(IS_ELEVATED_ADMIN=False) and as `p36admin` (True) via one-shot Scheduled Tasks.
+**18/18 RETURNED.** Both transcripts record
+`CTL_PATH=C:\Program Files\AetherCore\aetherctl.exe` and
+`CTL_SHA256=b8a29c92…4350d8`, which is the payload hash from the build manifest —
+so the binary exercised is the one the MSI installed, not a leftover.
+
+The three decisive outputs:
+
+1. **`insights list` → `{"engineLabel":"localModel", …}`**
+   This is the direct proof the model landed. `engine_label()` returns
+   `localModel` only when `EMBEDDED_ENGINE_ACTIVE` was set by a successful
+   `verify_model_hash` + `load` at service start. Before this change the
+   artifact was not installed at all, so every installed instance reported
+   `ruleFallback`.
+2. **`self-check`** → `manifestValid true`,
+   `modelsDir C:\Program Files\AetherCore\assets\models`, artifact
+   `1117320736` bytes, `sha256Match true`.
+   (`loaded:false` is CORRECT and not a failure: `aetherctl`'s
+   `embedded-model` feature is off by default and `--load-model` was not passed,
+   so the probe reports the honest not-available answer.)
+3. **`sec audit --profile cis-l1`** produced a scored `aethercore.compliance.v1`
+   report on a machine that is not the build machine — the
+   `env!("CARGO_MANIFEST_DIR")` path could never have resolved there.
+
+### The vulndb fix, proven from a foreign working directory
+
+```
+CWD=C:\Windows\Temp
+CWD_HAS_ASSETS_VULNDB=False
+LANE=cve       STATUS={"count":0,"kind":"ok"}
+LANE=firewall  STATUS={"count":1,"kind":"ok"}
+```
+`kind:"ok"` means `vulndb::load_verified` opened and hash-verified the DB. With
+the old CWD-relative resolution this lane could only have been
+`NotAvailable(vulndbIntegrity: …db file missing…)`.
+
+### Findings recorded during this gate, NOT fixed here
+
+- **`aetherctl --help` and `-h` are unknown commands.** They print
+  `cli.usage.unknownCommand` to stderr and exit non-zero, then dump usage. Only
+  the bare word `help` is a real verb. This is a Stage 3 (S3) defect; measured,
+  not assumed.
+- **`platform_tag()` returns `"other"` on Windows.**
+  `crates/security-audit/src/lib.rs:110` tests only macos and linux, so every
+  compliance report generated on the product's PRIMARY platform carries
+  `host_fingerprint = "other:<digest>"`. Recorded for S4; not touched here
+  because it changes the digest of every previously issued report.
+- **`verbs-inner.ps1` records `EXIT_CODE=` (empty).**
+  `Start-Process -PassThru` + `WaitForExit(ms)` does not populate `ExitCode` on
+  this PowerShell. `RESULT=RETURNED` and the captured stdout are unaffected and
+  are what the gate asserts. Harness gap; fix before S3 needs exit codes.
