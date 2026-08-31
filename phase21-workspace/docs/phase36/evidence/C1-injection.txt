@@ -1,0 +1,36 @@
+=== C1: install interrupted mid-transaction ===
+CAPTURED_UTC=2026-08-31T00:04:46.2841945Z
+--- step 1: uninstall v2 to reach a bare box ---
+UNINSTALL_EXIT=0
+INSTALLFOLDER_CONTENTS=aetherctl.exe
+SERVICE_BEFORE=[SC] EnumQueryServicesStatus:OpenService FAILED 1060:  The specified service does not exist as an installed service. 
+--- step 2: start install, kill msiexec at first sight of file copy ---
+TRIGGER_AT_MS=1901
+MSIEXEC_PIDS_KILLED=11676
+KILLED=True
+MSIEXEC_STILL_RUNNING=0
+--- step 3: survey ---
+INSTALLFOLDER_EXISTS=True
+INSTALLFOLDER_CONTENTS=aethercore-consent-broker.exe:586240,aethercore-desktop.exe:6349824,aethercore-install-hardener.exe:246784,aethercore-maintenance-service.exe:9810944,aethercore-update-broker.exe:672768,aetherctl.exe:3611136,libomp140.aarch64.dll:599504,update-trust.json:83
+SERVICE_QUERY= SERVICE_NAME: AetherCoreMaintenance          TYPE               : 10  WIN32_OWN_PROCESS           STATE              : 4  RUNNING                                  (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)         WIN32_EXIT_CODE    : 0  (0x0)         SERVICE_EXIT_CODE  : 0  (0x0)         CHECKPOINT         : 0x0         WAIT_HINT          : 0x0
+SERVICE_REGKEY=True
+PIPE_COUNT=1
+ARP={FC8A3841-759D-B452-1864-161F84F56C03} 0.1.0
+HKLM_AETHERCORE=True
+WINDOWS_INSTALLER_FILES=206
+WINDOWS_INSTALLER_INPROGRESS=
+ROLLBACK_SCRIPTS_KEY=False
+EXPLORER_RUNNING=1
+--- installer log tail ---
+LOG: MSI (s) (9C:3C) [03:04:50:378]: User policy value 'DisableRollback' is 0
+LOG: MSI (s) (9C:3C) [03:04:50:378]: Machine policy value 'DisableRollback' is 0
+LOG: MSI (s) (9C:3C) [03:04:50:378]: Incrementing counter to disable shutdown. Counter after increment: 0
+LOG: MSI (s) (9C:3C) [03:04:50:378]: Note: 1: 1402 2: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Installer\Rollback\Scripts 3: 2 
+LOG: MSI (s) (9C:3C) [03:04:50:378]: Note: 1: 2265 2:  3: -2147287035 
+LOG: MSI (s) (9C:3C) [03:04:50:378]: Note: 1: 1402 2: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Installer\Rollback\Scripts 3: 2 
+LOG: MSI (s) (9C:3C) [03:04:50:378]: Decrementing counter to disable shutdown. If counter >= 0, shutdown will be denied.  Counter after decrement: -1
+LOG: MSI (c) (0C:F0) [03:04:50:378]: Decrementing counter to disable shutdown. If counter >= 0, shutdown will be denied.  Counter after decrement: -1
+LOG: MSI (c) (0C:F0) [03:04:50:378]: MainEngineThread is returning 0
+LOG: === Verbose logging stopped: 8/31/2026  3:04:50 ===
+LOG: 
+LOG: 

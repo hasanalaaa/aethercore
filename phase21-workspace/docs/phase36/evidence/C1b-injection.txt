@@ -1,0 +1,45 @@
+=== C1 attempt 2: kill msiexec during the DEFERRED file copy ===
+CAPTURED_UTC=2026-08-31T00:06:15.6501618Z
+--- reach a bare box ---
+UNINSTALL_EXIT=0
+INSTALLFOLDER_BEFORE=aetherctl.exe
+SERVICE_BEFORE=[SC] EnumQueryServicesStatus:OpenService FAILED 1060: The specified service does not exist as an installed service. 
+--- start install; trigger on the deferred FileCopy op ---
+TRIGGER_AT_MS=323
+FILECOPY_OPS_SEEN=2 LAST=wlnmgdsb.exe|aethercore-desktop.exe
+MSIEXEC_PIDS=7796,8920
+KILLED_PID=7796
+KILLED_PID=8920
+KILLED=True
+MSIEXEC_STILL_RUNNING=0
+--- survey ---
+INSTALLFOLDER_EXISTS=True
+INSTALLFOLDER_CONTENTS=aethercore-consent-broker.exe:586240,aethercore-desktop.exe:6349824,aethercore-install-hardener.exe:246784,aethercore-maintenance-service.exe:9810944,aetherctl.exe:3611136
+SERVICE_QUERY=[SC] EnumQueryServicesStatus:OpenService FAILED 1060: The specified service does not exist as an installed service. 
+SERVICE_REGKEY=False
+PIPE_COUNT=0
+ARP=
+HKLM_AETHERCORE=False
+WINDOWS_INSTALLER_FILES=208
+WINDOWS_INSTALLER_TMP=MSICD74.tmp
+INPROGRESS_KEY=False
+ROLLBACK_SCRIPTS=
+EXPLORER_RUNNING=1
+MSI_STILL_USABLE_probe=-1
+--- log tail ---
+LOG: MSI (s) (74:28) [03:06:18:144]: Source for file 'ConsentBrokerExe' is compressed
+LOG: MSI (s) (74:28) [03:06:18:153]: Executing op: FileCopy(SourceName=wlnmgdsb.exe|aethercore-desktop.exe,SourceCabKey=DesktopExe,DestName=aethercore-desktop.exe,Attributes=512,FileSize=6349824,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,Version=0.1.0.0,Language=0,InstallMode=58982400,,,,,,,)
+LOG: MSI (s) (74:28) [03:06:18:153]: File: C:\Program Files\AetherCore\aethercore-desktop.exe;	To be installed;	Won't patch;	No existing file
+LOG: MSI (s) (74:28) [03:06:18:153]: Source for file 'DesktopExe' is compressed
+LOG: MSI (s) (74:28) [03:06:18:195]: Executing op: FileCopy(SourceName=c9kgt_rh.exe|aethercore-install-hardener.exe,SourceCabKey=InstallHardenerExe,DestName=aethercore-install-hardener.exe,Attributes=512,FileSize=246784,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=58982400,HashOptions=0,HashPart1=636970131,HashPart2=-1122701582,HashPart3=1709628429,HashPart4=-72598774,,)
+LOG: MSI (s) (74:28) [03:06:18:195]: File: C:\Program Files\AetherCore\aethercore-install-hardener.exe;	To be installed;	Won't patch;	No existing file
+LOG: MSI (s) (74:28) [03:06:18:195]: Source for file 'InstallHardenerExe' is compressed
+LOG: MSI (s) (74:28) [03:06:18:197]: Executing op: FileCopy(SourceName=osrlhbgm.exe|aethercore-maintenance-service.exe,SourceCabKey=MaintenanceServiceExe,DestName=aethercore-maintenance-service.exe,Attributes=512,FileSize=9810944,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=58982400,HashOptions=0,HashPart1=1157405490,HashPart2=426772110,HashPart3=703522257,HashPart4=1399045295,,)
+LOG: MSI (s) (74:28) [03:06:18:197]: File: C:\Program Files\AetherCore\aethercore-maintenance-service.exe;	To be installed;	Won't patch;	No existing file
+LOG: MSI (s) (74:28) [03:06:18:197]: Source for file 'MaintenanceServiceExe' is compressed
+LOG: MSI (c) (D8:58) [03:06:18:207]: Decrementing counter to disable shutdown. If counter >= 0, shutdown will be denied.  Counter after decrement: -1
+LOG: MSI (c) (D8:58) [03:06:18:207]: MainEngineThread is returning 1601
+LOG: === Verbose logging stopped: 8/31/2026  3:06:18 ===
+LOG: 
+LOG: 
+ROLLBACK_MENTIONED=0
