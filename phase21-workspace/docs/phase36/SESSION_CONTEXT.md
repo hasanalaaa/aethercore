@@ -1431,3 +1431,27 @@ session 0, with no interactive desktop session and no GUI.
 - **`platform` is `"other"` on Windows** — second sighting, see §16.4. It
   appears in the `sec audit` JSON and in every compliance report's
   `host_fingerprint`.
+
+## 16.8 DESTRUCTIVE ACTION RECORD — S2 RE-GATE after the Gate S4 finding
+
+```
+ACTION=    (a) build 0.1.6 carrying the fixed aetherctl (fleet state under
+               %ProgramData%\AetherCore, schedule round-trip repaired)
+           (b) DELETE the stale survivor left by the superseded build:
+               C:\WINDOWS\system32\config\systemprofile\AppData\Roaming\aethercore
+               (585 + 256 + 0 bytes; fleet inventory, schedules, empty
+               known_hosts). It is orphaned state from a version that no longer
+               exists and there is no installed product that reads it.
+           (c) install 0.1.6, create fleet state, confirm it lands under
+               %ProgramData%\AetherCore
+           (d) uninstall, then re-run the HARDENED sweep (which now also walks
+               the SYSTEM, SysWOW64, LocalService and NetworkService profiles)
+           (e) reinstall so the VM is left with a working product
+SNAPSHOT=  P37-PRE-STAGE1 {e94d539e-8046-443b-871c-9d6711c34fd2}
+EXPECTED=  (c) C:\ProgramData\AetherCore\fleet\ holds inventory.json,
+           schedules.json and trust\known_hosts, and
+           %APPDATA%\aethercore does NOT reappear.
+           (d) uninstall exit 0 and the hardened sweep reports ZERO hits under
+           every profile root, not just under C:\Users.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id {e94d539e-8046-443b-871c-9d6711c34fd2}
+```
