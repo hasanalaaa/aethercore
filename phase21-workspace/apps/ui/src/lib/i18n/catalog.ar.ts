@@ -214,7 +214,7 @@ export const arCatalog = {
   'cap.reason.windowsServerNoThermalPower': 'تحسين الطاقة والحرارة غير منطبق على الخوادم.',
   'cap.reason.windowsServerNoGameMode': 'وضع الألعاب خاص بعميل Windows.',
   'cap.reason.windowsServerNoRestorePoints': 'استعادة النظام غير متاحة على Windows Server.',
-  'cap.note.windowsServerWsusPolicy': 'نتائج Windows Update تتبع سياسة WSUS على الجهاز.',
+  'cap.note.windowsServerWsusPolicy': 'نتائج تحديث Windows تتبع سياسة WSUS على الجهاز.',
   'cap.note.windowsServerCoreNoConsole': 'لا توجد جلسة وحدة تحكم تفاعلية للجدولة وقت الخمول.',
 
   'state.Idle': 'خامل',

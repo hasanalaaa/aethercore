@@ -1806,6 +1806,82 @@ checks["sigma_adversarial_integrity_regression"] = {
     ])
 }
 
+# --- Phase 38: single-source-of-truth gates -------------------------------
+# Both defects closed in Phase 38 were the same class: a value that is supposed
+# to be ONE truth was derived independently in several places and the copies
+# disagreed. These two checks make a second derivation fail the gate on any
+# host, including the ones where the Rust regression test is not discriminating.
+
+def _version_single_source() -> None:
+    problems: list[str] = []
+    cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
+    m = re.search(r"(?ms)\[workspace\.package\].*?version\s*=\s*\"([0-9]+\.[0-9]+\.[0-9]+)\"", cargo)
+    if not m:
+        problems.append("Cargo.toml has no [workspace.package] version")
+    canonical = m.group(1) if m else None
+
+    # No other manifest may declare a product version of its own.
+    tauri = json.loads((ROOT / "apps/desktop/tauri.conf.json").read_text(encoding="utf-8"))
+    if "version" in tauri:
+        problems.append(
+            "apps/desktop/tauri.conf.json declares its own version; remove the field so "
+            "tauri inherits the Cargo.toml version"
+        )
+    for pkg in ("package.json", "apps/ui/package.json"):
+        data = json.loads((ROOT / pkg).read_text(encoding="utf-8"))
+        if "version" in data:
+            problems.append(f"{pkg} declares its own version; it is private and must not")
+
+    # Build scripts must derive, never hard-code.
+    arm64 = (ROOT / "scripts/build-arm64-msi.cmd").read_text(encoding="utf-8")
+    if 'set "VERSION=0.1' in arm64:
+        problems.append("scripts/build-arm64-msi.cmd hard-codes a version literal")
+    if "Cargo.toml" not in arm64:
+        problems.append("scripts/build-arm64-msi.cmd does not derive its version from Cargo.toml")
+    for ps in ("scripts/build-release.ps1", "scripts/build-installer.ps1", "scripts/build-cli-archive.ps1"):
+        body = (ROOT / ps).read_text(encoding="utf-8")
+        if "Get-ProductVersion.ps1" not in body:
+            problems.append(f"{ps} does not derive its version from Get-ProductVersion.ps1")
+    if not (ROOT / "scripts/Get-ProductVersion.ps1").exists():
+        problems.append("scripts/Get-ProductVersion.ps1 is missing")
+
+    checks["version_single_source_of_truth"] = {
+        "ok": not problems,
+        "canonical_version": canonical,
+        "problems": problems,
+    }
+
+
+def _platform_identity_single_source() -> None:
+    problems: list[str] = []
+    helper = "aethercore_platform_capabilities::current_platform_name"
+    # Every surface that emits a platform LABEL must route through the one helper.
+    label_sites = {
+        "crates/security-audit/src/lib.rs": "platform_tag",
+        "apps/aetherctl/src/offline.rs": "platform_str",
+    }
+    for rel, fn in label_sites.items():
+        body = (ROOT / rel).read_text(encoding="utf-8")
+        m = re.search(rf"fn {fn}\(\) -> &'static str \{{(.*?)\n\}}", body, re.S)
+        if not m:
+            problems.append(f"{rel}: {fn}() not found in the expected shape")
+        elif helper not in m.group(1):
+            problems.append(
+                f"{rel}: {fn}() does not delegate to {helper}; a second platform "
+                f"derivation has been reintroduced"
+            )
+    # The literal that the old ladder produced must not come back as a platform label.
+    audit = (ROOT / "crates/security-audit/src/lib.rs").read_text(encoding="utf-8")
+    if re.search(r'cfg!\(target_os = "macos"\)[^}]*?"other"', audit, re.S):
+        problems.append(
+            'crates/security-audit/src/lib.rs: a cfg! ladder falling back to "other" is back'
+        )
+    checks["platform_identity_single_source"] = {"ok": not problems, "problems": problems}
+
+
+_version_single_source()
+_platform_identity_single_source()
+
 all_ok = all(bool(value.get("ok")) for value in checks.values())
 report = {
     "phase": "0-16",

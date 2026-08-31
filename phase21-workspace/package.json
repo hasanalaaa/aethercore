@@ -1,7 +1,6 @@
 {
   "name": "aethercore-workspace",
   "private": true,
-  "version": "0.1.0",
   "packageManager": "pnpm@11.22.0",
   "scripts": {
     "bootstrap": "powershell -ExecutionPolicy Bypass -File ./scripts/bootstrap.ps1",
