@@ -10,7 +10,7 @@
       Compressed="yes"
       DisableModify="no"
       DisableRemove="no"
-      Condition="VersionNT64 AND NTProductType = 1 AND WindowsBuildNumber &gt;= 22621">
+      Condition="VersionNT64 AND ((NTProductType = 1 AND WindowsBuildNumber &gt;= 22621) OR (NTProductType = 3 AND WindowsBuildNumber &gt;= 26100))">
 
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication
@@ -22,6 +22,7 @@
 
     <Variable Name="WebView2MachineVersion" Type="string" Value="" />
     <Variable Name="WebView2UserVersion" Type="string" Value="" />
+    <Variable Name="WindowsInstallationType" Type="string" Value="" />
 
     <!-- Microsoft documents pv > 0.0.0.0 in either location as the presence test. -->
     <util:RegistrySearch
@@ -30,6 +31,13 @@
         Root="HKLM"
         Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
         Value="pv"
+        Result="value" />
+    <util:RegistrySearch
+        Id="WindowsInstallationTypeSearch"
+        Variable="WindowsInstallationType"
+        Root="HKLM"
+        Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+        Value="InstallationType"
         Result="value" />
     <util:RegistrySearch
         Id="WebView2UserSearch"
@@ -48,6 +56,7 @@
           PerMachine="yes"
           Permanent="yes"
           Vital="yes"
+          InstallCondition="NOT (WindowsInstallationType ~= &quot;Server Core&quot;)"
           DetectCondition="((NOT (WebView2MachineVersion = &quot;&quot;)) AND NOT (WebView2MachineVersion = &quot;0.0.0.0&quot;)) OR ((NOT (WebView2UserVersion = &quot;&quot;)) AND NOT (WebView2UserVersion = &quot;0.0.0.0&quot;))" />
       <MsiPackage Id="AetherCoreMsi" SourceFile="$(var.MsiPath)" Vital="yes" Visible="no" />
     </Chain>
