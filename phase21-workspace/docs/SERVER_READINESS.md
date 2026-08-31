@@ -5,6 +5,30 @@ the reason it could not be established. Measurements were taken on the Phase 36
 qualification VM: Parallels Windows 11 Pro ARM64, build **26200**, **4 logical
 CPUs, 9,657,057,280 B RAM**, with AetherCore 0.1.5/0.1.6 installed from the MSI.
 
+## Windows Server implementation update (feat/windows-server)
+
+The pre-change measurements below remain the historical baseline. The live
+source now admits Windows 11 clients (build 22621+) and Windows Server 2025+
+member servers (build 26100+) in both `installer/wix/Product.wxs` and
+`installer/wix/Bundle.wxs`; domain controllers and older Server builds remain
+refused. `WINDOWSINSTALLATIONTYPE=Server Core` levels out the desktop feature
+and Start Menu component in the MSI, and Burn skips the WebView2 prerequisite.
+
+The SKU-aware matrix in `crates/platform-capabilities` classifies the documented
+`ProductType`/`InstallationType` registry values and reports `windowsServer` or
+`windowsServerCore`. On Server, thermal/power, Game Mode and restore points are
+`NotAvailable`; Windows Update/WUA is `Degraded` with a WSUS-policy note; DISM,
+SFC, PnP/driver inventory, local intelligence and service/CLI operation remain
+available. Server Core additionally reports autonomous idle scheduling as
+degraded because `crates/idle-scheduler/src/windows_state.rs:106-110` requires an
+active console session. `crates/security-audit/src/lib.rs` uses the same label,
+so Windows compliance reports no longer claim the platform is `other`.
+
+These are hermetic/source-level changes only. No Windows Server SKU is present
+in this environment, so installation, WSUS, PnP, restore-point and Server Core
+runtime qualification remain open; execute the checklist in
+`docs/WINDOWS_SERVER_SUPPORT.md` on a disposable Server 2025 Evaluation VM.
+
 ---
 
 ## 4a. What breaks on Windows Server, versus Windows 11 client

@@ -31,9 +31,17 @@
                       Type="raw"
                       Bitness="always64" />
     </Property>
+    <Property Id="WINDOWSINSTALLATIONTYPE" Value="">
+      <RegistrySearch Id="WindowsInstallationType"
+                      Root="HKLM"
+                      Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="InstallationType"
+                      Type="raw"
+                      Bitness="always64" />
+    </Property>
     <Launch
-        Condition="VersionNT64 AND MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621"
-        Message="AetherCore requires Windows 11 build 22621 or newer." />
+        Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 26100))"
+        Message="AetherCore requires Windows 11 build 22621+ or Windows Server 2025+ (64-bit)." />
 
     <!-- Direct MSI installs are supported for managed environments, but the consumer bundle is
          preferred because it also guarantees the Evergreen WebView2 prerequisite. Do not author
@@ -258,7 +266,11 @@
     </InstallExecuteSequence>
 
     <Feature Id="Complete" Title="AetherCore" Level="1">
-      <ComponentRef Id="DesktopComponent" />
+      <Feature Id="Desktop" Title="AetherCore desktop" Level="1">
+        <Condition Level="0">WINDOWSINSTALLATIONTYPE ~= &quot;Server Core&quot;</Condition>
+        <ComponentRef Id="DesktopComponent" />
+        <ComponentRef Id="ProgramMenuComponent" />
+      </Feature>
       <ComponentRef Id="BrokerComponent" />
       <ComponentRef Id="UpdateBrokerComponent" />
       <ComponentRef Id="UpdateTrustComponent" />
@@ -270,7 +282,6 @@
       <ComponentRef Id="ModelLicenseComponent" />
       <ComponentRef Id="VulnDbComponent" />
       <ComponentRef Id="ProgramDataComponent" />
-      <ComponentRef Id="ProgramMenuComponent" />
     </Feature>
   </Package>
 </Wix>

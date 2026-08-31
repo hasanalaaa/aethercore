@@ -65,7 +65,7 @@ pub struct LaneReport {
 #[serde(rename_all = "camelCase")]
 pub struct SecurityAuditReport {
     pub schema_version: u32,
-    /// Host platform tag ("macos"/"linux"/"other").
+    /// Host platform/SKU tag (for example "windowsServerCore").
     pub platform: String,
     pub lanes: Vec<LaneReport>,
     /// Deterministic SHA-256 over sorted findings (see model::report_digest).
@@ -108,13 +108,7 @@ pub fn validate_targets(targets: &[model::AuditTarget]) -> Result<(), String> {
 }
 
 fn platform_tag() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else {
-        "other"
-    }
+    aethercore_platform_capabilities::current_platform_name()
 }
 
 /// Runs every requested lane. Unknown/None targets ⇒ empty request is an error

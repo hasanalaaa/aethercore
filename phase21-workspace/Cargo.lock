@@ -465,6 +465,7 @@ name = "aethercore-platform-capabilities"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -506,6 +507,7 @@ name = "aethercore-security-audit"
 version = "0.1.0"
 dependencies = [
  "aethercore-persistence",
+ "aethercore-platform-capabilities",
  "regex",
  "serde",
  "serde_json",
