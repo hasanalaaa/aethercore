@@ -2308,3 +2308,59 @@ is the binary the MSI placed, and is the same file staged for the client gate.
 |---|---|---|
 | 0.1.7 | `{5DE146C7-DF44-4F60-7D38-552B4FC48736}` | proves the version single source of truth end to end |
 | **0.1.8** | `{92E437E7-2C87-3C15-0A72-FF63C739EBE6}` | **the current package**: adds the Windows SKU detection fix |
+
+## 17.16 GATE — 18-VERB CLIENT GATE ON 0.1.8: **PASS**
+
+Run because step 3 changed how the payload is produced (the build script no
+longer takes a version) and because the build exposed the SKU defect — both of
+the brief's stated triggers. It also exercises this session's `verbs-inner.ps1`
+fix on the real gate rather than on a synthetic probe.
+
+`verbs-outer.ps1 -Label P38FINAL`, both actual-token contexts via the proven
+one-shot Scheduled Task method.
+
+| | STD | ADMIN |
+|---|---|---|
+| `IS_ELEVATED_ADMIN` | **False** | **True** |
+| verbs run | 9 | 9 |
+| `RESULT=RETURNED` | **9** | **9** |
+| TIMED_OUT / LAUNCH_FAILED | 0 / 0 | 0 / 0 |
+| `EXIT_CODE` populated | **9** | **9** |
+| `EXIT_CODE` empty | **0** | **0** |
+
+**18/18 RETURNED.** Both transcripts record
+`CTL_SHA256=f70e820f90f2bb2b569002d9a220b0955d5ff3c6c5ad88e2ccacd522406f6acf`,
+which is the binary this MSI installed — so the gate exercised the shipped
+payload, not a leftover.
+
+`insights list` reports **`"engineLabel":"localModel"` in BOTH contexts**: the
+1.07 GB embedded model loaded and verified at service start.
+
+### The harness fix, proven on the real gate
+
+Every prior transcript in this project recorded `EXIT_CODE=` (empty) — §16.4
+recorded it as a harness gap and §16.7 noted the gate "asserts RETURNED, not
+what was returned". This run records an exit code for all 18, and the numbers
+are informative rather than uniform:
+
+```
+servicedetect   0        helpflag      0        selfcheck     0
+doctor          5        help          0        insightslist  0
+optimizestatus  0        scanstatus    0        secaudit      0
+```
+
+`doctor` exiting **5** is a **PASS**, not a failure, and it is the documented
+outcome — the Phase 36 A5 action record states verbatim that "doctor returning
+`diagnostics.stateUnavailable` is a PASS". The transcript confirms exactly that,
+as a typed refusal in 30 ms:
+
+```
+aetherctl: rejected by service (diagnostics.stateUnavailable):
+           diagnostic state is unavailable [RejectedByService]
+```
+
+This is the first run in the project's history where that exit code could be
+seen at all. `selfcheck` returning **0** here (against the 8 recorded in §16.7)
+is also correct and is the difference the fix makes visible: §16.7's 8 was a
+CLI-only archive install with no model, whereas this is the full product with
+the model present.
