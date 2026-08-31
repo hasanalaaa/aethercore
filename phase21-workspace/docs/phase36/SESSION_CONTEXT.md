@@ -2364,3 +2364,75 @@ seen at all. `selfcheck` returning **0** here (against the 8 recorded in §16.7)
 is also correct and is the difference the fix makes visible: §16.7's 8 was a
 CLI-only archive install with no model, whereas this is the full product with
 the model present.
+
+## 17.17 HANDOFF — READ THIS FIRST IF YOU ARE THE NEXT SESSION
+
+### What state `main` is in
+
+`main` is at the Phase 38 tip, everything pushed, working tree clean. It
+contains the two merged branches plus this session's fixes. The workspace
+version is **0.1.8** and that number now comes from exactly one place.
+
+The VM has **0.1.8 installed and running**: service RUNNING, 16 files,
+`engineLabel: localModel`, 18/18 verbs, ACLs and pipe DACL identical to the §10
+baseline. Recovery point for Phase 38 is
+**P38-PRE-0.1.7-INSTALL `{a226b395-81b7-4887-90e2-6f132e6551a3}`**;
+P37-SHIPPING-QUALIFIED `{a1696567-…}` is still there as the older fallback.
+The Phase 36 forbidden snapshots are long deleted and are not a concern.
+
+### What is proven, and how
+
+| claim | proof |
+|---|---|
+| The product version has one source | `[workspace.package].version`; MSI ProductVersion, ARP, HKLM InstallVersion, Cargo.toml and installed `aetherctl about` all read 0.1.8; a disagreeing build argument is a hard error; `static_validate::version_single_source_of_truth` |
+| Platform identity has one derivation | four label sites route through `current_platform_name()`; `static_validate::platform_identity_single_source`; installed `about` reports `windows` |
+| The package is sound | 0.1.7 and 0.1.8 both built exit 0 with **zero `ICE\d+`** and `wix msi validate` exit 0; ProductCodes match the deterministic scheme, recomputed independently |
+| Nothing regressed | `static_validate` vs a pre-merge worktree at `2942aa0`: **NEWLY FAILING: NONE** |
+| The offline guarantee still bites | injecting `reqwest` into the maintenance service flips `phase15_http_authority_is_desktop_only` to False |
+| Security posture unchanged | pipe SDDL, install-dir icacls, service config and Service SID all identical to §10 on both installs; the six previously-denied operations were re-verified denied on the merged desktop-qualification branch |
+
+### The one thing a reader should not misread
+
+Windows Server admission is **merged and packaged, but has never been executed
+against a Windows Server machine.** Every Server claim in
+`docs/SERVER_READINESS.md` is derived from the built package's
+`LaunchCondition` table and from source. This session made that gap *worse* to
+ignore, not better: the SKU detection that Server admission depends on was
+returning `Unknown` on every Windows host until §17.12 fixed it, and that fix
+has been verified on a **workstation only**. The Server and Server Core
+branches of `classify_windows_sku` are still unexercised on real hardware.
+
+### What to do next, in priority order
+
+1. **Owner-gated, blocks release** — real icon artwork (DBT-P36-004) and the
+   security review of the maintenance-service un-gating (DBT-P36-005).
+2. **Hardware-gated** — a Windows Server 2019/2022/2025 box. It would close
+   item 20 in §17.10 and validate the SKU detection fix on the SKUs it was
+   written for. This is the single highest-value missing piece.
+3. **Agent-closable, listed in §17.10 C** — the `tauri.conf.json`
+   `beforeBuildCommand` path defect (#11), which is expected to break the x64
+   release pipeline, and the `vamus` runbook note (#12).
+4. **Recorded, needs a decision** — §17.10 D, especially the `census()` Windows
+   lane mislabelled `MacosPkgutil` (#18) and the `ProgramData` resolution
+   inconsistency in §17.7, which needs Gate S2 re-run if changed.
+5. **Do not chase** — §17.10 F. Those are inherent Windows Installer behaviours,
+   already recorded with their reasons.
+
+### Traps this session hit, so you do not
+
+- `\\Mac\...` UNC paths **collapse to `\Mac\...`** when passed through
+  zsh -> `prlctl exec` -> `powershell -Command`. Put paths inside a staged
+  `.ps1` and invoke with `-File "\\\\Mac\\dev\\..."`. `cmd.exe /c` cannot take a
+  UNC working directory at all.
+- In a `.cmd`, `echo EXIT=%ERRORLEVEL%>"file"` is parsed as a **stdin
+  redirect** when ERRORLEVEL is a digit, and silently writes nothing. Use
+  `>"file" echo EXIT=%ERRORLEVEL%`. Two status files in this session were empty
+  for exactly this reason.
+- `Start-Process -PassThru` + `WaitForExit(ms)` never populates `ExitCode` on
+  PowerShell 5.1. Cache `$p.Handle` before the process exits. A parameterless
+  `WaitForExit()` does **not** fix it — that was tested and disproven.
+- A wall-clock test budget (`intelligence-core` T5, 10 s) fails when the host is
+  also compressing a 1.1 GB CAB. It passes in 1.04 s alone. Do not run the
+  workspace suite against a busy host and then believe the result.
+- The full MSI build is ~12 minutes and the 1.07 GB model's CAB compression
+  dominates it; `wixnative` shows no output for most of that. It is not hung.
