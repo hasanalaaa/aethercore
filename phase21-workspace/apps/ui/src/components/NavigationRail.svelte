@@ -56,6 +56,7 @@
             type="button"
             use:fluidPress={{ pressedScale: 0.992 }}
             data-nav-item
+            data-page={item.id}
             class="app-nav-item"
             class:active={activePage === item.id}
             aria-current={activePage === item.id ? 'page' : undefined}
