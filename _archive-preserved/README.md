@@ -19,9 +19,17 @@ satisfied neither test were copied here first.
 `d1911445e3cb2bf887b3e618ee3ecfbcf3344acf`) appeared at two paths inside the
 Phase 35 archive — `release/phase35/` and
 `PHASE_35_BINARY_SAFE_PATCH/BINARY_ARTIFACTS/release/phase35/` — with identical
-content. It differs from the untracked copy on disk at
-`phase21-workspace/release/phase35/` and was in no git object, so it is the one
-genuinely unique artifact the Phase 35 archive carried.
+content. It was in no git object at the time, so it is the one genuinely unique
+artifact the Phase 35 archive carried.
+
+**Correction (2026-08-31, later the same day).** An earlier version of this file
+said the blob "differs from the untracked copy on disk at
+`phase21-workspace/release/phase35/`". That was wrong — both are blob
+`d1911445e3cb2bf887b3e618ee3ecfbcf3344acf`, verified by `git hash-object` on the
+materialised on-disk file. The earlier comparison read the on-disk path via
+`git rev-parse HEAD:<path>`, which returns nothing for a gitignored file, and
+that empty result was misread as a difference. The preservation itself was still
+correct and necessary: the blob was in no git object until it was committed here.
 
 ## NOT deleted, and why
 

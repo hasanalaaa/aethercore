@@ -7,6 +7,8 @@
 *.db-shm
 *.db-wal
 *.log
+# Phase evidence logs are sealed records, not build noise. Never let *.log eat them.
+!docs/phase*/evidence/*.log
 .DS_Store
 .vscode/
 .idea/

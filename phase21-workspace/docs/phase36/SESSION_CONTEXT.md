@@ -848,3 +848,87 @@ SHA-256 `6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e`
 (pinned in `assets/models/models.manifest.json`, fail-closed loader). Its
 materialisation out of iCloud is tracked separately; the desktop build cannot
 run without it.
+
+---
+
+# 15. GITIGNORED-BUT-REQUIRED AUDIT (2026-08-31)
+
+The relocation in section 14 was done by `git clone`. That is complete for
+tracked content and **silently drops everything `.gitignore` excludes.** Two
+files that the product needs were not in git and would have been lost with the
+old directory. This section is the full audit so it cannot happen again.
+
+## 15.1 The embedded model — RECOVERED
+
+`assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf` is excluded by `*.gguf`. It is
+**not in git and not on the remote.** Without it,
+`EMBEDDED_MODEL_RELATIVE_PATH` (`crates/intelligence-core/src/llama.rs:47`) does
+not resolve and the fail-closed loader refuses to start — the local intelligence
+core, the core of the product, does not run.
+
+Recovery, each step measured:
+
+| step | result |
+|---|---|
+| materialise from iCloud (`dd if=... of=/dev/null bs=1m`) | **1,117,320,736 bytes in 753.5 s (1.48 MB/s)**, flags went `compressed,dataless` -> `-`, blocks 0 -> 2,182,272 |
+| SHA-256 of the materialised source | `6a1a2eb6…9407e` |
+| pinned in `llama.rs:54` | `6a1a2eb6…9407e` — **MATCH** |
+| pinned in `assets/models/models.manifest.json` | `6a1a2eb6…9407e` — **MATCH** |
+| copy to `~/dev/aethercore/…` (same relative path) | exit 0 in **0.374 s** (local->local) |
+| SHA-256 after the copy | `6a1a2eb6…9407e` — **MATCH**, size 1,117,320,736 |
+
+**Why `brctl download` and two `cp` attempts appeared to fail.** They did not.
+macOS materialises a dataless file into the page cache and only publishes the
+allocated blocks at completion, so `stat -f %b` reads **0 for the entire
+download** and then jumps to the full size. Polling block count is not a
+progress indicator. `dd` with a byte counter is. Do not kill a materialisation
+because block count is not moving — the first two attempts were killed for
+exactly that wrong reason and wasted ~35 minutes.
+
+## 15.2 Gate A2 evidence log — RECOVERED, and the rule that ate it is fixed
+
+`docs/phase36/evidence/A2-build.log` (62,257 B) is cited in the Gate A2 row of
+the progress table. `phase21-workspace/.gitignore` had a bare `*.log`, so it was
+**the only one of the 34 files in `docs/phase36/evidence/` that was not
+tracked** — 33 of 34 were. It was dataless and not in git in any form.
+
+Materialised, copied, verified byte-identical
+(`337f42dbba8a6996…`), and the ignore rule was given a negation so this class
+cannot recur:
+
+```
+*.log
+# Phase evidence logs are sealed records, not build noise. Never let *.log eat them.
+!docs/phase*/evidence/*.log
+```
+
+## 15.3 Full sweep — every ignore rule, and whether anything it excludes is needed
+
+| rule | excludes | needed to build or run? |
+|---|---|---|
+| `*.gguf` | the embedded model | **YES — §15.1. Recovered.** |
+| `*.log` | `docs/phase36/evidence/A2-build.log` | **YES (as evidence) — §15.2. Recovered, rule fixed.** |
+| `target/`, `/target/` | cargo output | no — it is the output |
+| `node_modules/`, `/apps/ui/node_modules/` | pnpm tree | no — `pnpm install --frozen-lockfile` rebuilds it in 495 ms |
+| `dist/`, `/apps/ui/dist/` | vite output | no — `pnpm build` rebuilds it in 884 ms |
+| `*.zip` | delivery archives; `release/phase35/…offline.zip`; `PHASE_35_…/BINARY_ARTIFACTS/…offline.zip` | not a build input. The release zip's blob is `d1911445…`, already in git via `_archive-preserved/`. Restored to its natural path anyway. |
+| `**/BINARY_ARTIFACTS/` | 7 Phase 35 signed release files | no — all 7 blobs verified present in the object DB (`eb1cd21e`, `faacc9b6`, `17f8dc17`, `f69f440f`, `de65c2f5`, `823bb0d5`, `d1911445`) |
+| `*.db`, `*.db-shm`, `*.db-wal` | `phase21-workspace/state/aethercore.db*` and two `C:\ProgramData\…` trees | no — runtime state written by a service run on 2026-08-24. `git grep "state/aethercore.db"` over `*.rs *.toml *.ps1 *.py` returns nothing: no fixture, no build or test dependency. |
+| `_archive/`, `_graphify/` | historical archives, derived index | no |
+| `.DS_Store`, `.vscode/`, `.idea/`, `__pycache__/`, `*.pyc` | editor/OS/python noise | no |
+| `/.devdata/`, `/out/` | not present on disk | n/a |
+
+**Result: exactly two required files were outside git. Both are recovered and
+verified. Nothing else the product needs is excluded.**
+
+## 15.4 Standing rule
+
+`git clone` is not a backup of this project. Anything matched by `.gitignore`
+must be carried separately and verified by hash. Before removing any working
+copy, run:
+
+```
+git ls-files --others --ignored --exclude-standard
+```
+
+and justify every entry.
