@@ -65,7 +65,7 @@ New-Item -ItemType Directory -Force (Split-Path $bundle -Parent) | Out-Null
 $productCode = Deterministic-ProductCode "AetherCore/$Version/x64"
 
 if (-not $BundleOnly) {
-    & dotnet tool run wix build installer\wix\Product.wxs -arch x64 -ext WixToolset.Util.wixext -o $msi `
+    & dotnet tool run wix build installer\wix\Product.wxs -arch x64 -o $msi `
         -d "PayloadDir=$Payload" -d "AssetsDir=$assets" -d "ProductVersion=$Version" -d "ProductCode=$productCode"
     if ($LASTEXITCODE -ne 0) { throw 'AetherCore MSI build failed.' }
     & dotnet tool run wix msi validate $msi

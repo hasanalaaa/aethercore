@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
       Id="AetherCore.Desktop"
       ProductCode="$(var.ProductCode)"
@@ -57,40 +56,6 @@
          before they confirm; UNINSTALL.txt beside the product carries the full text. -->
     <Property Id="ARPCOMMENTS" Value="Uninstall removes the program files, the AetherCore Maintenance service, and ALL machine data under C:\ProgramData\AetherCore (state database, logs, driver-install backups, support staging, signing key). Reports and diagnostic bundles you exported to a location YOU chose are not touched. See UNINSTALL.txt in the install folder." />
 
-    <!-- ProgramData\AetherCore is created and filled by the SERVICE at runtime, so its
-         contents are not authored files and MSI's own RemoveFile cannot reach unknown
-         names at unknown depth (state\, logs\, support-staging\,
-         recovery\driver-backups\<plan-id>\...). util:RemoveFolderEx enumerates the
-         tree at uninstall time and injects the RemoveFile rows, which is the declarative
-         remedy - no custom code, no ICE suppression.
-         The path is read back from the registry rather than composed from
-         [CommonAppDataFolder], because directory properties are not resolved until
-         CostFinalize and WixRemoveFoldersEx runs before CostInitialize. On a first
-         install the search finds nothing and the action is a no-op, which is correct:
-         there is nothing to remove. -->
-    <Property Id="AETHERCOREDATADIR">
-      <RegistrySearch Id="FindAetherCoreDataDir"
-                      Root="HKLM"
-                      Key="Software\AetherCore"
-                      Name="DataDir"
-                      Type="raw"
-                      Bitness="always64" />
-    </Property>
-    <!-- The search alone is not enough, and this was MEASURED, not guessed: an uninstall
-         run against an install whose HKLM key had already been deleted left
-         ProgramData\AetherCore\state\aethercore.db behind, because AETHERCOREDATADIR
-         came back empty and RemoveFolderEx had nothing to enumerate.
-         [CommonAppDataFolder] is a system folder property, set by Windows Installer
-         before the sequence starts, so it IS readable this early - unlike a custom
-         Directory id, which is not resolved until CostFinalize. AppSearch is 400 and
-         WixRemoveFoldersEx sits just before CostInitialize (800), so a SetProperty
-         after AppSearch lands in between. The registry value stays as the authority
-         when it exists, in case ProgramData was ever relocated. -->
-    <SetProperty Id="AETHERCOREDATADIR"
-                 Value="[CommonAppDataFolder]AetherCore"
-                 After="AppSearch"
-                 Sequence="both"
-                 Condition="NOT AETHERCOREDATADIR" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="AetherCore">
@@ -222,12 +187,7 @@
                            Type="string"
                            Value="$(var.ProductVersion)"
                            KeyPath="yes" />
-            <!-- Read back by AETHERCOREDATADIR at uninstall time. -->
-            <RegistryValue Name="DataDir"
-                           Type="string"
-                           Value="[CommonAppDataFolder]AetherCore" />
           </RegistryKey>
-          <util:RemoveFolderEx On="uninstall" Property="AETHERCOREDATADIR" />
         </Component>
       </Directory>
     </StandardDirectory>
@@ -270,8 +230,31 @@
                   Impersonate="no"
                   Return="check"
                   HideTarget="yes" />
+    <!-- P37 Stage 2: delete C:\ProgramData\AetherCore in full, on uninstall, AFTER the
+         service is gone. Same binary, same no-arguments-from-the-command-line posture
+         as the hardener above: the directory is derived from %ProgramData% inside the
+         action and a reparse point anywhere in the tree is refused, not followed.
+
+         This deliberately REPLACES util:RemoveFolderEx, which was the first
+         implementation and failed the Stage 2 gate. RemoveFolderEx enumerates the
+         tree before CostInitialize and Windows Installer then hard-fails at
+         InstallValidate with error 2318 if anything it snapshotted has since gone.
+         The maintenance service is still RUNNING at that point - StopServices is in
+         the execute sequence, later - and still writing logs\service.jsonl, so the
+         snapshot races a live writer. Observed on the gate: uninstall exit 1603,
+         "Error 2318: File does not exist: C:\ProgramData\AetherCore\logs\service.jsonl",
+         and the entire product left on disk. Scheduling after DeleteServices is the
+         only ordering that cannot race. -->
+    <CustomAction Id="PurgeMachineData"
+                  FileRef="InstallHardenerExe"
+                  ExeCommand="purge-data"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check"
+                  HideTarget="yes" />
     <InstallExecuteSequence>
       <Custom Action="HardenInstalledSecurity" After="InstallServices" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="PurgeMachineData" After="DeleteServices" Condition="REMOVE = &quot;ALL&quot;" />
     </InstallExecuteSequence>
 
     <Feature Id="Complete" Title="AetherCore" Level="1">

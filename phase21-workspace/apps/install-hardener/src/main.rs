@@ -25,8 +25,57 @@ fn main() -> anyhow::Result<()> {
     let _exe = args.next();
     match (args.next(), args.next()) {
         (Some(mode), None) if mode == OsStr::new("apply") => apply(),
-        _ => anyhow::bail!("usage: aethercore-install-hardener.exe apply"),
+        (Some(mode), None) if mode == OsStr::new("purge-data") => purge_data(),
+        _ => anyhow::bail!("usage: aethercore-install-hardener.exe apply|purge-data"),
     }
+}
+
+#[cfg(windows)]
+/// Deletes `%ProgramData%\AetherCore` in full, on uninstall, AFTER the service is gone.
+///
+/// WHY THIS IS NOT `util:RemoveFolderEx`. That was the first implementation and it
+/// failed a gate. RemoveFolderEx enumerates the tree and injects RemoveFile rows
+/// before CostInitialize, and Windows Installer then hard-fails at InstallValidate
+/// with error 2318 if any file it snapshotted has since disappeared. The maintenance
+/// service is still RUNNING at that point in an uninstall — StopServices does not run
+/// until the execute sequence — and it is still writing `logs\service.jsonl`. So the
+/// snapshot is taken against a live writer, and the uninstall becomes a race it can
+/// lose. Observed: exit 1603, `Error 2318: File does not exist:
+/// C:\ProgramData\AetherCore\logs\service.jsonl`, with the whole product left behind.
+///
+/// Deleting after DeleteServices is the only ordering that cannot race. It is
+/// idempotent by construction: an absent directory is success, not an error.
+///
+/// Like `apply`, this takes NO path from its command line. The directory is derived
+/// from %ProgramData% through the same trusted-path helpers, and a reparse point
+/// anywhere in the tree is refused rather than followed — a low-privilege junction
+/// planted under here must never turn an uninstall into a recursive delete somewhere
+/// else.
+fn purge_data() -> anyhow::Result<()> {
+    let program_data = std::env::var_os("ProgramData")
+        .ok_or_else(|| anyhow::anyhow!("ProgramData is not defined"))?;
+    let data_dir = trusted_child(PathBuf::from(program_data), "AetherCore")?;
+    if !data_dir.exists() {
+        return Ok(());
+    }
+    reject_reparse_tree(&data_dir)?;
+    // One retry: the service has just been deleted and a handle can still be closing.
+    for attempt in 0..2 {
+        match std::fs::remove_dir_all(&data_dir) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                if attempt == 1 {
+                    return Err(anyhow::anyhow!(
+                        "could not remove {}: {error}",
+                        data_dir.display()
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
