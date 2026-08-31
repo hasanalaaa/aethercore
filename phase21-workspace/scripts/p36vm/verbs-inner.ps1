@@ -29,6 +29,16 @@ function Run-Verb([string]$label, [string[]]$argv) {
     try {
         $p = Start-Process -FilePath $ctl -ArgumentList $argv -PassThru -NoNewWindow `
              -RedirectStandardOutput $so -RedirectStandardError $se
+        # Cache the process handle BEFORE the process exits, or ExitCode is never
+        # populated and every transcript records `EXIT_CODE=` (empty) -- the harness
+        # gap recorded in SESSION_CONTEXT §16.4. Windows PowerShell 5.1's
+        # Start-Process -PassThru hands back a Process object that has not opened a
+        # handle; once the process has exited the kernel object is gone and the exit
+        # code is unrecoverable. Touching .Handle here opens and caches it.
+        # Measured on the VM (PSVersion 5.1.26100.9168) against known exit codes
+        # 0/3/8: without this line all three read back empty, with it all three read
+        # back correctly. Adding a parameterless WaitForExit() alone does NOT fix it.
+        $null = $p.Handle
         $done = $p.WaitForExit(15000)
         $sw.Stop()
         if ($done) { "RESULT=RETURNED" | Add-Content $out; ("EXIT_CODE=" + $p.ExitCode) | Add-Content $out }

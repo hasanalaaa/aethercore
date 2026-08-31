@@ -508,6 +508,33 @@ mod tests {
 
     static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 
+    /// An exit-0 program that stands in for `ssh`.
+    ///
+    /// Closes DBT-P36-003. `/usr/bin/true` does not exist on Windows, and the
+    /// P36 note pointed the Windows branch at
+    /// `C:\AetherCore-P36\incoming\ssh-true.cmd` -- a file that exists only on
+    /// the qualification VM, so the test could not pass on any other Windows
+    /// host. The ledger's remedy was "create the stub in the test"; this does
+    /// that. The scope was also wider than recorded: four sibling tests used
+    /// `/usr/bin/true` unconditionally and so could not pass on Windows at all.
+    /// All five now route through here.
+    ///
+    /// `@exit 0` accepts arbitrary arguments and exits 0, matching
+    /// `/usr/bin/true`.
+    fn ssh_true_stub() -> std::path::PathBuf {
+        if !cfg!(windows) {
+            return std::path::PathBuf::from("/usr/bin/true");
+        }
+        let dir = std::env::temp_dir()
+            .join(format!("aethercore-ssh-stub-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stub = dir.join("ssh-true.cmd");
+        if !stub.exists() {
+            std::fs::write(&stub, b"@exit 0\r\n").unwrap();
+        }
+        stub
+    }
+
     fn trust_fixture() -> (FleetHost, TrustStore, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!(
             "aethercore-transport-proof-{}-{}",
@@ -548,16 +575,9 @@ mod tests {
         let (host, store, dir) = trust_fixture();
         let spawns = std::sync::Arc::new(AtomicUsize::new(0));
         let seen = std::sync::Arc::clone(&spawns);
-        // P36 (Hermes): the ssh-binary stub must be a real exit-0 program on the
-        // current host; /usr/bin/true only exists on unix. A 0-byte batch stub
-        // (@exit 0) accepts arbitrary args and exits 0, matching /usr/bin/true.
-        let ssh_stub = Path::new(if cfg!(windows) {
-            r"C:\AetherCore-P36\incoming\ssh-true.cmd"
-        } else {
-            "/usr/bin/true"
-        });
+        let ssh_stub = ssh_true_stub();
         let transport = TrustedSshTransport::new(store, Duration::from_secs(2))
-            .with_ssh_binary(ssh_stub)
+            .with_ssh_binary(&ssh_stub)
             .with_spawn_hook(move |argv| {
                 seen.fetch_add(1, Ordering::SeqCst);
                 assert!(argv.iter().any(|arg| arg == "StrictHostKeyChecking=yes"));
@@ -594,7 +614,7 @@ mod tests {
         let spawns = std::sync::Arc::new(AtomicUsize::new(0));
         let seen = std::sync::Arc::clone(&spawns);
         let transport = TrustedSshTransport::new(store, Duration::from_secs(2))
-            .with_ssh_binary(Path::new("/usr/bin/true"))
+            .with_ssh_binary(&ssh_true_stub())
             .with_spawn_hook(move |_| {
                 seen.fetch_add(1, Ordering::SeqCst);
             });
@@ -626,7 +646,7 @@ mod tests {
         let spawns = std::sync::Arc::new(AtomicUsize::new(0));
         let seen = std::sync::Arc::clone(&spawns);
         let transport = TrustedSshTransport::new(store, Duration::from_secs(2))
-            .with_ssh_binary(Path::new("/usr/bin/true"))
+            .with_ssh_binary(&ssh_true_stub())
             .with_spawn_hook(move |_| {
                 seen.fetch_add(1, Ordering::SeqCst);
             });
@@ -665,7 +685,7 @@ mod tests {
         let spawns = std::sync::Arc::new(AtomicUsize::new(0));
         let seen = std::sync::Arc::clone(&spawns);
         let transport = TrustedSshTransport::new(store, Duration::from_secs(2))
-            .with_ssh_binary(Path::new("/usr/bin/true"))
+            .with_ssh_binary(&ssh_true_stub())
             .with_spawn_hook(move |_| {
                 seen.fetch_add(1, Ordering::SeqCst);
             });
@@ -690,7 +710,7 @@ mod tests {
         let spawns = std::sync::Arc::new(AtomicUsize::new(0));
         let seen = std::sync::Arc::clone(&spawns);
         let transport = TrustedSshTransport::new(store, Duration::from_secs(2))
-            .with_ssh_binary(Path::new("/usr/bin/true"))
+            .with_ssh_binary(&ssh_true_stub())
             .with_spawn_hook(move |_| {
                 seen.fetch_add(1, Ordering::SeqCst);
             });
