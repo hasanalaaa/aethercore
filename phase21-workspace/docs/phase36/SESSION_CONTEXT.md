@@ -488,6 +488,40 @@ Injection packages built (zero machine mutation, no ACL/SID/pipe edit):
 - `AetherCore-0.9.2-arm64.msi` ProductCode `{4944D099-6844-678B-B98B-77B34955CD8A}`
 - `AetherCore-0.9.4-arm64.msi` ProductCode `{C2FB7D6F-7B7F-315C-E5D0-24FE6C901809}`
 
+## 15. INTERACTIVE DESKTOP QUALIFICATION (2026-08-31)
+
+Configuration change carried into this gate: `Add-LocalGroupMember -Group Users -Member P36StandardUser`.
+Immediately before planning, `qwinsta` measured `P36StandardUser` in session 6
+(`Disc`) and `hasanalaaa` in session 7 (`Active`). `tscon 6 /dest:console`
+reconnected the existing session without credentials; subsequent `qwinsta`
+showed session 6 `P36StandardUser Active` and session 7 disconnected.
+
+The prior standard-user denials were re-run after the Users-group change using a
+Limited, Interactive scheduled task. All remain denied: service-exe write,
+update-trust.json write, create-file in INSTALLFOLDER, mutation-lock write,
+`sc stop AetherCoreMaintenance`, and `sc config AetherCoreMaintenance` (all
+file operations Win32 access denied / 0x5; SCM operations exit 5).
+Raw transcript: `~/dev/p36-stage/out/denials-reverified.txt`.
+
+Desktop qualification evidence: an Interactive/ Limited scheduled task launched
+`C:\Program Files\AetherCore\aethercore-desktop.exe` in session 6; process was
+responsive under `HASANALAAA3A44\P36StandardUser`. Screenshots are retained at
+`~/dev/p36-stage/out/desktop-launch.png` (shell Overview) and
+`~/dev/p36-stage/out/desktop-deepscan.png` (surface capture). Verb transcript
+`~/dev/p36-stage/out/verbs-desktop-STD.txt` proves service verbs returned,
+`diagnostics.stateUnavailable` was typed for doctor, and JSON insights reported
+`engineLabel":"localModel"`.
+
+Token proof: `~/dev/p36-stage/out/token-probe.txt` records
+`IsInRole(Administrator)=False`, BUILTIN\\Users membership, and Medium Mandatory
+Level (S-1-16-8192), establishing a genuine non-elevated standard-user token.
+
+UAC consent behavior was not exercised because the remaining step requires a
+human-operated elevation request at the console. Any future UAC finding must
+carry the caveat that this VM has non-default `PromptOnSecureDesktop=0`; do not
+change that setting. No credentials were entered, requested, generated, or
+handled by the operator.
+
 ---
 
 # PHASE 37 — SHIPPING READINESS SESSION (started 2026-08-31)
