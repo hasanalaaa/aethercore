@@ -72,6 +72,8 @@ $trustSource = if ($UpdateTrustPath) { (Resolve-Path $UpdateTrustPath).Path } el
 & "$PSScriptRoot\validate-update-trust.ps1" -Path $trustSource -RequireEnabled:$RequireSigning
 if ($LASTEXITCODE -ne 0) { throw 'Update trust validation failed.' }
 Copy-Item $trustSource (Join-Path $Payload 'update-trust.json') -Force
+# P37 Stage 2: the plain-language uninstall statement, installed beside the product.
+Copy-Item (Join-Path $Root 'release\UNINSTALL.txt') (Join-Path $Payload 'UNINSTALL.txt') -Force
 
 & "$PSScriptRoot\verify-pe-hardening.ps1" -Path (Get-ChildItem $Payload -Filter '*.exe' | Select-Object -ExpandProperty FullName)
 if ($LASTEXITCODE -ne 0) { throw 'PE hardening verification failed.' }

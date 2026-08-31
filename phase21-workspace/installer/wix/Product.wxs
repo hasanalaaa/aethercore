@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package
       Id="AetherCore.Desktop"
       ProductCode="$(var.ProductCode)"
@@ -50,6 +51,31 @@
          it as an ordinary .lnk at install time, so behavior remains a plain shortcut
          ("find target" still works). No ICE suppression is used. -->
     <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
+
+    <!-- P37 Stage 2: uninstall leaves NOTHING behind. The statement below is what the
+         OS uninstall UI (Settings > Apps, and Programs and Features) shows the user
+         before they confirm; UNINSTALL.txt beside the product carries the full text. -->
+    <Property Id="ARPCOMMENTS" Value="Uninstall removes the program files, the AetherCore Maintenance service, and ALL machine data under C:\ProgramData\AetherCore (state database, logs, driver-install backups, support staging, signing key). Reports and diagnostic bundles you exported to a location YOU chose are not touched. See UNINSTALL.txt in the install folder." />
+
+    <!-- ProgramData\AetherCore is created and filled by the SERVICE at runtime, so its
+         contents are not authored files and MSI's own RemoveFile cannot reach unknown
+         names at unknown depth (state\, logs\, support-staging\,
+         recovery\driver-backups\<plan-id>\...). util:RemoveFolderEx enumerates the
+         tree at uninstall time and injects the RemoveFile rows, which is the declarative
+         remedy - no custom code, no ICE suppression.
+         The path is read back from the registry rather than composed from
+         [CommonAppDataFolder], because directory properties are not resolved until
+         CostFinalize and WixRemoveFoldersEx runs before CostInitialize. On a first
+         install the search finds nothing and the action is a no-op, which is correct:
+         there is nothing to remove. -->
+    <Property Id="AETHERCOREDATADIR">
+      <RegistrySearch Id="FindAetherCoreDataDir"
+                      Root="HKLM"
+                      Key="Software\AetherCore"
+                      Name="DataDir"
+                      Type="raw"
+                      Bitness="always64" />
+    </Property>
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="AetherCore">
@@ -116,6 +142,13 @@
              files on disk and the CLI was simply absent; the earlier clean-reinstall
              gate only passed because a leftover copy was already there. It is now a
              first-class component: installed, repaired and removed with the product. -->
+        <!-- P37 Stage 2: the plain-language statement of what uninstall removes and what
+             it keeps. ARPCOMMENTS carries the summary into the OS uninstall UI; this is
+             the full text, readable before the user uninstalls. -->
+        <Component Id="UninstallNoticeComponent" Guid="{2BDDC66A-D021-450F-9A27-53F0C063D1EA}" Bitness="always64">
+          <File Id="UninstallNoticeTxt" Source="$(var.PayloadDir)\UNINSTALL.txt" KeyPath="yes" Name="UNINSTALL.txt" />
+        </Component>
+
         <Component Id="AetherCtlComponent" Guid="{D842C7E7-DD4A-433F-88E6-6B7E812DC4C1}" Bitness="always64">
           <File Id="AetherCtlExe" Source="$(var.PayloadDir)\aetherctl.exe" KeyPath="yes" />
         </Component>
@@ -167,12 +200,19 @@
           <CreateFolder Directory="ProgramDataRoot" />
           <CreateFolder Directory="ProgramDataState" />
           <CreateFolder Directory="ProgramDataLogs" />
-          <RegistryValue Root="HKLM"
-                         Key="Software\AetherCore"
-                         Name="InstallVersion"
-                         Type="string"
-                         Value="$(var.ProductVersion)"
-                         KeyPath="yes" />
+          <!-- ForceDeleteOnUninstall: without it the Software\AetherCore key itself
+               survives as an empty shell once its values are removed. -->
+          <RegistryKey Root="HKLM" Key="Software\AetherCore" ForceDeleteOnUninstall="yes">
+            <RegistryValue Name="InstallVersion"
+                           Type="string"
+                           Value="$(var.ProductVersion)"
+                           KeyPath="yes" />
+            <!-- Read back by AETHERCOREDATADIR at uninstall time. -->
+            <RegistryValue Name="DataDir"
+                           Type="string"
+                           Value="[CommonAppDataFolder]AetherCore" />
+          </RegistryKey>
+          <util:RemoveFolderEx On="uninstall" Property="AETHERCOREDATADIR" />
         </Component>
       </Directory>
     </StandardDirectory>
@@ -189,12 +229,16 @@
              per-user-profile directory (the ICE57 mixing class). -->
         <Component Id="ProgramMenuComponent" Guid="{89E168CE-E5CD-45DA-97C8-20452172818C}">
           <RemoveFolder Id="RemoveAetherCoreProgramMenu" On="uninstall" />
-          <RegistryValue Root="HKCU"
-                         Key="Software\AetherCore"
-                         Name="ProgramMenu"
-                         Type="integer"
-                         Value="1"
-                         KeyPath="yes" />
+          <!-- P37 Stage 2: ForceDeleteOnUninstall so the HKCU marker key goes too, not
+               just its value. This only ever reaches the hive of the user who ran the
+               install (see UNINSTALL.txt) - Windows Installer cannot enumerate other
+               users' hives, and doing so would be worse behaviour, not better. -->
+          <RegistryKey Root="HKCU" Key="Software\AetherCore" ForceDeleteOnUninstall="yes">
+            <RegistryValue Name="ProgramMenu"
+                           Type="integer"
+                           Value="1"
+                           KeyPath="yes" />
+          </RegistryKey>
         </Component>
       </Directory>
     </StandardDirectory>
@@ -223,6 +267,7 @@
       <ComponentRef Id="HardenerComponent" />
       <ComponentRef Id="ServiceComponent" />
       <ComponentRef Id="AetherCtlComponent" />
+      <ComponentRef Id="UninstallNoticeComponent" />
       <ComponentRef Id="ModelComponent" />
       <ComponentRef Id="ModelLicenseComponent" />
       <ComponentRef Id="VulnDbComponent" />

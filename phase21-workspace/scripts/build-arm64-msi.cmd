@@ -104,6 +104,8 @@ copy /y "C:\AetherCore-P36\toolchain\vs2022\VC\Redist\MSVC\14.44.35112\debug_non
 rem   Update trust ships DISABLED with zero channels. No private key is ever
 rem   installed. Production substitutes a reviewed pinned channel config.
 copy /y "%SRC%\release\update-trust.template.json" "%PAYLOAD%\update-trust.json" >nul || exit /b 1
+rem   P37 Stage 2: the plain-language uninstall statement, installed beside the product.
+copy /y "%SRC%\release\UNINSTALL.txt" "%PAYLOAD%\UNINSTALL.txt" >nul || exit /b 1
 
 rem --- [5] package ----------------------------------------------------------
 rem   ProductCode is a deterministic function of version and architecture,
@@ -120,7 +122,8 @@ call dotnet tool restore || exit /b 1
 rem   AssetsDir is sourced straight from the repo tree rather than copied into the
 rem   payload: the embedded model alone is 1.07 GB and copying it per build buys
 rem   nothing. Product.wxs reads it read-only at package time.
-call dotnet tool run wix build installer\wix\Product.wxs -arch arm64 -o "%MSI%" -d "PayloadDir=%PAYLOAD%" -d "AssetsDir=%SRC%\assets" -d "ProductVersion=%VERSION%" -d "ProductCode=%PRODUCTCODE%" || exit /b 1
+call dotnet tool run wix extension add WixToolset.Util.wixext/6.0.2 || exit /b 1
+call dotnet tool run wix build installer\wix\Product.wxs -arch arm64 -ext WixToolset.Util.wixext -o "%MSI%" -d "PayloadDir=%PAYLOAD%" -d "AssetsDir=%SRC%\assets" -d "ProductVersion=%VERSION%" -d "ProductCode=%PRODUCTCODE%" || exit /b 1
 echo === [6/6] wix msi validate (zero ICE required, no suppression)
 call dotnet tool run wix msi validate "%MSI%" || exit /b 1
 

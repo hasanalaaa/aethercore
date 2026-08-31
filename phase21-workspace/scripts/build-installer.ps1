@@ -23,7 +23,8 @@ $required = @(
     'aethercore-update-broker.exe',
     'aethercore-install-hardener.exe',
     'aetherctl.exe',
-    'update-trust.json'
+    'update-trust.json',
+    'UNINSTALL.txt'
 )
 # P37 Stage 1: the assets tree is packaged straight from the source tree (the embedded
 # model alone is 1.07 GB; copying it into a payload dir per build buys nothing).
@@ -64,7 +65,7 @@ New-Item -ItemType Directory -Force (Split-Path $bundle -Parent) | Out-Null
 $productCode = Deterministic-ProductCode "AetherCore/$Version/x64"
 
 if (-not $BundleOnly) {
-    & dotnet tool run wix build installer\wix\Product.wxs -arch x64 -o $msi `
+    & dotnet tool run wix build installer\wix\Product.wxs -arch x64 -ext WixToolset.Util.wixext -o $msi `
         -d "PayloadDir=$Payload" -d "AssetsDir=$assets" -d "ProductVersion=$Version" -d "ProductCode=$productCode"
     if ($LASTEXITCODE -ne 0) { throw 'AetherCore MSI build failed.' }
     & dotnet tool run wix msi validate $msi
