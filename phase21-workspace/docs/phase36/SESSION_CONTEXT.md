@@ -2221,3 +2221,43 @@ pass/fail totals are therefore NOT reported here; what IS established is that
 exactly one test failed and that it passes in isolation. The per-crate suites
 for everything this session touched were run individually and are reported
 above with their own counts.
+
+## 17.14 GATE — 0.1.8 BUILD (carries the SKU fix): **PASS**
+
+Rebuilt after the Windows SKU fix so the shipped package carries it. Again
+invoked with NO argument; version from Cargo.toml.
+
+| property | value |
+|---|---|
+| MSI | `AetherCore-0.1.8-arm64.msi` |
+| bytes | 1,099,649,024 |
+| ProductCode | `{92E437E7-2C87-3C15-0A72-FF63C739EBE6}` |
+| ICE findings (`ICE\d+` over the whole log) | **0** |
+| `wix msi validate` | ran as step [6/6]; `BUILD OK` followed, and the script is `|| exit /b 1` |
+
+ProductCode again verified INDEPENDENTLY on the Mac against the documented
+scheme for `AetherCore/0.1.8/arm64` -> `{92E437E7-2C87-3C15-0A72-FF63C739EBE6}`,
+equal to what the build emitted. Same UpgradeCode, so 0.1.8 is a true major
+upgrade over 0.1.7.
+
+### DESTRUCTIVE ACTION RECORD — install 0.1.8 over 0.1.7
+
+```
+ACTION=    msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.8-arm64.msi /qn
+           /l*v C:\AetherCore-P36\logs\p38-install8.log
+SNAPSHOT=  P38-PRE-0.1.7-INSTALL {a226b395-81b7-4887-90e2-6f132e6551a3}.
+           No fresher snapshot was taken deliberately: the host is at 97%
+           capacity with 37 GB free and each snapshot costs ~4.6 GB of .mem
+           plus its delta. {a226b395} captures the machine with 0.1.6 installed
+           and is a complete recovery point for this action; the only state it
+           does not hold is the 0.1.7 install, which is itself reproducible
+           from an MSI that is still on disk.
+           Fallback: P37-SHIPPING-QUALIFIED {a1696567-7528-4136-a445-848dccd3d2c1}.
+EXPECTED=  exit 0; exactly ONE ARP entry {92E437E7-...} version 0.1.8; HKLM
+           InstallVersion 0.1.8; SIXTEEN files; service RUNNING LocalSystem
+           AUTO_START(DELAYED); SID UNRESTRICTED; pipe SDDL and install-dir
+           icacls IDENTICAL to the §10 baseline; and the installed
+           `aetherctl about` reporting BOTH version 0.1.8 AND
+           platform "windows" (not "other", not "windowsUnknownSku").
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id {a226b395-81b7-4887-90e2-6f132e6551a3}
+```
