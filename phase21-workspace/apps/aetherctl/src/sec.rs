@@ -47,6 +47,20 @@ pub fn run_offline_audit(targets: &[(String, String)]) -> Result<serde_json::Val
     Ok(report_to_value(&report))
 }
 
+/// CIS baselines ship COMPILED IN, not as files beside the binary.
+///
+/// This used to resolve `env!("CARGO_MANIFEST_DIR")/../../assets/compliance/profiles`,
+/// an absolute path on the machine that BUILT the binary, so `sec audit` could never
+/// find a profile on any other machine. `profile_id` is already constrained to
+/// `cis-l1|cis-l2` by the caller, so there are exactly two possible artifacts;
+/// embedding them removes the resolution problem instead of relocating it.
+fn compliance_profile_bytes(profile_id: &str) -> &'static [u8] {
+    match profile_id {
+        "cis-l2" => include_bytes!("../../../assets/compliance/profiles/cis-l2.json"),
+        _ => include_bytes!("../../../assets/compliance/profiles/cis-l1.json"),
+    }
+}
+
 /// Phase 33 compliance report pipeline: direct, offline, and explicit about signing.
 pub fn run_compliance_audit(
     profile_id: &str,
@@ -78,11 +92,8 @@ pub fn run_compliance_audit(
         detail: Some(detail),
     })?;
     let audit = sec::run_audit(&parsed);
-    let profile_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../assets/compliance/profiles")
-        .join(format!("{profile_id}.json"));
-    let profile =
-        sec::compliance::Profile::load(&profile_path).map_err(|error| CliError::LocalIo {
+    let profile = sec::compliance::Profile::from_bytes(compliance_profile_bytes(profile_id))
+        .map_err(|error| CliError::LocalIo {
             message_key: "sec.complianceProfile".to_string(),
             detail: Some(error.to_string()),
         })?;

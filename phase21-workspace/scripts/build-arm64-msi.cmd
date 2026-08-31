@@ -88,11 +88,14 @@ if errorlevel 1 (popd & exit /b 1)
 popd
 
 rem --- [4] stage the MSI payload --------------------------------------------
-rem   The MSI payload is exactly the seven files authored in
-rem   installer/wix/Product.wxs. aetherctl.exe is built above but is NOT an
-rem   MSI payload file — Product.wxs does not author it. See Stage A notes.
+rem   The MSI payload is the executables + libomp + update-trust.json authored in
+rem   installer/wix/Product.wxs. The assets tree (model, licenses, vulndb) is NOT
+rem   copied here — it is passed to wix as AssetsDir straight from the source tree.
 echo === [4/6] stage payload
-for %%F in (aethercore-desktop.exe aethercore-maintenance-service.exe aethercore-consent-broker.exe aethercore-update-broker.exe aethercore-install-hardener.exe) do (
+rem   P37 Stage 1: aetherctl.exe is now an authored MSI component. It was built in
+rem   step [2] all along; it was simply never staged or authored, so a clean install
+rem   put seven files on disk and the CLI was absent for a real user.
+for %%F in (aethercore-desktop.exe aethercore-maintenance-service.exe aethercore-consent-broker.exe aethercore-update-broker.exe aethercore-install-hardener.exe aetherctl.exe) do (
   copy /y "%SRC%\target\release\%%F" "%PAYLOAD%\%%F" >nul || exit /b 1
 )
 rem   ARM64 OpenMP runtime. The clang-cl build imports libomp140.aarch64.dll;
@@ -114,7 +117,10 @@ for /f "usebackq delims=" %%G in (`powershell -NoProfile -Command "$s=[Security.
 echo ProductCode=%PRODUCTCODE%
 set "MSI=%OUT%\AetherCore-%VERSION%-arm64.msi"
 call dotnet tool restore || exit /b 1
-call dotnet tool run wix build installer\wix\Product.wxs -arch arm64 -o "%MSI%" -d "PayloadDir=%PAYLOAD%" -d "ProductVersion=%VERSION%" -d "ProductCode=%PRODUCTCODE%" || exit /b 1
+rem   AssetsDir is sourced straight from the repo tree rather than copied into the
+rem   payload: the embedded model alone is 1.07 GB and copying it per build buys
+rem   nothing. Product.wxs reads it read-only at package time.
+call dotnet tool run wix build installer\wix\Product.wxs -arch arm64 -o "%MSI%" -d "PayloadDir=%PAYLOAD%" -d "AssetsDir=%SRC%\assets" -d "ProductVersion=%VERSION%" -d "ProductCode=%PRODUCTCODE%" || exit /b 1
 echo === [6/6] wix msi validate (zero ICE required, no suppression)
 call dotnet tool run wix msi validate "%MSI%" || exit /b 1
 

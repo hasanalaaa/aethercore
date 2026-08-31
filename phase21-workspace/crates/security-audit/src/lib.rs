@@ -221,9 +221,23 @@ pub fn run_audit(targets: &[model::AuditTarget]) -> SecurityAuditReport {
 /// CVE join lane: verified local DB × read-only census.
 fn cve_lane() -> (String, LaneReport) {
     // Resolution order: AETHERCORE_VULNDB_DIR (owner-installed DB from
-    // `vulndb update --dest`), then the repo-relative seeded asset.
+    // `vulndb update --dest`), then the seeded asset BESIDE THE EXECUTABLE (this is
+    // where the MSI installs it), then the repo-relative path for in-tree dev runs.
+    //
+    // The exe-relative step is not cosmetic: without it an installed build resolved
+    // `assets/vulndb` against the process CWD, which on a service or a shell in any
+    // other directory is never the install directory, so the CVE lane reported
+    // NotAvailable on every installed machine no matter what the MSI shipped.
     let dir = std::env::var_os("AETHERCORE_VULNDB_DIR")
         .map(std::path::PathBuf::from)
+        .or_else(|| {
+            let beside = std::env::current_exe()
+                .ok()?
+                .parent()?
+                .join("assets")
+                .join("vulndb");
+            beside.join("vulndb.json").is_file().then_some(beside)
+        })
         .unwrap_or_else(|| std::path::PathBuf::from("assets/vulndb"));
     let db_path = dir.join("vulndb.json");
     let manifest_path = dir.join("vulndb.manifest.json");

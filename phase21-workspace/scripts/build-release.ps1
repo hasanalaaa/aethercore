@@ -54,7 +54,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Svelte/TypeScript validation failed.' }
 & pnpm --dir apps/ui build
 if ($LASTEXITCODE -ne 0) { throw 'UI production build failed.' }
 
-& cargo build --locked --release -p aethercore-maintenance-service -p aethercore-consent-broker -p aethercore-update-broker -p aethercore-install-hardener
+& cargo build --locked --release -p aethercore-maintenance-service -p aethercore-consent-broker -p aethercore-update-broker -p aethercore-install-hardener -p aetherctl
 if ($LASTEXITCODE -ne 0) { throw 'Native privileged component build failed.' }
 Push-Location (Join-Path $Root 'apps\desktop')
 try {
@@ -63,7 +63,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Desktop Tauri build failed.' }
 } finally { Pop-Location }
 
-foreach ($name in @('aethercore-desktop.exe','aethercore-maintenance-service.exe','aethercore-consent-broker.exe','aethercore-update-broker.exe','aethercore-install-hardener.exe')) {
+foreach ($name in @('aethercore-desktop.exe','aethercore-maintenance-service.exe','aethercore-consent-broker.exe','aethercore-update-broker.exe','aethercore-install-hardener.exe','aetherctl.exe')) {
     Copy-Item (Join-Path $Root "target\release\$name") (Join-Path $Payload $name) -Force
 }
 

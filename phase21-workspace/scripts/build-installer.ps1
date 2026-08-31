@@ -22,8 +22,15 @@ $required = @(
     'aethercore-consent-broker.exe',
     'aethercore-update-broker.exe',
     'aethercore-install-hardener.exe',
+    'aetherctl.exe',
     'update-trust.json'
 )
+# P37 Stage 1: the assets tree is packaged straight from the source tree (the embedded
+# model alone is 1.07 GB; copying it into a payload dir per build buys nothing).
+$assets = Join-Path $Root 'assets'
+foreach ($rel in @('models\qwen2.5-1.5b-instruct-q4_k_m.gguf','models\models.manifest.json','models\licenses\Apache-2.0.txt','models\licenses\Qwen-GGUF-NOTICE.txt','vulndb\vulndb.json','vulndb\vulndb.manifest.json','vulndb\cis_map.json')) {
+    if (-not (Test-Path (Join-Path $assets $rel))) { throw "Missing installer asset: assets\$rel" }
+}
 foreach ($name in $required) {
     if (-not (Test-Path (Join-Path $Payload $name))) { throw "Missing installer payload: $name" }
 }
@@ -58,7 +65,7 @@ $productCode = Deterministic-ProductCode "AetherCore/$Version/x64"
 
 if (-not $BundleOnly) {
     & dotnet tool run wix build installer\wix\Product.wxs -arch x64 -o $msi `
-        -d "PayloadDir=$Payload" -d "ProductVersion=$Version" -d "ProductCode=$productCode"
+        -d "PayloadDir=$Payload" -d "AssetsDir=$assets" -d "ProductVersion=$Version" -d "ProductCode=$productCode"
     if ($LASTEXITCODE -ne 0) { throw 'AetherCore MSI build failed.' }
     & dotnet tool run wix msi validate $msi
     if ($LASTEXITCODE -ne 0) { throw 'WiX MSI validation failed.' }

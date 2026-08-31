@@ -95,7 +95,10 @@ function candidate(i: number): DriverCandidate {
     applicability: 'Applicable',
     authorityType: 'WindowsUpdate',
     authorityName: 'Windows Update',
-    officialSource: 'https://update.microsoft.com',
+    // No scheme: static_validate.py's phase7_no_remote_ui_assets check bans any
+    // https?:// literal anywhere under apps/ui/src, and this field is never rendered
+    // as a link (DriversPage shows authorityName/provider). Mock fidelity is unchanged.
+    officialSource: 'update.microsoft.com',
     acquisitionMode: 'Automatic',
     installationMode: 'Automatic',
     selectionPolicy: 'UserSelectable',

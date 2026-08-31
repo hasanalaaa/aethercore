@@ -110,6 +110,47 @@
               Remove="uninstall"
               Wait="yes" />
         </Component>
+
+        <!-- P37 Stage 1: aetherctl.exe was BUILT and hand-copied into INSTALLFOLDER but
+             never authored here, so no MSI action owned it. A clean install put seven
+             files on disk and the CLI was simply absent; the earlier clean-reinstall
+             gate only passed because a leftover copy was already there. It is now a
+             first-class component: installed, repaired and removed with the product. -->
+        <Component Id="AetherCtlComponent" Guid="{D842C7E7-DD4A-433F-88E6-6B7E812DC4C1}" Bitness="always64">
+          <File Id="AetherCtlExe" Source="$(var.PayloadDir)\aetherctl.exe" KeyPath="yes" />
+        </Component>
+
+        <Directory Id="AssetsDir" Name="assets">
+          <Directory Id="AssetsModelsDir" Name="models">
+            <Directory Id="AssetsModelLicensesDir" Name="licenses" />
+
+            <!-- P37 Stage 1: the embedded reasoner is the PERMANENT default engine and it
+                 is loaded at RUNTIME from <install dir>\assets\models (composition.rs
+                 resolves product_dir from current_exe; llama.rs joins
+                 EMBEDDED_MODEL_RELATIVE_PATH). The artifact was never authored, so every
+                 installed instance failed verification at start and ran ruleFallback.
+                 The sha256 pin is compiled into the binary, so a wrong file here cannot
+                 weaken the check - it can only fail closed. Licenses ship beside it
+                 because the model is redistributed under Apache-2.0. -->
+            <Component Id="ModelComponent" Guid="{E8FCD98A-44FA-413D-9109-FE731118401B}" Bitness="always64">
+              <File Id="EmbeddedModelGguf" Source="$(var.AssetsDir)\models\qwen2.5-1.5b-instruct-q4_k_m.gguf" KeyPath="yes" />
+              <File Id="ModelsManifestJson" Source="$(var.AssetsDir)\models\models.manifest.json" />
+              <File Id="ModelLicenseApache" Source="$(var.AssetsDir)\models\licenses\Apache-2.0.txt" Directory="AssetsModelLicensesDir" />
+              <File Id="ModelLicenseQwenNotice" Source="$(var.AssetsDir)\models\licenses\Qwen-GGUF-NOTICE.txt" Directory="AssetsModelLicensesDir" />
+            </Component>
+          </Directory>
+
+          <Directory Id="AssetsVulnDbDir" Name="vulndb">
+            <!-- P37 Stage 1: the CVE lane loads a hash-pinned offline vulndb. It was never
+                 authored, so the lane reported NotAvailable on every installed machine.
+                 security-audit now resolves this directory relative to the executable. -->
+            <Component Id="VulnDbComponent" Guid="{F13EEEDD-637F-45EA-B1B8-D8D9F62A19BF}" Bitness="always64">
+              <File Id="VulnDbJson" Source="$(var.AssetsDir)\vulndb\vulndb.json" KeyPath="yes" />
+              <File Id="VulnDbManifestJson" Source="$(var.AssetsDir)\vulndb\vulndb.manifest.json" />
+              <File Id="CisMapJson" Source="$(var.AssetsDir)\vulndb\cis_map.json" />
+            </Component>
+          </Directory>
+        </Directory>
       </Directory>
     </StandardDirectory>
 
@@ -176,6 +217,9 @@
       <ComponentRef Id="UpdateTrustComponent" />
       <ComponentRef Id="HardenerComponent" />
       <ComponentRef Id="ServiceComponent" />
+      <ComponentRef Id="AetherCtlComponent" />
+      <ComponentRef Id="ModelComponent" />
+      <ComponentRef Id="VulnDbComponent" />
       <ComponentRef Id="ProgramDataComponent" />
       <ComponentRef Id="ProgramMenuComponent" />
     </Feature>
