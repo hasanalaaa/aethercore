@@ -484,3 +484,110 @@ RECOVERY=  \\Mac\Home\Documents\p36-stage\b3.cmd  (plain msiexec /i v1, proven
 Injection packages built (zero machine mutation, no ACL/SID/pipe edit):
 - `AetherCore-0.9.2-arm64.msi` ProductCode `{4944D099-6844-678B-B98B-77B34955CD8A}`
 - `AetherCore-0.9.4-arm64.msi` ProductCode `{C2FB7D6F-7B7F-315C-E5D0-24FE6C901809}`
+
+---
+
+# PHASE 37 — SHIPPING READINESS SESSION (started 2026-08-31)
+
+New brief: Stage 0 disk reclamation, Stage 1 MSI authoring defect, Stage 2
+complete uninstall, Stage 3 terminal-first CLI distribution, Stage 4 server
+and fleet capability.
+
+This brief EXPLICITLY AUTHORIZES snapshot deletion (Stage 0), which the Phase
+36 rules forbade. The Phase 36 prohibition is superseded for snapshots only.
+Everything else in section 5 still stands.
+
+## S0 — HOST DISK SURVEY (observed 2026-08-31, before any deletion)
+
+```
+/System/Volumes/Data   926 Gi total   891 Gi used   7.9 Gi free   100%
+```
+
+IMPORTANT MEASUREMENT FACT: this volume is APFS and the project tree is full of
+**clones** (copy-on-write files sharing blocks). `ls -l` apparent size wildly
+overstates disk cost. All sizes below are `du` unique-block figures.
+
+| Consumer | Apparent | Unique blocks | Category |
+|---|---|---|---|
+| `~/Downloads` | — | 275 G | USER DATA — out of scope, not this session's to delete |
+| `~/Library/Application Support/iMobie` | — | 87 G | USER DATA (device backups) — out of scope |
+| `~/Parallels/Windows 11.pvm` | — | 128 G | snapshot chain, see S0.3 |
+| `phase21-workspace/target` | 17 G | 17 G | REBUILDABLE |
+| `~/Library/Caches` | 12 G | 12 G | REBUILDABLE |
+| all 18 delivery `.zip` (root + `_archive`) | 34 G | **12 G** | needs tag proof |
+| `_graphify` | 1.1 G | **40 K** | clone of the model; deleting frees ~nothing |
+| all 3 `*.gguf` copies | 3.2 G | **1.07 G** | APFS clones of ONE file; deleting 2 frees ~0 |
+| `node_modules` (4 dirs) | — | 0 B | already empty/cloned |
+
+### S0.1 — the model "duplicates" are not duplicates on disk
+Three paths hold `qwen2.5-1.5b-instruct-q4_k_m.gguf`, each 1,117,320,736 B,
+inodes 64124843 / 67395891 / 64186585. `du` reports the 2nd and 3rd as **0 B**:
+they are APFS clones sharing every block with the canonical copy. Deleting them
+reclaims essentially nothing. Canonical (the one the build consumes):
+`phase21-workspace/assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf`.
+The other two are kept or removed on tidiness grounds only, not space grounds.
+
+### S0.2 — archive-vs-tag coverage
+Tags present on `origin`: p19 p20 p21 p22 p23 p23.1 p31 p32 p33 p34 p35
+p36-tranche1. **No tag exists for p26, p27, p28, p29, p30.**
+Therefore `AetherCore-Phase26/27/28/29-Master-Delivery.zip` (in `_archive`) and
+`AetherCore-Phase30-Master-Delivery.zip` (root) are NOT represented by a tag and
+are **KEPT** regardless of space pressure.
+Every `PHASE*_FINAL_SHA256.txt` is kept unconditionally (105 B each).
+
+### S0.3 — Parallels snapshot chain (linear, oldest first)
+
+| # | Name | ID | Disk delta | .mem | Age |
+|---|---|---|---|---|---|
+| 1 | P36-CLEAN-BASELINE | `{6b721a10}` | 44.47 GB | 3.78 GB | 08-28 23:26 |
+| 2 | P36-PRE-NATIVE-MUTATION | `{e9434b5f}` | 25.43 GB | 4.39 GB | 08-29 16:08 |
+| 3 | P36-TRANCHE2-BASELINE | `{357848ae}` | 16.44 GB | 3.89 GB | 08-30 23:24 |
+| 4 | P36-MSI-BUILT | `{a2f665b8}` | 13.25 GB | 3.13 GB | 08-31 02:36 |
+| 5 | P36-MSI-ALIGNED | `{7d0696ae}` | 0.49 GB | 3.16 GB | 08-31 02:40 |
+| 6 | P36-PRE-UNINSTALL | `{b92fa0f0}` | 0.70 GB | 3.21 GB | 08-31 02:51 |
+| 7 | P36-POST-UNINSTALL | `{86fc5a29}` | 0.62 GB | 3.35 GB | 08-31 02:54 |
+| 8 | **P36-VM-QUALIFIED** | `{a38386fa}` | 6.15 GB | 4.65 GB | 08-31 03:15 |
+| — | live delta (current run) | `{5fbaabe3}` | 0.64 GB | — | 08-31 03:48 |
+
+**Redundancy statement.** Snapshots 1 and 2 are marked FORBIDDEN-TO-RESTORE by
+the Phase 36 brief: restoring either destroys the working install. A snapshot
+that may never be restored has zero remaining recovery value. Snapshots 3–7 are
+intermediate checkpoints of a qualification run that is now COMPLETE and sealed
+(`STAGE_E_SEAL.md`); every state they capture is superseded by snapshot 8, which
+is the verified end state (install present, service RUNNING, 8/8 verbs, zero
+differing fields vs Gate A). **Snapshots 1–7 are therefore redundant.**
+Snapshot 8 P36-VM-QUALIFIED is the sole recovery point for Stages 1–4 and is
+NEVER deleted.
+
+## S0.4 — DESTRUCTIVE ACTION RECORD: reclaim rebuildable trees
+
+```
+ACTION=    rm -rf "phase21-workspace/target"
+           rm -rf ~/Library/Caches/*
+SNAPSHOT=  none needed — neither path is a unique artifact.
+EXPECTED=  ~29 GB reclaimed. Free space rises from 7.9 GiB to ~37 GiB.
+           `cargo build` can regenerate target/ from the committed source at
+           HEAD; every OS/tool cache regenerates on next use.
+RECOVERY=  rebuild. target/ is derived output of committed source; no evidence
+           file lives under it (all Phase 36 evidence is under
+           phase21-workspace/docs/phase36/ and evidence/, both committed).
+```
+
+## S0.5 — DESTRUCTIVE ACTION RECORD: delete redundant snapshots 1-7
+
+```
+ACTION=    prlctl snapshot-delete "Windows 11" --id <id>  for each of
+           {86fc5a29} {b92fa0f0} {7d0696ae} {a2f665b8} {357848ae}
+           {e9434b5f} {6b721a10}     (leaf-inward order)
+SNAPSHOT=  P36-VM-QUALIFIED {a38386fa-15f9-4f86-a231-5de585ff3cd7} is RETAINED
+           and is the recovery point. It is never an argument to this command.
+EXPECTED=  each call exits 0; `prlctl snapshot-list "Windows 11"` afterwards
+           shows exactly ONE snapshot, {a38386fa}, still marked current.
+           Each delete frees its .mem file outright (3.1-4.4 GB each, ~24 GB
+           total) plus whatever the delta merge collapses.
+RECOVERY=  NONE for snapshots 1-7 — deletion is final and that is the point;
+           they are declared redundant in S0.3 above. Recovery for the VM
+           itself remains `prlctl snapshot-switch "Windows 11" --id {a38386fa}`.
+           Leaf-inward order means P36-VM-QUALIFIED is never the merge target
+           of a failed operation.
+```
