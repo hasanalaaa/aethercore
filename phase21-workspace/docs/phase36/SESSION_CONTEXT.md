@@ -1011,3 +1011,31 @@ before this session started. This session did **not** check out that branch in
 the main tree and did not write into that worktree; it merged the branch by
 reference and verified in `~/dev/aethercore`. The design track can keep working
 on `design/shell-v2`.
+
+## 16.2 DESTRUCTIVE ACTION RECORD — S1: refresh the VM source tree and rebuild
+
+```
+ACTION=    (a) prlctl snapshot "Windows 11" -n P37-PRE-STAGE1
+           (b) overwrite 66 source files in
+               C:\AetherCore-P36\workspace\AetherCore-Phase35-Master-Delivery
+               from \\Mac\dev\aethercore\phase21-workspace (the non-docs delta
+               218e0d8..HEAD: the design merge, the icon set, and the Stage 1
+               MSI authoring + asset-resolution fixes)
+           (c) run scripts\build-arm64-msi.cmd 0.1.2 to produce a NEW MSI whose
+               payload includes aetherctl.exe and whose package authors the
+               assets tree
+SNAPSHOT=  P37-PRE-STAGE1 (taken by step (a) — host now has 90 GiB free, so a
+           fresh restore point is possible again; §13's exhaustion is resolved).
+           Fallback if the snapshot cannot be taken: P36-VM-QUALIFIED
+           {a38386fa-15f9-4f86-a231-5de585ff3cd7}, the Phase 36 seal.
+EXPECTED=  (b) every copied file's SHA-256 in the guest equals the Mac's.
+           (c) build exits 0; wix msi validate exits 0 with ZERO ICE matches;
+               the payload dir contains SIX .exe (was five) plus
+               libomp140.aarch64.dll and update-trust.json; the MSI is roughly
+               1.1 GB larger than the 6.2 MB Phase 36 MSI because the 1.07 GB
+               model is now inside it.
+           Nothing on the machine is installed or uninstalled by this step.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id <P37-PRE-STAGE1 id>
+           The installed product is NOT touched by (b) or (c); the running
+           service keeps its current binaries either way.
+```
