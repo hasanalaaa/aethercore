@@ -1,0 +1,12 @@
+MSI (s) (9C:F0) [02:59:12:944]: PROPERTY CHANGE: Adding WIX_UPGRADE_DETECTED property. Its value is '{FC8A3841-759D-B452-1864-161F84F56C03}'.
+MSI (s) (9C:F0) [02:59:13:004]: Doing action: RemoveExistingProducts
+Action start 2:59:13: RemoveExistingProducts.
+MSI (s) (9C:94) [02:59:13:016]: Command Line: UPGRADINGPRODUCTCODE={84140FFD-5CBC-175D-928D-E493493F5F51} CLIENTPROCESSID=1676 CLIENTUILEVEL=3 REMOVE=ALL 
+MSI (s) (9C:94) [02:59:13:016]: PROPERTY CHANGE: Adding UPGRADINGPRODUCTCODE property. Its value is '{84140FFD-5CBC-175D-928D-E493493F5F51}'.
+MSI (s) (9C:94) [02:59:13:064]: Doing action: RemoveExistingProducts
+MSI (s) (9C:94) [02:59:13:064]: Skipping RemoveExistingProducts action: current configuration is maintenance mode or an uninstall
+Action start 2:59:13: RemoveExistingProducts.
+Action ended 2:59:13: RemoveExistingProducts. Return value 0.
+Property(N): SecureCustomProperties = WIX_DOWNGRADE_DETECTED;WIX_UPGRADE_DETECTED
+Property(N): UPGRADINGPRODUCTCODE = {84140FFD-5CBC-175D-928D-E493493F5F51}
+Action ended 2:59:14: RemoveExistingProducts. Return value 1.

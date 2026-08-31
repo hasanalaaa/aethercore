@@ -133,3 +133,69 @@ Two things to read correctly:
   them (`C:\AetherCore-P36\tools\aetherctl.exe`).
 
 The MSI alone reproduces a working install of everything the MSI authors.
+
+## B4 — Major upgrade 0.1.0 -> 0.1.1 — PASS
+
+Pre-state: the clean v1 install from B3. **No fresh snapshot could be taken** —
+the Parallels host volume is at 100% capacity with 6.8 GiB free and refuses new
+snapshots (see `SESSION_CONTEXT.md` §13). Recovery was instead
+`P36-POST-UNINSTALL {86fc5a29-…}` plus a replay of the already-passing B3 step.
+
+The v2 package: `AetherCore-0.1.1-arm64.msi`, 6,209,536 B, SHA-256
+`ad3df284b4b7e9072df3134a1bf67c4591a18d63a50e5264c0ee2abc029a2620`,
+ProductCode `{84140FFD-5CBC-175D-928D-E493493F5F51}` — exactly the value the
+deterministic scheme predicts for `0.1.1/arm64`, under the unchanged
+UpgradeCode `{45598C77-2C32-5BCE-8510-19C7E51EE3B8}`. Zero ICE. Its payload is
+the same set of binaries; only the package version differs (plus a re-linked
+`aethercore-desktop.exe`, since a Tauri rebuild is not byte-reproducible).
+
+```
+msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.1-arm64.msi /qn /l*v ...
+B4_EXIT=0
+```
+
+### The upgrade path actually ran — it was not a side-by-side install
+
+From the verbose log (`evidence/B4-upgrade-key.txt`):
+
+```
+Doing action: FindRelatedProducts
+PROPERTY CHANGE: Adding WIX_UPGRADE_DETECTED property. Its value is '{FC8A3841-759D-B452-1864-161F84F56C03}'.
+Action ended: FindRelatedProducts. Return value 1.
+Doing action: RemoveExistingProducts
+Command Line: UPGRADINGPRODUCTCODE={84140FFD-5CBC-175D-928D-E493493F5F51} REMOVE=ALL
+```
+
+`FindRelatedProducts` matched the old product by UpgradeCode and
+`RemoveExistingProducts` uninstalled it as part of the same transaction, exactly
+as `<MajorUpgrade Schedule="afterInstallInitialize" />` specifies.
+
+### No mixed-version state
+
+| check | result |
+|---|---|
+| ARP entries for AetherCore | **exactly one**: `{84140FFD-5CBC-175D-928D-E493493F5F51}` AetherCore **0.1.1** |
+| old ProductCode `{FC8A3841-…}` in ARP | **gone** |
+| `HKLM\SOFTWARE\AetherCore\InstallVersion` | `0.1.0` -> **`0.1.1`** — the only field that changed |
+| installed file set | unchanged set; `aethercore-desktop.exe` now carries the v2 payload hash `c351ccf0…`, proving the new files landed |
+| services registered | one, `AetherCoreMaintenance` |
+
+### Security properties survived the upgrade
+
+Compared to the B3 clean-install state, the **only** differing field in the
+entire verification record is `hklm_installversion`. Identical: `sc qc`
+(LocalSystem, AUTO_START DELAYED, correct binary path), `sc query` STATE 4
+RUNNING, `sc qsidtype` UNRESTRICTED, the pipe SDDL byte-for-byte, the
+install-dir `icacls`, `libomp140.aarch64.dll` present, no `ipc_probe`, and
+`C:\ProgramData\AetherCore` intact (5 / state 4 / logs 1 / support-staging 0) —
+so user data survived the upgrade too.
+
+Verbs after upgrade: **8/8 RETURNED**
+(`evidence/verbs-B4-upgrade-{STD,ADMIN}.txt`).
+
+## GATE B — PASS
+
+All four cycles completed with the full verification list. One recorded
+deviation inside the stage (A5's `amus` 1638 refusal, resolved within the
+authorized same-version-reinstall decision) and one environmental blocker (no
+new snapshots possible from B4 onward).

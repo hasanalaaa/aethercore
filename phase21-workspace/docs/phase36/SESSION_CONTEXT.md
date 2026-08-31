@@ -161,7 +161,7 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 | B1 | Repair preserves everything | PASS | `msiexec /f` exit 0; zero differing fields vs A5 state; 8/8 verbs — `STAGE_B_EVIDENCE.md` |
 | B2 | Uninstall: what goes, what survives | PASS | exit 0; service+pipe+ARP+HKLM+StartMenu all gone; ProgramData and unmanaged aetherctl.exe survive by design — `STAGE_B_EVIDENCE.md` |
 | B3 | Clean reinstall on empty box | PASS | plain `msiexec /i` exit 0, zero differing fields vs Gate A, 8/8 verbs; note aetherctl.exe survived B2 rather than being installed |
-| B4 | Upgrade v1 -> v2 | NOT-STARTED | |
+| B4 | Upgrade v1 -> v2 | PASS | RemoveExistingProducts ran; single ARP entry `{84140FFD-…}` 0.1.1; only differing field is InstallVersion; 8/8 verbs |
 | C1 | Install interrupted mid-transaction | NOT-STARTED | |
 | C2 | Service fails to start during install | NOT-STARTED | |
 | C3 | Required file missing/corrupt at start | NOT-STARTED | |
@@ -180,6 +180,8 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 - cmd ~30 — Gate A2, full rebuild launched in VM background.
 - cmd ~50 — Gates A2/A3 PASS, A4 decided. Next: A5 install.
 - cmd ~72 — GATE A PASS. Snapshot P36-MSI-ALIGNED taken. Next: Stage B1 repair.
+- cmd ~100 — B1, B2 PASS; Stage D closed from source + VM probe.
+- cmd ~125 — GATE B PASS (B1-B4). Host disk exhausted; no new snapshots. Next: Stage C.
 
 ## 9. FACTS ESTABLISHED THIS SESSION (do not re-derive)
 

@@ -1,0 +1,58 @@
+=== P36 VERB RUN (context: STD) ===
+CAPTURED_UTC=2026-08-30T23:59:22.0080847Z
+WHOAMI=hasanalaaa3a44\p36standarduser
+IS_ELEVATED_ADMIN=False
+INTEGRITY=
+CTL_PATH=C:\AetherCore-P36\tools\aetherctl.exe
+CTL_SHA256=ba2286f4af718fe9acec60d3f728cf9be719885aa1e1d25b5cd24c7060aac766
+--- VERB servicedetect ---
+RESULT=RETURNED
+EXIT_CODE=
+ELAPSED_MS=22
+STDOUT:
+== service detect ==
+endpointDir                        C:\ProgramData\AetherCore
+messageKey                         cli.detect.reachable
+pid                                -
+state                              Reachable
+
+STDERR:
+--- VERB doctor ---
+RESULT=RETURNED
+EXIT_CODE=
+ELAPSED_MS=17
+STDOUT:
+STDERR:
+aetherctl: rejected by service (diagnostics.stateUnavailable): diagnostic state is unavailable [RejectedByService]
+
+--- VERB optimizestatus ---
+RESULT=RETURNED
+EXIT_CODE=
+ELAPSED_MS=16
+STDOUT:
+== optimize status ==
+status                             -
+
+STDERR:
+--- VERB scanstatus ---
+RESULT=RETURNED
+EXIT_CODE=
+ELAPSED_MS=16
+STDOUT:
+== scan status ==
+appVersion                         0.1.0
+collectorCount                     0
+completedUnixMs                    0
+factsCount                         0
+findingCount                       0
+machineStateFingerprint            
+remediationCandidateCount          0
+ruleEngineVersion                  phase17.1-rules-v2
+scanId                             
+startedUnixMs                      0
+state                              idle
+warningCount                       0
+warnings                           []
+
+STDERR:
+=== END ===
