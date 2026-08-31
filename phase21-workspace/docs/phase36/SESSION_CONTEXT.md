@@ -1670,7 +1670,16 @@ every other instance of those two defect CLASSES and harvest the
 |---|---|---|---|
 | 1 | Merge `feat/desktop-qualification` + `feat/windows-server` into `main` | **PASS** | `e14b843`, `ca1eab5`, both `--no-ff`, zero conflicts, pushed |
 | 2 | `platform_tag()` fixed at source + regression test | **PASS** | `66a0f5b`; test `platform_tag_names_the_host_and_never_falls_back_to_other`; negative control fails with `left: "other"` |
-| 3 | Version single source of truth | **CODE DONE — MSI proof pending** | `66a0f5b`; `[workspace.package].version = 0.1.7` |
+| 3 | Version single source of truth | **PASS** | §17.4, §17.8, §17.11 — 0.1.7 MSI built zero-ICE, installed, `about` == MSI == ARP == Cargo.toml |
+| 4 | Step 4a platform-detection class sweep | **PASS** | §17.7 — one derivation, four label sites, `static_validate::platform_identity_single_source` |
+| 5 | Step 4b version-derivation class sweep | **PASS** | §17.7 — six derived surfaces, zero independent deciders, `static_validate::version_single_source_of_truth` |
+| 6 | Step 4c other single-truth values | **PASS (reported)** | §17.7 — pipe name not a defect; `engine_source` and ProgramData resolution recorded with reasons |
+| 7 | Desktop app did not compile on macOS (icon.png not RGBA) | **FIXED** | §17.6, `4a4b5f0` — isolated as pre-existing, `cargo check -p aethercore-desktop` clean |
+| 8 | Untranslated AR string introduced by the merge | **FIXED** | `4a4b5f0` — bisected to `ca1eab5`, gate `phase12_arabic_windows_update_localized` green |
+| 9 | Windows SKU detection returned Unknown on every Windows host | **FIXED** | §17.12, `2450ffb` — verified on Windows: `platform=windows`, 16/16 native |
+| 10 | Step 5 consolidated recorded-but-not-fixed harvest | **PASS** | §17.10 — 27 items, owner/hardware-gated separated |
+| 11 | DBT-P36-001 / DBT-P36-002 closed | **PASS** | `477a052` — probes deleted, `pub mod probe` removed, ipc 8+8 green |
+| 12 | Step 6 verification | **PASS** | §17.13 — parity 1554/1554, svelte 0/17, local-only proven to fail when violated |
 
 ## 17.2 CORRECTION TO THE BRIEF — branch contents
 
