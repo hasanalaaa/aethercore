@@ -2261,3 +2261,50 @@ EXPECTED=  exit 0; exactly ONE ARP entry {92E437E7-...} version 0.1.8; HKLM
            platform "windows" (not "other", not "windowsUnknownSku").
 RECOVERY=  prlctl snapshot-switch "Windows 11" --id {a226b395-81b7-4887-90e2-6f132e6551a3}
 ```
+
+## 17.15 GATE — 0.1.8 INSTALLED: **PASS**, both defects closed on a real machine
+
+`msiexec /i AetherCore-0.1.8-arm64.msi /qn` -> **EXIT=0**.
+
+| check | expected | observed | result |
+|---|---|---|---|
+| msiexec exit | 0 | `EXIT=0` | PASS |
+| ARP entries | exactly 1 | `ARP_COUNT=1` | PASS |
+| ARP key / version | `{92E437E7-…}` / 0.1.8 | same | PASS |
+| `HKLM\SOFTWARE\AetherCore\InstallVersion` | 0.1.8 | `0.1.8` | PASS |
+| INSTALLFOLDER files | 16 | `FILE_COUNT=16` | PASS |
+| `sc qc` | TYPE 10, AUTO_START (DELAYED), ERROR_CONTROL 1 NORMAL, LocalSystem | identical | PASS |
+| `sc query` | STATE 4 RUNNING | RUNNING | PASS |
+| `sc qsidtype` | UNRESTRICTED | UNRESTRICTED | PASS |
+| pipe SDDL | identical to §10 | identical | PASS |
+| install-dir `icacls` | identical to §10, Users RX no write | identical | PASS |
+
+**Both defects, closed and observable on the installed product:**
+
+```
+{"schema":"aethercore.aetherctl.v1","command":"about","ok":true,
+ "data":{"name":"aetherctl","platform":"windows","product":"AetherCore",
+         "protocolVersion":7,"version":"0.1.8"}}
+```
+
+| | before this session | now |
+|---|---|---|
+| `version` | `0.1.0` from an MSI built as 0.1.6 | **`0.1.8`** = MSI ProductVersion = ARP = HKLM = Cargo.toml |
+| `platform` | `other` (§16.4/§16.7), then `windowsUnknownSku` (§17.12) | **`windows`** |
+
+`CTL_SHA256=f70e820f90f2bb2b569002d9a220b0955d5ff3c6c5ad88e2ccacd522406f6acf`
+is the binary the MSI placed, and is the same file staged for the client gate.
+
+### Snapshot ledger (Phase 38 additions)
+
+| name | id | taken before |
+|---|---|---|
+| P38-PRE-VERSION-BUILD | `{0037f31a-48c3-4809-bc6d-e78b9036b96d}` | syncing commit 66a0f5b and building 0.1.7 |
+| P38-PRE-0.1.7-INSTALL | `{a226b395-81b7-4887-90e2-6f132e6551a3}` | installing 0.1.7 over 0.1.6 — **the Phase 38 recovery point** |
+
+### Package ledger (Phase 38 additions)
+
+| version | ProductCode | why it exists |
+|---|---|---|
+| 0.1.7 | `{5DE146C7-DF44-4F60-7D38-552B4FC48736}` | proves the version single source of truth end to end |
+| **0.1.8** | `{92E437E7-2C87-3C15-0A72-FF63C739EBE6}` | **the current package**: adds the Windows SKU detection fix |
