@@ -2096,3 +2096,74 @@ capabilities -> 16 native, 0 degraded, 0 notAvailable
 branch gate asserted that 18/18 verbs RETURNED and that files/ACLs matched. It
 did not compare capability STATES, and `about`'s platform field was not an
 assertion. Returning is not the same as returning the right answer.
+
+## 17.13 STEP 6 — VERIFICATION THAT THE WHOLE THING STILL HOLDS
+
+Verification only; no behaviour was changed to make any of these pass.
+
+### EN/AR catalogue parity — PASS
+
+```
+en=1554  ar=1554  delta=0
+```
+
+Measured with the key extractor already in the repo. Note this session also
+FIXED a catalogue defect the merge introduced: `cap.note.windowsServerWsusPolicy`
+carried the literal English "Windows Update" where the catalogue uses the
+localized "تحديث Windows" in 22 other places. It was caught by the existing
+`phase12_arabic_windows_update_localized` gate, which this session found newly
+failing and bisected to the merge commit `ca1eab5` — not to the version work.
+
+### Svelte checks at the standing bar — PASS
+
+```
+COMPLETED 217 FILES  0 ERRORS  17 WARNINGS  3 FILES_WITH_PROBLEMS
+```
+
+Bar: zero errors, warnings not above 17. Observed exactly 0 and 17 — at the
+ceiling, not under it. All 17 are `css_unused_selector`.
+
+### Local-only enforcement — PASS, **and proven to still fail when violated**
+
+The brief requires proof that the guard still bites, not merely that it is
+green. `scripts/static_validate.py::phase15_http_authority_is_desktop_only`
+asserts that `reqwest` is a dependency of `aethercore-update-download` and of
+NOTHING else — specifically not of `update-engine` and not of the maintenance
+service — and that only the desktop app pulls the downloader in.
+
+Negative control, run end to end:
+
+| step | `phase15_http_authority_is_desktop_only` |
+|---|---|
+| clean tree | **True** |
+| after injecting `reqwest = { version = "0.12", ... }` into `services/maintenance-service/Cargo.toml` | **False** |
+| after reverting | **True** |
+
+So a network dependency entering an offline crate does fail the gate today.
+
+### Static validation, whole gate, against the pre-merge baseline — PASS
+
+Compared against a throwaway worktree at `2942aa0` (pre-merge `main`):
+
+| | checks | failing |
+|---|---|---|
+| baseline `2942aa0` | 342 | 22 |
+| this session's HEAD | 344 | 21 |
+
+```
+NEWLY FAILING: NONE
+NEWLY FIXED:   phase8_msi_upgrade_and_os_gate   (from the Windows Server merge)
+```
+
+The two added checks are this session's single-source gates, both passing.
+The 21 remaining failures are pre-existing and predate the merge; they are NOT
+attributed to this session and were not touched.
+
+### Crate suites run for the code this session changed
+
+| crate | result |
+|---|---|
+| `aethercore-security-audit` (lib) | new `platform_tag` test passes; negative control with the old ladder FAILS with `left: "other"` |
+| `aethercore-platform-capabilities` | macOS: 11 passed. **On Windows, on the VM: `TESTEXIT=0`, 7 passed** — the `cfg(windows)` branch actually compiled and ran |
+| `aethercore-fleet` | 47 unit + 12 integration = **59 passed, 0 failed**, matching the count recorded in §16.9 |
+| `apps/ui` | `pnpm install --frozen-lockfile` passes; `pnpm build` succeeds in 654 ms after the package.json version removal |
