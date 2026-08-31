@@ -53,8 +53,30 @@ fn dirs_state() -> Option<PathBuf> {
 }
 
 #[cfg(not(unix))]
+/// Windows fleet state is MACHINE state, not per-user state.
+///
+/// This used to be `%APPDATA%\aethercore`, which put the fleet inventory, the
+/// schedules and — worst of the three — the SSH **trust store** inside whichever
+/// account happened to type the command. Measured consequences, all on a real
+/// install:
+///   * running as the service account, the store landed in
+///     `C:\WINDOWS\system32\config\systemprofile\AppData\Roaming\aethercore`,
+///     so an administrator's fleet was invisible to a scheduled `run-due` and to
+///     every other administrator;
+///   * it survived uninstall, because the MSI knows nothing about a roaming
+///     profile — 841 bytes including `fleet\trust\known_hosts` were still there
+///     after a clean removal that reported success.
+/// Which hosts this machine is allowed to reach over SSH is machine policy. It
+/// belongs beside the rest of the machine data, where the uninstaller's
+/// `purge-data` action already removes it.
+///
+/// Consequence, stated rather than discovered later: modifying the fleet now needs
+/// write access to `%ProgramData%\AetherCore`, i.e. administrator. For a verb that
+/// edits the machine's SSH trust store that is the correct requirement, and a
+/// non-admin now gets a typed local-I/O refusal instead of silently writing to a
+/// private store nobody else can see.
 fn dirs_state() -> Option<PathBuf> {
-    std::env::var_os("APPDATA").map(|dir| PathBuf::from(dir).join("aethercore"))
+    std::env::var_os("ProgramData").map(|dir| PathBuf::from(dir).join("AetherCore"))
 }
 
 fn load_inventory() -> Result<FleetInventory, CliError> {
