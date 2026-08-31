@@ -49,5 +49,8 @@ Run-Verb 'scanstatus'     @('scan','status')
 Run-Verb 'helpflag'       @('--help')   # Stage 3: currently an UNKNOWN COMMAND, recorded not assumed
 Run-Verb 'help'           @('help')
 Run-Verb 'selfcheck'      @('self-check')
+# engineLabel is the ONLY direct proof that the installed gguf verified and loaded:
+# localModel = the embedded reasoner is active, ruleFallback = it is not.
+Run-Verb 'insightslist'   @('--output','json','insights','list')
 Run-Verb 'secaudit'       @('sec','audit','--profile','cis-l1','--out',(Join-Path $dir ("sec-$ctx.json")),'--format','json')
 "=== END ===" | Add-Content $out

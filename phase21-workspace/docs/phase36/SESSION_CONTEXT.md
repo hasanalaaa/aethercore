@@ -1039,3 +1039,39 @@ RECOVERY=  prlctl snapshot-switch "Windows 11" --id <P37-PRE-STAGE1 id>
            The installed product is NOT touched by (b) or (c); the running
            service keeps its current binaries either way.
 ```
+
+## 16.3 DESTRUCTIVE ACTION RECORD — GATE S1: clean-box install of 0.1.2
+
+The 0.1.2 build is done: exit 0, `wix msi validate` exit 0, **zero `ICE\d+`
+matches** in the log, MSI `872d6997…c95b9e`, **1,099,640,832 B** (was 6,205,440 B
+for 0.1.0 — the difference is the 1.07 GB model that is now authored).
+ProductCode `{2D97C23D-D2A1-83FE-3675-90F95D55540B}`, a new code under the same
+UpgradeCode, so this is a true major upgrade path and a legitimate clean install.
+Payload now holds SIX .exe: `aetherctl.exe b8a29c92…4350d8` joins the five.
+
+```
+ACTION=    (a) msiexec /x {FC8A3841-759D-B452-1864-161F84F56C03} /qn   (the 0.1.0 install)
+           (b) DELETE the leftovers the gate requires to be absent:
+               C:\Program Files\AetherCore (in full — today only the unmanaged
+               aetherctl.exe survives an uninstall), C:\ProgramData\AetherCore,
+               HKLM\SOFTWARE\AetherCore, HKCU\...\Software\AetherCore.
+               This is done BY HAND here on purpose: Stage 2 is the gate that
+               makes the UNINSTALLER do it. Gate 1 only needs a bare box.
+           (c) sweep and record that the box is bare
+           (d) msiexec /i AetherCore-0.1.2-arm64.msi /qn  (plain install, no flags)
+SNAPSHOT=  P37-PRE-STAGE1 {e94d539e-8046-443b-871c-9d6711c34fd2}
+EXPECTED=  (a) exit 0. (c) zero AetherCore files, no service, no pipe, no ARP
+           entry, no HKLM/HKCU key. (d) exit 0, then:
+             - INSTALLFOLDER holds FIFTEEN files: six .exe,
+               libomp140.aarch64.dll, update-trust.json,
+               assets\models\{qwen2.5-1.5b-instruct-q4_k_m.gguf,models.manifest.json},
+               assets\models\licenses\{Apache-2.0.txt,Qwen-GGUF-NOTICE.txt},
+               assets\vulndb\{vulndb.json,vulndb.manifest.json,cis_map.json}
+             - the gguf is 1,117,320,736 B with sha256 6a1a2eb6…9407e
+             - service LocalSystem AUTO_START(DELAYED) RUNNING, SID UNRESTRICTED,
+               pipe SDDL and install-dir icacls identical to §10
+             - ARP one entry {2D97C23D-…} version 0.1.2
+             - every verb RETURNS under BOTH token contexts, and `insights list`
+               reports engineLabel **localModel**, not ruleFallback
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id {e94d539e-8046-443b-871c-9d6711c34fd2}
+```
