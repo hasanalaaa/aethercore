@@ -5,7 +5,7 @@
   text-rendering: optimizeLegibility;
   font-optical-sizing: auto;
 
-  --ac-font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --ac-font-display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --ac-font-text: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --ac-font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
 
@@ -23,7 +23,7 @@
   --ac-text-4: #788590;
   --ac-text-inverse: #081018;
 
-  --ac-bg-base: #080c11;
+  --ac-bg-base: #0b1016;
   --ac-bg-mica-fallback: rgba(10, 15, 21, 0.88);
   --ac-material-structural: rgba(14, 20, 27, 0.74);
   --ac-material-base: rgba(20, 28, 36, 0.68);
@@ -43,9 +43,9 @@
   --ac-border-strong: rgba(255, 255, 255, 0.18);
   --ac-highlight: rgba(255, 255, 255, 0.085);
 
-  --ac-accent: #8ec5f5;
-  --ac-accent-strong: #c5e5ff;
-  --ac-accent-muted: rgba(92, 167, 224, 0.18);
+  --ac-accent: #d6a15f;
+  --ac-accent-strong: #f2c987;
+  --ac-accent-muted: rgba(214, 161, 95, 0.18);
   --ac-positive: #83d5b2;
   --ac-positive-muted: rgba(79, 176, 132, 0.16);
   --ac-warning: #e8bd78;
@@ -98,7 +98,7 @@
   --ac-text-3: #5e707d;
   --ac-text-4: #788994;
   --ac-text-inverse: #f7fbff;
-  --ac-bg-base: #eef3f5;
+  --ac-bg-base: #f3efe7;
   --ac-bg-mica-fallback: rgba(244, 248, 250, .94);
   --ac-material-structural: rgba(247, 250, 251, .86);
   --ac-material-base: rgba(255, 255, 255, .86);
@@ -111,9 +111,9 @@
   --ac-border-default: rgba(33, 66, 83, .23);
   --ac-border-strong: rgba(33, 66, 83, .38);
   --ac-highlight: rgba(255, 255, 255, .9);
-  --ac-accent: #176a8b;
-  --ac-accent-strong: #0e5875;
-  --ac-accent-muted: rgba(23, 106, 139, .13);
+  --ac-accent: #9b5d2c;
+  --ac-accent-strong: #75401f;
+  --ac-accent-muted: rgba(155, 93, 44, .14);
   --ac-positive: #197152;
   --ac-positive-muted: rgba(25, 113, 82, .12);
   --ac-warning: #95611e;
@@ -132,7 +132,7 @@
     --ac-text-1:#152230; --ac-text-2:#304457; --ac-text-3:#53697d; --ac-text-4:#6d8294; --ac-text-inverse:#f7fbff;
     --ac-bg-base:#edf3f7; --ac-material-structural:rgba(241,247,250,.86); --ac-material-base:rgba(255,255,255,.82); --ac-material-elevated:rgba(255,255,255,.94); --ac-material-focused:#fff;
     --ac-layer-hover:rgba(21,53,77,.055); --ac-layer-pressed:rgba(21,53,77,.1); --ac-border-subtle:rgba(20,50,71,.13); --ac-border-default:rgba(20,50,71,.2); --ac-border-strong:rgba(20,50,71,.3);
-    --ac-accent:#1769a6; --ac-accent-strong:#07558d; --ac-positive:#19734d; --ac-warning:#8a5a12; --ac-danger:#ad3b3b;
+    --ac-accent:#9b5d2c; --ac-accent-strong:#75401f; --ac-positive:#19734d; --ac-warning:#8a5a12; --ac-danger:#ad3b3b;
     --ac-shadow-card:0 1px 0 rgba(255,255,255,.9) inset,0 12px 28px rgba(28,56,74,.1); --ac-shadow-float:0 24px 60px rgba(28,56,74,.18),0 1px 0 rgba(255,255,255,.9) inset;
   }
 }
@@ -142,7 +142,7 @@
   --ac-text-1:#152230; --ac-text-2:#304457; --ac-text-3:#53697d; --ac-text-4:#6d8294; --ac-text-inverse:#f7fbff; --ac-bg-base:#edf3f7;
   --ac-material-structural:rgba(241,247,250,.86); --ac-material-base:rgba(255,255,255,.82); --ac-material-elevated:rgba(255,255,255,.94); --ac-material-focused:#fff;
   --ac-layer-hover:rgba(21,53,77,.055); --ac-layer-pressed:rgba(21,53,77,.1); --ac-border-subtle:rgba(20,50,71,.13); --ac-border-default:rgba(20,50,71,.2); --ac-border-strong:rgba(20,50,71,.3);
-  --ac-accent:#1769a6; --ac-accent-strong:#07558d; --ac-positive:#19734d; --ac-warning:#8a5a12; --ac-danger:#ad3b3b;
+  --ac-accent:#9b5d2c; --ac-accent-strong:#75401f; --ac-positive:#19734d; --ac-warning:#8a5a12; --ac-danger:#ad3b3b;
   --ac-shadow-card:0 1px 0 rgba(255,255,255,.9) inset,0 12px 28px rgba(28,56,74,.1); --ac-shadow-float:0 24px 60px rgba(28,56,74,.18),0 1px 0 rgba(255,255,255,.9) inset;
 }
 

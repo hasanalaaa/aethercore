@@ -1,4 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { tauriAvailable } from '../platform/transport';
 
 export type WindowUxCleanup = () => void;
 
@@ -30,7 +31,7 @@ export async function initializeWindowUx(): Promise<WindowUxCleanup> {
 
   let unscale: (() => void) | undefined;
   let untheme: (() => void) | undefined;
-  try {
+  if (tauriAvailable) try {
     const current = getCurrentWindow();
     writeScale(await current.scaleFactor());
     unscale = await current.onScaleChanged(({ payload }) => writeScale(payload.scaleFactor));

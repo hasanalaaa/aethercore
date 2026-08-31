@@ -76,3 +76,11 @@
 .service-copy small { color:var(--ac-text-4); font-size:.6875rem; }
 .service-copy strong { margin-block-start:.08rem; color:var(--ac-text-2); font-size:.75rem; font-weight:600; }
 .service-version { color:var(--ac-text-4); font-size:.6875rem; font-family:var(--ac-font-mono); direction:ltr; unicode-bidi:isolate; }
+
+/* Evidence-first shell: the rail is a quiet instrument, not a card stack. */
+.app-sidebar { border-inline-end-color:color-mix(in srgb,var(--ac-accent) 28%,var(--ac-border-subtle)); }
+.app-sidebar::before { content:""; position:absolute; inset-block:1.3rem; inset-inline-start:-1px; inline-size:2px; background:linear-gradient(var(--ac-accent),transparent 72%); opacity:.72; }
+.brand-mark { border-radius:.55rem; background:linear-gradient(145deg,color-mix(in srgb,var(--ac-accent) 26%,#101821),#0b1118); }
+.command-trigger { border-radius:.55rem; background:color-mix(in srgb,var(--ac-accent) 7%,transparent); }
+.app-nav-item { border-radius:.55rem; }
+.app-nav-item.active { border-inline-start:2px solid var(--ac-accent); padding-inline-start:calc(.58rem - 2px); background:color-mix(in srgb,var(--ac-accent) 12%,transparent); }

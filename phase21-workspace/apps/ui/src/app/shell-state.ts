@@ -47,7 +47,11 @@ export function setBusy(busy: boolean): void {
 }
 
 export function setError(error: unknown): void {
-  shellState.update((state) => ({ ...state, errorMessage: error ? String(error) : '' }));
+  if (error) console.error('[AetherCore] operation failed', error);
+  const raw = error ? String(error) : '';
+  const technical = error instanceof Error || /TypeError|transformCallback|Cannot read properties|undefined|invoke\(/i.test(raw);
+  const locale = get(shellState).locale;
+  shellState.update((state) => ({ ...state, errorMessage: technical ? t('app.actionNotCompletedCopy', locale) : raw }));
 }
 
 export function clearError(): void { setError(''); }

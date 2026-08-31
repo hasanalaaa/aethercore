@@ -11,15 +11,14 @@ body {
   font-size: var(--ac-type-body);
   line-height: 1.5;
   background:
-    radial-gradient(70rem 42rem at 88% -15%, color-mix(in srgb, var(--ac-accent) 12%, transparent), transparent 63%),
-    radial-gradient(48rem 38rem at -10% 88%, color-mix(in srgb, var(--ac-positive) 7%, transparent), transparent 68%),
-    var(--ac-bg-base);
+    radial-gradient(56rem 34rem at 92% -10%, color-mix(in srgb, var(--ac-accent) 12%, transparent), transparent 65%),
+    linear-gradient(155deg, color-mix(in srgb, var(--ac-bg-base) 86%, #05070a), var(--ac-bg-base));
   -webkit-font-smoothing: antialiased;
 }
 @media (prefers-color-scheme: light) {
-  :root:not([data-system-theme="dark"]) body { background: radial-gradient(70rem 42rem at 88% -15%, rgba(93,170,214,.13), transparent 63%), #edf3f7; }
+  :root:not([data-system-theme="dark"]) body { background: radial-gradient(64rem 42rem at 88% -15%, rgba(155,93,44,.12), transparent 63%), #f3efe7; }
 }
-[data-system-theme="light"] body { background: radial-gradient(70rem 42rem at 88% -15%, rgba(93,170,214,.13), transparent 63%), #edf3f7; }
+[data-system-theme="light"] body { background: radial-gradient(64rem 42rem at 88% -15%, rgba(155,93,44,.12), transparent 63%), #f3efe7; }
 button, input, textarea, select { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 button, [role="button"], input, summary { outline: none; }

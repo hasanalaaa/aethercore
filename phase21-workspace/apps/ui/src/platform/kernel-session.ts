@@ -1,5 +1,5 @@
 import type { UiTransportUnlisten } from './transport-contract';
-import { uiTransport } from './transport';
+import { transportAvailable, uiTransport } from './transport';
 import type { UiKernelEvent, UiSessionState, UiStreamReset } from '../lib/contracts';
 import { applyKernelEvent, applySessionState, applyStreamReset } from './stream-state';
 import { announce, currentShellState, setError } from '../app/shell-state';
@@ -10,6 +10,11 @@ export type KernelSessionCleanup = () => void;
 export async function startKernelSession(): Promise<KernelSessionCleanup> {
   let disposed = false;
   const unlisteners: UiTransportUnlisten[] = [];
+
+  if (!transportAvailable) {
+    announce(t('announce.serviceUnavailable', currentShellState().locale));
+    return () => { disposed = true; };
+  }
 
   try {
     unlisteners.push(await uiTransport.listen<UiKernelEvent>('aethercore://kernel-event', ({ payload }) => {
