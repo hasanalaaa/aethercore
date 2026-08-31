@@ -29,7 +29,14 @@
 
 <aside class="app-sidebar" aria-label={t('app.primaryNavigation', locale)}>
   <div class="app-brand">
-    <div class="brand-mark" aria-hidden="true"><span></span></div>
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" focusable="false">
+        <defs><linearGradient id="aethercore-mark" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7ddcff"/><stop offset="1" stop-color="#45e0c0"/></linearGradient></defs>
+        <path d="m16 3 11 6.4v13.2L16 29 5 22.6V9.4L16 3Z" />
+        <path d="m16 7.2 7.4 4.3v9L16 24.8l-7.4-4.3v-9L16 7.2Z" />
+        <path class="brand-spark" d="m16 11.6 1.1 3.3 3.3 1.1-3.3 1.1-1.1 3.3-1.1-3.3-3.3-1.1 3.3-1.1 1.1-3.3Z" />
+      </svg>
+    </div>
     <div class="brand-copy"><strong>AetherCore</strong><small>{t('app.subtitle', locale)}</small></div>
   </div>
 
