@@ -1806,3 +1806,64 @@ is why 0.1.2 through 0.1.6 all built exit 0 on the VM.
 
 Consequence: the product documents Windows/macOS/Linux support and the desktop
 app currently cannot be compiled on macOS or Linux.
+
+## 17.8 GATE — 0.1.7 BUILD RESULT: **PASS**
+
+`scripts\build-arm64-msi.cmd` invoked with **NO argument**; the version came
+from Cargo.toml. Build ran 23:27:16 -> 23:39:09 (~12 min), all six steps.
+
+```
+Version=0.1.7  (derived from Cargo.toml [workspace.package].version)
+ProductCode={5DE146C7-DF44-4F60-7D38-552B4FC48736}
+=== BUILD OK: C:\AetherCore-P36\build\out\AetherCore-0.1.7-arm64.msi
+```
+
+| property | value |
+|---|---|
+| MSI | `AetherCore-0.1.7-arm64.msi` |
+| bytes | 1,099,649,024 |
+| sha256 | `65d506834eb2196be640313a399acd834bfaf05f671f54e819fc7404f5c16a68` |
+| ICE findings (`ICE\d+` over the whole log) | **0** |
+| `wix msi validate` | exit 0 (step [6/6] ran; the script is `|| exit /b 1`, and BUILD OK followed) |
+
+Read back out of the BUILT package's Property table, not from source:
+
+```
+MSI_ProductVersion=0.1.7
+MSI_ProductCode={5DE146C7-DF44-4F60-7D38-552B4FC48736}
+MSI_UpgradeCode={45598C77-2C32-5BCE-8510-19C7E51EE3B8}
+MSI_ProductName=AetherCore
+```
+
+ProductCode determinism verified INDEPENDENTLY on the Mac by recomputing the
+documented scheme — first 16 bytes of
+`SHA256("AetherCore/MSI/ProductCode/v1" + "AetherCore/0.1.7/arm64")` read as a
+.NET Guid — which yields `{5DE146C7-DF44-4F60-7D38-552B4FC48736}`, equal to the
+value the build emitted. Same UpgradeCode as every prior package, so 0.1.7 is a
+true major upgrade over the installed 0.1.6.
+
+## 17.9 DESTRUCTIVE ACTION RECORD — install 0.1.7 over the installed 0.1.6
+
+```
+ACTION=    (a) prlctl snapshot "Windows 11" -n P38-PRE-0.1.7-INSTALL
+           (b) msiexec /i C:\AetherCore-P36\build\out\AetherCore-0.1.7-arm64.msi /qn
+               /l*v C:\AetherCore-P36\logs\p38-install.log
+           (c) read the INSTALLED aetherctl's `about` version and compare it to
+               the version the INSTALLER declares
+SNAPSHOT=  P38-PRE-0.1.7-INSTALL, taken by step (a).
+           Fallback: P37-SHIPPING-QUALIFIED {a1696567-7528-4136-a445-848dccd3d2c1}.
+EXPECTED=  (b) exit 0. RemoveExistingProducts runs (new ProductCode, same
+           UpgradeCode, MajorUpgrade Schedule="afterInstallInitialize").
+           Then exactly ONE ARP entry, {5DE146C7-DF44-4F60-7D38-552B4FC48736}
+           version 0.1.7, with the 0.1.6 key {863BF31B-...} gone;
+           HKLM\SOFTWARE\AetherCore\InstallVersion = 0.1.7.
+           INSTALLFOLDER holds SIXTEEN files. Service AetherCoreMaintenance
+           LocalSystem AUTO_START(DELAYED) RUNNING, Service SID UNRESTRICTED,
+           pipe SDDL and install-dir icacls IDENTICAL to the §10 baseline
+           (Users RX, no write).
+           (c) `aetherctl about` reports version 0.1.7 -- the SAME string the
+           MSI declares in ProductVersion and the same one Cargo.toml carries.
+           This is the whole point of the change: before it, an MSI built as
+           0.1.6 installed an aetherctl that answered 0.1.0.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id <P38-PRE-0.1.7-INSTALL id>
+```
