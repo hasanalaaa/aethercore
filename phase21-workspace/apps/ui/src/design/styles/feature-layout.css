@@ -794,7 +794,28 @@ header .sub {
   display:grid;
   grid-template-columns:auto minmax(0,1fr) auto;
   align-items:center;
-  gap:26px
+  gap:26px;
+  container:ac-hero / inline-size
+}
+
+/* Orb, copy and stat strip stop fitting side by side well before the window looks narrow, because
+   the card only ever gets what the content area has left. An element cannot query its own
+   container, so the card answers to ac-main and the strip inside it answers to the card. */
+@container ac-main (max-width:46rem) {
+  .hero-card {
+    grid-template-columns:minmax(0,1fr)
+  }
+  .hero-metrics {
+    border-inline-start:0;
+    border-block-start:1px solid #252c34;
+    padding-block-start:9px
+  }
+}
+
+@container ac-hero (max-width:21rem) {
+  .hero-metrics {
+    grid-template-columns:repeat(auto-fit,minmax(min(7rem,100%),1fr))
+  }
 }
 
 .orb {
@@ -834,7 +855,7 @@ header .sub {
 
 .hero-metrics {
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(min(7rem,100%),1fr));
+  grid-template-columns:repeat(3,minmax(0,max-content));
   border-inline-start:1px solid #252c34
 }
 
