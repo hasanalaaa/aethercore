@@ -5,7 +5,11 @@ $ctx = $env:P36_CTX; if (-not $ctx) { $ctx = 'unknown' }
 $dir = 'C:\Users\Public\p36'
 New-Item -ItemType Directory -Force $dir | Out-Null
 $out = Join-Path $dir ("verbs-" + $ctx + ".txt")
-$ctl = 'C:\AetherCore-P36\tools\aetherctl.exe'
+# P37 Stage 1: aetherctl is now an authored MSI component, so the INSTALLED copy is
+# what a real user gets and is what must be exercised. The staged tools copy stays
+# as a fallback so the Phase 36 evidence path still runs on a bare box.
+$ctl = 'C:\Program Files\AetherCore\aetherctl.exe'
+if (-not (Test-Path $ctl)) { $ctl = 'C:\AetherCore-P36\tools\aetherctl.exe' }
 ("=== P36 VERB RUN (context: " + $ctx + ") ===") | Set-Content $out
 ("CAPTURED_UTC=" + (Get-Date).ToUniversalTime().ToString('o')) | Add-Content $out
 ("WHOAMI=" + (whoami)) | Add-Content $out
@@ -38,4 +42,12 @@ Run-Verb 'servicedetect'  @('service','detect')
 Run-Verb 'doctor'         @('doctor')
 Run-Verb 'optimizestatus' @('optimize','status')
 Run-Verb 'scanstatus'     @('scan','status')
+# P37 Stage 1 additions. These are the verbs that prove the newly authored files
+# actually landed: self-check reads assets\models\models.manifest.json and hashes
+# the gguf against the pin; sec audit needs the CIS profile (now compiled in) and
+# reads assets\vulndb beside the executable; help is the Stage 3 first experience.
+Run-Verb 'helpflag'       @('--help')   # Stage 3: currently an UNKNOWN COMMAND, recorded not assumed
+Run-Verb 'help'           @('help')
+Run-Verb 'selfcheck'      @('self-check')
+Run-Verb 'secaudit'       @('sec','audit','--profile','cis-l1','--out',(Join-Path $dir ("sec-$ctx.json")),'--format','json')
 "=== END ===" | Add-Content $out
