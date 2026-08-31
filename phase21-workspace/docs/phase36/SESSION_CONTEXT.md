@@ -945,7 +945,7 @@ collision the v2 gates are written here as `S0`..`S4`.
 |---|---|---|---|
 | S0 | design/shell-v2 merged, checks green, dev-only files absent from bundle | **PASS** | §16.1 below; merge `1cf86be`, icon cherry-pick `e8170dd` |
 | S1 | aetherctl authored in Product.wxs; full file audit; clean-box install proves every file and every verb | **PASS** | §16.4; 15 files, engineLabel=localModel, 18/18 verbs, zero ICE |
-| S2 | uninstall leaves zero product trace, user-chosen exports kept, idempotent | NOT-STARTED | |
+| S2 | uninstall leaves zero product trace, user-chosen exports kept, idempotent | **PASS** | §16.6; 3 cases, 14-check sweep, zero survivors each |
 | S3 | terminal-first CLI install on a clean machine, one documented command | NOT-STARTED | |
 | S4 | server-readiness assessment with evidence per claim | NOT-STARTED | |
 
@@ -1218,3 +1218,139 @@ EXPECTED=  (f) exit 0. (g) ZERO product traces: no C:\Program Files\AetherCore,
            already gone.
 RECOVERY=  prlctl snapshot-switch "Windows 11" --id {e94d539e-8046-443b-871c-9d6711c34fd2}
 ```
+
+## 16.6 GATE S2 — RESULT: **PASS** (2026-08-31)
+
+Package `AetherCore-0.1.5-arm64.msi`, ProductCode
+`{02F801D6-C117-CBB4-09A0-B51CB9E455C3}`, built exit 0 with **zero `ICE\d+`
+matches** and `wix msi validate` exit 0.
+
+### What the product actually leaves at rest — measured before authoring anything
+
+- files: `C:\Program Files\AetherCore` (MSI-owned) and
+  `C:\ProgramData\AetherCore` (written by the SERVICE at runtime)
+- service `AetherCoreMaintenance` and its named pipe (the pipe exists only
+  while the service runs)
+- registry: `HKLM\SOFTWARE\AetherCore`, the ARP entry,
+  `HKCU\Software\AetherCore`
+- Start Menu folder
+- **no scheduled tasks** — there is no `RegisterTaskDefinition` anywhere in the
+  workspace; `crates/startup-manager`'s `ITaskService` use reads and toggles the
+  USER's existing items. `crates/fleet`'s scheduler is in-process, persisted in
+  the product database.
+- **no firewall rules** — `crates/security-audit/src/firewall.rs` is a
+  config-file-presence reader. It creates nothing.
+
+Both negatives were then confirmed empirically on a bare box: `TASKS=0`,
+`FIREWALL_RULES=0`.
+
+### The first implementation FAILED this gate, and that is the useful part
+
+`util:RemoveFolderEx` was the obvious declarative answer and it is wrong here.
+It enumerates the target tree and injects `RemoveFile` rows **before
+CostInitialize**, and Windows Installer then hard-fails at `InstallValidate` if
+any file in that snapshot has since disappeared. The maintenance service is
+still RUNNING at that point — `StopServices` is in the execute sequence, later —
+and is still appending to `logs\service.jsonl`. The snapshot therefore races a
+live writer. Raw observation from `s2C-uninstall.log`:
+
+```
+DEBUG: Error 2318:  File does not exist: C:\ProgramData\AetherCore\logs\service.jsonl
+Action ended 18:45:44: InstallValidate. Return value 3.
+Removal success or error status: 1603.
+```
+
+and the sweep after it found the ENTIRE product still installed: five payload
+exes, the ARP entry, both registry keys, `aethercore.db`. Strictly worse than
+the surviving ProgramData it was meant to fix. Case A had passed on an earlier
+build purely on timing.
+
+**Remedy:** a deferred custom action `PurgeMachineData`, scheduled
+`After="DeleteServices"` under `REMOVE="ALL"`, running a new `purge-data` verb
+on `aethercore-install-hardener.exe` — the binary that already holds deferred
+LocalSystem authority in this package. Deleting after the service is gone is
+the only ordering that cannot race. The action keeps that binary's posture: it
+takes NO path from its command line, derives the directory from `%ProgramData%`
+through the same trusted-path helpers as `apply`, and refuses a reparse point
+anywhere in the tree rather than following it, so a planted junction cannot turn
+an uninstall into a recursive delete somewhere else. Idempotent by
+construction — an absent directory is success — with one 1.5 s retry for a
+handle still closing behind the just-deleted service. This also removed the
+`WixToolset.Util.wixext` dependency from the Product.wxs build again.
+
+### The three cases, all on 0.1.5
+
+| case | what was done first | uninstall exit | survivors |
+|---|---|---|---|
+| **A** normal | install, `scan start`, `perf start`, `perf snapshot`, plus a 5-level-deep file at `recovery\driver-backups\p37-depth-probe\level2\level3\backup-blob.bin` | **0** | **none** |
+| **B** registry gone | `reg delete HKLM\SOFTWARE\AetherCore` before uninstalling | **0** | **none** |
+| **C** pieces gone | service stopped AND deleted, `ProgramData\AetherCore` deleted, Start Menu folder deleted, `aetherctl.exe` and `UNINSTALL.txt` deleted, HKLM key deleted | **0** (was **1603**) | **none** |
+
+The depth probe matters: it is a path no authored `RemoveFile` could name, at a
+depth wildcards cannot reach. It is declared **synthetic** — a real driver
+install was not performed on this VM — but the removal problem it stands for is
+the real one.
+
+### The sweep, run after every case — 14 checks, zero survivors each time
+
+```
+1  INSTALLDIR              False
+2  PROGRAMDATA             False
+3  SERVICE                 OpenService FAILED 1060: does not exist
+4  PIPE_COUNT              0
+5  ARP_COUNT               0
+6  HKLM_SOFTWARE_AETHER    False
+7  HKCU_SOFTWARE_AETHER    False
+8  STARTMENU               False
+9  SCHEDULED_TASKS         0
+10 FIREWALL_RULES          0
+11 HKLM_SERVICES_KEY       False
+12 EVENTLOG_SOURCE         False
+13 ALL-USERS HKCU MARKERS  (none in any hive under HKEY_USERS)
+14 FILESYSTEM SWEEP        (no hit under Program Files, Program Files (x86),
+                            ProgramData, or any user profile root/AppData)
+```
+
+### Idempotence — and the one honest asterisk
+
+Uninstalling a machine whose service, data directory, Start Menu folder,
+payload files and registry key were already gone exits **0**: case C. That is
+the requirement, and it is met.
+
+Running `msiexec /x <ProductCode>` a **second** time, against a product that is
+no longer installed, returns **1605**. Recorded rather than argued away: 1605
+is `ERROR_UNKNOWN_PRODUCT`, Windows Installer's answer to "that product is not
+installed". It is not a cleanup failure and there is nothing left behind to
+clean — the sweep after it is identical. Making it return 0 would mean
+suppressing the OS's own not-installed signal, which would be worse.
+
+### What uninstall keeps, and where the user is told
+
+`release/UNINSTALL.txt` is installed beside the product and states in plain
+language what goes and what stays; `ARPCOMMENTS` carries the summary into
+Settings > Apps and Programs and Features, which is the uninstall UX the user
+actually sees. Verified installed and readable from the ARP key:
+
+```
+UNINSTALL_TXT=True
+KEY={02F801D6-...} VERSION=0.1.5
+COMMENTS=Uninstall removes the program files, the AetherCore Maintenance
+         service, and ALL machine data under C:\ProgramData\AetherCore ...
+         Reports and diagnostic bundles you exported to a location YOU chose
+         are not touched. See UNINSTALL.txt in the install folder.
+```
+
+The "kept" claim was checked, not assumed. A signed diagnostic bundle stays
+verifiable after the signing key under `state\` is deleted:
+`support_bundle::verify_archive(bytes, expected_public_key_fingerprint_sha256)`
+takes the archive plus the fingerprint the user was shown at export, never the
+local key file, and `crates/support-bundle` carries an explicit
+`embedded_key_is_not_a_root_of_trust` test.
+
+### Stated limit
+
+The HKCU marker is per-user and Windows Installer runs the uninstall in one
+account's context; it cannot enumerate other users' hives. On a machine where
+several people used AetherCore, one integer value may remain in each of their
+hives. Check 13 sweeps `HKEY_USERS` for exactly this and found none here.
+UNINSTALL.txt states it rather than hiding it.
