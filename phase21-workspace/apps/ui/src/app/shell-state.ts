@@ -10,11 +10,27 @@ export type ShellState = {
   paletteOpen: boolean;
   locale: Locale;
   liveAnnouncement: string;
+  theme: 'dark' | 'light';
 };
 
 const initialLocale = getInitialLocale();
+function getInitialTheme(): 'dark' | 'light' {
+  try {
+    const stored = localStorage.getItem('aethercore.theme');
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch { /* hardened/no-storage context */ }
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+function applyTheme(theme: 'dark' | 'light'): void {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.systemTheme = theme;
+  document.documentElement.style.colorScheme = theme;
+  try { localStorage.setItem('aethercore.theme', theme); } catch { /* non-fatal */ }
+}
 const busyActivities = new ActivityCounter();
 applyLocale(initialLocale);
+const initialTheme = getInitialTheme();
+applyTheme(initialTheme);
 
 export const shellState = writable<ShellState>({
   activePage: 'overview',
@@ -23,6 +39,7 @@ export const shellState = writable<ShellState>({
   paletteOpen: false,
   locale: initialLocale,
   liveAnnouncement: '',
+  theme: initialTheme,
 });
 
 export function setBusy(busy: boolean): void {
@@ -65,6 +82,14 @@ export function toggleLocale(): void {
       locale,
       liveAnnouncement: locale === 'ar' ? t('announce.languageArabic', locale) : t('app.languageChanged', locale),
     };
+  });
+}
+
+export function toggleTheme(): void {
+  shellState.update((state) => {
+    const theme = state.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(theme);
+    return { ...state, theme, liveAnnouncement: t(theme === 'light' ? 'announce.themeLight' : 'announce.themeDark', state.locale) };
   });
 }
 

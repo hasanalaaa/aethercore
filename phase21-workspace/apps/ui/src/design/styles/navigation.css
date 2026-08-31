@@ -34,7 +34,9 @@
   background:rgba(0,0,0,.18); color:var(--ac-text-4); font:500 .6875rem/1.2 var(--ac-font-text); text-align:center;
 }
 
-.app-sidebar nav { display:grid; gap:.2rem; }
+.app-sidebar nav { display:grid; gap:1rem; min-block-size:0; overflow:auto; scrollbar-width:thin; }
+.nav-group { display:grid; gap:.2rem; }
+.nav-group h2 { margin:0 .6rem .28rem; color:var(--ac-text-4); font:650 .625rem/1.2 var(--ac-font-text); letter-spacing:.12em; text-transform:uppercase; }
 .app-nav-item {
   display:grid; grid-template-columns:1.75rem minmax(0,1fr); align-items:center; gap:.55rem;
   padding:.48rem .58rem; text-align:start;
@@ -47,11 +49,16 @@
 }
 .nav-icon { inline-size:1.75rem; block-size:1.75rem; display:grid; place-items:center; border-radius:.48rem; color:var(--ac-text-4); }
 .app-nav-item.active .nav-icon { color:var(--ac-accent-strong); background:rgba(142,197,245,.08); }
+.nav-availability { align-self:start; color:var(--ac-warning); font-size:1.1rem; line-height:1; }
 .nav-copy { min-inline-size:0; }
 .nav-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8125rem; font-weight:600; }
 .nav-copy small { display:block; margin-block-start:.08rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ac-text-4); font-size:.6875rem; line-height:1.25; }
 
+.policy-card { display:grid; grid-template-columns:1.65rem minmax(0,1fr); align-items:start; gap:.55rem; margin-block-start:1rem; padding:.7rem .65rem; border:1px solid color-mix(in srgb,var(--ac-warning) 30%,var(--ac-border-subtle)); border-radius:var(--ac-radius-md); background:var(--ac-warning-muted); }
+.policy-mark { display:grid; place-items:center; inline-size:1.55rem; block-size:1.55rem; border:1px solid color-mix(in srgb,var(--ac-warning) 44%,transparent); border-radius:.45rem; color:var(--ac-warning); }
+.policy-card strong,.policy-card small { display:block; }.policy-card strong { color:var(--ac-text-2); font-size:.72rem; font-weight:680; }.policy-card small { margin-block-start:.2rem; color:var(--ac-text-3); font-size:.67rem; line-height:1.35; }
 .sidebar-controls { margin-block-start:auto; padding-block-start:1rem; }
+.theme-button { margin-block-start:.25rem; }
 .locale-button {
   display:grid; grid-template-columns:1.25rem minmax(0,1fr); align-items:center; gap:.55rem;
   padding:.5rem .6rem; text-align:start;

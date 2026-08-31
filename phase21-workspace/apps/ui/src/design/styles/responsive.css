@@ -7,7 +7,7 @@
 @media (max-width: 63.75rem) {
   :root { --ac-sidebar-width:4.75rem; }
   .app-sidebar { padding-inline:.625rem; }
-  .brand-copy,.command-trigger span,.command-trigger kbd,.nav-copy,.sidebar-controls span,.service-copy,.service-version { display:none; }
+  .brand-copy,.command-trigger span,.command-trigger kbd,.nav-copy,.nav-group h2,.nav-availability,.policy-card,.sidebar-controls span,.service-copy,.service-version { display:none; }
   .app-brand { justify-content:center; padding-inline:0; }
   .command-trigger,.locale-button,.app-nav-item { grid-template-columns:1fr; justify-content:center; padding-inline:0; }
   .app-service { grid-template-columns:1fr; justify-items:center; }

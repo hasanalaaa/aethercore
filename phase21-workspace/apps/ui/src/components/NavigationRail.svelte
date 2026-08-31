@@ -1,7 +1,7 @@
 <script lang="ts">
   import AppIcon from './AppIcon.svelte';
   import { fluidPress } from '../design/motion';
-  import { NAVIGATION, type PageId } from '../lib/navigation';
+  import { NAVIGATION, NAVIGATION_GROUPS, type PageId } from '../lib/navigation';
   import { t, td, type Locale } from '../lib/i18n';
 
   export let activePage: PageId;
@@ -9,14 +9,17 @@
   export let serviceVersion = '—';
   export let locale: Locale = 'en';
   export let paletteOpen = false;
+  export let theme: 'dark' | 'light' = 'dark';
   export let onNavigate: (page: PageId) => void;
   export let onOpenPalette: () => void;
   export let onToggleLocale: () => void;
+  export let onToggleTheme: () => void;
 
-  function navKey(event: KeyboardEvent, index: number) {
+  function navKey(event: KeyboardEvent) {
     const buttons = Array.from((event.currentTarget as HTMLElement).closest('nav')?.querySelectorAll<HTMLButtonElement>('button[data-nav-item]') ?? []);
     if (!buttons.length) return;
-    let target = index;
+    const index = buttons.indexOf(event.currentTarget as HTMLButtonElement);
+    let target = index < 0 ? 0 : index;
     if (event.key === 'ArrowDown') target = (index + 1) % buttons.length;
     else if (event.key === 'ArrowUp') target = (index - 1 + buttons.length) % buttons.length;
     else if (event.key === 'Home') target = 0;
@@ -45,30 +48,44 @@
   </button>
 
   <nav aria-label={t('app.primaryNavigation', locale)}>
-    {#each NAVIGATION as item, index (item.id)}
-      <button
-        type="button"
-        use:fluidPress={{ pressedScale: 0.992 }}
-        data-nav-item
-        class="app-nav-item"
-        class:active={activePage === item.id}
-        aria-current={activePage === item.id ? 'page' : undefined}
-        aria-keyshortcuts={item.shortcut.replace('Ctrl', 'Control')}
-        tabindex={activePage === item.id ? 0 : -1}
-        aria-label={`${td(item.labelKey, locale)} — ${td(item.descriptionKey, locale)}`}
-        title={`${td(item.descriptionKey, locale)} · ${item.shortcut}`}
-        onclick={() => onNavigate(item.id)}
-        onkeydown={(event) => navKey(event, index)}
-      >
-        <span class="nav-icon"><AppIcon name={item.icon} size={18}/></span>
-        <span class="nav-copy"><strong>{td(item.labelKey, locale)}</strong><small>{td(item.descriptionKey, locale)}</small></span>
-      </button>
+    {#each NAVIGATION_GROUPS as group}
+      <div class="nav-group">
+        <h2>{td(group.labelKey, locale)}</h2>
+        {#each NAVIGATION.filter((item) => item.group === group.id) as item (item.id)}
+          <button
+            type="button"
+            use:fluidPress={{ pressedScale: 0.992 }}
+            data-nav-item
+            class="app-nav-item"
+            class:active={activePage === item.id}
+            aria-current={activePage === item.id ? 'page' : undefined}
+            aria-keyshortcuts={item.shortcut.replace('Ctrl', 'Control')}
+            tabindex={activePage === item.id ? 0 : -1}
+            aria-label={`${td(item.labelKey, locale)} — ${td(item.descriptionKey, locale)}`}
+            title={`${td(item.descriptionKey, locale)} · ${item.shortcut}`}
+            onclick={() => onNavigate(item.id)}
+            onkeydown={navKey}
+          >
+            <span class="nav-icon"><AppIcon name={item.icon} size={18}/></span>
+            <span class="nav-copy"><strong>{td(item.labelKey, locale)}</strong><small>{td(item.descriptionKey, locale)}</small></span>
+            {#if item.availability === 'online' && !connected}<span class="nav-availability" title={t('palette.unavailable', locale)} aria-label={t('palette.unavailable', locale)}>·</span>{/if}
+          </button>
+        {/each}
+      </div>
     {/each}
   </nav>
+
+  <div class="policy-card" role="note">
+    <span class="policy-mark" aria-hidden="true">◇</span>
+    <div><strong>{t('app.policyTitle', locale)}</strong><small>{t('app.policyCopy', locale)}</small></div>
+  </div>
 
   <div class="sidebar-controls">
     <button type="button" use:fluidPress={{ pressedScale: 0.985 }} class="locale-button" onclick={onToggleLocale} aria-label={t('app.language', locale)}>
       <AppIcon name="language" size={16}/><span lang={locale === 'en' ? 'ar' : 'en'} dir={locale === 'en' ? 'rtl' : 'ltr'}>{locale === 'en' ? t('locale.switchToArabic', locale) : t('locale.switchToEnglish', locale)}</span>
+    </button>
+    <button type="button" use:fluidPress={{ pressedScale: 0.985 }} class="locale-button theme-button" onclick={onToggleTheme} aria-label={t('app.theme', locale)}>
+      <AppIcon name="theme" size={16}/><span>{theme === 'dark' ? t('app.themeLight', locale) : t('app.themeDark', locale)}</span>
     </button>
   </div>
 

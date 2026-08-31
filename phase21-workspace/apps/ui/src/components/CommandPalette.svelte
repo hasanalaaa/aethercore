@@ -3,11 +3,12 @@
   import AppIcon from './AppIcon.svelte';
   import FluidDialog from '../design/primitives/FluidDialog.svelte';
   import { fluidPress } from '../design/motion';
-  import { NAVIGATION, type PageId } from '../lib/navigation';
+  import { NAVIGATION, NAVIGATION_GROUPS, type PageId } from '../lib/navigation';
   import { t, td, type Locale } from '../lib/i18n';
 
   export let open = false;
   export let locale: Locale = 'en';
+  export let connected = false;
   export let onClose: () => void;
   export let onSelect: (page: PageId) => void;
 
@@ -17,6 +18,7 @@
   let lastOpen = false;
 
   $: items = NAVIGATION.filter((item) => `${td(item.labelKey, locale)} ${td(item.descriptionKey, locale)}`.toLowerCase().includes(query.trim().toLowerCase()));
+  $: searchTerm = query.trim().toLowerCase();
   $: if (selected >= items.length) selected = Math.max(0, items.length - 1);
   $: if (open && !lastOpen) {
     query = '';
@@ -44,15 +46,24 @@
   </div>
   <div id="command-results" class="command-results" role="listbox" aria-label={t('palette.title', locale)}>
     {#if items.length}
-      {#each items as item, index (item.id)}
-        <button id={`command-option-${item.id.replaceAll(' ', '-').replaceAll('&', 'and')}`} type="button" role="option" aria-selected={selected === index} class:selected={selected === index} use:fluidPress={{ pressedScale: 0.99 }} onmouseenter={() => selected = index} onclick={() => onSelect(item.id)}>
-          <span class="command-result-icon"><AppIcon name={item.icon} size={18}/></span>
-          <span><strong>{td(item.labelKey, locale)}</strong><small>{td(item.descriptionKey, locale)}</small></span>
-          <kbd>{item.shortcut.replace('Ctrl+Shift+', 'Ctrl ⇧ ')}</kbd>
-        </button>
+      {#each NAVIGATION_GROUPS as group}
+        {@const groupItems = items.filter((item) => item.group === group.id)}
+        {#if groupItems.length}
+          <div class="command-group"><span class="command-group-label">{td(group.labelKey, locale)}</span>
+            {#each groupItems as item (item.id)}
+              {@const index = items.indexOf(item)}
+              <button id={`command-option-${item.id.replaceAll(' ', '-').replaceAll('&', 'and')}`} type="button" role="option" aria-selected={selected === index} class:selected={selected === index} use:fluidPress={{ pressedScale: 0.99 }} onmouseenter={() => selected = index} onclick={() => onSelect(item.id)}>
+                <span class="command-result-icon"><AppIcon name={item.icon} size={18}/></span>
+                <span><strong>{td(item.labelKey, locale)}</strong><small>{td(item.descriptionKey, locale)}</small></span>
+                {#if item.availability === 'online' && !connected}<em>{t('palette.unavailable', locale)}</em>{:else if item.group === 'act'}<em>{t('palette.policyGuarded', locale)}</em>{/if}
+                <kbd>{item.shortcut.replace('Ctrl+Shift+', 'Ctrl ⇧ ')}</kbd>
+              </button>
+            {/each}
+          </div>
+        {/if}
       {/each}
     {:else}
-      <p class="command-empty">{t('palette.empty', locale)}</p>
+      <div class="command-empty"><AppIcon name="search" size={20}/><p>{t('palette.empty', locale)}</p><small>{searchTerm ? t('palette.emptyHint', locale) : t('palette.empty', locale)}</small></div>
     {/if}
   </div>
   <footer>{t('palette.hint', locale)}</footer>

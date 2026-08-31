@@ -90,6 +90,41 @@
   --muted: var(--ac-text-3);
 }
 
+/* Light is a deliberate reading surface, not an inverted dark theme. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ac-text-1: #17232d;
+  --ac-text-2: #344653;
+  --ac-text-3: #5e707d;
+  --ac-text-4: #788994;
+  --ac-text-inverse: #f7fbff;
+  --ac-bg-base: #eef3f5;
+  --ac-bg-mica-fallback: rgba(244, 248, 250, .94);
+  --ac-material-structural: rgba(247, 250, 251, .86);
+  --ac-material-base: rgba(255, 255, 255, .86);
+  --ac-material-elevated: rgba(255, 255, 255, .96);
+  --ac-material-focused: rgba(255, 255, 255, .985);
+  --ac-layer-hover: rgba(26, 74, 96, .07);
+  --ac-layer-pressed: rgba(26, 74, 96, .12);
+  --ac-scrim: rgba(16, 31, 40, .32);
+  --ac-border-subtle: rgba(33, 66, 83, .14);
+  --ac-border-default: rgba(33, 66, 83, .23);
+  --ac-border-strong: rgba(33, 66, 83, .38);
+  --ac-highlight: rgba(255, 255, 255, .9);
+  --ac-accent: #176a8b;
+  --ac-accent-strong: #0e5875;
+  --ac-accent-muted: rgba(23, 106, 139, .13);
+  --ac-positive: #197152;
+  --ac-positive-muted: rgba(25, 113, 82, .12);
+  --ac-warning: #95611e;
+  --ac-warning-muted: rgba(149, 97, 30, .12);
+  --ac-danger: #a13b45;
+  --ac-danger-muted: rgba(161, 59, 69, .12);
+  --ac-shadow-card: 0 1px 0 rgba(255,255,255,.9) inset, 0 12px 30px rgba(40,65,77,.09);
+  --ac-shadow-float: 0 24px 60px rgba(40,65,77,.18), 0 1px 0 rgba(255,255,255,.96) inset;
+  --ac-shadow-focus: 0 0 0 2px var(--ac-bg-base), 0 0 0 4px rgba(23,106,139,.62);
+}
+
 /* Light mode is deliberate; it is not a filter over dark surfaces. */
 @media (prefers-color-scheme: light) {
   :root:not([data-system-theme="dark"]) {
