@@ -932,3 +932,82 @@ git ls-files --others --ignored --exclude-standard
 ```
 
 and justify every entry.
+
+---
+
+# 16. PHASE 37 — SHIPPING-READINESS BRIEF (v2), started 2026-08-31 14:00
+
+The v2 brief renumbers the stages. Its **Stage 0 is "merge the design work"**,
+not the disk reclamation recorded in section 13/Gate 0 above. To avoid
+collision the v2 gates are written here as `S0`..`S4`.
+
+| Gate | What it proves | Status | Evidence |
+|---|---|---|---|
+| S0 | design/shell-v2 merged, checks green, dev-only files absent from bundle | **PASS** | §16.1 below; merge `1cf86be`, icon cherry-pick `e8170dd` |
+| S1 | aetherctl authored in Product.wxs; full file audit; clean-box install proves 8 files and every verb | NOT-STARTED | |
+| S2 | uninstall leaves zero product trace, user-chosen exports kept, idempotent | NOT-STARTED | |
+| S3 | terminal-first CLI install on a clean machine, one documented command | NOT-STARTED | |
+| S4 | server-readiness assessment with evidence per claim | NOT-STARTED | |
+
+## 16.1 GATE S0 — RESULT: **PASS** (2026-08-31)
+
+Merged `origin/design/shell-v2` (`836906f`) into `main` with `--no-ff` as
+`1cf86be`. Automatic merge, zero conflicts.
+
+Verification, run against the MERGED tree (stronger than verifying the branch
+alone), all on the Mac at `~/dev/aethercore`:
+
+| Check | Expected | Observed | Result |
+|---|---|---|---|
+| `pnpm --dir apps/ui build` | exit 0 | exit 0, 196 modules, built in 695 ms | PASS |
+| svelte-check errors | 0 | **0** | PASS |
+| svelte-check warnings | not above 17 | **17** (all `css_unused_selector`, 3 files) | PASS (at the ceiling) |
+| EN/AR catalogue key parity | delta 0 | `en=1549 ar=1549 delta=0` | PASS |
+| `node tests/transport-env.test.mjs` | pass | 1/1 pass | PASS |
+
+Parity was measured with the key extractor already in the repo
+(`scripts/phase18-driver-authority-audit.py:53`, check `P18-I18N-001`), not a
+new one.
+
+### Dev-only files confirmed absent from the production bundle
+
+`layout-fixture.html`, `layout-sweep.html` and `src/dev/layout-fixture.ts` are
+verification harnesses. Three independent facts, each measured:
+
+1. `dist/` after a clean `rm -rf dist && pnpm build` contains exactly
+   `index.html`, `assets/index-BKWlQf78.css`, `assets/index-CZwBFtmd.js`.
+2. `grep -rl "layout-fixture\|layout-sweep\|layoutFixture" dist/` → **no match**.
+3. `grep -rn "layout-fixture" apps/ui/src apps/ui/index.html apps/ui/vite.config.*`
+   → **no match**. Nothing in the entry graph reaches them.
+
+`apps/desktop/tauri.conf.json` sets `"frontendDist": "../ui/dist"`, so the
+Tauri bundle takes `dist/` only; the two `.html` files sit at the `apps/ui`
+root, outside it.
+
+### OBSERVED ≠ EXPECTED — recorded, per the STOP rule
+
+The brief states `design/shell-v2` "carries the real app icon". **It does
+not.** `git diff --stat main origin/design/shell-v2` touches 25 files, none of
+them under `apps/desktop/icons/` and not `tauri.conf.json`.
+
+The icon set is on `origin/codex/design-elevation` only, in commit
+`9f07df5 feat(desktop): ship AetherCore evidence shield icon set` — 19 icon
+files plus a `tauri.conf.json` change adding `icons/icon.ico` and
+`icons/icon.icns` to the `bundle.icon` list (previously `icon.png` alone, so
+the MSI would otherwise carry no `.ico`). That branch was cut from the older
+`b88d4bc` and its other commits are rebased duplicates of what
+`design/shell-v2` already contains, so merging it whole would have re-litigated
+merged content.
+
+Action taken: the single self-contained icon commit was cherry-picked onto
+`main` as `e8170dd` (`git cherry-pick -x`), exit 0, no conflicts. The rest of
+`codex/design-elevation` was NOT merged and is superseded by `design/shell-v2`.
+
+### Concurrency note (the §"BLOCKER RAISED AT GATE 0" above)
+
+`git worktree list` shows `~/dev/aethercore-design` checked out at
+`design/shell-v2`, last commit 13:26, i.e. the design track was active ~40 min
+before this session started. This session did **not** check out that branch in
+the main tree and did not write into that worktree; it merged the branch by
+reference and verified in `~/dev/aethercore`. The design track can keep working
+on `design/shell-v2`.
