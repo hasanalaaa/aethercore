@@ -152,3 +152,20 @@ comment. Tracked as debt below.
 `UNKNOWN = 0`. Every one of the 91 drifting files is attributed to a locked P36
 decision, a documented tranche-1 fix, or an explicitly provenance-marked
 diagnostic.
+
+## Tranche 3 (2026-08-31) — VM qualification
+
+Items found during Phase 36 VM qualification. Recorded, not remediated, per the
+brief's stop rule. Each names the evidence file that holds the raw observation.
+
+| # | item | evidence | why it was not fixed here |
+|---|---|---|---|
+| 1 | `aetherctl.exe` sits in `C:\Program Files\AetherCore` but is **not authored in `installer/wix/Product.wxs`**. No MSI component owns it, so no MSI action installs, repairs or removes it. It survives uninstall and keeps INSTALLFOLDER alive; a genuinely bare machine gets seven files, not eight, and no `aetherctl`. | `STAGE_A_EVIDENCE.md` A5; `evidence/B2-survival.txt` | Adding a component is a product change beyond this brief's authorization. Decide deliberately whether the CLI is meant to ship in the MSI. |
+| 2 | A rebuilt package of the **same version** carries a new PackageCode, so `msiexec /i … REINSTALLMODE=amus` is refused **1638** (`PackagecodeChanging=1`, error 1729). `vamus` is required. | `evidence/A5-install-key.txt` | Behaviour of Windows Installer, not a product defect. Worth pinning in whatever runbook describes same-version reinstall. |
+| 3 | Killing the installer engine mid-`FileCopy` runs **no rollback at all** and leaves orphaned payload files with no registration. | `evidence/C1b-injection.txt` | Inherent to Windows Installer — the rollback executor is the process killed. Recorded so the recovery runbook says "run the installer again", which does clean it. |
+| 4 | `C:\Windows\Installer\MSICD74.tmp` created by that hard kill is **never removed** by any later successful or rolled-back transaction. | `evidence/C1b-injection.txt`, `evidence/C2-injection.txt` | Cleaning `C:\Windows\Installer` by hand is outside authorization. |
+| 5 | A plain `msiexec /i` onto a box holding the C1 orphans failed **1603 / Error 1920** at `StartServices`, where the identical command had passed on a clean box. Windows Installer rolled the failure back completely, including the orphans. Cause **not diagnosed** per the stop rule. | `STAGE_C_EVIDENCE.md` C1 aftermath | The stop rule forbids diagnosing a deviation. The observation is the deliverable. |
+| 6 | `tauri.conf.json`'s `beforeBuildCommand` (`pnpm --dir ../ui build`) is run by the Tauri CLI from its own discovered app directory, not from the config's directory, so `../ui` resolves to `<root>\ui` and fails ENOENT. | `STAGE_A_EVIDENCE.md` A1; `evidence/A2-build.log` | Worked around for ARM64 with a recorded config overlay rather than editing the shared config. The x64 pipeline calls the same hook and may hit the same thing. |
+| 7 | `aethercore-desktop.exe` is **not byte-reproducible** across Tauri rebuilds of identical sources (`5f8d771f…` -> `c351ccf0…`, same size). | `evidence/A2-build.log`, `evidence/B4-build.log` | Expected; byte-reproducibility is explicitly not a Phase 36 criterion. Noted because `RELEASE-METADATA.json` already sets `msi_byte_reproducible_claim = false`. |
+| 8 | The Parallels host volume is at **100% capacity, ~6.8 GiB free**, which blocked snapshot creation from B4 through Stage C. | `SESSION_CONTEXT.md` §13 | Human action. Deleting snapshots is forbidden; the large host directories are the user's data. |
+| 9 | The only `libomp140.aarch64.dll` available on this VM is from the VS redist **`debug_nonredist`** tree. It is the file tranche 1 shipped and the one the recorded recipe stages. | `scripts/build-arm64-msi.cmd` step [4] | Recorded, not changed. A production ARM64 package should source the redistributable OpenMP runtime, not the `debug_nonredist` copy. |
