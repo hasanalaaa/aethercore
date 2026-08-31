@@ -21,10 +21,15 @@ platform, plus the contract a script can rely on.
 command:
 
 ```powershell
+# per-user, no elevation
+Expand-Archive aetherctl-<version>-windows-<arch>.zip -DestinationPath $env:LOCALAPPDATA\AetherCLI -Force
+
+# or machine-wide, from an elevated shell
 Expand-Archive aetherctl-<version>-windows-<arch>.zip -DestinationPath $env:ProgramFiles\AetherCLI -Force
 ```
 
-Then put that folder on `PATH`, or call the executable by full path.
+Then put that folder on `PATH`, or call the executable by full path. The
+machine-wide form is the one exercised by the Stage 3 gate.
 
 This is the right shape because of what the CLI actually is: a single executable
 that installs no service, registers nothing, writes nothing outside its own

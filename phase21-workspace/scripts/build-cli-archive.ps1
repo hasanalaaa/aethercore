@@ -50,8 +50,12 @@ AetherCore runs entirely on this machine: no account, no sign-in, no telemetry,
 no network at rest. This archive is the CLI on its own. It does not need the
 desktop app, a GUI, or an interactive session.
 
-INSTALL (one command, in an elevated or ordinary PowerShell):
+INSTALL (one command):
 
+  # just for you, no elevation needed
+  Expand-Archive $name.zip -DestinationPath `$env:LOCALAPPDATA\AetherCLI -Force
+
+  # or machine-wide, from an ELEVATED PowerShell
   Expand-Archive $name.zip -DestinationPath `$env:ProgramFiles\AetherCLI -Force
 
 Then add that folder to PATH, or call the exe by full path. Nothing else runs,

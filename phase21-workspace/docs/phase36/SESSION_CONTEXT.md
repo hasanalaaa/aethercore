@@ -946,7 +946,7 @@ collision the v2 gates are written here as `S0`..`S4`.
 | S0 | design/shell-v2 merged, checks green, dev-only files absent from bundle | **PASS** | §16.1 below; merge `1cf86be`, icon cherry-pick `e8170dd` |
 | S1 | aetherctl authored in Product.wxs; full file audit; clean-box install proves every file and every verb | **PASS** | §16.4; 15 files, engineLabel=localModel, 18/18 verbs, zero ICE |
 | S2 | uninstall leaves zero product trace, user-chosen exports kept, idempotent | **PASS** | §16.6; 3 cases, 14-check sweep, zero survivors each |
-| S3 | terminal-first CLI install on a clean machine, one documented command | NOT-STARTED | |
+| S3 | terminal-first CLI install on a clean machine, one documented command | **PASS** | §16.7; 1.9 MB archive, Expand-Archive, 8 verbs, every exit code as documented |
 | S4 | server-readiness assessment with evidence per claim | NOT-STARTED | |
 
 ## 16.1 GATE S0 — RESULT: **PASS** (2026-08-31)
@@ -1354,3 +1354,80 @@ account's context; it cannot enumerate other users' hives. On a machine where
 several people used AetherCore, one integer value may remain in each of their
 hives. Check 13 sweeps `HKEY_USERS` for exactly this and found none here.
 UNINSTALL.txt states it rather than hiding it.
+
+## 16.7 GATE S3 — RESULT: **PASS** (2026-08-31)
+
+Run on the machine left bare by Gate S2, so "clean machine" is not a claim, it
+is the previous gate's measured end state:
+
+```
+INSTALLDIR=False  PROGRAMDATA=False  ARP=0
+SERVICE=OpenService FAILED 1060: does not exist
+CLIDIR_BEFORE=False
+```
+
+### The artifact
+
+`scripts/build-cli-archive.ps1 -Version 0.1.5 -Arch arm64` →
+`aetherctl-0.1.5-windows-arm64.zip`, **1,892,681 B**, sha256
+`05743e86040eb6293946e46fab5370d245ab9a8d75a6b515240a47ac95ce1d83`, recorded in
+`out/cli/SHA256SUMS.txt`. Verified on the target: the published sum and the
+on-disk sum are identical. (For scale: the full MSI is 1,099,640,832 B.)
+
+### One documented command, and it is the whole install
+
+```powershell
+Expand-Archive aetherctl-0.1.5-windows-arm64.zip -DestinationPath $env:ProgramFiles\AetherCLI -Force
+```
+
+Five files land, nothing else happens — no service, no registry, no ARP entry,
+nothing written outside the folder chosen:
+
+```
+ 3,815,424  aetherctl.exe
+     1,522  README.txt
+     3,103  assets\vulndb\cis_map.json
+     6,704  assets\vulndb\vulndb.json
+       142  assets\vulndb\vulndb.manifest.json
+```
+
+### Real verbs return, and every exit code matches the documented table
+
+| verb | exit | result |
+|---|---|---|
+| `--output json service detect` | **0** | `{"ok":true,"data":{"state":"Offline",…}}` — the README's first command |
+| `--output json about` | 0 | product/platform/protocolVersion 7 |
+| `--output json capabilities` | 0 | 16 native capabilities enumerated |
+| `sec audit --profile cis-l1 --out … --format json` | **0** | a full scored `aethercore.compliance.v1` report **on a machine with no AetherCore installed** |
+| `--output json sec audit --firewall` | 0 | `lane=cve status={"kind":"ok"}` |
+| `--output json self-check` | **8** | `LocalIo / cli.selfCheck.modelsDirNotFound` |
+| `--output json doctor` | **3** | `ServiceUnreachable` |
+| `--help` | 0 | the usage block, on stdout |
+
+Two of those are the interesting ones:
+
+- **`sec audit --profile cis-l1` returning a scored report here** is the Stage 1
+  `env!("CARGO_MANIFEST_DIR")` fix proven end to end. This machine is not the
+  build machine and has no `assets/compliance` anywhere; the profile is inside
+  the binary. And `lane=cve kind:"ok"` means the vulndb travelled in the archive
+  and hash-verified beside the executable — the other Stage 1 fix, in the
+  CLI-only shape.
+- **`self-check` exiting 8 with `modelsDirNotFound` is a PASS, not a failure.**
+  The 1.07 GB model belongs to the full product; a CLI-only install does not
+  have it and says so with a typed error instead of pretending. The README
+  states this before the user runs it.
+- **`doctor` exiting 3 with `ServiceUnreachable`** is the honest answer for a
+  service verb with no service: a typed envelope, immediately, not a hang.
+
+Headless throughout: every command above ran through `prlctl exec` as SYSTEM in
+session 0, with no interactive desktop session and no GUI.
+
+### Findings recorded during this gate, NOT fixed here
+
+- **`aetherctl about` reports `"version":"0.1.0"` from an archive built as
+  0.1.5.** The CLI reports `CARGO_PKG_VERSION`, which is the workspace crate
+  version and does not track the MSI/product version passed to the build. Anyone
+  scripting a version check gets the wrong number. Recorded for a later stage.
+- **`platform` is `"other"` on Windows** — second sighting, see §16.4. It
+  appears in the `sec audit` JSON and in every compliance report's
+  `host_fingerprint`.
