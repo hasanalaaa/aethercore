@@ -1807,6 +1807,70 @@ is why 0.1.2 through 0.1.6 all built exit 0 on the VM.
 Consequence: the product documents Windows/macOS/Linux support and the desktop
 app currently cannot be compiled on macOS or Linux.
 
+## 17.7 STEP 4 — THE CLASS, NOT THE INSTANCE
+
+### 4a — PLATFORM DETECTION: how many places decide?
+
+**One derivation, four label sites.** They agree by construction.
+
+| | site | role |
+|---|---|---|
+| derivation | `crates/platform-capabilities/src/lib.rs:196` `Platform::current()` | the only OS decision |
+| derivation | same file `:375` `current_platform_name()` | the only wire LABEL, SKU-aware |
+| label site | `crates/security-audit/src/lib.rs:111` `platform_tag()` | delegates |
+| label site | `apps/aetherctl/src/offline.rs:158` `platform_str()` | delegates |
+| label site | `services/maintenance-service/src/router.rs:1377` | delegates |
+| label site | `services/maintenance-service/src/router.rs:1385` | delegates |
+
+Before `63edc11`, `platform_tag()` had its own `cfg!` ladder — that is what
+made it possible for the copies to disagree. Now every label routes through one
+function, so agreement is structural rather than coincidental, and
+`scripts/static_validate.py::platform_identity_single_source` fails the gate if
+a second derivation reappears.
+
+Every other `cfg!(target_os = …)` in the tree was inspected individually and is
+a **behaviour branch, not an identity derivation** — legitimate and unavoidable:
+
+| site | what it branches on | verdict |
+|---|---|---|
+| `security-audit/src/lib.rs:157` + `password.rs:60` | macOS keeps password policy in OpenDirectory, not `login.defs` | correct, honest NotAvailable |
+| `security-audit/src/census.rs:274` | which package-manager lanes exist | correct in shape, **but see item 18** |
+| `aetherctl/src/offline.rs:163` and `maintenance-service/src/performance.rs:317` `engine_source()` | native vs synthetic perf engine | duplicated — see 4c |
+
+### 4b — VERSION DERIVATION: how many places decide?
+
+Enumerated in full. **One canonical source, six derived surfaces, zero
+independent deciders remaining.**
+
+| surface | before | now |
+|---|---|---|
+| `[workspace.package].version` in `Cargo.toml` | canonical | **canonical** |
+| ~20 Rust `env!("CARGO_PKG_VERSION")` sites (incl. `aetherctl about`) | derived | derived |
+| `apps/desktop/tauri.conf.json` | **independent** `"0.1.0"` | field removed, inherits |
+| `scripts/build-arm64-msi.cmd` | **independent** arg, default `0.1.0` | derives; disagreement is an error |
+| `scripts/build-installer.ps1` | **independent** mandatory arg | derives via helper |
+| `scripts/build-cli-archive.ps1` | **independent** mandatory arg | derives via helper |
+| `scripts/build-release.ps1` | derived, but its own private regex | uses the shared helper |
+| `package.json`, `apps/ui/package.json` | **independent** `"0.1.0"`, script-readable | field removed (both `private: true`) |
+| MSI `ProductVersion`, ARP entry, `HKLM InstallVersion` | follow the MSI | follow the MSI |
+
+Deliberately NOT unified, because they are different truths that only share the
+word "version": `PROTOCOL_VERSION` (7), `REPORT_SCHEMA_VERSION`,
+`UPDATE_CONTRACT_VERSION`, `REMOTE_CONTRACT_VERSION`, `PLANNER_VERSION`,
+`RULE_ENGINE_VERSION`, `POLICY_VERSION`. Collapsing these into the product
+version would be a defect, not a fix.
+
+### 4c — OTHER VALUES THAT SHOULD BE ONE TRUTH
+
+| value | finding | verdict |
+|---|---|---|
+| **pipe name** | `crates/ipc/src/lib.rs:9` `PIPE_NAME` is the single product constant. Two PowerShell files repeat the literal (`scripts/verify-ipc-pipe-security.ps1`, `scripts/p36vm/verify-install.ps1`). | **Not a defect.** Those are verification harnesses. A harness that read the expected value out of the code under test would assert nothing. Correct as-is. |
+| **install path** | zero hard-coded `Program Files\AetherCore` literals in Rust. | Clean. |
+| **`engine_source()`** | Implemented TWICE — `aetherctl/src/offline.rs:163` and `maintenance-service/src/performance.rs:317` — kept in sync by a comment ("Mirrors …(parity gate)") and a static check. | **Real instance of the class**, but NOT contained: the service copy has a `force-synthetic-perf` feature gate the CLI copy does not, so they are not actually identical and merging them naively would change behaviour. **RECORDED, not fixed.** (Both also have a dead `else` arm: `cfg!(windows) \|\| macos \|\| linux` is true on every supported target, so `"synthetic"` is unreachable there.) |
+| **product data root** | `crates/windows-foundation/src/lib.rs:137` states the rule explicitly — *"Resolve the machine-wide data root from Windows rather than trusting an inherited environment variable"* — and uses `SHGetKnownFolderPath(FOLDERID_ProgramData)`. It is the ONLY site that follows it. `apps/install-hardener/src/main.rs:56` (`purge_data`, the deferred LocalSystem uninstall delete), `apps/aetherctl/src/fleet.rs:79`, `transport.rs:86/123`, `crates/security/src/lib.rs:487` and three `apps/desktop` sites all resolve it from `%ProgramData%` or an inherited root. | **RECORDED, not fixed.** Checked for a security consequence first and there is none: `purge_data` runs as LocalSystem under msiexec, where changing the machine `ProgramData` variable already requires admin, and it is guarded by `validate_absolute_no_parent` (absolute, disk-prefixed, no `..`) plus `reject_reparse_tree`. The real risk is **correctness**: on a machine with a relocated ProgramData, install and uninstall could disagree and the purge would miss the real directory. Aligning `purge_data` with the documented rule is a one-function change but it sits in the LocalSystem recursive-delete path, so it needs Gate S2 re-run to keep that evidence honest. Not "obviously safe", so it is recorded. |
+| **product name** | the literal `"AetherCore"` appears at ~10 production sites (path joins, `release-authority` product-id checks). | Cosmetic. A shared constant would be tidier; no observed defect. Recorded only. |
+| **icon assets** | `icon.png` fixed (§17.6). The other 16 PNGs under `apps/desktop/icons/` are also 8-bit RGB with no alpha. | Not required by `generate_context!`, and they are design-owned. **Recorded, not rewritten.** |
+
 ## 17.8 GATE — 0.1.7 BUILD RESULT: **PASS**
 
 `scripts\build-arm64-msi.cmd` invoked with **NO argument**; the version came
