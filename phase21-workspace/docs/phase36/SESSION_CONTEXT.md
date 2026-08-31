@@ -1654,3 +1654,155 @@ Snapshot `P37-SHIPPING-QUALIFIED {a1696567-7528-4136-a445-848dccd3d2c1}`.
 | 0.1.4 | `{ABF18F00-3B3F-601A-8ACE-E1F7F25077DF}` | RemoveFolderEx + registry fallback — **superseded, failed case C with 1603** |
 | 0.1.5 | `{02F801D6-C117-CBB4-09A0-B51CB9E455C3}` | deferred `purge-data`; Gates S2 and S3 |
 | **0.1.6** | `{863BF31B-B840-63F9-5B30-35528662C54F}` | **the current package**: adds the three Gate S4 fleet fixes |
+
+---
+
+# 17. PHASE 38 — MERGE AND CLOSE TWO RECORDED DEFECTS (started 2026-08-31)
+
+Brief: merge two validated branches, fix `platform_tag()` returning `"other"`
+on Windows, give the product version a single source of truth, then sweep for
+every other instance of those two defect CLASSES and harvest the
+"recorded, not fixed" backlog.
+
+## 17.1 PROGRESS TABLE (append one row per closed item)
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| 1 | Merge `feat/desktop-qualification` + `feat/windows-server` into `main` | **PASS** | `e14b843`, `ca1eab5`, both `--no-ff`, zero conflicts, pushed |
+| 2 | `platform_tag()` fixed at source + regression test | **PASS** | `66a0f5b`; test `platform_tag_names_the_host_and_never_falls_back_to_other`; negative control fails with `left: "other"` |
+| 3 | Version single source of truth | **CODE DONE — MSI proof pending** | `66a0f5b`; `[workspace.package].version = 0.1.7` |
+
+## 17.2 CORRECTION TO THE BRIEF — branch contents
+
+The brief describes `feat/desktop-qualification` as "documentation and evidence
+only, no product code". **It is not.** `git log 2942aa0..origin/feat/desktop-qualification`:
+
+```
+dd4183c docs: keep screenshot claim precise
+be43e0a docs: record interactive desktop qualification
+e23377d feat(installer): admit Windows Server and omit Core desktop
+63edc11 feat(server): make capability reporting SKU-aware
+```
+
+The two branches SHARE `63edc11` and `e23377d`; `feat/windows-server` adds only
+`04d0bf4` on top. So merging desktop-qualification first brought in the Windows
+Server product code, and the windows-server merge contributed one commit.
+Recorded because the brief's characterisation would mislead a later reader.
+
+## 17.3 platform_tag ROOT CAUSE (measured, not inferred)
+
+`crates/security-audit/src/lib.rs:110` carried its OWN `cfg!` ladder:
+
+```rust
+if cfg!(target_os = "macos") { "macos" }
+else if cfg!(target_os = "linux") { "linux" }
+else { "other" }
+```
+
+Windows was never a branch, so it fell to `else`. Meanwhile the rest of the
+product derived platform identity from `Platform::current()` in
+`crates/platform-capabilities`. **Two independent derivations, and the copies
+disagreed** — that is the class, not the instance.
+
+Already fixed at the source by `63edc11` on the server branch, which routes
+`platform_tag()` and three other call sites through
+`aethercore_platform_capabilities::current_platform_name()`. It shipped with
+**no test**; this session adds the regression test.
+
+### Fingerprint impact — STATED, not hidden
+
+`host_fingerprint` is built as `"{platform}:{digest}"`
+(`apps/aetherctl/src/sec.rs:107`) and is covered by the report digest, which is
+covered by the signature. A report generated before this fix and one generated
+after, on the same machine in the same state, **will not compare equal**.
+
+**Nothing in the product treats an older report's fingerprint as
+authoritative.** `verify_compliance_report()` (`apps/aetherctl/src/sec.rs:160`)
+recomputes the digest from the report's OWN bytes and verifies the signature
+over that; it takes no external expected fingerprint. There is no baseline
+store, no pinned fingerprint, no cross-report comparison — `host_fingerprint`'s
+only non-test consumers are construction (`sec.rs:107`), storage
+(`compliance.rs:403`) and HTML rendering (`compliance.rs:489,492`). Previously
+issued reports remain verifiable and are NOT invalidated. What changes is that
+an external diff of a pre-fix against a post-fix report shows a fingerprint and
+digest difference that is not a configuration change.
+
+## 17.4 VERSION — the mechanism and the reason
+
+**Single source of truth: `[workspace.package].version` in
+`phase21-workspace/Cargo.toml`.**
+
+Reason, and why nothing new was invented: every crate already carries
+`version.workspace = true`, so every binary already reported that value through
+`CARGO_PKG_VERSION` (~20 call sites, `aetherctl about` among them), and
+`scripts/build-release.ps1` — the production x64 pipeline — already derived from
+it. It was the single source for everything *except the surfaces that ship*.
+The fix was to stop three other surfaces deciding for themselves, not to add a
+version file.
+
+`scripts/Get-ProductVersion.ps1` is new and holds the derivation ONCE;
+`build-release.ps1`'s private copy of the regex now calls it, so the change
+removes a duplicate rather than adding three.
+
+| surface | before | after |
+|---|---|---|
+| every Rust binary (`about`, service, desktop) | `CARGO_PKG_VERSION` | unchanged — already canonical |
+| `scripts/build-arm64-msi.cmd` | arbitrary `%1`, default hard-coded `0.1.0` | derives from Cargo.toml; a disagreeing argument is a hard error |
+| `apps/desktop/tauri.conf.json` | `"version": "0.1.0"` | field REMOVED; tauri-utils 2.9.3 documents that with it absent the Cargo.toml version is used (read from the pinned source, not memory) |
+| `scripts/build-installer.ps1` | mandatory `-Version`, no cross-check | optional, derived, disagreement is an error |
+| `scripts/build-cli-archive.ps1` | mandatory `-Version`, no cross-check | optional, derived, disagreement is an error |
+| ARP entry | MSI `ProductVersion` | follows the MSI, so derives |
+
+## 17.5 DESTRUCTIVE ACTION RECORD — sync 9 files to the VM and build 0.1.7
+
+```
+ACTION=    (a) prlctl snapshot "Windows 11" -n P38-PRE-VERSION-BUILD
+           (b) copy the NINE files of commit 66a0f5b from
+               \\Mac\dev\aethercore\phase21-workspace into
+               C:\AetherCore-P36\workspace\AetherCore-Phase35-Master-Delivery
+               (Cargo.lock, Cargo.toml, apps/desktop/tauri.conf.json,
+                crates/security-audit/src/lib.rs, scripts/Get-ProductVersion.ps1,
+                scripts/build-arm64-msi.cmd, scripts/build-cli-archive.ps1,
+                scripts/build-installer.ps1, scripts/build-release.ps1)
+           (c) run scripts\build-arm64-msi.cmd  (NO argument -- the version now
+               comes from Cargo.toml) to produce AetherCore-0.1.7-arm64.msi
+SNAPSHOT=  P38-PRE-VERSION-BUILD, taken by step (a).
+           Fallback: P37-SHIPPING-QUALIFIED {a1696567-7528-4136-a445-848dccd3d2c1}.
+EXPECTED=  (b) each copied file's SHA-256 in the guest equals the Mac's.
+           (c) the script prints
+               `Version=0.1.7  (derived from Cargo.toml [workspace.package].version)`;
+               build exits 0; `wix msi validate` exits 0 with ZERO `ICE\d+`
+               matches; the MSI is named AetherCore-0.1.7-arm64.msi and is
+               roughly 1.1 GB.
+           The VM probe confirms the guest source tree already carries BOTH
+           merged branches' product code (Product.wxs Server admission,
+           current_platform_name in security-audit), so these nine files are
+           the whole delta between the guest tree and merged main.
+           Nothing is installed or uninstalled by this step; the running
+           service keeps its current binaries.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id <P38-PRE-VERSION-BUILD id>
+```
+
+## 17.6 FINDING — the desktop app does not compile on macOS (PRE-EXISTING)
+
+Discovered while checking that removing the `version` field from
+tauri.conf.json was safe. `cargo check -p aethercore-desktop` on the Mac fails:
+
+```
+error: proc macro panicked
+   --> apps/desktop/src/main.rs:2934:14
+    |    .run(tauri::generate_context!());
+    = help: message: icon .../apps/desktop/icons/icon.png is not RGBA
+```
+
+`file` reports `PNG image data, 512 x 512, 8-bit/color RGB` and `sips` reports
+`hasAlpha: no`. Tauri's `generate_context!` requires RGBA.
+
+**Isolated as PRE-EXISTING, not caused by this session:** restoring the
+pre-change `tauri.conf.json` from `ca1eab5` and re-running produces the
+identical error. It arrived with the icon set cherry-picked as `e8170dd`
+(Phase 37 §16.1). Windows builds are unaffected — they use `icon.ico` — which
+is why 0.1.2 through 0.1.6 all built exit 0 on the VM.
+
+Consequence: the product documents Windows/macOS/Linux support and the desktop
+app currently cannot be compiled on macOS or Linux.
