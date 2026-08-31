@@ -1,0 +1,86 @@
+﻿{
+    "label":  "C1-recovered",
+    "captured_utc":  "2026-08-31T00:09:15.2502820Z",
+    "sc_query":  "SERVICE_NAME: AetherCoreMaintenance \r\n        TYPE               : 10  WIN32_OWN_PROCESS  \r\n        STATE              : 4  RUNNING \r\n                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)\r\n        WIN32_EXIT_CODE    : 0  (0x0)\r\n        SERVICE_EXIT_CODE  : 0  (0x0)\r\n        CHECKPOINT         : 0x0\r\n        WAIT_HINT          : 0x0",
+    "sc_qc":  "[SC] QueryServiceConfig SUCCESS\r\n\r\nSERVICE_NAME: AetherCoreMaintenance\r\n        TYPE               : 10  WIN32_OWN_PROCESS \r\n        START_TYPE         : 2   AUTO_START  (DELAYED)\r\n        ERROR_CONTROL      : 1   NORMAL\r\n        BINARY_PATH_NAME   : \"C:\\Program Files\\AetherCore\\aethercore-maintenance-service.exe\"\r\n        LOAD_ORDER_GROUP   : \r\n        TAG                : 0\r\n        DISPLAY_NAME       : AetherCore Maintenance Service\r\n        DEPENDENCIES       : \r\n        SERVICE_START_NAME : LocalSystem",
+    "sc_qsidtype":  "[SC] QueryServiceConfig2 SUCCESS\r\n\r\nSERVICE_NAME: AetherCoreMaintenance\r\nSERVICE_SID_TYPE:  UNRESTRICTED",
+    "sc_sdshow":  "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)",
+    "pipe_sddl":  "O:S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229)",
+    "pipe_present":  true,
+    "installdir_icacls":  "C:\\Program Files\\AetherCore NT SERVICE\\AetherCoreMaintenance:(OI)(CI)(RX)\r\n                            BUILTIN\\Users:(OI)(CI)(RX)\r\n                            BUILTIN\\Administrators:(OI)(CI)(F)\r\n                            NT AUTHORITY\\SYSTEM:(OI)(CI)(F)\r\n\r\nSuccessfully processed 1 files; Failed processing 0 files",
+    "installdir_files":  [
+                             {
+                                 "name":  "aethercore-consent-broker.exe",
+                                 "size":  586240,
+                                 "sha256":  "09709ec809734ea2ceca87a0a70e52f6adcb4617397498d7fce1294a237a181f"
+                             },
+                             {
+                                 "name":  "aethercore-desktop.exe",
+                                 "size":  6349824,
+                                 "sha256":  "5f8d771fb52d1eac776fa48f868a3c8858591ec7f823b6125db79eb0e9e8d4a1"
+                             },
+                             {
+                                 "name":  "aethercore-install-hardener.exe",
+                                 "size":  246784,
+                                 "sha256":  "536984c7105c9c2712e831062842269ca4b8439e0b06726f8b231df83623bab7"
+                             },
+                             {
+                                 "name":  "aethercore-maintenance-service.exe",
+                                 "size":  9810944,
+                                 "sha256":  "f29783811e3e7e4490a3ceed978d8859b45557c994c34556696fba499bd1bd4b"
+                             },
+                             {
+                                 "name":  "aethercore-update-broker.exe",
+                                 "size":  672768,
+                                 "sha256":  "8d55850bda96ae48f4d1d784dc3e6477bc2946d5d34cae65561e55414b003482"
+                             },
+                             {
+                                 "name":  "aetherctl.exe",
+                                 "size":  3611136,
+                                 "sha256":  "1fc95bece78805dcfb99a2aa23d0828fef9601b3d3bec7c5f26986b2eceb4279"
+                             },
+                             {
+                                 "name":  "libomp140.aarch64.dll",
+                                 "size":  599504,
+                                 "sha256":  "d2649698fc68466ee88cf58ae3ab0fab106f29326e83aaaa5643d30651a962e3"
+                             },
+                             {
+                                 "name":  "update-trust.json",
+                                 "size":  83,
+                                 "sha256":  "d4ad925d86f64560bd80c77eae8c606fe810c5f670a7cd42df0836b0653c8b37"
+                             }
+                         ],
+    "installdir_exists":  true,
+    "libomp_present":  true,
+    "ipc_probe_absent":  true,
+    "arp":  [
+                {
+                    "key":  "{FC8A3841-759D-B452-1864-161F84F56C03}",
+                    "name":  "AetherCore",
+                    "version":  "0.1.0"
+                }
+            ],
+    "hklm_installversion":  "0.1.0",
+    "programdata":  [
+                        {
+                            "path":  "C:\\ProgramData\\AetherCore",
+                            "exists":  true,
+                            "count":  5
+                        },
+                        {
+                            "path":  "C:\\ProgramData\\AetherCore\\state",
+                            "exists":  true,
+                            "count":  4
+                        },
+                        {
+                            "path":  "C:\\ProgramData\\AetherCore\\logs",
+                            "exists":  true,
+                            "count":  1
+                        },
+                        {
+                            "path":  "C:\\ProgramData\\AetherCore\\support-staging",
+                            "exists":  true,
+                            "count":  0
+                        }
+                    ]
+}

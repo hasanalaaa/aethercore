@@ -674,3 +674,48 @@ pushed to `origin/main`. See `docs/phase36/DOUBLE_CONNECT_CLOSEOUT.md` for the
 defect, verification, verb measurements, and the retirement of gate 2d.
 DBT-P36-008 (`ipc_probe.exe` in the install image) closed in
 `docs/phase36/DRIFT_LEDGER.md`.
+
+---
+
+## 2026-08-31 — VM QUALIFICATION COMPLETE (tranche 3)
+
+STATUS: **P36_VM_QUALIFICATION=COMPLETE** for everything an agent can do.
+
+Read `SESSION_CONTEXT.md` first — it is the project brain and carries the
+gate-by-gate progress table, the snapshot ledger, the VM operating knowledge
+and the destructive-action log. Stage detail lives in `STAGE_A_EVIDENCE.md`,
+`STAGE_B_EVIDENCE.md`, `STAGE_C_EVIDENCE.md`, `STAGE_D_EVIDENCE.md` and
+`STAGE_E_SEAL.md`; raw captures are under `evidence/`.
+
+### The MSI realignment defect is CLOSED
+
+The registered MSI carried PRE-FIX binaries, so any repair or reinstall would
+have silently reverted both Windows IPC fixes. Now:
+
+- `phase21-workspace/scripts/build-arm64-msi.cmd` is a permanent recorded
+  ARM64 recipe (frontend -> five native binaries in one fixed-package-set cargo
+  invocation -> Tauri desktop -> payload staging -> `wix build -arch arm64` ->
+  `wix msi validate`).
+- The installed package was built by that recipe from `main` at `218e0d8`.
+- A repair now reinstates the fixed binaries instead of reverting them (B1).
+
+### Gate results
+
+A1-A5 PASS - GATE A PASS. B1-B4 PASS - GATE B PASS. C1-C4 all recorded with
+outcomes and recovery - GATE C PASS. D1 BLOCKED BY DESIGN with the exact
+blocker named, D2 BLOCKED as a consequence, D3 PASS - GATE D PASS. E PASS.
+
+### Final VM state
+
+Snapshot `P36-VM-QUALIFIED {a38386fa-15f9-4f86-a231-5de585ff3cd7}`.
+Realigned 0.1.0 installed; ZERO differing fields against the Gate-A reference;
+8/8 typed verb runs return across both actual-token contexts.
+
+### Still required, and no agent can do any of it
+
+Desktop launch under a real standard user and UAC (human at the Parallels
+console; `PromptOnSecureDesktop=0` on this VM is a non-default deviation that
+must be quoted with any UAC finding); physical x86_64 qualification;
+Authenticode certificate; production update endpoint; production key/HSM;
+dependency freeze from the trusted workstation; and freeing host disk space
+(`/System/Volumes/Data` is at 100%).
