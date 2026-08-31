@@ -458,3 +458,26 @@ RECOVERY=  \\Mac\Home\Documents\p36-stage\b3.cmd   (plain msiexec /i v1, already
            proven exit 0 in B3). If that fails:
            prlctl snapshot-switch "Windows 11" --id {86fc5a29-34fc-4e46-8c91-43b151082246}
 ```
+
+### C2 and C4 — injection packages (no machine mutation used to cause them)
+```
+ACTION=    uninstall the good v1; install AetherCore-0.9.2-arm64.msi (payload's
+           libomp140.aarch64.dll replaced with 599,504 random bytes) -> expect
+           the service to fail to start during install. Survey. Then install
+           AetherCore-0.9.4-arm64.msi (payload's aethercore-install-hardener.exe
+           replaced with System32\whoami.exe, which rejects the literal argument
+           "apply" and exits non-zero) -> expect the deferred custom action
+           HardenInstalledSecurity, authored Return="check", to fail and trigger
+           rollback. Survey.
+SNAPSHOT=  P36-POST-UNINSTALL {86fc5a29-34fc-4e46-8c91-43b151082246}
+           (no fresher snapshot is possible - host disk exhausted, see §13)
+EXPECTED=  both installs FAIL and roll back to "not installed": no service, no
+           pipe, no ARP entry, INSTALLFOLDER holding only the unmanaged
+           aetherctl.exe, machine usable.
+RECOVERY=  \\Mac\Home\Documents\p36-stage\b3.cmd  (plain msiexec /i v1, proven
+           exit 0 in B3 and again after C1). If that fails:
+           prlctl snapshot-switch "Windows 11" --id {7d0696ae-ebc7-4c67-b076-438855d175f3}
+```
+Injection packages built (zero machine mutation, no ACL/SID/pipe edit):
+- `AetherCore-0.9.2-arm64.msi` ProductCode `{4944D099-6844-678B-B98B-77B34955CD8A}`
+- `AetherCore-0.9.4-arm64.msi` ProductCode `{C2FB7D6F-7B7F-315C-E5D0-24FE6C901809}`
