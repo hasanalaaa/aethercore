@@ -76,6 +76,21 @@
                       Type="raw"
                       Bitness="always64" />
     </Property>
+    <!-- The search alone is not enough, and this was MEASURED, not guessed: an uninstall
+         run against an install whose HKLM key had already been deleted left
+         ProgramData\AetherCore\state\aethercore.db behind, because AETHERCOREDATADIR
+         came back empty and RemoveFolderEx had nothing to enumerate.
+         [CommonAppDataFolder] is a system folder property, set by Windows Installer
+         before the sequence starts, so it IS readable this early - unlike a custom
+         Directory id, which is not resolved until CostFinalize. AppSearch is 400 and
+         WixRemoveFoldersEx sits just before CostInitialize (800), so a SetProperty
+         after AppSearch lands in between. The registry value stays as the authority
+         when it exists, in case ProgramData was ever relocated. -->
+    <SetProperty Id="AETHERCOREDATADIR"
+                 Value="[CommonAppDataFolder]AetherCore"
+                 After="AppSearch"
+                 Sequence="both"
+                 Condition="NOT AETHERCOREDATADIR" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="AetherCore">
