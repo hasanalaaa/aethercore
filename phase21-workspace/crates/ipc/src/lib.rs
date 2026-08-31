@@ -173,17 +173,6 @@ pub fn decode_client_frame_bytes(frame: &[u8]) -> Result<ClientFrame> {
     Ok(message)
 }
 
-// ---------------------------------------------------------------------------
-// P36 Tranche 1 closure (Hermes): raw-wire diagnostic surface for the Windows
-// named-pipe qualification probes (`crates/ipc/examples/ipc_rawwire_probe.rs`).
-// Re-exports the crate-internal frame codec verbatim - no reimplementation, no
-// behavior change to production paths. Diagnostic-only surface.
-// ---------------------------------------------------------------------------
-#[cfg(windows)]
-pub mod probe {
-    pub use super::{read_client_frame, read_server_frame, write_client_frame, write_server_frame, IpcError, Result};
-}
-
 
 // ---------------------------------------------------------------------------
 // Phase 26 — Transport abstraction (additive; Windows behavior byte-unchanged)

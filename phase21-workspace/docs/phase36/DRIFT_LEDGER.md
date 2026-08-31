@@ -133,8 +133,6 @@ comment. Tracked as debt below.
 
 | ID | Item | Action |
 |---|---|---|
-| DBT-P36-001 | Six diagnostic probes relocated `crates/ipc/examples/` → `tools/p36-probes/`. They were compiled by `cargo build --examples` from inside product source; they are now inert (the workspace `members` list is explicit, no globs). | Delete when Windows named-pipe qualification is sealed |
-| DBT-P36-002 | `crates/ipc/src/lib.rs` widens the frame codec to `pub` and adds `pub mod probe` for DBT-P36-001. This is a real public-API surface increase in a product crate. | Revert to `pub(crate)` with DBT-P36-001 |
 | DBT-P36-003 | `crates/fleet/src/transport.rs` test hard-codes the VM-local path `C:\AetherCore-P36\incoming\ssh-true.cmd`. The test cannot pass on a Windows host that is not the qualification VM. | Create the stub in the test, or gate the test on its presence |
 | DBT-P36-004 | Icon set is `COMPILE_ONLY_PLACEHOLDER=True`, AI-generated, not the product mark. | Owner must supply real artwork before release packaging |
 | DBT-P36-005 | maintenance-service module un-gating (`main.rs`, `protocol.rs`, `router.rs`) compiles router/protocol/streaming/performance/support and the broker trust gates into the Windows service binary for the first time. Recorded SECURITY-SENSITIVE. | Codex review before release packaging; do not expand |
@@ -145,6 +143,8 @@ comment. Tracked as debt below.
 
 | ID | Item | Resolution |
 |---|---|---|
+| DBT-P36-001 | Six diagnostic probes under `tools/p36-probes/`, compiled from inside product source during Phase 36 tranche 1. | **Closed 2026-08-31 (Phase 38).** The stated trigger — "delete when Windows named-pipe qualification is sealed" — is met: Phase 36 Stage E sealed, and Phase 37 Gates S1–S4 all PASS with 18/18 verbs. `tools/p36-probes/` deleted. Nothing referenced it: the workspace `members` list is explicit and contains no glob, and a tree-wide grep for `p36-probes` / `aethercore_ipc::probe` returns zero hits after removal. |
+| DBT-P36-002 | `crates/ipc/src/lib.rs` widened the frame codec to `pub` and added `#[cfg(windows)] pub mod probe` to serve DBT-P36-001 — a real public-API surface increase in a product crate. | **Closed 2026-08-31 (Phase 38).** The codec functions (`write_request`, `read_request`, `write_response`, `read_response`) were already back to `pub(crate)`; the remaining surface was the `probe` module, now removed. Note for the record: `probe` only re-exported items that are already `pub` at crate level (`read_client_frame`, `write_client_frame`, `read_server_frame`, `write_server_frame`) because the maintenance service uses them, so its removal narrows the module surface without removing any capability production code relies on. Verified: `cargo check -p aethercore-ipc -p aethercore-maintenance-service -p aetherctl` finishes clean and `cargo test -p aethercore-ipc` passes 8+8. |
 | DBT-P36-008 | `ipc_probe.exe` was present in the **installed** product directory `C:\Program Files\AetherCore\` on the qualification VM (observed 2026-08-30 by `dir /b`). Origin: hand-copied from `target\release\examples` during tranche-1 probing; no build script or deploy step references it — it never was an MSI component. | Confirmed not an MSI component. Removed from the install image, backed up to `C:\AetherCore-P36\backup-p36-overlapped`. Service remained RUNNING throughout, verbs still return. Closed 2026-08-30. |
 
 ## Result
