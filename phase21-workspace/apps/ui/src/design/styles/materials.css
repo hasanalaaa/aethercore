@@ -23,6 +23,10 @@ main > * { max-width:var(--ac-content-max); margin-inline:auto; }
   background:linear-gradient(180deg,rgba(25,33,41,.70),rgba(17,23,29,.68));
   box-shadow:var(--ac-shadow-card);
 }
+@media (prefers-color-scheme: light) {
+  :root:not([data-system-theme="dark"]) :is(.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.pending-install-card,.install-progress-card,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,.storage-card,.startup-card,.cleanup-card,.repair-check,.module-live,.module-card,.warning-strip,.protection-card,.phase4-action-card,.recovery-panel) { background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(241,247,250,.86)); }
+}
+[data-system-theme="light"] :is(.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.pending-install-card,.install-progress-card,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,.storage-card,.startup-card,.cleanup-card,.repair-check,.module-live,.module-card,.warning-strip,.protection-card,.phase4-action-card,.recovery-panel) { background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(241,247,250,.86)); }
 .panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,.recovery-panel { border-radius:var(--ac-radius-lg); }
 .storage-card,.startup-card,.cleanup-card,.repair-check,.pending-install-card,.install-progress-card { border-radius:var(--ac-radius-md); }
 .driver-metrics article,.cleanup-summary article,.hardware-summary article,.metric-grid>div,.memory-facts>div,.repair-summary article,.review-facts>div {

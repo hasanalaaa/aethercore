@@ -90,6 +90,27 @@
   --muted: var(--ac-text-3);
 }
 
+/* Light mode is deliberate; it is not a filter over dark surfaces. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-system-theme="dark"]) {
+    color-scheme: light;
+    --ac-text-1:#152230; --ac-text-2:#304457; --ac-text-3:#53697d; --ac-text-4:#6d8294; --ac-text-inverse:#f7fbff;
+    --ac-bg-base:#edf3f7; --ac-material-structural:rgba(241,247,250,.86); --ac-material-base:rgba(255,255,255,.82); --ac-material-elevated:rgba(255,255,255,.94); --ac-material-focused:#fff;
+    --ac-layer-hover:rgba(21,53,77,.055); --ac-layer-pressed:rgba(21,53,77,.1); --ac-border-subtle:rgba(20,50,71,.13); --ac-border-default:rgba(20,50,71,.2); --ac-border-strong:rgba(20,50,71,.3);
+    --ac-accent:#1769a6; --ac-accent-strong:#07558d; --ac-positive:#19734d; --ac-warning:#8a5a12; --ac-danger:#ad3b3b;
+    --ac-shadow-card:0 1px 0 rgba(255,255,255,.9) inset,0 12px 28px rgba(28,56,74,.1); --ac-shadow-float:0 24px 60px rgba(28,56,74,.18),0 1px 0 rgba(255,255,255,.9) inset;
+  }
+}
+
+[data-system-theme="light"] {
+  color-scheme:light;
+  --ac-text-1:#152230; --ac-text-2:#304457; --ac-text-3:#53697d; --ac-text-4:#6d8294; --ac-text-inverse:#f7fbff; --ac-bg-base:#edf3f7;
+  --ac-material-structural:rgba(241,247,250,.86); --ac-material-base:rgba(255,255,255,.82); --ac-material-elevated:rgba(255,255,255,.94); --ac-material-focused:#fff;
+  --ac-layer-hover:rgba(21,53,77,.055); --ac-layer-pressed:rgba(21,53,77,.1); --ac-border-subtle:rgba(20,50,71,.13); --ac-border-default:rgba(20,50,71,.2); --ac-border-strong:rgba(20,50,71,.3);
+  --ac-accent:#1769a6; --ac-accent-strong:#07558d; --ac-positive:#19734d; --ac-warning:#8a5a12; --ac-danger:#ad3b3b;
+  --ac-shadow-card:0 1px 0 rgba(255,255,255,.9) inset,0 12px 28px rgba(28,56,74,.1); --ac-shadow-float:0 24px 60px rgba(28,56,74,.18),0 1px 0 rgba(255,255,255,.9) inset;
+}
+
 @media (prefers-contrast: more) {
   :root {
     --ac-border-subtle: rgba(255,255,255,.2);

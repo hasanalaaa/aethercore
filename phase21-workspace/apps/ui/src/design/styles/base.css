@@ -16,6 +16,10 @@ body {
     rgba(8,12,17,.72);
   -webkit-font-smoothing: antialiased;
 }
+@media (prefers-color-scheme: light) {
+  :root:not([data-system-theme="dark"]) body { background: radial-gradient(70rem 42rem at 88% -15%, rgba(93,170,214,.13), transparent 63%), #edf3f7; }
+}
+[data-system-theme="light"] body { background: radial-gradient(70rem 42rem at 88% -15%, rgba(93,170,214,.13), transparent 63%), #edf3f7; }
 button, input, textarea, select { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 button, [role="button"], input, summary { outline: none; }
