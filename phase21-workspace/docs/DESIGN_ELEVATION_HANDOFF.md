@@ -8,6 +8,6 @@ Completed on `codex/design-elevation`:
 - Added `apps/ui/DESIGN_LANGUAGE.md` covering evidence visibility, governed mutation, honest telemetry, five required states, RTL, themes, motion, and the review gate.
 - Added an intentional light theme alongside the existing dark tokens.
 
-Next ordered work: elevate `AppShell`, `NavigationRail`, and `CommandPalette`, then `DeepScanPage`, then citation-first insights, followed by drivers/care/recovery. Do not touch Rust, IPC, installer, services, crates, or the security model.
+Shell elevation is now implemented on `design/shell`: the rail uses grouped information architecture (Understand / Change safely / History), the shell exposes local-first context plus idle/loading/error/policy-guarded states, and the command palette keeps unavailable online surfaces visible with an honest status. Light and dark themes are explicit, persisted, keyboard reachable, and RTL-safe. Next ordered work: elevate `DeepScanPage`, then citation-first insights, followed by drivers/care/recovery. Do not touch Rust, IPC, installer, services, crates, or the security model.
 
-Verification note: icon containers and dimensions were checked locally. `pnpm check`/`vite build` could not run because the checked-in pnpm tree has a broken `@jridgewell/remapping` symlink under Svelte; reinstall dependencies before the frontend gate.
+Verification note: icon containers and dimensions were checked locally. After reinstalling the frontend dependencies, `pnpm check` reports 0 Svelte errors and the inherited 17 warnings; `pnpm build` succeeds. The existing browser-only Tauri error remains when previewing outside the desktop host and is unrelated to shell rendering.
