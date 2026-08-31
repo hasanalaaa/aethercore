@@ -506,8 +506,7 @@ Raw transcript: `~/dev/p36-stage/out/denials-reverified.txt`.
 Desktop qualification evidence: an Interactive/ Limited scheduled task launched
 `C:\Program Files\AetherCore\aethercore-desktop.exe` in session 6; process was
 responsive under `HASANALAAA3A44\P36StandardUser`. Screenshots are retained at
-`~/dev/p36-stage/out/desktop-launch.png` (shell Overview) and
-`~/dev/p36-stage/out/desktop-deepscan.png` (surface capture). Verb transcript
+`~/dev/p36-stage/out/desktop-launch.png` (shell Overview). Verb transcript
 `~/dev/p36-stage/out/verbs-desktop-STD.txt` proves service verbs returned,
 `diagnostics.stateUnavailable` was typed for doctor, and JSON insights reported
 `engineLabel":"localModel"`.
