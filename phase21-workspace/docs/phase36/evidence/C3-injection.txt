@@ -1,0 +1,21 @@
+=== C3: required file missing at service start ===
+CAPTURED_UTC=2026-08-31T00:02:51.6171317Z
+--- stop service ---
+ SERVICE_NAME: AetherCoreMaintenance          TYPE               : 10  WIN32_OWN_PROCESS           STATE              : 4  RUNNING                                  (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)         WIN32_EXIT_CODE    : 0  (0x0)         SERVICE_EXIT_CODE  : 0  (0x0)         CHECKPOINT         : 0x0         WAIT_HINT          : 0x0
+        STATE              : 1  STOPPED 
+--- INJECT: rename libomp140.aarch64.dll ---
+DLL_PRESENT_AFTER_INJECT=False
+--- attempt start ---
+SC_START_OUTPUT=[SC] StartService FAILED 1053:  The service did not respond to the start or control request in a timely fashion. 
+SC_START_ELAPSED_MS=24
+SC_QUERY= SERVICE_NAME: AetherCoreMaintenance          TYPE               : 10  WIN32_OWN_PROCESS           STATE              : 1  STOPPED          WIN32_EXIT_CODE    : 0  (0x0)         SERVICE_EXIT_CODE  : 0  (0x0)         CHECKPOINT         : 0x0         WAIT_HINT          : 0x7d0
+PIPE_COUNT=0
+--- machine usability probes ---
+EXPLORER_RUNNING=1
+SERVICE_REGKEY_PRESENT=True
+ARP={84140FFD-5CBC-175D-928D-E493493F5F51} 0.1.1
+WINDOWS_INSTALLER_DIR_FILES=206
+--- system event log, last 5 for this service ---
+EVENT id=7000 lvl=Error :: The AetherCore Maintenance Service service failed to start due to the following error:  The service did not respond to the start or control request in a timely fashion.
+EVENT id=7009 lvl=Error :: A timeout was reached (30000 milliseconds) while waiting for the AetherCore Maintenance Service service to connect.
+EVENT id=7045 lvl=Information :: A service was installed in the system.  Service Name:  AetherCore Maintenance Service Service File Name:  "C:\Program Files\AetherCore\aethercore-maintenance-service.exe" Service Type:  user mode service Service Start Type:  auto start Service Account:  LocalSystem

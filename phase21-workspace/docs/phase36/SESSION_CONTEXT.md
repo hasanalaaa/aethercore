@@ -443,3 +443,17 @@ EXPECTED=  service start FAILS. Machine still usable. Then msiexec /f restores
 RECOVERY=  msiexec /f {84140FFD-5CBC-175D-928D-E493493F5F51} /qn
            If that fails: prlctl snapshot-switch "Windows 11" --id {7d0696ae-ebc7-4c67-b076-438855d175f3}
 ```
+
+### C1 — install interrupted mid-transaction
+```
+ACTION=    uninstall v2; then start msiexec /i v1 and Stop-Process -Force every
+           msiexec.exe the instant the verbose log reaches file copy
+SNAPSHOT=  P36-POST-UNINSTALL {86fc5a29-34fc-4e46-8c91-43b151082246}
+           (no fresher snapshot is possible - host disk exhausted, see §13)
+EXPECTED=  unknown by design - this is the measurement. Record: does Windows
+           Installer roll back cleanly, is the machine usable, is the service
+           orphaned, is the pipe dangling, is C:\Windows\Installer consistent.
+RECOVERY=  \\Mac\Home\Documents\p36-stage\b3.cmd   (plain msiexec /i v1, already
+           proven exit 0 in B3). If that fails:
+           prlctl snapshot-switch "Windows 11" --id {86fc5a29-34fc-4e46-8c91-43b151082246}
+```
