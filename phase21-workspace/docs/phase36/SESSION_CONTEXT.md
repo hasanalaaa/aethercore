@@ -420,3 +420,26 @@ EXPECTED=  exit 0; RemoveExistingProducts runs; exactly ONE ARP entry afterwards
 RECOVERY=  prlctl snapshot-switch "Windows 11" --id {86fc5a29-34fc-4e46-8c91-43b151082246}
            then: prlctl exec "Windows 11" cmd.exe /c "\\Mac\Home\Documents\p36-stage\b3.cmd"
 ```
+
+## 14. STAGE C PLAN (ordered to need zero snapshot restores if all goes well)
+
+Order chosen so each injection either self-recovers or lands on a bare box:
+C3 (post-install fault, recovered by the authored repair contract) -> uninstall
+-> C1 (kill msiexec mid-copy on a bare box) -> C2 (poisoned-payload package:
+service cannot start) -> C4 (poisoned-payload package: custom action fails).
+
+The C2/C4 injections are done by building an INJECTION PACKAGE with one payload
+file deliberately broken. Nothing on the machine is mutated to cause them — no
+ACL change, no Service SID change, no pipe descriptor edit.
+
+### C3 — required file missing at service start
+```
+ACTION=    stop AetherCoreMaintenance; rename libomp140.aarch64.dll to .missing;
+           attempt sc start; record; then recover with msiexec /f
+SNAPSHOT=  P36-MSI-ALIGNED {7d0696ae-ebc7-4c67-b076-438855d175f3}
+           (no fresher snapshot is possible - host disk exhausted, see §13)
+EXPECTED=  service start FAILS. Machine still usable. Then msiexec /f restores
+           the file and the service starts again, 4 verbs return.
+RECOVERY=  msiexec /f {84140FFD-5CBC-175D-928D-E493493F5F51} /qn
+           If that fails: prlctl snapshot-switch "Windows 11" --id {7d0696ae-ebc7-4c67-b076-438855d175f3}
+```
