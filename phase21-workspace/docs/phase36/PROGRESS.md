@@ -371,13 +371,13 @@ SECURITY-SENSITIVE DELTA — DO NOT EXPAND further without owner/Codex review.
 Security-audit `mode_bits()` Windows fallback is POSIX-style mapping and is
 NOT Windows ACL evidence; native ACL qualification remains open.
 
-## Icon placeholder status
+## Icon placeholder status (superseded by design elevation)
 
-`COMPILE_ONLY_PLACEHOLDER=True`. The sealed P35 icon.png was corrupt
+The sealed P35 icon.png was corrupt
 (truncated zlib stream, identical in ALL sealed archives 30-35, inherited
-P20-era defect). Replaced on both trees with an AI-generated placeholder
-source + full Tauri-CLI-derived icon set. NOT final product branding; owner
-must approve/release real artwork before any release packaging.
+P20-era defect). This historical placeholder was replaced by the reviewed
+AetherCore evidence-shield master and regenerated cross-platform set in
+commit `9f07df5`. The current icon set is the design-elevation release asset.
 
 ## NEXT ACTION (exact, for the next executor)
 

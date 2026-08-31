@@ -97,8 +97,8 @@ present identically in every sealed archive 30–35, never caught on macOS where
 pinned Tauri CLI 2.11.4 from the sealed lockfile (`tauri icon`) over a new
 1024×1024 placeholder.
 
-`COMPILE_ONLY_PLACEHOLDER=True` — **not** final product branding. Owner approval
-of real artwork is required before any release packaging.
+Historical placeholder marker; superseded by the reviewed evidence-shield
+master and regenerated cross-platform set in design-elevation commit `9f07df5`.
 
 ### A6 — P36 control and evidence records (6 files)
 
@@ -136,7 +136,7 @@ comment. Tracked as debt below.
 | DBT-P36-001 | Six diagnostic probes relocated `crates/ipc/examples/` → `tools/p36-probes/`. They were compiled by `cargo build --examples` from inside product source; they are now inert (the workspace `members` list is explicit, no globs). | Delete when Windows named-pipe qualification is sealed |
 | DBT-P36-002 | `crates/ipc/src/lib.rs` widens the frame codec to `pub` and adds `pub mod probe` for DBT-P36-001. This is a real public-API surface increase in a product crate. | Revert to `pub(crate)` with DBT-P36-001 |
 | DBT-P36-003 | `crates/fleet/src/transport.rs` test hard-codes the VM-local path `C:\AetherCore-P36\incoming\ssh-true.cmd`. The test cannot pass on a Windows host that is not the qualification VM. | Create the stub in the test, or gate the test on its presence |
-| DBT-P36-004 | Icon set is `COMPILE_ONLY_PLACEHOLDER=True`, AI-generated, not the product mark. | Owner must supply real artwork before release packaging |
+| DBT-P36-004 | Historical P36 icon set used a compile-only placeholder. | Resolved by the reviewed evidence-shield master and regenerated cross-platform set in `9f07df5`; retain this row as historical provenance. |
 | DBT-P36-005 | maintenance-service module un-gating (`main.rs`, `protocol.rs`, `router.rs`) compiles router/protocol/streaming/performance/support and the broker trust gates into the Windows service binary for the first time. Recorded SECURITY-SENSITIVE. | Codex review before release packaging; do not expand |
 | DBT-P36-006 | `crates/security-audit/src/filesystem.rs` `mode_bits()` Windows fallback is a POSIX-style mapping, **not** Windows ACL evidence. | Native ACL qualification remains open |
 | DBT-P36-007 | The P35 full-tree ledger is now permanently stale (91 files). | Re-baseline at the next seal, not before |
