@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+# Phase 37 Stage 3. NOT PUBLISHABLE YET - see packaging/winget/README.md.
+PackageIdentifier: AetherCore.aetherctl
+PackageVersion: 0.0.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

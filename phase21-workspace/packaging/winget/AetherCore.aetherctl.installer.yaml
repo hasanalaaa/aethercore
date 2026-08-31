@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: AetherCore.aetherctl
+PackageVersion: 0.0.0
+InstallerType: zip
+NestedInstallerType: portable
+Commands:
+  - aetherctl
+ReleaseDate: PENDING_RELEASE_DATE
+Installers:
+  - Architecture: x64
+    NestedInstallerFiles:
+      - RelativeFilePath: aetherctl.exe
+        PortableCommandAlias: aetherctl
+    InstallerUrl: PENDING_INSTALLER_URL/aetherctl-0.0.0-windows-x64.zip
+    InstallerSha256: PENDING_SHA256_X64
+  - Architecture: arm64
+    NestedInstallerFiles:
+      - RelativeFilePath: aetherctl.exe
+        PortableCommandAlias: aetherctl
+    InstallerUrl: PENDING_INSTALLER_URL/aetherctl-0.0.0-windows-arm64.zip
+    InstallerSha256: PENDING_SHA256_ARM64
+ManifestType: installer
+ManifestVersion: 1.6.0
