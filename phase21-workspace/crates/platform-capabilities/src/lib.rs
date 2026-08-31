@@ -1,7 +1,7 @@
 //! Phase 26 — Universal Platform Foundation: typed capability matrix.
 //!
-//! CX contract: Windows behavior is FROZEN (everything Native there, byte-for-byte
-//! unchanged); other platforms report their CURRENT reality honestly. `NotAvailable`
+//! CX contract: Windows workstation behavior stays Native; Server SKUs report their
+//! CURRENT reality honestly. `NotAvailable`
 //! is a first-class typed answer — this crate NEVER simulates an unavailable capability.
 
 use serde::{Deserialize, Serialize};
@@ -93,6 +93,103 @@ pub enum Platform {
     Linux,
 }
 
+/// Windows product family used to select the SKU-aware capability table.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WindowsSku {
+    Workstation,
+    Server,
+    ServerCore,
+    Unknown,
+}
+
+/// Classifies the documented ProductType/InstallationType registry values.
+pub fn classify_windows_sku(product_type: u32, installation_type: &str) -> WindowsSku {
+    match product_type {
+        1 => WindowsSku::Workstation,
+        2 | 3 if installation_type.eq_ignore_ascii_case("server core") => WindowsSku::ServerCore,
+        2 | 3 => WindowsSku::Server,
+        _ => WindowsSku::Unknown,
+    }
+}
+
+/// Reads the live Windows SKU without falling back to a workstation claim.
+pub fn current_windows_sku() -> WindowsSku {
+    #[cfg(windows)]
+    {
+        use std::ffi::c_void;
+        use windows::{
+            core::PCWSTR,
+            Win32::System::Registry::{
+                RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+            },
+        };
+
+        fn wide(value: &str) -> Vec<u16> {
+            value.encode_utf16().chain(std::iter::once(0)).collect()
+        }
+        let key = wide(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+        let product_name = wide("ProductType");
+        let installation_name = wide("InstallationType");
+        let mut product_type = 0u32;
+        let mut product_bytes = std::mem::size_of::<u32>() as u32;
+        let product_status = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                PCWSTR(key.as_ptr()),
+                PCWSTR(product_name.as_ptr()),
+                RRF_RT_REG_DWORD,
+                None,
+                Some((&mut product_type as *mut u32).cast::<c_void>()),
+                Some(&mut product_bytes),
+            )
+        };
+        if product_status.is_err() {
+            return WindowsSku::Unknown;
+        }
+
+        let mut bytes = 0u32;
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                PCWSTR(key.as_ptr()),
+                PCWSTR(installation_name.as_ptr()),
+                RRF_RT_REG_SZ,
+                None,
+                None,
+                Some(&mut bytes),
+            )
+        };
+        let installation_type = if status.is_ok() && bytes >= 2 && bytes <= 4096 {
+            let mut buffer = vec![0u16; (bytes as usize).div_ceil(2)];
+            let status = unsafe {
+                RegGetValueW(
+                    HKEY_LOCAL_MACHINE,
+                    PCWSTR(key.as_ptr()),
+                    PCWSTR(installation_name.as_ptr()),
+                    RRF_RT_REG_SZ,
+                    None,
+                    Some(buffer.as_mut_ptr().cast::<c_void>()),
+                    Some(&mut bytes),
+                )
+            };
+            if status.is_ok() {
+                let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
+                String::from_utf16_lossy(&buffer[..end])
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+        classify_windows_sku(product_type, &installation_type)
+    }
+    #[cfg(not(windows))]
+    {
+        WindowsSku::Unknown
+    }
+}
+
 impl Platform {
     /// The compiling host's platform.
     pub fn current() -> Self {
@@ -122,12 +219,63 @@ pub mod keys {
     pub const LINUX_NO_DRIVER_STORE: &str = "cap.reason.linuxNoDriverStore";
     pub const LINUX_NO_DISM_SFC_WUA: &str = "cap.reason.linuxNoDismSfcWua";
     pub const LINUX_RESTORE_NA: &str = "cap.reason.linuxRestoreNotAvailable";
+    pub const WINDOWS_SERVER_NO_THERMAL_POWER: &str = "cap.reason.windowsServerNoThermalPower";
+    pub const WINDOWS_SERVER_NO_GAME_MODE: &str = "cap.reason.windowsServerNoGameMode";
+    pub const WINDOWS_SERVER_NO_RESTORE_POINTS: &str = "cap.reason.windowsServerNoRestorePoints";
+    pub const WINDOWS_SERVER_WUA_POLICY: &str = "cap.note.windowsServerWsusPolicy";
+    pub const WINDOWS_SERVER_CORE_NO_CONSOLE: &str = "cap.note.windowsServerCoreNoConsole";
 }
 
 /// FROZEN Windows table: everything Native, exactly as shipped today.
 fn windows_table() -> Vec<(PlatformCapability, Availability)> {
     use PlatformCapability as C;
     C::ALL.iter().map(|c| (*c, Availability::Native)).collect()
+}
+
+fn windows_server_table(core: bool) -> Vec<(PlatformCapability, Availability)> {
+    use PlatformCapability as C;
+    use keys as k;
+    let n = || Availability::Native;
+    let d = |note| Availability::Degraded { note_key: note };
+    let na = |reason| Availability::NotAvailable { reason_key: reason };
+    vec![
+        (C::TelemetryCpu, n()),
+        (C::TelemetryMemory, n()),
+        (C::TelemetryStorage, n()),
+        (C::TelemetryGpu, n()),
+        (C::ThermalPowerClamp, na(k::WINDOWS_SERVER_NO_THERMAL_POWER)),
+        (C::DriverServicing, n()),
+        (C::SystemRepairDism, n()),
+        (C::SystemRepairSfc, n()),
+        (C::SystemRepairWua, d(k::WINDOWS_SERVER_WUA_POLICY)),
+        (C::ProcessGovernorEcoQos, n()),
+        (C::GameModeProfile, na(k::WINDOWS_SERVER_NO_GAME_MODE)),
+        (C::RestorePoints, na(k::WINDOWS_SERVER_NO_RESTORE_POINTS)),
+        (C::WindowsUpdate, d(k::WINDOWS_SERVER_WUA_POLICY)),
+        (C::TimelineIntelligence, n()),
+        (C::LocalIntelligence, n()),
+        (
+            C::CareOrchestration,
+            if core { d(k::WINDOWS_SERVER_CORE_NO_CONSOLE) } else { n() },
+        ),
+    ]
+}
+
+/// Returns the SKU-aware Windows answer while keeping `available_on(Windows, ..)` frozen for
+/// callers that explicitly request the workstation baseline.
+pub fn available_on_windows_sku(sku: WindowsSku, capability: PlatformCapability) -> Availability {
+    let table = match sku {
+        WindowsSku::Workstation => windows_table(),
+        WindowsSku::Server => windows_server_table(false),
+        WindowsSku::ServerCore => windows_server_table(true),
+        // Unknown Windows must not be overstated as a workstation.
+        WindowsSku::Unknown => windows_server_table(false),
+    };
+    table
+        .into_iter()
+        .find(|(candidate, _)| *candidate == capability)
+        .map(|(_, availability)| availability)
+        .unwrap_or(Availability::NotAvailable { reason_key: keys::WINDOWS_ONLY_API })
 }
 
 /// macOS table — Phase 27 reality: telemetryCpu/Memory are Native via the libc-backed
@@ -213,6 +361,26 @@ pub fn matrix_for_current_platform() -> Vec<(&'static str, Availability)> {
     let platform = Platform::current();
     PlatformCapability::ALL
         .iter()
-        .map(|c| (c.as_str(), available_on(platform, *c)))
+        .map(|c| {
+            let availability = match platform {
+                Platform::Windows => available_on_windows_sku(current_windows_sku(), *c),
+                _ => available_on(platform, *c),
+            };
+            (c.as_str(), availability)
+        })
         .collect()
+}
+
+/// Stable wire label for the current OS and Windows SKU.
+pub fn current_platform_name() -> &'static str {
+    match Platform::current() {
+        Platform::Windows => match current_windows_sku() {
+            WindowsSku::Workstation => "windows",
+            WindowsSku::Server => "windowsServer",
+            WindowsSku::ServerCore => "windowsServerCore",
+            WindowsSku::Unknown => "windowsUnknownSku",
+        },
+        Platform::Macos => "macos",
+        Platform::Linux => "linux",
+    }
 }

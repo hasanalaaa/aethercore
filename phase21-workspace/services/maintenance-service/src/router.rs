@@ -1374,12 +1374,7 @@ pub fn handle_request(
                     .collect();
                 Ok(Some(response::Payload::PlatformCapabilitiesResponse(
                     v1::PlatformCapabilitiesResponse {
-                        platform: match aethercore_platform_capabilities::Platform::current() {
-                            aethercore_platform_capabilities::Platform::Windows => "windows",
-                            aethercore_platform_capabilities::Platform::Macos => "macos",
-                            aethercore_platform_capabilities::Platform::Linux => "linux",
-                        }
-                        .to_string(),
+                        platform: aethercore_platform_capabilities::current_platform_name().to_string(),
                         capabilities,
                     },
                 )))
@@ -1387,12 +1382,7 @@ pub fn handle_request(
             request::Payload::GetEngineSource(_) => Ok(Some(
                 response::Payload::EngineSourceResponse(v1::EngineSourceResponse {
                     source: crate::performance::engine_source().to_string(),
-                    platform: match aethercore_platform_capabilities::Platform::current() {
-                        aethercore_platform_capabilities::Platform::Windows => "windows",
-                        aethercore_platform_capabilities::Platform::Macos => "macos",
-                        aethercore_platform_capabilities::Platform::Linux => "linux",
-                    }
-                    .to_string(),
+                    platform: aethercore_platform_capabilities::current_platform_name().to_string(),
                 }),
             )),
             // ---------------- Phase 29 (T1): signed journal export -------------------

@@ -7,7 +7,7 @@ use crate::cli::{Config, OfflineJob};
 use crate::error::CliError;
 use crate::render;
 use crate::transport;
-use aethercore_platform_capabilities::{Availability, Platform};
+use aethercore_platform_capabilities::Availability;
 
 pub fn run(config: &Config, job: OfflineJob) -> i32 {
     let command = command_label(&job);
@@ -155,11 +155,7 @@ fn execute(config: &Config, job: OfflineJob) -> Result<serde_json::Value, CliErr
 }
 
 pub fn platform_str() -> &'static str {
-    match Platform::current() {
-        Platform::Windows => "windows",
-        Platform::Macos => "macos",
-        Platform::Linux => "linux",
-    }
+    aethercore_platform_capabilities::current_platform_name()
 }
 
 /// Mirrors services/maintenance-service/src/performance.rs::engine_source (parity gate).

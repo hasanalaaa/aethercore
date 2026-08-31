@@ -1,8 +1,8 @@
 //! Phase 26 — capability matrix pinning tests (cfg-gated per OS; all run on this host).
 
 use aethercore_platform_capabilities::{
-    Availability, Platform, PlatformCapability as C, available_on, keys,
-    matrix_for_current_platform,
+    Availability, Platform, PlatformCapability as C, WindowsSku, available_on,
+    available_on_windows_sku, classify_windows_sku, keys, matrix_for_current_platform,
 };
 
 fn is_na(av: &Availability) -> bool {
@@ -118,4 +118,38 @@ fn capability_names_are_unique() {
     let len = names.len();
     names.dedup();
     assert_eq!(names.len(), len, "duplicate capability name");
+}
+
+#[test]
+fn windows_sku_classification_distinguishes_server_core() {
+    assert_eq!(classify_windows_sku(1, "Client"), WindowsSku::Workstation);
+    assert_eq!(classify_windows_sku(3, "Server"), WindowsSku::Server);
+    assert_eq!(classify_windows_sku(3, "Server Core"), WindowsSku::ServerCore);
+    assert_eq!(classify_windows_sku(99, ""), WindowsSku::Unknown);
+}
+
+#[test]
+fn server_matrix_reports_client_only_surfaces_honestly() {
+    for sku in [WindowsSku::Server, WindowsSku::ServerCore] {
+        assert!(matches!(
+            available_on_windows_sku(sku, C::ThermalPowerClamp),
+            Availability::NotAvailable { .. }
+        ));
+        assert!(matches!(
+            available_on_windows_sku(sku, C::GameModeProfile),
+            Availability::NotAvailable { .. }
+        ));
+        assert!(matches!(
+            available_on_windows_sku(sku, C::RestorePoints),
+            Availability::NotAvailable { .. }
+        ));
+    }
+    assert!(matches!(
+        available_on_windows_sku(WindowsSku::Server, C::WindowsUpdate),
+        Availability::Degraded { .. }
+    ));
+    assert!(matches!(
+        available_on_windows_sku(WindowsSku::ServerCore, C::CareOrchestration),
+        Availability::Degraded { .. }
+    ));
 }

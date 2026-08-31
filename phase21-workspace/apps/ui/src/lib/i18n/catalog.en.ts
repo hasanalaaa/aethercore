@@ -209,6 +209,11 @@ export const enCatalog = {
   'about.capabilityState.native': 'Native',
   'about.capabilityState.degraded': 'Degraded',
   'about.capabilityState.notAvailable': 'Not available',
+  'cap.reason.windowsServerNoThermalPower': 'Server thermal/power optimization is not applicable.',
+  'cap.reason.windowsServerNoGameMode': 'Game Mode is a client-only Windows surface.',
+  'cap.reason.windowsServerNoRestorePoints': 'System Restore is unavailable on Windows Server.',
+  'cap.note.windowsServerWsusPolicy': 'Windows Update results follow the machine WSUS policy.',
+  'cap.note.windowsServerCoreNoConsole': 'No interactive console session is available for idle scheduling.',
 
   'state.Idle': 'Idle',
   'state.Scanning': 'Scanning',
