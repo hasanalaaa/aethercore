@@ -122,7 +122,14 @@
 
         <Directory Id="AssetsDir" Name="assets">
           <Directory Id="AssetsModelsDir" Name="models">
-            <Directory Id="AssetsModelLicensesDir" Name="licenses" />
+            <Directory Id="AssetsModelLicensesDir" Name="licenses">
+              <!-- Own component: a File inherits its parent Component's directory, so
+                   the licenses cannot be authored from inside ModelComponent. -->
+              <Component Id="ModelLicenseComponent" Guid="{3B9B8BEF-C513-41F1-94BF-31394ACCF11D}" Bitness="always64">
+                <File Id="ModelLicenseApache" Source="$(var.AssetsDir)\models\licenses\Apache-2.0.txt" KeyPath="yes" />
+                <File Id="ModelLicenseQwenNotice" Source="$(var.AssetsDir)\models\licenses\Qwen-GGUF-NOTICE.txt" />
+              </Component>
+            </Directory>
 
             <!-- P37 Stage 1: the embedded reasoner is the PERMANENT default engine and it
                  is loaded at RUNTIME from <install dir>\assets\models (composition.rs
@@ -135,8 +142,6 @@
             <Component Id="ModelComponent" Guid="{E8FCD98A-44FA-413D-9109-FE731118401B}" Bitness="always64">
               <File Id="EmbeddedModelGguf" Source="$(var.AssetsDir)\models\qwen2.5-1.5b-instruct-q4_k_m.gguf" KeyPath="yes" />
               <File Id="ModelsManifestJson" Source="$(var.AssetsDir)\models\models.manifest.json" />
-              <File Id="ModelLicenseApache" Source="$(var.AssetsDir)\models\licenses\Apache-2.0.txt" Directory="AssetsModelLicensesDir" />
-              <File Id="ModelLicenseQwenNotice" Source="$(var.AssetsDir)\models\licenses\Qwen-GGUF-NOTICE.txt" Directory="AssetsModelLicensesDir" />
             </Component>
           </Directory>
 
@@ -219,6 +224,7 @@
       <ComponentRef Id="ServiceComponent" />
       <ComponentRef Id="AetherCtlComponent" />
       <ComponentRef Id="ModelComponent" />
+      <ComponentRef Id="ModelLicenseComponent" />
       <ComponentRef Id="VulnDbComponent" />
       <ComponentRef Id="ProgramDataComponent" />
       <ComponentRef Id="ProgramMenuComponent" />

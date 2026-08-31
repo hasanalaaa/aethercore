@@ -5,7 +5,7 @@
 # Usage: verbs-outer.ps1 <label>
 param([string]$Label = 'unlabeled')
 $ErrorActionPreference = 'Stop'
-$OutRoot = '\\Mac\Home\Documents\p36-stage\out'
+$OutRoot = '\\Mac\dev\p36-stage\out'
 $inner   = 'C:\AetherCore-P36\tools\verbs-inner.ps1'
 $dir     = 'C:\Users\Public\p36'
 New-Item -ItemType Directory -Force $dir | Out-Null

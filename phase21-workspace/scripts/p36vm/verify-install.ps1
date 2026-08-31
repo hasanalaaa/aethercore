@@ -3,7 +3,7 @@
 # Usage: verify-install.ps1 <label>
 param([string]$Label = 'unlabeled')
 $ErrorActionPreference = 'Continue'
-$OutRoot = '\\Mac\Home\Documents\p36-stage\out'
+$OutRoot = '\\Mac\dev\p36-stage\out'
 $IF = 'C:\Program Files\AetherCore'
 $r = [ordered]@{ label=$Label; captured_utc=(Get-Date).ToUniversalTime().ToString('o') }
 
