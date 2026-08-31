@@ -2167,3 +2167,48 @@ attributed to this session and were not touched.
 | `aethercore-platform-capabilities` | macOS: 11 passed. **On Windows, on the VM: `TESTEXIT=0`, 7 passed** — the `cfg(windows)` branch actually compiled and ran |
 | `aethercore-fleet` | 47 unit + 12 integration = **59 passed, 0 failed**, matching the count recorded in §16.9 |
 | `apps/ui` | `pnpm install --frozen-lockfile` passes; `pnpm build` succeeds in 654 ms after the package.json version removal |
+
+### Workspace test suite — one failure, characterised
+
+`cargo test --workspace` completed. One test failed:
+
+```
+---- t5_budget_constants_respected_on_load_and_call stdout ----
+panicked at crates/intelligence-core/tests/adversarial.rs:450:5:
+load+infer must respect the hard time budget
+test result: FAILED. 14 passed; 1 failed  (finished in 114.95s)
+```
+
+**Not a regression, and not caused by anything this session changed.** The
+assertion is pure wall clock —
+
+```rust
+assert!(started.elapsed() < INFERENCE_TIMEOUT, "load+infer must respect the hard time budget");
+```
+
+— covering a 1.07 GB model load plus an inference call, against
+`INFERENCE_TIMEOUT = Duration::from_secs(10)`. It was run while the host was
+simultaneously compressing a 1.1 GB CAB inside the Parallels VM **and** running
+the whole workspace suite in parallel.
+
+Re-run in isolation on the same host, same commit:
+
+```
+test t5_budget_constants_respected_on_load_and_call ... ok
+test result: ok. 1 passed; 0 failed  (finished in 1.04s)
+```
+
+**1.04 s against a 10 s budget — a ~10x margin.** The failure is load-induced.
+
+Recorded as a real finding about the TEST rather than the product: a wall-clock
+budget assertion that shares a machine with a parallel test suite is flaky by
+construction. It will fail on any loaded CI runner. Not fixed here — changing a
+declared timing constant or the test's contract is a product decision, and this
+session had no authorization to relax a budget.
+
+**Caveat stated plainly:** the run was captured with `| tail -200`, so only the
+final suite's counts are visible in the saved output. The whole-workspace
+pass/fail totals are therefore NOT reported here; what IS established is that
+exactly one test failed and that it passes in isolation. The per-crate suites
+for everything this session touched were run individually and are reported
+above with their own counts.
