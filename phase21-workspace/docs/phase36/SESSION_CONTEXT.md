@@ -947,7 +947,7 @@ collision the v2 gates are written here as `S0`..`S4`.
 | S1 | aetherctl authored in Product.wxs; full file audit; clean-box install proves every file and every verb | **PASS** | §16.4; 15 files, engineLabel=localModel, 18/18 verbs, zero ICE |
 | S2 | uninstall leaves zero product trace, user-chosen exports kept, idempotent | **PASS** | §16.6; 3 cases, 14-check sweep, zero survivors each |
 | S3 | terminal-first CLI install on a clean machine, one documented command | **PASS** | §16.7; 1.9 MB archive, Expand-Archive, 8 verbs, every exit code as documented |
-| S4 | server-readiness assessment with evidence per claim | NOT-STARTED | |
+| S4 | server-readiness assessment with evidence per claim | **PASS** | `docs/SERVER_READINESS.md`; §16.9; 3 fleet defects found and fixed |
 
 ## 16.1 GATE S0 — RESULT: **PASS** (2026-08-31)
 
@@ -1455,3 +1455,95 @@ EXPECTED=  (c) C:\ProgramData\AetherCore\fleet\ holds inventory.json,
            every profile root, not just under C:\Users.
 RECOVERY=  prlctl snapshot-switch "Windows 11" --id {e94d539e-8046-443b-871c-9d6711c34fd2}
 ```
+
+## 16.9 GATE S4 — RESULT: **PASS** (2026-08-31)
+
+The deliverable is `docs/SERVER_READINESS.md`. It names what works, what does
+not, and what remains unqualified, with evidence per claim. Summary of the
+evidence gathered here:
+
+**4a — Server SKUs.** The blocking finding, read out of the BUILT package's
+`LaunchCondition` table rather than the source:
+`VersionNT64 AND MsiNTProductType = 1 AND OSCURRENTBUILD >= 22621`.
+`MsiNTProductType = 1` is **workstation only** (member server 3, domain
+controller 2), so the installer refuses every Windows Server SKU before copying
+a file. `Bundle.wxs:13` carries the same gate. Windows Server 2025 clears the
+build floor (26100 ≥ 22621) and is still rejected on product type alone. Server
+Core additionally cannot host `aethercore-desktop.exe` (WebView2 + a shell), and
+the MSI installs that binary unconditionally with no feature to omit it. DISM,
+`ITaskService` and `SHGetKnownFolderPath` are all present on Server, so those
+are not client-only dependencies. **No Server SKU was executed against** — every
+Server statement is derived, and is labelled as such.
+
+**4b — Headless.** Proven for session 0: service `SESSION_ID=0`, clients
+`nt authority\system` in session 0, and the whole-machine process list showing
+exactly ONE AetherCore process (the service) with the desktop never started.
+All of Gates S1/S2/S3 were produced this way. Stated limit: a console session
+exists on this VM (nothing depended on it), so *zero-session* operation is not
+proven, only *session-0-only* operation.
+
+**4c — Fleet, more than one target.** Two host records driven for real:
+`fleet add` ×2, `fleet list` (both, `trusted:false`), `fleet show`,
+`fleet probe --host h1 --host h2` and `fleet audit --profile cis-l1` over both →
+per-host `outcome:"not_verified"`, *"host is not authorized in the AetherCore
+trust store"*. Scope resolution, per-host isolation and fail-closed trust are
+proven; **no real SSH audit against a second machine is claimed** — none exists.
+`ssh.exe` is present (`OpenSSH_for_Windows_9.5p2`), so the gap is a target, not
+a capability. Hermetically, `crates/fleet` passes **59 tests** (47 unit + 12
+integration) including `gd4_multi_host_orchestration_hermetic`.
+
+**4d — Resource cost, measured at 1 Hz against the live service with the model
+active (`engineLabel: localModel`):**
+
+| phase | CPU over 60 s | working set avg/max | private commit | handles | threads |
+|---|---|---|---|---|---|
+| idle | 0.297 s = **0.50 % of one core** | 68.8 / 69.2 MB | 54.5 MB | 185 | 8 |
+| scanning (205 facts, 61 findings) | 0.766 s = **1.28 % of one core** | 80.7 / 81.2 MB | 57.7 MB | 335 | 14 |
+
+The number that matters for a server: `PeakWorkingSet64 = 1,132,965,888`
+(**1.13 GB**) at model load, falling back to ~82 MB resident. Private commit
+stays at 58 MB against a 5.7 GB address space, so the model is mapped rather
+than committed and is reclaimable — but the transient happens at every service
+start, i.e. every boot, and nothing lets an operator run the service without the
+model. Disk: install dir 1,139,623,893 B; ProgramData after a scan 794,976 B.
+
+### Three fleet defects found by running the surface, all fixed here
+
+1. **The scheduler could not read back what it wrote.** `fleet schedule add`
+   → exit 0; `fleet schedule run-due` → **exit 5,
+   `fleet.schedulesInvalid: missing field \`schema\``**. The writer hand-built
+   its JSON and dropped `schema`, which `FleetSchedule` requires under
+   `deny_unknown_fields` with no default. Scheduled compliance — the point of
+   the fleet surface — was broken end to end on a real install while 8
+   `scheduler_runner` tests passed, because they build `FleetSchedule` directly
+   and never traverse the CLI writer. Differential evidence, the persisted files
+   verbatim:
+
+   ```
+   before: { "cadence":…, "enabled":true, "nextRunUnixMs":…, "profileId":"cis-l1",
+             "scheduleId":"s1", "scope":["h1","h2"] }              <- no schema
+   after:  { …, "scheduleId":"s1", "schema":"aethercore.fleet.schedule.v1", … }
+   ```
+   `run-due` then returned `{"ran":0,"runs":[]}` with **exit 0**.
+
+2. **Fleet state was per-user and survived uninstall.** `%APPDATA%\aethercore`
+   resolved to
+   `C:\WINDOWS\system32\config\systemprofile\AppData\Roaming\aethercore` for the
+   service account, holding `fleet\inventory.json` (585 B),
+   `fleet\schedules.json` (256 B) and `fleet\trust\known_hosts`. After
+   `msiexec /x` returned **0**, with `Program Files\AetherCore` and
+   `ProgramData\AetherCore` both gone, **all three were still there**. Two
+   defects in one: an administrator's fleet is invisible to a scheduled run
+   under another account, and the SSH trust store outlives the product. Moved
+   under `%ProgramData%\AetherCore`, inside what `purge-data` already removes.
+
+3. **The whole fleet surface was missing from `aetherctl --help`**, so the
+   server capability was undiscoverable from the tool. Added, with the
+   fail-closed trust rule stated.
+
+### This invalidated part of Gate S2, and that is recorded, not buried
+
+Gate S2's sweep sampled `C:\Users\*` and its AppData roots but **not** the
+SYSTEM, SysWOW64, LocalService or NetworkService profiles, which is exactly
+where the surviving fleet state was. The sweep script has been hardened to walk
+all of them, and Gate S2 is re-run against 0.1.6 in §16.10.
