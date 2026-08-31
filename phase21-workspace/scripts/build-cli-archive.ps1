@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [ValidateSet('x64','arm64')][string]$Arch = 'x64',
     [string]$OutDir = 'out/cli'
 )
@@ -24,6 +24,12 @@ param(
 #   `self-check` says so honestly when it is absent.
 # ---------------------------------------------------------------------------
 $ErrorActionPreference = 'Stop'
+$__canonicalVersion = & "$PSScriptRoot\Get-ProductVersion.ps1"
+if (-not $Version) {
+    $Version = $__canonicalVersion
+} elseif ($Version -ne $__canonicalVersion) {
+    throw "Requested version $Version disagrees with Cargo.toml $__canonicalVersion. The product version has ONE source: bump [workspace.package].version."
+}
 $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 

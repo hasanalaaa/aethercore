@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$PayloadDir,
-    [Parameter(Mandatory=$true)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [string]$MsiOut = 'out\release\AetherCore.msi',
     [string]$BundleOut = 'out\release\AetherCoreSetup.exe',
     [string]$WebView2Bootstrapper = 'out\prereqs\MicrosoftEdgeWebview2Setup.exe',
@@ -9,6 +9,12 @@ param(
     [switch]$BundleOnly
 )
 $ErrorActionPreference = 'Stop'
+$__canonicalVersion = & "$PSScriptRoot\Get-ProductVersion.ps1"
+if (-not $Version) {
+    $Version = $__canonicalVersion
+} elseif ($Version -ne $__canonicalVersion) {
+    throw "Requested version $Version disagrees with Cargo.toml $__canonicalVersion. The product version has ONE source: bump [workspace.package].version."
+}
 $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 if ($env:OS -ne 'Windows_NT') { throw 'WiX packaging must run on Windows.' }

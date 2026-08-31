@@ -300,6 +300,54 @@ mod tests {
         }
     }
 
+    /// Regression test for the defect recorded twice in Phase 37 (§16.4, §16.7):
+    /// `platform_tag()` carried its OWN `cfg!` ladder that tested only macos and
+    /// linux, so Windows -- the product's PRIMARY platform -- fell through to the
+    /// `else` arm and every compliance report generated there was fingerprinted
+    /// `other:<digest>`.
+    ///
+    /// The fix is that platform identity is derived in exactly ONE place,
+    /// `aethercore_platform_capabilities::current_platform_name()`, and every
+    /// caller routes through it. This test asserts both halves: the tag names the
+    /// real host, and it AGREES with the shared helper by construction.
+    ///
+    /// Stated limit: the "never other" half is only discriminating when compiled
+    /// for Windows, because that is the only target the old ladder got wrong. The
+    /// agreement half is what makes a second, divergent derivation impossible to
+    /// reintroduce on any target; `scripts/static_validate.py` checks the same
+    /// property at the source level so it is enforced off-Windows too.
+    #[test]
+    fn platform_tag_names_the_host_and_never_falls_back_to_other() {
+        let tag = platform_tag();
+
+        assert_ne!(
+            tag, "other",
+            "platform_tag() fell back to \"other\"; a compliance report generated \
+             here would be fingerprinted as an unknown platform"
+        );
+
+        // There must be no second derivation of platform identity.
+        assert_eq!(
+            tag,
+            aethercore_platform_capabilities::current_platform_name(),
+            "platform_tag() disagrees with the shared platform helper"
+        );
+
+        #[cfg(target_os = "windows")]
+        assert!(
+            tag.starts_with("windows"),
+            "expected a windows* tag on Windows, got {tag:?}"
+        );
+        #[cfg(target_os = "macos")]
+        assert_eq!(tag, "macos");
+        #[cfg(target_os = "linux")]
+        assert_eq!(tag, "linux");
+
+        // The tag is what run_audit stamps into the report, and what
+        // apps/aetherctl/src/sec.rs turns into host_fingerprint.
+        assert_eq!(run_audit(&[model::AuditTarget::FirewallState]).platform, tag);
+    }
+
     #[test]
     fn try_new_refuses_empty_evidence() {
         assert!(SecFinding::try_new(

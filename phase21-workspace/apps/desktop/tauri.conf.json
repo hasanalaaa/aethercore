@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AetherCore",
-  "version": "0.1.0",
   "identifier": "com.aethercore.desktop",
   "build": {
     "beforeDevCommand": "pnpm --dir ../ui dev",

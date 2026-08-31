@@ -39,7 +39,30 @@ set "SRC=C:\AetherCore-P36\workspace\AetherCore-Phase35-Master-Delivery"
 set "STAGE=C:\AetherCore-P36\build"
 set "PAYLOAD=%STAGE%\payload"
 set "OUT=%STAGE%\out"
-if "%~1"=="" (set "VERSION=0.1.0") else (set "VERSION=%~1")
+rem --- version: THE SINGLE SOURCE OF TRUTH ----------------------------------
+rem   [workspace.package].version in Cargo.toml is the ONE place the product
+rem   version is declared. Every crate carries `version.workspace = true`, so
+rem   every binary already reports it through CARGO_PKG_VERSION, and
+rem   scripts/build-release.ps1 already derives from it.
+rem   This script used to take an arbitrary argument defaulting to a hard-coded
+rem   0.1.0. That is exactly how MSIs shipped as 0.1.2 - 0.1.6 while the
+rem   aetherctl.exe inside them answered `about` with 0.1.0.
+rem   An argument is still ACCEPTED so the recorded invocations in the phase
+rem   docs keep working, but it must AGREE with Cargo.toml or the build stops.
+rem   To change the product version, bump Cargo.toml. There is no other lever.
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "$t=Get-Content -Raw '%SRC%\Cargo.toml'; if($t -match '(?ms)\[workspace\.package\].*?version\s*=\s*.([0-9]+\.[0-9]+\.[0-9]+).'){$Matches[1]}"`) do set "VERSION=%%V"
+if not defined VERSION (
+  echo ERROR: cannot read [workspace.package].version from %SRC%\Cargo.toml
+  exit /b 1
+)
+if not "%~1"=="" (
+  if not "%~1"=="%VERSION%" (
+    echo ERROR: requested version %~1 disagrees with Cargo.toml %VERSION%
+    echo        The product version has ONE source. Bump [workspace.package].version.
+    exit /b 1
+  )
+)
+echo Version=%VERSION%  ^(derived from Cargo.toml [workspace.package].version^)
 
 rem --- ARM64 build environment (verbatim from p36_relbuild.cmd) --------------
 call "C:\AetherCore-P36\toolchain\vs2022\Common7\Tools\VsDevCmd.bat" -arch=arm64 -host_arch=arm64 >nul

@@ -11,12 +11,11 @@ $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 if ($env:OS -ne 'Windows_NT') { throw 'AetherCore production release builds must run on Windows.' }
 
+$__canonicalVersion = & "$PSScriptRoot\Get-ProductVersion.ps1"
 if (-not $Version) {
-    $cargoToml = Get-Content 'Cargo.toml' -Raw
-    if ($cargoToml -notmatch '(?ms)\[workspace\.package\].*?version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"') {
-        throw 'Unable to read workspace package version.'
-    }
-    $Version = $Matches[1]
+    $Version = $__canonicalVersion
+} elseif ($Version -ne $__canonicalVersion) {
+    throw "Requested version $Version disagrees with Cargo.toml $__canonicalVersion. The product version has ONE source: bump [workspace.package].version."
 }
 if (-not (Test-Path 'Cargo.lock') -or -not (Test-Path 'pnpm-lock.yaml') -or -not (Test-Path 'release\dependency-locks.sha256') -or -not (Test-Path 'release\dependency-manifests.sha256') -or -not (Test-Path 'release\dependency-freeze.json')) {
     throw 'Release requires approved lockfiles plus release/dependency-locks.sha256, release/dependency-manifests.sha256, and release/dependency-freeze.json. Run freeze-dependencies.ps1 on the trusted freeze workstation first.'
