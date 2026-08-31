@@ -1,0 +1,39 @@
+=== C4: deferred custom action HardenInstalledSecurity fails (payload hardener replaced by whoami.exe, which rejects "apply") ===
+CAPTURED_UTC=2026-08-31T00:13:35.6675482Z
+PRE_UNINSTALL_EXIT=0
+--- SURVEY BEFORE INJECTION ---
+INSTALLFOLDER_CONTENTS=aetherctl.exe:3611136
+SERVICE_QUERY=[SC] EnumQueryServicesStatus:OpenService FAILED 1060: The specified service does not exist as an installed service. 
+SERVICE_REGKEY=False
+PIPE_COUNT=0
+ARP=
+HKLM_AETHERCORE=False
+STARTMENU=False
+WINDOWS_INSTALLER_FILES=206
+WINDOWS_INSTALLER_TMP=MSICD74.tmp
+INPROGRESS_KEY=False
+EXPLORER_RUNNING=1
+MSIEXEC_LEFT_RUNNING=1
+MSIEXEC_EXIT=1603
+ELAPSED_MS=2029
+--- SURVEY AFTER INJECTION ---
+INSTALLFOLDER_CONTENTS=aetherctl.exe:3611136
+SERVICE_QUERY=[SC] EnumQueryServicesStatus:OpenService FAILED 1060: The specified service does not exist as an installed service. 
+SERVICE_REGKEY=False
+PIPE_COUNT=0
+ARP=
+HKLM_AETHERCORE=False
+STARTMENU=False
+WINDOWS_INSTALLER_FILES=206
+WINDOWS_INSTALLER_TMP=MSICD74.tmp
+INPROGRESS_KEY=False
+EXPLORER_RUNNING=1
+MSIEXEC_LEFT_RUNNING=1
+ROLLBACK_OPS_IN_LOG=20
+--- key log lines ---
+LOG: MSI (s) (E4:24) [03:13:36:635]: Executing op: RollbackInfo(,RollbackAction=Rollback,RollbackDescription=Rolling back action: [1],,CleanupAction=RollbackCleanup,CleanupDescription=Removing backup files File: [1],)
+LOG: MSI (s) (E4:24) [03:13:36:752]: Executing op: CustomActionSchedule(Action=HardenInstalledSecurity,ActionType=11282,Source=C:\Program Files\AetherCore\aethercore-install-hardener.exe,Target=**********,)
+LOG: MSI (s) (E4:24) [03:13:36:804]: Executing op: RollbackInfo(,RollbackAction=Rollback,RollbackDescription=Rolling back action: [1],,CleanupAction=RollbackCleanup,CleanupDescription=Removing backup files File: [1],)
+LOG: MSI (s) (E4:24) [03:13:36:834]: Windows Installer installed the product. Product Name: AetherCore. Product Version: 0.9.4. Product Language: 1033. Manufacturer: AetherCore. Installation success or error status: 1603.
+LOG: MSI (s) (E4:24) [03:13:36:834]: MainEngineThread is returning 1603
+LOG: MSI (c) (34:CC) [03:13:36:850]: MainEngineThread is returning 1603

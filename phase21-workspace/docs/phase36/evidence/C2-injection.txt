@@ -1,0 +1,41 @@
+=== C2: service fails to start during install (payload libomp140.aarch64.dll is 599,504 random bytes) ===
+CAPTURED_UTC=2026-08-31T00:12:56.2017268Z
+PRE_UNINSTALL_EXIT=0
+--- SURVEY BEFORE INJECTION ---
+INSTALLFOLDER_CONTENTS=aetherctl.exe:3611136
+SERVICE_QUERY=[SC] EnumQueryServicesStatus:OpenService FAILED 1060: The specified service does not exist as an installed service. 
+SERVICE_REGKEY=False
+PIPE_COUNT=0
+ARP=
+HKLM_AETHERCORE=False
+STARTMENU=False
+WINDOWS_INSTALLER_FILES=206
+WINDOWS_INSTALLER_TMP=MSICD74.tmp
+INPROGRESS_KEY=False
+EXPLORER_RUNNING=1
+MSIEXEC_LEFT_RUNNING=1
+MSIEXEC_EXIT=1603
+ELAPSED_MS=32206
+--- SURVEY AFTER INJECTION ---
+INSTALLFOLDER_CONTENTS=aetherctl.exe:3611136
+SERVICE_QUERY=[SC] EnumQueryServicesStatus:OpenService FAILED 1060: The specified service does not exist as an installed service. 
+SERVICE_REGKEY=False
+PIPE_COUNT=0
+ARP=
+HKLM_AETHERCORE=False
+STARTMENU=False
+WINDOWS_INSTALLER_FILES=206
+WINDOWS_INSTALLER_TMP=MSICD74.tmp
+INPROGRESS_KEY=False
+EXPLORER_RUNNING=1
+MSIEXEC_LEFT_RUNNING=1
+ROLLBACK_OPS_IN_LOG=20
+--- key log lines ---
+LOG: MSI (s) (E4:20) [03:12:57:535]: Executing op: RollbackInfo(,RollbackAction=Rollback,RollbackDescription=Rolling back action: [1],,CleanupAction=RollbackCleanup,CleanupDescription=Removing backup files File: [1],)
+LOG: MSI (s) (E4:20) [03:12:57:657]: Executing op: CustomActionSchedule(Action=HardenInstalledSecurity,ActionType=11282,Source=C:\Program Files\AetherCore\aethercore-install-hardener.exe,Target=**********,)
+LOG: MSI (s) (E4:20) [03:13:28:311]: Product: AetherCore -- Error 1920. Service 'AetherCore Maintenance Service' (AetherCoreMaintenance) failed to start.  Verify that you have sufficient privileges to start system services.
+LOG: Error 1920. Service 'AetherCore Maintenance Service' (AetherCoreMaintenance) failed to start.  Verify that you have sufficient privileges to start system services.
+LOG: MSI (s) (E4:20) [03:13:28:317]: Executing op: RollbackInfo(,RollbackAction=Rollback,RollbackDescription=Rolling back action: [1],,CleanupAction=RollbackCleanup,CleanupDescription=Removing backup files File: [1],)
+LOG: MSI (s) (E4:20) [03:13:28:353]: Windows Installer installed the product. Product Name: AetherCore. Product Version: 0.9.2. Product Language: 1033. Manufacturer: AetherCore. Installation success or error status: 1603.
+LOG: MSI (s) (E4:20) [03:13:28:353]: MainEngineThread is returning 1603
+LOG: MSI (c) (34:D0) [03:13:28:361]: MainEngineThread is returning 1603

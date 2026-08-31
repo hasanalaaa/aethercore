@@ -163,9 +163,9 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 | B3 | Clean reinstall on empty box | PASS | plain `msiexec /i` exit 0, zero differing fields vs Gate A, 8/8 verbs; note aetherctl.exe survived B2 rather than being installed |
 | B4 | Upgrade v1 -> v2 | PASS | RemoveExistingProducts ran; single ARP entry `{84140FFD-…}` 0.1.1; only differing field is InstallVersion; 8/8 verbs |
 | C1 | Install interrupted mid-transaction | RECORDED | killed both msiexec mid-FileCopy: NO rollback ran, 4 orphaned files, no service, no pipe, no ARP; a later failed install rolled back and cleaned them; recovered exit 0 |
-| C2 | Service fails to start during install | NOT-STARTED | |
+| C2 | Service fails to start during install | PASS | injection package 0.9.2 (corrupt libomp): exit 1603 Error 1920 after the full 32 s service wait; rollback complete, every field back to pre-injection |
 | C3 | Required file missing/corrupt at start | RECORDED | start fails 1053 / event 7000+7009, service STOPPED, pipe count 0, machine usable; `msiexec /f` restores and 8/8 verbs return |
-| C4 | Rollback via failing custom action | NOT-STARTED | |
+| C4 | Rollback via failing custom action | PASS | injection package 0.9.4 (hardener rejects `apply`): exit 1603 in 2.0 s at the custom action, before StartServices; rollback complete |
 | D1 | `aetherctl update stage` real path | BLOCKED-BY-DESIGN | unconditional match arm `apps/aetherctl/src/offline.rs:138`; all 7 update verbs return CapabilityUnavailable on the VM — `STAGE_D_EVIDENCE.md` |
 | D2 | stage -> apply -> rollback | BLOCKED | consequence of D1: nothing stageable, so nothing to apply or roll back |
 | D3 | update trust disabled by default, no network | PASS | installed update-trust.json `enabled:false, channels:[]`; typed refusal precedes any transport; MSI is self-contained (EmbedCab) |
@@ -183,6 +183,7 @@ Legend: PASS / FAIL / BLOCKED / IN-PROGRESS / NOT-STARTED
 - cmd ~100 — B1, B2 PASS; Stage D closed from source + VM probe.
 - cmd ~125 — GATE B PASS (B1-B4). Host disk exhausted; no new snapshots. Next: Stage C.
 - cmd ~165 — C3 and C1 recorded and recovered. Next: C2 and C4 injection packages.
+- cmd ~188 — GATE C complete: all four injections recorded, machine recovered with a plain msiexec /i (exit 0). Next: Stage E seal.
 
 ## 9. FACTS ESTABLISHED THIS SESSION (do not re-derive)
 

@@ -144,3 +144,120 @@ including cleaning up the orphans the earlier killed transaction had left.
 **Recovery completed.** Re-running the identical `msiexec /i` on the
 now-genuinely-clean box: exit **0**, service **RUNNING**, all eight files
 present. No snapshot restore was needed.
+
+## C2 — the service fails to start during install — RECORDED, ROLLED BACK CLEANLY
+
+Injection instrument: an **injection package**, not a machine mutation. No ACL
+was touched, no Service SID changed, no pipe descriptor edited.
+`AetherCore-0.9.2-arm64.msi`, ProductCode
+`{4944D099-6844-678B-B98B-77B34955CD8A}`, built by the recorded recipe from a
+copy of the real payload in which `libomp140.aarch64.dll` was replaced with
+599,504 bytes of deterministic pseudorandom data. The service executable then
+cannot resolve its OpenMP runtime import and cannot reach RUNNING.
+
+Installed onto a bare box. Result (`evidence/C2-injection.txt`):
+
+```
+MSIEXEC_EXIT=1603
+ELAPSED_MS=32206
+...
+Executing op: CustomActionSchedule(Action=HardenInstalledSecurity,ActionType=11282,...)
+Product: AetherCore -- Error 1920. Service 'AetherCore Maintenance Service'
+    (AetherCoreMaintenance) failed to start.
+Executing op: RollbackInfo(,RollbackAction=Rollback,...)
+Installation success or error status: 1603.
+MainEngineThread is returning 1603
+ROLLBACK_OPS_IN_LOG=20
+```
+
+Note the elapsed time: 32 s, i.e. the installer waited out the full
+`ServiceControl Wait="yes"` window before declaring 1920.
+
+| question | before | after |
+|---|---|---|
+| INSTALLFOLDER contents | `aetherctl.exe` only | `aetherctl.exe` only — **every installed file removed** |
+| service | `OpenService FAILED 1060` | `OpenService FAILED 1060` — **not orphaned** |
+| service registry key | False | False |
+| named pipe | 0 | **0 — not dangling** |
+| ARP | empty | empty — the failed product is **not** registered |
+| `HKLM\SOFTWARE\AetherCore` | False | False |
+| Start Menu folder | False | False |
+| `C:\Windows\Installer` file count | 206 | **206 — consistent, byte-for-byte the same count** |
+| in-progress key | False | False |
+| machine usable | yes | yes |
+
+**Windows Installer rolled back completely and cleanly.** The box is
+indistinguishable from its pre-injection state.
+
+## C4 — rollback triggered by a failing custom action — RECORDED, ROLLED BACK CLEANLY
+
+Injection instrument: `AetherCore-0.9.4-arm64.msi`, ProductCode
+`{C2FB7D6F-7B7F-315C-E5D0-24FE6C901809}`, built from a payload copy in which
+`aethercore-install-hardener.exe` was replaced by `C:\Windows\System32\whoami.exe`
+— a genuine signed ARM64 PE that rejects the literal argument `apply` and exits
+non-zero. `Product.wxs` authors the custom action as
+
+```xml
+<CustomAction Id="HardenInstalledSecurity" FileRef="InstallHardenerExe"
+              ExeCommand="apply" Execute="deferred" Impersonate="no"
+              Return="check" HideTarget="yes" />
+```
+
+so a non-zero exit must abort the transaction.
+
+Result (`evidence/C4-injection.txt`):
+
+```
+MSIEXEC_EXIT=1603
+ELAPSED_MS=2029
+...
+Executing op: CustomActionSchedule(Action=HardenInstalledSecurity,ActionType=11282,
+    Source=C:\Program Files\AetherCore\aethercore-install-hardener.exe,Target=**********,)
+Executing op: RollbackInfo(,RollbackAction=Rollback,...)
+Installation success or error status: 1603.
+MainEngineThread is returning 1603
+ROLLBACK_OPS_IN_LOG=20
+```
+
+2.0 s, versus C2's 32 s — the transaction aborted at the custom action, before
+`StartServices` was ever reached, exactly as the `After="InstallServices"`
+sequencing and `Return="check"` specify. `Target=**********` confirms
+`HideTarget="yes"` is in force.
+
+Post-rollback survey is identical to the pre-injection survey in every single
+field: `aetherctl.exe` only, no service, `PIPE_COUNT=0`, no ARP entry, no HKLM
+key, no Start Menu folder, `C:\Windows\Installer` at 206 files, no in-progress
+key, machine usable, no msiexec left running.
+
+**`Return="check"` does what it claims: a failing custom action aborts the
+install and Windows Installer restores the machine completely.**
+
+## Recovery after Stage C
+
+Plain `msiexec /i AetherCore-0.1.0-arm64.msi /qn` — exit 0, service RUNNING,
+all files present. No snapshot restore was needed for any of the four
+injections.
+
+## One artifact that survives every rollback
+
+`C:\Windows\Installer\MSICD74.tmp` appeared during the C1 hard-kill and is
+still present. It is not removed by any subsequent successful or rolled-back
+transaction, and it is the only inconsistency this stage found in
+`C:\Windows\Installer`. Recorded, not remediated — cleaning `C:\Windows\Installer`
+by hand is outside what this brief authorizes.
+
+## GATE C — PASS
+
+Each of the four injections has a recorded outcome and the machine was
+recovered every time.
+
+| injection | rolls back cleanly? | machine usable? | service orphaned? | pipe dangling? | `C:\Windows\Installer` consistent? |
+|---|---|---|---|---|---|
+| C1 install killed mid-copy | **no rollback runs at all** — the executor was the process killed | yes | no | no | one orphaned `.tmp`, otherwise yes |
+| C2 service fails to start | **yes, completely** | yes | no | no | yes (206 -> 206) |
+| C3 required file missing at start | n/a (post-install fault) — the authored `msiexec /f` repair contract restores it | yes | no | no | yes |
+| C4 custom action fails | **yes, completely** | yes | no | no | yes (206 -> 206) |
+
+The one case Windows Installer cannot protect against is its own engine being
+killed: it leaves orphaned files with no registration, which the next failed
+transaction happens to clean up but which nothing is guaranteed to.
