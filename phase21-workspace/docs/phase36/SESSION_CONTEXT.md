@@ -3034,3 +3034,156 @@ unix-ipc`): **6/6**, including the two legitimate-path cases.
 | name | id | taken before |
 |---|---|---|
 | P40-PRE-HOUSEKEEPING | `{d652cd40-877c-4a9a-bb1b-2e3637a96ec2}` | any Phase 40 VM action (guest restart, source sync, rebuild) |
+
+---
+
+# PHASE 41 — PHYSICAL x86_64 WINDOWS QUALIFICATION (2026-09-02)
+
+Machine: `HUSSEIN` — MSI Pulse 16 AI C1VFKG, Intel Core Ultra 9 185H (16C/22T),
+15.49 GB RAM, NVMe Micron_2500_MTFDKBA1T0QGN 953.9 GB (447.1 GB free),
+Intel Arc iGPU + NVIDIA RTX 4060 Laptop. Windows 11 Pro 25H2 build 26200, x64.
+Repo: `C:\dev\aethercore`, branch `main` at `e91f675`.
+
+**THIS MACHINE HAS NO SNAPSHOTS.** Every mutation is permanent.
+
+## 41.0 CRLF DAMAGE FOUND AND FIXED BEFORE ANYTHING ELSE
+
+`git status` reported **1027 modified files**. Repo-level `core.autocrlf` was
+already `false`, but the *system* gitconfig
+(`C:/Users/husen/AppData/Local/hermes/git/etc/gitconfig`) carries
+`core.autocrlf=true`, and the tree had been checked out under it at some point.
+Every one of the 1027 was a whole-file CRLF rewrite.
+
+Proven content-identical before restoring, not assumed:
+`git diff --ignore-cr-at-eol --stat` returned **empty** across all 1027 files,
+and `git status --porcelain` showed 1027 `M` and **zero** untracked/added.
+Restored with `git restore --source=HEAD --worktree -- phase21-workspace`
+-> working tree clean, `core.autocrlf` still `false`.
+
+Repo-level `false` overrides the system-level `true`, so the system gitconfig was
+deliberately NOT modified — it is a machine-wide setting outside this task.
+
+## 41.1 DESTRUCTIVE ACTION RECORD — Gate 0c: enable System Restore, create point
+
+    ACTION=   Enable System Restore on C: if disabled, then create a restore
+              point named "AetherCore baseline - before any install".
+              If Windows' 24h creation throttle
+              (SystemRestorePointCreationFrequency) suppresses it, set that
+              value to 0, create the point, then put the value back exactly as
+              found.
+    RECOVERY= Restore-point creation is additive - it creates a new shadow copy
+              and removes nothing. To undo: delete that single restore point via
+              vssadmin, and/or Disable-ComputerRestore -Drive C:\ to return SR
+              to its prior state. The throttle registry value is captured before
+              the change and rewritten after, so its prior state is recoverable
+              by construction. NOT independently proven on this machine - no
+              snapshot exists to prove it against, which is precisely why the
+              restore point is being created.
+    EXPECTED= Get-ComputerRestorePoint lists a point whose Description is
+              "AetherCore baseline - before any install" with a CreationTime
+              within minutes of now, and a SequenceNumber. Shadow storage is
+              allocated on C:.
+    BLAST=    Enabling SR allocates shadow-copy space on C: (447 GB free, so
+              space is not at risk). Worst realistic case is that SR cannot be
+              enabled or the point cannot be created - in which case Gate 0
+              FAILS and, per the brief, only Stage 1 (non-destructive) runs and
+              nothing is installed. No existing data is written or deleted by
+              this action.
+
+## 41.2 GATE 0 — RESULT: **PASS** (2026-09-02)
+
+### 0a Machine (measured)
+
+| property | observed |
+|---|---|
+| Edition / Version / Build | Windows 11 Pro, 25H2, 10.0.26200 |
+| OS architecture | 64-bit; `PROCESSOR_ARCHITECTURE=AMD64` |
+| CPU | Intel Core Ultra 9 185H — 16 cores / 22 logical, `Intel64 Family 6 Model 170 Stepping 4` |
+| RAM | 15.49 GB |
+| Disk | NVMe Micron_2500_MTFDKBA1T0QGN, 953.9 GB, SSD/NVMe, **446.5 GB free** |
+| GPU 0 | Intel(R) Arc(TM) Graphics, driver 31.0.101.5007 |
+| GPU 1 | NVIDIA GeForce RTX 4060 Laptop GPU, driver 32.0.16.1656 |
+| PowerShell | 5.1.26100.9168 (Windows PowerShell) |
+| Machine | MSI Pulse 16 AI C1VFKG |
+
+**x86_64 CONFIRMED.** Not ARM64. The machine's stated purpose is satisfiable.
+
+### 0b Protections — all ENABLED, none touched
+
+| protection | observed |
+|---|---|
+| Defender real-time | `RealTimeProtectionEnabled=True`, `AntivirusEnabled=True`, `AMServiceEnabled=True` |
+| Defender tamper protection | `IsTamperProtected=True` |
+| UAC | `EnableLUA=1`, `ConsentPromptBehaviorAdmin=5`, `PromptOnSecureDesktop=1` |
+| Firewall | Domain=True, Private=True, Public=True |
+| SmartScreen | no `SmartScreenEnabled` override and no policy override -> default **On** |
+
+Nothing was disabled. Nothing will be.
+
+### Session elevation — the one thing that nearly stopped Gate 0
+
+The harness session runs as `HUSSEIN\husen` **unelevated** (`IsInRole(Administrator)=False`;
+a write to `C:\Windows` was denied). `husen` *is* a member of the local
+`Administrators` group (MicrosoftAccount principal), so elevation is reachable —
+but only by spawning a child process with `-Verb RunAs`, which raises a UAC
+consent prompt on the secure desktop. Probed and confirmed working.
+
+**Operating consequence for every future session on this machine:** admin work
+must be batched into a single elevated `.ps1` per step that writes its results to
+a log file, which the unelevated session then reads. One UAC prompt per batch.
+Do not attempt admin cmdlets inline — they return `Access denied`.
+
+### 0c / 0d System Restore — enabled, point created, point PROVEN
+
+Before: `Get-ComputerRestorePoint` -> **0 existing restore points**.
+`SystemRestoreConfig`: `DiskPercent=15`, `RPSessionInterval=0`.
+Shadow storage on C: 5.04 GB used / 5.50 GB allocated / 19.1 GB max.
+
+`Enable-ComputerRestore -Drive "C:\"` -> OK.
+
+Windows throttles restore-point creation to one per 24 h. The throttle value
+`SystemRestorePointCreationFrequency` was **NOT SET** (Windows default 1440 min);
+it was temporarily set to `0`, the point was created, and the value was then
+**removed** — returning it exactly to its prior unset state.
+
+`Checkpoint-Computer -RestorePointType MODIFY_SETTINGS` -> OK.
+
+**0d proof — enumerated after creation, not assumed:**
+
+```
+Restore points now: 1
+
+SequenceNumber Description                              CreationTime               RestorePointType
+-------------- -----------                              ------------               ----------------
+             1 AetherCore baseline — before any install 20260901223933.946086-000                12
+```
+
+Shadow storage after: 5.08 GB used / 6.00 GB allocated / 19.1 GB max.
+
+**GATE 0: PASS.** A named restore point is verifiably present. The machine may
+be mutated.
+
+### 0e Full disk image — DOES NOT EXIST AND IS NOT CURRENTLY POSSIBLE
+
+Measured, stated plainly because the owner must know it:
+
+- **One** physical disk: `DeviceId 0`, NVMe Micron_2500, 953.9 GB.
+- Volumes: `C:` (953 GB, 446.5 GB free) and one unlettered 0.8 GB recovery
+  partition. `Win32_LogicalDisk` reports **DriveType 3 (Fixed) only** — there is
+  **no removable, external or network volume attached**.
+- BitLocker status could not be read (needs admin; not queried in the Gate 0
+  elevated batch).
+
+There is nowhere to put a full disk image. Imaging C: onto C: is not a recovery
+path — it dies with the disk and with the OS it is meant to restore.
+
+**What the restore point does and does not cover.** A System Restore point
+protects system files, the registry, and **driver** state. That is genuinely the
+right instrument for Stage 4 driver install/rollback and it is why Stage 4 is
+survivable at all. It does **not** image user data, and it does **not** guarantee
+recovery from a machine that will not boot — restoring it requires either a
+booting Windows or WinRE.
+
+**OWNER DECISION REQUIRED before Stage 4:** attach an external drive of >= 512 GB
+and take a full image. Without one, Stage 4 driver work carries a real,
+non-zero risk of an unbootable machine that only a Windows reinstall clears.
