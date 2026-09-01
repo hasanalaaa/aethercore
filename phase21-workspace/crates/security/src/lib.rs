@@ -33,6 +33,20 @@ impl PrincipalContext {
         hex::encode(Sha256::digest(material.as_bytes()))
     }
 
+    /// Fills in `profile_dir` from `user_sid`. Must be called with the SERVICE's own
+    /// authority, never while impersonating the caller.
+    pub fn resolve_profile_dir(&mut self) {
+        #[cfg(windows)]
+        {
+            self.profile_dir = hex::decode(&self.user_sid)
+                .ok()
+                .as_deref()
+                .and_then(sid_text_from_bytes)
+                .as_deref()
+                .and_then(profile_dir_for_sid_text);
+        }
+    }
+
     /// Roots this principal may name in a request. Empty when the OS gave no answer —
     /// an empty allowlist refuses everything, which is the correct fail-closed reading.
     pub fn owner_roots(&self) -> Vec<std::path::PathBuf> {
@@ -124,7 +138,13 @@ pub fn inspect_named_pipe_client(
         // A RevertToSelf failure is more security-significant than the original inspection error
         // because returning while still impersonating would contaminate later service work.
         impersonation.revert().map_err(winerr)?;
-        result
+        // Only now, with the service's own authority restored, resolve the caller's own
+        // audit root. Doing it here rather than inside `principal_from_token` keeps the
+        // lookup out of the impersonated window entirely.
+        result.map(|mut principal| {
+            principal.resolve_profile_dir();
+            principal
+        })
     }
 }
 
@@ -133,7 +153,12 @@ pub fn inspect_session_token(
     token: windows::Win32::Foundation::HANDLE,
     session_id: u32,
 ) -> Result<PrincipalContext, SecurityError> {
-    principal_from_token(token, 0, "active-console-session".into(), session_id)
+    principal_from_token(token, 0, "active-console-session".into(), session_id).map(
+        |mut principal| {
+            principal.resolve_profile_dir();
+            principal
+        },
+    )
 }
 
 #[cfg(windows)]
@@ -226,35 +251,70 @@ fn principal_from_token(
             user_sid: hex::encode(sid_bytes),
             authentication_id,
             session_id,
-            profile_dir: profile_dir_for_sid(user.User.Sid),
+            // Deliberately NOT resolved here: this runs while the thread is still
+            // impersonating the client. `inspect_named_pipe_client` fills it in after
+            // RevertToSelf, so the lookup happens with the service's own authority.
+            profile_dir: None,
         })
     }
 }
 
-/// The profile directory Windows records for THIS user, keyed by the SID we just read out
-/// of the caller's own token.
+/// Canonical `S-R-A-S1-S2-...` text for a binary SID.
+///
+/// Pure arithmetic on the documented layout — revision, sub-authority count, a 6-byte
+/// big-endian identifier authority, then little-endian 32-bit sub-authorities. Written by
+/// hand rather than through `ConvertSidToStringSidW` so it is testable on any host and so
+/// the caller needs no Win32 call at all.
+fn sid_text_from_bytes(sid: &[u8]) -> Option<String> {
+    if sid.len() < 8 || sid[0] != 1 {
+        return None;
+    }
+    let sub_count = sid[1] as usize;
+    if sub_count > 15 || sid.len() < 8 + sub_count * 4 {
+        return None;
+    }
+    let authority = sid[2..8]
+        .iter()
+        .fold(0u64, |acc, byte| (acc << 8) | u64::from(*byte));
+    let mut text = if authority < (1u64 << 32) {
+        format!("S-1-{authority}")
+    } else {
+        format!("S-1-0x{authority:012x}")
+    };
+    for index in 0..sub_count {
+        let offset = 8 + index * 4;
+        let value = u32::from_le_bytes([
+            sid[offset],
+            sid[offset + 1],
+            sid[offset + 2],
+            sid[offset + 3],
+        ]);
+        use std::fmt::Write as _;
+        let _ = write!(text, "-{value}");
+    }
+    Some(text)
+}
+
+/// The profile directory Windows records for the user named by `sid_text`.
 ///
 /// `ProfileList` is where Windows itself keeps the mapping, so this is the OS's answer
 /// rather than a reconstruction. It deliberately does not go through `%USERPROFILE%`
-/// (inherited and caller-influenced) and it does not go through
-/// `SHGetKnownFolderPath(FOLDERID_Profile, token)`, which was tried first and MEASURED to
-/// fail here: the service opens the impersonated client token with `TOKEN_QUERY` only,
-/// and that API additionally wants `TOKEN_IMPERSONATE`. Rather than widen the rights on
-/// the token handle the principal binding already depends on, this reads the mapping that
-/// needs no token rights at all. `HKLM\SOFTWARE` is writable only by administrators, so an
-/// unprivileged caller cannot redirect its own scope by writing here.
+/// (inherited and caller-influenced), and it does not go through
+/// `SHGetKnownFolderPath(FOLDERID_Profile, token)`, which was tried first and MEASURED on
+/// the qualification VM to return nothing for every principal: the service opens the
+/// impersonated client token with `TOKEN_QUERY` only, and that API also wants
+/// `TOKEN_IMPERSONATE`. Rather than widen the rights on the token handle the principal
+/// binding already depends on, this reads a mapping that needs no token rights at all.
+/// `HKLM\SOFTWARE` is writable only by administrators, so an unprivileged caller cannot
+/// redirect its own scope by writing here.
 ///
 /// Any failure yields `None`, which the audit allowlist reads as an EMPTY scope — every
 /// path-bearing target is then refused. Fail-closed, never fail-open.
 #[cfg(windows)]
-fn profile_dir_for_sid(sid: windows::Win32::Security::PSID) -> Option<String> {
+fn profile_dir_for_sid_text(sid_text: &str) -> Option<String> {
     use std::ffi::c_void;
     use windows::{
-        Win32::{
-            Foundation::LocalFree,
-            Security::Authorization::ConvertSidToStringSidW,
-            System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ, RegGetValueW},
-        },
+        Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW},
         core::PCWSTR,
     };
 
@@ -262,30 +322,23 @@ fn profile_dir_for_sid(sid: windows::Win32::Security::PSID) -> Option<String> {
         value.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
-    let sid_text = unsafe {
-        let mut raw = windows::core::PWSTR::null();
-        ConvertSidToStringSidW(sid, &mut raw).ok()?;
-        let text = PCWSTR(raw.0).to_string().ok();
-        let _ = LocalFree(Some(windows::Win32::Foundation::HLOCAL(raw.0.cast())));
-        text?
-    };
     if sid_text.is_empty() || sid_text.len() > 256 {
         return None;
     }
-
     let key = wide(&format!(
         r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\{sid_text}"
     ));
     let name = wide("ProfileImagePath");
-    // REG_EXPAND_SZ is the documented type; RegGetValueW expands it unless asked not to.
-    let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
+    // RegGetValueW expands REG_EXPAND_SZ into REG_SZ unless asked not to, so the single
+    // RRF_RT_REG_SZ restriction is the right one. Measured on the VM: it returns the
+    // expanded path.
     let mut bytes = 0u32;
     let status = unsafe {
         RegGetValueW(
             HKEY_LOCAL_MACHINE,
             PCWSTR(key.as_ptr()),
             PCWSTR(name.as_ptr()),
-            flags,
+            RRF_RT_REG_SZ,
             None,
             None,
             Some(&mut bytes),
@@ -300,7 +353,7 @@ fn profile_dir_for_sid(sid: windows::Win32::Security::PSID) -> Option<String> {
             HKEY_LOCAL_MACHINE,
             PCWSTR(key.as_ptr()),
             PCWSTR(name.as_ptr()),
-            flags,
+            RRF_RT_REG_SZ,
             None,
             Some(buffer.as_mut_ptr().cast::<c_void>()),
             Some(&mut bytes),
@@ -606,6 +659,31 @@ mod tests {
             peer.owner_roots(),
             vec![std::path::PathBuf::from(r"C:\Users\alice")]
         );
+    }
+
+    #[test]
+    fn sid_text_matches_the_canonical_string_form() {
+        // S-1-5-18 (LocalSystem): revision 1, one sub-authority, authority 5.
+        let local_system = [1u8, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0];
+        assert_eq!(sid_text_from_bytes(&local_system).as_deref(), Some("S-1-5-18"));
+
+        // A real machine account SID, the shape the audit allowlist actually keys on:
+        // S-1-5-21-3596463104-2050256853-579393690-1003.
+        let mut user = vec![1u8, 5, 0, 0, 0, 0, 0, 5];
+        for value in [21u32, 3596463104, 2050256853, 579393690, 1003] {
+            user.extend_from_slice(&value.to_le_bytes());
+        }
+        assert_eq!(
+            sid_text_from_bytes(&user).as_deref(),
+            Some("S-1-5-21-3596463104-2050256853-579393690-1003")
+        );
+
+        // Malformed input is refused rather than guessed at: wrong revision, truncated
+        // sub-authority array, and an impossible sub-authority count.
+        assert_eq!(sid_text_from_bytes(&[2u8, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0]), None);
+        assert_eq!(sid_text_from_bytes(&[1u8, 1, 0, 0, 0, 0, 0, 5, 18]), None);
+        assert_eq!(sid_text_from_bytes(&[1u8, 99, 0, 0, 0, 0, 0, 5]), None);
+        assert_eq!(sid_text_from_bytes(&[]), None);
     }
 
     #[test]

@@ -78,7 +78,7 @@ fn main() {
                 let key = response
                     .error
                     .as_ref()
-                    .map(|e| e.message_key.clone())
+                    .map(|e| format!("{} [{}]", e.message_key, e.technical_detail))
                     .unwrap_or_default();
                 let body = match response.payload.as_ref() {
                     Some(v1::response::Payload::SecurityAuditResponse(report)) => report

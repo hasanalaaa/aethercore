@@ -46,8 +46,11 @@ pub enum TargetDenial {
     /// A symlink / Windows reparse point stands between the owner root and the target.
     ReparsePoint { path: String },
     /// The service could not establish any root for the calling principal, so there is
-    /// nothing it is authorized to read on that caller's behalf.
-    OwnerScopeUnresolved,
+    /// nothing it is authorized to read on that caller's behalf. `supplied` distinguishes
+    /// "the OS named no root for this principal" (0) from "the roots it named did not
+    /// resolve on disk" (>0) — a fail-closed refusal that cannot say which of those
+    /// happened is undiagnosable in the field.
+    OwnerScopeUnresolved { supplied: usize },
 }
 
 impl TargetDenial {
@@ -57,7 +60,7 @@ impl TargetDenial {
             TargetDenial::Traversal { .. } => "sec.traversalRejected",
             TargetDenial::OutsideOwnerScope { .. } => "sec.targetOutsideOwnerScope",
             TargetDenial::ReparsePoint { .. } => "sec.reparsePointRefused",
-            TargetDenial::OwnerScopeUnresolved => "sec.ownerScopeUnresolved",
+            TargetDenial::OwnerScopeUnresolved { .. } => "sec.ownerScopeUnresolved",
         }
     }
 }
@@ -74,9 +77,14 @@ impl std::fmt::Display for TargetDenial {
                 f,
                 "reparse point refused rather than followed out of scope: {path}"
             ),
-            TargetDenial::OwnerScopeUnresolved => {
-                write!(f, "no audit scope could be established for this principal")
-            }
+            TargetDenial::OwnerScopeUnresolved { supplied: 0 } => write!(
+                f,
+                "no audit scope could be established: the OS named no root for this principal"
+            ),
+            TargetDenial::OwnerScopeUnresolved { supplied } => write!(
+                f,
+                "no audit scope could be established: {supplied} named root(s) did not resolve"
+            ),
         }
     }
 }
@@ -86,6 +94,7 @@ impl std::fmt::Display for TargetDenial {
 #[derive(Clone, Debug, Default)]
 pub struct OwnerScope {
     roots: Vec<PathBuf>,
+    supplied: usize,
 }
 
 impl OwnerScope {
@@ -93,12 +102,16 @@ impl OwnerScope {
     /// kept as a literal: an unresolvable root can never contain a target, so dropping
     /// it fails closed. An empty scope refuses everything.
     pub fn new<I: IntoIterator<Item = PathBuf>>(roots: I) -> OwnerScope {
-        let mut resolved: Vec<PathBuf> = roots
-            .into_iter()
+        let supplied_roots: Vec<PathBuf> = roots.into_iter().collect();
+        let mut resolved: Vec<PathBuf> = supplied_roots
+            .iter()
             .filter_map(|root| std::fs::canonicalize(root).ok())
             .collect();
         resolved.dedup();
-        OwnerScope { roots: resolved }
+        OwnerScope {
+            roots: resolved,
+            supplied: supplied_roots.len(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -192,7 +205,9 @@ fn resolve_within_roots(target: &Path, roots: &[PathBuf]) -> Result<(), TargetDe
 
 fn authorize_path(path: &str, scope: &OwnerScope) -> Result<(), TargetDenial> {
     if scope.is_empty() {
-        return Err(TargetDenial::OwnerScopeUnresolved);
+        return Err(TargetDenial::OwnerScopeUnresolved {
+            supplied: scope.supplied,
+        });
     }
     let candidate = Path::new(path);
     if candidate
