@@ -47,6 +47,7 @@ members = [
   "tools/update-manifest",
   "tools/support-bundle-verify",
   "tools/ga-probe",
+  "tools/p39-probes",
   "crates/db-diagnostics",
   "crates/security-audit",
   "crates/fleet",
@@ -59,7 +60,7 @@ license = "Apache-2.0 OR MIT"
 # `version.workspace = true`, so every binary reports it through CARGO_PKG_VERSION.
 # The MSI, the CLI archive and the desktop bundle all derive from this line.
 # Bump HERE and nowhere else.
-version = "0.1.8"
+version = "0.1.11"
 edition = "2024"
 rust-version = "1.97"
 publish = false

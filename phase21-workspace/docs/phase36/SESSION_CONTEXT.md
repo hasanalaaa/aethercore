@@ -2436,3 +2436,601 @@ branches of `classify_windows_sku` are still unexercised on real hardware.
   workspace suite against a busy host and then believe the result.
 - The full MSI build is ~12 minutes and the 1.07 GB model's CAB compression
   dominates it; `wixnative` shows no output for most of that. It is not hung.
+
+---
+
+# 18. PHASE 39 — FIX THE LOCALSYSTEM DISCLOSURE (started 2026-09-01)
+
+Brief: close the release blocker `SECURITY_REVIEW_UNGATING.md` found — the
+maintenance service reads caller-named absolute paths as LocalSystem, and
+`ExportJournal` honours a caller-supplied owner key. Branch
+`fix/localsystem-disclosure`, cut from `main` at `db0dc49`.
+
+## 18.1 WHAT WAS PROVEN BEFORE ANYTHING WAS FIXED
+
+The attack tests were written first and committed WHILE FAILING (`08e9c84`),
+so the failure is the evidence. They drive the REAL service binary over a real
+socket through the full v7 handshake. Against the unfixed router:
+
+```
+run_security_audit_refuses_an_absolute_target_outside_the_calling_principal_scope
+  status_code=0
+  lane=secrets status=ok findings=1
+  {"id":"SEC-SEC-001","severity":"critical","evidence":[{
+     "fact":"AKIA****************",
+     "sourceLocation":"/tmp/axt-p39-.../victim-home/.aws/credentials:1"}]}
+
+run_security_audit_refuses_a_link_planted_inside_the_owner_root   status_code=0
+  same credential, reached through a symlink planted inside the caller's root
+run_security_audit_refuses_out_of_scope_paths_in_every_target_variant
+  status_code=0 on sshdConfig
+export_journal_refuses_a_foreign_owner_principal_key             status_code=0
+```
+
+The two legitimate-path tests passed before the fix and must keep passing.
+
+Why a unix socket proves a Windows defect: `router::handle_request` is one
+platform-neutral function and both hosts dispatch into it (stated in
+`unix_composition.rs`'s own module docs). What UDS cannot reproduce is the
+privilege GAP — there the peer is the same user as the service. Section 18.4
+covers that on the installed product.
+
+## 18.2 THE FIX (`9aa9ae4`)
+
+- `PrincipalContext` carries the caller's own profile directory, read from the
+  OS **for that token** — Windows `SHGetKnownFolderPath(FOLDERID_Profile,
+  token)` while the service still holds the impersonated client token. Not
+  `%USERPROFILE%`, not the registry, not the request. Unresolved means NO
+  scope, never no restriction.
+- `crates/security-audit/src/scope.rs` is the allowlist the proto always
+  promised. Per named path: no `..`; absolute; contained component-wise (and
+  case-insensitively on Windows) in a root the caller owns; no symlink/reparse
+  point at or below that root. Links ABOVE a root are resolved, because
+  `/var` -> `/private/var` on macOS and `C:\Users` can be redirected; that is
+  safe because containment is decided on the RESOLVED form, so a link can never
+  fake its way in.
+- The bounded walkers skip reparse points instead of following them, so a
+  junction found mid-scan cannot redirect a LocalSystem walk. Same posture as
+  `aethercore-install-hardener`'s `purge-data`; not the same code, because that
+  binary carries zero workspace dependencies on purpose and this copy also has
+  to handle unix symlinks. Both are stated in comments.
+- sudoers `#includedir` is confined to the directory of the file that named it.
+  Its target comes from FILE CONTENT, which the router never vetted.
+- `ExportJournal` refuses a non-empty `owner_principal_key` that is not the
+  calling principal.
+- `operations.proto` now states what the code does, including the refusal keys.
+
+Nothing was widened. The pipe DACL, the module gating and every existing check
+are untouched.
+
+## 18.3 DESTRUCTIVE ACTION RECORD — build and install 0.1.9 on the VM
+
+```
+ACTION=    (a) prlctl snapshot "Windows 11" -n P39-PRE-FIX-BUILD
+           (b) hash-compare the whole non-docs source tree in
+               C:\AetherCore-P36\workspace\AetherCore-Phase35-Master-Delivery
+               against \\Mac\dev\aethercore\phase21-workspace and copy every
+               file that differs or is missing (this session's fix plus any
+               drift earlier sessions left), then re-verify by hash
+           (c) run scripts\build-arm64-msi.cmd with NO argument -> 0.1.9
+           (d) msiexec /i AetherCore-0.1.9-arm64.msi /qn
+           (e) run the attack probe over the REAL named pipe under an actual
+               standard-user token, then the 18-verb client gate
+SNAPSHOT=  P39-PRE-FIX-BUILD, taken by step (a).
+           Fallback: P38-PRE-0.1.7-INSTALL {a226b395-81b7-4887-90e2-6f132e6551a3}.
+           P37-SHIPPING-QUALIFIED {a1696567-7528-4136-a445-848dccd3d2c1} remains
+           the older recovery point. P36-CLEAN-BASELINE and
+           P36-PRE-NATIVE-MUTATION are long deleted and cannot be restored.
+EXPECTED=  (b) every copied file's SHA-256 in the guest equals the Mac's.
+           (c) the script prints Version=0.1.9 derived from Cargo.toml; build
+               exit 0; `wix msi validate` exit 0 with ZERO `ICE\d+` matches;
+               ProductCode {EE0AE741-51DE-F66B-2790-81B6EB90D02B}, which is the
+               value the documented scheme predicts for AetherCore/0.1.9/arm64
+               and which was recomputed independently on the Mac (the same
+               script reproduces {92E437E7-...} for the installed 0.1.8).
+           (d) exit 0; ONE ARP entry {EE0AE741-...} 0.1.9; HKLM InstallVersion
+               0.1.9; SIXTEEN files; service AetherCoreMaintenance LocalSystem
+               AUTO_START(DELAYED) RUNNING; Service SID UNRESTRICTED; pipe SDDL
+               and install-dir icacls IDENTICAL to the section 10 baseline
+               (Users RX, no write).
+           (e) the probe reports STATUS:403 for both attacks and STATUS:0 for
+               both legitimate calls; 18/18 verbs RETURNED across both
+               actual-token contexts.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id <P39-PRE-FIX-BUILD id>
+```
+## 18.4 THE SWEEP — every newly reachable handler, checked for the same shape
+
+The class is: *the caller names a target, the service acts on it with LocalSystem
+authority, and nothing checks that the target belongs to the caller.* The review
+found two instances. This is the enumeration that says whether there are more.
+
+Method, so it can be re-run rather than trusted: every `*Request` message in
+`crates/contracts/proto/*.proto` was listed with its fields, and every
+`request::Payload::` arm in `router.rs` was listed with the request fields it
+reads and whether `principal_key` appears in that arm. That is the whole v7
+surface, not a sample.
+
+**Exactly one request in the entire contract carries a filesystem path**
+(`RunSecurityAuditRequest.targets_json`) and **exactly one carries an owner
+scope** (`ExportJournalRequest.owner_principal_key`). Every other request field
+is an opaque id, a bounded count, a byte buffer or a bool. So the path-shaped
+class has one instance and the owner-override class has one instance, and both
+are fixed.
+
+| # | Handler / site | Shape | Disposition |
+|---|---|---|---|
+| 1 | `RunSecurityAudit` targets | caller names absolute paths, read as LocalSystem | **FIXED** — owner-scoped allowlist |
+| 2 | `ExportJournal.owner_principal_key` | caller names another owner | **FIXED** — refused |
+| 3 | `sudoers` `#includedir` | path from FILE CONTENT the allowlist never vetted, expanded as LocalSystem | **FIXED** (found by this session, not by the review) — expansion confined to the directory of the file that named it |
+| 4 | Every id-bearing handler (`plan_id`, `scan_id`, `intent_id`, `bundle_id`, `preview_id`, `upload_id`, `ticket_id`, `change_id`, `assessment_id`, `candidate_id`, `release_id`) | caller names an opaque id | **Not the defect.** Each passes `principal_key` into an owner-scoped accessor. Spot-checked at the accessor rather than at the call: `maintenance_executions_for_owner` / `support_journal_events_for_owner` / `repair_timeline_events_for_owner` filter `WHERE owner_principal_key=?` in SQL; `SupportBundles::read_chunk`/`ready_for_owner`/`discard` return `Ownership` when `record.owner != owner`; `driver_install::status` routes through `get_plan_for_owner` |
+| 5 | `ListInsights` / `RequestInsight` / `DismissInsight` | machine-wide shared store, **no owner dimension at all** | **RECORDED — needs a design decision.** `EphemeralInsights` (`services/maintenance-service/src/intelligence.rs:30`) is one process-wide `Vec`; `dismiss(insight_id)` and `list()` take no principal. So any local user sees the insights another user's request produced, and can dismiss them. It is not the caller-named-scope class and it is not a filesystem read, but it IS a newly reachable surface with no owner check. Fixing it means deciding whether insights are per-principal or machine-wide state — a product decision, not a bug fix |
+| 6 | `StopPerfSampling` | takes no scope, stops sampling globally | **RECORDED.** `StartPerfSampling` is owner-keyed but `stop_sampling()` is not, so one principal can stop another's sampling. Availability nuisance, no disclosure, no LocalSystem read |
+| 7 | `performance_optimization::status(plan_id)` | an owner-less status accessor exists | **RECORDED as a latent hazard.** Currently unreachable: the `GetOptimizationStatus` arm returns `status: None` unconditionally and never calls it, and the compiler already reports it dead. If a future change wires the handler to it, instance #1's shape returns |
+| 8 | `StartOptimization`, `CheckForUpdates`, `StageUpdate` | — | Typed refusals; nothing is read |
+| 9 | `GetPlatformCapabilities`, `GetEngineSource`, `GetUpdateCheckDescriptor` | machine-wide, non-owner data, no caller-named target | Not the class |
+
+## 18.5 VM RESULTS — THREE PACKAGES, TWO HONEST FAILURES, ONE PASS
+
+Snapshot taken before any mutation: **P39-PRE-FIX-BUILD
+`{7c10fb2b-dbdd-45c5-b8af-85ab9a0f342f}`**, per the record in 18.3.
+
+The guest source tree was not assumed current. Every one of the 967 tracked
+non-docs files was hash-compared and the differing ones copied, then ALL of them
+re-verified: `SCANNED=967 SAME=948 CHANGED=14 MISSING=5 COPIED=19
+POST_VERIFY_BAD=0`. The drift was real and predated this session — `crates/ipc`
+(the DBT-P36-001/002 probe-API revert), `crates/intelligence-core` tests, the
+icon set and `static_validate.py` were all stale in the guest. Syncing only this
+session's delta would have built a package that was not `main` plus the fix.
+
+| version | ProductCode | outcome |
+|---|---|---|
+| 0.1.9 | `{EE0AE741-51DE-F66B-2790-81B6EB90D02B}` | **built, installed, REJECTED** — empty scope for every principal |
+| 0.1.10 | `{9878E6E1-3211-FA76-0D45-030EA6C16177}` | **built, installed, REJECTED** — same |
+| **0.1.11** | `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}` | **the fix, proven** |
+
+Each ProductCode was recomputed independently on the Mac from the documented
+scheme before the build ran, and each build emitted exactly that value. The same
+computation reproduces `{92E437E7-…}` for the already-installed 0.1.8, so the
+derivation is checked against a known answer rather than asserted.
+
+### The two failures, and what each one cost to find
+
+Both were the SAME symptom — attacks refused, but the legitimate caller refused
+too, so the guard was fail-closed on everything. Neither was found by reasoning;
+both were found by running the attack on the installed product, which is exactly
+why the brief required it.
+
+**0.1.9.** `SHGetKnownFolderPath(FOLDERID_Profile, token)` returned nothing for
+every principal. The service opens the impersonated client token with
+`TOKEN_QUERY` only and that API also wants `TOKEN_IMPERSONATE`. Replaced with a
+`ProfileList` lookup keyed by the SID already on the principal — no token rights
+needed at all, and `HKLM\SOFTWARE` is administrator-writable only, so an
+unprivileged caller cannot redirect its own scope.
+
+**0.1.10.** Still empty. Four things were measured before anything was changed,
+and three came back clean — which is what made the fourth findable:
+
+| measured | result |
+|---|---|
+| installed service binary identity | SHA == the 0.1.10 payload SHA, process started at install time — the new code WAS running |
+| `ProfileList` read as SYSTEM for the standard user's SID | `C:\Users\P36StandardUser`, all three `RRF_*` flag combinations OK |
+| the same read as that user | `C:\Users\P36StandardUser`, OK |
+| `canonicalize` of that path | `\\?\C:\Users\P36StandardUser`, OK |
+
+The one remaining difference was that `principal_from_token` runs INSIDE the
+impersonation window. `inspect_named_pipe_client` now fills `profile_dir` after
+`RevertToSelf`, with the service's own authority. The SID string is decoded from
+the bytes already on the principal by hand — documented layout, pure arithmetic,
+no Win32 call — and unit-tested on macOS against the exact SIDs on this box.
+`RRF_RT_REG_EXPAND_SZ` was dropped: the diagnostic showed plain `RRF_RT_REG_SZ`
+already returns the expanded path.
+
+A fail-closed refusal that cannot say WHY is undiagnosable in the field, so
+`sec.ownerScopeUnresolved` now distinguishes "the OS named no root for this
+principal" from "the named roots did not resolve".
+
+### GATE — 0.1.11 BUILD: **PASS**
+
+```
+Version=0.1.11  (derived from Cargo.toml [workspace.package].version)
+=== BUILD OK: C:\AetherCore-P36\build\out\AetherCore-0.1.11-arm64.msi
+ICE_MATCHES=0          all six steps ran, [6/6] is `wix msi validate`
+```
+1,099,653,120 B, sha256 `1a6ea3f10a0a195c18907946ffe18651afccef29859738dbe2b9e02444ad75f9`.
+
+### GATE — 0.1.11 INSTALLED: **PASS**, zero differing fields vs the section 10 baseline
+
+`msiexec /i … /qn` -> `EXIT=0`.
+
+| check | expected | observed |
+|---|---|---|
+| ARP entries | exactly 1 | `ARP_COUNT=1` |
+| ARP key / version | `{98FCE2D5-…}` / 0.1.11 | same |
+| `HKLM\SOFTWARE\AetherCore\InstallVersion` | 0.1.11 | `0.1.11` |
+| INSTALLFOLDER files | 16 | `FILE_COUNT=16` |
+| `sc qc` | TYPE 10, AUTO_START (DELAYED), ERROR_CONTROL 1 NORMAL, LocalSystem | identical |
+| `sc query` | STATE 4 RUNNING | RUNNING |
+| `sc qsidtype` | UNRESTRICTED | UNRESTRICTED |
+| pipe SDDL | identical to section 10 | `O:S-1-5-80-4285065559-…-1187574229G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-…)` |
+| install-dir `icacls` | identical, Users RX no write | identical |
+| installed `about` | 0.1.11 / windows | `{"platform":"windows","version":"0.1.11",…}` |
+
+Nothing was widened to achieve this: the pipe DACL, the install-dir ACLs, the
+Service SID type and the module gating are byte-for-byte the values the Phase 36
+baseline recorded.
+
+### GATE — THE ATTACK, ON THE INSTALLED SERVICE, OVER THE REAL NAMED PIPE: **PASS**
+
+`p39_pipe_attack.exe` against `AetherCore.Maintenance.v7`, service exe
+`c17602cc57330cf062a3575dae29ad643220e00f4fcf6fe726399664a8ed522a`:
+
+```
+ATTACK_AUDIT_FOREIGN_PATH     STATUS:403 sec.targetOutsideOwnerScope
+                              [target is outside the calling principal's own
+                               scope: C:\Users\hasanalaaa]           BODY: (empty)
+ATTACK_JOURNAL_FOREIGN_OWNER  STATUS:403 journal.ownerScopeForbidden BODY: (empty)
+LEGIT_AUDIT_OWN_SCOPE         STATUS:0    cve:ok:0 | secrets:ok:1
+LEGIT_JOURNAL_OWN_SCOPE       STATUS:0    records=0 signed=false
+FAILURES=0
+```
+
+The request that returned `AKIA****************` and the victim's exact file path
+before the fix now returns a typed refusal and no payload at all. The legitimate
+lane genuinely RAN rather than being silently narrowed away — `secrets:ok`
+carries a real finding.
+
+### BLOCKED — the actual-token contexts, and why
+
+**Raw observation.** From ~12:05 onward every Windows Scheduled Task on this VM
+sits `State=Queued` and never runs, including a trivial `cmd.exe /c echo` task
+registered as SYSTEM with `-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`.
+`sc query Schedule` reports `STATE 4 RUNNING`. The guest reports
+`Win32_Battery BatteryStatus=1 (discharging) EstimatedChargeRemaining=17`, and
+the Mac host reports `Now drawing from 'Battery Power' … 17%; discharging`.
+Tasks ran normally on this box at 11:44 and stopped some time before 12:05.
+
+**Expected.** The one-shot Scheduled Task method runs the probe under
+`P36StandardUser` (Limited) and `P36Admin` (Highest), as it did earlier today.
+
+**A stale transcript nearly became a false PASS, and that is worth recording.**
+`verbs-outer.ps1` copies `C:\Users\Public\p36\verbs-<ctx>.txt` to the Mac after
+the task "finishes". With the task stuck Queued it copied the file left there by
+the Phase 38 run and reported a clean 18/18. It was caught only because the
+transcript carried `CTL_SHA256=f70e820f…`, the **0.1.8** aetherctl, while the
+installed binary is `7847569b…`. Every stale file under `C:\Users\Public\p36`
+and `p39` has been purged so this cannot recur silently, but the harness itself
+still has the flaw: it does not fail when its task did not run.
+
+**What IS established on real tokens.** The 0.1.9 and 0.1.10 probe runs executed
+under genuine `P36StandardUser` (`IS_ELEVATED_ADMIN=False`) and `P36Admin`
+(`True`) tokens before the battery drained, and in both contexts the pipe was
+reachable and BOTH attacks were refused with 403. So "an unprivileged local user
+is refused" is proven under a real unprivileged token. What is NOT yet proven
+under such a token is that the LEGITIMATE path works on 0.1.11 — that run needs
+the scheduler, and the scheduler needs the host on mains power.
+
+**Human action required:** put the Mac on AC, then re-run
+`~/dev/p36-stage/vmr p39-attack-outer P39FINAL` and
+`~/dev/p36-stage/vmr p39-verbs P39FINAL`. Nothing else is outstanding.
+
+## 18.6 MAC-SIDE VERIFICATION
+
+| check | result |
+|---|---|
+| `cargo test --workspace` on an IDLE host | **127 test binaries, 576 passed, 0 failed, 0 ignored** |
+| `intelligence-core` T5 wall-clock budget | passed — the Phase 38 flake was load-induced and did not recur |
+| `static_validate.py` vs a worktree at pre-fix `db0dc49` | 344 checks / 21 failing on both. **NEWLY FAILING: NONE. NEWLY FIXED: NONE** |
+| `aetherctl sec audit --profile cis-l1 --out … --format json` | exit 0, scored `aethercore.compliance.v1`, 3 pass / 1 fail / 4 not-verified, 75.0% |
+| `phase39_ipc_authorization` (real service binary over a real socket) | 6/6, including the two legitimate-path tests that passed BEFORE the fix and still pass |
+
+The CLI is deliberately NOT confined by the allowlist and that is not an
+oversight. `aetherctl sec audit` runs `sec::run_audit` in-process under the
+CALLER's own token — there is no privilege boundary to defend and no
+LocalSystem authority to borrow, so confining it would break
+`--profile cis-l1` (which names `/etc/ssh/sshd_config`, `/etc/sudoers` and the
+home tree) while protecting nothing. The allowlist sits where the privilege
+boundary is: the router. The reparse-point posture, by contrast, IS shared by
+both callers, because not following a link is correct behaviour either way.
+
+## 18.7 STATE FOR THE NEXT SESSION
+
+- Branch `fix/localsystem-disclosure`, **not merged, not pushed** — six commits
+  on top of `db0dc49`. The brief said not to merge without saying so.
+- The VM has **0.1.11 installed and running**, service RUNNING, 16 files, pipe
+  DACL and install-dir ACLs identical to the section 10 baseline.
+- Recovery point for this session: **P39-PRE-FIX-BUILD
+  `{7c10fb2b-dbdd-45c5-b8af-85ab9a0f342f}`**. Older fallbacks
+  P38-PRE-0.1.7-INSTALL `{a226b395-…}` and P37-SHIPPING-QUALIFIED
+  `{a1696567-…}` are both still present.
+- **The one outstanding gate** is 18.5's blocked actual-token run. Put the Mac
+  on mains power, then `vmr p39-attack-outer P39FINAL` and `vmr p39-verbs
+  P39FINAL`. Until then the standing "18/18 verbs under BOTH actual-token
+  contexts" gate is NOT met on 0.1.11 and the branch is not merge-ready.
+- `verbs-outer.ps1` copies its transcript whether or not the task ran, so it can
+  report a stale PASS. It should fail when `LastRunTime` is older than the run
+  it just started. Not fixed here — it is harness work, and changing the gate
+  harness in the same session that uses it to prove a security fix is exactly
+  the shape of evidence nobody should trust.
+
+### Package ledger (Phase 39 additions)
+
+| version | ProductCode | why it exists |
+|---|---|---|
+| 0.1.9 | `{EE0AE741-51DE-F66B-2790-81B6EB90D02B}` | first fix attempt — **superseded, do not ship** (empty scope for every principal) |
+| 0.1.10 | `{9878E6E1-3211-FA76-0D45-030EA6C16177}` | second attempt — **superseded, do not ship** (same) |
+| **0.1.11** | `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}` | **the current package**: the owner-scoped allowlist, proven on the installed service |
+
+### Snapshot ledger (Phase 39 additions)
+
+| name | id | taken before |
+|---|---|---|
+| P39-PRE-FIX-BUILD | `{7c10fb2b-dbdd-45c5-b8af-85ab9a0f342f}` | syncing the fix and building/installing 0.1.9 |
+
+# 19. PHASE 40 — BUILD HYGIENE AND TEST-HARNESS INTEGRITY (2026-09-01)
+
+Recovery point for this session: **P40-PRE-HOUSEKEEPING
+`{d652cd40-877c-4a9a-bb1b-2e3637a96ec2}`**, taken before any Phase 40 VM action.
+`P37-SHIPPING-QUALIFIED {a1696567-…}` and `P39-PRE-FIX-BUILD {7c10fb2b-…}` are
+both still present and neither was restored.
+
+The Mac is on AC power, so §18.5's blocked actual-token run is runnable again.
+
+## 19.0 The guest-tools channel was wedged before anything could be measured
+
+Every `prlctl exec` — including `cmd.exe /c echo` — hung indefinitely and then
+returned `PrlVm_TerminalConnect: PrlJob_Wait: PRL_ERR_IO_STOPPED`. Host load
+average was 6.5–7.8 and the battery had been at 17%. The snapshot above was
+taken first; the guest was then restarted and answered in under 20 seconds.
+Recorded because it looks exactly like a hung gate and is not one.
+
+## 19.2 THE GATE HARNESS COULD REPORT A RESULT FROM AN EARLIER RUN
+
+### The defect
+
+`verbs-outer.ps1` waited with
+
+```powershell
+do { Start-Sleep -Seconds 2; $state = (Get-ScheduledTask -TaskName $name).State }
+while ($state -eq 'Running' -and (Get-Date) -lt $deadline)
+```
+
+A task that never leaves `Queued` — §18.5's battery stall — is not `Running`, so
+the loop exits on its first evaluation. The harness then copied whatever
+`C:\Users\Public\p36\verbs-<ctx>.txt` was on disk and reported it as this run's
+result.
+
+### The fix (`scripts/p36vm/verbs-outer.ps1`)
+
+Three changes, each closing one half of it:
+
+| change | what it prevents |
+|---|---|
+| the transcript is deleted before the task is registered | there is nothing stale left to mis-copy |
+| the wait loop also waits through `Queued` | a stalled scheduler times out instead of returning instantly |
+| `LastRunTime` must be newer than the moment this invocation started, or the harness **throws** `STALE_RESULT` | a result that predates the run it started is never reported at all |
+
+### The fix is itself tested
+
+`scripts/p36vm/verbs-outer.staletest.ps1` runs the predicate against the real
+Task Scheduler in both directions — a check that has only ever been seen to pass
+is not evidence:
+
+```
+NEVER_RAN LastRunTime=11/30/1999 00:00:00 RAN=False WANT=False
+AFTER_RUN  LastRunTime=09/01/2026 15:26:24 RAN=True  WANT=True
+STALETEST_FAILURES=0
+```
+
+The `NEVER_RAN` line is precisely the state that used to sail through as a PASS.
+
+### Which recorded results were produced by the unfixed harness
+
+`verbs-outer.ps1` was written 2026-08-31 14:26, so **every** verbs gate ever
+recorded — S1, FINAL, desktop, P38FINAL, P39FINAL — ran under the unfixed
+harness and was, at the time, unverified. They are not all stale, and the
+transcripts themselves settle which is which: each carries `CAPTURED_UTC`, the
+SHA of the `aetherctl.exe` it actually invoked, and per-verb `ELAPSED_MS`.
+
+| label | CAPTURED_UTC | CTL_SHA256 | verdict |
+|---|---|---|---|
+| S1 | 2026-08-31T11:43:31Z / :40Z | `b8a29c92…` | genuine — its own capture time and its own timings |
+| FINAL | 16:38:54Z / 16:39:04Z | `1bfd04c2…` | genuine |
+| desktop | 17:34:13Z / 17:34:23Z | `1bfd04c2…` | genuine — same binary as FINAL, but a distinct capture time and every `ELAPSED_MS` differs |
+| P38FINAL | 21:06:24Z / 21:06:34Z | `f70e820f…` | genuine |
+| **P39FINAL** | 21:06:24Z / 21:06:34Z | `f70e820f…` | **STALE** — byte-identical to P38FINAL, and `f70e820f…` is the **0.1.8** CLI while 0.1.11 was installed |
+
+`P39FINAL` is the one §18.5 already caught by hand. Nothing else was stale, and
+the four genuine ones cannot be re-run in any meaningful sense: each measured a
+different installed package, and the VM now holds 0.1.11. The one that can and
+must be re-run against the current product is the 0.1.11 verbs gate.
+
+### GATE — 18/18 VERBS ON 0.1.11, BOTH ACTUAL-TOKEN CONTEXTS, FIXED HARNESS: **PASS**
+
+`verbs-outer.ps1 -Label P40FINAL`:
+
+```
+STD    TASK_STATE=Ready LAST_RESULT=0 LAST_RUN=09/01/2026 15:25:37 RAN_THIS_INVOCATION=True
+ADMIN  TASK_STATE=Ready LAST_RESULT=0 LAST_RUN=09/01/2026 15:25:45 RAN_THIS_INVOCATION=True
+```
+
+18/18 `RESULT=RETURNED`. Both transcripts record
+`CTL_SHA256=7847569b2a08dddc89ca305f497918ef088d26bf3e0b197eb5b14e28a80a823f`
+— the **installed 0.1.11** CLI, not the 0.1.8 one the stale transcript carried —
+under genuine tokens (`p36standarduser`, `IS_ELEVATED_ADMIN=False`; `p36admin`,
+`True`). `doctor` returns `EXIT_CODE=5` in both contexts, unchanged from every
+prior run.
+
+**RESULTS THAT CHANGED: none.** The corrected harness returns the same verdict
+the P38FINAL evidence supported. What changed is that the 0.1.11 gate is now
+actually met rather than blocked: §18.7's single outstanding item is closed.
+
+## 19.1 TEST CODE IN THE SHIPPING CRATE'S EXAMPLES DIRECTORY
+
+### Measured before anything was moved
+
+`p39_pipe_attack.rs` justified its location with "examples are not workspace
+binaries and are not authored into `Product.wxs`, so nothing here reaches the
+shipped payload". DBT-P36-008 is `ipc_probe.exe` in `C:\Program Files\AetherCore`,
+so that reasoning has already been wrong once. The installed 0.1.11 image and the
+MSI's own File table were both enumerated first:
+
+```
+INSTALL_FILE_COUNT=16      DEV_BINARY_IN_INSTALL_IMAGE=NO
+MSI_FILE_ROWS=16           DEV_BINARY_IN_MSI_FILE_TABLE=NO
+```
+
+Sixteen files on disk, sixteen rows in the File table, one-for-one, no `p39_*`
+anything. The belief was true this time. It was still a belief.
+
+### Relocated
+
+`apps/aetherctl/examples/p39_pipe_attack.rs` ->
+`tools/p39-probes/src/p39_pipe_attack.rs`, a workspace member with
+`[[bin]] name = "p39_pipe_attack"`. `tools/p36-probes/` — where the earlier
+developer tools went — was deleted when DBT-P36-001 closed, so this is the same
+place under this phase's name, beside `tools/ga-probe` and
+`tools/support-bundle-verify`. It adds no product API: it still uses
+`aethercore_ipc::SessionClient` exactly as `aetherctl` does.
+
+Built on the VM from the new location: `cargo build --release -p
+aethercore-p39-probes` -> `EXIT=0`,
+`target\release\p39_pipe_attack.exe` sha256 `cf0e892ceba0608413b37d74062ae1de…`.
+The MSI recipe's fixed package set does **not** include it
+(`PROBE_BUILT_BY_MSI_RECIPE=False`), which is the point.
+
+The guest source tree also still held `crates/security/examples/p39_profile_probe.rs`
+and a compiled `target\release\examples\p39_pipe_attack.exe` from Phase 39. The
+sync is copy-only and had never deleted anything; both are gone now, and the
+sync script deletes what leaves the repo.
+
+### The check (DBT-P40-002)
+
+`scripts/check-msi-payload.ps1`. The allowlist is **derived**, not maintained:
+every row of the MSI File table must correspond to a `<File Source="…">` in
+`installer/wix/Product.wxs`, the file that *is* the authorization to ship
+something. Authoring a probe into the wxs to get past it also fails, on the name.
+
+Wired in as `[7/7]` of `scripts/build-arm64-msi.cmd` (after `wix msi validate`)
+and after the same step in `scripts/build-installer.ps1`.
+
+`scripts/p36vm/check-msi-payload.selftest.ps1` runs it against a real package in
+all three states — a check only ever seen to pass proves nothing:
+
+```
+CASE clean-package           WANT=0 GOT=0 OK
+CASE probe-authored-in-wxs   WANT=1 GOT=1 OK
+CASE unauthored-file-in-msi  WANT=1 GOT=1 OK
+```
+
+## 19.3 GATES — NOTHING ELSE MOVED
+
+The installed article was **not** replaced. 0.1.11 was already installed from
+`1a6ea3f1…` and is the qualified package; a same-version rebuild carries a new
+PackageCode and would need `REINSTALLMODE=vamus` (tranche 3 #2) to reinstall,
+which would swap out the qualified install for no gain. The rebuild proves the
+build; the installed 0.1.11 carries the client gates.
+
+| gate | result |
+|---|---|
+| MSI build | `=== BUILD OK: …\AetherCore-0.1.11-arm64.msi`, all seven steps ran |
+| ICE | `ICE_MATCHES=0`, `wix msi validate` step `[6/7]` present, no suppression |
+| **payload check** | step `[7/7]` ran in the real build: `AUTHORED_FILES=16 MSI_FILE_ROWS=16 PAYLOAD_CHECK=PASS` |
+| ProductCode | `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}` — identical to the 0.1.11 in ARP, as the derivation requires |
+| verbs | **18/18 RETURNED**, both actual-token contexts, `RAN_THIS_INVOCATION=True` (§19.2) |
+| service | `STATE 4 RUNNING` |
+| pipe DACL | identical to the §10 baseline, field-for-field |
+| install-dir ACLs | `installdir_icacls` **identical** to `verify-S1-postinstall.json` |
+| `sc qc` / `sc qsidtype` / `sc sdshow` / ProgramData | all identical to that baseline |
+| authorization tests | `phase39_ipc_authorization` **6/6** |
+| attack, real pipe, BOTH real tokens | `FAILURES=0` in both |
+| legitimate path | scored `cis-l1` report returned to a standard user |
+| `static_validate.py` | 344 checks / 21 failing — the §18.6 numbers exactly. **Newly failing: none** |
+
+The rebuilt package is `3ae46dff…` against the installed `1a6ea3f1…`: the same
+1,099,653,120 bytes, a different PackageCode and a non-reproducible
+`aethercore-desktop.exe` (tranche 3 #7), both expected and neither a criterion.
+
+Only version-dependent fields differ from the S1 baseline snapshot — ARP key and
+version, `HKLM\…\InstallVersion`, and the payload SHAs (0.1.6 -> 0.1.11). Every
+security-relevant field is byte-identical. **Nothing was widened.**
+
+### The attack, on the installed 0.1.11, under BOTH actual tokens
+
+`p39-attack-outer.ps1 -Label P40FINAL`, probe `cf0e892c…` built from
+`tools/p39-probes`:
+
+```
+STD    RAN_THIS_INVOCATION=True   WHOAMI=…\p36standarduser  IS_ELEVATED_ADMIN=False
+  ATTACK_AUDIT_FOREIGN_PATH     403 sec.targetOutsideOwnerScope   BODY: (empty)
+  ATTACK_JOURNAL_FOREIGN_OWNER  403 journal.ownerScopeForbidden   BODY: (empty)
+  LEGIT_AUDIT_OWN_SCOPE           0  cve:ok:0 | secrets:ok:1
+  LEGIT_JOURNAL_OWN_SCOPE         0  records=0 signed=false
+  FAILURES=0
+ADMIN  RAN_THIS_INVOCATION=True   WHOAMI=…\p36admin          IS_ELEVATED_ADMIN=True
+  same four lines, FAILURES=0
+```
+
+§18.5 could only prove the refusal under a real unprivileged token, on 0.1.9 and
+0.1.10. This is the refusal **and** the legitimate lane, on 0.1.11, under both
+real tokens. `p39-attack-outer.ps1` carries the §19.2 freshness gate too.
+
+### A legitimate caller still gets a scored report
+
+From the `secaudit` verb in the P40FINAL **standard-user** transcript:
+
+```
+schema      aethercore.compliance.v1     profile_id  cis-l1
+score.pass 1  fail 0  na 2  not_verified 5   score_pct  calculated 100.0
+```
+
+On the Mac, `aetherctl sec audit --profile cis-l1 --format json` exits 0 with the
+same schema and §18.6's numbers unchanged: 3 pass / 1 fail / 4 not-verified,
+75.0%.
+
+### Two harness defects found while running the gates
+
+Recorded because both look exactly like the §19.2 class:
+
+1. `p39-build-launch.ps1` wrote its completion signal as
+   `echo EXIT=%ERRORLEVEL%> "$st"`. `cmd` reads the `0` of the expanded
+   `ERRORLEVEL` as the handle in a `0>` redirect, so the status file was created
+   **empty** and every poller reported `STATUS=RUNNING` forever — including after
+   the build had finished successfully at 15:35:30. Fixed with a space.
+2. Two `prlctl exec` calls in flight at once return
+   `PrlJob_GetResult: Invalid argument`. Guest invocations must be serialised.
+
+### Mac-side
+
+`cargo test --workspace`: **128 test binaries, 576 passed, 0 failed, 0 ignored**.
+§18.6 recorded 127 binaries and the same 576 passing tests; the extra binary is
+`aethercore-p39-probes` itself, which contributes no tests. No test moved.
+
+`phase39_ipc_authorization` (real service binary over a real socket, `--features
+unix-ipc`): **6/6**, including the two legitimate-path cases.
+
+## 19.4 STATE FOR THE NEXT SESSION
+
+- Branch `fix/localsystem-disclosure`, **pushed** to `origin`. Still not merged —
+  no brief has asked for that.
+- §18.7's single outstanding gate is **closed**: 18/18 verbs on 0.1.11 under both
+  actual-token contexts, on a harness that can no longer report a stale result.
+- The VM has **0.1.11 installed and running**, unchanged: 16 files, service
+  RUNNING, pipe DACL and install-dir ACLs identical to the §10 baseline. The
+  0.1.11 MSI in `build\out` is now the Phase 40 rebuild (`3ae46dff…`), which is
+  NOT the installed article (`1a6ea3f1…`); they are the same version and the same
+  ProductCode, so reinstalling from it would need `REINSTALLMODE=vamus`.
+- Recovery point for this session: **P40-PRE-HOUSEKEEPING
+  `{d652cd40-877c-4a9a-bb1b-2e3637a96ec2}`**. `P37-SHIPPING-QUALIFIED
+  {a1696567-…}` and `P39-PRE-FIX-BUILD {7c10fb2b-…}` are untouched. Neither
+  `P36-CLEAN-BASELINE` nor `P36-PRE-NATIVE-MUTATION` was restored.
+- **DBT-P40-003 is open**: `crates/security-audit/examples/gd4_live_audit.rs` is
+  the same shape as the file this session moved. It has no Windows build path and
+  the payload check now measures the question it raises, so it was recorded
+  rather than moved. Move it the next time that crate is touched.
+- `prlctl exec` must be serialised — two concurrent calls fail the job outright.
+
+### Snapshot ledger (Phase 40 additions)
+
+| name | id | taken before |
+|---|---|---|
+| P40-PRE-HOUSEKEEPING | `{d652cd40-877c-4a9a-bb1b-2e3637a96ec2}` | any Phase 40 VM action (guest restart, source sync, rebuild) |

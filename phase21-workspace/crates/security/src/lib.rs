@@ -11,6 +11,15 @@ pub struct PrincipalContext {
     pub authentication_id: u64,
     /// Windows Terminal Services session that owns the named-pipe client.
     pub session_id: u32,
+    /// The caller's own profile/home directory, as the OS reports it for THIS token.
+    ///
+    /// Phase 39: the maintenance service runs as LocalSystem, so any request that names
+    /// a filesystem target has to be confined to something the CALLER owns. That root
+    /// cannot come from the request and cannot be reconstructed later — on Windows it is
+    /// read from the impersonated client token while the service still holds it. `None`
+    /// means the OS did not answer, which callers must treat as "no scope", never as
+    /// "no restriction".
+    pub profile_dir: Option<String>,
 }
 
 impl PrincipalContext {
@@ -22,6 +31,30 @@ impl PrincipalContext {
             self.user_sid, self.authentication_id, self.session_id
         );
         hex::encode(Sha256::digest(material.as_bytes()))
+    }
+
+    /// Fills in `profile_dir` from `user_sid`. Must be called with the SERVICE's own
+    /// authority, never while impersonating the caller.
+    pub fn resolve_profile_dir(&mut self) {
+        #[cfg(windows)]
+        {
+            self.profile_dir = hex::decode(&self.user_sid)
+                .ok()
+                .as_deref()
+                .and_then(sid_text_from_bytes)
+                .as_deref()
+                .and_then(profile_dir_for_sid_text);
+        }
+    }
+
+    /// Roots this principal may name in a request. Empty when the OS gave no answer —
+    /// an empty allowlist refuses everything, which is the correct fail-closed reading.
+    pub fn owner_roots(&self) -> Vec<std::path::PathBuf> {
+        self.profile_dir
+            .iter()
+            .filter(|dir| !dir.trim().is_empty())
+            .map(std::path::PathBuf::from)
+            .collect()
     }
 
     pub fn same_logon_principal(&self, other: &Self) -> bool {
@@ -105,7 +138,13 @@ pub fn inspect_named_pipe_client(
         // A RevertToSelf failure is more security-significant than the original inspection error
         // because returning while still impersonating would contaminate later service work.
         impersonation.revert().map_err(winerr)?;
-        result
+        // Only now, with the service's own authority restored, resolve the caller's own
+        // audit root. Doing it here rather than inside `principal_from_token` keeps the
+        // lookup out of the impersonated window entirely.
+        result.map(|mut principal| {
+            principal.resolve_profile_dir();
+            principal
+        })
     }
 }
 
@@ -114,7 +153,12 @@ pub fn inspect_session_token(
     token: windows::Win32::Foundation::HANDLE,
     session_id: u32,
 ) -> Result<PrincipalContext, SecurityError> {
-    principal_from_token(token, 0, "active-console-session".into(), session_id)
+    principal_from_token(token, 0, "active-console-session".into(), session_id).map(
+        |mut principal| {
+            principal.resolve_profile_dir();
+            principal
+        },
+    )
 }
 
 #[cfg(windows)]
@@ -207,8 +251,123 @@ fn principal_from_token(
             user_sid: hex::encode(sid_bytes),
             authentication_id,
             session_id,
+            // Deliberately NOT resolved here: this runs while the thread is still
+            // impersonating the client. `inspect_named_pipe_client` fills it in after
+            // RevertToSelf, so the lookup happens with the service's own authority.
+            profile_dir: None,
         })
     }
+}
+
+/// Canonical `S-R-A-S1-S2-...` text for a binary SID.
+///
+/// Pure arithmetic on the documented layout — revision, sub-authority count, a 6-byte
+/// big-endian identifier authority, then little-endian 32-bit sub-authorities. Written by
+/// hand rather than through `ConvertSidToStringSidW` so it is testable on any host and so
+/// the caller needs no Win32 call at all.
+fn sid_text_from_bytes(sid: &[u8]) -> Option<String> {
+    if sid.len() < 8 || sid[0] != 1 {
+        return None;
+    }
+    let sub_count = sid[1] as usize;
+    if sub_count > 15 || sid.len() < 8 + sub_count * 4 {
+        return None;
+    }
+    let authority = sid[2..8]
+        .iter()
+        .fold(0u64, |acc, byte| (acc << 8) | u64::from(*byte));
+    let mut text = if authority < (1u64 << 32) {
+        format!("S-1-{authority}")
+    } else {
+        format!("S-1-0x{authority:012x}")
+    };
+    for index in 0..sub_count {
+        let offset = 8 + index * 4;
+        let value = u32::from_le_bytes([
+            sid[offset],
+            sid[offset + 1],
+            sid[offset + 2],
+            sid[offset + 3],
+        ]);
+        use std::fmt::Write as _;
+        let _ = write!(text, "-{value}");
+    }
+    Some(text)
+}
+
+/// The profile directory Windows records for the user named by `sid_text`.
+///
+/// `ProfileList` is where Windows itself keeps the mapping, so this is the OS's answer
+/// rather than a reconstruction. It deliberately does not go through `%USERPROFILE%`
+/// (inherited and caller-influenced), and it does not go through
+/// `SHGetKnownFolderPath(FOLDERID_Profile, token)`, which was tried first and MEASURED on
+/// the qualification VM to return nothing for every principal: the service opens the
+/// impersonated client token with `TOKEN_QUERY` only, and that API also wants
+/// `TOKEN_IMPERSONATE`. Rather than widen the rights on the token handle the principal
+/// binding already depends on, this reads a mapping that needs no token rights at all.
+/// `HKLM\SOFTWARE` is writable only by administrators, so an unprivileged caller cannot
+/// redirect its own scope by writing here.
+///
+/// Any failure yields `None`, which the audit allowlist reads as an EMPTY scope — every
+/// path-bearing target is then refused. Fail-closed, never fail-open.
+#[cfg(windows)]
+fn profile_dir_for_sid_text(sid_text: &str) -> Option<String> {
+    use std::ffi::c_void;
+    use windows::{
+        Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW},
+        core::PCWSTR,
+    };
+
+    fn wide(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    if sid_text.is_empty() || sid_text.len() > 256 {
+        return None;
+    }
+    let key = wide(&format!(
+        r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\{sid_text}"
+    ));
+    let name = wide("ProfileImagePath");
+    // RegGetValueW expands REG_EXPAND_SZ into REG_SZ unless asked not to, so the single
+    // RRF_RT_REG_SZ restriction is the right one. Measured on the VM: it returns the
+    // expanded path.
+    let mut bytes = 0u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            PCWSTR(key.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            RRF_RT_REG_SZ,
+            None,
+            None,
+            Some(&mut bytes),
+        )
+    };
+    if status.is_err() || bytes < 2 || bytes > 4096 {
+        return None;
+    }
+    let mut buffer = vec![0u16; (bytes as usize).div_ceil(2)];
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            PCWSTR(key.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            RRF_RT_REG_SZ,
+            None,
+            Some(buffer.as_mut_ptr().cast::<c_void>()),
+            Some(&mut bytes),
+        )
+    };
+    if status.is_err() {
+        return None;
+    }
+    let end = buffer
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(buffer.len());
+    let text = String::from_utf16_lossy(&buffer[..end]);
+    (!text.is_empty()).then_some(text)
 }
 
 #[cfg(windows)]
@@ -401,6 +560,13 @@ pub fn socket_owner_principal() -> PrincipalContext {
         user_sid: hex_sid,
         authentication_id: u64::from(uid),
         session_id: 0,
+        // The 0700/0600 rendezvous means the peer IS the socket-owning user, i.e. this
+        // process's own uid, so this process's HOME is that user's home. The unix
+        // composition claims nothing deeper than the permission boundary it already
+        // documents (SO_PEERCRED deepening stays in QD-026-001).
+        profile_dir: std::env::var_os("HOME")
+            .map(|home| home.to_string_lossy().into_owned())
+            .filter(|home| !home.is_empty()),
     }
 }
 
@@ -461,6 +627,7 @@ mod tests {
             user_sid: "01050000000000051500000001020304".into(),
             authentication_id: auth,
             session_id: session,
+            profile_dir: None,
         }
     }
 
@@ -479,6 +646,44 @@ mod tests {
         assert!(a.same_logon_principal(&same));
         assert!(!a.same_logon_principal(&other_session));
         assert!(!a.same_logon_principal(&other_user));
+    }
+
+    #[test]
+    fn an_unresolved_profile_dir_yields_no_owner_roots_rather_than_no_restriction() {
+        let mut peer = principal(r"C:\A.exe", false, 10, 1);
+        assert!(peer.owner_roots().is_empty(), "None means no scope");
+        peer.profile_dir = Some("   ".into());
+        assert!(peer.owner_roots().is_empty(), "blank means no scope");
+        peer.profile_dir = Some(r"C:\Users\alice".into());
+        assert_eq!(
+            peer.owner_roots(),
+            vec![std::path::PathBuf::from(r"C:\Users\alice")]
+        );
+    }
+
+    #[test]
+    fn sid_text_matches_the_canonical_string_form() {
+        // S-1-5-18 (LocalSystem): revision 1, one sub-authority, authority 5.
+        let local_system = [1u8, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0];
+        assert_eq!(sid_text_from_bytes(&local_system).as_deref(), Some("S-1-5-18"));
+
+        // A real machine account SID, the shape the audit allowlist actually keys on:
+        // S-1-5-21-3596463104-2050256853-579393690-1003.
+        let mut user = vec![1u8, 5, 0, 0, 0, 0, 0, 5];
+        for value in [21u32, 3596463104, 2050256853, 579393690, 1003] {
+            user.extend_from_slice(&value.to_le_bytes());
+        }
+        assert_eq!(
+            sid_text_from_bytes(&user).as_deref(),
+            Some("S-1-5-21-3596463104-2050256853-579393690-1003")
+        );
+
+        // Malformed input is refused rather than guessed at: wrong revision, truncated
+        // sub-authority array, and an impossible sub-authority count.
+        assert_eq!(sid_text_from_bytes(&[2u8, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0]), None);
+        assert_eq!(sid_text_from_bytes(&[1u8, 1, 0, 0, 0, 0, 0, 5, 18]), None);
+        assert_eq!(sid_text_from_bytes(&[1u8, 99, 0, 0, 0, 0, 0, 5]), None);
+        assert_eq!(sid_text_from_bytes(&[]), None);
     }
 
     #[test]

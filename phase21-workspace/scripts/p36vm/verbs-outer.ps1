@@ -20,6 +20,10 @@ function Invoke-AsUser([string]$User, [string]$Level, [string]$Ctx) {
     & net user $User $pw | Out-Null
     if ($LASTEXITCODE -ne 0) { throw ("password reset failed for $User, exit $LASTEXITCODE") }
     $name = 'P36VerbRun_' + $Ctx
+    $src = Join-Path $dir ("verbs-" + $Ctx + ".txt")
+    # A transcript left by an EARLIER run is indistinguishable from this run's output
+    # once it is copied to the Mac. Remove it before the task starts.
+    Remove-Item $src -Force -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $name -Confirm:$false -EA SilentlyContinue
     # P36_CTX is passed through the command line because a one-shot task does
     # not inherit the caller's environment.
@@ -28,14 +32,27 @@ function Invoke-AsUser([string]$User, [string]$Level, [string]$Ctx) {
     # Without these two switches a task registered this way sits permanently Queued.
     $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
     Register-ScheduledTask -TaskName $name -Action $act -User $User -Password $pw -RunLevel $Level -Settings $set | Out-Null
+    # -2s absorbs the second-granularity of LastRunTime; anything older than this is
+    # necessarily a previous run.
+    $t0 = (Get-Date).AddSeconds(-2)
     Start-ScheduledTask -TaskName $name
-    $deadline = (Get-Date).AddSeconds(150)
-    do { Start-Sleep -Seconds 2; $state = (Get-ScheduledTask -TaskName $name).State }
-    while ($state -eq 'Running' -and (Get-Date) -lt $deadline)
+    # Wait through Queued as well as Running: a task that never leaves Queued (the
+    # 2026-09-01 battery stall) must time out here, not fall straight through.
+    $deadline = (Get-Date).AddSeconds(240)
+    do { Start-Sleep -Seconds 3; $state = (Get-ScheduledTask -TaskName $name).State }
+    while (($state -eq 'Running' -or $state -eq 'Queued') -and (Get-Date) -lt $deadline)
     $info = Get-ScheduledTaskInfo -TaskName $name
-    Write-Output ("$Ctx TASK_STATE=$state LAST_RESULT=" + $info.LastTaskResult)
+    $ran = ($info.LastRunTime -ne $null) -and ($info.LastRunTime -gt $t0)
+    Write-Output ("$Ctx TASK_STATE=$state LAST_RESULT=" + $info.LastTaskResult +
+                  " LAST_RUN=" + $info.LastRunTime + " RAN_THIS_INVOCATION=" + $ran)
     Unregister-ScheduledTask -TaskName $name -Confirm:$false
-    $src = Join-Path $dir ("verbs-" + $Ctx + ".txt")
+    # THE gate. Without it this harness copies whatever file happens to be on disk and
+    # reports a PASS that belongs to an earlier run (Phase 39 18.5).
+    if (-not $ran) {
+        throw ("$Ctx STALE_RESULT: the task did not run this invocation " +
+               "(state=$state LastRunTime=" + $info.LastRunTime + " started=$t0). " +
+               "No transcript from this harness run exists; refusing to report one.")
+    }
     if (Test-Path $src) {
         Copy-Item $src (Join-Path $OutRoot ("verbs-$Label-$Ctx.txt")) -Force
         Write-Output ("COPIED verbs-$Label-$Ctx.txt")
