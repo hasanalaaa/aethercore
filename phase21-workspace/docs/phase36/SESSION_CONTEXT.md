@@ -2712,3 +2712,56 @@ the scheduler, and the scheduler needs the host on mains power.
 **Human action required:** put the Mac on AC, then re-run
 `~/dev/p36-stage/vmr p39-attack-outer P39FINAL` and
 `~/dev/p36-stage/vmr p39-verbs P39FINAL`. Nothing else is outstanding.
+
+## 18.6 MAC-SIDE VERIFICATION
+
+| check | result |
+|---|---|
+| `cargo test --workspace` on an IDLE host | **127 test binaries, 576 passed, 0 failed, 0 ignored** |
+| `intelligence-core` T5 wall-clock budget | passed — the Phase 38 flake was load-induced and did not recur |
+| `static_validate.py` vs a worktree at pre-fix `db0dc49` | 344 checks / 21 failing on both. **NEWLY FAILING: NONE. NEWLY FIXED: NONE** |
+| `aetherctl sec audit --profile cis-l1 --out … --format json` | exit 0, scored `aethercore.compliance.v1`, 3 pass / 1 fail / 4 not-verified, 75.0% |
+| `phase39_ipc_authorization` (real service binary over a real socket) | 6/6, including the two legitimate-path tests that passed BEFORE the fix and still pass |
+
+The CLI is deliberately NOT confined by the allowlist and that is not an
+oversight. `aetherctl sec audit` runs `sec::run_audit` in-process under the
+CALLER's own token — there is no privilege boundary to defend and no
+LocalSystem authority to borrow, so confining it would break
+`--profile cis-l1` (which names `/etc/ssh/sshd_config`, `/etc/sudoers` and the
+home tree) while protecting nothing. The allowlist sits where the privilege
+boundary is: the router. The reparse-point posture, by contrast, IS shared by
+both callers, because not following a link is correct behaviour either way.
+
+## 18.7 STATE FOR THE NEXT SESSION
+
+- Branch `fix/localsystem-disclosure`, **not merged, not pushed** — six commits
+  on top of `db0dc49`. The brief said not to merge without saying so.
+- The VM has **0.1.11 installed and running**, service RUNNING, 16 files, pipe
+  DACL and install-dir ACLs identical to the section 10 baseline.
+- Recovery point for this session: **P39-PRE-FIX-BUILD
+  `{7c10fb2b-dbdd-45c5-b8af-85ab9a0f342f}`**. Older fallbacks
+  P38-PRE-0.1.7-INSTALL `{a226b395-…}` and P37-SHIPPING-QUALIFIED
+  `{a1696567-…}` are both still present.
+- **The one outstanding gate** is 18.5's blocked actual-token run. Put the Mac
+  on mains power, then `vmr p39-attack-outer P39FINAL` and `vmr p39-verbs
+  P39FINAL`. Until then the standing "18/18 verbs under BOTH actual-token
+  contexts" gate is NOT met on 0.1.11 and the branch is not merge-ready.
+- `verbs-outer.ps1` copies its transcript whether or not the task ran, so it can
+  report a stale PASS. It should fail when `LastRunTime` is older than the run
+  it just started. Not fixed here — it is harness work, and changing the gate
+  harness in the same session that uses it to prove a security fix is exactly
+  the shape of evidence nobody should trust.
+
+### Package ledger (Phase 39 additions)
+
+| version | ProductCode | why it exists |
+|---|---|---|
+| 0.1.9 | `{EE0AE741-51DE-F66B-2790-81B6EB90D02B}` | first fix attempt — **superseded, do not ship** (empty scope for every principal) |
+| 0.1.10 | `{9878E6E1-3211-FA76-0D45-030EA6C16177}` | second attempt — **superseded, do not ship** (same) |
+| **0.1.11** | `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}` | **the current package**: the owner-scoped allowlist, proven on the installed service |
+
+### Snapshot ledger (Phase 39 additions)
+
+| name | id | taken before |
+|---|---|---|
+| P39-PRE-FIX-BUILD | `{7c10fb2b-dbdd-45c5-b8af-85ab9a0f342f}` | syncing the fix and building/installing 0.1.9 |
