@@ -2436,3 +2436,105 @@ branches of `classify_windows_sku` are still unexercised on real hardware.
   workspace suite against a busy host and then believe the result.
 - The full MSI build is ~12 minutes and the 1.07 GB model's CAB compression
   dominates it; `wixnative` shows no output for most of that. It is not hung.
+
+---
+
+# 18. PHASE 39 — FIX THE LOCALSYSTEM DISCLOSURE (started 2026-09-01)
+
+Brief: close the release blocker `SECURITY_REVIEW_UNGATING.md` found — the
+maintenance service reads caller-named absolute paths as LocalSystem, and
+`ExportJournal` honours a caller-supplied owner key. Branch
+`fix/localsystem-disclosure`, cut from `main` at `db0dc49`.
+
+## 18.1 WHAT WAS PROVEN BEFORE ANYTHING WAS FIXED
+
+The attack tests were written first and committed WHILE FAILING (`08e9c84`),
+so the failure is the evidence. They drive the REAL service binary over a real
+socket through the full v7 handshake. Against the unfixed router:
+
+```
+run_security_audit_refuses_an_absolute_target_outside_the_calling_principal_scope
+  status_code=0
+  lane=secrets status=ok findings=1
+  {"id":"SEC-SEC-001","severity":"critical","evidence":[{
+     "fact":"AKIA****************",
+     "sourceLocation":"/tmp/axt-p39-.../victim-home/.aws/credentials:1"}]}
+
+run_security_audit_refuses_a_link_planted_inside_the_owner_root   status_code=0
+  same credential, reached through a symlink planted inside the caller's root
+run_security_audit_refuses_out_of_scope_paths_in_every_target_variant
+  status_code=0 on sshdConfig
+export_journal_refuses_a_foreign_owner_principal_key             status_code=0
+```
+
+The two legitimate-path tests passed before the fix and must keep passing.
+
+Why a unix socket proves a Windows defect: `router::handle_request` is one
+platform-neutral function and both hosts dispatch into it (stated in
+`unix_composition.rs`'s own module docs). What UDS cannot reproduce is the
+privilege GAP — there the peer is the same user as the service. Section 18.4
+covers that on the installed product.
+
+## 18.2 THE FIX (`9aa9ae4`)
+
+- `PrincipalContext` carries the caller's own profile directory, read from the
+  OS **for that token** — Windows `SHGetKnownFolderPath(FOLDERID_Profile,
+  token)` while the service still holds the impersonated client token. Not
+  `%USERPROFILE%`, not the registry, not the request. Unresolved means NO
+  scope, never no restriction.
+- `crates/security-audit/src/scope.rs` is the allowlist the proto always
+  promised. Per named path: no `..`; absolute; contained component-wise (and
+  case-insensitively on Windows) in a root the caller owns; no symlink/reparse
+  point at or below that root. Links ABOVE a root are resolved, because
+  `/var` -> `/private/var` on macOS and `C:\Users` can be redirected; that is
+  safe because containment is decided on the RESOLVED form, so a link can never
+  fake its way in.
+- The bounded walkers skip reparse points instead of following them, so a
+  junction found mid-scan cannot redirect a LocalSystem walk. Same posture as
+  `aethercore-install-hardener`'s `purge-data`; not the same code, because that
+  binary carries zero workspace dependencies on purpose and this copy also has
+  to handle unix symlinks. Both are stated in comments.
+- sudoers `#includedir` is confined to the directory of the file that named it.
+  Its target comes from FILE CONTENT, which the router never vetted.
+- `ExportJournal` refuses a non-empty `owner_principal_key` that is not the
+  calling principal.
+- `operations.proto` now states what the code does, including the refusal keys.
+
+Nothing was widened. The pipe DACL, the module gating and every existing check
+are untouched.
+
+## 18.3 DESTRUCTIVE ACTION RECORD — build and install 0.1.9 on the VM
+
+```
+ACTION=    (a) prlctl snapshot "Windows 11" -n P39-PRE-FIX-BUILD
+           (b) hash-compare the whole non-docs source tree in
+               C:\AetherCore-P36\workspace\AetherCore-Phase35-Master-Delivery
+               against \\Mac\dev\aethercore\phase21-workspace and copy every
+               file that differs or is missing (this session's fix plus any
+               drift earlier sessions left), then re-verify by hash
+           (c) run scripts\build-arm64-msi.cmd with NO argument -> 0.1.9
+           (d) msiexec /i AetherCore-0.1.9-arm64.msi /qn
+           (e) run the attack probe over the REAL named pipe under an actual
+               standard-user token, then the 18-verb client gate
+SNAPSHOT=  P39-PRE-FIX-BUILD, taken by step (a).
+           Fallback: P38-PRE-0.1.7-INSTALL {a226b395-81b7-4887-90e2-6f132e6551a3}.
+           P37-SHIPPING-QUALIFIED {a1696567-7528-4136-a445-848dccd3d2c1} remains
+           the older recovery point. P36-CLEAN-BASELINE and
+           P36-PRE-NATIVE-MUTATION are long deleted and cannot be restored.
+EXPECTED=  (b) every copied file's SHA-256 in the guest equals the Mac's.
+           (c) the script prints Version=0.1.9 derived from Cargo.toml; build
+               exit 0; `wix msi validate` exit 0 with ZERO `ICE\d+` matches;
+               ProductCode {EE0AE741-51DE-F66B-2790-81B6EB90D02B}, which is the
+               value the documented scheme predicts for AetherCore/0.1.9/arm64
+               and which was recomputed independently on the Mac (the same
+               script reproduces {92E437E7-...} for the installed 0.1.8).
+           (d) exit 0; ONE ARP entry {EE0AE741-...} 0.1.9; HKLM InstallVersion
+               0.1.9; SIXTEEN files; service AetherCoreMaintenance LocalSystem
+               AUTO_START(DELAYED) RUNNING; Service SID UNRESTRICTED; pipe SDDL
+               and install-dir icacls IDENTICAL to the section 10 baseline
+               (Users RX, no write).
+           (e) the probe reports STATUS:403 for both attacks and STATUS:0 for
+               both legitimate calls; 18/18 verbs RETURNED across both
+               actual-token contexts.
+RECOVERY=  prlctl snapshot-switch "Windows 11" --id <P39-PRE-FIX-BUILD id>
+```
