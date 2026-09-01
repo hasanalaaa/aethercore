@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Deep Clean</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;450&amp;family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-surface-variant": "#c1c7cf", "on-tertiary-fixed-variant": "#4a388e", "on-error-container": "#ffdad6", "on-tertiary": "#331f76", "on-surface": "#dee3eb", "error-container": "#93000a", "on-tertiary-container": "#514096", "primary-container": "#8ec5f5", surface: "#0f141a", "tertiary-fixed-dim": "#cbbeff", "outline-variant": "#41474e", "surface-container-lowest": "#0a0f15", "tertiary-container": "#c4b6ff", "surface-container": "#141c24", "primary-fixed-dim": "#95ccfc", "on-secondary-fixed-variant": "#643f03", "surface-bright": "#353a40", "surface-dim": "#080d12", outline: "#8b9199", "on-tertiary-fixed": "#1d0061", "inverse-primary": "#26638e", "surface-container-highest": "#30353c", "primary-fixed": "#cce5ff", "surface-variant": "#30353c", "tertiary-fixed": "#e6deff", "secondary-fixed-dim": "#f4bc77", "surface-container-high": "#252a31", "surface-container-low": "#171c22", "on-primary-container": "#09527c", "surface-tint": "#95ccfc", "on-primary": "#003351", "on-secondary": "#472a00", tertiary: "#e0d6ff", "on-secondary-fixed": "#2a1700", "on-primary-fixed": "#001d31", background: "#0f141a", "inverse-on-surface": "#2c3138", "inverse-surface": "#dee3eb", "secondary-fixed": "#ffddb7", secondary: "#f4bc77", "on-background": "#dee3eb", "on-primary-fixed-variant": "#004b73", error: "#ffb4ab", primary: "#bedfff", "secondary-container": "#674105", "on-error": "#690005", "on-secondary-container": "#e5ae6b", "status-policy": "#ca8103", interactive: "#5B8DEF", "attention-orange": "#D08A2E", "policy-violet": "#7C6BC4", "verified-gold": "#C9A227", "healthy-green": "#3E9E6B", "critical-red": "#C24D4D"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {unit: "4px", "panel-gap": "1px", "grid-margin": "16px", "cell-padding-y": "8px", "cell-padding-x": "12px", "gutter-table": "16px", "row-height": "44px", "margin-page": "32px", "gap-card": "16px", "padding-card": "20px", base: "4px"}, fontFamily: {"data-mono-sm": ["IBM Plex Mono"], "display-sm": ["Geist"], "headline-sm": ["Geist"], "label-caps": ["Geist"], "body-sm": ["Geist"], "body-md": ["Geist"], "data-mono": ["IBM Plex Mono"], "display-lg": ["Geist"]}, fontSize: {"data-mono-sm": ["11px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "400"}], "display-sm": ["22px", {lineHeight: "30px", letterSpacing: "-0.015em", fontWeight: "600"}], "headline-sm": ["16px", {lineHeight: "24px", fontWeight: "600"}], "label-caps": ["11px", {lineHeight: "16px", letterSpacing: "0.04em", fontWeight: "600"}], "body-sm": ["13px", {lineHeight: "20px", fontWeight: "400"}], "body-md": ["15px", {lineHeight: "24px", fontWeight: "400"}], "data-mono": ["13px", {lineHeight: "20px", fontWeight: "450"}], "display-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600"}]}}}};</script>
+<style>
+        body {
+            background-color: #111319; /* background */
+            color: #e1e2ea; /* on-background */
+            font-family: 'IBM Plex Sans', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* 1px Hairline Grid Logic */
+        .panel-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            background-color: #424752; /* outline-variant acting as 1px border between panels */
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .panel {
+            background-color: #111319; /* background (Ground) */
+            padding: 16px; /* grid-margin */
+            position: relative;
+        }
+        
+        .panel-raised {
+            background-color: #1d1f26; /* surface-container (Surface Raised) */
+            padding: 16px;
+            position: relative;
+        }
+
+        .policy-band {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background-color: #ca8103; /* status-policy */
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111319; 
+            border-left: 1px solid #424752;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424752; 
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8d909e; 
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background">
+<!-- SideNavBar (from JSON) -->
+<nav class="hidden md:flex flex-col h-screen w-64 border-r border-outline-variant dark:border-outline-variant bg-surface-container-lowest dark:bg-surface-container-lowest text-primary dark:text-primary-fixed-dim font-data-mono text-data-mono">
+<!-- Header -->
+<div class="flex items-center p-grid-margin border-b border-outline-variant dark:border-outline-variant">
+<img alt="AetherCore Logo" class="w-8 h-8 mr-3 rounded-sm object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<div>
+<div class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface dark:text-on-surface">AetherCore</div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Diagnostics &amp; Maintenance</div>
+</div>
+</div>
+<!-- Navigation Tabs -->
+<div class="flex-1 overflow-y-auto py-2">
+<!-- Inactive -->
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">dashboard</span>
+                Overview
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">biotech</span>
+                Deep Scan
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">speed</span>
+                Performance
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">monitor_heart</span>
+                Hardware Health
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">history</span>
+                Crash History
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">lightbulb</span>
+                Insights
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">settings_input_component</span>
+                Drivers
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">build</span>
+                System Repair
+            </a>
+<!-- Active: Deep Clean -->
+<a class="flex items-center px-4 py-2 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]" style="font-variation-settings: 'FILL' 1;">cleaning_services</span>
+                Deep Clean
+            </a>
+<!-- Inactive -->
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">rocket_launch</span>
+                Startup Manager
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">restore</span>
+                Recovery
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">dns</span>
+                Fleet
+            </a>
+</div>
+<!-- CTA & Footer -->
+<div class="mt-auto border-t border-outline-variant">
+<div class="p-4">
+<button class="w-full py-2 bg-interactive text-surface font-body-sm text-body-sm border border-outline-variant hover:bg-primary-container transition-colors">
+                    Authorize Changes
+                </button>
+</div>
+<div class="flex justify-between px-4 py-3 border-t border-outline-variant text-on-surface-variant font-data-mono-sm text-data-mono-sm">
+<button class="flex items-center hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined mr-1 text-[14px]">language</span> EN/AR
+                </button>
+<button class="flex items-center hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined mr-1 text-[14px]">dark_mode</span> Dark Mode
+                </button>
+<div class="flex items-center">
+<span class="material-symbols-outlined mr-1 text-[14px]">cloud_done</span> v.1.4.2-stable
+                </div>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 bg-outline-variant"> <!-- bg-outline-variant acts as 1px hairline between TopAppBar and Content -->
+<!-- TopAppBar (from JSON) for Mobile/Responsive context, though instructed to hide SideNav on mobile, keeping TopAppBar as header -->
+<header class="flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container dark:bg-surface-container text-primary dark:text-primary font-label-caps text-label-caps shrink-0">
+<div class="flex items-center">
+<span class="material-symbols-outlined mr-4 md:hidden text-on-surface">menu</span>
+<div class="font-headline-sm text-headline-sm font-bold text-on-surface tracking-wide">AetherCore // DEEP CLEAN</div>
+</div>
+<div class="flex items-center space-x-4 text-on-surface-variant">
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors duration-150 text-[20px]">policy</span>
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors duration-150 text-[20px]">terminal</span>
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors duration-150 text-[20px]">help_outline</span>
+</div>
+</header>
+<!-- 1px Hairline Grid Layout for Content -->
+<div class="panel-container">
+<!-- Context Header Panel -->
+<div class="panel-raised flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div class="policy-band"></div>
+<div>
+<h1 class="font-display-sm text-display-sm text-on-surface">Storage Breakdown</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Analyzing redundant data across system partitions. Policy allows manual override for non-critical assets.</p>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Total Reclaimable</span>
+<span class="font-data-mono text-data-mono text-tertiary-fixed-dim text-lg">1,824.2 MB</span>
+</div>
+</div>
+<!-- Main Data Grid Area -->
+<div class="flex flex-col lg:flex-row flex-1 gap-[1px] min-h-0 bg-outline-variant">
+<!-- Left Column: Categories -->
+<div class="flex flex-col flex-1 gap-[1px] min-w-[300px]">
+<!-- Category Row: Log Files -->
+<div class="panel flex items-center justify-between hover:bg-surface-container-low transition-colors cursor-pointer border-l-4 border-transparent hover:border-interactive">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 bg-primary"></div>
+<div>
+<div class="font-headline-sm text-headline-sm text-on-surface">Log Files</div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">/var/log/* &amp; AppData</div>
+</div>
+</div>
+<div class="text-right">
+<div class="font-data-mono text-data-mono text-on-surface">420.5 MB</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant">1,204 files</div>
+</div>
+</div>
+<!-- Category Row: Shaders -->
+<div class="panel-raised flex items-center justify-between hover:bg-surface-container-low transition-colors cursor-pointer border-l-4 border-transparent hover:border-interactive">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 bg-tertiary-container"></div>
+<div>
+<div class="font-headline-sm text-headline-sm text-on-surface">Shaders</div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">GPU Cache &amp; Compiled Assets</div>
+</div>
+</div>
+<div class="text-right">
+<div class="font-data-mono text-data-mono text-on-surface">850.1 MB</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant">42 caches</div>
+</div>
+</div>
+<!-- Category Row: Temp Files -->
+<div class="panel flex items-center justify-between hover:bg-surface-container-low transition-colors cursor-pointer border-l-4 border-transparent hover:border-interactive">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 bg-secondary"></div>
+<div>
+<div class="font-headline-sm text-headline-sm text-on-surface">Temp Files</div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">OS Temp &amp; Stale Downloads</div>
+</div>
+</div>
+<div class="text-right">
+<div class="font-data-mono text-data-mono text-on-surface">312.8 MB</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant">8,901 files</div>
+</div>
+</div>
+<!-- Category Row: Dumps -->
+<div class="panel-raised flex items-center justify-between hover:bg-surface-container-low transition-colors cursor-pointer border-l-4 border-transparent hover:border-interactive">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 bg-error"></div>
+<div>
+<div class="font-headline-sm text-headline-sm text-on-surface">Dumps</div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Memory &amp; Crash Diagnostics</div>
+</div>
+</div>
+<div class="text-right">
+<div class="font-data-mono text-data-mono text-on-surface">240.8 MB</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant">3 files</div>
+</div>
+</div>
+<!-- Empty State / Footer Space -->
+<div class="panel flex-1 flex items-center justify-center">
+<span class="font-data-mono text-data-mono text-on-surface-variant opacity-50">-- End of Analysis --</span>
+</div>
+</div>
+<!-- Right Column: Details & Actions -->
+<div class="flex flex-col w-full lg:w-[400px] gap-[1px] border-l border-outline-variant lg:border-none">
+<!-- Allowlist Details Panel -->
+<div class="panel-raised flex-1 flex flex-col">
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Allowlist Model Active</h2>
+<span class="material-symbols-outlined text-[16px] text-tertiary">shield_locked</span>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface mb-6">
+                            System core files and active session data are implicitly protected. Proceeding will only affect explicitly flagged redundant categories.
+                        </div>
+<div class="space-y-2 mb-6">
+<div class="flex items-center justify-between border-b border-outline-variant pb-2">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Protection Level:</span>
+<span class="inline-block px-2 py-0.5 bg-surface-container-highest font-data-mono-sm text-data-mono-sm text-primary">STRICT</span>
+</div>
+<div class="flex items-center justify-between border-b border-outline-variant pb-2">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Last Clean:</span>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface">14d ago</span>
+</div>
+</div>
+<div class="mt-auto">
+<!-- Visual placeholder for a chart or metric -->
+<div class="w-full h-24 border border-outline-variant bg-surface relative flex items-end">
+<!-- Abstract Bar Chart -->
+<div class="w-1/4 h-[80%] bg-primary opacity-80 border-r border-outline-variant"></div>
+<div class="w-1/4 h-[40%] bg-tertiary-container opacity-80 border-r border-outline-variant"></div>
+<div class="w-1/4 h-[60%] bg-secondary opacity-80 border-r border-outline-variant"></div>
+<div class="w-1/4 h-[20%] bg-error opacity-80"></div>
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface mix-blend-difference bg-surface/50 px-1">Capacity distribution</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Action Panel -->
+<div class="panel flex flex-col gap-3">
+<button class="w-full py-3 bg-interactive text-surface font-headline-sm text-headline-sm flex items-center justify-center border border-transparent hover:bg-primary-container transition-colors">
+<span class="material-symbols-outlined mr-2 text-[20px]">visibility</span>
+                            Preview Plan
+                        </button>
+<button class="w-full py-3 bg-transparent border border-outline-variant text-on-surface font-headline-sm text-headline-sm hover:bg-surface-container-high transition-colors">
+                            Execute Immediate Wipe
+                        </button>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

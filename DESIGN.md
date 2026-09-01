@@ -305,13 +305,17 @@ So the hairline grid has **two** sources — the design system (now fixed) and t
 per-screen prompt (still present). Any `edit_screens` call must explicitly revoke
 it, or a later regeneration will reintroduce it.
 
-### 9.4 `apply_design_system` forks screens rather than editing in place
+### 9.4 `apply_design_system` replaces a screen with a new ID
 
-Applying to instance `3db2c0d3…` produced a **new** screen
-`24a8318790ac4b48b9f66a24ed8cf016`, also titled "Overview (Dark)". Applying to
-`a77e2b10…` produced `964039fd2db94a58bebb2cabe4a5b194`. The project therefore
-accumulates duplicate screens on every apply. Screen IDs in §8 are the
-pre-session ones and will drift.
+Applying to instance `3db2c0d3…` produced `24a8318790ac4b48b9f66a24ed8cf016`,
+still titled "Overview (Dark)". The old ID is **gone** from `list_screens` — it
+is a replacement, not a duplicate. Same for `a77e2b10…` →
+`964039fd2db94a58bebb2cabe4a5b194` (Plan Review Consent).
+
+Screen count is stable at 16 UI screens. But **every screen ID in §8 changes the
+first time that screen is themed**, so §8 must be re-read from `list_screens`
+rather than trusted after any apply. `upload_design_md` also adds a
+non-UI "DESIGN.md" screen (`14024205626593851266`) to the project canvas.
 
 ### 9.5 `edit_screens` timed out
 
@@ -319,3 +323,72 @@ Consistent with the 2026-09-01 note that `generate_screen_from_text` and
 `generate_variants` timed out repeatedly. The tool documents that the operation
 may still complete server-side after the client times out, and that it must not
 be retried. Outcome recorded separately below once verified.
+
+---
+
+## 10. Results — what actually landed
+
+`apply_design_system` run against the corrected asset
+`43773111ef7b4a7cbc10cc4c322270cb` across all 16 UI screens. All returned
+`status: COMPLETE`, and the design system survived every apply intact
+(`version` stayed `1`, `data-mono` stayed IBM Plex Mono, `gap-card` stayed 16px).
+
+### Landed ✅
+
+| Check | Result |
+|---|---|
+| Geist loaded | **16 / 16 screens** |
+| IBM Plex Mono retained for data | 9 / 16 (every screen that has machine data) |
+| Surfaces recoloured to the calm slate ramp | all 16 |
+| Design system integrity across 4 applies | held — no regression to "Laboratory" |
+| Honesty violations | **1 / 16 screens** (Deep Scan Results only) |
+| Arabic root + tracking | `<html dir="rtl" lang="ar">`, one `tracking-widest`, on Latin "AetherCore" |
+
+### Did NOT land ❌ — the shape complaint is still open
+
+Measured across all 16 themed files:
+
+| Measure | Total across 16 screens |
+|---|---|
+| emitted `borderRadius` scale | `DEFAULT 4px · lg 8px · xl 12px` — **identical on every screen** |
+| `rounded*` class uses | 52 (≈3 per screen; **5 screens have zero**) |
+| `box-shadow` / `shadow-*` | **5** |
+| `backdrop-blur` | **5** |
+| `border-dashed` | **2** (Overview, Performance Telemetry) |
+| `@media` | **0** |
+
+The system specifies 18px cards, 14px nested, 10px controls and a soft card
+shadow. **None of it reached the CSS.** The theme path controls colour and type
+only. The owner's "sharp-cornered 1990s boxes" complaint is therefore **not
+closed** by the system change alone.
+
+### Blocked
+
+`edit_screens` — the only path that can change shape — **timed out twice**:
+once on `GEMINI_3_1_PRO` with a long prompt, once on `GEMINI_3_FLASH` with a
+short one. Neither landed; the Overview HTML file ID `b83c98815db74dda…` was
+unchanged after both. This matches the 2026-09-01 note that
+`generate_screen_from_text` and `generate_variants` also timed out repeatedly.
+The read path and the theme path work; **the generate/edit path does not.**
+
+Consequently **Step 4** (Overview shape + empty state) and **Step 5** (Deep Scan
+honesty violations) could not be executed. They remain open, with exact prompts
+ready in this session's history.
+
+### Honesty violations still present
+
+| Screen | Violation | Status |
+|---|---|---|
+| Deep Scan Results | `Engine Integrity 94.2%` — composite of nothing, fabricated precision | open, needs `edit_screens` |
+| Deep Scan Results | "Imminent", "data loss", "risk detected" — scare copy | open, needs `edit_screens` |
+| Performance Telemetry | `85% impact`, `42% impact` under "AI Bottleneck Attribution" — unitless derived score | open, **not in the briefed scope**, needs a decision |
+
+Not violations, checked and cleared: `CPU utilization 87.4%`, `Memory usage
+99.1%`, `Context Window Utilization 84%`, core `Utilization 68%`, and the raw
+`smartctl` block (`Available Spare 8%`, `Percentage Used 98%`). Each is a direct
+readout of a real quantity. The test is traceability, not the `%` sign.
+
+### Minor, recorded not fixed
+
+`IBM+Plex+Sans` is still being fetched by 9 / 16 screens even though Geist is
+now the specified face. Dead weight in the `<link>`, not necessarily applied.

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Insights</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-surface-variant": "#c1c7cf", "on-tertiary-fixed-variant": "#4a388e", "on-error-container": "#ffdad6", "on-tertiary": "#331f76", "on-surface": "#dee3eb", "error-container": "#93000a", "on-tertiary-container": "#514096", "primary-container": "#8ec5f5", surface: "#0f141a", "tertiary-fixed-dim": "#cbbeff", "outline-variant": "#41474e", "surface-container-lowest": "#0a0f15", "tertiary-container": "#c4b6ff", "surface-container": "#141c24", "primary-fixed-dim": "#95ccfc", "on-secondary-fixed-variant": "#643f03", "surface-bright": "#353a40", "surface-dim": "#080d12", outline: "#8b9199", "on-tertiary-fixed": "#1d0061", "inverse-primary": "#26638e", "surface-container-highest": "#30353c", "primary-fixed": "#cce5ff", "surface-variant": "#30353c", "tertiary-fixed": "#e6deff", "secondary-fixed-dim": "#f4bc77", "surface-container-high": "#252a31", "surface-container-low": "#171c22", "on-primary-container": "#09527c", "surface-tint": "#95ccfc", "on-primary": "#003351", "on-secondary": "#472a00", tertiary: "#e0d6ff", "on-secondary-fixed": "#2a1700", "on-primary-fixed": "#001d31", background: "#0f141a", "inverse-on-surface": "#2c3138", "inverse-surface": "#dee3eb", "secondary-fixed": "#ffddb7", secondary: "#f4bc77", "on-background": "#dee3eb", "on-primary-fixed-variant": "#004b73", error: "#ffb4ab", primary: "#bedfff", "secondary-container": "#674105", "on-error": "#690005", "on-secondary-container": "#e5ae6b", "attention-orange": "#D08A2E", interactive: "#5B8DEF", "policy-violet": "#7C6BC4", "verified-gold": "#C9A227", "healthy-green": "#3E9E6B", "critical-red": "#C24D4D"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {unit: "4px", "panel-gap": "1px", "grid-margin": "16px", "cell-padding-y": "8px", "cell-padding-x": "12px", "gutter-table": "16px", "row-height": "44px", "margin-page": "32px", "gap-card": "16px", "padding-card": "20px", base: "4px"}, fontFamily: {"data-mono-sm": ["IBM Plex Mono"], "display-sm": ["Geist"], "headline-sm": ["Geist"], "label-caps": ["Geist"], "body-sm": ["Geist"], "body-md": ["Geist"], "data-mono": ["IBM Plex Mono"], "display-lg": ["Geist"]}, fontSize: {"data-mono-sm": ["11px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "400"}], "display-sm": ["22px", {lineHeight: "30px", letterSpacing: "-0.015em", fontWeight: "600"}], "headline-sm": ["16px", {lineHeight: "24px", fontWeight: "600"}], "label-caps": ["11px", {lineHeight: "16px", letterSpacing: "0.04em", fontWeight: "600"}], "body-sm": ["13px", {lineHeight: "20px", fontWeight: "400"}], "body-md": ["15px", {lineHeight: "24px", fontWeight: "400"}], "data-mono": ["13px", {lineHeight: "20px", fontWeight: "450"}], "display-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600"}]}}}};</script>
+<style>
+        body { background-color: #111319; color: #e1e2ea; }
+        .hairline-border { border: 1px solid #424752; }
+        .hairline-b { border-bottom: 1px solid #424752; }
+        .hairline-r { border-right: 1px solid #424752; }
+        .hairline-l { border-left: 1px solid #424752; }
+        
+        .panel-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1px;
+            background-color: #424752;
+            border: 1px solid #424752;
+        }
+        
+        .panel {
+            background-color: #111319;
+            padding: 16px;
+        }
+        
+        /* Custom scrollbar for data tables */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #0c0e14; }
+        ::-webkit-scrollbar-thumb { background: #424752; }
+        ::-webkit-scrollbar-thumb:hover { background: #8d909e; }
+    </style>
+</head>
+<body class="font-body-md text-body-md bg-background text-on-background h-screen overflow-hidden flex flex-col antialiased">
+<!-- TopAppBar -->
+<header class="flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container shrink-0 z-20 relative">
+<div class="flex items-center gap-unit*4">
+<img alt="AetherCore Logo" class="h-6 w-6 rounded-sm border border-outline-variant" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface tracking-widest uppercase">AetherCore</span>
+<div class="h-4 w-px bg-outline-variant mx-2"></div>
+<span class="font-label-caps text-label-caps text-on-surface-variant">Insights</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden md:block">
+<span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px]">search</span>
+<input class="bg-surface-container-lowest border border-outline-variant text-on-surface font-data-mono text-data-mono py-1 pl-8 pr-2 w-64 focus:outline-none focus:border-primary transition-colors h-8" placeholder="Query Local LLM..." type="text"/>
+</div>
+<button aria-label="Policy" class="text-on-surface-variant hover:text-primary transition-colors duration-150">
+<span class="material-symbols-outlined text-[20px]">policy</span>
+</button>
+<button aria-label="Terminal" class="text-on-surface-variant hover:text-primary transition-colors duration-150">
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+</button>
+<button aria-label="Help" class="text-on-surface-variant hover:text-primary transition-colors duration-150">
+<span class="material-symbols-outlined text-[20px]">help_outline</span>
+</button>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden relative">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-full border-r border-outline-variant w-64 bg-surface-container-lowest shrink-0 z-10">
+<div class="flex-1 overflow-y-auto py-unit*2">
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">dashboard</span>
+<span>Overview</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">biotech</span>
+<span>Deep Scan</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">speed</span>
+<span>Performance</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">monitor_heart</span>
+<span>Hardware Health</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">history</span>
+<span>Crash History</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer transition-all duration-75 active:opacity-80 relative" href="#">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-tertiary"></div>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+<span>Insights</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">settings_input_component</span>
+<span>Drivers</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">build</span>
+<span>System Repair</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">cleaning_services</span>
+<span>Deep Clean</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">rocket_launch</span>
+<span>Startup Manager</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">restore</span>
+<span>Recovery</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary">dns</span>
+<span>Fleet</span>
+</a>
+</div>
+<div class="p-4 border-t border-outline-variant">
+<button class="w-full bg-primary text-on-primary font-label-caps text-label-caps py-2 border border-primary hover:bg-primary-fixed transition-colors">AUTHORIZE CHANGES</button>
+</div>
+<div class="flex items-center justify-around py-3 border-t border-outline-variant bg-surface-container-lowest">
+<button class="text-on-surface-variant hover:text-primary transition-colors flex flex-col items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">language</span>
+<span class="font-data-mono-sm text-data-mono-sm">EN/AR</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors flex flex-col items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">dark_mode</span>
+<span class="font-data-mono-sm text-data-mono-sm">Dark Mode</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors flex flex-col items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">cloud_done</span>
+<span class="font-data-mono-sm text-data-mono-sm">v.1.4.2-stable</span>
+</button>
+</div>
+</nav>
+<!-- Main Canvas -->
+<main class="flex-1 bg-surface flex flex-col min-w-0 h-full overflow-hidden">
+<!-- Header Area -->
+<div class="px-6 py-4 flex items-center justify-between hairline-b bg-surface-container-lowest shrink-0">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full border border-primary flex items-center justify-center bg-primary-container/10">
+<span class="material-symbols-outlined text-primary text-[18px]">psychology</span>
+</div>
+<div>
+<h1 class="font-display-sm text-display-sm text-on-surface">Local AI Engine Findings</h1>
+<p class="font-data-mono-sm text-data-mono-sm text-on-surface-variant mt-1">Model: AetherLLM-v2.1-quantized | Inference Status: Active</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="flex items-center gap-1 font-data-mono-sm text-data-mono-sm text-tertiary bg-tertiary-container/10 px-2 py-1 border border-tertiary/30">
+<span class="w-2 h-2 bg-tertiary block animate-pulse"></span>
+                        Scanning
+                    </span>
+<button class="font-label-caps text-label-caps text-on-surface border border-outline-variant px-3 py-1.5 hover:bg-surface-variant transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[14px]">refresh</span>
+                        FORCE RE-EVAL
+                    </button>
+</div>
+</div>
+<!-- Insights Grid -->
+<div class="flex-1 overflow-y-auto p-4 panel-grid" style="grid-template-rows: auto 1fr;">
+<!-- High Priority Alert Panel -->
+<div class="panel col-span-12 md:col-span-8 relative">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-error"></div>
+<div class="flex justify-between items-start mb-4">
+<h2 class="font-label-caps text-label-caps text-error flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">warning</span>
+                            CRITICAL ANOMALY DETECTED
+                        </h2>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">T-MINUS 00:12:44</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface mb-4 leading-relaxed">
+                        Local LLM identified redundant driver threads in <span class="font-data-mono text-data-mono text-primary bg-primary/10 px-1 py-0.5 border border-primary/20">svchost.exe</span> causing anomalous CPU spikes and thermal variance across core clusters 2 and 3. Potential resource leak or unauthorized injection attempt.
+                    </p>
+<div class="bg-surface-container-lowest border border-outline-variant p-3 mb-4 flex flex-col gap-2">
+<div class="flex items-center gap-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant w-24">Evidence Path:</span>
+<span class="font-data-mono text-data-mono text-secondary bg-secondary-container px-2 py-0.5">ref: t-900</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant w-24">Source Vector:</span>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface">C:\Windows\System32\drivers\ntoskrnl.exe -&gt; 0x004F2A1</span>
+</div>
+</div>
+<div class="flex gap-2">
+<button class="bg-error text-on-error font-label-caps text-label-caps px-4 py-2 border border-error hover:bg-error-container hover:text-on-error-container transition-colors">ISOLATE PROCESS</button>
+<button class="bg-transparent text-on-surface font-label-caps text-label-caps px-4 py-2 border border-outline-variant hover:bg-surface-variant transition-colors">VIEW TRACE LOG</button>
+</div>
+</div>
+<!-- System State Panel -->
+<div class="panel col-span-12 md:col-span-4 flex flex-col">
+<h2 class="font-label-caps text-label-caps text-on-surface-variant mb-4 border-b border-outline-variant pb-2">ENGINE METRICS</h2>
+<div class="flex-1 flex flex-col justify-center gap-4">
+<div>
+<div class="flex justify-between mb-1">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Context Window Utilization</span>
+<span class="font-data-mono-sm text-data-mono-sm text-primary">84%</span>
+</div>
+<div class="h-1 w-full bg-surface-container-highest">
+<div class="h-full bg-primary w-[84%]"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between mb-1">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Inference Latency</span>
+<span class="font-data-mono-sm text-data-mono-sm text-secondary">42ms</span>
+</div>
+<div class="h-1 w-full bg-surface-container-highest">
+<div class="h-full bg-secondary w-[42%]"></div>
+</div>
+</div>
+<div class="mt-4 p-3 border border-outline-variant bg-surface-container-low flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface">AUTO-REMEDIATION</span>
+<div class="w-8 h-4 bg-outline-variant rounded-full relative cursor-not-allowed opacity-50">
+<div class="w-3 h-3 bg-surface absolute left-0.5 top-0.5 rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Secondary Insights List -->
+<div class="panel col-span-12 flex flex-col h-full">
+<div class="flex justify-between items-center mb-4 border-b border-outline-variant pb-2">
+<h2 class="font-label-caps text-label-caps text-on-surface-variant">SECONDARY OBSERVATIONS</h2>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Found: 3</span>
+</div>
+<div class="flex flex-col gap-[1px] bg-outline-variant border border-outline-variant flex-1 overflow-y-auto">
+<!-- Row 1 -->
+<div class="bg-surface flex items-start gap-4 p-3 hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="mt-1">
+<span class="material-symbols-outlined text-tertiary text-[16px]">info</span>
+</div>
+<div class="flex-1">
+<p class="font-body-sm text-body-sm text-on-surface mb-1 group-hover:text-primary transition-colors">Registry bloat detected in legacy application uninstall keys.</p>
+<div class="flex items-center gap-3">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">dataset_linked</span>
+                                         ref: r-102
+                                     </span>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Impact: Low</span>
+</div>
+</div>
+<button class="opacity-0 group-hover:opacity-100 font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-all border border-transparent hover:border-outline-variant px-2 py-1">DETAILS</button>
+</div>
+<!-- Row 2 -->
+<div class="bg-surface flex items-start gap-4 p-3 hover:bg-surface-container-low transition-colors group cursor-pointer relative">
+<div class="absolute left-0 top-0 bottom-0 w-[2px] bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<div class="mt-1">
+<span class="material-symbols-outlined text-secondary text-[16px]">warning_amber</span>
+</div>
+<div class="flex-1">
+<p class="font-body-sm text-body-sm text-on-surface mb-1 group-hover:text-primary transition-colors">Sub-optimal memory paging configuration causing frequent disk I/O.</p>
+<div class="flex items-center gap-3">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">dataset_linked</span>
+                                         ref: m-442
+                                     </span>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Impact: Medium</span>
+</div>
+</div>
+<button class="opacity-0 group-hover:opacity-100 font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-all border border-transparent hover:border-outline-variant px-2 py-1">DETAILS</button>
+</div>
+<!-- Row 3 -->
+<div class="bg-surface flex items-start gap-4 p-3 hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="mt-1">
+<span class="material-symbols-outlined text-outline text-[16px]">check_circle</span>
+</div>
+<div class="flex-1">
+<p class="font-body-sm text-body-sm text-on-surface mb-1 text-on-surface-variant">Network stack optimization completed successfully post-update.</p>
+<div class="flex items-center gap-3">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">dataset_linked</span>
+                                         ref: n-001
+                                     </span>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Status: Resolved</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

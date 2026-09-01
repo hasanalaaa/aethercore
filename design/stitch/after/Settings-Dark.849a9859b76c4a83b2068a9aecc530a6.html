@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-surface-variant": "#a4afb9", "on-tertiary-fixed-variant": "#4a388e", "on-error-container": "#ffdad6", "on-tertiary": "#331f76", "on-surface": "#dee3eb", "error-container": "#93000a", "on-tertiary-container": "#514096", "primary-container": "#8ec5f5", surface: "#0f141a", "tertiary-fixed-dim": "#cbbeff", "outline-variant": "#41474e", "surface-container-lowest": "#0a0f15", "tertiary-container": "#c4b6ff", "surface-container": "#141c24", "primary-fixed-dim": "#95ccfc", "on-secondary-fixed-variant": "#643f03", "surface-bright": "#353a40", "surface-dim": "#080d12", outline: "#8b9199", "on-tertiary-fixed": "#1d0061", "inverse-primary": "#26638e", "surface-container-highest": "#30353c", "primary-fixed": "#cce5ff", "surface-variant": "#30353c", "tertiary-fixed": "#e6deff", "secondary-fixed-dim": "#f4bc77", "surface-container-high": "#252a31", "surface-container-low": "#171c22", "on-primary-container": "#09527c", "surface-tint": "#95ccfc", "on-primary": "#003351", "on-secondary": "#472a00", tertiary: "#e0d6ff", "on-secondary-fixed": "#2a1700", "on-primary-fixed": "#001d31", background: "#0f141a", "inverse-on-surface": "#2c3138", "inverse-surface": "#dee3eb", "secondary-fixed": "#ffddb7", secondary: "#f4bc77", "on-background": "#dee3eb", "on-primary-fixed-variant": "#004b73", error: "#ffb4ab", primary: "#bedfff", "secondary-container": "#674105", "on-error": "#690005", "on-secondary-container": "#e5ae6b", "attention-orange": "#D08A2E", "critical-red": "#C24D4D", interactive: "#5B8DEF", "healthy-green": "#3E9E6B", "policy-violet": "#7C6BC4", "verified-gold": "#C9A227"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {unit: "4px", "panel-gap": "1px", "grid-margin": "16px", "cell-padding-y": "8px", "cell-padding-x": "12px", base: "4px", "padding-card": "20px", "margin-page": "32px", "row-height": "44px", "gutter-table": "16px", "gap-card": "16px"}, fontFamily: {"data-mono-sm": ["IBM Plex Mono"], "display-sm": ["Geist"], "headline-sm": ["Geist"], "label-caps": ["Geist"], "body-sm": ["Geist"], "body-md": ["Geist"], "data-mono": ["IBM Plex Mono"], "display-lg": ["Geist"]}, fontSize: {"data-mono-sm": ["11px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "400"}], "display-sm": ["22px", {lineHeight: "30px", letterSpacing: "-0.015em", fontWeight: "600"}], "headline-sm": ["16px", {lineHeight: "24px", fontWeight: "600"}], "label-caps": ["11px", {lineHeight: "16px", letterSpacing: "0.04em", fontWeight: "600"}], "body-sm": ["13px", {lineHeight: "20px", fontWeight: "400"}], "body-md": ["15px", {lineHeight: "24px", fontWeight: "400"}], "data-mono": ["13px", {lineHeight: "20px", fontWeight: "450"}], "display-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600"}]}}}};</script>
+<style>
+        /* Custom overrides to ensure true technical minimalism */
+        body {
+            background-color: #424752; /* hairline color acts as background for panel gaps */
+        }
+        .hairline-grid {
+            display: grid;
+            gap: 1px;
+            background-color: #424752; /* outline-variant */
+        }
+        .panel {
+            background-color: #111319; /* surface */
+        }
+        .panel-raised {
+            background-color: #1d1f26; /* surface-container */
+        }
+        /* Custom checkbox styles to fit the rigid design */
+        input[type="checkbox"] {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border: 1px solid #424752;
+            background-color: #111319;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        input[type="checkbox"]:checked {
+            background-color: #aec6ff; /* primary */
+            border-color: #aec6ff;
+        }
+        input[type="checkbox"]:checked::after {
+            content: "";
+            width: 8px;
+            height: 8px;
+            background-color: #002e6b; /* on-primary */
+        }
+        /* Select styling */
+        select {
+            appearance: none;
+            background-color: #111319;
+            border: 1px solid #424752;
+            color: #e1e2ea;
+            padding: 8px 12px;
+            width: 100%;
+            cursor: pointer;
+            outline: none;
+        }
+        select:focus {
+            border-color: #aec6ff;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<div class="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container dark:bg-surface-container text-primary dark:text-primary font-label-caps text-label-caps">
+<div class="flex items-center gap-4 h-full">
+<div class="flex items-center justify-center w-8 h-8">
+<img alt="AetherCore Logo" class="w-full h-full object-contain mix-blend-screen" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+</div>
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface">AetherCore</span>
+</div>
+<!-- Center Search (simulated based on search_bar config, though JSON says on_left, usually standard is middle/left. Following general top bar layout) -->
+<div class="flex-1 flex justify-start px-8">
+<div class="relative w-64 h-8 flex items-center bg-surface border border-outline-variant focus-within:border-primary transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant text-[16px] ml-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-on-surface font-body-sm w-full h-full px-2 placeholder:text-on-surface-variant" placeholder="Search Settings..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150 p-1 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="policy">policy</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150 p-1 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150 p-1 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+</div>
+</div>
+<!-- Main Layout Container -->
+<div class="flex flex-1 w-full mt-12 h-[calc(100vh-48px)] overflow-hidden">
+<!-- SideNavBar -->
+<nav aria-label="Main Navigation" class="flex flex-col h-full border-r border-outline-variant w-64 shrink-0 bg-surface-container-lowest dark:bg-surface-container-lowest text-primary dark:text-primary-fixed-dim font-data-mono text-data-mono select-none overflow-y-auto overflow-x-hidden">
+<div class="flex-1 py-4 flex flex-col gap-1">
+<!-- Navigation Tabs -->
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">dashboard</span>
+<span>Overview</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">biotech</span>
+<span>Deep Scan</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">speed</span>
+<span>Performance</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">monitor_heart</span>
+<span>Hardware Health</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">history</span>
+<span>Crash History</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">lightbulb</span>
+<span>Insights</span>
+</a>
+<!-- Active Item for Settings Context -->
+<a class="flex items-center gap-3 px-4 py-2 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">settings_input_component</span>
+<span>Drivers</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">build</span>
+<span>System Repair</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">cleaning_services</span>
+<span>Deep Clean</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">rocket_launch</span>
+<span>Startup Manager</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">restore</span>
+<span>Recovery</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[20px]">dns</span>
+<span>Fleet</span>
+</a>
+</div>
+<!-- Footer Section -->
+<div class="mt-auto border-t border-outline-variant p-4 flex flex-col gap-3">
+<button class="w-full py-2 bg-primary text-on-primary font-label-caps text-label-caps uppercase hover:bg-primary-fixed-dim transition-colors border border-outline-variant flex justify-center items-center">
+                    Authorize Changes
+                </button>
+<div class="flex justify-between items-center px-2 mt-2">
+<a class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center" href="#" title="EN/AR">
+<span class="material-symbols-outlined text-[18px]">language</span>
+</a>
+<a class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center" href="#" title="Dark Mode">
+<span class="material-symbols-outlined text-[18px]">dark_mode</span>
+</a>
+<a class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center" href="#" title="v.1.4.2-stable">
+<span class="material-symbols-outlined text-[18px]">cloud_done</span>
+</a>
+</div>
+</div>
+</nav>
+<!-- Main Content Area - Settings -->
+<main class="flex-1 overflow-y-auto bg-background p-4 relative hairline-grid h-full">
+<!-- Background structural grid lines visual -->
+<div class="absolute inset-0 pointer-events-none grid grid-cols-12 gap-1 opacity-5">
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+<div class="col-span-1 bg-outline-variant h-full w-px mx-auto"></div>
+</div>
+<!-- Settings Container - Bento Box Style via Grid -->
+<div class="relative z-10 w-full max-w-5xl mx-auto flex flex-col gap-1 pb-12">
+<!-- Header Panel -->
+<header class="panel flex items-end justify-between p-6 h-32 border-b border-outline-variant relative">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div> <!-- Policy Band -->
+<div>
+<h1 class="font-display-sm text-display-sm text-on-surface mb-2">Driver Configuration</h1>
+<p class="font-data-mono text-data-mono text-on-surface-variant flex items-center gap-2">
+<span class="inline-flex w-2 h-2 bg-primary"></span>
+                            SYS_STATE: ACTIVE_MAINTENANCE // USER: ADMIN
+                        </p>
+</div>
+<div class="flex gap-2">
+<button class="px-4 py-2 border border-outline-variant text-on-surface font-label-caps text-label-caps uppercase hover:bg-surface-container-high transition-colors">Discard</button>
+<button class="px-4 py-2 bg-primary text-on-primary font-label-caps text-label-caps uppercase hover:bg-primary-fixed-dim transition-colors border border-outline-variant">Apply Config</button>
+</div>
+</header>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-1">
+<!-- General Settings Column (Spans 2) -->
+<div class="lg:col-span-2 flex flex-col gap-1">
+<!-- Panel: Update Protocol -->
+<section class="panel p-0 flex flex-col h-full border border-outline-variant">
+<div class="px-4 py-2 border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
+<h2 class="font-label-caps text-label-caps text-on-surface uppercase tracking-widest">Update Protocol</h2>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">SEC-GRP: ALPHA</span>
+</div>
+<div class="p-6 flex flex-col gap-6">
+<!-- Setting Row -->
+<div class="flex items-start justify-between gap-4">
+<div class="flex-1">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Automatic Driver Polling</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Configure frequency of signature checks against AetherCore upstream servers.</p>
+</div>
+<div class="w-48 shrink-0">
+<select aria-label="Polling Frequency" class="font-data-mono text-data-mono text-on-surface">
+<option value="realtime">REAL-TIME (AGGRESSIVE)</option>
+<option selected="" value="hourly">HOURLY (STANDARD)</option>
+<option value="daily">DAILY (CONSERVATIVE)</option>
+<option value="manual">MANUAL ONLY</option>
+</select>
+</div>
+</div>
+<div class="h-px bg-outline-variant w-full"></div>
+<!-- Setting Row -->
+<div class="flex items-start justify-between gap-4">
+<div class="flex-1">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Install WHQL Certified Only</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Restrict installation to drivers with validated Windows Hardware Quality Labs cryptographic signatures.</p>
+</div>
+<div class="flex items-center justify-end h-8 shrink-0">
+<label class="flex items-center gap-3 cursor-pointer">
+<span class="font-label-caps text-label-caps text-primary uppercase">Enforced</span>
+<input aria-label="Toggle WHQL Enforcement" checked="" type="checkbox"/>
+</label>
+</div>
+</div>
+<div class="h-px bg-outline-variant w-full"></div>
+<!-- Setting Row -->
+<div class="flex items-start justify-between gap-4">
+<div class="flex-1">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Telemetry Reporting</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Transmit anonymized hardware stability metrics to improve global identification matrix.</p>
+</div>
+<div class="flex items-center justify-end h-8 shrink-0">
+<label class="flex items-center gap-3 cursor-pointer">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Disabled</span>
+<input aria-label="Toggle Telemetry" type="checkbox"/>
+</label>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Side Column: Status & Simple Info -->
+<div class="lg:col-span-1 flex flex-col gap-1">
+<!-- Panel: Current Subsystem Status -->
+<section class="panel p-0 border border-outline-variant flex flex-col">
+<div class="px-4 py-2 border-b border-outline-variant bg-surface-container-low">
+<h2 class="font-label-caps text-label-caps text-on-surface uppercase tracking-widest">Subsystem Status</h2>
+</div>
+<div class="p-4 flex flex-col gap-3">
+<div class="flex justify-between items-center">
+<span class="font-data-mono text-data-mono text-on-surface-variant">DB_VERSION</span>
+<span class="font-data-mono text-data-mono text-primary bg-surface-container px-2 py-1 border border-outline-variant">v.4.92.110</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-data-mono text-data-mono text-on-surface-variant">LAST_SYNC</span>
+<span class="font-data-mono text-data-mono text-on-surface">14:02:44 UTC</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-data-mono text-data-mono text-on-surface-variant">LOCAL_CACHE</span>
+<span class="font-data-mono text-data-mono text-on-surface">412 MB</span>
+</div>
+</div>
+<div class="mt-auto p-4 border-t border-outline-variant">
+<button class="w-full py-1.5 border border-outline-variant text-on-surface font-label-caps text-label-caps uppercase hover:bg-surface-container-high transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[16px]">sync</span>
+                                     Force Sync
+                                 </button>
+</div>
+</section>
+</div>
+</div>
+<!-- Advanced Settings Section (Full Width) -->
+<section class="panel mt-4 border border-outline-variant flex flex-col relative">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-tertiary"></div> <!-- Policy Band Warning color for advanced -->
+<div class="px-4 py-2 border-b border-outline-variant bg-surface-container-low flex items-center gap-3">
+<span class="material-symbols-outlined text-tertiary text-[18px]">warning</span>
+<h2 class="font-label-caps text-label-caps text-tertiary uppercase tracking-widest">Advanced Parameters</h2>
+</div>
+<!-- Data Table Structure for Advanced Settings -->
+<div class="w-full overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-lowest border-b border-outline-variant font-label-caps text-label-caps text-on-surface-variant">
+<th class="py-2 px-4 font-normal w-1/4">Parameter Key</th>
+<th class="py-2 px-4 font-normal w-1/2">Description</th>
+<th class="py-2 px-4 font-normal w-1/4 text-right">Value/State</th>
+</tr>
+</thead>
+<tbody class="font-data-mono text-data-mono text-on-surface">
+<tr class="border-b border-outline-variant bg-surface hover:bg-surface-container transition-colors">
+<td class="py-3 px-4">SYS_ROLLBACK_DEPTH</td>
+<td class="py-3 px-4 text-on-surface-variant font-body-sm">Maximum number of previous driver states retained in local backup repository.</td>
+<td class="py-3 px-4 text-right">
+<div class="inline-flex items-center border border-outline-variant bg-surface-container-highest">
+<input class="w-12 bg-transparent border-none text-right font-data-mono text-data-mono p-1 text-primary focus:ring-0 outline-none" type="text" value="3"/>
+</div>
+</td>
+</tr>
+<tr class="border-b border-outline-variant bg-surface-raised hover:bg-surface-container transition-colors">
+<td class="py-3 px-4">KERNEL_ISOLATION_BYPASS</td>
+<td class="py-3 px-4 text-on-surface-variant font-body-sm">Permit installation of unsigned drivers via test-signing mode manipulation.</td>
+<td class="py-3 px-4 text-right">
+<button class="px-3 py-1 border border-outline-variant text-on-surface-variant hover:text-error hover:border-error transition-colors text-[11px] uppercase tracking-wider bg-surface">Execute Bypass</button>
+</td>
+</tr>
+<tr class="border-b border-outline-variant bg-surface hover:bg-surface-container transition-colors">
+<td class="py-3 px-4">DEBUG_LOG_LEVEL</td>
+<td class="py-3 px-4 text-on-surface-variant font-body-sm">Verbosity of operation logs written to /var/log/aethercore/</td>
+<td class="py-3 px-4 text-right">
+<select class="font-data-mono-sm text-data-mono-sm w-auto inline-block py-1 px-2">
+<option value="info">INFO</option>
+<option value="warn">WARN</option>
+<option value="error">ERROR</option>
+<option selected="" value="trace">TRACE</option>
+</select>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</main>
+</div>
+</body></html>

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Fleet</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-surface-variant": "#c1c7cf", "on-tertiary-fixed-variant": "#4a388e", "on-error-container": "#ffdad6", "on-tertiary": "#331f76", "on-surface": "#dee3eb", "error-container": "#93000a", "on-tertiary-container": "#514096", "primary-container": "#8ec5f5", surface: "#0f141a", "tertiary-fixed-dim": "#cbbeff", "outline-variant": "#41474e", "surface-container-lowest": "#0a0f15", "tertiary-container": "#c4b6ff", "surface-container": "#1b2026", "primary-fixed-dim": "#95ccfc", "on-secondary-fixed-variant": "#643f03", "surface-bright": "#353a40", "surface-dim": "#080d12", outline: "#8b9199", "on-tertiary-fixed": "#1d0061", "inverse-primary": "#26638e", "surface-container-highest": "#30353c", "primary-fixed": "#cce5ff", "surface-variant": "#30353c", "tertiary-fixed": "#e6deff", "secondary-fixed-dim": "#f4bc77", "surface-container-high": "#252a31", "surface-container-low": "#171c22", "on-primary-container": "#09527c", "surface-tint": "#95ccfc", "on-primary": "#003351", "on-secondary": "#472a00", tertiary: "#e0d6ff", "on-secondary-fixed": "#2a1700", "on-primary-fixed": "#001d31", background: "#0f141a", "inverse-on-surface": "#2c3138", "inverse-surface": "#dee3eb", "secondary-fixed": "#ffddb7", secondary: "#f4bc77", "on-background": "#dee3eb", "on-primary-fixed-variant": "#004b73", error: "#ffb4ab", primary: "#bedfff", "secondary-container": "#674105", "on-error": "#690005", "on-secondary-container": "#e5ae6b", "critical-red": "#C24D4D", "attention-orange": "#D08A2E", "verified-gold": "#C9A227", interactive: "#5B8DEF", "healthy-green": "#3E9E6B", "policy-violet": "#7C6BC4"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {unit: "4px", "panel-gap": "1px", "grid-margin": "16px", "cell-padding-y": "8px", "cell-padding-x": "12px", "padding-card": "20px", "margin-page": "32px", base: "4px", "row-height": "44px", "gutter-table": "16px", "gap-card": "16px"}, fontFamily: {"data-mono-sm": ["IBM Plex Mono"], "display-sm": ["Geist"], "headline-sm": ["Geist"], "label-caps": ["Geist"], "body-sm": ["Geist"], "body-md": ["Geist"], "data-mono": ["IBM Plex Mono"], "display-lg": ["Geist"]}, fontSize: {"data-mono-sm": ["11px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "400"}], "display-sm": ["22px", {lineHeight: "30px", letterSpacing: "-0.015em", fontWeight: "600"}], "headline-sm": ["16px", {lineHeight: "24px", fontWeight: "600"}], "label-caps": ["11px", {lineHeight: "16px", letterSpacing: "0.04em", fontWeight: "600"}], "body-sm": ["13px", {lineHeight: "20px", fontWeight: "400"}], "body-md": ["15px", {lineHeight: "24px", fontWeight: "400"}], "data-mono": ["13px", {lineHeight: "20px", fontWeight: "450"}], "display-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600"}]}}}};</script>
+<style type="text/tailwindcss">
+        @layer utilities {
+            .hairline-b { border-bottom: 1px solid theme('colors.outline-variant'); }
+            .hairline-t { border-top: 1px solid theme('colors.outline-variant'); }
+            .hairline-l { border-left: 1px solid theme('colors.outline-variant'); }
+            .hairline-r { border-right: 1px solid theme('colors.outline-variant'); }
+            .hairline { border: 1px solid theme('colors.outline-variant'); }
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex font-body-md text-body-md overflow-hidden">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-lowest dark:bg-surface-container-lowest h-screen w-64 border-r border-outline-variant dark:border-outline-variant flex flex-col hidden md:flex shrink-0">
+<!-- Header -->
+<div class="h-12 border-b border-outline-variant flex items-center px-grid-margin gap-3 shrink-0">
+<img alt="AetherCore Logo" class="w-6 h-6 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface dark:text-on-surface">AetherCore</span>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Diagnostics &amp; Maintenance</span>
+</div>
+</div>
+<!-- Navigation Tabs -->
+<div class="flex-1 overflow-y-auto py-2">
+<!-- Tabs 1-11 Inactive -->
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">dashboard</span>
+                Overview
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">biotech</span>
+                Deep Scan
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">speed</span>
+                Performance
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">monitor_heart</span>
+                Hardware Health
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">history</span>
+                Crash History
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">lightbulb</span>
+                Insights
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">settings_input_component</span>
+                Drivers
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">build</span>
+                System Repair
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">cleaning_services</span>
+                Deep Clean
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">rocket_launch</span>
+                Startup Manager
+            </a>
+<a class="flex items-center px-4 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]">restore</span>
+                Recovery
+            </a>
+<!-- Active Tab: Fleet -->
+<a class="flex items-center px-4 py-2 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer active:opacity-80 gap-3" href="#">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">dns</span>
+                Fleet
+            </a>
+</div>
+<!-- CTA & Footer -->
+<div class="border-t border-outline-variant p-4 flex flex-col gap-4 shrink-0">
+<button class="w-full py-2 px-4 bg-primary text-on-primary font-label-caps text-label-caps hairline hover:bg-surface-tint transition-colors uppercase">Authorize Changes</button>
+<div class="flex justify-between items-center text-on-surface-variant">
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors text-[20px]" title="EN/AR">language</span>
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors text-[20px]" title="Dark Mode">dark_mode</span>
+<div class="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors" title="v.1.4.2-stable">
+<span class="material-symbols-outlined text-[16px]">cloud_done</span>
+<span class="font-data-mono-sm text-data-mono-sm">v.1.4.2</span>
+</div>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col h-screen overflow-hidden">
+<!-- TopAppBar (Mobile & Breadcrumb/Actions) -->
+<header class="flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container dark:bg-surface-container shrink-0">
+<div class="flex items-center gap-4">
+<div class="md:hidden flex items-center gap-2">
+<img alt="AetherCore Logo" class="w-6 h-6 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface">AetherCore</span>
+</div>
+<!-- Breadcrumbs/Context -->
+<div class="hidden md:flex items-center gap-2 font-data-mono text-data-mono text-on-surface-variant">
+<span>Admin</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+<span class="text-primary border-b-2 border-primary">Fleet Management</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-150 cursor-pointer text-[20px]">policy</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-150 cursor-pointer text-[20px]">terminal</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-150 cursor-pointer text-[20px]">help_outline</span>
+</div>
+</header>
+<!-- Canvas -->
+<main class="flex-1 overflow-auto bg-background p-grid-margin flex flex-col gap-grid-margin">
+<!-- Page Header & Actions -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4 shrink-0">
+<div>
+<h1 class="font-display-sm text-display-sm text-on-surface mb-1">Fleet Roster</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Active nodes under continuous diagnostic supervision.</p>
+</div>
+<div class="flex gap-2">
+<button class="flex items-center gap-2 px-3 py-1.5 hairline text-primary font-label-caps text-label-caps uppercase hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[16px]">sync</span>
+                        Sync Policies
+                    </button>
+<button class="flex items-center gap-2 px-3 py-1.5 bg-surface-variant text-on-surface font-label-caps text-label-caps hairline uppercase hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[16px]">download</span>
+                        Export Signed Report
+                    </button>
+</div>
+</div>
+<!-- Data Table Panel -->
+<div class="bg-surface-raised hairline flex-1 flex flex-col min-h-[400px]">
+<!-- Table Controls / Filters -->
+<div class="h-10 hairline-b bg-surface flex items-center px-3 justify-between shrink-0">
+<div class="flex items-center gap-4 font-data-mono-sm text-data-mono-sm text-on-surface-variant">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[14px]">filter_alt</span>
+<span>Filter by Trust Status...</span>
+</div>
+</div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">
+                        Viewing 1-10 of 142 Nodes
+                    </div>
+</div>
+<!-- Table Content -->
+<div class="flex-1 overflow-auto bg-surface-container-lowest">
+<table class="w-full text-left border-collapse whitespace-nowrap">
+<thead class="sticky top-0 bg-surface z-10 hairline-b font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
+<tr>
+<th class="py-2 px-4 font-medium w-8 text-center">
+<input class="bg-transparent border-outline-variant rounded-none form-checkbox text-primary focus:ring-primary h-3 w-3" type="checkbox"/>
+</th>
+<th class="py-2 px-4 font-medium">Hostname</th>
+<th class="py-2 px-4 font-medium">Trust Status</th>
+<th class="py-2 px-4 font-medium">Last Audit</th>
+<th class="py-2 px-4 font-medium">Compliance Profile</th>
+<th class="py-2 px-4 font-medium text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="font-data-mono text-data-mono text-on-surface">
+<!-- Row 1: Healthy -->
+<tr class="hover:bg-surface-container-low transition-colors border-b border-outline-variant/30">
+<td class="py-2 px-4 text-center">
+<input class="bg-transparent border-outline-variant rounded-none form-checkbox text-primary focus:ring-primary h-3 w-3" type="checkbox"/>
+</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-2">
+<div class="w-1 h-4 bg-primary shrink-0"></div> <!-- Policy Band / Status -->
+<span>AC-NODE-042</span>
+</div>
+</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-1.5 text-secondary">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">verified</span>
+<span class="text-data-mono-sm">Signed/Verified</span>
+</div>
+</td>
+<td class="py-2 px-4 text-on-surface-variant text-data-mono-sm">2023-10-27T14:32:01Z</td>
+<td class="py-2 px-4">
+<span class="px-2 py-0.5 bg-surface-container-high hairline text-on-surface text-data-mono-sm">STRICT_ENCLAVE_V2</span>
+</td>
+<td class="py-2 px-4 text-right">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer text-[18px]">more_horiz</span>
+</td>
+</tr>
+<!-- Row 2: Warning -->
+<tr class="hover:bg-surface-container-low transition-colors border-b border-outline-variant/30 bg-surface-container-lowest">
+<td class="py-2 px-4 text-center">
+<input class="bg-transparent border-outline-variant rounded-none form-checkbox text-primary focus:ring-primary h-3 w-3" type="checkbox"/>
+</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-2">
+<div class="w-1 h-4 bg-tertiary shrink-0"></div>
+<span>AC-NODE-118</span>
+</div>
+</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-1.5 text-tertiary">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">warning</span>
+<span class="text-data-mono-sm">Stale Signatures</span>
+</div>
+</td>
+<td class="py-2 px-4 text-on-surface-variant text-data-mono-sm">2023-10-25T09:11:44Z</td>
+<td class="py-2 px-4">
+<span class="px-2 py-0.5 bg-surface-container-high hairline text-on-surface text-data-mono-sm">BASELINE_STD</span>
+</td>
+<td class="py-2 px-4 text-right">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer text-[18px]">more_horiz</span>
+</td>
+</tr>
+<!-- Row 3: Healthy -->
+<tr class="hover:bg-surface-container-low transition-colors border-b border-outline-variant/30">
+<td class="py-2 px-4 text-center">
+<input class="bg-transparent border-outline-variant rounded-none form-checkbox text-primary focus:ring-primary h-3 w-3" type="checkbox"/>
+</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-2">
+<div class="w-1 h-4 bg-primary shrink-0"></div>
+<span>AC-NODE-007</span>
+</div>
+</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-1.5 text-secondary">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">verified</span>
+<span class="text-data-mono-sm">Signed/Verified</span>
+</div>
+</td>
+<td class="py-2 px-4 text-on-surface-variant text-data-mono-sm">2023-10-27T14:31:12Z</td>
+<td class="py-2 px-4">
+<span class="px-2 py-0.5 bg-surface-container-high hairline text-on-surface text-data-mono-sm">STRICT_ENCLAVE_V2</span>
+</td>
+<td class="py-2 px-4 text-right">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer text-[18px]">more_horiz</span>
+</td>
+</tr>
+<!-- Row 4: Error/Critical -->
+<tr class="hover:bg-surface-container-low transition-colors border-b border-outline-variant/30 bg-surface-container-lowest">
+<td class="py-2 px-4 text-center">
+<input class="bg-transparent border-outline-variant rounded-none form-checkbox text-primary focus:ring-primary h-3 w-3" type="checkbox"/>
+</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-2">
+<div class="w-1 h-4 bg-error shrink-0"></div>
+<span class="text-error">AC-NODE-099</span>
+</div>
+</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-1.5 text-error">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">gpp_bad</span>
+<span class="text-data-mono-sm">Untrusted State</span>
+</div>
+</td>
+<td class="py-2 px-4 text-error text-data-mono-sm">2023-10-27T10:05:22Z</td>
+<td class="py-2 px-4">
+<span class="px-2 py-0.5 bg-error-container/20 border border-error text-error text-data-mono-sm">QUARANTINED</span>
+</td>
+<td class="py-2 px-4 text-right">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer text-[18px]">more_horiz</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+</div>
+</body></html>

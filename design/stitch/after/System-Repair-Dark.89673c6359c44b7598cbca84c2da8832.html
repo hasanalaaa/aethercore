@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - System Repair</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-surface-variant": "#c1c7cf", "on-tertiary-fixed-variant": "#4a388e", "on-error-container": "#ffdad6", "on-tertiary": "#331f76", "on-surface": "#dee3eb", "error-container": "#93000a", "on-tertiary-container": "#514096", "primary-container": "#8ec5f5", surface: "#0f141a", "tertiary-fixed-dim": "#cbbeff", "outline-variant": "#41474e", "surface-container-lowest": "#0a0f15", "tertiary-container": "#c4b6ff", "surface-container": "#1b2026", "primary-fixed-dim": "#95ccfc", "on-secondary-fixed-variant": "#643f03", "surface-bright": "#353a40", "surface-dim": "#080d12", outline: "#8b9199", "on-tertiary-fixed": "#1d0061", "inverse-primary": "#26638e", "surface-container-highest": "#30353c", "primary-fixed": "#cce5ff", "surface-variant": "#30353c", "tertiary-fixed": "#e6deff", "secondary-fixed-dim": "#f4bc77", "surface-container-high": "#252a31", "surface-container-low": "#171c22", "on-primary-container": "#09527c", "surface-tint": "#95ccfc", "on-primary": "#003351", "on-secondary": "#472a00", tertiary: "#e0d6ff", "on-secondary-fixed": "#2a1700", "on-primary-fixed": "#001d31", background: "#0f141a", "inverse-on-surface": "#2c3138", "inverse-surface": "#dee3eb", "secondary-fixed": "#ffddb7", secondary: "#f4bc77", "on-background": "#dee3eb", "on-primary-fixed-variant": "#004b73", error: "#ffb4ab", primary: "#bedfff", "secondary-container": "#674105", "on-error": "#690005", "on-secondary-container": "#e5ae6b", "critical-red": "#C24D4D", "attention-orange": "#D08A2E", "verified-gold": "#C9A227", interactive: "#5B8DEF", "healthy-green": "#3E9E6B", "policy-violet": "#7C6BC4"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {unit: "4px", "panel-gap": "1px", "grid-margin": "16px", "cell-padding-y": "8px", "cell-padding-x": "12px", "padding-card": "20px", "margin-page": "32px", base: "4px", "row-height": "44px", "gutter-table": "16px", "gap-card": "16px"}, fontFamily: {"data-mono-sm": ["IBM Plex Mono"], "display-sm": ["Geist"], "headline-sm": ["Geist"], "label-caps": ["Geist"], "body-sm": ["Geist"], "body-md": ["Geist"], "data-mono": ["IBM Plex Mono"], "display-lg": ["Geist"]}, fontSize: {"data-mono-sm": ["11px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "400"}], "display-sm": ["22px", {lineHeight: "30px", letterSpacing: "-0.015em", fontWeight: "600"}], "headline-sm": ["16px", {lineHeight: "24px", fontWeight: "600"}], "label-caps": ["11px", {lineHeight: "16px", letterSpacing: "0.04em", fontWeight: "600"}], "body-sm": ["13px", {lineHeight: "20px", fontWeight: "400"}], "body-md": ["15px", {lineHeight: "24px", fontWeight: "400"}], "data-mono": ["13px", {lineHeight: "20px", fontWeight: "450"}], "display-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600"}]}}}};</script>
+<style>
+  body {
+    background-color: theme('colors.background');
+    color: theme('colors.on-surface');
+  }
+</style>
+</head>
+<body class="flex h-screen overflow-hidden">
+<!-- SideNavBar -->
+<aside class="flex flex-col h-full border-r border-outline-variant bg-surface-container-lowest w-64 shrink-0">
+<!-- Header -->
+<div class="h-16 flex items-center px-4 border-b border-outline-variant">
+<img alt="AetherCore Logo" class="h-8 w-8 mr-3" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<div>
+<h1 class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface">AetherCore</h1>
+<p class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Diagnostics &amp; Maintenance</p>
+</div>
+</div>
+<!-- Navigation -->
+<nav class="flex-1 overflow-y-auto py-2">
+<ul class="space-y-1 px-2">
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">dashboard</span>
+            Overview
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">biotech</span>
+            Deep Scan
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">speed</span>
+            Performance
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">monitor_heart</span>
+            Hardware Health
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">history</span>
+            Crash History
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">lightbulb</span>
+            Insights
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">settings_input_component</span>
+            Drivers
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">build</span>
+            System Repair
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">cleaning_services</span>
+            Deep Clean
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">rocket_launch</span>
+            Startup Manager
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">restore</span>
+            Recovery
+          </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">dns</span>
+            Fleet
+          </a>
+</li>
+</ul>
+</nav>
+<!-- Footer / CTA -->
+<div class="p-4 border-t border-outline-variant">
+<button class="w-full bg-primary text-on-primary font-label-caps text-label-caps py-2 rounded-sm uppercase tracking-widest border border-primary hover:bg-primary-fixed transition-colors">Authorize Changes</button>
+<div class="flex justify-between mt-4">
+<button class="text-on-surface-variant hover:text-primary transition-colors p-1" title="EN/AR">
+<span class="material-symbols-outlined text-[16px]">language</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors p-1" title="Dark Mode">
+<span class="material-symbols-outlined text-[16px]">dark_mode</span>
+</button>
+<div class="flex items-center text-on-surface-variant font-data-mono-sm text-data-mono-sm">
+<span class="material-symbols-outlined text-[14px] mr-1">cloud_done</span>
+            v.1.4.2-stable
+         </div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col bg-surface min-w-0">
+<!-- TopAppBar -->
+<header class="flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container shrink-0">
+<div class="flex items-center">
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface">AetherCore</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-150 cursor-pointer">policy</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-150 cursor-pointer">terminal</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors duration-150 cursor-pointer">help_outline</span>
+</div>
+</header>
+<!-- Content Canvas -->
+<main class="flex-1 overflow-auto p-4 md:p-8 flex flex-col gap-unit">
+<div class="mb-4">
+<h2 class="font-display-sm text-display-sm text-on-surface">System Integrity Repair</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Execute diagnostic commands to verify and repair critical operating system files.</p>
+</div>
+<!-- Pre-requisite Panel -->
+<div class="bg-surface-container border border-outline-variant p-6 relative">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-tertiary"></div>
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pl-2">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary">warning</span>
+                   Mandatory Pre-requisite
+                </h3>
+<p class="font-body-md text-body-md text-on-surface-variant mt-2">A system restore point must be created before executing structural repairs to ensure rollback capability in case of unexpected corruption.</p>
+</div>
+<button class="bg-primary text-on-primary font-label-caps text-label-caps px-6 py-3 uppercase tracking-widest border border-primary hover:bg-primary-fixed transition-colors whitespace-nowrap">
+                Create Restore Point
+             </button>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-unit flex-1 mt-4">
+<!-- DISM Panel -->
+<div class="bg-surface-container border border-outline-variant p-6 flex flex-col relative">
+<div class="flex items-start justify-between mb-4">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Deployment Image Servicing and Management</h3>
+<span class="inline-block mt-2 px-2 py-1 bg-surface-container-highest text-on-surface-variant font-data-mono-sm text-data-mono-sm border border-outline-variant">TOOL: DISM.exe</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">terminal</span>
+</div>
+<div class="flex-1">
+<p class="font-body-md text-body-md text-on-surface-variant mb-4">
+                   DISM prepares, modifies, and repairs Windows images. In the context of system repair, it is used to service the Windows component store itself, ensuring the source files used for repairs are healthy.
+                </p>
+<div class="bg-surface-container-lowest border border-outline-variant p-3 font-data-mono text-data-mono text-primary mb-4">
+                   &gt; DISM /Online /Cleanup-Image /RestoreHealth
+                </div>
+<h4 class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest mb-2">Workflow Breakdown</h4>
+<ul class="font-body-sm text-body-sm text-on-surface-variant space-y-2 mb-6">
+<li class="flex gap-2"><span class="text-primary">•</span> Checks component store for corruption.</li>
+<li class="flex gap-2"><span class="text-primary">•</span> Records corruption to <code class="font-data-mono-sm">C:\Windows\Logs\CBS\CBS.log</code>.</li>
+<li class="flex gap-2"><span class="text-primary">•</span> Attempts automatic repair using Windows Update as source.</li>
+</ul>
+</div>
+<button class="w-full bg-transparent text-primary font-label-caps text-label-caps py-2 uppercase tracking-widest border border-primary hover:bg-surface-container-highest transition-colors opacity-50 cursor-not-allowed" disabled="" title="Requires Restore Point">
+                Execute DISM Repair
+             </button>
+</div>
+<!-- SFC Panel -->
+<div class="bg-surface-container border border-outline-variant p-6 flex flex-col relative">
+<div class="flex items-start justify-between mb-4">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">System File Checker</h3>
+<span class="inline-block mt-2 px-2 py-1 bg-surface-container-highest text-on-surface-variant font-data-mono-sm text-data-mono-sm border border-outline-variant">TOOL: SFC.exe</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">find_in_page</span>
+</div>
+<div class="flex-1">
+<p class="font-body-md text-body-md text-on-surface-variant mb-4">
+                   SFC scans the integrity of all protected system files and replaces incorrect versions with correct Microsoft versions. It should typically be run <strong>after</strong> DISM has verified the component store.
+                </p>
+<div class="bg-surface-container-lowest border border-outline-variant p-3 font-data-mono text-data-mono text-primary mb-4">
+                   &gt; sfc /scannow
+                </div>
+<h4 class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest mb-2">Workflow Breakdown</h4>
+<ul class="font-body-sm text-body-sm text-on-surface-variant space-y-2 mb-6">
+<li class="flex gap-2"><span class="text-primary">•</span> Verifies file signatures of protected OS files.</li>
+<li class="flex gap-2"><span class="text-primary">•</span> Extracts clean copies from the component store if corrupted.</li>
+<li class="flex gap-2"><span class="text-primary">•</span> Requires reboot if locked files are replaced.</li>
+</ul>
+</div>
+<button class="w-full bg-transparent text-primary font-label-caps text-label-caps py-2 uppercase tracking-widest border border-primary hover:bg-surface-container-highest transition-colors opacity-50 cursor-not-allowed" disabled="" title="Requires Restore Point">
+                Execute SFC Scan
+             </button>
+</div>
+</div>
+<!-- Status / Console Output Panel -->
+<div class="mt-unit bg-surface-container border border-outline-variant flex flex-col h-48">
+<div class="border-b border-outline-variant px-4 py-2 flex justify-between items-center bg-surface-container-highest">
+<span class="font-label-caps text-label-caps text-on-surface uppercase tracking-widest">Execution Console</span>
+<span class="flex items-center gap-1 font-data-mono-sm text-data-mono-sm text-on-surface-variant">
+<span class="w-2 h-2 bg-on-surface-variant inline-block mr-1"></span> IDLE
+             </span>
+</div>
+<div class="p-4 flex-1 overflow-y-auto font-data-mono-sm text-data-mono-sm text-on-surface-variant space-y-1">
+<div class="text-outline">SYSTEM REPAIR MODULE INITIALIZED...</div>
+<div class="text-outline">WAITING FOR PRE-REQUISITE CLEARANCE...</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>
