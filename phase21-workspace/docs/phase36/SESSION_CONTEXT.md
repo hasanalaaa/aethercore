@@ -2538,3 +2538,33 @@ EXPECTED=  (b) every copied file's SHA-256 in the guest equals the Mac's.
                actual-token contexts.
 RECOVERY=  prlctl snapshot-switch "Windows 11" --id <P39-PRE-FIX-BUILD id>
 ```
+## 18.4 THE SWEEP — every newly reachable handler, checked for the same shape
+
+The class is: *the caller names a target, the service acts on it with LocalSystem
+authority, and nothing checks that the target belongs to the caller.* The review
+found two instances. This is the enumeration that says whether there are more.
+
+Method, so it can be re-run rather than trusted: every `*Request` message in
+`crates/contracts/proto/*.proto` was listed with its fields, and every
+`request::Payload::` arm in `router.rs` was listed with the request fields it
+reads and whether `principal_key` appears in that arm. That is the whole v7
+surface, not a sample.
+
+**Exactly one request in the entire contract carries a filesystem path**
+(`RunSecurityAuditRequest.targets_json`) and **exactly one carries an owner
+scope** (`ExportJournalRequest.owner_principal_key`). Every other request field
+is an opaque id, a bounded count, a byte buffer or a bool. So the path-shaped
+class has one instance and the owner-override class has one instance, and both
+are fixed.
+
+| # | Handler / site | Shape | Disposition |
+|---|---|---|---|
+| 1 | `RunSecurityAudit` targets | caller names absolute paths, read as LocalSystem | **FIXED** — owner-scoped allowlist |
+| 2 | `ExportJournal.owner_principal_key` | caller names another owner | **FIXED** — refused |
+| 3 | `sudoers` `#includedir` | path from FILE CONTENT the allowlist never vetted, expanded as LocalSystem | **FIXED** (found by this session, not by the review) — expansion confined to the directory of the file that named it |
+| 4 | Every id-bearing handler (`plan_id`, `scan_id`, `intent_id`, `bundle_id`, `preview_id`, `upload_id`, `ticket_id`, `change_id`, `assessment_id`, `candidate_id`, `release_id`) | caller names an opaque id | **Not the defect.** Each passes `principal_key` into an owner-scoped accessor. Spot-checked at the accessor rather than at the call: `maintenance_executions_for_owner` / `support_journal_events_for_owner` / `repair_timeline_events_for_owner` filter `WHERE owner_principal_key=?` in SQL; `SupportBundles::read_chunk`/`ready_for_owner`/`discard` return `Ownership` when `record.owner != owner`; `driver_install::status` routes through `get_plan_for_owner` |
+| 5 | `ListInsights` / `RequestInsight` / `DismissInsight` | machine-wide shared store, **no owner dimension at all** | **RECORDED — needs a design decision.** `EphemeralInsights` (`services/maintenance-service/src/intelligence.rs:30`) is one process-wide `Vec`; `dismiss(insight_id)` and `list()` take no principal. So any local user sees the insights another user's request produced, and can dismiss them. It is not the caller-named-scope class and it is not a filesystem read, but it IS a newly reachable surface with no owner check. Fixing it means deciding whether insights are per-principal or machine-wide state — a product decision, not a bug fix |
+| 6 | `StopPerfSampling` | takes no scope, stops sampling globally | **RECORDED.** `StartPerfSampling` is owner-keyed but `stop_sampling()` is not, so one principal can stop another's sampling. Availability nuisance, no disclosure, no LocalSystem read |
+| 7 | `performance_optimization::status(plan_id)` | an owner-less status accessor exists | **RECORDED as a latent hazard.** Currently unreachable: the `GetOptimizationStatus` arm returns `status: None` unconditionally and never calls it, and the compiler already reports it dead. If a future change wires the handler to it, instance #1's shape returns |
+| 8 | `StartOptimization`, `CheckForUpdates`, `StageUpdate` | — | Typed refusals; nothing is read |
+| 9 | `GetPlatformCapabilities`, `GetEngineSource`, `GetUpdateCheckDescriptor` | machine-wide, non-owner data, no caller-named target | Not the class |
