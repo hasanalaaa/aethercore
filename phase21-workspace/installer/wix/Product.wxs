@@ -106,8 +106,24 @@
                not include the build Redist dir, so the runtime DLL must be installed beside
                the service executable or SCM start fails with STATUS_DLL_NOT_FOUND (0xC0000135)
                which surfaces as Error 1920 and 1053. Non-System32 Microsoft VC runtime DLL
-               colocated with its consumer; update-trust and binary authority unchanged. -->
+               colocated with its consumer; update-trust and binary authority unchanged.
+
+               P41 (physical x64): the OpenMP runtime is ARCHITECTURE-SPECIFIC and this line
+               was hard-coded to the ARM64 one, so the x64 package could not build at all.
+               The ARM64 build uses clang-cl and imports the LLVM runtime libomp140.aarch64.dll;
+               the x64 build uses MSVC and imports Microsoft's VCOMP140.DLL instead. Both were
+               measured with llvm-readobj coff-imports on the actual binaries, not assumed.
+               Selected here with the WiX preprocessor rather than a -d variable on purpose:
+               scripts/check-msi-payload.ps1 derives its allowlist by reading the literal
+               Source="…" strings out of this file, so a $(var.…) filename would make the
+               authored name unmatchable and fail every build. Both literal names appear
+               below, so the derived allowlist stays a superset and the package still carries
+               exactly one of them. -->
+          <?if $(sys.BUILDARCH) = arm64 ?>
           <File Id="OpenMPRuntimeDll" Source="$(var.PayloadDir)\libomp140.aarch64.dll" />
+          <?else?>
+          <File Id="OpenMPRuntimeDll" Source="$(var.PayloadDir)\vcomp140.dll" />
+          <?endif?>
           <ServiceInstall
               Id="MaintenanceServiceInstall"
               Name="AetherCoreMaintenance"

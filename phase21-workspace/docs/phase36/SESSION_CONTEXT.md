@@ -3226,3 +3226,151 @@ LLVM/clang, CMake, Ninja, WiX, pnpm.
               so a bad install cannot break existing software. This is additive
               developer tooling on a box with no prior toolchain; it is the
               lowest-risk mutation in the whole session.
+
+## 41.4 GATE 1 — RESULT: **PASS** (2026-09-02)
+
+### 1a Toolchain — measured, then installed
+
+Present before: Node.js v22.23.2, npm, corepack, winget 1.29.290, WebView2 151.0.4129.107.
+**Everything else was missing.** Installed this session, in this order:
+
+| tool | how | version |
+|---|---|---|
+| rustup / rustc / cargo | winget `Rustlang.Rustup` | rustc 1.97.1 (8bab26f4f), host `x86_64-pc-windows-msvc` |
+| pnpm | `npm i -g pnpm@11.22.0` (matches `packageManager` pin) | 11.22.0 |
+| .NET SDK | winget `Microsoft.DotNet.SDK.8` | 8.x |
+| VS 2022 Build Tools + VCTools | winget `Microsoft.VisualStudio.2022.BuildTools` | `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools` |
+| Windows SDK | via `--includeRecommended` | 10.0.26100.0 |
+| CMake | winget `Kitware.CMake` | 4.4.3 |
+| LLVM (libclang) | winget `LLVM.LLVM` | 22.1.8 |
+| Windows ADK (Deployment Tools) | winget `Microsoft.WindowsADK` | for `dismapi.lib` |
+| WiX | `dotnet tool restore` (pinned manifest) | 6.0.2+b3f3403 |
+
+**Four toolchain facts a future x64 session should not re-derive:**
+
+1. **`rustup-init` hangs under winget.** It blocked at ~50 s CPU and never returned;
+   the shim files in `.cargo\bin` were left reporting 0 bytes. Killing it (which
+   needs elevation — the child inherits it) and letting `rust-toolchain.toml`
+   auto-install 1.97.1 works. **The 0-byte shims are a red herring**: `cargo -V`
+   and `rustc -vV` both execute correctly. Do not "repair" them.
+2. **Do NOT use `VsDevCmd.bat`.** On this box it fails to run a bare `vswhere.exe`
+   and then hard-exits the parent `cmd`, killing the build script with no error in
+   the log. It is not needed: rustc auto-discovers the MSVC linker via
+   vswhere/registry. Proven with a standalone `rustc` link probe leading to exit 0.
+3. **`llama-cpp-sys-2` runs bindgen**, so `LIBCLANG_PATH` must point at LLVM even
+   on x64/MSVC. Without it: `Unable to find libclang`, build fails at 0 crates.
+4. **The ADK x64 lib directory is named `amd64`, not `x64`.** The ARM64 recipe's
+   `DismApi\Lib\arm64` does not generalise to `DismApi\Lib\x64` — that path does
+   not exist. `crates/system-repair/src/dism_api.rs` binds
+   `#[link(name = "DismApi")]`, so the link fails without it.
+
+### 1b What git does not carry — full sweep on this machine
+
+Ran the project's own standing rule, `git ls-files --others --ignored --exclude-standard`.
+On this machine it returns **exactly one** path:
+
+```
+phase21-workspace/assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+```
+
+Verified rather than assumed: **1,117,320,736 bytes**, SHA-256
+`6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e` — equal to
+`models.manifest.json` and to the value in the brief. Every other ignore rule
+(`target/`, `node_modules/`, `dist/`, `*.db`, `*.zip`, `**/BINARY_ARTIFACTS/`,
+`_archive/`, editor/OS noise) excludes only build output or noise, and nothing
+those rules cover is present-and-required here. Section 15.3's conclusion holds on x64.
+
+### 1c THE FIRST NATIVE x86_64 BUILD IN THIS PROJECT'S HISTORY — exit 0
+
+| step | result |
+|---|---|
+| `pnpm install --frozen-lockfile` | exit 0; lockfile passed supply-chain policy (85 entries) |
+| `pnpm build` (apps/ui) | exit 0; `dist` = 3 files, 702.9 KB |
+| `cargo build --release` (fixed 5-package set) | **exit 0**, 2 m 03 s |
+| tauri `build --no-bundle` | **exit 0**, 3 m 27 s |
+| `wix build -arch x64` | **exit 0** (15 m 27 s — the 1.07 GB model dominates CAB) |
+| `wix msi validate` | **exit 0, output EMPTY = ZERO ICE findings, no suppression** |
+| `check-msi-payload.ps1` | `PAYLOAD_CHECK=PASS`, `AUTHORED_FILES=17`, `MSI_FILE_ROWS=16` |
+
+MSI: `out\release\AetherCore.msi`, version **0.1.11**, **1,100,140,544 bytes**,
+SHA-256 `d18d89db07180f5727b7d6056a07ea8d50de97aa401838601b532e9befd1f227`.
+
+**The `beforeBuildCommand` defect is real and reproduced on x64.** `tauri.conf.json`
+declares `"beforeBuildCommand": "pnpm --dir ../ui build"`; the Tauri CLI runs it
+from its own discovered app directory, not from the tauri.conf.json directory, so
+`../ui` does not resolve. The repo already carries the recorded fix —
+`installer/tauri.no-before-build.json`, an overlay that blanks the hook — because
+step [1] has already produced `apps/ui/dist`. Used it via `--config`; **no change
+to `tauri.conf.json` was needed or made.**
+
+### A SECOND x64 DEFECT, FOUND HERE, THAT NO VM COULD HAVE FOUND
+
+`installer/wix/Product.wxs` hard-coded `libomp140.aarch64.dll`. That is an
+**ARM64-only** file, so the x64 package could not build at all — the OpenMP
+runtime is architecture-specific and nothing in the authoring said so.
+
+Measured with `llvm-readobj` coff-imports on the real binaries, not assumed:
+
+```
+aethercore-maintenance-service.exe -> VCOMP140.DLL      (x64/MSVC, this build)
+aethercore-desktop.exe, consent-broker, update-broker,
+install-hardener, aetherctl                             -> no OpenMP import
+```
+
+The ARM64 clang-cl build imports the LLVM runtime `libomp140.aarch64.dll`; the x64
+MSVC build imports Microsoft's `VCOMP140.DLL`. Same role, different runtime.
+
+**Fix (minimal, and deliberately NOT a `-d` variable):** the File element is now
+selected by the WiX preprocessor on `$(sys.BUILDARCH)`. A `$(var.OpenMpDll)` in
+the `Source` attribute would have broken `check-msi-payload.ps1`, which derives
+its allowlist by regexing the **literal** `Source="..."` strings out of Product.wxs —
+the authored name would have been unmatchable and every build would have failed
+the payload check. With the preprocessor both literal names stay in the file, so
+the derived allowlist is a superset (`AUTHORED_FILES=17`) while the package
+carries exactly one (`MSI_FILE_ROWS=16`). The ARM64 pipeline is unchanged and
+still selects its own file.
+
+`scripts/build-installer.ps1` gained `vcomp140.dll` in its `$required` payload list.
+
+### 1d Payload vs the ARM64 baseline of SIXTEEN files
+
+**16 rows on x64, 16 rows on ARM64. Exactly one difference.**
+
+| # | file | bytes | vs ARM64 |
+|---|---|---|---|
+| 1 | aethercore-desktop.exe | 6,959,616 | same role |
+| 2 | aethercore-maintenance-service.exe | 10,678,784 | same role |
+| 3 | aethercore-consent-broker.exe | 633,856 | same role |
+| 4 | aethercore-update-broker.exe | 736,768 | same role |
+| 5 | aethercore-install-hardener.exe | 273,408 | same role |
+| 6 | aetherctl.exe | 4,315,648 | same role |
+| 7 | **vcomp140.dll** | 193,152 | **DIFFERENT — replaces `libomp140.aarch64.dll`** |
+| 8 | update-trust.json | 83 | identical |
+| 9 | UNINSTALL.txt | 3,206 | identical |
+| 10 | qwen2.5-1.5b-instruct-q4_k_m.gguf | 1,117,320,736 | identical |
+| 11 | models.manifest.json | 898 | identical |
+| 12 | Apache-2.0.txt | 11,358 | identical |
+| 13 | Qwen-GGUF-NOTICE.txt | 11,343 | identical |
+| 14 | vulndb.json | 6,704 | identical |
+| 15 | vulndb.manifest.json | 142 | identical |
+| 16 | cis_map.json | 3,103 | identical |
+
+**The single difference is ARCHITECTURAL, not a defect**: it is the correct
+OpenMP runtime for the compiler that built this architecture, and it is the file
+the x64 service actually imports. The six executables differ in size from the
+ARM64 ones because they are a different instruction set — expected, and per
+section 3 byte-equality is not a criterion anywhere.
+
+**GATE 1: PASS.** MSI builds with zero ICE and every payload difference is explained.
+
+### DBT-P41-001 (open, recorded not fixed)
+
+The x64 service also imports `MSVCP140.dll`, `VCRUNTIME140.dll` and
+`VCRUNTIME140_1.dll`. On this machine all three are in `System32` (VC++
+2015-2022 Redistributable x64 14.44.35211 is installed), so nothing failed. They
+are **not** in the MSI payload, and a clean Windows box is not guaranteed to have
+them. This is the same class of question the ARM64 `libomp` line answered for
+OpenMP only. Not changed here — it is outside this brief's scope and would widen
+the payload — but the owner should decide whether the bundle must carry the VC++
+redistributable. Stage 2 on this machine cannot detect the gap, because this
+machine already has the redistributable.

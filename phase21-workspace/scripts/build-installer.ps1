@@ -30,7 +30,11 @@ $required = @(
     'aethercore-install-hardener.exe',
     'aetherctl.exe',
     'update-trust.json',
-    'UNINSTALL.txt'
+    'UNINSTALL.txt',
+    # P41: the x64 MSVC build imports VCOMP140.DLL (measured with llvm-readobj
+    # coff-imports), where the ARM64 clang-cl build imports libomp140.aarch64.dll.
+    # Product.wxs selects the right one on $(sys.BUILDARCH); this pipeline is x64.
+    'vcomp140.dll'
 )
 # P37 Stage 1: the assets tree is packaged straight from the source tree (the embedded
 # model alone is 1.07 GB; copying it into a payload dir per build buys nothing).
