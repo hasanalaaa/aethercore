@@ -3374,3 +3374,38 @@ OpenMP only. Not changed here — it is outside this brief's scope and would wid
 the payload — but the owner should decide whether the bundle must carry the VC++
 redistributable. Stage 2 on this machine cannot detect the gap, because this
 machine already has the redistributable.
+
+## 41.5 DESTRUCTIVE ACTION RECORD — Stage 2: install the x64 MSI
+
+    ACTION=   msiexec /i out\release\AetherCore.msi /qn with /l*v verbose logging.
+              Installs AetherCore 0.1.11 x64 to C:\Program Files\AetherCore and
+              registers the AetherCoreMaintenance service as LocalSystem,
+              AUTO_START, with a restricted Service SID and a hardened pipe DACL.
+              This is the FIRST product install ever performed on this machine and
+              the first destructive act of this session.
+    RECOVERY= msiexec /x <ProductCode> /qn removes it; that is the same uninstall
+              path Stage 5b exercises deliberately and it is proven on ARM64 across
+              fourteen survivor checks. Behind that, System Restore point
+              SequenceNumber 1 "AetherCore baseline - before any install" was
+              created and ENUMERATED in Gate 0 and predates every install. The
+              uninstall path is NOT yet proven on THIS machine - proving it is
+              exactly what Stage 5b is for.
+    EXPECTED= msiexec exit 0. C:\Program Files\AetherCore holds SIXTEEN files.
+              Service AetherCoreMaintenance = LocalSystem, AUTO_START, RUNNING.
+              Service SID type UNRESTRICTED and Active. Pipe DACL equal to
+              O:<service SID> G:SY D:P(A;;FA;;;<service SID>)(A;;FR;;;AU)(A;;DC;;;AU)
+              (the AU pair may render as (A;;0x12008b;;;AU) - the SAME DACL).
+              Install-dir ACLs: Users and the service SID read-execute, no Users
+              write. vcomp140.dll present (the x64 counterpart of the ARM64
+              libomp140.aarch64.dll). No p39_* or other developer binary.
+              All four verbs return - doctor returning the typed
+              diagnostics.stateUnavailable is a PASS. insights list reports
+              engineLabel "localModel", NOT ruleFallback.
+    BLAST=    A failed install can leave a partially-registered service or a
+              half-populated Program Files directory. msiexec transactions roll
+              back on failure, and the verbose log names the failing action. Worst
+              case is an orphaned service registration, cleared with
+              "sc delete AetherCoreMaintenance" plus removing the directory, or by
+              rolling back to restore point 1. No user data is touched: the product
+              writes only under Program Files and ProgramData. The machine's boot
+              path is not involved. This is materially lower risk than Stage 4.
