@@ -379,6 +379,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethercore-p39-probes"
+version = "0.1.11"
+dependencies = [
+ "aethercore-contracts",
+ "aethercore-ipc",
+ "serde_json",
+]
+
+[[package]]
 name = "aethercore-pc-intelligence"
 version = "0.1.11"
 dependencies = [

@@ -6,11 +6,16 @@
 //! to a LocalSystem service through a pipe whose DACL grants Authenticated Users by
 //! design. This probe is that caller. Run it under a standard-user token.
 //!
-//! It is an EXAMPLE on purpose. Examples are not workspace binaries and are not authored
-//! into `Product.wxs`, so nothing here reaches the shipped payload — the mistake
-//! DBT-P36-001/002 recorded when the last probes widened a product crate's public API to
-//! serve them. This one adds no API: it uses `aethercore_ipc::SessionClient` exactly as
-//! `aetherctl` already does.
+//! It lives in `tools/`, NOT in a shipping crate. It was written as an
+//! `apps/aetherctl/examples/` file on the theory that "examples are not packaged";
+//! DBT-P36-008 records an example binary that nonetheless reached
+//! `C:\Program Files\AetherCore`, so the theory is not load-bearing any more and the
+//! file was moved (DBT-P40-001). `scripts/check_msi_payload.py` now fails the build if
+//! any developer binary appears in the MSI File table.
+//!
+//! It adds no product API: it uses `aethercore_ipc::SessionClient` exactly as `aetherctl`
+//! already does — the mistake DBT-P36-001/002 recorded, when the last probes widened a
+//! product crate's public surface to serve them.
 //!
 //! Usage (as the unprivileged user):
 //!   p39_pipe_attack.exe <victim-path>

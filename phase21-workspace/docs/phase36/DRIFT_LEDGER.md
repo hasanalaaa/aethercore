@@ -169,3 +169,25 @@ brief's stop rule. Each names the evidence file that holds the raw observation.
 | 7 | `aethercore-desktop.exe` is **not byte-reproducible** across Tauri rebuilds of identical sources (`5f8d771f…` -> `c351ccf0…`, same size). | `evidence/A2-build.log`, `evidence/B4-build.log` | Expected; byte-reproducibility is explicitly not a Phase 36 criterion. Noted because `RELEASE-METADATA.json` already sets `msi_byte_reproducible_claim = false`. |
 | 8 | The Parallels host volume is at **100% capacity, ~6.8 GiB free**, which blocked snapshot creation from B4 through Stage C. | `SESSION_CONTEXT.md` §13 | Human action. Deleting snapshots is forbidden; the large host directories are the user's data. |
 | 9 | The only `libomp140.aarch64.dll` available on this VM is from the VS redist **`debug_nonredist`** tree. It is the file tranche 1 shipped and the one the recorded recipe stages. | `scripts/build-arm64-msi.cmd` step [4] | Recorded, not changed. A production ARM64 package should source the redistributable OpenMP runtime, not the `debug_nonredist` copy. |
+
+## Phase 40 (2026-09-01) — third occurrence of the developer-binary class
+
+| ID | Item | Action |
+|---|---|---|
+| DBT-P40-001 | `apps/aetherctl/examples/p39_pipe_attack.rs` — the Phase 39 IPC authorization regression probe — was written into the SHIPPING crate's `examples/` directory on the reasoning that "examples are not workspace binaries and are not authored into `Product.wxs`, so nothing here reaches the shipped payload". That is the same reasoning DBT-P36-001 used, and DBT-P36-008 is an example binary that nonetheless reached `C:\Program Files\AetherCore`. | **Closed 2026-09-01.** Measured first, then moved. Relocated to `tools/p39-probes/` as a workspace member with `[[bin]] name = "p39_pipe_attack"`, still runnable, still the evidence that the authorization boundary holds. See DBT-P40-002 for the check that makes the belief unnecessary. |
+| DBT-P40-002 | Twice the class was caught by inspection after the fact, never by the build. | **Closed 2026-09-01.** `scripts/check-msi-payload.ps1` derives the allowlist from `installer/wix/Product.wxs` — the file that *is* the authorization to ship something — and fails if any row of the MSI File table is not authored there, or if a developer-artefact name is authored. Wired in as step `[7/7]` of `scripts/build-arm64-msi.cmd` and after `wix msi validate` in `scripts/build-installer.ps1`. `scripts/p36vm/check-msi-payload.selftest.ps1` exercises the clean case and both failure branches against a real package. |
+| DBT-P40-003 | `crates/security-audit/examples/gd4_live_audit.rs` is the same shape as DBT-P40-001 — a developer probe inside a product crate's `examples/`. | **Recorded, not moved.** It is a macOS-only live-audit harness with no Windows build path, and DBT-P40-002's check now makes "did it reach the payload?" a measured build-time answer rather than a belief. Move it the next time that crate is touched. |
+
+### The measurement, taken before anything was changed
+
+`AetherCore-0.1.11-arm64.msi` (`1a6ea3f1…`), installed on the qualification VM as
+ProductCode `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}`:
+
+```
+INSTALL_FILE_COUNT=16      DEV_BINARY_IN_INSTALL_IMAGE=NO
+MSI_FILE_ROWS=16           DEV_BINARY_IN_MSI_FILE_TABLE=NO
+```
+
+No `p39_*` binary in either the installed tree or the MSI's own File table. The
+belief happened to be true this time. It was still a belief, and DBT-P36-008 is
+the occasion it was false.

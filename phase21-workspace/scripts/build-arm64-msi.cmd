@@ -82,12 +82,12 @@ if not exist "%PAYLOAD%" mkdir "%PAYLOAD%"
 if not exist "%OUT%" mkdir "%OUT%"
 
 rem --- [1] frontend ----------------------------------------------------------
-echo === [1/6] apps/ui production build
+echo === [1/7] apps/ui production build
 call pnpm --dir apps/ui install --frozen-lockfile || exit /b 1
 call pnpm --dir apps/ui build || exit /b 1
 
 rem --- [2] native binaries, ONE invocation, FIXED package set ----------------
-echo === [2/6] cargo release build (fixed package set)
+echo === [2/7] cargo release build (fixed package set)
 cargo build --release ^
   -p aethercore-maintenance-service ^
   -p aethercore-consent-broker ^
@@ -104,7 +104,7 @@ rem   apps/ui/dist, so the pre-build hook is redundant: it is disabled with a
 rem   recorded config overlay rather than by changing tauri.conf.json, which is
 rem   shared with the x64 release pipeline. frontendDist ("../ui/dist") is a
 rem   config path and IS resolved relative to tauri.conf.json, so it still works.
-echo === [3/6] tauri desktop build
+echo === [3/7] tauri desktop build
 pushd "%SRC%\apps\desktop" || exit /b 1
 call "%SRC%\apps\ui\node_modules\.bin\tauri.cmd" build --no-bundle --config "%SRC%\installer\tauri.no-before-build.json"
 if errorlevel 1 (popd & exit /b 1)
@@ -114,7 +114,7 @@ rem --- [4] stage the MSI payload --------------------------------------------
 rem   The MSI payload is the executables + libomp + update-trust.json authored in
 rem   installer/wix/Product.wxs. The assets tree (model, licenses, vulndb) is NOT
 rem   copied here — it is passed to wix as AssetsDir straight from the source tree.
-echo === [4/6] stage payload
+echo === [4/7] stage payload
 rem   P37 Stage 1: aetherctl.exe is now an authored MSI component. It was built in
 rem   step [2] all along; it was simply never staged or authored, so a clean install
 rem   put seven files on disk and the CLI was absent for a real user.
@@ -137,7 +137,7 @@ rem     first 16 bytes of SHA256("AetherCore/MSI/ProductCode/v1" +
 rem                              "AetherCore/<version>/arm64")
 rem   read as a .NET Guid. Same version => same ProductCode => a rebuild of the
 rem   same version can only be a REINSTALL, never a major upgrade.
-echo === [5/6] wix build -arch arm64
+echo === [5/7] wix build -arch arm64
 for /f "usebackq delims=" %%G in (`powershell -NoProfile -Command "$s=[Security.Cryptography.SHA256]::Create();$h=$s.ComputeHash([Text.Encoding]::UTF8.GetBytes('AetherCore/MSI/ProductCode/v1')+[Text.Encoding]::UTF8.GetBytes('AetherCore/%VERSION%/arm64'));([Guid]::new([byte[]]$h[0..15])).ToString('B').ToUpperInvariant()"`) do set "PRODUCTCODE=%%G"
 echo ProductCode=%PRODUCTCODE%
 set "MSI=%OUT%\AetherCore-%VERSION%-arm64.msi"
@@ -146,8 +146,17 @@ rem   AssetsDir is sourced straight from the repo tree rather than copied into t
 rem   payload: the embedded model alone is 1.07 GB and copying it per build buys
 rem   nothing. Product.wxs reads it read-only at package time.
 call dotnet tool run wix build installer\wix\Product.wxs -arch arm64 -o "%MSI%" -d "PayloadDir=%PAYLOAD%" -d "AssetsDir=%SRC%\assets" -d "ProductVersion=%VERSION%" -d "ProductCode=%PRODUCTCODE%" || exit /b 1
-echo === [6/6] wix msi validate (zero ICE required, no suppression)
+echo === [6/7] wix msi validate (zero ICE required, no suppression)
 call dotnet tool run wix msi validate "%MSI%" || exit /b 1
+
+rem --- [7] payload check ----------------------------------------------------
+rem   Third occurrence of one class of mistake (DBT-P36-001, DBT-P36-008,
+rem   DBT-P40-001): a developer binary believed harmless because "examples are
+rem   not packaged". Measure it instead of believing it. Every File row must be
+rem   authored in Product.wxs; anything else fails the build here, not in the
+rem   field.
+echo === [7/7] MSI payload check (no example / developer binaries)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SRC%\scripts\check-msi-payload.ps1" -Msi "%MSI%" -Wxs "%SRC%\installer\wix\Product.wxs" || exit /b 1
 
 rem --- manifest -------------------------------------------------------------
 powershell -NoProfile -Command "Get-ChildItem '%PAYLOAD%','%OUT%' -File | ForEach-Object { '{0}  {1}  {2}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Length, $_.Name }" > "%STAGE%\MANIFEST.txt"

@@ -76,6 +76,10 @@ if (-not $BundleOnly) {
     if ($LASTEXITCODE -ne 0) { throw 'AetherCore MSI build failed.' }
     & dotnet tool run wix msi validate $msi
     if ($LASTEXITCODE -ne 0) { throw 'WiX MSI validation failed.' }
+    # Payload check: every file in the package must be authored in Product.wxs.
+    # See scripts/check-msi-payload.ps1 and DBT-P36-001 / P36-008 / P40-001.
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'check-msi-payload.ps1') -Msi $msi -Wxs (Join-Path $Root 'installer\wix\Product.wxs')
+    if ($LASTEXITCODE -ne 0) { throw "MSI payload check failed (exit $LASTEXITCODE)" }
     Write-Host "MSI built: $msi" -ForegroundColor Green
 }
 

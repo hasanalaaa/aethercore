@@ -47,6 +47,7 @@ members = [
   "tools/update-manifest",
   "tools/support-bundle-verify",
   "tools/ga-probe",
+  "tools/p39-probes",
   "crates/db-diagnostics",
   "crates/security-audit",
   "crates/fleet",
