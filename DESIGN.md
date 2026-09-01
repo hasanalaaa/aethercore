@@ -317,12 +317,38 @@ first time that screen is themed**, so §8 must be re-read from `list_screens`
 rather than trusted after any apply. `upload_design_md` also adds a
 non-UI "DESIGN.md" screen (`14024205626593851266`) to the project canvas.
 
-### 9.5 `edit_screens` timed out
+### 9.5 `edit_screens` reports success without persisting
 
-Consistent with the 2026-09-01 note that `generate_screen_from_text` and
-`generate_variants` timed out repeatedly. The tool documents that the operation
-may still complete server-side after the client times out, and that it must not
-be retried. Outcome recorded separately below once verified.
+Two behaviours, both measured.
+
+**Long prompts time out.** A full restructuring prompt timed out on
+`GEMINI_3_1_PRO`; a shortened six-point version timed out on `GEMINI_3_FLASH`.
+Neither landed.
+
+**Short prompts return success — and still do not land.** Three single-purpose
+edits each returned a normal payload containing a plausible
+`DomOperationEvent` with a `verified_html_context` quoting the real markup:
+
+| Edit | Reported operation | Result |
+|---|---|---|
+| status square → circle (Overview) | `add_class rounded-full` on `<div class="w-2 h-2 bg-primary">` | **not applied** |
+| delete "Engine Integrity" block (Deep Scan) | `remove_element` on `div.mt-auto` | **not applied** |
+| delete scare sentence (Deep Scan) | `replace_content` on `p.font-body-sm` | **not applied** |
+
+Verification: after all three, `get_screen` returned the **same**
+`htmlCode.name` and the **same** `screenshot.name` as before the edits, and the
+re-downloaded Deep Scan HTML was **byte-identical** to the pre-edit copy
+(md5 `cb4fadf64b104a9ea45738e2105d4771`, 25,348 bytes both times). Overview was
+re-checked roughly six minutes after its edit and was still unchanged.
+
+By contrast `apply_design_system` *does* persist — it mints a new `files/…` id
+and a new screen id every time. So the difference is real, not a caching
+artifact of how these files are served.
+
+**Do not trust an `edit_screens` success response.** Always re-read
+`htmlCode.name` and diff the bytes. A future session should treat the write
+path as unavailable until proven otherwise on a throwaway screen.
+
 
 ---
 
@@ -364,12 +390,12 @@ closed** by the system change alone.
 
 ### Blocked
 
-`edit_screens` — the only path that can change shape — **timed out twice**:
-once on `GEMINI_3_1_PRO` with a long prompt, once on `GEMINI_3_FLASH` with a
-short one. Neither landed; the Overview HTML file ID `b83c98815db74dda…` was
-unchanged after both. This matches the 2026-09-01 note that
-`generate_screen_from_text` and `generate_variants` also timed out repeatedly.
-The read path and the theme path work; **the generate/edit path does not.**
+`edit_screens` — the only path that can change shape — **does not write**. Long
+prompts time out; short prompts return a success payload with a plausible DOM
+operation and still change nothing. Five attempts, zero bytes changed. See §9.5
+for the byte-level proof. This extends the 2026-09-01 note that
+`generate_screen_from_text` and `generate_variants` timed out repeatedly: the
+read path and the theme path work, **the whole generate/edit path does not.**
 
 Consequently **Step 4** (Overview shape + empty state) and **Step 5** (Deep Scan
 honesty violations) could not be executed. They remain open, with exact prompts
@@ -379,8 +405,8 @@ ready in this session's history.
 
 | Screen | Violation | Status |
 |---|---|---|
-| Deep Scan Results | `Engine Integrity 94.2%` — composite of nothing, fabricated precision | open, needs `edit_screens` |
-| Deep Scan Results | "Imminent", "data loss", "risk detected" — scare copy | open, needs `edit_screens` |
+| Deep Scan Results | `Engine Integrity 94.2%` — composite of nothing, fabricated precision | **open** — edit issued, reported success, did not persist |
+| Deep Scan Results | "Imminent", "data loss", "risk detected" — scare copy | **open** — edit issued, reported success, did not persist |
 | Performance Telemetry | `85% impact`, `42% impact` under "AI Bottleneck Attribution" — unitless derived score | open, **not in the briefed scope**, needs a decision |
 
 Not violations, checked and cleared: `CPU utilization 87.4%`, `Memory usage
