@@ -3187,3 +3187,42 @@ booting Windows or WinRE.
 **OWNER DECISION REQUIRED before Stage 4:** attach an external drive of >= 512 GB
 and take a full image. Without one, Stage 4 driver work carries a real,
 non-zero risk of an unbootable machine that only a Windows reinstall clears.
+
+## 41.3 DESTRUCTIVE ACTION RECORD — Stage 1a: install the build toolchain
+
+Measured first. The machine is a **bare** box: the only build-relevant software
+present is Node.js v22.23.2 (hermes-managed), npm, corepack, winget v1.29.290 and
+the WebView2 Runtime (pv 151.0.4129.107). Everything else is absent —
+`rustc`/`cargo`/`rustup`, `.NET`, Visual Studio Build Tools (no `vswhere.exe` at
+all), the Windows SDK (`C:\Program Files (x86)\Windows Kits\10` does not exist),
+LLVM/clang, CMake, Ninja, WiX, pnpm.
+
+    ACTION=   Install the build prerequisites the repo's own scripts/bootstrap.ps1
+              declares, using the winget package IDs it names:
+              Rustlang.Rustup, Microsoft.DotNet.SDK.8,
+              Microsoft.VisualStudio.2022.BuildTools (VCTools workload,
+              --includeRecommended, which carries the Windows SDK), pnpm via npm,
+              and the WiX .NET global tool. Node.js and WebView2 are already
+              present and are NOT reinstalled.
+    RECOVERY= Every one of these is a normal, independently uninstallable product:
+              winget uninstall for the three winget IDs, `npm uninstall -g pnpm`,
+              `dotnet tool uninstall --global wix`, and rustup's own `rustup self
+              uninstall`. None of them modifies an existing AetherCore install
+              (there is none yet), none touches Defender/UAC/Firewall/SmartScreen,
+              and none replaces an existing compiler - there is no prior toolchain
+              on this machine to overwrite. Restore point SequenceNumber 1 predates
+              all of it. Uninstall is NOT independently proven on this machine;
+              it is standard product behaviour, not a measured claim.
+    EXPECTED= rustc reports a 1.97.1 x86_64-pc-windows-msvc toolchain; vswhere
+              resolves an installation with
+              Microsoft.VisualStudio.Component.VC.Tools.x86.x64; a Windows Kits 10
+              bin directory exists; dotnet, pnpm and wix all report versions.
+              scripts/bootstrap.ps1 stops reporting missing prerequisites.
+    BLAST=    Disk: roughly 8-12 GB consumed on C: (446.5 GB free, so not at
+              risk). A failed or partial VS Build Tools install leaves an
+              incomplete toolchain, which fails Stage 1c loudly at compile time
+              rather than silently - it cannot produce a wrong artifact, only no
+              artifact. Nothing already on the machine depends on these packages,
+              so a bad install cannot break existing software. This is additive
+              developer tooling on a box with no prior toolchain; it is the
+              lowest-risk mutation in the whole session.
