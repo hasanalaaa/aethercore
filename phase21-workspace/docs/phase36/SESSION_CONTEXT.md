@@ -2568,3 +2568,147 @@ are fixed.
 | 7 | `performance_optimization::status(plan_id)` | an owner-less status accessor exists | **RECORDED as a latent hazard.** Currently unreachable: the `GetOptimizationStatus` arm returns `status: None` unconditionally and never calls it, and the compiler already reports it dead. If a future change wires the handler to it, instance #1's shape returns |
 | 8 | `StartOptimization`, `CheckForUpdates`, `StageUpdate` | — | Typed refusals; nothing is read |
 | 9 | `GetPlatformCapabilities`, `GetEngineSource`, `GetUpdateCheckDescriptor` | machine-wide, non-owner data, no caller-named target | Not the class |
+
+## 18.5 VM RESULTS — THREE PACKAGES, TWO HONEST FAILURES, ONE PASS
+
+Snapshot taken before any mutation: **P39-PRE-FIX-BUILD
+`{7c10fb2b-dbdd-45c5-b8af-85ab9a0f342f}`**, per the record in 18.3.
+
+The guest source tree was not assumed current. Every one of the 967 tracked
+non-docs files was hash-compared and the differing ones copied, then ALL of them
+re-verified: `SCANNED=967 SAME=948 CHANGED=14 MISSING=5 COPIED=19
+POST_VERIFY_BAD=0`. The drift was real and predated this session — `crates/ipc`
+(the DBT-P36-001/002 probe-API revert), `crates/intelligence-core` tests, the
+icon set and `static_validate.py` were all stale in the guest. Syncing only this
+session's delta would have built a package that was not `main` plus the fix.
+
+| version | ProductCode | outcome |
+|---|---|---|
+| 0.1.9 | `{EE0AE741-51DE-F66B-2790-81B6EB90D02B}` | **built, installed, REJECTED** — empty scope for every principal |
+| 0.1.10 | `{9878E6E1-3211-FA76-0D45-030EA6C16177}` | **built, installed, REJECTED** — same |
+| **0.1.11** | `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}` | **the fix, proven** |
+
+Each ProductCode was recomputed independently on the Mac from the documented
+scheme before the build ran, and each build emitted exactly that value. The same
+computation reproduces `{92E437E7-…}` for the already-installed 0.1.8, so the
+derivation is checked against a known answer rather than asserted.
+
+### The two failures, and what each one cost to find
+
+Both were the SAME symptom — attacks refused, but the legitimate caller refused
+too, so the guard was fail-closed on everything. Neither was found by reasoning;
+both were found by running the attack on the installed product, which is exactly
+why the brief required it.
+
+**0.1.9.** `SHGetKnownFolderPath(FOLDERID_Profile, token)` returned nothing for
+every principal. The service opens the impersonated client token with
+`TOKEN_QUERY` only and that API also wants `TOKEN_IMPERSONATE`. Replaced with a
+`ProfileList` lookup keyed by the SID already on the principal — no token rights
+needed at all, and `HKLM\SOFTWARE` is administrator-writable only, so an
+unprivileged caller cannot redirect its own scope.
+
+**0.1.10.** Still empty. Four things were measured before anything was changed,
+and three came back clean — which is what made the fourth findable:
+
+| measured | result |
+|---|---|
+| installed service binary identity | SHA == the 0.1.10 payload SHA, process started at install time — the new code WAS running |
+| `ProfileList` read as SYSTEM for the standard user's SID | `C:\Users\P36StandardUser`, all three `RRF_*` flag combinations OK |
+| the same read as that user | `C:\Users\P36StandardUser`, OK |
+| `canonicalize` of that path | `\\?\C:\Users\P36StandardUser`, OK |
+
+The one remaining difference was that `principal_from_token` runs INSIDE the
+impersonation window. `inspect_named_pipe_client` now fills `profile_dir` after
+`RevertToSelf`, with the service's own authority. The SID string is decoded from
+the bytes already on the principal by hand — documented layout, pure arithmetic,
+no Win32 call — and unit-tested on macOS against the exact SIDs on this box.
+`RRF_RT_REG_EXPAND_SZ` was dropped: the diagnostic showed plain `RRF_RT_REG_SZ`
+already returns the expanded path.
+
+A fail-closed refusal that cannot say WHY is undiagnosable in the field, so
+`sec.ownerScopeUnresolved` now distinguishes "the OS named no root for this
+principal" from "the named roots did not resolve".
+
+### GATE — 0.1.11 BUILD: **PASS**
+
+```
+Version=0.1.11  (derived from Cargo.toml [workspace.package].version)
+=== BUILD OK: C:\AetherCore-P36\build\out\AetherCore-0.1.11-arm64.msi
+ICE_MATCHES=0          all six steps ran, [6/6] is `wix msi validate`
+```
+1,099,653,120 B, sha256 `1a6ea3f10a0a195c18907946ffe18651afccef29859738dbe2b9e02444ad75f9`.
+
+### GATE — 0.1.11 INSTALLED: **PASS**, zero differing fields vs the section 10 baseline
+
+`msiexec /i … /qn` -> `EXIT=0`.
+
+| check | expected | observed |
+|---|---|---|
+| ARP entries | exactly 1 | `ARP_COUNT=1` |
+| ARP key / version | `{98FCE2D5-…}` / 0.1.11 | same |
+| `HKLM\SOFTWARE\AetherCore\InstallVersion` | 0.1.11 | `0.1.11` |
+| INSTALLFOLDER files | 16 | `FILE_COUNT=16` |
+| `sc qc` | TYPE 10, AUTO_START (DELAYED), ERROR_CONTROL 1 NORMAL, LocalSystem | identical |
+| `sc query` | STATE 4 RUNNING | RUNNING |
+| `sc qsidtype` | UNRESTRICTED | UNRESTRICTED |
+| pipe SDDL | identical to section 10 | `O:S-1-5-80-4285065559-…-1187574229G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-…)` |
+| install-dir `icacls` | identical, Users RX no write | identical |
+| installed `about` | 0.1.11 / windows | `{"platform":"windows","version":"0.1.11",…}` |
+
+Nothing was widened to achieve this: the pipe DACL, the install-dir ACLs, the
+Service SID type and the module gating are byte-for-byte the values the Phase 36
+baseline recorded.
+
+### GATE — THE ATTACK, ON THE INSTALLED SERVICE, OVER THE REAL NAMED PIPE: **PASS**
+
+`p39_pipe_attack.exe` against `AetherCore.Maintenance.v7`, service exe
+`c17602cc57330cf062a3575dae29ad643220e00f4fcf6fe726399664a8ed522a`:
+
+```
+ATTACK_AUDIT_FOREIGN_PATH     STATUS:403 sec.targetOutsideOwnerScope
+                              [target is outside the calling principal's own
+                               scope: C:\Users\hasanalaaa]           BODY: (empty)
+ATTACK_JOURNAL_FOREIGN_OWNER  STATUS:403 journal.ownerScopeForbidden BODY: (empty)
+LEGIT_AUDIT_OWN_SCOPE         STATUS:0    cve:ok:0 | secrets:ok:1
+LEGIT_JOURNAL_OWN_SCOPE       STATUS:0    records=0 signed=false
+FAILURES=0
+```
+
+The request that returned `AKIA****************` and the victim's exact file path
+before the fix now returns a typed refusal and no payload at all. The legitimate
+lane genuinely RAN rather than being silently narrowed away — `secrets:ok`
+carries a real finding.
+
+### BLOCKED — the actual-token contexts, and why
+
+**Raw observation.** From ~12:05 onward every Windows Scheduled Task on this VM
+sits `State=Queued` and never runs, including a trivial `cmd.exe /c echo` task
+registered as SYSTEM with `-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`.
+`sc query Schedule` reports `STATE 4 RUNNING`. The guest reports
+`Win32_Battery BatteryStatus=1 (discharging) EstimatedChargeRemaining=17`, and
+the Mac host reports `Now drawing from 'Battery Power' … 17%; discharging`.
+Tasks ran normally on this box at 11:44 and stopped some time before 12:05.
+
+**Expected.** The one-shot Scheduled Task method runs the probe under
+`P36StandardUser` (Limited) and `P36Admin` (Highest), as it did earlier today.
+
+**A stale transcript nearly became a false PASS, and that is worth recording.**
+`verbs-outer.ps1` copies `C:\Users\Public\p36\verbs-<ctx>.txt` to the Mac after
+the task "finishes". With the task stuck Queued it copied the file left there by
+the Phase 38 run and reported a clean 18/18. It was caught only because the
+transcript carried `CTL_SHA256=f70e820f…`, the **0.1.8** aetherctl, while the
+installed binary is `7847569b…`. Every stale file under `C:\Users\Public\p36`
+and `p39` has been purged so this cannot recur silently, but the harness itself
+still has the flaw: it does not fail when its task did not run.
+
+**What IS established on real tokens.** The 0.1.9 and 0.1.10 probe runs executed
+under genuine `P36StandardUser` (`IS_ELEVATED_ADMIN=False`) and `P36Admin`
+(`True`) tokens before the battery drained, and in both contexts the pipe was
+reachable and BOTH attacks were refused with 403. So "an unprivileged local user
+is refused" is proven under a real unprivileged token. What is NOT yet proven
+under such a token is that the LEGITIMATE path works on 0.1.11 — that run needs
+the scheduler, and the scheduler needs the host on mains power.
+
+**Human action required:** put the Mac on AC, then re-run
+`~/dev/p36-stage/vmr p39-attack-outer P39FINAL` and
+`~/dev/p36-stage/vmr p39-verbs P39FINAL`. Nothing else is outstanding.
