@@ -2765,3 +2765,101 @@ both callers, because not following a link is correct behaviour either way.
 | name | id | taken before |
 |---|---|---|
 | P39-PRE-FIX-BUILD | `{7c10fb2b-dbdd-45c5-b8af-85ab9a0f342f}` | syncing the fix and building/installing 0.1.9 |
+
+# 19. PHASE 40 — BUILD HYGIENE AND TEST-HARNESS INTEGRITY (2026-09-01)
+
+Recovery point for this session: **P40-PRE-HOUSEKEEPING
+`{d652cd40-877c-4a9a-bb1b-2e3637a96ec2}`**, taken before any Phase 40 VM action.
+`P37-SHIPPING-QUALIFIED {a1696567-…}` and `P39-PRE-FIX-BUILD {7c10fb2b-…}` are
+both still present and neither was restored.
+
+The Mac is on AC power, so §18.5's blocked actual-token run is runnable again.
+
+## 19.0 The guest-tools channel was wedged before anything could be measured
+
+Every `prlctl exec` — including `cmd.exe /c echo` — hung indefinitely and then
+returned `PrlVm_TerminalConnect: PrlJob_Wait: PRL_ERR_IO_STOPPED`. Host load
+average was 6.5–7.8 and the battery had been at 17%. The snapshot above was
+taken first; the guest was then restarted and answered in under 20 seconds.
+Recorded because it looks exactly like a hung gate and is not one.
+
+## 19.2 THE GATE HARNESS COULD REPORT A RESULT FROM AN EARLIER RUN
+
+### The defect
+
+`verbs-outer.ps1` waited with
+
+```powershell
+do { Start-Sleep -Seconds 2; $state = (Get-ScheduledTask -TaskName $name).State }
+while ($state -eq 'Running' -and (Get-Date) -lt $deadline)
+```
+
+A task that never leaves `Queued` — §18.5's battery stall — is not `Running`, so
+the loop exits on its first evaluation. The harness then copied whatever
+`C:\Users\Public\p36\verbs-<ctx>.txt` was on disk and reported it as this run's
+result.
+
+### The fix (`scripts/p36vm/verbs-outer.ps1`)
+
+Three changes, each closing one half of it:
+
+| change | what it prevents |
+|---|---|
+| the transcript is deleted before the task is registered | there is nothing stale left to mis-copy |
+| the wait loop also waits through `Queued` | a stalled scheduler times out instead of returning instantly |
+| `LastRunTime` must be newer than the moment this invocation started, or the harness **throws** `STALE_RESULT` | a result that predates the run it started is never reported at all |
+
+### The fix is itself tested
+
+`scripts/p36vm/verbs-outer.staletest.ps1` runs the predicate against the real
+Task Scheduler in both directions — a check that has only ever been seen to pass
+is not evidence:
+
+```
+NEVER_RAN LastRunTime=11/30/1999 00:00:00 RAN=False WANT=False
+AFTER_RUN  LastRunTime=09/01/2026 15:26:24 RAN=True  WANT=True
+STALETEST_FAILURES=0
+```
+
+The `NEVER_RAN` line is precisely the state that used to sail through as a PASS.
+
+### Which recorded results were produced by the unfixed harness
+
+`verbs-outer.ps1` was written 2026-08-31 14:26, so **every** verbs gate ever
+recorded — S1, FINAL, desktop, P38FINAL, P39FINAL — ran under the unfixed
+harness and was, at the time, unverified. They are not all stale, and the
+transcripts themselves settle which is which: each carries `CAPTURED_UTC`, the
+SHA of the `aetherctl.exe` it actually invoked, and per-verb `ELAPSED_MS`.
+
+| label | CAPTURED_UTC | CTL_SHA256 | verdict |
+|---|---|---|---|
+| S1 | 2026-08-31T11:43:31Z / :40Z | `b8a29c92…` | genuine — its own capture time and its own timings |
+| FINAL | 16:38:54Z / 16:39:04Z | `1bfd04c2…` | genuine |
+| desktop | 17:34:13Z / 17:34:23Z | `1bfd04c2…` | genuine — same binary as FINAL, but a distinct capture time and every `ELAPSED_MS` differs |
+| P38FINAL | 21:06:24Z / 21:06:34Z | `f70e820f…` | genuine |
+| **P39FINAL** | 21:06:24Z / 21:06:34Z | `f70e820f…` | **STALE** — byte-identical to P38FINAL, and `f70e820f…` is the **0.1.8** CLI while 0.1.11 was installed |
+
+`P39FINAL` is the one §18.5 already caught by hand. Nothing else was stale, and
+the four genuine ones cannot be re-run in any meaningful sense: each measured a
+different installed package, and the VM now holds 0.1.11. The one that can and
+must be re-run against the current product is the 0.1.11 verbs gate.
+
+### GATE — 18/18 VERBS ON 0.1.11, BOTH ACTUAL-TOKEN CONTEXTS, FIXED HARNESS: **PASS**
+
+`verbs-outer.ps1 -Label P40FINAL`:
+
+```
+STD    TASK_STATE=Ready LAST_RESULT=0 LAST_RUN=09/01/2026 15:25:37 RAN_THIS_INVOCATION=True
+ADMIN  TASK_STATE=Ready LAST_RESULT=0 LAST_RUN=09/01/2026 15:25:45 RAN_THIS_INVOCATION=True
+```
+
+18/18 `RESULT=RETURNED`. Both transcripts record
+`CTL_SHA256=7847569b2a08dddc89ca305f497918ef088d26bf3e0b197eb5b14e28a80a823f`
+— the **installed 0.1.11** CLI, not the 0.1.8 one the stale transcript carried —
+under genuine tokens (`p36standarduser`, `IS_ELEVATED_ADMIN=False`; `p36admin`,
+`True`). `doctor` returns `EXIT_CODE=5` in both contexts, unchanged from every
+prior run.
+
+**RESULTS THAT CHANGED: none.** The corrected harness returns the same verdict
+the P38FINAL evidence supported. What changed is that the 0.1.11 gate is now
+actually met rather than blocked: §18.7's single outstanding item is closed.
