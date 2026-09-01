@@ -169,7 +169,13 @@ message Response {
 }
 message RunSecurityAuditRequest {
   // Serialized aethercore.security.audit.target.v1 JSON array — typed
-  // AuditTarget selectors. Owner-scoped allowlist is enforced by the router.
+  // AuditTarget selectors. Owner-scoped allowlist is enforced by the router:
+  // every path-bearing target must resolve inside a root the OS reports for the
+  // CALLING principal's own token, and a symlink/reparse point at or below such a
+  // root is refused rather than followed. Anything else is rejected typed
+  // (sec.targetOutsideOwnerScope / sec.reparsePointRefused /
+  // sec.traversalRejected / sec.ownerScopeUnresolved) before any provider runs.
+  // This matters because the service reads as LocalSystem, not as the caller.
   bytes targets_json = 1;
 }
 message SecurityAuditReportLane {
@@ -199,6 +205,9 @@ message ExportJournalRequest {
   // Exclusive upper bound (unix ms); 0 = up to now.
   int64 to_unix_ms = 2;
   // Owner principal key scope; empty = the calling principal's own records.
+  // A non-empty value is accepted ONLY when it equals the calling principal. No
+  // authorization exists in this product for reading another owner's records, so
+  // anything else is refused with journal.ownerScopeForbidden.
   string owner_principal_key = 3;
 }
 message ExportJournalResponse {

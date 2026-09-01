@@ -11,6 +11,15 @@ pub struct PrincipalContext {
     pub authentication_id: u64,
     /// Windows Terminal Services session that owns the named-pipe client.
     pub session_id: u32,
+    /// The caller's own profile/home directory, as the OS reports it for THIS token.
+    ///
+    /// Phase 39: the maintenance service runs as LocalSystem, so any request that names
+    /// a filesystem target has to be confined to something the CALLER owns. That root
+    /// cannot come from the request and cannot be reconstructed later — on Windows it is
+    /// read from the impersonated client token while the service still holds it. `None`
+    /// means the OS did not answer, which callers must treat as "no scope", never as
+    /// "no restriction".
+    pub profile_dir: Option<String>,
 }
 
 impl PrincipalContext {
@@ -22,6 +31,16 @@ impl PrincipalContext {
             self.user_sid, self.authentication_id, self.session_id
         );
         hex::encode(Sha256::digest(material.as_bytes()))
+    }
+
+    /// Roots this principal may name in a request. Empty when the OS gave no answer —
+    /// an empty allowlist refuses everything, which is the correct fail-closed reading.
+    pub fn owner_roots(&self) -> Vec<std::path::PathBuf> {
+        self.profile_dir
+            .iter()
+            .filter(|dir| !dir.trim().is_empty())
+            .map(std::path::PathBuf::from)
+            .collect()
     }
 
     pub fn same_logon_principal(&self, other: &Self) -> bool {
@@ -207,7 +226,33 @@ fn principal_from_token(
             user_sid: hex::encode(sid_bytes),
             authentication_id,
             session_id,
+            profile_dir: profile_dir_for_token(token),
         })
+    }
+}
+
+/// The profile directory Windows reports FOR THIS TOKEN.
+///
+/// `SHGetKnownFolderPath` takes the token as its third argument, so this is the OS's own
+/// answer for the calling user — no SID-to-string round trip, no `ProfileList` registry
+/// read, and no trust in an inherited `%USERPROFILE%`. It is the same known-folder API
+/// `aethercore-windows-foundation` already uses to resolve the machine data root.
+///
+/// A failure yields `None`, which the audit allowlist reads as an empty scope.
+#[cfg(windows)]
+fn profile_dir_for_token(token: windows::Win32::Foundation::HANDLE) -> Option<String> {
+    use windows::{
+        Win32::{
+            System::Com::CoTaskMemFree,
+            UI::Shell::{FOLDERID_Profile, KF_FLAG_DEFAULT, SHGetKnownFolderPath},
+        },
+        core::PCWSTR,
+    };
+    unsafe {
+        let raw = SHGetKnownFolderPath(&FOLDERID_Profile, KF_FLAG_DEFAULT, Some(token)).ok()?;
+        let text = PCWSTR(raw.0).to_string().ok();
+        CoTaskMemFree(Some(raw.0.cast()));
+        text.filter(|value| !value.is_empty())
     }
 }
 
@@ -401,6 +446,13 @@ pub fn socket_owner_principal() -> PrincipalContext {
         user_sid: hex_sid,
         authentication_id: u64::from(uid),
         session_id: 0,
+        // The 0700/0600 rendezvous means the peer IS the socket-owning user, i.e. this
+        // process's own uid, so this process's HOME is that user's home. The unix
+        // composition claims nothing deeper than the permission boundary it already
+        // documents (SO_PEERCRED deepening stays in QD-026-001).
+        profile_dir: std::env::var_os("HOME")
+            .map(|home| home.to_string_lossy().into_owned())
+            .filter(|home| !home.is_empty()),
     }
 }
 
@@ -461,6 +513,7 @@ mod tests {
             user_sid: "01050000000000051500000001020304".into(),
             authentication_id: auth,
             session_id: session,
+            profile_dir: None,
         }
     }
 
@@ -479,6 +532,19 @@ mod tests {
         assert!(a.same_logon_principal(&same));
         assert!(!a.same_logon_principal(&other_session));
         assert!(!a.same_logon_principal(&other_user));
+    }
+
+    #[test]
+    fn an_unresolved_profile_dir_yields_no_owner_roots_rather_than_no_restriction() {
+        let mut peer = principal(r"C:\A.exe", false, 10, 1);
+        assert!(peer.owner_roots().is_empty(), "None means no scope");
+        peer.profile_dir = Some("   ".into());
+        assert!(peer.owner_roots().is_empty(), "blank means no scope");
+        peer.profile_dir = Some(r"C:\Users\alice".into());
+        assert_eq!(
+            peer.owner_roots(),
+            vec![std::path::PathBuf::from(r"C:\Users\alice")]
+        );
     }
 
     #[test]

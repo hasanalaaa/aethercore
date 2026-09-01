@@ -17,6 +17,7 @@ pub mod filesystem;
 pub mod firewall;
 pub mod model;
 pub mod password;
+pub mod scope;
 pub mod secrets;
 pub mod sshd;
 pub mod sudoers;
@@ -24,6 +25,8 @@ pub mod vulndb;
 pub mod vulnjoin;
 
 use serde::{Deserialize, Serialize};
+
+pub use scope::{OwnerScope, TargetDenial, authorize_targets, is_reparse_point};
 
 /// Report schema version.
 pub const REPORT_SCHEMA_VERSION: u32 = 1;

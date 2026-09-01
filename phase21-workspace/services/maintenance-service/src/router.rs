@@ -1389,10 +1389,23 @@ pub fn handle_request(
             request::Payload::ExportJournal(v) => {
                 // Read-only RPC: pulls through EXISTING persistence accessors only;
                 // single-writer discipline untouched.
-                let owner = if v.owner_principal_key.trim().is_empty() {
+                // `operations.proto` documents empty as "the calling principal's own
+                // records". A NON-empty value is a request to read someone else's, and
+                // no authorization exists in this product that grants that: there is no
+                // administrative scope, no delegation, no broker gate for it. Honouring
+                // it let any caller holding another binding key read that owner's
+                // executions, support journal and repair timeline out of a LocalSystem
+                // service. The only correct answer is to refuse.
+                let owner = if v.owner_principal_key.trim().is_empty()
+                    || v.owner_principal_key == principal_key
+                {
                     principal_key.clone()
                 } else {
-                    v.owner_principal_key.clone()
+                    return Err(ServiceError::forbidden(
+                        "persistence",
+                        "journal.ownerScopeForbidden",
+                        "owner_principal_key must be empty or equal to the calling principal",
+                    ));
                 };
                 let executions = ctx
                     .db
@@ -1513,12 +1526,14 @@ pub fn handle_request(
             }
             // ---------------- Phase 32 (T1): read-only security audit ----------------
             request::Payload::RunSecurityAudit(v) => {
-                // Read-only RPC over the aethercore-security-audit domain:
-                // parses caller-named config/log/dir targets; zero system
-                // mutations, zero elevation, zero network. Targets are owner-
-                // scoped by construction (the calling principal runs the scan
-                // against paths it names); traversal-style entries are
-                // rejected typed before any provider runs.
+                // Read-only RPC over the aethercore-security-audit domain: zero
+                // system mutations, zero network. It is NOT zero-privilege — the
+                // Windows host runs as LocalSystem and reverts impersonation before
+                // dispatch, so a caller-named path is read with the service's authority
+                // and not the caller's. Targets are therefore confined to the roots the
+                // OS reported for THIS caller's own token, which is the owner-scoped
+                // allowlist `operations.proto` has always promised here. Refusal is
+                // typed and happens before any provider runs.
                 let parsed: Result<Vec<aethercore_security_audit::model::AuditTarget>, String> =
                     serde_json::from_slice::<Vec<serde_json::Value>>(&v.targets_json)
                         .map_err(|e| format!("targets parse: {e}"))
@@ -1550,13 +1565,14 @@ pub fn handle_request(
                         ));
                     }
                 };
-                if let Err(detail) =
-                    aethercore_security_audit::validate_targets(&targets)
+                let scope = aethercore_security_audit::OwnerScope::new(peer.owner_roots());
+                if let Err(denial) =
+                    aethercore_security_audit::authorize_targets(&targets, &scope)
                 {
-                    return Err(ServiceError::invalid(
+                    return Err(ServiceError::forbidden(
                         "security",
-                        "sec.traversalRejected",
-                        detail,
+                        denial.code(),
+                        denial.to_string(),
                     ));
                 }
                 let report = aethercore_security_audit::run_audit(&targets);

@@ -231,6 +231,12 @@ fn collect_files(root: &Path) -> (Vec<PathBuf>, bool) {
             let Ok(meta) = std::fs::symlink_metadata(&p) else {
                 continue;
             };
+            // A junction/symlink is SKIPPED, never followed: under the maintenance
+            // service this walk runs as LocalSystem, and one planted link inside an
+            // authorized root would otherwise redirect the scan anywhere on the disk.
+            if crate::scope::is_reparse_point(&meta) {
+                continue;
+            }
             if meta.is_dir() {
                 stack.push(p);
             } else if meta.is_file() {
