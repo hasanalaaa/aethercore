@@ -2863,3 +2863,174 @@ prior run.
 **RESULTS THAT CHANGED: none.** The corrected harness returns the same verdict
 the P38FINAL evidence supported. What changed is that the 0.1.11 gate is now
 actually met rather than blocked: §18.7's single outstanding item is closed.
+
+## 19.1 TEST CODE IN THE SHIPPING CRATE'S EXAMPLES DIRECTORY
+
+### Measured before anything was moved
+
+`p39_pipe_attack.rs` justified its location with "examples are not workspace
+binaries and are not authored into `Product.wxs`, so nothing here reaches the
+shipped payload". DBT-P36-008 is `ipc_probe.exe` in `C:\Program Files\AetherCore`,
+so that reasoning has already been wrong once. The installed 0.1.11 image and the
+MSI's own File table were both enumerated first:
+
+```
+INSTALL_FILE_COUNT=16      DEV_BINARY_IN_INSTALL_IMAGE=NO
+MSI_FILE_ROWS=16           DEV_BINARY_IN_MSI_FILE_TABLE=NO
+```
+
+Sixteen files on disk, sixteen rows in the File table, one-for-one, no `p39_*`
+anything. The belief was true this time. It was still a belief.
+
+### Relocated
+
+`apps/aetherctl/examples/p39_pipe_attack.rs` ->
+`tools/p39-probes/src/p39_pipe_attack.rs`, a workspace member with
+`[[bin]] name = "p39_pipe_attack"`. `tools/p36-probes/` — where the earlier
+developer tools went — was deleted when DBT-P36-001 closed, so this is the same
+place under this phase's name, beside `tools/ga-probe` and
+`tools/support-bundle-verify`. It adds no product API: it still uses
+`aethercore_ipc::SessionClient` exactly as `aetherctl` does.
+
+Built on the VM from the new location: `cargo build --release -p
+aethercore-p39-probes` -> `EXIT=0`,
+`target\release\p39_pipe_attack.exe` sha256 `cf0e892ceba0608413b37d74062ae1de…`.
+The MSI recipe's fixed package set does **not** include it
+(`PROBE_BUILT_BY_MSI_RECIPE=False`), which is the point.
+
+The guest source tree also still held `crates/security/examples/p39_profile_probe.rs`
+and a compiled `target\release\examples\p39_pipe_attack.exe` from Phase 39. The
+sync is copy-only and had never deleted anything; both are gone now, and the
+sync script deletes what leaves the repo.
+
+### The check (DBT-P40-002)
+
+`scripts/check-msi-payload.ps1`. The allowlist is **derived**, not maintained:
+every row of the MSI File table must correspond to a `<File Source="…">` in
+`installer/wix/Product.wxs`, the file that *is* the authorization to ship
+something. Authoring a probe into the wxs to get past it also fails, on the name.
+
+Wired in as `[7/7]` of `scripts/build-arm64-msi.cmd` (after `wix msi validate`)
+and after the same step in `scripts/build-installer.ps1`.
+
+`scripts/p36vm/check-msi-payload.selftest.ps1` runs it against a real package in
+all three states — a check only ever seen to pass proves nothing:
+
+```
+CASE clean-package           WANT=0 GOT=0 OK
+CASE probe-authored-in-wxs   WANT=1 GOT=1 OK
+CASE unauthored-file-in-msi  WANT=1 GOT=1 OK
+```
+
+## 19.3 GATES — NOTHING ELSE MOVED
+
+The installed article was **not** replaced. 0.1.11 was already installed from
+`1a6ea3f1…` and is the qualified package; a same-version rebuild carries a new
+PackageCode and would need `REINSTALLMODE=vamus` (tranche 3 #2) to reinstall,
+which would swap out the qualified install for no gain. The rebuild proves the
+build; the installed 0.1.11 carries the client gates.
+
+| gate | result |
+|---|---|
+| MSI build | `=== BUILD OK: …\AetherCore-0.1.11-arm64.msi`, all seven steps ran |
+| ICE | `ICE_MATCHES=0`, `wix msi validate` step `[6/7]` present, no suppression |
+| **payload check** | step `[7/7]` ran in the real build: `AUTHORED_FILES=16 MSI_FILE_ROWS=16 PAYLOAD_CHECK=PASS` |
+| ProductCode | `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}` — identical to the 0.1.11 in ARP, as the derivation requires |
+| verbs | **18/18 RETURNED**, both actual-token contexts, `RAN_THIS_INVOCATION=True` (§19.2) |
+| service | `STATE 4 RUNNING` |
+| pipe DACL | identical to the §10 baseline, field-for-field |
+| install-dir ACLs | `installdir_icacls` **identical** to `verify-S1-postinstall.json` |
+| `sc qc` / `sc qsidtype` / `sc sdshow` / ProgramData | all identical to that baseline |
+| authorization tests | `phase39_ipc_authorization` **6/6** |
+| attack, real pipe, BOTH real tokens | `FAILURES=0` in both |
+| legitimate path | scored `cis-l1` report returned to a standard user |
+| `static_validate.py` | 344 checks / 21 failing — the §18.6 numbers exactly. **Newly failing: none** |
+
+The rebuilt package is `3ae46dff…` against the installed `1a6ea3f1…`: the same
+1,099,653,120 bytes, a different PackageCode and a non-reproducible
+`aethercore-desktop.exe` (tranche 3 #7), both expected and neither a criterion.
+
+Only version-dependent fields differ from the S1 baseline snapshot — ARP key and
+version, `HKLM\…\InstallVersion`, and the payload SHAs (0.1.6 -> 0.1.11). Every
+security-relevant field is byte-identical. **Nothing was widened.**
+
+### The attack, on the installed 0.1.11, under BOTH actual tokens
+
+`p39-attack-outer.ps1 -Label P40FINAL`, probe `cf0e892c…` built from
+`tools/p39-probes`:
+
+```
+STD    RAN_THIS_INVOCATION=True   WHOAMI=…\p36standarduser  IS_ELEVATED_ADMIN=False
+  ATTACK_AUDIT_FOREIGN_PATH     403 sec.targetOutsideOwnerScope   BODY: (empty)
+  ATTACK_JOURNAL_FOREIGN_OWNER  403 journal.ownerScopeForbidden   BODY: (empty)
+  LEGIT_AUDIT_OWN_SCOPE           0  cve:ok:0 | secrets:ok:1
+  LEGIT_JOURNAL_OWN_SCOPE         0  records=0 signed=false
+  FAILURES=0
+ADMIN  RAN_THIS_INVOCATION=True   WHOAMI=…\p36admin          IS_ELEVATED_ADMIN=True
+  same four lines, FAILURES=0
+```
+
+§18.5 could only prove the refusal under a real unprivileged token, on 0.1.9 and
+0.1.10. This is the refusal **and** the legitimate lane, on 0.1.11, under both
+real tokens. `p39-attack-outer.ps1` carries the §19.2 freshness gate too.
+
+### A legitimate caller still gets a scored report
+
+From the `secaudit` verb in the P40FINAL **standard-user** transcript:
+
+```
+schema      aethercore.compliance.v1     profile_id  cis-l1
+score.pass 1  fail 0  na 2  not_verified 5   score_pct  calculated 100.0
+```
+
+On the Mac, `aetherctl sec audit --profile cis-l1 --format json` exits 0 with the
+same schema and §18.6's numbers unchanged: 3 pass / 1 fail / 4 not-verified,
+75.0%.
+
+### Two harness defects found while running the gates
+
+Recorded because both look exactly like the §19.2 class:
+
+1. `p39-build-launch.ps1` wrote its completion signal as
+   `echo EXIT=%ERRORLEVEL%> "$st"`. `cmd` reads the `0` of the expanded
+   `ERRORLEVEL` as the handle in a `0>` redirect, so the status file was created
+   **empty** and every poller reported `STATUS=RUNNING` forever — including after
+   the build had finished successfully at 15:35:30. Fixed with a space.
+2. Two `prlctl exec` calls in flight at once return
+   `PrlJob_GetResult: Invalid argument`. Guest invocations must be serialised.
+
+### Mac-side
+
+`cargo test --workspace`: **128 test binaries, 576 passed, 0 failed, 0 ignored**.
+§18.6 recorded 127 binaries and the same 576 passing tests; the extra binary is
+`aethercore-p39-probes` itself, which contributes no tests. No test moved.
+
+`phase39_ipc_authorization` (real service binary over a real socket, `--features
+unix-ipc`): **6/6**, including the two legitimate-path cases.
+
+## 19.4 STATE FOR THE NEXT SESSION
+
+- Branch `fix/localsystem-disclosure`, **pushed** to `origin`. Still not merged —
+  no brief has asked for that.
+- §18.7's single outstanding gate is **closed**: 18/18 verbs on 0.1.11 under both
+  actual-token contexts, on a harness that can no longer report a stale result.
+- The VM has **0.1.11 installed and running**, unchanged: 16 files, service
+  RUNNING, pipe DACL and install-dir ACLs identical to the §10 baseline. The
+  0.1.11 MSI in `build\out` is now the Phase 40 rebuild (`3ae46dff…`), which is
+  NOT the installed article (`1a6ea3f1…`); they are the same version and the same
+  ProductCode, so reinstalling from it would need `REINSTALLMODE=vamus`.
+- Recovery point for this session: **P40-PRE-HOUSEKEEPING
+  `{d652cd40-877c-4a9a-bb1b-2e3637a96ec2}`**. `P37-SHIPPING-QUALIFIED
+  {a1696567-…}` and `P39-PRE-FIX-BUILD {7c10fb2b-…}` are untouched. Neither
+  `P36-CLEAN-BASELINE` nor `P36-PRE-NATIVE-MUTATION` was restored.
+- **DBT-P40-003 is open**: `crates/security-audit/examples/gd4_live_audit.rs` is
+  the same shape as the file this session moved. It has no Windows build path and
+  the payload check now measures the question it raises, so it was recorded
+  rather than moved. Move it the next time that crate is touched.
+- `prlctl exec` must be serialised — two concurrent calls fail the job outright.
+
+### Snapshot ledger (Phase 40 additions)
+
+| name | id | taken before |
+|---|---|---|
+| P40-PRE-HOUSEKEEPING | `{d652cd40-877c-4a9a-bb1b-2e3637a96ec2}` | any Phase 40 VM action (guest restart, source sync, rebuild) |
