@@ -235,3 +235,87 @@ the project appears to have 17 screen instances.
 | `a77e2b1091c344499aa2db3525016543` | Plan Review Consent (Dark) |
 
 Baseline HTML as it stood *before* this session: `design/stitch/baseline-before/`.
+
+---
+
+## 9. Tooling findings — measured this session
+
+These are raw observations from this session's runs. They change how the Stitch
+project must be driven, so they are recorded here rather than in a chat log.
+
+### 9.1 `apply_design_system` rewrote the design system it was applying
+
+Applying the original asset `4ef4cca5…` did not apply it. A server-side agent
+(`generatedBy: polish_edit_theme_agent`) **regenerated** the system and pushed it
+back toward the rejected doctrine:
+
+| Field | Sent | Came back |
+|---|---|---|
+| `displayName` | `AetherCore Instrument` | `AetherCore Laboratory` |
+| `roundness` | `ROUND_TWELVE` | `ROUND_EIGHT` |
+| `data-mono` fontFamily | `IBM Plex Mono` | `Geist` — monospace lost |
+| `panel-gap` | `16px` | `1px` |
+| `grid-margin` | `32px` | `16px` |
+| designMd | elevation + generous radii | "rigid hairline grid", "primarily Flat" |
+
+The asset carries a **`styleGuidelines`** field holding the old *"Technical
+Minimalism… rejects depth metaphors, shadows, and rounded corners"* text.
+`update_design_system`'s schema has **no field to write it**, so it stayed stale
+and the polish agent re-derived `designMd` from it.
+
+**Workaround, verified:** `upload_design_md` + `create_design_system_from_design_md`
+produces a *new* asset (`43773111ef7b4a7cbc10cc4c322270cb`) whose
+`styleGuidelines` is generated from the uploaded spec. Re-applying that asset
+left it intact — `version` stayed `1`, monospace survived, spacing survived.
+The clean spec lives at `design/stitch/DESIGN_SYSTEM.md`.
+
+Consequence: **never `update_design_system` an asset that has legacy
+`styleGuidelines`.** Create a fresh asset from a spec file instead.
+
+### 9.2 `apply_design_system` does not change shape, elevation or structure
+
+Measured on Overview, before vs after applying the corrected system:
+
+| Measure | Before | After |
+|---|---|---|
+| `borderRadius` config | DEFAULT 4px · lg 8px · xl 12px | **identical** |
+| `rounded*` class occurrences | 1 | **1** |
+| `shadow` occurrences | 0 | **0** |
+| `backdrop-blur` occurrences | 0 | **0** |
+| `dashed` occurrences | 1 | **1** |
+| bytes | 19,427 | 17,702 |
+
+Fonts and colours **did** change (Geist + IBM Plex Mono loaded, surface
+`#0f141a`). Shape, depth and the dashed empty state did **not**.
+
+`ROUND_TWELVE` / `ROUND_EIGHT` had no effect on the emitted Tailwind
+`borderRadius` scale, which stayed at the 4/8/12px default in both runs.
+
+**So the roundness enum and the design system alone cannot fix the "sharp boxes"
+complaint.** Shape lives in each screen's own markup. Screens must be changed
+with `edit_screens`.
+
+### 9.3 The original screen prompts bake in the rejected look
+
+Overview's stored generation prompt contains, verbatim:
+
+> "Uses hairline grid and monospace data."
+
+So the hairline grid has **two** sources — the design system (now fixed) and the
+per-screen prompt (still present). Any `edit_screens` call must explicitly revoke
+it, or a later regeneration will reintroduce it.
+
+### 9.4 `apply_design_system` forks screens rather than editing in place
+
+Applying to instance `3db2c0d3…` produced a **new** screen
+`24a8318790ac4b48b9f66a24ed8cf016`, also titled "Overview (Dark)". Applying to
+`a77e2b10…` produced `964039fd2db94a58bebb2cabe4a5b194`. The project therefore
+accumulates duplicate screens on every apply. Screen IDs in §8 are the
+pre-session ones and will drift.
+
+### 9.5 `edit_screens` timed out
+
+Consistent with the 2026-09-01 note that `generate_screen_from_text` and
+`generate_variants` timed out repeatedly. The tool documents that the operation
+may still complete server-side after the client times out, and that it must not
+be retried. Outcome recorded separately below once verified.
