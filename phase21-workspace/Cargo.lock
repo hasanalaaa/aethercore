@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "aethercore-care-orchestrator"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-operation-kernel",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-cleaner"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-operation-engine",
@@ -36,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-collector-runtime"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -44,7 +44,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-consent-broker"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-contracts",
  "aethercore-ipc",
@@ -55,7 +55,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-contracts"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "prost",
  "prost-build",
@@ -65,7 +65,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-crash-diagnostics"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "chrono",
@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-db-diagnostics"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "criterion",
  "rusqlite",
@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-desktop"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-contracts",
  "aethercore-fleet",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-diagnostic-engine"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-crash-diagnostics",
@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-diagnostics"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-driver-acquisition"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-driver-authority",
  "aethercore-update-engine",
@@ -151,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-driver-authority"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-gpu-policy",
  "aethercore-windows-foundation",
@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-driver-backup"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-windows-pnp",
  "hex",
@@ -181,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-driver-hub"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-driver-authority",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-driver-install"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-driver-backup",
  "aethercore-driver-hub",
@@ -223,7 +223,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-fleet"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "hex",
  "serde",
@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-ga-probe"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-contracts",
  "aethercore-ipc",
@@ -243,14 +243,14 @@ dependencies = [
 
 [[package]]
 name = "aethercore-gpu-policy"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "aethercore-hardware-telemetry"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-restore-point",
@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-idle-scheduler"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-contracts",
@@ -279,14 +279,14 @@ dependencies = [
 
 [[package]]
 name = "aethercore-install-hardener"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
 ]
 
 [[package]]
 name = "aethercore-intelligence-core"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "llama-cpp-2",
  "serde",
@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-ipc"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-contracts",
  "aethercore-windows-foundation",
@@ -309,7 +309,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-maintenance-service"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-care-orchestrator",
  "aethercore-cleaner",
@@ -352,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-operation-engine"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-persistence",
  "chrono",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-operation-kernel"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-contracts",
  "aethercore-operation-engine",
@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-pc-intelligence"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-cleaner",
  "aethercore-collector-runtime",
@@ -401,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-performance-bottleneck"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-performance-telemetry",
  "chrono",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-performance-optimization"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-operation-kernel",
@@ -430,7 +430,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-performance-telemetry"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-performance-bottleneck",
@@ -446,7 +446,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-persistence"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-fleet",
  "criterion",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-platform-capabilities"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "serde",
  "windows 0.62.2",
@@ -470,7 +470,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-release-authority"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-restore-point"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-windows-foundation",
  "serde",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-security"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-windows-foundation",
  "hex",
@@ -504,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-security-audit"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-persistence",
  "aethercore-platform-capabilities",
@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-startup-manager"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-operation-engine",
@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-support-bundle"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "chrono",
  "ed25519-dalek",
@@ -551,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-support-bundle-verify"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-support-bundle",
  "anyhow",
@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-system-repair"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-operation-engine",
  "aethercore-operation-kernel",
@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-timeline-intelligence"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-persistence",
  "criterion",
@@ -590,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-update-broker"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-contracts",
  "aethercore-ipc",
@@ -603,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-update-download"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "hex",
  "reqwest 0.12.28",
@@ -613,7 +613,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-update-engine"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-operation-kernel",
  "aethercore-persistence",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-update-manifest-tool"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-update-engine",
  "anyhow",
@@ -641,14 +641,14 @@ dependencies = [
 
 [[package]]
 name = "aethercore-windows-foundation"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "windows 0.62.2",
 ]
 
 [[package]]
 name = "aethercore-windows-pnp"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-windows-repair-intelligence"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "hex",
  "serde",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-windows-update"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-windows-foundation",
  "chrono",
@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "aetherctl"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aethercore-contracts",
  "aethercore-db-diagnostics",

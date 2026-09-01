@@ -124,33 +124,44 @@ fn main() {
         })
     };
 
-    let mut failures = 0usize;
-    let mut record = |name: &str, expected_refused: bool, outcome: (u32, String, String)| {
+    // Returns true when the service answered as it must. Kept a free function so the
+    // failure counter is not borrowed by a closure that also has to be called.
+    fn record(name: &str, expected_refused: bool, outcome: (u32, String, String)) -> bool {
         let (status, key, body) = outcome;
         let refused = status == 403;
         let ok = refused == expected_refused && (expected_refused || status == 0);
-        if !ok {
-            failures += 1;
-        }
         println!(
             "{name}=STATUS:{status} KEY:{key} VERDICT:{} BODY:{body}",
             if ok { "AS_EXPECTED" } else { "UNEXPECTED" }
         );
+        ok
+    }
+
+    let mut failures = 0usize;
+    let mut check = |ok: bool| {
+        if !ok {
+            failures += 1;
+        }
     };
 
-    record("ATTACK_AUDIT_FOREIGN_PATH", true, call(audit(&victim)));
-    record(
+    check(record(
+        "ATTACK_AUDIT_FOREIGN_PATH",
+        true,
+        call(audit(&victim)),
+    ));
+    check(record(
         "ATTACK_JOURNAL_FOREIGN_OWNER",
         true,
         call(journal(&"f".repeat(64))),
-    );
+    ));
     if own.is_empty() {
         println!("LEGIT_AUDIT_OWN_SCOPE=SKIPPED no USERPROFILE");
-        failures += 1;
+        check(false);
     } else {
-        record("LEGIT_AUDIT_OWN_SCOPE", false, call(audit(&own)));
+        check(record("LEGIT_AUDIT_OWN_SCOPE", false, call(audit(&own))));
     }
-    record("LEGIT_JOURNAL_OWN_SCOPE", false, call(journal("")));
+    check(record("LEGIT_JOURNAL_OWN_SCOPE", false, call(journal(""))));
+    drop(check);
 
     println!("FAILURES={failures}");
     std::process::exit(if failures == 0 { 0 } else { 1 });

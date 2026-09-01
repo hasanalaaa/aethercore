@@ -81,8 +81,6 @@ impl std::fmt::Display for TargetDenial {
     }
 }
 
-impl std::error::Error for TargetDenial {}
-
 /// The roots one principal may name. Built from the OS's answer for that principal's
 /// token — never from the request.
 #[derive(Clone, Debug, Default)]
@@ -105,10 +103,6 @@ impl OwnerScope {
 
     pub fn is_empty(&self) -> bool {
         self.roots.is_empty()
-    }
-
-    pub fn roots(&self) -> &[PathBuf] {
-        &self.roots
     }
 }
 

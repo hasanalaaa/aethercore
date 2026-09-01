@@ -226,34 +226,95 @@ fn principal_from_token(
             user_sid: hex::encode(sid_bytes),
             authentication_id,
             session_id,
-            profile_dir: profile_dir_for_token(token),
+            profile_dir: profile_dir_for_sid(user.User.Sid),
         })
     }
 }
 
-/// The profile directory Windows reports FOR THIS TOKEN.
+/// The profile directory Windows records for THIS user, keyed by the SID we just read out
+/// of the caller's own token.
 ///
-/// `SHGetKnownFolderPath` takes the token as its third argument, so this is the OS's own
-/// answer for the calling user — no SID-to-string round trip, no `ProfileList` registry
-/// read, and no trust in an inherited `%USERPROFILE%`. It is the same known-folder API
-/// `aethercore-windows-foundation` already uses to resolve the machine data root.
+/// `ProfileList` is where Windows itself keeps the mapping, so this is the OS's answer
+/// rather than a reconstruction. It deliberately does not go through `%USERPROFILE%`
+/// (inherited and caller-influenced) and it does not go through
+/// `SHGetKnownFolderPath(FOLDERID_Profile, token)`, which was tried first and MEASURED to
+/// fail here: the service opens the impersonated client token with `TOKEN_QUERY` only,
+/// and that API additionally wants `TOKEN_IMPERSONATE`. Rather than widen the rights on
+/// the token handle the principal binding already depends on, this reads the mapping that
+/// needs no token rights at all. `HKLM\SOFTWARE` is writable only by administrators, so an
+/// unprivileged caller cannot redirect its own scope by writing here.
 ///
-/// A failure yields `None`, which the audit allowlist reads as an empty scope.
+/// Any failure yields `None`, which the audit allowlist reads as an EMPTY scope — every
+/// path-bearing target is then refused. Fail-closed, never fail-open.
 #[cfg(windows)]
-fn profile_dir_for_token(token: windows::Win32::Foundation::HANDLE) -> Option<String> {
+fn profile_dir_for_sid(sid: windows::Win32::Security::PSID) -> Option<String> {
+    use std::ffi::c_void;
     use windows::{
         Win32::{
-            System::Com::CoTaskMemFree,
-            UI::Shell::{FOLDERID_Profile, KF_FLAG_DEFAULT, SHGetKnownFolderPath},
+            Foundation::LocalFree,
+            Security::Authorization::ConvertSidToStringSidW,
+            System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ, RegGetValueW},
         },
         core::PCWSTR,
     };
-    unsafe {
-        let raw = SHGetKnownFolderPath(&FOLDERID_Profile, KF_FLAG_DEFAULT, Some(token)).ok()?;
-        let text = PCWSTR(raw.0).to_string().ok();
-        CoTaskMemFree(Some(raw.0.cast()));
-        text.filter(|value| !value.is_empty())
+
+    fn wide(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
     }
+
+    let sid_text = unsafe {
+        let mut raw = windows::core::PWSTR::null();
+        ConvertSidToStringSidW(sid, &mut raw).ok()?;
+        let text = PCWSTR(raw.0).to_string().ok();
+        let _ = LocalFree(Some(windows::Win32::Foundation::HLOCAL(raw.0.cast())));
+        text?
+    };
+    if sid_text.is_empty() || sid_text.len() > 256 {
+        return None;
+    }
+
+    let key = wide(&format!(
+        r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\{sid_text}"
+    ));
+    let name = wide("ProfileImagePath");
+    // REG_EXPAND_SZ is the documented type; RegGetValueW expands it unless asked not to.
+    let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
+    let mut bytes = 0u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            PCWSTR(key.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            flags,
+            None,
+            None,
+            Some(&mut bytes),
+        )
+    };
+    if status.is_err() || bytes < 2 || bytes > 4096 {
+        return None;
+    }
+    let mut buffer = vec![0u16; (bytes as usize).div_ceil(2)];
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            PCWSTR(key.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            flags,
+            None,
+            Some(buffer.as_mut_ptr().cast::<c_void>()),
+            Some(&mut bytes),
+        )
+    };
+    if status.is_err() {
+        return None;
+    }
+    let end = buffer
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(buffer.len());
+    let text = String::from_utf16_lossy(&buffer[..end]);
+    (!text.is_empty()).then_some(text)
 }
 
 #[cfg(windows)]
