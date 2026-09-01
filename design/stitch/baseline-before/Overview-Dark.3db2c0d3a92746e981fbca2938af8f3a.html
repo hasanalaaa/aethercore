@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Overview</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&amp;family=IBM+Plex+Sans:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#c3c6d4",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary": "#472a00",
+                        "on-surface": "#e1e2ea",
+                        "error-container": "#93000a",
+                        "on-tertiary-container": "#3e2400",
+                        "primary-container": "#5d8ef1",
+                        "surface": "#111319",
+                        "tertiary-fixed-dim": "#ffb960",
+                        "outline-variant": "#424752",
+                        "surface-container-lowest": "#0c0e14",
+                        "tertiary-container": "#ca8103",
+                        "surface-container": "#1d1f26",
+                        "primary-fixed-dim": "#aec6ff",
+                        "on-secondary-fixed-variant": "#584400",
+                        "surface-bright": "#373940",
+                        "surface-dim": "#111319",
+                        "outline": "#8d909e",
+                        "on-tertiary-fixed": "#2a1700",
+                        "inverse-primary": "#1e5bba",
+                        "surface-container-highest": "#33353b",
+                        "primary-fixed": "#d8e2ff",
+                        "surface-variant": "#33353b",
+                        "tertiary-fixed": "#ffddb8",
+                        "secondary-fixed-dim": "#ecc246",
+                        "surface-container-high": "#282a30",
+                        "surface-container-low": "#191b22",
+                        "on-primary-container": "#00275e",
+                        "surface-tint": "#aec6ff",
+                        "on-primary": "#002e6b",
+                        "on-secondary": "#3d2e00",
+                        "tertiary": "#ffb960",
+                        "on-secondary-fixed": "#241a00",
+                        "on-primary-fixed": "#001a43",
+                        "background": "#111319",
+                        "inverse-on-surface": "#2e3037",
+                        "inverse-surface": "#e1e2ea",
+                        "secondary-fixed": "#ffe08e",
+                        "secondary": "#ecc246",
+                        "on-background": "#e1e2ea",
+                        "on-primary-fixed-variant": "#004397",
+                        "error": "#ffb4ab",
+                        "primary": "#aec6ff",
+                        "secondary-container": "#b18c09",
+                        "on-error": "#690005",
+                        "on-secondary-container": "#352800"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "panel-gap": "1px",
+                        "grid-margin": "16px",
+                        "cell-padding-y": "8px",
+                        "cell-padding-x": "12px"
+                    },
+                    "fontFamily": {
+                        "data-mono-sm": ["IBM Plex Mono"],
+                        "display-sm": ["IBM Plex Sans"],
+                        "headline-sm": ["IBM Plex Sans"],
+                        "label-caps": ["IBM Plex Sans"],
+                        "body-sm": ["IBM Plex Sans"],
+                        "body-md": ["IBM Plex Sans"],
+                        "data-mono": ["IBM Plex Mono"]
+                    },
+                    "fontSize": {
+                        "data-mono-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "400" }],
+                        "display-sm": ["20px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "headline-sm": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+                        "label-caps": ["11px", { "lineHeight": "16px", "letterSpacing": "0.06em", "fontWeight": "700" }],
+                        "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "data-mono": ["13px", { "lineHeight": "16px", "fontWeight": "450" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface-container-lowest text-on-surface h-screen w-screen overflow-hidden flex font-body-md select-none">
+<!-- SideNavBar -->
+<nav class="flex flex-col h-full border-r border-outline-variant bg-surface-container-lowest dark:bg-surface-container-lowest w-64 flex-shrink-0 z-10">
+<!-- Header -->
+<div class="h-16 flex items-center px-4 border-b border-outline-variant flex-shrink-0 gap-3">
+<div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant overflow-hidden flex items-center justify-center">
+<img alt="AetherCore Logo" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+</div>
+<div class="flex flex-col justify-center">
+<span class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface dark:text-on-surface leading-none">AetherCore</span>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant leading-none mt-1">Diagnostics &amp; Maintenance</span>
+</div>
+</div>
+<!-- Scrollable Tabs -->
+<div class="flex-1 overflow-y-auto py-2 flex flex-col gap-1 px-2">
+<!-- Active Tab -->
+<a class="bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary flex items-center gap-3 px-3 py-2 cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">dashboard</span>
+<span>Overview</span>
+</a>
+<!-- Inactive Tabs -->
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">biotech</span>
+<span>Deep Scan</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">speed</span>
+<span>Performance</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">monitor_heart</span>
+<span>Hardware Health</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">history</span>
+<span>Crash History</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">lightbulb</span>
+<span>Insights</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">settings_input_component</span>
+<span>Drivers</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">build</span>
+<span>System Repair</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">cleaning_services</span>
+<span>Deep Clean</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">rocket_launch</span>
+<span>Startup Manager</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">restore</span>
+<span>Recovery</span>
+</a>
+<a class="text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors flex items-center gap-3 px-3 py-2 border-l-4 border-transparent cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px]">dns</span>
+<span>Fleet</span>
+</a>
+</div>
+<!-- Footer Actions -->
+<div class="border-t border-outline-variant p-2 flex flex-col gap-1 flex-shrink-0">
+<button class="w-full flex items-center justify-center gap-2 bg-primary text-on-primary font-label-caps text-label-caps py-2 hover:opacity-90 transition-opacity border border-primary uppercase mb-2">
+<span class="material-symbols-outlined text-[16px]">verified_user</span>
+                Authorize Changes
+            </button>
+<div class="flex items-center justify-between px-2 py-1">
+<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1" title="Language">
+<span class="material-symbols-outlined text-[16px]">language</span>
+<span class="font-data-mono-sm text-data-mono-sm">EN/AR</span>
+</button>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1" title="Theme">
+<span class="material-symbols-outlined text-[16px]">dark_mode</span>
+<span class="font-data-mono-sm text-data-mono-sm">Dark Mode</span>
+</button>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1" title="Version">
+<span class="material-symbols-outlined text-[16px]">cloud_done</span>
+<span class="font-data-mono-sm text-data-mono-sm">v.1.4.2-stable</span>
+</button>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col h-full bg-outline-variant gap-[1px] overflow-hidden relative">
+<!-- TopAppBar -->
+<header class="flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container dark:bg-surface-container flex-shrink-0 z-10">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 text-on-surface-variant relative group">
+<span class="material-symbols-outlined text-[20px] absolute left-2 pointer-events-none group-focus-within:text-primary transition-colors">search</span>
+<input class="bg-transparent border-none text-on-surface font-data-mono text-data-mono focus:ring-0 pl-8 pr-2 w-64 h-8 placeholder-on-surface-variant/50" placeholder="Search parameters..." type="text"/>
+<div class="absolute bottom-0 left-0 right-0 h-[1px] bg-outline-variant group-focus-within:bg-primary transition-colors"></div>
+</div>
+</div>
+<div class="flex items-center gap-4 font-label-caps text-label-caps text-primary dark:text-primary">
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150 flex items-center justify-center w-8 h-8">
+<span class="material-symbols-outlined text-[20px]">policy</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150 flex items-center justify-center w-8 h-8">
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150 flex items-center justify-center w-8 h-8">
+<span class="material-symbols-outlined text-[20px]">help_outline</span>
+</button>
+</div>
+</header>
+<!-- Canvas -->
+<div class="flex-1 overflow-auto bg-surface-dim relative grid grid-cols-1 md:grid-cols-12 grid-rows-[auto_1fr] gap-[1px] p-[1px]">
+<!-- Welcome Header Panel -->
+<div class="col-span-1 md:col-span-12 bg-surface flex flex-col justify-end p-8 min-h-[160px] relative overflow-hidden group">
+<div class="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary via-transparent to-transparent"></div>
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-primary"></div>
+<h1 class="font-display-sm text-display-sm text-on-surface mb-2 relative z-10">System State: UNINITIALIZED</h1>
+<p class="font-data-mono text-data-mono text-on-surface-variant relative z-10 max-w-2xl">
+                    AetherCore module loaded successfully. No previous diagnostic data found. Initialization requires an exhaustive deep scan to map hardware topology and verify driver integrity.
+                </p>
+<div class="absolute right-8 bottom-8 z-10">
+<button class="flex items-center gap-2 bg-primary text-on-primary px-6 py-3 font-label-caps text-label-caps hover:bg-primary-fixed-dim transition-colors border border-primary">
+<span class="material-symbols-outlined text-[18px]">radar</span>
+                        SCAN THIS PC
+                    </button>
+</div>
+</div>
+<!-- Left Column: Metrics -->
+<div class="col-span-1 md:col-span-4 flex flex-col gap-[1px]">
+<!-- Service Status Panel -->
+<div class="bg-surface flex-1 p-6 relative">
+<h2 class="font-label-caps text-label-caps text-on-surface-variant mb-6 uppercase tracking-widest border-b border-outline-variant pb-2">Service Status</h2>
+<div class="flex flex-col gap-6">
+<div class="flex items-center justify-between">
+<span class="font-data-mono text-data-mono text-on-surface-variant">Connection</span>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-primary"></div>
+<span class="font-data-mono text-data-mono text-on-surface uppercase">Connected</span>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-data-mono text-data-mono text-on-surface-variant">Core Engine</span>
+<span class="font-data-mono text-data-mono text-on-surface bg-surface-container-high px-2 py-1 border border-outline-variant">v1.4.2</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-data-mono text-data-mono text-on-surface-variant">Protocol Ver</span>
+<span class="font-data-mono text-data-mono text-on-surface bg-surface-container-high px-2 py-1 border border-outline-variant">2.0.1-L</span>
+</div>
+</div>
+</div>
+<!-- Action Items Panel -->
+<div class="bg-surface flex-1 p-6 relative">
+<h2 class="font-label-caps text-label-caps text-on-surface-variant mb-6 uppercase tracking-widest border-b border-outline-variant pb-2">Action Items</h2>
+<div class="flex flex-col items-center justify-center h-32 opacity-50">
+<span class="material-symbols-outlined text-[32px] text-on-surface-variant mb-2">task_alt</span>
+<span class="font-data-mono text-data-mono text-on-surface-variant">Not collected yet</span>
+</div>
+</div>
+</div>
+<!-- Right Column: Recent Activity & Data -->
+<div class="col-span-1 md:col-span-8 bg-surface p-6 flex flex-col">
+<div class="flex items-center justify-between border-b border-outline-variant pb-2 mb-6">
+<h2 class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Diagnostic Telemetry</h2>
+<div class="flex gap-2">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant bg-surface-container-high px-2 py-1 border border-outline-variant">Pending Review: 0 items</span>
+</div>
+</div>
+<!-- Empty State Data Area -->
+<div class="flex-1 flex flex-col items-center justify-center border border-dashed border-outline-variant p-12 bg-surface-container-lowest/50">
+<span class="material-symbols-outlined text-[48px] text-on-surface-variant/30 mb-4 font-light">query_stats</span>
+<span class="font-data-mono text-data-mono text-on-surface-variant uppercase tracking-widest mb-2">Last Scan: Not collected yet</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant/70 text-center max-w-md">
+                        Initiate a system scan to populate telemetry grids, establish baselines, and identify hardware or software anomalies.
+                    </p>
+</div>
+<!-- Mock Mini Terminal/Log -->
+<div class="mt-6 border border-outline-variant bg-surface-container-lowest p-4 h-32 overflow-y-auto">
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant/50 flex flex-col gap-1">
+<div class="flex gap-4"><span class="text-on-surface-variant/30">00:00:01</span><span>[INIT] Core services starting... OK</span></div>
+<div class="flex gap-4"><span class="text-on-surface-variant/30">00:00:02</span><span>[AUTH] Validating local policy token... OK</span></div>
+<div class="flex gap-4"><span class="text-on-surface-variant/30">00:00:02</span><span>[DATA] Checking previous scan manifests... ERR_NOT_FOUND</span></div>
+<div class="flex gap-4"><span class="text-on-surface-variant/30">00:00:03</span><span>[SYS] Entering FIRST_RUN state. Awaiting operator input.</span></div>
+<div class="flex gap-4"><span class="text-on-surface-variant/30">00:00:03</span><span class="animate-pulse">_</span></div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

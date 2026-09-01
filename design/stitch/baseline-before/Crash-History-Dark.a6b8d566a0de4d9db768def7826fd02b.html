@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Crash History</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-surface-variant": "#c3c6d4",
+                      "on-tertiary-fixed-variant": "#653e00",
+                      "on-error-container": "#ffdad6",
+                      "on-tertiary": "#472a00",
+                      "on-surface": "#e1e2ea",
+                      "error-container": "#93000a",
+                      "on-tertiary-container": "#3e2400",
+                      "primary-container": "#5d8ef1",
+                      "surface": "#111319",
+                      "tertiary-fixed-dim": "#ffb960",
+                      "outline-variant": "#424752",
+                      "surface-container-lowest": "#0c0e14",
+                      "tertiary-container": "#ca8103",
+                      "surface-container": "#1d1f26",
+                      "primary-fixed-dim": "#aec6ff",
+                      "on-secondary-fixed-variant": "#584400",
+                      "surface-bright": "#373940",
+                      "surface-dim": "#111319",
+                      "outline": "#8d909e",
+                      "on-tertiary-fixed": "#2a1700",
+                      "inverse-primary": "#1e5bba",
+                      "surface-container-highest": "#33353b",
+                      "primary-fixed": "#d8e2ff",
+                      "surface-variant": "#33353b",
+                      "tertiary-fixed": "#ffddb8",
+                      "secondary-fixed-dim": "#ecc246",
+                      "surface-container-high": "#282a30",
+                      "surface-container-low": "#191b22",
+                      "on-primary-container": "#00275e",
+                      "surface-tint": "#aec6ff",
+                      "on-primary": "#002e6b",
+                      "on-secondary": "#3d2e00",
+                      "tertiary": "#ffb960",
+                      "on-secondary-fixed": "#241a00",
+                      "on-primary-fixed": "#001a43",
+                      "background": "#111319",
+                      "inverse-on-surface": "#2e3037",
+                      "inverse-surface": "#e1e2ea",
+                      "secondary-fixed": "#ffe08e",
+                      "secondary": "#ecc246",
+                      "on-background": "#e1e2ea",
+                      "on-primary-fixed-variant": "#004397",
+                      "error": "#ffb4ab",
+                      "primary": "#aec6ff",
+                      "secondary-container": "#b18c09",
+                      "on-error": "#690005",
+                      "on-secondary-container": "#352800"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "unit": "4px",
+                      "panel-gap": "1px",
+                      "grid-margin": "16px",
+                      "cell-padding-y": "8px",
+                      "cell-padding-x": "12px"
+              },
+              "fontFamily": {
+                      "data-mono-sm": [
+                              "IBM Plex Mono"
+                      ],
+                      "display-sm": [
+                              "IBM Plex Sans"
+                      ],
+                      "headline-sm": [
+                              "IBM Plex Sans"
+                      ],
+                      "label-caps": [
+                              "IBM Plex Sans"
+                      ],
+                      "body-sm": [
+                              "IBM Plex Sans"
+                      ],
+                      "body-md": [
+                              "IBM Plex Sans"
+                      ],
+                      "data-mono": [
+                              "IBM Plex Mono"
+                      ]
+              },
+              "fontSize": {
+                      "data-mono-sm": [
+                              "11px",
+                              {
+                                      "lineHeight": "14px",
+                                      "letterSpacing": "0.02em",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "24px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-sm": [
+                              "16px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "label-caps": [
+                              "11px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.06em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-sm": [
+                              "13px",
+                              {
+                                      "lineHeight": "18px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "data-mono": [
+                              "13px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "450"
+                              }
+                      ]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        /* Custom scrollbar to match technical aesthetic */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111319;
+            border-left: 1px solid #424752;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424752;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8d909e;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body-md antialiased overflow-hidden flex h-screen">
+<!-- Policy Band (Global) -->
+<div class="w-[4px] h-full bg-error shrink-0 z-50"></div>
+<!-- SideNav Rail -->
+<nav class="h-screen w-64 border-r border-outline-variant dark:border-outline-variant bg-surface-container-lowest dark:bg-surface-container-lowest flex flex-col shrink-0">
+<!-- Brand Header -->
+<div class="h-16 flex items-center px-grid-margin border-b border-outline-variant">
+<img alt="AetherCore Logo" class="w-8 h-8 mr-3 opacity-90 grayscale contrast-125" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<div>
+<h1 class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface dark:text-on-surface">AetherCore</h1>
+<p class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Diagnostics &amp; Maintenance</p>
+</div>
+</div>
+<!-- Navigation Links -->
+<div class="flex-1 overflow-y-auto py-unit">
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">dashboard</span>
+<span>Overview</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">biotech</span>
+<span>Deep Scan</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">speed</span>
+<span>Performance</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">monitor_heart</span>
+<span>Hardware Health</span>
+</a>
+<!-- ACTIVE TAB: Crash History -->
+<a class="flex items-center px-grid-margin py-2 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]" style="font-variation-settings: 'FILL' 1;">history</span>
+<span>Crash History</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">lightbulb</span>
+<span>Insights</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">settings_input_component</span>
+<span>Drivers</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">build</span>
+<span>System Repair</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">cleaning_services</span>
+<span>Deep Clean</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">rocket_launch</span>
+<span>Startup Manager</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">restore</span>
+<span>Recovery</span>
+</a>
+<a class="flex items-center px-grid-margin py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[18px]">dns</span>
+<span>Fleet</span>
+</a>
+</div>
+<!-- Footer / CTA -->
+<div class="border-t border-outline-variant p-grid-margin">
+<button class="w-full py-2 bg-primary text-on-primary font-label-caps text-label-caps border border-primary hover:bg-primary-fixed transition-colors active:opacity-80 mb-4">
+                AUTHORIZE CHANGES
+            </button>
+<div class="flex justify-between text-on-surface-variant font-data-mono-sm text-data-mono-sm">
+<span class="flex items-center hover:text-on-surface cursor-pointer"><span class="material-symbols-outlined text-[14px] mr-1">language</span> EN</span>
+<span class="flex items-center hover:text-on-surface cursor-pointer"><span class="material-symbols-outlined text-[14px] mr-1">dark_mode</span></span>
+<span class="flex items-center"><span class="material-symbols-outlined text-[14px] mr-1">cloud_done</span> v1.4.2</span>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 bg-surface">
+<!-- TopAppBar -->
+<header class="flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container dark:bg-surface-container shrink-0">
+<div class="flex items-center h-full">
+<span class="font-label-caps text-label-caps text-on-surface-variant mr-4">CRASH HISTORY</span>
+<div class="h-full border-l border-outline-variant mx-2"></div>
+<div class="flex items-center text-on-surface-variant ml-2">
+<span class="material-symbols-outlined text-[16px] mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-data-mono text-data-mono placeholder:text-outline p-0 w-64" placeholder="Search dumps, hex codes..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4 text-on-surface-variant">
+<button class="hover:text-primary transition-colors duration-150"><span class="material-symbols-outlined">policy</span></button>
+<button class="hover:text-primary transition-colors duration-150"><span class="material-symbols-outlined">terminal</span></button>
+<button class="hover:text-primary transition-colors duration-150"><span class="material-symbols-outlined">help_outline</span></button>
+</div>
+</header>
+<!-- Canvas -->
+<div class="flex-1 overflow-auto p-grid-margin flex flex-col gap-[1px] bg-outline-variant">
+<!-- Page Header / Stats Panel -->
+<div class="bg-surface-container p-4 flex gap-8 shrink-0 relative">
+<div class="w-[4px] h-full absolute left-0 top-0 bg-error"></div>
+<div class="ml-4">
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">TOTAL EVENTS (30 DAYS)</div>
+<div class="font-display-sm text-display-sm text-on-surface">47</div>
+</div>
+<div class="border-l border-outline-variant pl-8">
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">CRITICAL BUGCHECKS</div>
+<div class="font-display-sm text-display-sm text-error">12</div>
+</div>
+<div class="border-l border-outline-variant pl-8">
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">WHEA UNCORRECTABLE</div>
+<div class="font-display-sm text-display-sm text-tertiary">3</div>
+</div>
+<div class="border-l border-outline-variant pl-8 flex-1 flex justify-end items-center">
+<button class="border border-outline-variant px-4 py-2 font-label-caps text-label-caps hover:bg-surface-container-highest transition-colors flex items-center">
+<span class="material-symbols-outlined text-[16px] mr-2">download</span>
+                        EXPORT LOGS
+                    </button>
+</div>
+</div>
+<!-- Timeline Entries -->
+<!-- Entry 1: Bugcheck (Expanded) -->
+<div class="bg-surface-container flex flex-col relative shrink-0">
+<!-- Summary Header -->
+<div class="flex items-stretch h-14 border-b border-outline-variant">
+<div class="w-[4px] h-full bg-error shrink-0"></div>
+<div class="flex-1 flex items-center px-4 justify-between">
+<div class="flex items-center gap-4">
+<span class="font-data-mono text-data-mono text-on-surface-variant w-40">2023-10-27 14:02:11 UTC</span>
+<span class="px-2 py-1 bg-surface-container-highest text-error font-data-mono-sm text-data-mono-sm border border-outline-variant">BUGCHECK 0x00000133</span>
+<span class="font-body-md text-body-md text-on-surface font-semibold">DPC_WATCHDOG_VIOLATION</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">ntoskrnl.exe</span>
+<button aria-label="Collapse raw evidence" class="text-on-surface-variant hover:text-primary transition-colors flex items-center">
+<span class="material-symbols-outlined">expand_less</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Raw Evidence Detail (Expanded State) -->
+<div class="p-4 bg-surface-container-lowest font-data-mono text-data-mono text-on-surface-variant overflow-x-auto text-[12px] leading-tight">
+<pre class="text-on-surface-variant">0: kd&gt; !analyze -v
+*******************************************************************************
+*                                                                             *
+*                        Bugcheck Analysis                                    *
+*                                                                             *
+*******************************************************************************
+
+DPC_WATCHDOG_VIOLATION (133)
+The DPC watchdog detected a prolonged run time at an IRQL of DISPATCH_LEVEL
+or above.
+Arguments:
+Arg1: 0000000000000001, The system cumulatively spent an extended period of time at
+	DISPATCH_LEVEL or above.
+Arg2: 0000000000001e00, The watchdog period (in ticks).
+Arg3: fffff80261973358, cast to nt!DPC_WATCHDOG_GLOBAL_TRIAGE_BLOCK, which contains
+	additional information regarding the cumulative timeout
+Arg4: 0000000000000000
+
+Debugging Details:
+------------------
+KEY_VALUES_STRING: 1
+    Key  : Analysis.CPU.mSec
+    Value: 2421
+
+STACK_TEXT:  
+ffffd681`f32e70c8 fffff802`610a747e : 00000000`00000133 00000000`00000001 00000000`00001e00 fffff802`61973358 : nt!KeBugCheckEx
+ffffd681`f32e70d0 fffff802`60fc679c : 0000009c`757a3e7a 00000000`00000000 00000000`00000000 00000000`00000000 : nt!KeAccumulateTicks+0x1be
+ffffd681`f32e7130 fffff802`60fc5a87 : 00000000`00000000 ffffd681`f32b1180 fffff802`00000002 00000000`00000000 : nt!KeClockInterruptNotify+0x31c
+ffffd681`f32e7f40 fffff802`60e2ce95 : fffff802`6194b3c0 00000000`00000000 00000000`00000000 00000000`00000000 : hal!HalpTimerClockInterrupt+0x107
+</pre>
+<div class="mt-4 pt-4 border-t border-outline-variant flex justify-between items-center">
+<div class="flex gap-2">
+<span class="px-2 py-1 bg-surface-container-highest text-on-surface-variant font-data-mono-sm text-data-mono-sm border border-outline-variant">PID: 4(System)</span>
+<span class="px-2 py-1 bg-surface-container-highest text-on-surface-variant font-data-mono-sm text-data-mono-sm border border-outline-variant">MODULE: nvkflt.sys</span>
+</div>
+<button class="border border-outline-variant px-3 py-1 font-label-caps text-label-caps hover:bg-surface-container transition-colors text-primary">
+                            ANALYZE DUMP FILE
+                        </button>
+</div>
+</div>
+</div>
+<!-- Entry 2: WHEA (Collapsed) -->
+<div class="bg-surface-container flex flex-col relative shrink-0">
+<div class="flex items-stretch h-14 hover:bg-surface-container-highest transition-colors cursor-pointer">
+<div class="w-[4px] h-full bg-tertiary shrink-0"></div>
+<div class="flex-1 flex items-center px-4 justify-between">
+<div class="flex items-center gap-4">
+<span class="font-data-mono text-data-mono text-on-surface-variant w-40">2023-10-25 08:14:55 UTC</span>
+<span class="px-2 py-1 bg-surface-container-lowest text-tertiary font-data-mono-sm text-data-mono-sm border border-outline-variant">WHEA_UNCORRECTABLE</span>
+<span class="font-body-md text-body-md text-on-surface font-semibold">0x00000124</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">GenuineIntel.sys</span>
+<span class="material-symbols-outlined text-on-surface-variant">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Entry 3: Minidump (Collapsed) -->
+<div class="bg-surface-container flex flex-col relative shrink-0">
+<div class="flex items-stretch h-14 hover:bg-surface-container-highest transition-colors cursor-pointer">
+<div class="w-[4px] h-full bg-outline-variant shrink-0"></div>
+<div class="flex-1 flex items-center px-4 justify-between">
+<div class="flex items-center gap-4">
+<span class="font-data-mono text-data-mono text-on-surface-variant w-40">2023-10-20 22:45:01 UTC</span>
+<span class="px-2 py-1 bg-surface-container-lowest text-on-surface font-data-mono-sm text-data-mono-sm border border-outline-variant">MINIDUMP</span>
+<span class="font-body-md text-body-md text-on-surface font-semibold">PAGE_FAULT_IN_NONPAGED_AREA</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">IRQL: 2</span>
+<span class="material-symbols-outlined text-on-surface-variant">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Entry 4: Minidump (Collapsed) -->
+<div class="bg-surface-container flex flex-col relative shrink-0">
+<div class="flex items-stretch h-14 hover:bg-surface-container-highest transition-colors cursor-pointer">
+<div class="w-[4px] h-full bg-outline-variant shrink-0"></div>
+<div class="flex-1 flex items-center px-4 justify-between">
+<div class="flex items-center gap-4">
+<span class="font-data-mono text-data-mono text-on-surface-variant w-40">2023-10-15 11:30:22 UTC</span>
+<span class="px-2 py-1 bg-surface-container-lowest text-on-surface font-data-mono-sm text-data-mono-sm border border-outline-variant">MINIDUMP</span>
+<span class="font-body-md text-body-md text-on-surface font-semibold">IRQL_NOT_LESS_OR_EQUAL</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">tcpip.sys</span>
+<span class="material-symbols-outlined text-on-surface-variant">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Empty State filler to push content up if needed, though we have 4 entries -->
+<div class="flex-1 bg-surface-container flex items-center justify-center p-8 border-t border-outline-variant">
+<span class="font-data-mono text-data-mono text-outline">End of recorded events.</span>
+</div>
+</div>
+</main>
+</body></html>

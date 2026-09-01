@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Hardware Health</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#c3c6d4",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary": "#472a00",
+                        "on-surface": "#e1e2ea",
+                        "error-container": "#93000a",
+                        "on-tertiary-container": "#3e2400",
+                        "primary-container": "#5d8ef1",
+                        "surface": "#111319",
+                        "tertiary-fixed-dim": "#ffb960",
+                        "outline-variant": "#424752",
+                        "surface-container-lowest": "#0c0e14",
+                        "tertiary-container": "#ca8103",
+                        "surface-container": "#1d1f26",
+                        "primary-fixed-dim": "#aec6ff",
+                        "on-secondary-fixed-variant": "#584400",
+                        "surface-bright": "#373940",
+                        "surface-dim": "#111319",
+                        "outline": "#8d909e",
+                        "on-tertiary-fixed": "#2a1700",
+                        "inverse-primary": "#1e5bba",
+                        "surface-container-highest": "#33353b",
+                        "primary-fixed": "#d8e2ff",
+                        "surface-variant": "#33353b",
+                        "tertiary-fixed": "#ffddb8",
+                        "secondary-fixed-dim": "#ecc246",
+                        "surface-container-high": "#282a30",
+                        "surface-container-low": "#191b22",
+                        "on-primary-container": "#00275e",
+                        "surface-tint": "#aec6ff",
+                        "on-primary": "#002e6b",
+                        "on-secondary": "#3d2e00",
+                        "tertiary": "#ffb960",
+                        "on-secondary-fixed": "#241a00",
+                        "on-primary-fixed": "#001a43",
+                        "background": "#111319",
+                        "inverse-on-surface": "#2e3037",
+                        "inverse-surface": "#e1e2ea",
+                        "secondary-fixed": "#ffe08e",
+                        "secondary": "#ecc246",
+                        "on-background": "#e1e2ea",
+                        "on-primary-fixed-variant": "#004397",
+                        "error": "#ffb4ab",
+                        "primary": "#aec6ff",
+                        "secondary-container": "#b18c09",
+                        "on-error": "#690005",
+                        "on-secondary-container": "#352800",
+                        "status-policy": "#ca8103",
+                        "status-ok": "#aec6ff",
+                        "status-warning": "#ecc246",
+                        "status-critical": "#ffb4ab"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "panel-gap": "1px",
+                        "grid-margin": "16px",
+                        "cell-padding-y": "8px",
+                        "cell-padding-x": "12px"
+                    },
+                    "fontFamily": {
+                        "data-mono-sm": ["IBM Plex Mono"],
+                        "display-sm": ["IBM Plex Sans"],
+                        "headline-sm": ["IBM Plex Sans"],
+                        "label-caps": ["IBM Plex Sans"],
+                        "body-sm": ["IBM Plex Sans"],
+                        "body-md": ["IBM Plex Sans"],
+                        "data-mono": ["IBM Plex Mono"]
+                    },
+                    "fontSize": {
+                        "data-mono-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "400" }],
+                        "display-sm": ["20px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "headline-sm": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+                        "label-caps": ["11px", { "lineHeight": "16px", "letterSpacing": "0.06em", "fontWeight": "700" }],
+                        "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "data-mono": ["13px", { "lineHeight": "16px", "fontWeight": "450" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+        
+        /* Rigid Grid Layout Overrides */
+        body {
+            background-color: #424752; /* outline-variant acting as hairline grid */
+            color: #e1e2ea;
+        }
+        .panel {
+            background-color: #111319; /* background/surface */
+        }
+        .surface-raised {
+            background-color: #1d1f26; /* surface-container */
+        }
+        .surface-elevated {
+            background-color: #282a30; /* surface-container-high */
+        }
+        
+        /* Custom Scrollbar for technical feel */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0c0e14; 
+            border-left: 1px solid #424752;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424752; 
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8d909e; 
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex font-body-md antialiased bg-outline-variant">
+<!-- SideNavBar (Shared Component) -->
+<nav class="flex flex-col h-full border-r border-outline-variant bg-surface-container-lowest dark:bg-surface-container-lowest w-64 flex-shrink-0 relative z-10">
+<!-- Brand Header -->
+<div class="p-grid-margin border-b border-outline-variant flex items-center gap-unit*3">
+<img alt="AetherCore Logo" class="w-8 h-8 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<div>
+<h1 class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface dark:text-on-surface">AetherCore</h1>
+<p class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Diagnostics &amp; Maintenance</p>
+</div>
+</div>
+<!-- Navigation Tabs -->
+<div class="flex-grow overflow-y-auto py-unit">
+<ul class="flex flex-col">
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="dashboard">dashboard</span>
+<span>Overview</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="biotech">biotech</span>
+<span>Deep Scan</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="speed">speed</span>
+<span>Performance</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined text-[18px] text-on-primary-container" data-icon="monitor_heart" data-weight="fill">monitor_heart</span>
+<span>Hardware Health</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="history">history</span>
+<span>Crash History</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="lightbulb">lightbulb</span>
+<span>Insights</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="settings_input_component">settings_input_component</span>
+<span>Drivers</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="build">build</span>
+<span>System Repair</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="cleaning_services">cleaning_services</span>
+<span>Deep Clean</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="rocket_launch">rocket_launch</span>
+<span>Startup Manager</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="restore">restore</span>
+<span>Recovery</span>
+</a>
+</li>
+<li class="px-unit py-unit/2">
+<a class="flex items-center gap-unit*3 px-unit*3 py-unit*2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors" data-icon="dns">dns</span>
+<span>Fleet</span>
+</a>
+</li>
+</ul>
+</div>
+<!-- CTA & Footer -->
+<div class="p-grid-margin border-t border-outline-variant mt-auto">
+<button class="w-full bg-primary text-on-primary font-label-caps text-label-caps uppercase tracking-wider py-unit*2 border border-primary hover:bg-primary-fixed transition-colors mb-unit*4">
+                Authorize Changes
+            </button>
+<div class="flex justify-between border-t border-outline-variant pt-unit*3 mt-unit*3">
+<button class="text-on-surface-variant hover:text-primary transition-colors" title="EN/AR">
+<span class="material-symbols-outlined text-[16px]" data-icon="language">language</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors" title="Dark Mode">
+<span class="material-symbols-outlined text-[16px]" data-icon="dark_mode">dark_mode</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors" title="v.1.4.2-stable">
+<span class="material-symbols-outlined text-[16px]" data-icon="cloud_done">cloud_done</span>
+</button>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-grow flex flex-col h-full overflow-hidden bg-background">
+<!-- TopAppBar (Shared Component Equivalent structure, omitted as per instructions favoring rail, but maintaining header space) -->
+<header class="h-12 border-b border-outline-variant bg-surface-container flex items-center justify-between px-grid-margin flex-shrink-0 panel">
+<div class="flex items-center gap-unit*4">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Hardware Health Monitor</h2>
+<span class="px-unit*2 py-unit bg-surface-container-high text-on-surface-variant font-data-mono-sm text-data-mono-sm border border-outline-variant">TARGET: LOCAL_HOST_01</span>
+</div>
+<div class="flex items-center gap-unit*4 text-on-surface-variant">
+<span class="material-symbols-outlined hover:text-primary cursor-pointer transition-colors text-[20px]" data-icon="policy">policy</span>
+<span class="material-symbols-outlined hover:text-primary cursor-pointer transition-colors text-[20px]" data-icon="terminal">terminal</span>
+<span class="material-symbols-outlined hover:text-primary cursor-pointer transition-colors text-[20px]" data-icon="help_outline">help_outline</span>
+</div>
+</header>
+<!-- Data Canvas -->
+<div class="flex-grow flex flex-col gap-panel-gap p-panel-gap overflow-hidden">
+<!-- Context & Controls Panel -->
+<div class="panel border border-outline-variant flex-shrink-0 p-grid-margin flex justify-between items-end">
+<div class="flex flex-col gap-unit">
+<div class="flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-ok border border-status-ok/50 shadow-[0_0_8px_rgba(174,198,255,0.4)]"></div>
+<h3 class="font-label-caps text-label-caps text-on-surface uppercase tracking-widest">NVMe Subsystem 0</h3>
+</div>
+<p class="font-data-mono text-data-mono text-on-surface-variant">Samsung SSD 980 PRO 2TB // FW: 5B2QGXA7</p>
+</div>
+<div class="flex gap-unit*2">
+<button class="px-unit*4 py-unit*2 border border-outline-variant text-on-surface font-label-caps text-label-caps hover:bg-surface-container-high transition-colors">
+                        EXPORT CSV
+                    </button>
+<button class="px-unit*4 py-unit*2 border border-outline-variant text-on-surface font-label-caps text-label-caps hover:bg-surface-container-high transition-colors flex items-center gap-unit">
+<span class="material-symbols-outlined text-[16px]" data-icon="refresh">refresh</span>
+                        POLL SENSORS
+                    </button>
+</div>
+</div>
+<!-- Dense Data Table Container -->
+<div class="panel border border-outline-variant flex-grow overflow-hidden flex flex-col relative">
+<!-- Policy Band indicating strict read-only mode -->
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-status-policy z-20" title="Policy: Restricted Read-Only Mode"></div>
+<!-- Table Header -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-surface-container-highest border-b border-outline-variant pl-unit pr-grid-margin flex-shrink-0">
+<div class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">ID</div>
+<div class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Attribute Name</div>
+<div class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-right">Current</div>
+<div class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-right">Worst</div>
+<div class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-right">Threshold</div>
+<div class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Status</div>
+</div>
+<!-- Table Body (Scrollable) -->
+<div class="flex-grow overflow-y-auto bg-outline-variant flex flex-col gap-panel-gap pl-unit">
+<!-- Row 1 -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-background hover:bg-surface-container-high transition-colors h-9 group">
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x01</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Critical Warning</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-primary flex items-center justify-end">000</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center justify-end">000</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">000</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-ok border border-outline-variant"></div>
+<span class="font-label-caps text-label-caps text-status-ok">NOMINAL</span>
+</div>
+</div>
+<!-- Row 2 -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-surface-container hover:bg-surface-container-high transition-colors h-9 group">
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x02</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Temperature</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-primary flex items-center justify-end">311 K</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-status-warning flex items-center justify-end">348 K</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">354 K</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-ok border border-outline-variant"></div>
+<span class="font-label-caps text-label-caps text-status-ok">NOMINAL</span>
+</div>
+</div>
+<!-- Row 3 -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-background hover:bg-surface-container-high transition-colors h-9 group">
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x03</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Available Spare</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-primary flex items-center justify-end">100</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center justify-end">100</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">010</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-ok border border-outline-variant"></div>
+<span class="font-label-caps text-label-caps text-status-ok">NOMINAL</span>
+</div>
+</div>
+<!-- Row 4 -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-surface-container hover:bg-surface-container-high transition-colors h-9 group">
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x04</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Available Spare Threshold</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-primary flex items-center justify-end">010</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center justify-end">010</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">---</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-surface-bright border border-outline-variant"></div>
+<span class="font-label-caps text-label-caps text-on-surface-variant">STATIC</span>
+</div>
+</div>
+<!-- Row 5 (Warning State) -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-background hover:bg-surface-container-high transition-colors h-9 group relative">
+<div class="absolute left-0 top-0 bottom-0 w-[2px] bg-status-warning hidden group-hover:block"></div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x05</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Percentage Used</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-status-warning flex items-center justify-end">085</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center justify-end">085</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">100</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-warning border border-outline-variant"></div>
+<span class="font-label-caps text-label-caps text-status-warning">DEGRADED</span>
+</div>
+</div>
+<!-- Row 6 -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-surface-container hover:bg-surface-container-high transition-colors h-9 group">
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x06</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Data Units Read</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-primary flex items-center justify-end">4.21E+08</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline italic flex items-center justify-end">not reported</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">---</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-ok border border-outline-variant"></div>
+<span class="font-label-caps text-label-caps text-status-ok">LOGGED</span>
+</div>
+</div>
+<!-- Row 7 -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-background hover:bg-surface-container-high transition-colors h-9 group">
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x07</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Data Units Written</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-primary flex items-center justify-end">3.88E+08</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline italic flex items-center justify-end">not reported</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">---</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-ok border border-outline-variant"></div>
+<span class="font-label-caps text-label-caps text-status-ok">LOGGED</span>
+</div>
+</div>
+<!-- Row 8 (Error State) -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-surface-container hover:bg-surface-container-high transition-colors h-9 group relative bg-error-container/10">
+<div class="absolute left-0 top-0 bottom-0 w-[2px] bg-status-critical hidden group-hover:block"></div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x0B</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Unsafe Shutdowns</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-status-critical flex items-center justify-end">00000042</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline italic flex items-center justify-end">not reported</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">000</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-critical border border-outline-variant animate-pulse"></div>
+<span class="font-label-caps text-label-caps text-status-critical">ALERT</span>
+</div>
+</div>
+<!-- Row 9 -->
+<div class="grid grid-cols-[60px_1fr_100px_100px_100px_120px] gap-panel-gap bg-background hover:bg-surface-container-high transition-colors h-9 group">
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface-variant flex items-center">0x0F</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-on-surface flex items-center truncate">Warning Composite Temp Time</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-primary flex items-center justify-end">00000000</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline italic flex items-center justify-end">not reported</div>
+<div class="py-unit px-cell-padding-x font-data-mono text-data-mono text-outline flex items-center justify-end">---</div>
+<div class="py-unit px-cell-padding-x flex items-center gap-unit*2">
+<div class="w-2 h-2 bg-status-ok border border-outline-variant"></div>
+<span class="font-label-caps text-label-caps text-status-ok">NOMINAL</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Status Bar -->
+<div class="panel border border-outline-variant flex-shrink-0 h-8 flex items-center px-unit*2 justify-between">
+<div class="flex items-center gap-unit*4">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">UPTIME: 42d 18h 03m</span>
+<span class="text-outline-variant">|</span>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">POLL_INTERVAL: 1000ms</span>
+</div>
+<div class="flex items-center gap-unit*2">
+<div class="w-1.5 h-1.5 rounded-full bg-status-ok shadow-[0_0_4px_rgba(174,198,255,0.8)]"></div>
+<span class="font-data-mono-sm text-data-mono-sm text-primary">SYSTEM CONNECTED</span>
+</div>
+</div>
+</div>
+</main>
+</body></html>
