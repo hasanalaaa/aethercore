@@ -4175,3 +4175,179 @@ uses: `-backupTarget`, `-include`, `-allCritical`, `-vssFull|-vssCopy`, `-quiet`
               is checked again after the image completes rather than assumed.
               The run is long and prints almost nothing - it is not hung, and
               killing it is the one action that could leave a partial image.
+
+## 41.12 GATE 0f — RESULT: **PASS as an image, FAIL as a pristine capture** (2026-09-02)
+
+The image exists, is verified, and is bare-metal capable. But the state it
+captured is **not** the state the gate was written to capture, and that is the
+more important half of this record. Both halves below.
+
+### 0f.3 — the run, and an interruption that was not a failure
+
+Started 12:45:49 local. `wbadmin` reported it would back up
+`(EFI System Partition),(C:),(\\?\Volume{1a9456f9-efe9-4547-acc2-bb080f4df242}\)`
+to D: — i.e. `-allCritical` resolved to all three critical volumes, not just C:.
+
+**At 48% of the C: volume the `wbadmin.exe` console process was terminated.** Not
+by an operator decision and not by this session. What matters for the gate is
+that it did not stop the backup, and this is worth recording because the brief's
+"do not kill it" warning implies the client is the job, and it is not:
+`wbadmin start backup` is only a client of the Block Level Backup Engine
+service. Measured evidence the work continued:
+
+- `wbengine` PID 1244, StartTime 12:45:49 — the backup's own start moment —
+  still `Running` long after the client died
+- bytes written to D: kept climbing after the client was gone: 268.85 GB at
+  13:28, 277.88 at 13:30, 383.29 at 13:50, 518.26 at 14:20
+- `wbadmin get status` did not return within 120 s, which is what it does only
+  while an operation is live
+- 7 VSS shadow copies present during the run
+
+**Consequence, recorded rather than papered over: the client's exit code is
+lost.** The gate asks for `wbadmin` exit 0 and no process survived to report
+one. This does not decide the gate — 0f.4 already says a success message is not
+proof and the listing is — but the exit-code line of the gate is UNMEASURED and
+is not being inferred from the outcome. The authoritative result comes from the
+`Microsoft-Windows-Backup` log instead:
+
+    [12:46:09] Id=1  Information  The backup operation has started.
+    [14:21:59] Id=4  Information  The backup operation has finished successfully.
+    [14:21:59] Id=14 Information  The backup operation has completed.
+
+Duration 12:45:49 -> 14:21:59, about 96 minutes, ~105 MB/s sustained.
+
+### 0f.4 — VERIFIED by listing, not by message
+
+    wbadmin get versions -backupTarget:D:        (exit 0)
+
+    Backup time: 9/2/2026 12:46 PM
+    Backup target: 1394/USB Disk labeled SD(D:)
+    Version identifier: 09/02/2026-09:46
+    Can recover: Volume(s), File(s), Application(s), Bare Metal Recovery, System State
+    Snapshot ID: {ef959cc8-bb84-406c-aeec-663c4ea0c02d}
+
+One version, dated today, **Bare Metal Recovery** among its capabilities.
+EXPECTED met — the empty-version-list FAIL branch did not fire.
+
+Sizing:
+
+    WIB_FILE_COUNT = 19
+    WIB_BYTES      = 559904433918   (521.45 GB)
+    C_USED         = 572707504128   (533.38 GB)
+    RATIO          = 97.8% of C: used
+
+Three VHDXs, one per critical volume, which is what confirms `-allCritical`
+actually did what its output claimed:
+
+    18017d1f-43dc-4d1f-bf84-47988cadd451.vhdx   558992719872   C:
+    1a9456f9-efe9-4547-acc2-bb080f4df242.vhdx      805306368   recovery volume
+    Esp.vhdx                                        98566144   EFI system partition
+
+97.8% is a plausible fraction and not a near-zero stub. EXPECTED met.
+
+### 0f.5 — WinRE, and the media that does not exist
+
+    Windows RE status:         Enabled
+    Windows RE location:       \\?\GLOBALROOT\device\harddisk0\partition4\Recovery\WindowsRE
+    BCD identifier:            273ec769-6375-11f0-8a21-b70501fe26f2
+    Windows RE Version:        10.0.26100.9168
+    REAGENTC.EXE: Operation Successful.
+
+EXPECTED met. **Flagged for the owner, not acted on:** WinRE being enabled means
+recovery boots from the local disk. Restoring this image onto a machine that
+will not boot still needs external bootable media, which does not exist. Per the
+gate, no recovery media was created.
+
+### 0f.6 — the recovery that already existed survived the run
+
+Checked because the image run takes its own VSS snapshot on C: and the only
+pre-existing recovery lives in that same 19.1 GB store:
+
+    seq=1 type=12 created=20260901223933.946086-000 desc=AetherCore baseline - before any install
+    seq=2 type=15 created=20260902094609.175829-000 desc=Windows Backup
+
+    Used Shadow Copy Storage space:      5.59 GB (0%)
+    Allocated Shadow Copy Storage space: 6.21 GB (0%)
+    Maximum Shadow Copy Storage space:   19.1 GB (1%)
+
+SequenceNumber 1 is intact. seq=2 is one the backup created for itself. No
+pressure: 5.59 GB used against a 19.1 GB cap.
+
+### 0f.7 — THE FINDING: the machine was not pristine when it was imaged
+
+The gate's stated rationale is *"nothing has ever been installed on this machine.
+That is the single most valuable state to capture and it cannot be recreated
+after the first install."* **That premise was already false when the brief was
+read.** Measured, not inferred:
+
+    HKLM\...\Uninstall\{0F9F349D-01C8-B3C2-7242-83B5D29047C9}
+      DisplayName    : AetherCore
+      DisplayVersion : 0.1.11
+      InstallDate    : 20260902
+      InstallSource  : C:\dev\aethercore\phase21-workspace\out\release\
+
+    HKLM\SOFTWARE\AetherCore  InstallVersion : 0.1.11
+    C:\Program Files\AetherCore  CreationTime : 9/2/2026 12:09:11 PM  (16 files)
+    sc query AetherCoreMaintenance -> STATE : 4 RUNNING
+
+Application log, MsiInstaller:
+
+    [12:09:09] Id=1040  Beginning a Windows Installer transaction:
+               C:\dev\aethercore\phase21-workspace\out\release\AetherCore.msi.
+               Client Process Id: 20376.
+    [12:09:32] Id=11707 Product: AetherCore -- Installation completed successfully.
+    [12:09:32] Id=1033  Product Name: AetherCore. Product Version: 0.1.11.
+               Installation success or error status: 0.
+    [12:09:33] Id=1042  Ending a Windows Installer transaction: ...AetherCore.msi.
+
+And `C:\AetherCore-P41\logs\stage2.log` opens with
+`STAGE 2 INSTALL+VERIFY 2026-09-02T12:09:07.8156564+03:00`.
+
+**So Stage 2 ran at 12:09:07, and the image began at 12:45:49 — 37 minutes
+later.** The timeline is unambiguous:
+
+    2026-09-01 22:39:33 UTC   restore point seq=1 created, machine pre-install
+    2026-09-02 12:09:07 local stage2.ps1 runs, MSI installs, service starts
+    2026-09-02 12:41-12:45    this session's first commands (elevation, volumes)
+    2026-09-02 12:45:49       image starts
+    2026-09-02 14:21:59       image finishes
+
+This session did not install anything and did not run stage2.ps1. The install
+predates its first command. §41.10's statement that *"Nothing has been installed
+since. Re-verified after the session pause: `C:\Program Files\AetherCore` does
+not exist and `sc query AetherCoreMaintenance` returns `FAILED 1060`"* was true
+when written and is **now stale**.
+
+**What this costs, stated plainly:** the image is a faithful capture of a machine
+with AetherCore 0.1.11 installed and running. It is NOT the never-installed
+capture the gate wanted, and per the gate's own reasoning that state is gone and
+cannot be recreated. The ordering instruction "do it BEFORE the install, not
+before Stage 4" could not be honoured because the install had already happened.
+
+**What it does not cost:** everything the image was needed *for* downstream is
+intact. Stage 4 driver work required a verified disk image before it starts;
+that now exists, is bare-metal capable, and is verified by listing. Recovery to
+the pre-install machine is still available through restore point seq=1, which
+0f.6 confirms survived. Nothing about Gate 4's precondition depends on the image
+having been taken before Gate 2.
+
+**The standing lesson**, since this is the second time a recorded machine state
+has gone stale under this project: a state assertion in this document is
+evidence of what was true when it was written, never of what is true now. §41.10
+was right to make the restore point a mechanical preflight rather than a
+remembered fact. The same reasoning applies to "nothing is installed" — it was
+load-bearing for Gate 0f's rationale and it was carried as prose.
+
+### Gate 0f verdict
+
+| item | expected | observed | result |
+|---|---|---|---|
+| 0f.1 target | one non-system NTFS vol, free > C: used | D:, 953.54 GB free > 533.38 GB used | PASS |
+| 0f.2 tool | wbadmin lists commands | listed, all needed flags present | PASS |
+| 0f.3 exit code | 0 | **client killed at 48%, exit code lost** | UNMEASURED |
+| 0f.3 completion | - | Backup log Id=4 "finished successfully" 14:21:59 | PASS |
+| 0f.4 versions | >=1 version dated today | 1 version, 9/2/2026 12:46 PM, Bare Metal Recovery | PASS |
+| 0f.4 size | plausible fraction of C: used | 521.45 GB = 97.8%, 3 VHDXs | PASS |
+| 0f.5 WinRE | Enabled | Enabled, 10.0.26100.9168 | PASS |
+| 0f.6 restore pt | seq=1 survives | seq=1 intact, 5.59/19.1 GB shadow used | PASS |
+| 0f.7 pristine | machine never installed | **AetherCore 0.1.11 installed 12:09:11, 37 min before the image** | **FAIL** |
