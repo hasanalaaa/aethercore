@@ -6410,3 +6410,48 @@ The VM's install state was left exactly as found (§43.0): AetherCore 0.1.11,
 ProductCode `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}`, service Running/
 Automatic. Nothing in Parts 1-3 touched the installed product — the fix was
 built and measured from `target\release\`, never installed.
+
+## 43.9 P43 REPORT
+
+**Build and test.** Shipping ARM64 release (`aethercore-maintenance-service`,
+`aetherctl`): exit 0, `Finished` in 1m 17s (§43.2) — proven from the log even
+though the recipe script's own exit code was 101, caused by an unrelated,
+pre-existing stale `--example` reference (DBT-P43-001), not by the shipping
+build. `cargo test -p aethercore-performance-telemetry --test dbt_p41_002`:
+7/7 passed in 3.29s (§43.3), identical test set and result to x64's post-fix
+run.
+
+**Every product reading beside the host's, offline path, two rounds (§43.4):**
+
+    round 1   cpu   product 76.70%   host 75.85%   delta +0.85 pts   ratio 1.011
+    round 2   cpu   product 74.99%   host 75.46%   delta -0.47 pts   ratio 0.994
+    both rounds   storage/disk-time/disk-write-rate:  0 on product AND host — no
+                  ARM64 disk-latency comparison exists (VM disk never registered load)
+    both rounds   gpu: engineCount 16, no fault   |   perProcessorBusyBp: []
+
+**Bias outcome, stated plainly: ARM64 shows NO bias.** x64 read +7.47 pts,
++4.09 pts and 3.47x — three readings, all the same direction, all sizeable.
+ARM64 read +0.85 pts then -0.47 pts — two readings, opposite signs, an order
+of magnitude smaller. That is the brief's "no bias, x64-specific, surprising"
+branch, not the "same bias, shared logic" branch (§43.5). Caveat carried
+forward honestly: offline path only, two rounds, no disk-latency point.
+
+**DBT-P42-004 verdict: CLOSED** (§43.7). Build clean, tests identical to x64,
+offline measurements agree with the host on real hardware. Two items named
+rather than folded in silently: the service path was not re-measured (not
+needed to close the verdict — §20.1.9(1)/§42.8 already establish the offline
+and service paths share one provider) and disk latency is unmeasured on this
+VM rather than confirmed non-biased.
+
+**Recorded rather than worked around:**
+
+| id | what | disposition |
+|---|---|---|
+| DBT-P43-001 | `p36_relbuild.cmd`'s second step builds a `--example ipc_two_client_probe` that no longer exists in `aethercore-ipc` (no `examples/` dir, no `[[example]]` entry, on either machine) — makes the recipe's own exit code (101) unusable as a pass/fail signal even when the shipping build is clean | open — recipe script is out of this session's scope, §43.2 |
+| DBT-P42-011 | byte-rate/latency counters under-report against a 1 s window (x64, still open, unchanged this session) | this session's ARM64 bias evidence points *away* from it being shared-logic, narrowing rather than widening it — not fixed, not re-scoped without more data |
+| — | the ARM64 VM's working copy predates P42 by default (fed by copy, not git — no automatic sync exists) | recorded as how it was found, §43.1; resynced this session, not a standing defect to fix |
+| — | this VM's `PhysicalDisk(0 c:)` counters never register non-zero `% Disk Time`/write-rate under a 16 MB write+read loop, on host counters as much as the product | recorded as a property of this VM's virtual disk, §43.4 — not chased further |
+
+**Part 4: not taken.** Judged against the brief's own gate — see §43.8 for the
+full reasoning. No new snapshot was created; the VM's snapshot list and
+install state are exactly as found in §43.0.
