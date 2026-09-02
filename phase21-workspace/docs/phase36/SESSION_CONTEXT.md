@@ -6198,3 +6198,30 @@ Recorded, not fixed — the recipe script is out of this session's scope.
 **1.B verdict: EXPECTED exit 0 — OBSERVED, for the shipping build specifically.
 The recipe script's own exit code (101) is not usable as the pass/fail signal
 as written**, because of DBT-P43-001. Part 1 continues.
+
+## 43.3 PART 1.C — the dbt_p41_002 regression tests on ARM64
+
+    cargo test -p aethercore-performance-telemetry --test dbt_p41_002 -- --nocapture
+
+Built clean under the same toolchain env as 1.B (`Finished `test` profile
+[unoptimized + debuginfo] target(s) in 51.13s`), no errors, warnings unrelated
+(an unused import in `platform-capabilities`, a dead field in
+`PerformanceRing`, neither touching the tested behaviour).
+
+    running 7 tests
+    test a_percentage_counter_becomes_basis_points ... ok
+    test a_bad_status_is_not_decoded_as_a_double ... ok
+    test instance_is_parsed_out_of_an_expanded_counter_path ... ok
+    test pdh_value_is_decoded_from_large_value_not_cstatus ... ok
+    test real_windows_provider_reports_non_zero_cpu_under_load ... ok
+    test no_collector_returns_an_empty_payload_without_a_fault ... ok
+    test capabilities_never_claim_native_for_a_subsystem_that_reported_nothing ... ok
+
+    test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+**EXPECTED: the four `dbt_p41_002` tests pass on ARM64 too. OBSERVED: all 7 in
+the file pass** — the original four the brief named plus the three unit tests
+1.B added for the PDH-decode, percentage-to-bp and counter-path mechanisms.
+Identical result set to §42.2's post-fix x64 run (same 7 test names, all `ok`).
+**No architecture divergence in Part 1.** Part 1 verdict: the fix builds and
+passes its own regression suite on ARM64, matching x64 exactly.
