@@ -5042,3 +5042,30 @@ Gate 4 does not run in this session and not unattended. Gate 5 (full lifecycle,
 zero survivors) is no longer blocked by Gate 2 and could be run before Gate 4 —
 it is the uninstall/survivor sweep, it is proven on ARM64 but not on this
 machine, and it does not risk the boot path. That sequencing is the owner's call.
+
+## 41.18 SECURITY POSTURE — re-checked at session end, unchanged
+
+The standing rule is that a security regression stops everything and that
+Defender, UAC, Firewall and SmartScreen are never disabled. Nothing in this
+session touched any of them; re-measured at the end anyway, because "I did not
+change it" is a memory and the reading is evidence:
+
+    DEFENDER_REALTIME       True
+    DEFENDER_ANTIVIRUS      True
+    DEFENDER_TAMPER         True      (tamper protection on)
+    PUAProtection           2
+    MAPSReporting           2         SubmitSamplesConsent 1
+    UAC_EnableLUA           1
+    UAC_ConsentPromptAdmin  5         (prompt for consent on the secure desktop)
+    Firewall Domain         True
+    Firewall Private        True
+    Firewall Public         True
+    AetherCoreMaintenance   Running
+
+**SmartScreen, stated precisely rather than rounded up to "enabled":**
+`HKLM\...\Explorer\SmartScreenEnabled` is empty, `AppHost\EnableWebContentEvaluation`
+is unset, and `HKLM\SOFTWARE\Policies\Microsoft\Windows\System\EnableSmartScreen`
+does not exist. So there is **no policy or registry value disabling SmartScreen**
+and it sits at the Windows default. What is positively verifiable is the absence
+of any override; a direct "enabled" reading is not available from these keys, and
+this session set none of them.
