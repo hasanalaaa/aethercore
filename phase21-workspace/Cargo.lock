@@ -443,6 +443,7 @@ version = "0.1.11"
 dependencies = [
  "aethercore-collector-runtime",
  "aethercore-performance-bottleneck",
+ "aethercore-platform-capabilities",
  "aethercore-windows-foundation",
  "chrono",
  "criterion",

@@ -103,20 +103,40 @@ impl Drop for QueryHandle {
     }
 }
 
+/// Size of the destination this code hands `PdhGetFormattedCounterValue`.
+///
+/// DBT-P41-002 test seam (P42 1.A). The API's out-parameter is a
+/// `PDH_FMT_COUNTERVALUE`, which is 16 bytes with `largeValue` at offset 8.
+/// This constant records what the shipping code actually supplies, so a test can
+/// assert the ABI instead of reading it out of a comment. It is deliberately
+/// left at the shipping value in 1.A: the tests must fail against today's
+/// behaviour before the fix lands.
+pub const PDH_VALUE_SLOT_BYTES: usize = 8;
+
+/// Interprets the bytes `PdhGetFormattedCounterValue` wrote into the slot.
+///
+/// Extracted unchanged from `read_u64` so it is testable without PDH. Today it
+/// reads the first 8 bytes, which in a real `PDH_FMT_COUNTERVALUE` are `CStatus`
+/// plus padding — never the measurement.
+pub fn decode_pdh_value(slot: &[u8]) -> Option<u64> {
+    let raw = i64::from_le_bytes(slot.get(0..8)?.try_into().ok()?);
+    Some(raw.max(0) as u64)
+}
+
 struct CounterHandle(isize);
 
 impl CounterHandle {
     /// Reads as an unsigned 64-bit raw-formatted value.
     fn read_u64(&self) -> Option<u64> {
-        let mut value = 0i64;
+        let mut slot = [0u8; PDH_VALUE_SLOT_BYTES];
         unsafe {
             if pdh_ok(pdh::PdhGetFormattedCounterValue(
                 self.0,
                 pdh::PDH_FMT_LARGE,
                 std::ptr::null_mut(),
-                &mut value,
+                slot.as_mut_ptr().cast(),
             )) {
-                Some(value.max(0) as u64)
+                decode_pdh_value(&slot)
             } else {
                 None
             }

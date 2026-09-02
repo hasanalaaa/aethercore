@@ -5069,3 +5069,94 @@ does not exist. So there is **no policy or registry value disabling SmartScreen*
 and it sits at the Windows default. What is positively verifiable is the absence
 of any override; a direct "enabled" reading is not available from these keys, and
 this session set none of them.
+
+# PHASE 42 — FIX DBT-P41-002 AT THE TYPE, THEN PROVE THE LIFECYCLE (2026-09-02)
+
+Brief: `phase21-workspace/docs/phase41/P42-FIX-AND-LIFECYCLE.md`.
+Session started from an already-elevated PowerShell, per §41.9 — verified, not
+assumed: `IsInRole(Administrator) = True`, `HUSSEIN\husen`, `PROCESSOR_ARCHITECTURE=AMD64`,
+`cargo 1.97.1`, `rustc 1.97.1`. `core.autocrlf = false` confirmed before any edit.
+
+## 42.0 P42 PROGRESS TABLE (authoritative — resume from here)
+
+| item | what it proves | status | evidence |
+|---|---|---|---|
+| 1.A | the four tests that should have caught DBT-P41-002, committed failing | **DONE** | §42.1 — 4/4 FAILED on real x64, output verbatim below |
+| 1.B | one contract replaces the nine availability rules; both mechanisms fixed | pending | |
+| 1.C | the fix proven on this machine with numbers | pending | |
+| 2.A | MSI rebuilt with the fix, zero ICE | pending | |
+| 2.B | uninstall + fourteen-check survivor sweep | pending | |
+| 2.C | reinstall, every Gate 2 property re-proven | pending | |
+| 2.D | the fix live under the installed service | pending | |
+| 4 | driver install/rollback | **NOT STARTED — HARD STOP** | §41.17; unchanged by this session |
+
+## 42.1 PART 1.A — the four regression tests, committed FAILING
+
+§20.1.5 records the hole precisely: **no test anywhere constructs
+`WindowsPerfPlatform`**, and the two real-provider tests that exist assert upper
+bounds only (`phase27_real_sample.rs:41-43` `<= 10_000`;
+`phase28_cli_matrix.rs:177-181` `0.is_u64()`), which an all-zero snapshot
+satisfies. The tests were therefore written first and committed failing, matching
+the practice the LocalSystem authorization fix established in Phase 39.
+
+New file: `crates/performance-telemetry/tests/dbt_p41_002.rs`, 4 tests,
+`#![cfg(windows)]`.
+
+### The one production change 1.A makes, and why it is not a fix
+
+`read_u64` was routed through two extracted items so the ABI is testable without
+linking PDH:
+
+    pub const PDH_VALUE_SLOT_BYTES: usize = 8;      // what the shipping code supplies
+    pub fn decode_pdh_value(slot: &[u8]) -> Option<u64>  // i64::from_le_bytes(slot[0..8])
+
+This is **behaviour-identical to the shipping code**: same 8-byte destination,
+same read of bytes 0..8, same `.max(0) as u64`. The 8-byte overflow
+(DBT-P41-002b) is neither introduced nor removed by 1.A — it is pre-existing and
+carried unchanged so the tests fail against real shipping behaviour rather than
+against a stand-in. 1.B removes it.
+
+A dev-dependency on `aethercore-platform-capabilities` was added to
+`performance-telemetry` so test 4 can assert the two crates against each other in
+one process. Dev-only; the production dependency direction is unchanged.
+
+### Result: 4 tests, 4 FAILED — verbatim
+
+    running 4 tests
+    test pdh_value_is_decoded_from_large_value_not_cstatus ... FAILED
+    test no_collector_returns_an_empty_payload_without_a_fault ... FAILED
+    test real_windows_provider_reports_non_zero_cpu_under_load ... FAILED
+    test capabilities_never_claim_native_for_a_subsystem_that_reported_nothing ... FAILED
+
+    ---- pdh_value_is_decoded_from_large_value_not_cstatus ----
+    PdhGetFormattedCounterValue writes a 16-byte PDH_FMT_COUNTERVALUE;
+    supplying 8 bytes overflows the destination
+
+    ---- real_windows_provider_reports_non_zero_cpu_under_load ----
+    every logical processor was spinning; totalBusyBp must not be 0.
+    cpu=CpuSample { per_processor_busy_bp: [], total_busy_bp: 0, dpc_isr_busy_bp: 0,
+                    context_switches_per_sec: 0, processor_queue_length_x100: 0 }
+    faults=[CollectorFault { collector: "gpu", kind: "Unavailable",
+            detail: "no GPU engine counters exposed by this adapter/driver" }]
+
+    ---- no_collector_returns_an_empty_payload_without_a_fault ----
+    collectors returned success with nothing measured and nothing declared:
+      cpu: CpuSample { per_processor_busy_bp: [], total_busy_bp: 0, ... } with no fault
+      storage: [] with no fault
+      processTop: [] with no fault
+    all faults: [gpu/Unavailable]
+
+    ---- capabilities_never_claim_native_for_a_subsystem_that_reported_nothing ----
+    capabilities contradicts the collectors in the same process:
+      telemetryCpu: reported `native` while the collector produced CpuSample { ...all zero... }
+      telemetryStorage: reported `native` while the collector produced 0 devices
+      telemetryGpu: reported `native` while the collector produced 0 engines
+
+    test result: FAILED. 0 passed; 4 failed; 0 ignored; finished in 1.59s
+
+**These reproduce §41.15 exactly**, from a test process rather than from the CLI:
+`perProcessorBusyBp []`, all four PDH-sourced cpu scalars `0`, storage `[]` with
+no fault, and the single gpu `Unavailable` whose detail string §41.16 3b proved
+false. The load harness spins every logical processor for 300 ms before sampling
+and holds it across the sample, so "the machine was idle" is not available as an
+explanation — and §41.15 had already measured 7.01% on an *unloaded* box.

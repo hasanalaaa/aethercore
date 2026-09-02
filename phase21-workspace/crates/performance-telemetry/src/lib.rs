@@ -258,6 +258,11 @@ pub fn default_platform() -> std::sync::Arc<dyn PerfPlatform> {
 /// part of the production call graph). Re-exports typed views of private helpers.
 #[doc(hidden)]
 pub mod __test {
+    /// DBT-P41-002 seam: the PDH formatted-value decode, exposed so a test can
+    /// assert which offset the measurement is read from without linking PDH.
+    #[cfg(windows)]
+    pub use super::windows_impl::{PDH_VALUE_SLOT_BYTES, decode_pdh_value};
+
     #[cfg(target_os = "macos")]
     pub use super::macos_impl::{CpuTicks, busy_bp_from_ticks, read_cpu_ticks};
 
