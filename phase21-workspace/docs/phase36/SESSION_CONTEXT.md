@@ -6372,3 +6372,41 @@ DBT-P42-004 verdict rather than inside it: DBT-P42-004 asks whether the P42
 fix works on ARM64 (yes), not whether x64's separately-open bias question
 also applies here (this session's evidence says no, or at least not by the
 same mechanism).
+
+## 43.8 PART 4 — NOT TAKEN, decision recorded rather than silently skipped
+
+The brief gates Part 4 on two conditions: Parts 1-3 committed clean (true —
+§43.1-§43.7, four separate commits, all pushed), and that it "adds something
+Part 2 did not." **Judged that it does not, for this session's brief, and Part
+4 was not run.**
+
+Reasoning:
+
+- The question Part 4 would additionally answer is whether the fix behaves
+  the same way when reached through the installed **service** rather than
+  offline. That is not open speculation this session had to re-derive:
+  §20.1.9(1) and §42.8 already established, on x64, that both paths call the
+  identical `default_platform()` and share the one `WindowsPerfPlatform`
+  provider — there is no second, service-specific code path for ARM64 to
+  diverge through that Part 2's offline measurement did not already exercise.
+- Gate 5 (full lifecycle, zero survivors) is separately recorded in §41.17 as
+  **already proven on ARM64** in an earlier session, unlike x64 where P42 had
+  to prove it for the first time. Part 4 here would be re-proving already-
+  proven Gate 2/5 properties against the new binaries, not establishing them
+  for the first time the way it was for x64.
+- Part 4 is destructive (an MSI install over the currently-installed 0.1.11),
+  requires its own ACTION/SNAPSHOT/EXPECTED/RECOVERY record and a new named
+  snapshot before the first step, and a full MSI rebuild-validate-install-
+  reprove cycle — real additional work, gated by the brief specifically so it
+  is not taken by default.
+
+**This is a judgement call, not a limitation the session ran out of time
+for** — recorded so a future session does not read the absence of Part 4 as
+an oversight. If service-path re-confirmation on ARM64 becomes independently
+useful later (e.g. before a release that ships the ARM64 build), it can be
+run on its own without re-doing Parts 1-3.
+
+The VM's install state was left exactly as found (§43.0): AetherCore 0.1.11,
+ProductCode `{98FCE2D5-44F0-A27C-A48B-8720FFE672F0}`, service Running/
+Automatic. Nothing in Parts 1-3 touched the installed product — the fix was
+built and measured from `target\release\`, never installed.
