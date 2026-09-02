@@ -4627,3 +4627,191 @@ service is what holds the live engine, and the service reports `localModel`.
 
 **GATE 2 = PASS.** No security regression. Nothing was disabled, weakened, or
 worked around.
+
+## 41.15 GATE 3 — DBT-P41-002 MEASURED ON REAL x86_64 SILICON (2026-09-02)
+
+Measurement only. **Nothing was fixed**, per the brief and per §20.1.10.
+Raw logs: `C:\AetherCore-P41\logs\gate3\`.
+
+### 3.A — the deciding check: **PASS**
+
+    "perProcessorBusyBp":[]
+
+EXPECTED `[]`, observed `[]`. Not 22 zeros — and this machine genuinely has 22
+logical processors, so the discriminator was live, not vacuous. **The installed
+binary corresponds to the source §20.1 was diagnosed against (`e91f675`).** The
+diagnosis does not need re-basing and everything below is measured against a
+valid baseline.
+
+### 3.B — the offline reading, verbatim
+
+`aetherctl --output json telemetry-once`, exit 0:
+
+    {"schema":"aethercore.aetherctl.v1","command":"telemetry-once","ok":true,"data":{
+     "capturedUnixMs":1788348967201,
+     "collectorFaults":[{"collector":"gpu","detail":"no GPU engine counters exposed by this adapter/driver","kind":"Unavailable"}],
+     "cpu":{"contextSwitchesPerSec":0,"dpcIsrBusyBp":0,"perProcessorBusyBp":[],
+            "processorQueueLengthX100":0,"totalBusyBp":0},
+     "gpu":null,"intervalMs":250,
+     "memory":{"availablePhysicalBytes":3085389824,"hardFaultsPerSec":0,
+               "memoryLoadPercent":81,"softFaultsPerSec":0,"totalPhysicalBytes":16632156160},
+     "platform":"windows",
+     "power":{"hasTemperature":false,"temperatureC":0,"throttleActive":false,"throttleReason":"none"},
+     "processTop":[],"providerSource":"PerfPlatform","storage":[]}}
+
+Every §20.1 prediction holds:
+
+- cpu — all four PDH-sourced scalars are `0`, `perProcessorBusyBp` is `[]`, and
+  **no cpu fault is declared** (§20.1.2: `CpuSample` is scalars, it cannot
+  express "I got nothing").
+- storage — `[]` with **no fault** (§20.1.2: four fault-free early returns).
+- gpu — the **only** collector declaring a fault, and it declares one with a
+  reason (§20.1.2).
+- memory — the headline fields are real (16632156160 bytes = 15.49 GiB total,
+  81% load) because they come from `GlobalMemoryStatusEx`, while its two
+  PDH-sourced fields, `hardFaultsPerSec` and `softFaultsPerSec`, are `0` like
+  everything else PDH touches. This is §20.1.3(a)'s split, visible in one object.
+- power — `throttleActive` reported with **no fault**, consistent with the
+  unreachable `else` at `:256-262` behind `|| true` (§20.1.1 site 3).
+- processTop — `[]` with no fault, by design (§20.1.1 site 7).
+
+### 3.B (continued) — the service-backed reading, and a correction to the brief
+
+**The brief asks to "re-run `telemetry-once` against the RUNNING SERVICE". That
+is not a thing `telemetry-once` can do.** `aetherctl --help` classifies it under
+*"OFFLINE COMMANDS (no service required, strictly read-only)"*. It samples
+in-process and never contacts the service, so running it with the service up
+exercises the same code either way. The verb that actually crosses the service
+boundary is `perf snapshot`, which is what §20.1.9 recommended running "to
+confirm the prediction rather than to discover the answer".
+
+`aetherctl --output json perf snapshot`, exit 0 — service-backed:
+
+    {"schema":"aethercore.aetherctl.v1","command":"perf snapshot","ok":true,"data":{
+     "capturedUnixMs":1788349015839,
+     "collectorFaults":[{"collector":"gpu","detail":"no GPU engine counters exposed by this adapter/driver","kind":"Unavailable"}],
+     "cpu":{"contextSwitchesPerSec":0,"dpcIsrBusyBp":0,"totalBusyBp":0},
+     "intervalMs":1000,
+     "memory":{"availablePhysicalBytes":3020337152,"hardFaultsPerSec":0,
+               "memoryLoadPercent":81,"totalPhysicalBytes":16632156160},
+     "power":{"hasTemperature":false,"temperatureC":0,"throttleActive":true},
+     "processTop":[],"storage":[]}}
+
+**§20.1.9(1) is confirmed on real hardware: the service path shows the identical
+zeros.** cpu `0/0/0`, storage `[]`, the same single gpu fault with the same
+detail string, memory real. DBT-P41-002 is **not** scoped to `telemetry-once`;
+that verb is only where it was first seen.
+
+The one apparent divergence was chased rather than assumed. The first offline
+sample said `throttleActive:false` and the service sample 48 s later said `true`.
+Three back-to-back offline/service pairs settled it:
+
+    round 1  offline.throttleActive=True  service.throttleActive=True  reason=power  cpu 0/0  storage 0/0
+    round 2  offline.throttleActive=True  service.throttleActive=True  reason=power  cpu 0/0  storage 0/0
+    round 3  offline.throttleActive=True  service.throttleActive=True  reason=power  cpu 0/0  storage 0/0
+
+The paths agree. The first difference was the machine's real power state changing
+between samples (the box moved into `throttleReason: "power"` and stayed there),
+**not** a code-path divergence. No new fact; recorded because the brief asked for
+one if it existed and honesty requires saying it did not.
+
+### 3.B (the part no VM could have measured) — the counters exist and carry data
+
+The all-zero output is only damning if the host actually exposes the counters
+being misread. Probed independently of the product, with `Get-Counter`, on this
+silicon:
+
+    \PhysicalDisk(*)\% Disk Time            PRESENT, 4 instances
+        InstanceName   CookedValue
+        0 c:           6.44321146949699
+        1 d:           0
+        2 e:           7.43446712527608
+        _total         4.62589617871989
+
+    \GPU Engine(*)\Utilization Percentage   PRESENT, 568 instances
+        pid_10148_luid_0x00000000_0x00010f21_phys_0_eng_0_engtype_3d                  0
+        pid_10148_luid_0x00000000_0x00010f21_phys_0_eng_10_engtype_gdi render         0
+        pid_10148_luid_0x00000000_0x00010f21_phys_0_eng_11_engtype_videoprocessing    0
+        pid_10148_luid_0x00000000_0x00010f21_phys_0_eng_1_engtype_videodecode         0
+
+    \Processor(_Total)\% Processor Time      7.01
+    LOGICAL_PROCESSORS                       22
+
+Three conclusions, each a measurement rather than an inference:
+
+1. **storage `[]` is a code defect, not absent hardware counters.** The host
+   exposes `\PhysicalDisk(*)\% Disk Time` with four live instances returning
+   non-zero values at the same moment the product returns `[]`. This eliminates
+   "the counters aren't there" and leaves §20.1.3(c)'s pattern bug — the
+   dangling `Vec<u16>` temporary and the raw-string `\0` that is two characters
+   rather than a NUL. It narrows the open §20.1.7 item *"which of storage's four
+   exits fires"* to the two that follow `PdhExpandWildCardPathW`
+   (`needed == 0` at `:353-355`, or the call failure at `:359-361`); the
+   query-open exit at `:328-335` is excluded because it would have pushed a
+   fault, and none was pushed.
+
+2. **The gpu fault's detail string is factually false on this machine.** It
+   says *"no GPU engine counters exposed by this adapter/driver"* while the
+   adapter exposes **568** of them. This confirms §20.1.6: gpu's healthy-looking
+   `Unavailable` is the accidental by-product of `PdhAddEnglishCounterW`
+   refusing an unexpanded wildcard, not of the counters being missing. So the
+   one collector that "gets it right" also misattributes its own cause — do not
+   model the fix on it, and the detail string needs correcting alongside.
+
+3. **The cpu zero is provably not an idle machine.** `\Processor(_Total)\%
+   Processor Time` reads **7.01%** — about **701 basis points** — in the same
+   window the product reports `totalBusyBp: 0`. §20.1.3(a) called this "not 22
+   processors at 0%, it is `PDH_CSTATUS_VALID_DATA` formatted as basis points";
+   that is now measured, not argued.
+
+Also settled from §20.1.8: every PDH-sourced field observed across six samples
+read exactly `0`, never `1`. So the counters are returning
+`PDH_CSTATUS_VALID_DATA (0x0)` rather than `PDH_CSTATUS_NEW_DATA (0x1)` — the
+misread is stable, not intermittent.
+
+**The stack-overflow question (§20.1.7) remains UNMEASURED.** `read_u64` passes
+an 8-byte destination for a 16-byte `PDH_FMT_COUNTERVALUE` write on every counter
+read. The service has been running since 12:09 with no crash, so the 8 bytes are
+evidently being absorbed by stack padding on this build — but "did not crash" is
+not evidence of "does not corrupt". Establishing that needs an ASAN or
+`/analyze` build, not observation of a running process. It stays open, and it is
+still a memory-safety defect regardless.
+
+### 3.C — `capabilities` contradicts the collectors, measured
+
+`aetherctl --output json capabilities`, exit 0. All **16** capabilities report
+`"state":"native"`, `"key":null` — including:
+
+    telemetryCpu      native
+    telemetryMemory   native
+    telemetryStorage  native
+    telemetryGpu      native
+
+**In the same session, on the same machine, `telemetryStorage: native` and
+`"storage": []`; `telemetryGpu: native` and a gpu `Unavailable` fault.**
+§20.1.9(2) confirmed: `windows_table()` is a static map with no runtime input,
+so it will report `native` on every Windows host in every state. Decision site 9
+of §20.1.1, now demonstrated rather than read from source.
+
+`engine-source` reports `{"platform":"windows","source":"native"}`.
+
+### Gate 3 verdict
+
+| item | expected | observed | result |
+|---|---|---|---|
+| 3.A `perProcessorBusyBp` | `[]` | `[]` (on a genuine 22-processor box) | **PASS** |
+| 3.B cpu offline | zero, no fault | `0/0/0/0`, `[]`, no fault | PASS |
+| 3.B storage offline | `[]`, no fault | `[]`, no fault | PASS |
+| 3.B gpu offline | `Unavailable` with reason | declared, with reason | PASS |
+| 3.B service path | identical zeros (§20.1.9) | identical, via `perf snapshot` | PASS |
+| 3.B offline vs service | divergence would be a new fact | none; 3/3 rounds agree | PASS (no new fact) |
+| PDH counters present | not previously measured | PhysicalDisk 4 live instances, GPU Engine 568, CPU 7.01% | **NEW EVIDENCE** |
+| `CStatus` 0 vs 1 (§20.1.8) | unknown | always `0` = `VALID_DATA`, 6 samples | **RESOLVED** |
+| storage exit (§20.1.7) | which of four | narrowed to the two after `PdhExpandWildCardPathW` | PARTIAL |
+| stack overflow observable | unknown | no crash in ~3 h uptime; not provable by observation | **UNMEASURED** |
+| 3.C `capabilities` | static `native` regardless | 16/16 `native`, contradicting storage `[]` and the gpu fault | PASS (defect confirmed) |
+
+**GATE 3 = PASS.** DBT-P41-002 is confirmed on real x86_64 silicon, its blast
+radius is larger than first recorded (service path included, `capabilities`
+included), and the diagnosis in §20.1 stands unmodified. **Not fixed**, per the
+brief.
