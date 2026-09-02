@@ -5087,8 +5087,8 @@ assumed: `IsInRole(Administrator) = True`, `HUSSEIN\husen`, `PROCESSOR_ARCHITECT
 | 2.A | MSI rebuilt with the fix, zero ICE | **DONE** | §42.5 — validate EXIT 0 output EMPTY, 0 ICE, payload PASS 16 rows, sha256 `6ecd1ee9…` at 1,100,148,736 bytes |
 | 2.B | uninstall + fourteen-check survivor sweep | **PASS** | §42.6 — uninstall exit 0; 13/14 clean outright, check 14 has ZERO machine-wide hits (all 16 are user-profile dev artifacts) |
 | 2.C | reinstall, every Gate 2 property re-proven | **PASS** | §42.7 — install exit 0, 16/16 hashes match the built payload, SID UNRESTRICTED, pipe DACL equal, engineLabel=localModel |
-| 2.D | the fix live under the installed service | pending | |
-| 4 | driver install/rollback | **NOT STARTED — HARD STOP** | §41.17; unchanged by this session |
+| 2.D | the fix live under the installed service | **PASS** | §42.8 — service path cpu 5231 bp vs host 48.22%, storage 2 devices, perf snapshot live; doctor exit 5 RESOLVED (state-dependent) |
+| 4 | driver install/rollback | **NOT STARTED — HARD STOP** | §41.17 + §42.9 — unchanged, and the E: recovery media is now measured DETACHED, so its boot-test precondition is two steps not one |
 
 ## 42.1 PART 1.A — the four regression tests, committed FAILING
 
@@ -5833,3 +5833,231 @@ false failure.
 
 **2.C = PASS.** Every Gate 2 property holds on the reinstalled product, and the
 only difference from §41.14 is the two binaries that carry the fix.
+
+## 42.8 GATE 5 — 2.D: the Part 1 fix live under the INSTALLED SERVICE
+
+### First, DBT-P42-008 re-checked against the installed service
+
+    NOW_UNIX_MS=1788361606833
+      call 1  capturedUnixMs=1788361607607  cpuBusy=3356
+      call 2  capturedUnixMs=1788361610040  cpuBusy=2243
+      call 3  capturedUnixMs=1788361612446  cpuBusy=2296
+
+Three calls, **three different timestamps**, each within a second of the call, and
+three different CPU readings. Before the fix the same three calls returned
+`capturedUnixMs=1788349015839` every time — a payload three hours old. The
+stale-snapshot defect is fixed and proven live, not just unit-tested.
+
+### `perf snapshot` against the RUNNING SERVICE, machine under load
+
+    {"command":"perf snapshot","ok":true,"data":{
+     "capturedUnixMs":1788361621459,
+     "collectorFaults":[
+       {"collector":"processTop","kind":"NotCollected","detail":"per-process CPU attribution ..."},
+       {"collector":"memory.counters","kind":"Degraded","detail":"counters unreadable: Standby Cache Reserve Priority Bytes"}],
+     "cpu":{"contextSwitchesPerSec":4746,"dpcIsrBusyBp":0,"totalBusyBp":5231},
+     "intervalMs":1000,
+     "memory":{"availablePhysicalBytes":3589976064,"memoryLoadPercent":78,
+               "totalPhysicalBytes":16632156160,"hardFaultsPerSec":0},
+     "power":{"throttleActive":false,...},
+     "processTop":[],
+     "storage":[{"deviceId":"physicaldisk:0 C:","friendlyName":"0 C:",...},
+                {"deviceId":"physicaldisk:1 D:","friendlyName":"1 D:",...}]}}
+
+    host, same window:  % Processor Time  48.223
+                        Context Switches/sec  6371.887
+
+### Against §41.15's service-path reading, field by field
+
+| field | §41.15, installed service | now, installed service | host, same window |
+|---|---|---|---|
+| `cpu.totalBusyBp` | **0** | **5231** (52.31%) | 48.22% |
+| `cpu.contextSwitchesPerSec` | **0** | **4746** | 6372 |
+| `storage` | **`[]`** | **2 named devices** | 2 PhysicalDisk instances exist |
+| gpu fault | `Unavailable` "no GPU engine counters exposed by this adapter/driver" | **no gpu fault** — gpu measured | 568 engine instances exist |
+| faults | 1, and its stated cause was false | 2, both true and both verified | — |
+| `capturedUnixMs` | frozen at 1788349015839 across calls | fresh every call | — |
+
+**EXPECTED: the same real numbers 1.C produced. Observed: yes.** The offline path
+gave 5838 bp against a host reading 50.91%; the service path gives 5231 bp
+against 48.22%. Both agree with the host and with each other, and both carry the
+identical two honest faults. §20.1.9(1) predicted from source that the two paths
+share the provider and must behave alike — that now holds with both of them
+*correct*, rather than with both of them silently zero.
+
+`telemetry-once` from the **installed** `aetherctl.exe` matches: `totalBusyBp`
+3446, `contextSwitchesPerSec` 21854, `processorQueueLengthX100` 100, 2 storage
+devices, `engineCount` 16.
+
+### The `doctor` exit-5 anomaly — RESOLVED, and confirmed state-dependent
+
+The brief asked whether it persists, changed, or resolved. Measured both ways on
+the freshly reinstalled product:
+
+    doctor, immediately after install (no diagnostic state yet)
+      EXIT 5   {"ok":false,"error":{"kind":"RejectedByService",
+                "message_key":"diagnostics.stateUnavailable"}}
+
+    scan start -> scanId 0931257a-e51d-46a6-93fa-de264ee06339
+      SCAN_STATE=completed   duration 299 s
+      collectorCount 7  factsCount 462  findingCount 445
+      remediationCandidateCount 287  warningCount 0
+      fingerprint 9ccfd3d510f8c5ddc90226f1e3ef2ed71df827bea0341d8ae3517a3fb5755178
+
+    doctor, after the scan — same binary, same service
+      EXIT 0   {"ok":true,"data":{"state":"Ready","cardCount":1,"crashCount":0,
+                "eventCount":128,"eventWindowDays":30,"providerFaults":[],
+                "storageCount":2,"warningCount":0,"warnings":[]}}
+
+**Not a defect: a typed rejection that is correct when no diagnostic state
+exists.** §41.16 reached the same conclusion; this reproduces it from a clean
+install rather than from a service that had been up for hours, which is the
+stronger form of the observation.
+
+### And it closes §41.16's last DBT-P41-002 contrast
+
+§41.16 recorded, as further evidence of the defect, that `doctor` reported
+`storageCount: 3` in the same session where `telemetry-once` and `perf snapshot`
+both returned `"storage": []` — the product could plainly enumerate storage
+through `hardware-telemetry` while `performance-telemetry` yielded nothing.
+
+Now `doctor` reports `storageCount: 2` and both perf paths report **the same 2
+devices**. The count is 2 rather than 3 because the external HIKSEMI drive that
+was attached in §41.16 has since been detached — `Get-Volume` shows only C: and
+D:, and `\PhysicalDisk(*)` exposes exactly `0 c:`, `1 d:` and `_total`. **The two
+subsystems agree for the first time**, and they agree with the host.
+
+### Scan comparison with §41.16, for the record
+
+| | §41.16 (0.1.11, pre-fix) | now (0.1.11 + P42 fix) |
+|---|---|---|
+| duration | 342.5 s | 299 s |
+| collectorCount | 7 | 7 |
+| factsCount | 487 | 462 |
+| findingCount | 469 | 445 |
+| remediationCandidateCount | 299 | 287 |
+| warningCount | 0 | 0 |
+
+The lower fact/finding counts are consistent with one fewer attached disk, and
+`warningCount` is 0 in both. No regression in the scan pipeline.
+
+`insights list` re-checked after the scan: `engineLabel` still **`localModel`**.
+
+### Security posture, re-measured at gate end rather than asserted
+
+    DEFENDER_REALTIME  True    DEFENDER_ANTIVIRUS  True    DEFENDER_TAMPER  True
+    PUAProtection 2   MAPSReporting 2   SubmitSamplesConsent 1
+    UAC_EnableLUA 1   UAC_ConsentPromptAdmin 5
+    Firewall Domain/Private/Public  True/True/True
+    AetherCoreMaintenance  Running
+    SmartScreen: Explorer\SmartScreenEnabled '' , AppHost\EnableWebContentEvaluation '' ,
+                 Policies\...\EnableSmartScreen does not exist
+                 -> no override disabling it; Windows default, unchanged
+
+Identical to §41.18. Nothing was disabled, weakened or worked around, across an
+uninstall and a reinstall.
+
+**2.D = PASS. GATE 5 = PASS.**
+
+## 42.9 P42 FINAL REPORT
+
+### Gate table — evidence on every line
+
+| gate / item | proves | result | evidence, in numbers |
+|---|---|---|---|
+| 1.A | the tests that should have caught DBT-P41-002 | **DONE, committed FAILING** | 4 tests, 4 FAILED at `7818817`; cpu all-zero, storage `[]`, processTop `[]`, 3 capabilities contradicting collectors |
+| 1.B | one contract replaces nine availability rules | **DONE** | 9 -> 1; 5 rules deleted, 4 converted; 3 further defects found (P42-001/002/003); 7/7 tests pass |
+| 1.C | the fix measured on this machine | **PASS** | cpu **5838 bp** vs host **50.91%**; storage **2 named devices**; gpu **16 engines**; dpc+isr **135 bp** under I/O |
+| 2.A | MSI rebuilt with the fix | **PASS** | 5 steps exit 0; `wix msi validate` exit 0, output **EMPTY**, **0** ICE; payload PASS, **16** rows; sha256 `6ecd1ee9…`, 1,100,148,736 bytes |
+| 2.B | uninstall, zero survivors | **PASS** | uninstall exit **0**; 13/14 clean outright; check 14 **0** machine-wide hits (Program Files 0, ProgramData 0, System32 0) |
+| 2.C | reinstall, every Gate 2 property | **PASS** | install exit 0, MsiInstaller 1033 status 0; **16/16** hashes match the built payload; SID **UNRESTRICTED**; pipe DACL equal; **`engineLabel=localModel`** |
+| 2.D | the fix live under the installed service | **PASS** | service cpu **5231 bp** vs host **48.22%**; `perf snapshot` fresh every call; `doctor` exit 5 -> **exit 0** after a scan |
+| **5** | **full lifecycle, zero survivors** | **PASS** | first time proven on this machine; §41.8 had it NOT STARTED |
+| 4 | driver install + rollback | **NOT STARTED — HARD STOP** | unchanged; see below |
+
+### How many of the nine availability rules survived
+
+**None survived as an independent rule. Nine deciders became one.** Five were
+deleted outright; four remain only as *reason strings* the type now forces the
+collector to supply — they no longer decide availability, they explain it.
+
+Deleted: power's unconditional-true dead `else` (site 3), gpu's bespoke
+`engines.is_empty()` (site 6 — `Reading::from_collection` does it for every
+collection payload), processTop's silent `Vec::new()` (site 7), the CLI's second
+independent gpu rule (site 8), and the static `native` capability table's
+unconditional claim (site 9). Converted: cpu query-open and cpu collect-failure
+(sites 1, 2), memory (site 4, split into subsystem-unavailable vs a
+`memory.counters` partial), storage query-open (site 5, and the four fault-free
+exits it never covered).
+
+Full table in §42.2.
+
+### Did the stack-overflow fix change any ARM64 behaviour
+
+**Yes, and this is the explicit statement the brief asked for.**
+`windows_impl.rs` is `#[cfg(windows)]`, not `#[cfg(target_arch)]`, so the ARM64
+Windows pipeline runs this exact file. Every change applies to it identically:
+the 8-byte destination for a 16-byte `PDH_FMT_COUNTERVALUE` write is removed (the
+ABI is the same on both targets per §20.1.7); the 3-versus-5 parameter
+`PdhExpandWildCardPathW` call is corrected — and P36 touched that very binding
+*for ARM64*, to fix an LNK2019, without the arity being noticed; and cpu, storage
+and gpu will report real numbers where ARM64 previously reported the same zeros.
+
+It is a **fix of the same defect, not a divergence** — there is no ARM64-only code
+path to diverge. It is **unverified on ARM64 silicon**: no ARM64 machine is
+attached to this session. Recorded as **DBT-P42-004**. The diff is the whole of
+`crates/performance-telemetry/src/windows_impl.rs` in commit `cc9c51e`.
+
+### Recorded rather than worked around
+
+| id | what | disposition |
+|---|---|---|
+| **DBT-P42-001** | `PdhExpandWildCardPathW` bound with 3 params where the export takes 5; out-buffer typed `*mut PWSTR` instead of `PZZWSTR` | **FIXED.** Listed because it *resolves* §41.15's open "which of storage's four exits fires" — the answer is neither candidate: the call never had a chance to succeed |
+| **DBT-P42-002** | percentage counters read as basis points (91 bp reported while the box was 91% busy) | **FIXED** |
+| **DBT-P42-003** | counters read before the collection that gives them data; storage collected twice before adding any counter | **FIXED** |
+| **DBT-P42-004** | the ARM64 pipeline runs the changed file and is unverified on ARM64 silicon | open — no ARM64 machine attached |
+| **DBT-P42-005** | macOS/Linux providers still build `PerfSnapshot` literally, not through `CollectedSubsystems` | open — `#[cfg]`-gated; cannot be compiled or tested on this host, and changing code this session cannot build is the worse risk |
+| **DBT-P42-006** | `aethercore-driver-hub --lib`, 6 failing tests | **PRE-EXISTING**, verified by stashing this session's changes and re-running; the crate depends on neither crate P42 touched |
+| **DBT-P42-007** | `intelligence-core --test offline_boundary` fails | **PRE-EXISTING**; `cargo metadata --offline` cannot find `android_system_properties v0.1.6` in the local registry cache. Environment, not code |
+| **DBT-P42-008** | `perf snapshot` served a 3-hour-old reading as a live one | **FIXED**, and it had to be — 2.D is impossible against a frozen snapshot |
+| **DBT-P42-009** | `perProcessorBusyBp` still `[]` on Windows | open — a missing feature, never written since Phase 20; populating it is a cadence/observer-effect decision, not a bug fix |
+| **DBT-P42-010** | gpu adapter identity and VRAM still empty; PDH gives engines only | open — DXGI adapter traversal was never implemented; §41.16 3b shows the data exists via WMI. Honest today: empty, not invented |
+| **DBT-P42-011** | byte-rate and latency counters under-report against a 1 s window | open — truthful for the provider's 80 ms window; widening it trades observer effect for stability, a cadence decision |
+| **DBT-P42-012** | `build-installer.ps1` requires `vcomp140.dll` but does not source it; five files of that name exist and the first plausible match is wrong | open — caught by hashing against §41.14 before building; the script is unchanged, so the trap is still there |
+| **DBT-P42-013** | `cargo test --workspace` leaves 11 files under `%TEMP%` | open — harmless, but it is why a naive `*AetherCore*` sweep reports survivors on a developer machine |
+| DBT-P41-001 | x64 service imports `MSVCP140`/`VCRUNTIME140`, present on this box but not in the payload | **open, unchanged** — not re-measured this session, and this machine cannot detect the gap because it has the redistributable |
+| DBT-P41-002 | cpu zero / storage empty with no fault | **CLOSED.** §42.2 fixed it at the type; §42.3 and §42.8 measured it fixed on both paths |
+| DBT-P41-002a | the gpu fault's detail string names a false cause | **CLOSED.** gpu now measures 16 engines; the false string is gone |
+| DBT-P41-002b | the 8-byte destination for a 16-byte PDH write | **CLOSED structurally** — there is no longer a smaller type to pass. Note the *original* question ("does it corrupt anything observable?") is now moot rather than answered |
+
+### What Gate 4 still needs from the owner
+
+Unchanged from §41.17, and this session did **not** start it. Two of the three
+items are now sharper, not softer:
+
+1. **Boot-test the recovery media — and re-attach it first.** §41.17 recorded the
+   E: artifacts as complete but never boot-tested. **This session measured that
+   E: is no longer attached at all**: `Get-Volume` shows only C: and D:. The
+   external drive holding the 6.12 GB BIOS+UEFI boot chain has been removed. So
+   the precondition is now two steps, not one: re-attach it, then boot from it
+   once and confirm the recovery environment can read `D:\WindowsImageBackup`.
+2. **Supply the driver to test.** Windows Update offers this machine **zero**
+   driver updates (§41.16 3c, search-only, ResultCode 2 = succeeded). The
+   "deliberately safe device" has no WU-supplied candidate and the owner must
+   nominate one — a printer-class, HID-class or USB-peripheral driver; not
+   storage, not chipset, not GPU.
+3. **Decide about the Intel Arc driver, separately from Gate 4.** 31.0.101.5007
+   dated 2023-11-18, against NVIDIA's 2026-08-20. An observation, not a Gate 4
+   dependency — and a display driver is exactly the class that must NOT be the
+   safe test device.
+
+The disk image remains present and verified (19 files, 559,904,433,918 bytes) and
+remains a **post-install** capture, not a pristine one (§41.12 0f.7).
+
+### Security posture
+
+Re-measured at session end, not asserted from memory: Defender real-time,
+antivirus and tamper protection all True; PUA 2; MAPS 2; UAC `EnableLUA` 1 and
+`ConsentPromptBehaviorAdmin` 5; all three firewall profiles True; no registry or
+policy value disabling SmartScreen. Identical to §41.18, across a full uninstall
+and reinstall. **No security regression.**
