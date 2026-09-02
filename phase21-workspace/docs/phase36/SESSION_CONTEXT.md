@@ -6153,3 +6153,48 @@ all in the 0-7 "success" range (codes ≥8 would be a failure; none seen).
 **1.A verdict: the VM's working copy now matches `a39a1bc` for every source file
 checked**, verified by SHA256 rather than by `git log`, because the working copy
 is fed by copy rather than by clone.
+
+## 43.2 PART 1.B — ARM64 release build
+
+Ran `C:\AetherCore-P36\logs\p36_relbuild.cmd` unmodified (VsDevCmd arm64 +
+clang-cl + Ninja + libomp, per the brief), redirected to a log, timed:
+
+    SCRIPT_EXITCODE=101   DURATION_SEC=80.99   LOG_BYTES=57614
+
+**101, not 0 — but this is not the shipping build failing, and the raw log
+proves it rather than assuming it.** `p36_relbuild.cmd` runs two `cargo build`
+commands with `if errorlevel 1 exit /b 1` gating the second on the first:
+
+    cargo build --release -p aethercore-maintenance-service -p aetherctl
+    if errorlevel 1 exit /b 1
+    cargo build --release -p aethercore-ipc --example ipc_two_client_probe
+
+The log shows the first command's own terminal line —
+
+    Finished `release` profile [optimized] target(s) in 1m 17s
+
+— with no `error:` anywhere above it, only warnings (5 on `aetherctl`, 18 on
+`aethercore-maintenance-service`, none new or P42-related). Because the script
+reached the *second* `cargo build` line at all, `errorlevel` after the first
+command was provably 0 — the gate would have exited the script before line 2
+otherwise. **The shipping binaries (`aethercore-maintenance-service.exe`,
+`aetherctl.exe`) built clean: EXPECTED exit 0, OBSERVED exit 0, in 1m 17s.**
+
+The 101 comes entirely from the second, non-shipping command:
+
+    error: no example target named `ipc_two_client_probe` in `aethercore-ipc` package
+
+Checked against the synced Mac source (`a39a1bc`): `crates/ipc` has no
+`examples/` directory and no `[[example]]` entry in its `Cargo.toml` — this
+target does not exist in the current tree at all, on either machine. It is a
+stale reference in the P36-era recipe script itself (matching the `p36-ipc-test`
+/ `tranche1-ipc-test2` / `prod-ipc.ps1` artifacts already sitting in
+`C:\AetherCore-P36\incoming\`, left over from that era), not something P42
+removed or broke. **DBT-P43-001** — the build recipe's second step references a
+probe example that no longer exists; the recipe's overall exit code is
+misleading (101) even when the shipping build it exists to validate is clean.
+Recorded, not fixed — the recipe script is out of this session's scope.
+
+**1.B verdict: EXPECTED exit 0 — OBSERVED, for the shipping build specifically.
+The recipe script's own exit code (101) is not usable as the pass/fail signal
+as written**, because of DBT-P43-001. Part 1 continues.
