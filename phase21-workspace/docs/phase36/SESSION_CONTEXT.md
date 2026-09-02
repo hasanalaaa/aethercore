@@ -3705,3 +3705,363 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\dev\aethercore\phase21-wo
 Results land in `C:\AetherCore-P41\logs\stage2.log` (override with `-OutDir`).
 `scripts\p41\offline-verbs.ps1` is the §41.7 offline evidence run, kept alongside
 it so the Stage 3 partial can be reproduced or re-measured with the service up.
+## 20.1 DBT-P41-002 — `telemetry-once` returns all-zero cpu / empty storage with no fault
+
+**Status: DIAGNOSED, NOT FIXED.** Diagnosis performed on macOS against `main`
+at `e91f675`. Read the platform-independence table in §20.1.7 before acting on
+any of it.
+
+### Relationship to §DBT-P41-002 (open) above, at line 3521
+
+That entry is the Windows session's **observation**; this section is the
+**root-cause analysis** of it. The two were written in parallel and are
+consistent — §20.1.3(b) predicted, from source alone and before this session
+had seen the measurement, that `perProcessorBusyBp` must serialise as `[]` on
+Windows rather than as 22 zeros. The recorded observation is
+`perProcessorBusyBp []`. **The measured x64 binary therefore does correspond to
+this source, and the analysis below is not stale.**
+
+(Procedural note, for accuracy about how this was produced: this session's clone
+was behind `origin/main` when it began, so the brief's "line 3521" resolved to
+nothing locally and the analysis was carried out against source only, without
+sight of the observation. That turned out to be a useful accident — the
+`perProcessorBusyBp` prediction is a genuine out-of-sample confirmation rather
+than a restatement. Nothing was overwritten; the observation entry is intact.)
+
+### 20.1.1 Q1 — how many places decide whether a collector has a usable reading
+
+**Nine, in three tiers that never consult each other.** No shared predicate
+exists; every site re-derives availability by hand.
+
+Tier 1 — inside the Windows provider, one ad-hoc rule per collector:
+
+| # | site | what it decides | emits a fault? |
+|---|---|---|---|
+| 1 | `windows_impl.rs:135-142` cpu, query open | `QueryHandle::open()` returned `None` | yes, `Unavailable` |
+| 2 | `windows_impl.rs:148-165` cpu, collect | either `PdhCollectQueryData` failed | yes, `ProviderFailure` |
+| 3 | `windows_impl.rs:214` power | `if !buffer.iter().all(|b| *b == 0) || true` — the `|| true` makes this unconditionally true, so the `else` at `:256-262` is **dead code** and the power `Unavailable` fault is unreachable | no (unreachable) |
+| 4 | `windows_impl.rs:288-294`, `:316-322` memory | `GlobalMemoryStatusEx` failure; PDH query-open failure | yes, `Unavailable` |
+| 5 | `windows_impl.rs:328-335` storage | query open only | yes, `Unavailable` |
+| 6 | `windows_impl.rs:437-443` gpu | `sample.engines.is_empty()` | yes, `Unavailable` |
+| 7 | `windows_impl.rs:447-454` process_top | nothing — `let _ = faults;` then `Vec::new()`, unconditionally | no, by design |
+
+Tier 2 — the presentation layer re-decides gpu availability a second time:
+
+8. `apps/aetherctl/src/offline.rs:241` — `if snapshot.gpu.adapter_id.is_empty()
+   && snapshot.gpu.engines.is_empty() { Null }`. This is a **second, independent
+   gpu-availability rule** that the collector at `windows_impl.rs:437` knows
+   nothing about. The service path does **not** have it:
+   `services/maintenance-service/src/performance.rs:78-96` (`gpu_sample_proto`)
+   passes gpu through unconditionally. So the CLI and the service already give
+   different answers about gpu presence from the identical snapshot.
+
+Tier 3 — a static table that can never disagree with anything, because it never
+looks:
+
+9. `crates/platform-capabilities/src/lib.rs:254-257` — `windows_table()` maps
+   **every** capability, `telemetryCpu` / `telemetryStorage` / `telemetryGpu`
+   included, to `Availability::Native` unconditionally. The `capabilities` verb
+   therefore reports `telemetryStorage: native` in the same session in which
+   `telemetry-once` returns `"storage": []`. Same truth, two verbs, opposite
+   answers, neither aware of the other.
+
+There is also a **second `CollectorFault` type**. `collector-runtime` defines a
+typed one (`crates/collector-runtime/src/lib.rs:24` `FaultKind`, `:37`
+`CollectorFault`) and the sibling crates use it through `Result<T,
+CollectorFault>` (`crates/diagnostic-engine/src/lib.rs:108-109`,
+`crates/hardware-telemetry/src/windows_impl.rs:93`). `performance-telemetry`
+declares the dependency in its `Cargo.toml` but defines its own stringly-typed
+`CollectorFault` at `crates/performance-telemetry/src/lib.rs:147-151` and
+**never imports the shared one**: the only occurrence of `collector-runtime` in
+the whole crate's source is the doc comment at `lib.rs:6`. That doc comment —
+"every collector runs under a timeout via the shared `collector-runtime`
+isolation gate" — is false for the Windows provider, which uses no gate.
+
+### 20.1.2 Q2 — what gpu does that cpu and storage do not
+
+**gpu is the only collector that checks its own output before returning it.**
+
+`windows_impl.rs:437-443`:
+```rust
+if sample.engines.is_empty() {
+    faults.push(CollectorFault { collector: "gpu", kind: "Unavailable", .. });
+}
+```
+
+That is the entire difference, and it is available to gpu only because gpu's
+payload is a **collection**, which has a distinguishable "I got nothing" state.
+
+- **cpu** cannot express it. `CpuSample` is a struct of scalars
+  (`lib.rs:57-63`); `sample_cpu` starts from `CpuSample::default()`
+  (`windows_impl.rs:134`) and every field write is conditional
+  (`if let Some(busy)` at `:172`, `.unwrap_or(0)` at `:175-176`, `if let Some`
+  at `:178` and `:181`). A field that was never written is `0`, and `0` is a
+  legal measurement. There is no post-hoc check because there is nothing to
+  check against.
+- **storage** *could* express it — it returns a `Vec`, exactly like gpu — but it
+  has **no `is_empty()` check** and instead **four early returns that push no
+  fault at all**:
+  - `windows_impl.rs:338-340` second `collect()` failed → `return devices;`
+  - `windows_impl.rs:353-355` `needed == 0` → `return devices;`
+  - `windows_impl.rs:359-361` `PdhExpandWildCardPathW` failed → `return devices;`
+  - `windows_impl.rs:364-367` the walk `break`s on a malformed list
+
+  Contrast `:328-335`, where the *same function* does push a fault for a
+  query-open failure. The fault discipline is applied to the first failure mode
+  and abandoned for the next four.
+
+### 20.1.3 Q3 — real zero, unwritten default, or swallowed error
+
+**All three are present, in different fields. They are separable.**
+
+**(a) `cpu.totalBusyBp`, `dpcIsrBusyBp`, `contextSwitchesPerSec`,
+`processorQueueLengthX100` — none of the three. A fourth category: the PDH call
+SUCCEEDS and its result is read from the wrong offset.**
+
+`windows_impl.rs:110-124`:
+```rust
+fn read_u64(&self) -> Option<u64> {
+    let mut value = 0i64;                       // 8 bytes
+    ... PdhGetFormattedCounterValue(self.0, PDH_FMT_LARGE, null_mut(), &mut value)
+```
+
+`PdhGetFormattedCounterValue`'s last parameter is `PPDH_FMT_COUNTERVALUE`, not a
+`*mut i64`. The real struct (`windows-0.62.2`
+`src/Windows/Win32/System/Performance/mod.rs:9682-9685`, identical in
+`windows-sys` 0.45/0.59/0.61) is:
+
+```
+PDH_FMT_COUNTERVALUE { CStatus: u32, Anonymous: union { longValue: i32,
+                       doubleValue: f64, largeValue: i64, ...pointers } }
+```
+
+Layout measured, not assumed (`repr(C)`, 64-bit; scratchpad `layout.rs`):
+
+```
+size_of  = 16      align_of = 8      offset_of(largeValue) = 8
+```
+
+The code supplies an **8-byte** destination for a **16-byte** write. Two
+consequences:
+
+1. `value` receives bytes `0..8` of the struct — `CStatus` (4 bytes) plus 4
+   bytes of padding — **never `largeValue`, which lands at `+8..16`**.
+   `PDH_CSTATUS_VALID_DATA` is `0x00000000`, so a *successful* read yields
+   `value == 0`. (`PDH_CSTATUS_NEW_DATA` is `0x1`, which would yield `1` bp =
+   0.01%; still reads as zero in the report.)
+2. PDH writes 8 bytes past the end of a stack local. This is a **stack buffer
+   overflow and undefined behaviour**, inside an `unsafe` block, on every
+   counter read. It is a memory-safety defect, not only a wrong number.
+
+`pdh_ok(code)` is true throughout, so `read_u64` returns `Some(0)` — a
+confident, well-formed, structurally-guaranteed zero. **No error exists to
+swallow and no default is in play: the collector is reading a status code and
+reporting it as a measurement.** This is why the reading is not merely wrong but
+*implausibly* wrong: it is not 22 processors at 0%, it is `PDH_CSTATUS_VALID_DATA`
+formatted as basis points.
+
+Introduced in `4e31d60` (Phase 20, 2026-08-24) per `git blame -L 110,124`; lines
+113-118 rewritten in `0e30038` without touching the defect. Present in every
+build since.
+
+Every caller of `read_u64` inherits this: cpu (`:167-183`), memory's
+standby/modified/hard/soft counters (`:306-314`), storage's five per-device
+counters (`:385-404`), gpu's utilization (`:429`). Memory looks healthy in the
+report only because its headline fields
+(`totalPhysicalBytes`/`availablePhysicalBytes`/`memoryLoadPercent`) come from
+`GlobalMemoryStatusEx` at `:280-287`, not from PDH.
+
+**(b) `cpu.perProcessorBusyBp` — genuinely default-initialised and never
+written.** `sample_cpu` creates `CpuSample::default()` at `windows_impl.rs:134`
+and **no line of `windows_impl.rs` ever assigns `per_processor_busy_bp`**
+(`grep`: the only writes in the crate are `lib.rs:318` synthetic,
+`linux_impl.rs:439`, `macos_impl.rs:159-165`). On Windows the field stays
+`Vec::new()` and serialises as `[]`.
+
+> **This is the sharpest discriminator available to the Windows session.** The
+> brief describes "0% busy across 22 logical processors". This source cannot
+> produce 22 zeros — it can only produce `[]`. If the Windows measurement shows
+> `"perProcessorBusyBp": []`, the running binary matches this source and (a)+(b)
+> are confirmed. If it shows 22 zero entries, **the measured binary was not
+> built from `e91f675` and the whole diagnosis must be re-based on whatever it
+> was built from.** Check this first.
+
+**(c) `storage: []` — an error swallowed on the way up, and one of the four
+silent returns is doing it.** Which one needs Windows measurement, but the
+most likely is `windows_impl.rs:353-355` (`needed == 0`), because the pattern
+handed to `PdhExpandWildCardPathW` at `:342-347` is broken in two independent
+ways:
+
+```rust
+let pattern = windows::core::PCWSTR::from_raw(
+    r"\PhysicalDisk(*)\% Disk Time\0"
+        .encode_utf16().collect::<Vec<u16>>().as_ptr(),   // <-- temporary
+);
+```
+
+1. **Dangling pointer.** The `Vec<u16>` is a temporary dropped at the end of the
+   statement. `pattern` points into freed memory for both calls at `:351` and
+   `:358`. UB.
+2. **Not NUL-terminated.** The literal is a **raw** string (`r"..."`), so the
+   trailing `\0` is the two characters backslash and zero, not a NUL. After
+   `encode_utf16` there is no terminator at all — and the API additionally wants
+   a double-NUL-terminated result buffer.
+
+Either alone is sufficient to make `needed` come back `0`, at which point
+`:354` returns an empty `Vec` with **no fault pushed**. Note `:350-351`'s own
+comment — "Both failures are typed faults" — describes behaviour the function
+does not implement.
+
+### 20.1.4 Q4 — can a collector return Ok with an all-zero payload and no fault
+
+**Yes, and it is unconditional, and the type system is where the defect lives.**
+
+`crates/performance-telemetry/src/lib.rs:216-220`:
+```rust
+pub trait PerfPlatform: Send + Sync + 'static {
+    fn sample(&self, interval: Duration) -> PerfSnapshot;
+}
+```
+
+`sample` returns `PerfSnapshot`, **not `Result`**, and `PerfSnapshot` derives
+`Default` (`lib.rs:153-165`). `PerfSnapshot::default()` — every scalar `0`, every
+`Vec` empty, `collector_faults: vec![]` — is a fully valid, type-checking return
+value indistinguishable from a real reading of an idle machine. Nothing in the
+type, the trait, or `normalized()` (`lib.rs:170-196`, which clamps upper bounds
+only and asserts no availability) requires a collector to have measured
+anything, or to justify a zero.
+
+This is the actual defect. Sites 1-9 in §20.1.1 are nine hand-written
+compensations for a contract that never demanded the evidence in the first
+place; gpu happens to have written one that works, storage wrote one that covers
+one of five exits, cpu cannot write one at all, and power wrote one that `|| true`
+made unreachable. **A fix at any call site leaves the other eight free to
+regress.**
+
+The shape to fix toward already exists in this repository and this crate already
+depends on it: `collector-runtime`'s `Result<T, CollectorFault>` with a typed
+`FaultKind` (`crates/collector-runtime/src/lib.rs:24,37`), as used by
+`diagnostic-engine` (`src/lib.rs:108-109`) and `hardware-telemetry`
+(`src/windows_impl.rs:93`). `performance-telemetry` is the one crate in the
+family that opted out while still declaring the dependency.
+
+### 20.1.5 Q5 — does any test exercise the real collector path on the real OS
+
+**No test anywhere constructs `WindowsPerfPlatform`.** Workspace-wide
+`grep -rn WindowsPerfPlatform --include='*.rs' apps services crates` returns
+four hits, all of them the definition and its own re-export
+(`crates/performance-telemetry/src/windows_impl.rs:456,458`,
+`src/lib.rs:226,245`). Zero in any `tests/`, `benches/`, or `examples/`.
+
+The three test files in the crate:
+
+- `tests/adversarial.rs` — 8 tests, all `SyntheticPerfPlatform` or
+  hand-constructed snapshots (`:140,155,177`).
+- `tests/native_providers.rs` — real providers for macOS (`:78`) and Linux
+  (`:125`) only; `#[cfg]`-gated, so on Windows the file compiles to the single
+  synthetic test at `:237`.
+- `tests/phase27_real_sample.rs` — the one real-provider pipeline test, macOS
+  only (`:19-20`).
+
+And the real-provider test that *does* exist would not have caught this anyway.
+`phase27_real_sample.rs:41-43` asserts **upper bounds only**:
+```rust
+assert!(aggregate.cpu_busy_bp_avg  <= 10_000);
+assert!(aggregate.cpu_busy_bp_peak <= 10_000);
+```
+An all-zero CPU satisfies both. No lower bound, no plausibility check, no
+assertion that `collector_faults` is empty *or* non-empty.
+
+The end-to-end CLI test has the same shape.
+`apps/aetherctl/tests/phase28_cli_matrix.rs:177-181` runs the real
+`telemetry-once` verb and asserts:
+```rust
+assert!(envelope["data"]["cpu"]["totalBusyBp"].is_u64());
+```
+`0.is_u64()` is `true`. **The only end-to-end test of the defective verb passes
+on the defective output** — the §17.7 "eight tests passed without one traversing
+the real writer" pattern, recurring exactly.
+
+### 20.1.6 Why gpu "got it right" — it did not, it got lucky
+
+Worth recording so the fix is not modelled on gpu. gpu declared `Unavailable`
+because `add_english_counter` at `windows_impl.rs:426` returned `None` for the
+wildcard path `\GPU Engine(*engtype_3D)\Utilization Percentage` —
+`PdhAddEnglishCounterW` does not accept an unexpanded wildcard instance — so
+`eng_util` was `None`, the `.map` at `:427` never ran, `engines` stayed empty,
+and `:437` fired. **Had the counter added successfully, `read_u64` would have
+returned `Some(0)` from the same misread as everything else, an engine would
+have been pushed with `utilization_bp: 0`, `engines` would be non-empty, and gpu
+would have reported a confident 0% with no fault — exactly like cpu.** gpu's
+correct-looking output is the accidental product of an earlier, unrelated
+failure. Do not treat `:437` as the reference implementation.
+
+### 20.1.7 Platform independence — what needs re-measuring on Windows
+
+| finding | class | needs Windows? |
+|---|---|---|
+| Nine availability decision sites, §20.1.1 | code fact, platform-independent | no |
+| `capabilities` says `telemetryStorage: native` unconditionally (`platform-capabilities/src/lib.rs:254-257`) | code fact | no |
+| CLI-vs-service gpu divergence (`offline.rs:241` vs `performance.rs:78`) | code fact | no |
+| `PerfPlatform::sample` returns `PerfSnapshot`, not `Result` (`lib.rs:219`) | code fact — **the defect** | no |
+| `PerfSnapshot: Default` makes all-zero-no-fault legal (`lib.rs:153`) | code fact | no |
+| gpu is the only collector checking its own output (`:437`) | code fact | no |
+| storage's four fault-free early returns (`:339,354,360,366`) | code fact | no |
+| `sample_power`'s `\|\| true` dead else (`:214` / `:256`) | code fact | no |
+| `per_processor_busy_bp` never written on Windows | code fact | no |
+| `PDH_FMT_COUNTERVALUE` is 16 bytes, `largeValue` at offset 8 | ABI fact, verified against the vendored `windows` crate + a measured `repr(C)` layout; identical on x64 and ARM64 (both LP64/LLP64, 8-byte union alignment) | no |
+| No test constructs `WindowsPerfPlatform`; both real-path tests assert upper bounds only | code fact | no |
+| **Which** of storage's four exits fires | runtime | **yes** |
+| Whether `read_u64` returns 0 (`VALID_DATA`) or 1 (`NEW_DATA`) per counter | runtime | **yes** |
+| ~~Whether `perProcessorBusyBp` is `[]` or 22 zeros~~ | **RESOLVED** — the entry at line 3521 records `perProcessorBusyBp []`. Source matches the measured binary. | no, already measured |
+| Whether the stack overflow at `:110-124` corrupts anything observable, or is absorbed by stack padding | runtime | **yes** |
+| Whether `PdhAddEnglishCounterW` rejects the gpu wildcard as §20.1.6 predicts | runtime | **yes** |
+
+Nothing here was reproduced on macOS: `windows_impl.rs` is `#[cfg(windows)]` and
+does not compile on this host. Every "no" above is read from source and from the
+vendored Win32 bindings, not from execution.
+
+### 20.1.8 Not established
+
+- The precise `CStatus` value each counter returns, hence whether the reported
+  zeros are literally `0` or occasionally `1`. Requires Windows.
+- Whether any consumer downstream of the ring (bottleneck analyzer, desktop
+  renderer) has a *tenth* availability rule. Only the CLI and service paths were
+  traced.
+- ~~Whether the x64 machine's binary corresponds to `e91f675`.~~ **Resolved** by
+  the `perProcessorBusyBp []` observation at line 3521 — see the note under
+  §20.1's heading. This is the one item that was open at first writing and
+  closed on rebase.
+
+### 20.1.9 What this settles in the observation entry's two open items
+
+The entry at line 3521 deliberately declined to claim two things. Both are now
+answerable as code facts, without further measurement:
+
+1. **"The service path may well populate these collectors."** It will not. There
+   is exactly one construction site for the provider in each binary and they are
+   the same call: `services/maintenance-service/src/composition.rs:118` and
+   `apps/aetherctl/src/offline.rs:199` both invoke
+   `aethercore_performance_telemetry::default_platform()`, which on Windows
+   returns `WindowsPerfPlatform` (`lib.rs:242-246`) — the same `read_u64`
+   misread (§20.1.3(a)) and the same fault-free storage returns (§20.1.3(c)).
+   The service-backed `perf snapshot` will show the identical zeros. The
+   finding is **not** scoped to `telemetry-once`; that verb is only where it was
+   first seen. Worth running `perf snapshot` after the install anyway, to
+   confirm the prediction rather than to discover the answer.
+2. **The `capabilities` divergence.** Not a mis-report to be re-checked with the
+   service running, but a static table: `windows_table()` at
+   `crates/platform-capabilities/src/lib.rs:254-257` maps every capability to
+   `Availability::Native` unconditionally, with no runtime input at all. It will
+   report `telemetryCpu`/`telemetryStorage`/`telemetryGpu` as `native` on every
+   Windows host in every state, including hosts where the collectors are
+   genuinely absent. This is decision site 9 of §20.1.1 and it is the same
+   "five of sixteen capabilities mis-reported" shape the entry correctly
+   recognised.
+
+### 20.1.10 Scope note
+
+Diagnosis only, per the brief. **Nothing was fixed.** No source file was
+modified; the only change in this commit is this section. The fix belongs at
+`lib.rs:219` (the trait's return type), not at any of the nine call sites — see
+§20.1.4.
