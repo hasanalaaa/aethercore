@@ -3409,3 +3409,208 @@ machine already has the redistributable.
               rolling back to restore point 1. No user data is touched: the product
               writes only under Program Files and ProgramData. The machine's boot
               path is not involved. This is materially lower risk than Stage 4.
+
+## 41.6 GATE 2 — **BLOCKED, NOT FAILED**: the UAC prompt was declined
+
+Stage 2 did not run. **Nothing was installed and nothing on this machine was
+mutated.** Recorded precisely so the next session does not re-derive it.
+
+The harness session runs as `HUSSEIN\husen` **unelevated** (Gate 0). Admin work is
+done by spawning a child with `-Verb RunAs`, which raises a UAC consent prompt on
+the secure desktop. That worked five times in a row this session — Gate 0c/0d, and
+four toolchain installs. On the Stage 2 attempt it stopped working:
+
+```
+Start-Process RunAs threw:
+  This command cannot be run due to the error: The operation was canceled by the user.
+```
+
+Verified as a true no-op rather than assumed:
+
+```
+stage2.log exists            : False        (the elevated script never started)
+C:\Program Files\AetherCore  : False
+sc query AetherCoreMaintenance -> [SC] EnumQueryServicesStatus:OpenService FAILED 1060:
+                                 The specified service does not exist as an installed service.
+no consent.exe / msiexec.exe pending
+```
+
+**This is an environment blocker, not a product defect and not a machine-safety
+problem.** The MSI is built, validated and sitting at
+`out\release\AetherCore.msi`. `msiexec` needs elevation; a human must accept the
+UAC prompt (or the session must be started from an already-elevated PowerShell,
+which is what the brief asked for and would remove the prompt-per-batch problem
+entirely).
+
+**Consequence:** Gates 2, 3 (service-backed), 4 and 5 all depend on an installed
+product, so all four are blocked behind this one action. Everything that could be
+done *without* it was done instead, and is recorded in 41.7.
+
+## 41.7 STAGE 3 (PARTIAL) — real x86_64 silicon, offline read-only surface
+
+`aetherctl help` documents an **OFFLINE** command group: "no service required,
+strictly read-only". Those verbs need neither the install nor elevation, so they
+were run from the freshly built x64 binary against real hardware. This is genuine
+native-x64 evidence and it is the part of Stage 3 that survived the blocker.
+
+Binary: `target\release\aetherctl.exe`, sha256
+`910df7c9ea1010285320abbc3fffbc8469d5c8139c555b228e45151a6c13813d`.
+Run as `hussein\husen`, `ELEVATED=False`.
+
+| verb | exit | result |
+|---|---|---|
+| `version` | 0 | `protocolVersion 7`, `version 0.1.11` |
+| `about` | 0 | `platform windows`, product AetherCore |
+| `capabilities` | 0 | 16 capabilities, **every one `state: native`** |
+| `engine-source` | 0 | `source: native` |
+| `service detect` | 0 | `state: Offline`, `cli.detect.offline` — correctly reports the absent service |
+| `telemetry-once` | 0 | real values, see below |
+| `self-check` | 0 | **`sha256Match: true`**, `manifestValid: true` |
+| `self-check --load-model` | 7 | `embeddedModelLoaderNotCompiled` — **correct by design, see below** |
+
+### The embedded model verified on real x64 hardware
+
+`self-check` re-hashed the shipped artifact and matched it against the pinned
+manifest **on this machine**:
+
+```
+fileName  qwen2.5-1.5b-instruct-q4_k_m.gguf
+bytes     1117320736
+sha256Match   true
+manifestValid true
+manifestSchema aethercore.phase23.model-manifest.v1
+```
+
+### `--load-model` returning exit 7 is NOT a defect — measured, not assumed
+
+This looked at first like the exact failure the brief warns about (the model
+shipping but `ruleFallback` running). It is not. The feature graph says so:
+
+- `apps/aetherctl/Cargo.toml`: `default = []`, and `embedded-model` is **opt-in**
+  for the CLI. Its own comment: *"Without this feature `self-check --load-model`
+  returns the honest typed not-available answer."* Exit 7 with
+  `CapabilityUnavailable` **is** that honest answer.
+- `crates/intelligence-core/Cargo.toml`: `default = ["embedded-model"]`.
+- `services/maintenance-service/Cargo.toml` line 42 depends on
+  `aethercore-intelligence-core` by plain path — **`default-features` is not
+  disabled** — so the service compiles the loader in.
+
+Confirmed in the built artifacts rather than inferred from manifests:
+
+```
+aethercore-maintenance-service.exe   llama_ gguf llama.cpp ggml  -> ALL PRESENT
+aetherctl.exe                        llama_ gguf llama.cpp ggml  -> ALL ABSENT
+```
+
+The x64 service carries the real loader. **`engineLabel` still has to be proven at
+Stage 2 by `insights list` against the running service — this is supporting
+evidence, not the proof, and is not counted as one.**
+
+### 3a Telemetry against actual silicon — and the honesty contract, partly kept
+
+`telemetry-once`, `providerSource: PerfPlatform`:
+
+| surface | observed | verdict |
+|---|---|---|
+| memory | `totalPhysicalBytes 16,632,156,160` (= the 15.49 GB measured in Gate 0), `availablePhysicalBytes 4,628,471,808`, `memoryLoadPercent 72` | **real values** |
+| gpu | `gpu: null` **plus** an explicit fault: `{"collector":"gpu","kind":"Unavailable","detail":"no GPU engine counters exposed by this adapter/driver"}` | **honesty contract KEPT** — absence declared, not zeroed |
+| power | `hasTemperature: false`, `temperatureC: 0`, `throttleActive: true`, `throttleReason: "power"` | **honesty contract KEPT** — the 0 is explicitly guarded by `hasTemperature: false` |
+| cpu | `totalBusyBp 0`, `perProcessorBusyBp []`, `contextSwitchesPerSec 0`, `dpcIsrBusyBp 0`, `processorQueueLengthX100 0` — and **no `collectorFault` for cpu** | **OBSERVED != EXPECTED — recorded, see below** |
+| storage | `storage: []` — and **no `collectorFault` for storage** | **OBSERVED != EXPECTED — recorded, see below** |
+
+### DBT-P41-002 (open) — cpu and storage return zero/empty with no declared fault
+
+EXPECTED (the brief's Stage 3a criterion, and the product's own stated contract):
+anything a device does not expose is reported as **not-available**, not as a zero.
+
+OBSERVED: the `gpu` collector does exactly that — `null` plus a typed
+`collectorFault` naming the reason. The `cpu` collector instead returned an
+all-zero structure with an empty `perProcessorBusyBp`, and `storage` returned an
+empty array, **neither accompanied by a `collectorFault`**. A consumer cannot
+distinguish "this CPU is 0% busy" from "this collector produced nothing", which is
+the precise distinction the contract exists to make. On a 22-logical-processor
+machine that is running a build, 0% total busy and an empty per-processor array
+are not plausible readings.
+
+Per the STOP rule this is recorded as a raw observation and NOT theorised about.
+Two things are deliberately **not** claimed:
+
+1. This is the **offline** `telemetry-once` path with **no service running**. The
+   service-backed `perf snapshot` — which is what Stage 3a actually specifies —
+   has NOT been run, because it needs the install. The service path may well
+   populate these collectors. **This finding is scoped to `telemetry-once`.**
+2. No root cause is offered here.
+
+The `capabilities` verb separately reports `telemetryCpu`, `telemetryStorage` and
+`telemetryGpu` all as `state: native` — i.e. all three claim availability, while
+two produce nothing and one declares a fault. SESSION_CONTEXT already records
+that "five of sixteen capabilities were mis-reported on a workstation"; this is
+the same shape and this is a workstation. Re-check it with the service running.
+
+### What Stage 3 still owes, and cannot pay without the install
+
+- 3a `perf snapshot` (service-backed) and SMART / NVMe attributes from the real disk
+- 3b GPU telemetry, driver identity and memory against the RTX 4060 / Arc adapters
+- 3c PnP + Windows Update driver discovery counts
+- 3d service memory / CPU / disk at idle and while scanning, and peak working set
+  at model load
+
+### Elevation retried after the usage-limit pause — still declined
+
+The Stage 2 elevation was attempted **three** times in total: once before the
+pause and twice after it. Attempt 2 threw
+`The operation was canceled by the user`; attempt 3 raised no exception but the
+child process exited within 150 s with no log, no `consent.exe` ever visible, and
+nothing installed. Retrying was then stopped deliberately rather than continuing
+to raise UAC prompts.
+
+State re-verified after the pause, unchanged and clean:
+
+```
+git HEAD                     c637ef1, working tree clean
+out\release\AetherCore.msi   1,100,140,544 bytes, 2026-09-02 02:51:07  (intact)
+C:\Program Files\AetherCore  does not exist
+sc query AetherCoreMaintenance -> FAILED 1060 (service does not exist)
+```
+
+## 41.8 P41 PROGRESS TABLE (authoritative — resume from here)
+
+| Gate | What it proves | Status | Evidence |
+|---|---|---|---|
+| **0** | Machine is native x64, protections on, a named restore point verifiably exists | **PASS** | §41.2 — restore point SequenceNumber 1 enumerated by name and timestamp; Defender/UAC/Firewall/SmartScreen all ENABLED and untouched |
+| **1** | MSI builds x64 with zero ICE, payload explained | **PASS** | §41.4 — cargo 0, tauri 0, wix build 0, `wix msi validate` exit 0 with EMPTY output, payload check PASS, 16 file rows, MSI sha256 `d18d89db…` |
+| **2** | Installed, running, security properties match ARM64 baseline, local model live | **BLOCKED** | §41.6 — UAC consent declined 3×; **nothing installed, nothing mutated** |
+| **3** | Real-hardware evidence with numbers | **PARTIAL** | §41.7 — offline read-only surface done on real silicon; service-backed 3a/3b/3c/3d blocked behind Gate 2 |
+| **4** | Driver install + rollback on a deliberately safe device | **NOT STARTED** | blocked behind Gate 2; also needs the 4a restore point (admin) and, per §41.2 0e, an owner decision about the absent disk image |
+| **5** | Full lifecycle, zero survivors | **NOT STARTED** | blocked behind Gate 2 |
+
+## 41.9 WHAT THE NEXT SESSION NEEDS — one action unblocks four gates
+
+**Start the session from an already-elevated PowerShell** (right-click →
+Run as administrator, then launch the tool). That is what the brief asked for and
+it removes the whole problem: every admin step this session had to push through a
+separate `-Verb RunAs` child with a UAC prompt per batch, and once consent stopped
+being granted, Gates 2–5 all stopped with it.
+
+Everything else is already in place and does **not** need redoing:
+
+- toolchain fully installed and recorded (§41.4 1a), including the four
+  non-obvious facts (`rustup-init` hang, do-not-use `VsDevCmd`, `LIBCLANG_PATH`,
+  ADK `amd64` not `x64`)
+- `out\release\AetherCore.msi` built, validated, zero ICE, sha256 `d18d89db…`
+- `scratchpad\stage2.ps1` is written and ready: it installs with `/l*v` logging and
+  then runs the entire Stage 2 verification list — 16 files with hashes, service
+  state/account/start type, service SID, pipe DACL via `NamedPipeClientStream`,
+  install-dir ACLs, developer-binary sweep, the four verbs, and `engineLabel`.
+  Run it elevated and Gate 2 is answered in one pass.
+
+**Open items the owner must decide, unchanged by the blocker:**
+
+- **No full disk image exists and none is currently possible** (§41.2 0e) — one
+  physical disk, no external volume attached. Stage 4 driver work should not
+  start until an external drive is attached and imaged.
+- DBT-P41-001 — the x64 service imports `MSVCP140`/`VCRUNTIME140`, present on this
+  box but not in the payload.
+- DBT-P41-002 — `telemetry-once` cpu/storage return zero/empty with no declared
+  `collectorFault`, while gpu correctly declares one. Re-measure with the service
+  running before drawing any conclusion.
