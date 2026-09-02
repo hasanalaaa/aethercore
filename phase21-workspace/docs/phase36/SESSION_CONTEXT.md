@@ -5085,7 +5085,7 @@ assumed: `IsInRole(Administrator) = True`, `HUSSEIN\husen`, `PROCESSOR_ARCHITECT
 | 1.B | one contract replaces the nine availability rules; both mechanisms fixed | **DONE** | §42.2 — 9 rules → 1 contract, 3 further defects found (DBT-P42-001/002/003), 7/7 tests pass |
 | 1.C | the fix proven on this machine with numbers | **DONE** | §42.3 — cpu 5838 bp vs host 50.91%, storage 2 real devices, gpu 16 engines; DBT-P42-008 found and fixed |
 | 2.A | MSI rebuilt with the fix, zero ICE | **DONE** | §42.5 — validate EXIT 0 output EMPTY, 0 ICE, payload PASS 16 rows, sha256 `6ecd1ee9…` at 1,100,148,736 bytes |
-| 2.B | uninstall + fourteen-check survivor sweep | pending | |
+| 2.B | uninstall + fourteen-check survivor sweep | **PASS** | §42.6 — uninstall exit 0; 13/14 clean outright, check 14 has ZERO machine-wide hits (all 16 are user-profile dev artifacts) |
 | 2.C | reinstall, every Gate 2 property re-proven | pending | |
 | 2.D | the fix live under the installed service | pending | |
 | 4 | driver install/rollback | **NOT STARTED — HARD STOP** | §41.17; unchanged by this session |
@@ -5644,3 +5644,104 @@ session can silently ship a different binary that still passes every check.
 **2.A = PASS.** Zero ICE, no suppression, 16 file rows, and the one payload
 difference from ARM64 (`vcomp140.dll` for `libomp140.aarch64.dll`) is unchanged
 and still architectural.
+
+## 42.6 GATE 5 — 2.B: uninstall, and the fourteen-check survivor sweep
+
+Never proven on this machine before — §41.8 records Gate 5 as NOT STARTED, and
+§16.6's sweep was run on the ARM64 VM.
+
+### Pre-uninstall state, measured
+
+    INSTALLDIR_EXISTS=True   INSTALLDIR_FILES=16
+    PROGRAMDATA_EXISTS=True
+    SERVICE: STATE : 4  RUNNING
+
+### The uninstall
+
+    msiexec /x {0F9F349D-01C8-B3C2-7242-83B5D29047C9} /qn /l*v
+    UNINSTALL_EXIT=0
+    LOG_BYTES=148196        C:\AetherCore-P41\logs\p42\uninstall.log
+    MainEngineThread is returning 0
+    === Verbose logging stopped: 9/2/2026 18:02:12 ===
+
+No 1603, and no `InstallValidate` return value 3 — the `PurgeMachineData`
+ordering fix §16.6 landed after its first implementation failed holds on x64
+with the service RUNNING at the start of the transaction.
+
+### The sweep — thirteen checks clean outright
+
+     1  INSTALLDIR              False          clean
+     2  PROGRAMDATA             False          clean
+     3  SERVICE                 absent(1060)   clean
+     4  PIPE_COUNT              0              clean
+     5  ARP_COUNT               0              clean
+     6  HKLM_SOFTWARE_AETHER    False          clean
+     7  HKCU_SOFTWARE_AETHER    False          clean
+     8  STARTMENU               0              clean
+     9  SCHEDULED_TASKS         0              clean
+    10  FIREWALL_RULES          0              clean
+    11  HKLM_SERVICES_KEY       False          clean
+    12  EVENTLOG_SOURCE         0              clean
+    13  HKEY_USERS_MARKERS      0              clean
+    14  FILESYSTEM_SWEEP        16 raw hits    see below
+
+Check 13 is the one §16.6 flagged as a stated limit — a per-user HKCU marker that
+Windows Installer cannot reach in other users' hives. Swept across every loaded
+hive under `HKEY_USERS`: **0**.
+
+### Check 14, examined rather than waved away
+
+The raw pattern is `*AetherCore*` under Program Files, Program Files (x86),
+ProgramData and every user profile. It returned 16 hits. **The decisive
+measurement is where they are:**
+
+    C:\Program Files            0 hits
+    C:\Program Files (x86)      0 hits
+    C:\ProgramData              0 hits
+    C:\Windows\System32         0 hits
+    C:\Windows\SysWOW64         0 hits
+
+    TOTAL=16   UNDER_USER_PROFILE=16   MACHINE_WIDE=0
+
+**Zero hits anywhere the installer can write.** All 16 are under
+`C:\Users\husen`, and each was identified by creation time and content:
+
+| hit | created | what it actually is |
+|---|---|---|
+| `.claude\projects\C--dev-aethercore` | 01:28 | Claude Code's own session dir, named after the **repo path** `C:\dev\aethercore` |
+| `AppData\Local\claude-cli-nodejs\Cache\C--dev-aethercore` | 12:40 | Claude Code cache, same naming |
+| `AppData\Local\Temp\claude\C--dev-aethercore` | 01:22 | this session's scratchpad, same naming |
+| `Temp\aethercore_elev_probe.txt` | 01:37 | the earlier session's elevation probe — 16.5 h before this uninstall |
+| `Temp\aethercore-diag-*.db` (2) | 17:26, 17:27 | **`cargo test --workspace` artifacts** |
+| `Temp\aethercore-phase4-cleaner-*` (6) | 17:26, 17:27 | **`cargo test --workspace` artifacts** |
+| `Temp\aethercore-gd3-known-hosts-*`, `Temp\aethercore-ssh-stub-*` | 17:27 | **`cargo test --workspace` artifacts** (the fleet SSH tests) |
+| `Recent\aethercore.lnk` | 01:22 | Explorer's Recent-items shortcut, OS-generated when the repo folder was opened |
+| `OneDrive\<Documents>\aethercore-models` | 01:06 | a **user-created** staging copy of the GGUF + manifest + licenses, files dated 08-31 |
+
+Three independent facts settle it:
+
+1. **Nothing machine-wide survived.** The installer writes to `Program Files`,
+   `ProgramData`, the service registry and the ARP key. All are empty (checks
+   1, 2, 3, 5, 6, 11).
+2. **The uninstall log references none of them** — `aethercore-models` 0 hits,
+   `elev_probe` 0 hits, `aethercore-diag` 0 hits. The MSI never knew they existed.
+3. **Every hit that post-dates the install under test came from `cargo test`
+   at 17:26–17:27** — 35 minutes *before* the 18:02:12 uninstall — or from Claude
+   Code's own cache. Not one was created by the product.
+
+The `aethercore-models` folder is user data in the user's own Documents, which
+`UNINSTALL.txt` and `ARPCOMMENTS` explicitly promise not to touch (§16.6). Leaving
+it is the contract being honoured, not a survivor.
+
+**2.B = PASS. Zero survivors on all fourteen checks.** Nothing was deleted by
+hand; the sweep is read-only by construction.
+
+### A finding the sweep produced, which is not an uninstaller defect
+
+**DBT-P42-013 — `cargo test --workspace` leaves temp files behind.** Eleven files
+under `%TEMP%` from one run: two `aethercore-diag-*.db`, six
+`aethercore-phase4-cleaner-*`, one `aethercore-gd3-known-hosts-*`, one
+`aethercore-ssh-stub-*`. They are small and harmless, but they are the reason a
+naive `*AetherCore*` sweep reports survivors on a developer machine, and they
+would make this gate ambiguous for anyone who ran the tests first. Recorded, not
+cleaned up.
