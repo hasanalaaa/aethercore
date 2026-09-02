@@ -4065,3 +4065,113 @@ Diagnosis only, per the brief. **Nothing was fixed.** No source file was
 modified; the only change in this commit is this section. The fix belongs at
 `lib.rs:219` (the trait's return type), not at any of the nine call sites — see
 §20.1.4.
+
+## 41.11 DESTRUCTIVE ACTION RECORD — Gate 0f: full system image to the external drive
+
+Written and committed **before** the first elevated action of this session, per
+the standing rule. This is the action §41.2 0e recorded as impossible: an
+external drive is now attached, so it becomes possible, and it is being taken
+BEFORE the first install rather than before Stage 4 — the pristine, nothing-ever-
+installed state cannot be recreated once Gate 2 runs.
+
+### 0f.1 — target identified by measurement, not assumption (2026-09-02)
+
+Session elevation confirmed first:
+`([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(544)` -> `True`.
+`core.autocrlf` re-checked: `false`.
+
+Every volume on the machine, verbatim:
+
+    DriveLetter FileSystemLabel FileSystem DriveType          Size SizeRemaining
+    ----------- --------------- ---------- ---------          ---- -------------
+              C                 NTFS       Fixed     1023232962560  450525421568
+                                NTFS       Fixed         852488192      75468800
+                                FAT32      Fixed         100663296      64387072
+              D SD              NTFS       Fixed     1023998423040 1023859712000
+                EFI             FAT32      Fixed         206472192     206471680
+
+Disk topology, which is what disambiguates the two lettered volumes:
+
+    Number FriendlyName                   BusType PartitionStyle          Size
+         1  HIKSEMI                       USB     GPT            1024209543168
+         0 NVMe Micron_2500_MTFDKBA1T0QGN NVMe    GPT            1024209543168
+
+    DiskNumber PartitionNumber DriveLetter          Size Type
+             1               1                 209715200 System     <- the "EFI" row
+             1               2           D 1023998427136 Basic      <- the target
+             0               1                 104857600 System
+             0               2                  16777216 Reserved
+             0               3           C 1023232966656 Basic
+             0               4                 852492288 Recovery
+
+So of the five volumes: three belong to the system disk 0 (C:, the 852 MB
+Recovery/WinRE volume, the 100 MB EFI system partition), and two belong to the
+USB disk 1 (a 200 MB EFI-type partition carried on the external, and D:).
+**Exactly one non-system volume is a usable NTFS target: D:.**
+
+The two numbers the gate asks for explicitly:
+
+    C_USED_BYTES = 572707504128   (533.38 GB)
+    D_FREE_BYTES = 1023859712000  (953.54 GB)
+
+953.54 GB free > 533.38 GB used. EXPECTED met.
+
+D: is NTFS, so the "not NTFS -> STOP" branch does not fire. Its top level was
+enumerated with `-Force` before anything was written to it:
+
+    Mode   LastWriteTime        Length Name
+    d--hs- 9/2/2026 12:13:42 PM        System Volume Information
+    count = 1
+
+That is the single OS-created folder every NTFS volume carries, not owner data,
+so the "already contains data -> STOP for confirmation" branch does not fire
+either. Recorded rather than glossed, because the rule is never to write to a
+drive whose contents have not been enumerated.
+
+### 0f.2 — the tool exists on this SKU
+
+`wbadmin /?` responds with its command list (ENABLE/DISABLE BACKUP, START BACKUP,
+STOP JOB, GET VERSIONS, GET ITEMS, GET STATUS, DELETE BACKUP). EXPECTED met.
+Note the process exit code for `/?` is 255; the gate's criterion is that it
+responds with its command list, which it does. SKU is `Microsoft Windows 11 Pro`
+and `wbadmin start backup /?` confirms this build accepts every flag the gate
+uses: `-backupTarget`, `-include`, `-allCritical`, `-vssFull|-vssCopy`, `-quiet`.
+
+### The record
+
+    ACTION=   wbadmin start backup -backupTarget:D: -include:C: -allCritical
+              -quiet, creating a full block-level image of the system disk on
+              the external USB drive while this machine is still in its
+              never-had-anything-installed state. Then verify it by LISTING it
+              (wbadmin get versions + sizing WindowsImageBackup), not by
+              trusting the success message. Then record WinRE status, because a
+              bare-metal restore of this image needs bootable media.
+    SNAPSHOT= What exists to fall back on right now: System Restore point
+              SequenceNumber 1, "AetherCore baseline - before any install",
+              CreationTime 20260901223933.946086-000, enumerated at Gate 0
+              (§41.2). That covers registry and drivers. It does NOT cover a
+              machine that will not boot, which is the gap this image closes.
+              There is no VM snapshot and, until this action completes, no disk
+              image.
+    EXPECTED= wbadmin exit 0. `wbadmin get versions -backupTarget:D:` lists at
+              least one version dated today. D:\WindowsImageBackup exists and
+              its recursive size is a plausible fraction of the 533.38 GB used
+              on C: (block-level, used-blocks-only, so materially less than
+              533 GB is expected and correct; near-zero is not).
+              **An empty version list FAILS this gate regardless of exit code.**
+              `reagentc /info` reports `Windows RE status: Enabled`.
+    RECOVERY= This action is additive to D: and read-only with respect to C:.
+              wbadmin writes into D:\WindowsImageBackup and does not format the
+              target (formatting only happens for a scheduled backup to a
+              dedicated disk, which is not what is being run). To undo: delete
+              D:\WindowsImageBackup, or `wbadmin delete backup`. Nothing on C:
+              is modified, so C: needs no recovery from this step.
+    BLAST=    Bounded by free space on D: (953.54 GB free against at most
+              533.38 GB of used blocks, so exhaustion is not reachable). A VSS
+              snapshot is taken on C: transiently, which consumes shadow storage
+              (19.1 GB max configured) and is released at the end; the existing
+              restore point lives in that same store, so the realistic worst
+              case is shadow-storage pressure aging out SequenceNumber 1. That
+              is checked again after the image completes rather than assumed.
+              The run is long and prints almost nothing - it is not hung, and
+              killing it is the one action that could leave a partial image.
