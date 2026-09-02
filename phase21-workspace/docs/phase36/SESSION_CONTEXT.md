@@ -4461,3 +4461,169 @@ once and confirmed it reaches the recovery environment.
 are honest debts, not blockers: the lost exit code is superseded by the listing,
 which the gate itself calls the proof; and the lost pristine state costs the
 never-installed capture but not the verified-image precondition Stage 4 needs.
+
+## 41.14 GATE 2 — RESULT: **PASS** on real x86_64 silicon (2026-09-02)
+
+### How this gate was measured, and the one deviation from the brief
+
+`P41-FULL-RUN.md` says to run `stage2.ps1`. **It was not re-run, deliberately.**
+Per §41.12 0f.7 the install it performs had already happened at 12:09:07 today —
+by the previous session the brief itself describes as having hit its usage limit
+mid-gate. That session installed and verified successfully but never committed
+its results, which is exactly the loss mode the brief's "commit after every item"
+rule exists to prevent.
+
+Re-running it would drive `msiexec /i` over a live, working install: it mutates
+proven-good state and yields no measurement that cannot be taken read-only. So
+every Stage 2 criterion was instead verified **live against the running system**,
+which is strictly stronger evidence than reading a log this session did not
+produce. Script: `scratchpad/verify-stage2.ps1`, read-only, installs nothing.
+Log: `C:\AetherCore-P41\logs\gate2-live-verify.log`.
+
+The install transaction itself is evidenced independently of any script, by the
+Windows Installer's own log (§41.12 0f.7): MsiInstaller `1033`, *"Product Name:
+AetherCore. Product Version: 0.1.11. Installation success or error status: 0"*,
+from `InstallSource C:\dev\aethercore\phase21-workspace\out\release\`, whose MSI
+hashes to `d18d89db07180f5727b7d6056a07ea8d50de97aa401838601b532e9befd1f227` —
+the Gate 1 artifact, unchanged.
+
+**Tamper check across the gap.** The 16 installed files' hashes from the 12:09
+install log and from the live verify at ~15:0x were diffed row by row:
+`rows_1209=16  rows_live=16  HASH_SET_IDENTICAL=YES`. Nothing changed on disk
+between the install and this verification.
+
+### The numbers
+
+    INSTALL_FILE_COUNT=16
+      aethercore-consent-broker.exe            633856  43d8af2a0f94e750721a44f40258c26aaee5e71a43497063aaf799dffbadf390
+      aethercore-desktop.exe                  6959616  dcf1d16aa79241412c5a5215277033dc6a962fdbbefbdac6a7eca3c0840edeea
+      aethercore-install-hardener.exe          273408  6722f12ac7541db694e87960c2537b021db3154e0d6f3c024b4fd6fc50a2bff5
+      aethercore-maintenance-service.exe     10678784  221e486166707abbfe48af73796698feeb1d0233bde2fd4fc7572ae864a761d4
+      aethercore-update-broker.exe             736768  d73b38c529b01c76c3c3a48ab48831d8094dd026b270a5d0065b46e0aa43d74c
+      aetherctl.exe                           4315648  910df7c9ea1010285320abbc3fffbc8469d5c8139c555b228e45151a6c13813d
+      Apache-2.0.txt                            11358  cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+      cis_map.json                               3103  9caf01b4a2f7d2bfda3111395212b27046f6ae614bc847cebaadfe33c9ee8d97
+      models.manifest.json                        898  070b6dedc37664250e4029b8360a1e9b30a1d40b6d776a83ddd0631247dae57e
+      qwen2.5-1.5b-instruct-q4_k_m.gguf    1117320736  6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e
+      Qwen-GGUF-NOTICE.txt                      11343  832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e
+      UNINSTALL.txt                              3206  34f5f10357de5b7cb475f9b016ebac138f6230d756ffbc837e9d2fe7b02a0ad4
+      update-trust.json                            83  d4ad925d86f64560bd80c77eae8c606fe810c5f670a7cd42df0836b0653c8b37
+      vcomp140.dll                             193152  55aba23cdcd6484fbb06f4155b8ca75adfce7a881f10afd0c49457165e677164
+      vulndb.json                                6704  ab76528eacc58fe910d82347d49919d50949954a25649e677eaaf52fdf37f303
+      vulndb.manifest.json                        142  2c29c19b2760167fab8b292dde744da51ae8b137a01c870701287fb49d01daa6
+
+    VCOMP140_PRESENT=True
+    LIBOMP_AARCH64_PRESENT=False          <- x64 differs from ARM64 here by design, per §41.4
+    DEV_BINARY_IN_INSTALL_IMAGE=NO
+    CTL_SHA256=910df7c9ea1010285320abbc3fffbc8469d5c8139c555b228e45151a6c13813d
+
+Service:
+
+    STATE              : 4  RUNNING
+    START_TYPE         : 2   AUTO_START  (DELAYED)
+    BINARY_PATH_NAME   : "C:\Program Files\AetherCore\aethercore-maintenance-service.exe"
+    SERVICE_START_NAME : LocalSystem
+    SERVICE_SID_TYPE   : UNRESTRICTED
+    SERVICE SID        : S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229
+    STATUS             : Active
+    sdshow             : D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)
+                         (A;;CCLCSWLOCRRC;;;AU)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)
+
+Install-dir ACLs — protected, no Users write:
+
+    C:\Program Files\AetherCore NT SERVICE\AetherCoreMaintenance:(OI)(CI)(RX)
+                                BUILTIN\Users:(OI)(CI)(RX)
+                                BUILTIN\Administrators:(OI)(CI)(F)
+                                NT AUTHORITY\SYSTEM:(OI)(CI)(F)
+
+Registration:
+
+    ARP: {0F9F349D-01C8-B3C2-7242-83B5D29047C9} | AetherCore | 0.1.11 | InstallDate=20260902
+    HKLM_InstallVersion=0.1.11
+
+### The pipe DACL, checked against the criterion rather than eyeballed
+
+    PIPE_PRESENT=True
+    PIPE_SDDL=O:S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229
+              G:SY
+              D:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229)
+
+Required:
+
+    O:<service SID> G:SY D:P(A;;FA;;;<service SID>)(A;;FR;;;AU)(A;;DC;;;AU)
+
+Equivalence, term by term, so nobody has to take this on trust:
+
+- owner = the service SID -> matches
+- group = `SY` -> matches
+- `D:P` -> protected DACL, matches
+- `(A;;FA;;;<service SID>)` -> present verbatim
+- the AU pair is rendered merged as `(A;;0x12008b;;;AU)`. `FR = 0x120089`,
+  `DC = 0x2`, `FR|DC = 0x12008b`. This is the rendering the brief names
+  explicitly and instructs must NOT be reported as drift.
+- ACE **ordering** differs from the authored string (AU first, then the service
+  SID). A DACL is a set of ACEs with rights; the set and the rights are
+  identical, and no principal gains or loses anything. Recorded for precision,
+  **not** reported as drift.
+
+**Correction to the brief, worth carrying forward.** `P41-FULL-RUN.md` says to
+read the DACL with `[System.IO.File]::Open('\\.\pipe\...')` then
+`.GetAccessControl()`. That method **fails on this machine**:
+
+    PIPE_SDDL_FILESTREAM=ERROR: Exception calling "Open" with "4" argument(s):
+    "FileStream was asked to open a device that was not a file. For support for
+    devices like 'com1:' or 'lpt1:', call CreateFile, then use the FileStream
+    constructors that take an OS handle as an IntPtr."
+
+Both documented methods were tried in the same run. `NamedPipeClientStream` is
+the one that works — which is what §16's existing correction already recorded,
+and the full-run brief reintroduced the broken method. Use
+`NamedPipeClientStream`.
+
+### Verbs, against the RUNNING SERVICE
+
+    servicedetect   EXIT 0  {"ok":true,"data":{"state":"Reachable","endpointDir":"C:\\ProgramData\\AetherCore",...}}
+    doctor          EXIT 5  {"ok":false,"error":{"kind":"RejectedByService",
+                             "message_key":"diagnostics.stateUnavailable",...}}   <- typed rejection = PASS by design
+    optimizestatus  EXIT 0  {"ok":true,"data":{"status":null}}
+    scanstatus      EXIT 0  {"ok":true,"data":{"appVersion":"0.1.11","state":"idle",
+                             "ruleEngineVersion":"phase17.1-rules-v2",...}}
+    insightslist    EXIT 0  {"ok":true,"data":{"engineLabel":"localModel","insights":[]}}
+    selfcheck       EXIT 0  {"ok":true,"data":{"artifacts":[{"fileName":"qwen2.5-1.5b-instruct-q4_k_m.gguf",
+                             "bytes":1117320736,"sha256Match":true}],"manifestValid":true,
+                             "loaded":false,"loadLabel":null,...}}
+
+All RETURNED, none timed out.
+
+### engineLabel — the line this gate exists for
+
+    ENGINE_LABEL=localModel
+
+Proven **against the running service**, from `insights list`, not from
+`self-check --load-model`. The Phase 36 defect — every installed copy silently
+running `ruleFallback` because the MSI never authored the embedded model — does
+**not** reproduce on this x64 install. Consistent with `self-check`:
+`sha256Match: true` against the 1117320736-byte GGUF and `manifestValid: true`.
+
+Note `"loaded": false` in `self-check` is the documented aetherctl behaviour
+(`default = []`, loader opt-in) and is not evidence against `localModel`; the
+service is what holds the live engine, and the service reports `localModel`.
+
+### Gate 2 verdict
+
+| criterion | expected | observed | result |
+|---|---|---|---|
+| install transaction | success | MsiInstaller 1033, status 0, 0.1.11, from the Gate 1 MSI `d18d89db...` | PASS |
+| files | 16 with matching hashes | 16, hash set identical to install time | PASS |
+| VCOMP140 / LIBOMP | True / False | True / False | PASS |
+| dev binaries | none | `DEV_BINARY_IN_INSTALL_IMAGE=NO` | PASS |
+| service | LocalSystem, AUTO_START, RUNNING | all three | PASS |
+| service SID | UNRESTRICTED, Active | UNRESTRICTED, Active | PASS |
+| pipe DACL | `O:<SID> G:SY D:P(FA;SID)(FR;AU)(DC;AU)` | same set, AU pair merged as `0x12008b` | PASS |
+| install-dir ACLs | protected, no Users write | Users (RX) only, Admins/SYSTEM (F) | PASS |
+| registration | ARP + HKLM agree | both 0.1.11 | PASS |
+| verbs | return, doctor typed rejection ok | 6/6 RETURNED, doctor `diagnostics.stateUnavailable` | PASS |
+| **engineLabel** | **`localModel`** | **`localModel`** | **PASS** |
+
+**GATE 2 = PASS.** No security regression. Nothing was disabled, weakened, or
+worked around.
