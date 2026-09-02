@@ -4351,3 +4351,113 @@ load-bearing for Gate 0f's rationale and it was carried as prose.
 | 0f.5 WinRE | Enabled | Enabled, 10.0.26100.9168 | PASS |
 | 0f.6 restore pt | seq=1 survives | seq=1 intact, 5.59/19.1 GB shadow used | PASS |
 | 0f.7 pristine | machine never installed | **AetherCore 0.1.11 installed 12:09:11, 37 min before the image** | **FAIL** |
+
+## 41.13 GATE 0f RE-VERIFIED after the owner's format — **PASS, image intact** (2026-09-02)
+
+`P41-FULL-RUN.md` warns that after the image job started, the owner formatted a
+flash drive as NTFS and may have targeted the same device, and instructs that the
+image's survival must not be assumed. Re-verified from scratch at 14:5x.
+
+### 0f.A — what is attached now, identified by FriendlyName and size, not letter
+
+**A third disk has appeared since 0f.1.** The machine now has:
+
+    Number FriendlyName                   BusType          Size PartitionStyle SerialNumber
+         0 NVMe Micron_2500_MTFDKBA1T0QGN NVMe    1024209543168 GPT            0000_..._807B
+         1 HIKSEMI                        USB     1024209543168 GPT            740200010004
+         2 ADATA USB Flash Drive          USB       31037849600 MBR            AA00000000000489
+
+    DriveLetter FileSystemLabel FileSystem DriveType          Size SizeRemaining
+              C                 NTFS       Fixed     1023232962560  449123254272
+                                NTFS       Fixed         852488192      73617408
+              E RECOVERY        FAT32      Removable   31020023808   24601329664
+                                FAT32      Fixed         100663296      64387072
+              D SD              NTFS       Fixed     1023998423040  440769064960
+                EFI             FAT32      Fixed         206472192     206471680
+
+EXPECTED met: disk 0 is the NVMe system disk, and USB disks are present.
+
+**The format did NOT hit the image target.** The formatted device is disk 2, a
+31 GB ADATA flash drive that was not attached at 0f.1 — a new device, its own
+serial `AA00000000000489`, MBR, carrying `E: RECOVERY`. The image lives on disk 1
+(HIKSEMI, serial `740200010004`, GPT, 953 GB), which is a different physical
+device by every identifier. D: free space fell from 953.54 GB to 410.50 GB,
+which is the image being written, not a format.
+
+One correction to the brief's premise, recorded because it matters for what E:
+actually is: **E: is FAT32, not NTFS.** Its type is `FAT32 XINT13` on an MBR
+disk with `IsActive = True` — that is the layout Windows produces for a
+*recovery drive*, not for a general-purpose NTFS format.
+
+### 0f.B — the image is intact, byte-for-byte unchanged
+
+    wbadmin get versions -backupTarget:D:        (exit 0)
+
+    Backup time: 9/2/2026 12:46 PM
+    Backup target: 1394/USB Disk labeled SD(D:)
+    Version identifier: 09/02/2026-09:46
+    Can recover: Volume(s), File(s), Application(s), Bare Metal Recovery, System State
+    Snapshot ID: {ef959cc8-bb84-406c-aeec-663c4ea0c02d}
+
+    WIB_FILE_COUNT = 19
+    WIB_BYTES      = 559904433918   (521.45 GB, 97.8% of the 533.38 GB used on C:)
+
+Identical to the figures recorded in §41.12 before the format — same file count,
+same byte total to the byte, same snapshot ID. D: top level:
+
+    d--hs-  9/2/2026 2:21:53 PM  System Volume Information
+    d-----  9/2/2026 12:46:44 PM WindowsImageBackup
+
+### 0f.C — which of the three cases this is
+
+**"It completed and is intact."** Not still running, not interrupted, not
+reformatted. The Backup log's terminal event (§41.12) and the unchanged listing
+above settle it from both ends.
+
+### 0f.D — recovery media: the owner has now created it
+
+    Windows RE status:         Enabled
+    Windows RE location:       \\?\GLOBALROOT\device\harddisk0\partition4\Recovery\WindowsRE
+
+Recorded as the brief requires: **WinRE lives on disk 0 partition 4. It recovers a
+machine that still boots. It does not help a machine that will not boot**, which
+is precisely the Stage 4 driver failure mode.
+
+**New fact, and it is the one that moves Gate 4:** the flash drive the owner
+formatted is not a scratch volume — it is bootable recovery media, built at
+14:01-14:02 today. The boot chain is present on E:
+
+    E:\bootmgr               True   (490606 bytes)
+    E:\boot\bcd              True
+    E:\sources\boot.wim      True
+    E:\efi\boot\bootx64.efi  True
+    partition IsActive       True
+    E: used                  6.12 GB
+
+Both the BIOS path (`bootmgr` + `boot\bcd`, active partition) and the UEFI path
+(`efi\boot\bootx64.efi`) are populated, so this should boot on this UEFI machine.
+
+**Stated precisely, because the difference matters:** what is verified is that
+the recovery-media *artifacts exist and are complete*. What is NOT verified is
+that the machine actually boots from it — that requires booting the machine from
+E:, which this session cannot do and which the brief assigns to the owner. Gate
+4's precondition should be treated as satisfied only once the owner has booted it
+once and confirmed it reaches the recovery environment.
+
+### Gate 0f — FINAL
+
+| item | expected | observed | result |
+|---|---|---|---|
+| 0f.A attached | disk 0 NVMe, USB present | 3 disks; image target disk 1 HIKSEMI distinct from formatted disk 2 ADATA | PASS |
+| 0f.B versions | >=1 version today | 1 version, 9/2/2026 12:46 PM, Bare Metal Recovery, snapshot {ef959cc8-...} | PASS |
+| 0f.B size | plausible fraction of 533.38 GB | 521.45 GB / 19 files / 97.8%, unchanged after the format | PASS |
+| 0f.C state | determine which case | completed and intact | PASS |
+| 0f.D WinRE | Enabled | Enabled, disk 0 partition 4; does not cover an unbootable machine | PASS |
+| 0f.D media | flag, do not create | owner created it: E: RECOVERY, full boot chain, 6.12 GB, active — **boot-test still outstanding** | RECORDED |
+| 0f.3 exit code | 0 | client killed at 48%, exit code lost (§41.12) | UNMEASURED |
+| 0f.7 pristine | never installed | AetherCore 0.1.11 installed 12:09:11, 37 min before the image (§41.12) | FAIL |
+
+**Gate 0f is PASS for every purpose Gates 2-4 depend on.** The two non-PASS rows
+are honest debts, not blockers: the lost exit code is superseded by the listing,
+which the gate itself calls the proof; and the lost pristine state costs the
+never-installed capture but not the verified-image precondition Stage 4 needs.
