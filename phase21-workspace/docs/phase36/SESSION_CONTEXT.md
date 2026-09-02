@@ -3578,11 +3578,12 @@ sc query AetherCoreMaintenance -> FAILED 1060 (service does not exist)
 | Gate | What it proves | Status | Evidence |
 |---|---|---|---|
 | **0** | Machine is native x64, protections on, a named restore point verifiably exists | **PASS** | §41.2 — restore point SequenceNumber 1 enumerated by name and timestamp; Defender/UAC/Firewall/SmartScreen all ENABLED and untouched |
+| **0f** | A full, verified disk image exists before driver work | **PASS** | §41.12 + §41.13 — 1 version dated today, Bare Metal Recovery, 521.45 GB / 19 files / 97.8% of C: used, intact after the owner's format. Two honest debts: wbadmin's client exit code lost (0f.3), and the machine was **already installed** when imaged (0f.7) |
 | **1** | MSI builds x64 with zero ICE, payload explained | **PASS** | §41.4 — cargo 0, tauri 0, wix build 0, `wix msi validate` exit 0 with EMPTY output, payload check PASS, 16 file rows, MSI sha256 `d18d89db…` |
-| **2** | Installed, running, security properties match ARM64 baseline, local model live | **BLOCKED** | §41.6 — UAC consent declined 3×; **nothing installed, nothing mutated** |
-| **3** | Real-hardware evidence with numbers | **PARTIAL** | §41.7 — offline read-only surface done on real silicon; service-backed 3a/3b/3c/3d blocked behind Gate 2 |
-| **4** | Driver install + rollback on a deliberately safe device | **NOT STARTED** | blocked behind Gate 2; also needs the 4a restore point (admin) and, per §41.2 0e, an owner decision about the absent disk image |
-| **5** | Full lifecycle, zero survivors | **NOT STARTED** | blocked behind Gate 2 |
+| **2** | Installed, running, security properties match ARM64 baseline, local model live | **PASS** | §41.14 — installed 12:09:07 by the prior session (MsiInstaller 1033, status 0, from MSI `d18d89db…`); verified live: 16 files hash-identical to install time, LocalSystem/AUTO_START/RUNNING, SID UNRESTRICTED, pipe DACL matches, Users read-execute only, **`engineLabel=localModel`**. Supersedes the §41.6 BLOCKED row. |
+| **3** | Real-hardware evidence with numbers | **PASS** | §41.15 + §41.16 — 3.A `perProcessorBusyBp []` on a real 22-CPU box; service path shows identical zeros; PDH counters proven PRESENT (PhysicalDisk 4 live instances, GPU Engine 568, CPU 7.01%) while the product reports nothing; 3a/3b/3c/3d all paid |
+| **4** | Driver install + rollback on a deliberately safe device | **NOT STARTED — HARD STOP** | §41.17 — deliberately not begun. The disk image now exists and is verified (§41.13). Outstanding owner actions: boot-test the E: recovery media, and supply a driver — Windows Update offers **zero** (§41.16 3c) |
+| **5** | Full lifecycle, zero survivors | **NOT STARTED** | no longer blocked behind Gate 2 (now PASS); the uninstall/survivor sweep is unproven on THIS machine and is what Stage 5b exists for |
 
 ## 41.9 WHAT THE NEXT SESSION NEEDS — one action unblocks four gates
 
@@ -4971,3 +4972,73 @@ consistent with §20.1's scoping of the bug to
 | 3b GPU / driver identity / memory | yes | done — Arc + RTX 4060 8 GiB, both OK |
 | 3c PnP + WU driver counts | yes | done — 229/205/0 error, 101 packages, **0 WU driver updates** |
 | 3d service mem / CPU / disk, peak at model load | yes | done — peak 1325.65 MB, idle-after-work 77.55 MB, scan 342.5 s at ~2.7% of a core |
+
+## 41.17 GATE 4 READINESS — what the owner must supply. **NOT STARTED, deliberately.**
+
+Gate 4 was not begun. `P41-FULL-RUN.md` makes it a hard stop and the reasons hold
+independently of this session's results: its failure mode is an unbootable
+machine, and driver acquisition and install are hardware-gated and separately
+authorised.
+
+### What Gate 4 needed, and what now exists
+
+| precondition | state before this session | state now |
+|---|---|---|
+| a verified full disk image | did not exist and was "currently impossible" (§41.2 0e) | **EXISTS AND VERIFIED** — §41.13, Bare Metal Recovery, 521.45 GB, listing-confirmed after the owner's format |
+| bootable recovery media | did not exist; WinRE on disk 0 does not cover an unbootable machine | **ARTIFACTS EXIST** — E: RECOVERY, full BIOS+UEFI boot chain, 6.12 GB (§41.13 0f.D). **Not boot-tested.** |
+| a pre-driver restore point (4a) | not created | not created — belongs to the Gate 4 session, elevated |
+| a deliberately safe device to test against | assumed available | **NOT AVAILABLE from Windows Update** — see below |
+| Gate 2 installed and healthy | BLOCKED | PASS (§41.14) |
+
+### The three things the owner must do or decide
+
+**1. Boot-test the recovery media.** E: has `bootmgr`, `boot\bcd`,
+`sources\boot.wim`, `efi\boot\bootx64.efi`, and its partition is active. What is
+verified is that the *artifacts are complete*; what is NOT verified is that this
+machine boots from them. Nobody should start driver work on the strength of a
+directory listing. Boot the machine from E: once, confirm it reaches the recovery
+environment, and confirm from there that `D:\WindowsImageBackup` is readable —
+because an image the recovery environment cannot see is not a recovery path.
+
+**2. Supply the driver to test.** `Windows Update offers this machine zero driver
+updates` (§41.16 3c, search-only, ResultCode 2 = succeeded). The gate's
+"deliberately safe device" therefore has no WU-supplied candidate. The owner has
+to nominate one — and "safe" should mean a device whose failure cannot prevent
+boot: not storage, not chipset, not GPU. This machine has 24 phantom PnP
+registrations and 101 third-party driver packages; a printer-class, HID-class or
+USB-peripheral driver is the shape to look for.
+
+**3. Decide about the Intel Arc driver, separately from Gate 4.** The iGPU driver
+is version 31.0.101.5007 dated **2023-11-18**, against the NVIDIA driver's
+2026-08-20. That is an observation from 3b, not a Gate 4 dependency, and updating
+it is an owner decision — it is a display driver, i.e. exactly the class that
+should NOT be used as the safe test device.
+
+### What Gate 4 must record when it does run
+
+Unchanged from the standing rules: the 4a restore point created **and
+enumerated** before the first driver action, the ACTION/SNAPSHOT/EXPECTED/
+RECOVERY/BLAST record committed before the first elevated step, and rollback
+proven by observation rather than by a success message — the same discipline that
+turned "wbadmin said it worked" into "the version listing proves it did" in
+§41.12.
+
+### Open debts carried out of this session
+
+| id | what | status |
+|---|---|---|
+| DBT-P41-001 | x64 service imports `MSVCP140`/`VCRUNTIME140`, present on this box but not in the payload | open, unchanged — not re-measured this session |
+| DBT-P41-002 | cpu zero / storage empty with no fault | **diagnosed (§20.1) and now confirmed on real silicon (§41.15)**. Not fixed, per the brief. Scope is wider than first recorded: service path and `capabilities` included |
+| DBT-P41-002a | the gpu fault's detail string names a false cause — "no GPU engine counters exposed by this adapter/driver" on a box exposing 568 of them across two healthy adapters | **new this session**, §41.15 / §41.16 3b |
+| DBT-P41-002b | `read_u64`'s 8-byte destination for a 16-byte PDH write is a stack overflow on every counter read | open; **not observable** from a running process — needs an ASAN or `/analyze` build (§41.15) |
+| — | Gate 0f's `wbadmin` client exit code was lost when the console process was killed at 48% | recorded UNMEASURED, superseded by the version listing (§41.12 0f.3) |
+| — | the never-installed machine state is gone; it was already installed before it could be imaged | recorded, unrecoverable (§41.12 0f.7) |
+| — | `P41-FULL-RUN.md`'s FileStream method for reading the pipe DACL does not work; `NamedPipeClientStream` does | correction recorded (§41.14) |
+| — | `telemetry-once` is an offline verb and cannot be run "against the running service"; `perf snapshot` is the service-backed one | correction recorded (§41.15) |
+
+### STOP
+
+Gate 4 does not run in this session and not unattended. Gate 5 (full lifecycle,
+zero survivors) is no longer blocked by Gate 2 and could be run before Gate 4 —
+it is the uninstall/survivor sweep, it is proven on ARM64 but not on this
+machine, and it does not risk the boot path. That sequencing is the owner's call.
