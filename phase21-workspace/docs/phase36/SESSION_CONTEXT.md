@@ -5083,7 +5083,7 @@ assumed: `IsInRole(Administrator) = True`, `HUSSEIN\husen`, `PROCESSOR_ARCHITECT
 |---|---|---|---|
 | 1.A | the four tests that should have caught DBT-P41-002, committed failing | **DONE** | §42.1 — 4/4 FAILED on real x64, output verbatim below |
 | 1.B | one contract replaces the nine availability rules; both mechanisms fixed | **DONE** | §42.2 — 9 rules → 1 contract, 3 further defects found (DBT-P42-001/002/003), 7/7 tests pass |
-| 1.C | the fix proven on this machine with numbers | pending | |
+| 1.C | the fix proven on this machine with numbers | **DONE** | §42.3 — cpu 5838 bp vs host 50.91%, storage 2 real devices, gpu 16 engines; DBT-P42-008 found and fixed |
 | 2.A | MSI rebuilt with the fix, zero ICE | pending | |
 | 2.B | uninstall + fourteen-check survivor sweep | pending | |
 | 2.C | reinstall, every Gate 2 property re-proven | pending | |
@@ -5369,3 +5369,167 @@ session's changes and re-running:
 Note `amd64`, not `x64` — the same ADK naming quirk §41.4 1a recorded. It affects
 `aethercore-system-repair` and `aethercore-pc-intelligence` only, and neither is
 touched by P42.
+
+## 42.3 PART 1.C — the fix measured on this machine
+
+    cargo test  (the 1.A tests)          7 passed, 0 failed
+    cargo build --release -p aetherctl -p aethercore-maintenance-service   EXIT 0
+
+Binary under test: `target\release\aetherctl.exe`, built this session.
+Load harness: every logical processor spinning, plus 16 MB write+read loops.
+
+### `telemetry-once`, verbatim, machine under CPU + disk load
+
+    {"schema":"aethercore.aetherctl.v1","command":"telemetry-once","ok":true,"data":{
+     "capturedUnixMs":1788360057764,
+     "collectorFaults":[
+       {"collector":"processTop","kind":"NotCollected",
+        "detail":"per-process CPU attribution is produced by the bottleneck analyzer over ring
+                  deltas; this sampler does not walk per-PID PDH (observer effect)"},
+       {"collector":"memory.counters","kind":"Degraded",
+        "detail":"counters unreadable: Standby Cache Reserve Priority Bytes"}],
+     "cpu":{"contextSwitchesPerSec":8361,"dpcIsrBusyBp":0,"perProcessorBusyBp":[],
+            "processorQueueLengthX100":0,"totalBusyBp":5838},
+     "gpu":{"adapterId":"","adapterName":"","engineCount":16,...},
+     "intervalMs":250,
+     "memory":{"availablePhysicalBytes":4461096960,"memoryLoadPercent":73,
+               "totalPhysicalBytes":16632156160,...},
+     "platform":"windows","providerSource":"PerfPlatform",
+     "power":{"throttleActive":false,"throttleReason":"none",...},
+     "processTop":[],
+     "storage":[{"deviceId":"physicaldisk:0 C:","friendlyName":"0 C:",...},
+                {"deviceId":"physicaldisk:1 D:","friendlyName":"1 D:",...}]}}
+
+### Checked against the host's own counters in the same window
+
+Plausibility is not asserted; it is diffed against `Get-Counter`.
+
+| reading | product | host, same window | verdict |
+|---|---|---|---|
+| cpu total busy | **5838 bp** (58.38%) | `\Processor Information(_Total)\% Processor Time` **50.91%** | agrees |
+| context switches/sec | **8361** | `\System\Context Switches/sec` **10176** | agrees |
+| cpu, a second run | 5343 bp | 50.34% | agrees |
+| context switches, second run | 8630 | 8267 | agrees |
+| PhysicalDisk instances | **2** (`0 C:`, `1 D:`) | `\PhysicalDisk(*)` exposes exactly `0 c:`, `1 d:`, `_total` | agrees |
+| disk active time, disk idle | 0 bp | `% Disk Time` **0** on both disks | agrees |
+| disk active time, disk busy | **102 bp** (1.02%) | `% Disk Time` **1.178%** | agrees |
+| disk latency, disk busy | **833 µs** | `Avg. Disk sec/Transfer` **0.00024 s** = 240 µs | same order; see finding 4 |
+| disk read bytes/sec, disk busy | **50 959** | non-zero | agrees |
+| dpc+isr, quiet window | 0 bp | DPC 0% + Interrupt 0.279% | see finding 2 |
+| dpc+isr, under disk I/O | **135 bp** (1.35%) | interrupt activity present | agrees |
+
+### Against the brief's EXPECTED
+
+| EXPECTED | observed | result |
+|---|---|---|
+| CPU busy **non-zero and plausible**; §41.15's order of magnitude (701 bp) | **5838 bp** under load, matching the host's 50.91% | **PASS** |
+| storage returns real instances, or an explicit fault with a reason | **2 real instances**, both named, with live active-time/latency/read-rate | **PASS** |
+| `capabilities` no longer claims `native` for a subsystem that reported nothing | 16/16 `native` — and all four telemetry collectors **did** measure | **PASS, with the caveat below** |
+
+**The `capabilities` caveat, stated plainly.** The output is the same 16/16
+`native` §41.15 recorded, so the value alone proves nothing. What changed is the
+derivation and what it now sits beside: in §41.15, `telemetryStorage: native`
+stood next to `"storage": []`; it now stands next to two real devices, and
+`telemetryGpu: native` next to 16 engines instead of a false `Unavailable`. The
+contradiction is gone because the collectors were fixed. That the *mechanism*
+would degrade the row had they not been is proven by the three unit tests in
+§42.2, not by this run — a run on healthy hardware cannot prove it, and treating
+it as if it could is exactly the §20.1.6 error.
+
+### Findings — recorded, not hidden
+
+**1. `perProcessorBusyBp` is still `[]`. Not fixed, and not claimed to be.**
+§20.1.3(b): no line of `windows_impl.rs` has ever written
+`per_processor_busy_bp`. It is a missing feature, not the misread — populating it
+needs per-instance `\Processor Information(N)\% Processor Time` counters across
+22 processors, which is a cadence and observer-effect decision, not a bug fix.
+**DBT-P42-009**, open.
+
+**2. `dpcIsrBusyBp` reads 0 in a quiet window.** Not the old defect. The host's
+own `% DPC Time` is 0 and `% Interrupt Time` 0.279% in the same window, and over
+the provider's ~100 ms in-tick window that rounds to 0 bp. Under disk I/O the
+same field reads **135 bp**, so the path is live. Recorded because the number
+looks like the old symptom and is not.
+
+**3. gpu `adapterId`, `adapterName` and the VRAM fields are empty** while
+`engineCount` is 16. PDH exposes engine utilization only; adapter identity and
+dedicated memory need DXGI traversal, which this provider has never done — the
+file's own header comment says so. §41.16 3b measured both adapters and 8 GiB of
+VRAM through WMI, so the data exists and this collector does not read it.
+**DBT-P42-010**, open. It is honest today: the fields are empty, not invented.
+
+**4. Byte-rate and latency counters under-report against a 1 s window.**
+`readBytesPerSec` 50 959 and latency 833 µs come from the provider's 80 ms delta
+window; `Get-Counter`'s 1 s window sees 9.89 MB/s and 240 µs at comparable
+moments. Rate counters over a short window are truthful for that window and are
+not comparable to a 1 s reading. Widening the window trades observer effect for
+stability and is a cadence decision, not a defect fix. **DBT-P42-011**, open.
+
+**5. The `memory.counters` Degraded fault is correct, and was verified.**
+It names `Standby Cache Reserve Priority Bytes`. Probed independently:
+
+    OK     \Memory\Standby Cache Normal Priority Bytes      2884845568
+    ABSENT \Memory\Standby Cache Reserve Priority Bytes     The specified counter could not be found.
+    OK     \Memory\Modified Page List Bytes                 71393280
+    OK     \Memory\Pages Input/sec                          0
+    OK     \Memory\Pages Output/sec                         0
+
+The counter genuinely does not exist on this host. **This is the contract doing
+its job**: an unreadable counter now produces a named degradation instead of a
+silent zero. Under the shipping code this was `.unwrap_or(0)` and invisible.
+
+**6. `processTop` now declares `NotCollected` on every snapshot.** A deliberate
+wire change: §20.1.1 site 7 returned an empty array with no explanation. The
+design (attribution belongs to the bottleneck analyzer) is unchanged; only the
+silence is. One extra `collectorFaults` entry per snapshot.
+
+### DBT-P42-008 — `perf snapshot` was serving a three-hour-old reading
+
+Found while taking the 1.C service-backed comparison, and it is the same class of
+defect as DBT-P41-002.
+
+    NOW_UNIX_MS = 1788359855093
+      call 1  capturedUnixMs=1788349015839  intervalMs=1000  cpuBusy=0
+      call 2  capturedUnixMs=1788349015839  intervalMs=1000  cpuBusy=0
+      call 3  capturedUnixMs=1788349015839  intervalMs=1000  cpuBusy=0
+    §41.15 recorded capturedUnixMs = 1788349015839
+    service PID 11324, StartTime 9/2/2026 12:09:29 PM
+
+Three calls two seconds apart returned **byte-identical payloads**, and that
+payload is the one §41.15 recorded **10 839 254 ms — three hours and one minute —
+earlier**.
+
+Cause, read from source: `PerformanceEngine::ensure_sample` was
+
+    if self.ring.latest(owner).is_none() { ...sample and push... }
+
+so the ring was seeded exactly once per owner per service lifetime, and every
+later `perf snapshot` returned `latest()` — that first reading, unchanged. The
+background sampler only runs after an explicit `perf start`, so in the common
+case nothing ever refreshed it. The value returned was real; it was simply not a
+measurement of *now*, and nothing in the response says how old it is.
+
+**This blocked Part 2.D**, which requires re-running the 1.C measurements against
+the installed service and expecting the same real numbers — impossible against a
+frozen snapshot. Fixed: `ensure_sample` resamples when the latest reading is
+older than the requested interval, or is dated in the future (a backwards clock
+step must not pin a stale reading in place). A live sampler at that cadence keeps
+the ring fresh and the fix adds no extra tick. The predicate is extracted as
+`sample_is_stale` and unit-tested against the measured case:
+
+    test performance::dbt_p42_008::an_empty_ring_is_stale ... ok
+    test performance::dbt_p42_008::a_three_hour_old_reading_is_not_a_current_measurement ... ok
+    test performance::dbt_p42_008::a_reading_inside_the_requested_interval_is_reused ... ok
+    test performance::dbt_p42_008::a_future_dated_reading_is_stale ... ok
+    test result: ok. 4 passed; 0 failed
+
+The service-backed `perf snapshot` reading in §41.15 is therefore **not evidence
+that the service path shows the same zeros** in the way it was read: it is
+evidence that the service path *sampled once, at 12:16:55, and repeated itself*.
+§20.1.9(1)'s prediction still holds — both paths call `default_platform()` and
+share the provider — but the observation §41.15 offered as confirmation was a
+replay, not an independent second measurement. Correcting the record.
+
+**Part 1 verdict: DBT-P41-002 is FIXED and measured.** cpu, storage and gpu all
+report real values that agree with the host's own counters; every subsystem that
+reports nothing now says why.
