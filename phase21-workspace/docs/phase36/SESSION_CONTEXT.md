@@ -4815,3 +4815,159 @@ of §20.1.1, now demonstrated rather than read from source.
 radius is larger than first recorded (service path included, `capabilities`
 included), and the diagnosis in §20.1 stands unmodified. **Not fixed**, per the
 brief.
+
+## 41.16 GATE 3.C — the four Stage 3 items §41.7 could not pay without the install
+
+§41.7 closed with a list of what Stage 3 still owed. All four are now measured on
+real x86_64 silicon with the service running.
+
+### 3a — SMART / NVMe attributes from the real disk
+
+    DeviceId FriendlyName                   MediaType   BusType Health  Size            Firmware
+    0        NVMe Micron_2500_MTFDKBA1T0QGN SSD         NVMe    Healthy 1024209543168   V8MA000
+    1        HIKSEMI                        SSD         USB     Healthy 1024209543168   4401
+    2        ADATA USB Flash Drive          Unspecified USB     Healthy   31037849600   1100
+
+    disk 0 (system NVMe)  Temperature 60 C   Wear 0
+    disk 1 (HIKSEMI USB)  Temperature 48 C   Wear 0   PowerOnHours 578
+                          ReadErrorsTotal 0  ReadErrorsUncorrected 0
+    disk 2 (ADATA)        Temperature 0      (no reliability counters exposed)
+
+    MSStorageDriver_FailurePredictStatus
+      SCSI\Disk&Ven_NVMe&Prod_Micron_2500_MTFD\...   PredictFailure = False, Reason = 0
+
+The system NVMe at 60 C is warm but healthy and predicts no failure. The HIKSEMI
+reading at 48 C was taken shortly after it absorbed a 96-minute, 521 GB image
+write, which is the context for that number. Most NVMe reliability fields
+(`PowerOnHours`, `StartStopCycleCount`, error totals) come back empty on disk 0 —
+the driver does not surface them through `Get-StorageReliabilityCounter` on this
+box. Recorded as observed; not worked around.
+
+### 3b — GPU telemetry, driver identity and memory
+
+Two adapters, both `Status: OK`:
+
+    Intel(R) Arc(TM) Graphics
+      PNPDeviceID    PCI\VEN_8086&DEV_7D55&SUBSYS_142E1462&REV_08\3&11583659&0&10
+      DriverVersion  31.0.101.5007      DriverDate  2023-11-18
+      AdapterRAM     1073741824         VideoMode   2560 x 1600
+
+    NVIDIA GeForce RTX 4060 Laptop GPU
+      PNPDeviceID    PCI\VEN_10DE&DEV_28A0&SUBSYS_142E1462&REV_A1\4&3016F0B9&0&0008
+      DriverVersion  32.0.16.1656       DriverDate  2026-08-20
+      AdapterRAM     4293918720 (truncated at 4 GB by the WMI field)
+      dedicated VRAM 8585740288 from HardwareInformation.qwMemorySize = 8 GiB
+
+    \GPU Adapter Memory(*)\Dedicated Usage  -> 4 adapter LUIDs enumerated
+
+**This sharpens §41.15's gpu finding rather than repeating it.** The product's
+gpu fault says *"no GPU engine counters exposed by this adapter/driver"* on a
+machine carrying two healthy adapters, one of them a discrete RTX 4060 with 8 GiB
+of dedicated VRAM and a driver dated two weeks ago, exposing 568 engine counter
+instances across 4 adapter LUIDs. The detail string is not merely imprecise here;
+it names a cause that is measurably false.
+
+The Intel Arc driver is from 2023-11-18, nearly three years old — noted as an
+observation for the owner, not acted on.
+
+### 3c — PnP and Windows Update driver discovery counts
+
+    PNP_TOTAL=229   PNP_OK=205   PNP_ERROR=0   PNP_DEGRADED=0   PNP_UNKNOWN=24
+    PNP_WITH_PROBLEM=24   -> every one of the 24 is CM_PROB_PHANTOM
+    THIRD_PARTY_DRIVER_PACKAGES=101
+
+All 24 non-OK devices are phantoms: USB composite/mass-storage devices,
+Bluetooth enumerators and serial-over-Bluetooth ports, a wireless headset, a
+generic volume shadow copy. Those are remembered registrations for hardware not
+currently attached, **not faults**. `PNP_ERROR=0`: this machine has no device in
+an error state.
+
+    Windows Update, SEARCH ONLY, nothing downloaded or installed:
+    WU_DRIVER_UPDATES_FOUND=0      WU_SEARCH_RESULTCODE=2 (orcSucceeded)
+
+**A correction on the way to that number**, recorded because the failure looks
+like an outage and is not: the first search returned `HRESULT 0x80244011` with
+`ServerSelection = 1`. That value is `ssManagedServer` (WSUS), and the error is
+"WUServer policy value is missing in the registry" — correct behaviour for a
+machine with no WSUS. The Windows Update server is `ServerSelection = 2`
+(`ssWindowsUpdate`), which returned cleanly.
+
+**This matters for Gate 4:** Windows Update offers this machine **zero** driver
+updates. There is no WU-supplied driver available to exercise a driver install
+and rollback against, so Gate 4's "deliberately safe device" has to come from
+somewhere else. That is an input the owner has to supply.
+
+### 3d — service memory / CPU / disk at idle, under scan, and at model load
+
+Idle, after 152 minutes of uptime (PID 11324, started 12:09:29.965):
+
+    WORKINGSET      492687360 bytes   469.86 MB
+    PEAK_WORKINGSET 1390047232 bytes  1325.65 MB
+    PRIVATE         656.64 MB         VIRTUAL 5945.27 MB
+    TOTAL_CPU       37.62 s over 152 min  (~0.4% of one core, averaged)
+    HANDLES 277     THREADS 11
+    READ 1124075117 bytes (1072 MB)   WRITE 644097 bytes (0.61 MB)
+
+**Peak working set at model load, answered by the read total.** The service has
+read 1072 MB from disk since start, against a shipped GGUF of 1117320736 bytes
+(1065.6 MB) — i.e. essentially the whole model, once. The 1325.65 MB peak is that
+model plus baseline, and it sits inside the 2147483648-byte (2 GiB) RAM budget
+`self-check` declares. This is the localModel engine's real cost on this
+hardware.
+
+Under scan — `scan start` -> scanId `cdc62915-f5e2-4680-9571-cee26538694c`:
+
+    duration          342.5 s   (started 1788349309450, completed 1788349651907)
+    CPU delta          ~9.3 s   over 342.5 s  -> ~2.7% of one core on a 22-CPU box
+    peak WS during     485.3 MB (from 469.87 MB at rest: +15 MB)
+    disk read delta    0 MB
+    disk write delta   ~47 MB
+    final counts       collectorCount 7, factsCount 487, findingCount 469,
+                       remediationCandidateCount 299, warningCount 0
+    fingerprint        defb3afb18a9b46342299b4b4c51cda8b7040a467735d3e443be7f59d690783e
+
+Collectors landed in stages (1 -> 2 -> 7) rather than all at once, and the
+findings arrived with them: 128 facts at t=5 s, 473 by t=30 s, 487 at completion.
+
+**A behaviour worth recording: the service releases the model after the scan.**
+Working set fell from ~420 MB to 128.68 MB at t=250 s, then 68.34 MB, settling at
+77.55 MB — while `PeakWorkingSet` stayed 1325.65 MB. So the resident footprint at
+rest after work is ~78 MB, not the ~470 MB it held while the model was live. A
+consumer sizing this service from its peak alone would over-provision by ~17x.
+
+### A defect that was NOT one: `doctor`'s typed rejection is state-dependent
+
+Gate 2 recorded `doctor` returning exit 5 with
+`diagnostics.stateUnavailable` and treated it as PASS by design. That is now
+positively confirmed rather than assumed — after the scan completed, the same
+binary and the same service:
+
+    doctor  EXIT 0
+    {"ok":true,"data":{"state":"Ready","cardCount":2,"crashCount":0,
+     "eventCount":128,"eventWindowDays":30,"providerFaults":[],
+     "storageCount":3,"warningCount":0,"warnings":[]}}
+
+The verb was rejecting because no diagnostic state existed yet, not because it
+was broken. `providerFaults: []` and `crashCount: 0`.
+
+**And it surfaces one more contrast for DBT-P41-002.** `doctor` reports
+`storageCount: 3` — it enumerates all three attached disks — in the same session
+where `telemetry-once` and `perf snapshot` both return `"storage": []`. The
+machine's storage is plainly enumerable by the product through the
+`hardware-telemetry` path; it is specifically the `performance-telemetry`
+Windows provider that yields nothing. That is further evidence the empty array is
+a defect in one collector rather than a property of this hardware, and it is
+consistent with §20.1's scoping of the bug to
+`crates/performance-telemetry/src/windows_impl.rs`.
+
+`insights list` re-checked after the scan: `engineLabel` still `localModel`.
+
+### Stage 3 item status
+
+| item | owed by §41.7 | result |
+|---|---|---|
+| 3a `perf snapshot` service-backed | yes | done, §41.15 — identical zeros |
+| 3a SMART / NVMe | yes | done — NVMe 60 C healthy, PredictFailure False |
+| 3b GPU / driver identity / memory | yes | done — Arc + RTX 4060 8 GiB, both OK |
+| 3c PnP + WU driver counts | yes | done — 229/205/0 error, 101 packages, **0 WU driver updates** |
+| 3d service mem / CPU / disk, peak at model load | yes | done — peak 1325.65 MB, idle-after-work 77.55 MB, scan 342.5 s at ~2.7% of a core |
