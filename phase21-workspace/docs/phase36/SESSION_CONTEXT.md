@@ -5086,7 +5086,7 @@ assumed: `IsInRole(Administrator) = True`, `HUSSEIN\husen`, `PROCESSOR_ARCHITECT
 | 1.C | the fix proven on this machine with numbers | **DONE** | §42.3 — cpu 5838 bp vs host 50.91%, storage 2 real devices, gpu 16 engines; DBT-P42-008 found and fixed |
 | 2.A | MSI rebuilt with the fix, zero ICE | **DONE** | §42.5 — validate EXIT 0 output EMPTY, 0 ICE, payload PASS 16 rows, sha256 `6ecd1ee9…` at 1,100,148,736 bytes |
 | 2.B | uninstall + fourteen-check survivor sweep | **PASS** | §42.6 — uninstall exit 0; 13/14 clean outright, check 14 has ZERO machine-wide hits (all 16 are user-profile dev artifacts) |
-| 2.C | reinstall, every Gate 2 property re-proven | pending | |
+| 2.C | reinstall, every Gate 2 property re-proven | **PASS** | §42.7 — install exit 0, 16/16 hashes match the built payload, SID UNRESTRICTED, pipe DACL equal, engineLabel=localModel |
 | 2.D | the fix live under the installed service | pending | |
 | 4 | driver install/rollback | **NOT STARTED — HARD STOP** | §41.17; unchanged by this session |
 
@@ -5745,3 +5745,91 @@ under `%TEMP%` from one run: two `aethercore-diag-*.db`, six
 naive `*AetherCore*` sweep reports survivors on a developer machine, and they
 would make this gate ambiguous for anyone who ran the tests first. Recorded, not
 cleaned up.
+
+## 42.7 GATE 5 — 2.C: reinstalled from the 2.A MSI, every Gate 2 property re-proven
+
+Nothing was assumed to have carried over from §41.14. Every criterion was
+re-measured against the machine the 2.B sweep had just left bare.
+
+    msiexec /i AetherCore.msi /qn /l*v      INSTALL_EXIT=0   log 167,744 bytes
+    MSI_SHA256 6ecd1ee9786731d22741edbc10e8e0c14ca8add967fe7ebe7f365b21940702a3
+    MsiInstaller 1033: "Product Name: AetherCore. Product Version: 0.1.11.
+                        Installation success or error status: 0."
+
+### Files — 16, hash-matched against the BUILT payload, not against a memory
+
+    MATCHED=16   MISMATCH=0   NOT_IN_SOURCES=0
+
+Every installed file was hashed and compared to the file in `out\payload` or
+`assets` that the 2.A build actually consumed. **The two binaries carrying the
+Part 1 fix differ from §41.14, as they must:**
+
+    aethercore-maintenance-service.exe  10,693,120
+      installed  bf46067b41223e3ee143aee09cf0927f67a9279e01730fa4f1da2b29b02c1f6e
+      §41.14     221e486166707abbfe48af73796698feeb1d0233bde2fd4fc7572ae864a761d4
+    aetherctl.exe                        4,329,984
+      installed  a9ed0e561d6e56dcfbd3b3bd3e4bc477c9f372369debc3fcc4031b1c2083c9c1
+      §41.14     910df7c9ea1010285320abbc3fffbc8469d5c8139c555b228e45151a6c13813d
+
+The other 14 files hash **identically** to §41.14 — including the 1,117,320,736-byte
+GGUF at `6a1a2eb6…` and `vcomp140.dll` at `55aba23c…`. So the diff between the
+two installs is exactly the two binaries that changed, and nothing else moved.
+
+### Every other Gate 2 criterion
+
+| criterion | expected | observed | result |
+|---|---|---|---|
+| install transaction | success | MsiInstaller 1033, status 0, 0.1.11 | PASS |
+| files | 16, hashes match the build | 16, MATCHED=16 MISMATCH=0 | PASS |
+| VCOMP140 / LIBOMP_AARCH64 | True / False | True / False | PASS |
+| dev binaries | none | `DEV_BINARY_IN_INSTALL_IMAGE=NO` | PASS |
+| service | LocalSystem, AUTO_START, RUNNING | `SERVICE_START_NAME: LocalSystem`, `START_TYPE: 2 AUTO_START (DELAYED)`, `STATE: 4 RUNNING` | PASS |
+| service SID | UNRESTRICTED, Active | `SERVICE_SID_TYPE: UNRESTRICTED`, `STATUS: Active`, SID `S-1-5-80-4285065559-…-1187574229` | PASS |
+| install-dir ACLs | protected, Users read-execute only | `Users:(OI)(CI)(RX)`, Admins/SYSTEM `(F)`, service SID `(RX)` | PASS |
+| registration | ARP + HKLM agree | both `0.1.11`, ARP `{0F9F349D-…}` InstallDate 20260902 | PASS |
+| verbs | return; doctor typed rejection ok | 6/6 RETURNED with timings | PASS |
+| **engineLabel** | **`localModel`** | **`localModel`** from `insights list` | **PASS** |
+
+Verb timings, against the RUNNING SERVICE:
+
+    service detect    EXIT 0    63 ms   {"state":"Reachable","endpointDir":"C:\ProgramData\AetherCore"}
+    doctor            EXIT 5    21 ms   diagnostics.stateUnavailable   <- typed rejection, see §42.8
+    scan status       EXIT 0    12 ms   {"appVersion":"0.1.11","state":"idle",...}
+    insights list     EXIT 0    16 ms   {"engineLabel":"localModel","insights":[]}
+    self-check        EXIT 0   669 ms   sha256Match true, manifestValid true, 1117320736 bytes
+    optimize status   EXIT 0    14 ms   {"status":null}
+
+### The pipe DACL, checked against the criterion
+
+    PIPE_PRESENT=True
+    PIPE_SDDL=O:S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229
+              G:SY
+              D:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-4285065559-…-1187574229)
+
+Required: `O:<service SID> G:SY D:P(A;;FA;;;<service SID>)(A;;FR;;;AU)(A;;DC;;;AU)`
+
+Owner = the service SID; group = `SY`; `D:P` protected; the service-SID `FA` ACE
+present verbatim; the AU pair rendered merged as `0x12008b`, which is
+`FR|DC = 0x120089|0x2` — **the rendering the brief names explicitly and instructs
+must NOT be reported as drift.** Byte-identical to §41.14's reading. ACE ordering
+differs from the authored string in the same way §41.14 recorded, and is likewise
+not drift: a DACL is a set, and no principal gains or loses anything.
+
+**The §41.14 correction reproduced exactly.** `P41-FULL-RUN.md`'s
+`[System.IO.File]::Open('\.\pipe\…')` method was run alongside, and failed again:
+
+    PIPE_SDDL_FILESTREAM=ERROR: FileStream was asked to open a device that was not
+    a file. For support for devices like 'com1:' or 'lpt1:', call CreateFile...
+
+`NamedPipeClientStream` is the method that works. Two sessions, same result.
+
+### A correction to this session's own verification script
+
+The first run reported `servicedetect EXIT 2` with empty output. That was **the
+script's error, not the product's**: the verb is `service detect`, two tokens, and
+the script had passed `service-detect`. Re-run correctly it is `EXIT 0` in 63 ms.
+Recorded because an uninvestigated `EXIT 2` in a gate table would have been a
+false failure.
+
+**2.C = PASS.** Every Gate 2 property holds on the reinstalled product, and the
+only difference from §41.14 is the two binaries that carry the fix.
