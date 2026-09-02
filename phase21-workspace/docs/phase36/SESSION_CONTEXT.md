@@ -5084,7 +5084,7 @@ assumed: `IsInRole(Administrator) = True`, `HUSSEIN\husen`, `PROCESSOR_ARCHITECT
 | 1.A | the four tests that should have caught DBT-P41-002, committed failing | **DONE** | §42.1 — 4/4 FAILED on real x64, output verbatim below |
 | 1.B | one contract replaces the nine availability rules; both mechanisms fixed | **DONE** | §42.2 — 9 rules → 1 contract, 3 further defects found (DBT-P42-001/002/003), 7/7 tests pass |
 | 1.C | the fix proven on this machine with numbers | **DONE** | §42.3 — cpu 5838 bp vs host 50.91%, storage 2 real devices, gpu 16 engines; DBT-P42-008 found and fixed |
-| 2.A | MSI rebuilt with the fix, zero ICE | pending | |
+| 2.A | MSI rebuilt with the fix, zero ICE | **DONE** | §42.5 — validate EXIT 0 output EMPTY, 0 ICE, payload PASS 16 rows, sha256 `6ecd1ee9…` at 1,100,148,736 bytes |
 | 2.B | uninstall + fourteen-check survivor sweep | pending | |
 | 2.C | reinstall, every Gate 2 property re-proven | pending | |
 | 2.D | the fix live under the installed service | pending | |
@@ -5597,3 +5597,50 @@ reports nothing now says why.
     NOT DONE= Defender, UAC, Firewall and SmartScreen are not touched. No survivor
               found in step 3 will be deleted by hand — the gate measures what the
               uninstaller does, not what can be cleaned up afterwards.
+
+## 42.5 GATE 5 — 2.A: the MSI rebuilt with the Part 1 fix
+
+| step | result |
+|---|---|
+| `pnpm --dir apps/ui build` | **exit 0** |
+| `cargo build --release` (5 payload packages) | **exit 0**, 30.42 s |
+| tauri `build --no-bundle --config installer/tauri.no-before-build.json` | **exit 0**, 2 m 06 s |
+| `wix build -arch x64` | **exit 0** |
+| `wix msi validate` | **exit 0, output EMPTY (length 0), ICE matches 0, no suppression** |
+| `check-msi-payload.ps1` | `PAYLOAD_CHECK=PASS`, `AUTHORED_FILES=17`, `MSI_FILE_ROWS=16` |
+
+### The new artifact
+
+    MSI_BYTES   1,100,148,736          (previous 1,100,140,544 — +8,192)
+    MSI_SHA256  6ecd1ee9786731d22741edbc10e8e0c14ca8add967fe7ebe7f365b21940702a3
+    previous    d18d89db07180f5727b7d6056a07ea8d50de97aa401838601b532e9befd1f227
+    version     0.1.11 (unchanged — the ProductCode is derived from version+arch,
+                so it is the same {0F9F349D-01C8-B3C2-7242-83B5D29047C9})
+
+The `beforeBuildCommand` defect was handled exactly as recorded: the existing
+`installer/tauri.no-before-build.json` overlay was passed with `--config`.
+**`tauri.conf.json` was not modified**, and `git status` confirms it.
+
+### A payload trap worth recording
+
+`scripts/build-installer.ps1` requires `vcomp140.dll` in the payload directory but
+does not source it, and this machine carries **five** files of that name. The
+first plausible match — `VC\Redist\MSVC\14.44.35112\onecore\x64\...`, 72,712
+bytes — is the wrong one. §41.14's installed baseline is **193,152 bytes**,
+sha256 `55aba23c…`, which is the **desktop** `x64` redist:
+
+    72712   3b154db5fff1445a  ...\14.44.35112\onecore\x64\Microsoft.VC143.OpenMP\vcomp140.dll
+    64168   6b78bc47b655c571  ...\14.44.35112\onecore\x86\Microsoft.VC143.OPENMP\vcomp140.dll
+    193152  55aba23cdcd6484f  ...\14.44.35112\x64\Microsoft.VC143.OpenMP\vcomp140.dll   <- correct
+    163488  91cbb2dbb3c4f279  ...\14.44.35112\x86\Microsoft.VC143.OPENMP\vcomp140.dll
+    193152  55aba23cdcd6484f  C:\Windows\System32\vcomp140.dll
+
+Caught by hashing against §41.14's recorded value before building, not after.
+The staged file matches the Gate 2 baseline byte for byte. `onecore` is the
+Windows-Core-OS variant and is not what the desktop product shipped.
+**DBT-P42-012**: the build script names the file but not its source, so the next
+session can silently ship a different binary that still passes every check.
+
+**2.A = PASS.** Zero ICE, no suppression, 16 file rows, and the one payload
+difference from ARM64 (`vcomp140.dll` for `libomp140.aarch64.dll`) is unchanged
+and still architectural.
