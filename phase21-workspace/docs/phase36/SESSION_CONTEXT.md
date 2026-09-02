@@ -6015,7 +6015,7 @@ attached to this session. Recorded as **DBT-P42-004**. The diff is the whole of
 | **DBT-P42-001** | `PdhExpandWildCardPathW` bound with 3 params where the export takes 5; out-buffer typed `*mut PWSTR` instead of `PZZWSTR` | **FIXED.** Listed because it *resolves* §41.15's open "which of storage's four exits fires" — the answer is neither candidate: the call never had a chance to succeed |
 | **DBT-P42-002** | percentage counters read as basis points (91 bp reported while the box was 91% busy) | **FIXED** |
 | **DBT-P42-003** | counters read before the collection that gives them data; storage collected twice before adding any counter | **FIXED** |
-| **DBT-P42-004** | the ARM64 pipeline runs the changed file and is unverified on ARM64 silicon | open — no ARM64 machine attached |
+| **DBT-P42-004** | the ARM64 pipeline runs the changed file and is unverified on ARM64 silicon | **CLOSED, §43.7** — build exit 0, 7/7 regression tests pass, offline readings agree with the host in two rounds; residual narrowing: service-path (Part 4) not run, disk-latency unmeasured on this VM |
 | **DBT-P42-005** | macOS/Linux providers still build `PerfSnapshot` literally, not through `CollectedSubsystems` | open — `#[cfg]`-gated; cannot be compiled or tested on this host, and changing code this session cannot build is the worse risk |
 | **DBT-P42-006** | `aethercore-driver-hub --lib`, 6 failing tests | **PRE-EXISTING**, verified by stashing this session's changes and re-running; the crate depends on neither crate P42 touched |
 | **DBT-P42-007** | `intelligence-core --test offline_boundary` fails | **PRE-EXISTING**; `cargo metadata --offline` cannot find `android_system_properties v0.1.6` in the local registry cache. Environment, not code |
@@ -6329,3 +6329,46 @@ all (`sample_cpu` starts from `CpuSample::default()` and no line of
 `windows_impl.rs` assigns the field) — a fact about the source, not about
 either architecture's counters, and this session's ARM64 reading is
 consistent with that on every capture.
+
+## 43.7 PART 3 — DBT-P42-004 VERDICT: CLOSED
+
+**CLOSED**, with two residual items named rather than folded silently into
+"closed":
+
+- Shipping ARM64 build: exit 0 (§43.2, proven from the log despite the
+  recipe script's own misleading 101 — DBT-P43-001).
+- The regression suite the fix carries: 7/7 pass on ARM64, identical test
+  names and results to x64 (§43.3).
+- The fix's own behaviour, measured twice against this machine's real host
+  counters, offline path: cpu within ~1 point of the host both times, gpu
+  measuring 16 engines with no false fault, storage device enumerated —
+  the same shape §42.3 measured on x64, not merely "no crash" (§43.4).
+- `perProcessorBusyBp` still `[]`, matching the source-level diagnosis
+  rather than either architecture's counters (§43.6) — not a divergence,
+  a confirmation that DBT-P42-009 is what it was always recorded as.
+
+**Not proven, and said so rather than assumed:**
+
+1. **The service path.** Everything measured this session went through
+   `telemetry-once` (offline). `perf snapshot` needs the fix running as the
+   registered service, which needs an MSI install — Part 4, snapshot-gated,
+   and this session's Part 4 decision is recorded separately (§43.8). The
+   reason this doesn't reopen DBT-P42-004 rather than merely narrow it:
+   §20.1.9(1) and §42.8 already established, and this session did not
+   need to re-establish, that both paths call the same
+   `default_platform()` and share the identical `WindowsPerfPlatform`
+   provider — there is no second code path for the service to diverge
+   through.
+2. **Disk latency.** x64 had a bias reading to check (§43.5); this VM's
+   single virtual disk never registered non-zero `% Disk Time` under load
+   on either the product or the host counter (§43.4), so there is no
+   ARM64 disk-latency number at all, favourable or not. Unmeasured, not
+   confirmed absent.
+
+**A finding this session added, not subtracted:** the x64 numeric bias
+(§43.5) does not reproduce on ARM64 in the two rounds measured — the
+opposite of what would have widened DBT-P42-011. This sits beside the
+DBT-P42-004 verdict rather than inside it: DBT-P42-004 asks whether the P42
+fix works on ARM64 (yes), not whether x64's separately-open bias question
+also applies here (this session's evidence says no, or at least not by the
+same mechanism).
