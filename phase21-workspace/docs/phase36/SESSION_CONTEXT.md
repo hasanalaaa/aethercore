@@ -5533,3 +5533,67 @@ replay, not an independent second measurement. Correcting the record.
 **Part 1 verdict: DBT-P41-002 is FIXED and measured.** cpu, storage and gpu all
 report real values that agree with the host's own counters; every subsystem that
 reports nothing now says why.
+
+## 42.4 DESTRUCTIVE ACTION RECORD — GATE 5: full lifecycle, zero survivors
+
+**Written and committed BEFORE the first destructive step**, per the standing rule.
+
+    ACTION=   1. Rebuild the MSI carrying the Part 1 fix (cargo -> tauri -> wix build
+                 -> wix msi validate -> payload check). Non-destructive.
+              2. msiexec /x {0F9F349D-01C8-B3C2-7242-83B5D29047C9} /qn /l*v — removes
+                 the installed AetherCore 0.1.11 from this machine. DESTRUCTIVE.
+              3. Fourteen-check survivor sweep, read-only.
+              4. msiexec /i out\release\AetherCore.msi /qn /l*v — reinstall from the
+                 MSI built in step 1, then re-prove every Gate 2 property.
+
+    SNAPSHOT= taken and enumerated before step 2, not asserted:
+              restore points  SequenceNumber 1  20260901223933  "AetherCore baseline
+                                                — before any install"   <- PRE-INSTALL TARGET
+                              SequenceNumber 2  20260902094609  "Windows Backup"
+              disk image      D:\WindowsImageBackup  19 files  559,904,433,918 bytes
+                              (521.45 GiB)  — present and listing-verified
+              installed       AetherCore 0.1.11
+                              ProductCode {0F9F349D-01C8-B3C2-7242-83B5D29047C9}
+                              InstallDate 20260902
+              service         AetherCoreMaintenance  Running  Auto  LocalSystem
+              volumes         C: 953 GB (399 free)   D: "SD" 953.7 GB (410.5 free)
+
+    EXPECTED= step 1: every exit code 0, `wix msi validate` output EMPTY, payload
+                      check PASS, 16 file rows, new sha256 and byte size recorded.
+              step 2: uninstall exit 0, verbose log written.
+              step 3: ZERO survivors on all fourteen checks.
+              step 4: install exit 0; 16 files hash-matching the built payload;
+                      service LocalSystem/AUTO_START/RUNNING; service SID
+                      UNRESTRICTED; pipe DACL equal to the Gate 2 criterion;
+                      install-dir ACLs protected with Users read-execute only;
+                      zero dev binaries; four verbs round-trip; engineLabel=localModel
+                      proven against the RUNNING SERVICE.
+
+    RECOVERY= stated honestly, including what it does NOT cover:
+              - PRIMARY: reinstall from `out\release\AetherCore.msi`, which is built
+                and validated in step 1 BEFORE the uninstall in step 2. The reinstall
+                artifact provably exists before anything is removed. This is the
+                recovery path for the realistic failure — an uninstall that succeeds
+                and a reinstall that does not.
+              - The Gate 0 restore point, SequenceNumber 1, is the **pre-install**
+                target and is the only snapshot that predates the product.
+              - The §41.13 disk image EXISTS and is verified (19 files, 521.45 GiB),
+                but §41.12 0f.7 records that **the machine was already installed when
+                it was imaged**. It is NOT a pristine-state image. Restoring it
+                returns the machine to an installed state, not a clean one.
+              - **The E: recovery media is NOT ATTACHED right now.** Measured, not
+                assumed: `Get-Volume` shows only C: and D:. The external drive that
+                held the 6.12 GB boot artifacts (§41.13 0f.D) has been removed. It was
+                never boot-tested in any case (§41.17). So the "boot an unbootable
+                machine" path is unavailable for the duration of this gate.
+
+    BLAST=    Bounded to the AetherCore product: its install directory, service
+              registration, ProgramData, registry keys and named pipe. Gate 5 does not
+              touch the boot path, drivers, or any OS component — which is precisely
+              why §41.17 records it as runnable before Gate 4 rather than after.
+              The absent recovery media therefore does not gate it: nothing here can
+              make the machine unbootable.
+
+    NOT DONE= Defender, UAC, Firewall and SmartScreen are not touched. No survivor
+              found in step 3 will be deleted by hand — the gate measures what the
+              uninstaller does, not what can be cleaned up afterwards.
