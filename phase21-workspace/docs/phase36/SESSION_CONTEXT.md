@@ -3614,3 +3614,94 @@ Everything else is already in place and does **not** need redoing:
 - DBT-P41-002 — `telemetry-once` cpu/storage return zero/empty with no declared
   `collectorFault`, while gpu correctly declares one. Re-measure with the service
   running before drawing any conclusion.
+
+## 41.10 STAGE 2 PRE-INSTALL RECORD, REVISED — recovery is now a HARD GATE in code
+
+Written and committed **before** the first elevated action of the next session,
+per the standing rule. This supersedes the ordering assumption in §41.5.
+
+### The ordering question, answered with what was measured
+
+The owner raised that a restore point created *after* the first install cannot
+recover the first install, and asked that restore-point creation be the first
+elevated action. **On this machine the ordering already holds** — recorded here so
+nobody re-derives it:
+
+- The restore point was created at **Gate 0**, §41.2, before any install:
+  `SequenceNumber 1`, `AetherCore baseline — before any install`,
+  `CreationTime 20260901223933.946086-000`, `RestorePointType 12`, and it was
+  **enumerated** after creation rather than assumed.
+- **Nothing has been installed since.** Re-verified after the session pause:
+  `C:\Program Files\AetherCore` does not exist and
+  `sc query AetherCoreMaintenance` returns `FAILED 1060`.
+
+So the machine is still in the pre-install state that point captures.
+
+One correction to the stage order as the owner described it: the Stage 4 point
+("AetherCore before driver work") is a **second** point. 4a adds one specifically
+before driver work; it is not the only one and it was never meant to precede the
+install.
+
+### The concern is still right, so it is now enforced mechanically
+
+"A point was created earlier" is a memory, not evidence — it could have been aged
+out by shadow-storage pressure (19.1 GB max on this volume) or removed. So the
+check no longer depends on anyone remembering to do it. `scripts/p41/stage2.ps1`
+now opens with a preflight block that runs **before** `msiexec` is touched:
+
+1. `Get-ComputerRestorePoint` and log every point (seq, type, time, description).
+2. Accept only a point created within the last 24 h — one that still reflects this
+   pre-install machine.
+3. If there is none: enable System Restore, temporarily zero
+   `SystemRestorePointCreationFrequency`, create the point, restore that value to
+   exactly its prior state, then **re-enumerate** — because `Checkpoint-Computer`
+   returning OK is not proof, the listing is.
+4. If there is still none: log `PREFLIGHT=FAIL`, write
+   `STAGE2_ABORTED_NO_RESTORE_POINT`, and **`exit 1` without installing.**
+
+    ACTION=   Run scripts\p41\stage2.ps1 elevated. It verifies (or creates and
+              verifies) a System Restore point, and only then installs
+              out\release\AetherCore.msi with /qn /l*v, then runs the full Stage 2
+              verification list.
+    SNAPSHOT= System Restore point on C:. Currently SequenceNumber 1, "AetherCore
+              baseline - before any install", 2026-09-02 01:39 local, enumerated.
+              This machine has NO disk image and NO VM snapshot; this point is the
+              only recovery that exists, which is why the script refuses to install
+              without one. Shadow storage: 19.1 GB max on C:.
+    EXPECTED= PREFLIGHT=PASS naming the seq and creation time. MSIEXEC_EXIT=0.
+              INSTALL_FILE_COUNT=16. Service AetherCoreMaintenance LocalSystem,
+              AUTO_START, RUNNING. Service SID UNRESTRICTED and Active. Pipe DACL
+              O:<service SID> G:SY D:P(A;;FA;;;<service SID>)(A;;FR;;;AU)(A;;DC;;;AU)
+              - the AU pair may render as (A;;0x12008b;;;AU), the SAME DACL, never
+              report that as drift. Install-dir ACLs read-execute for Users and the
+              service SID, no Users write. VCOMP140_PRESENT=True,
+              LIBOMP_AARCH64_PRESENT=False (x64 is expected to differ here, §41.4).
+              DEV_BINARY_IN_INSTALL_IMAGE=NO. Four verbs RETURNED; doctor returning
+              the typed diagnostics.stateUnavailable is a PASS.
+              ENGINE_LABEL=localModel, NOT ruleFallback.
+    RECOVERY= msiexec /x <ProductCode> /qn, which Stage 5b exercises deliberately
+              and which is proven on ARM64 across fourteen survivor checks. Behind
+              that, the verified restore point named above. The uninstall path is
+              NOT yet proven on THIS machine - proving it is what Stage 5b is for.
+              If the preflight fails the script installs nothing, so there is
+              nothing to recover from.
+    BLAST=    A failed install can leave a partially-registered service or a
+              half-populated Program Files. msiexec transactions roll back on
+              failure and the /l*v log names the failing action. Worst case is an
+              orphaned service registration, cleared with
+              "sc delete AetherCoreMaintenance" plus removing the directory, or by
+              the restore point. No user data is touched - the product writes only
+              under Program Files and ProgramData. The boot path is not involved.
+
+### How the next session runs it
+
+Start an **elevated** PowerShell (Run as administrator), launch the tool from
+there, and then:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\dev\aethercore\phase21-workspace\scripts\p41\stage2.ps1
+```
+
+Results land in `C:\AetherCore-P41\logs\stage2.log` (override with `-OutDir`).
+`scripts\p41\offline-verbs.ps1` is the §41.7 offline evidence run, kept alongside
+it so the Stage 3 partial can be reproduced or re-measured with the service up.
