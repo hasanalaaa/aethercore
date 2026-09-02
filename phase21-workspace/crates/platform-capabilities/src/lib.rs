@@ -249,6 +249,63 @@ pub mod keys {
     pub const WINDOWS_SERVER_NO_RESTORE_POINTS: &str = "cap.reason.windowsServerNoRestorePoints";
     pub const WINDOWS_SERVER_WUA_POLICY: &str = "cap.note.windowsServerWsusPolicy";
     pub const WINDOWS_SERVER_CORE_NO_CONSOLE: &str = "cap.note.windowsServerCoreNoConsole";
+    /// P42: the platform supports this telemetry, but the collector that
+    /// actually reads it declared a fault or returned nothing on this host.
+    pub const COLLECTOR_REPORTED_NOTHING: &str = "cap.reason.collectorReportedNothing";
+}
+
+/// What the telemetry collectors actually measured on this host, this tick.
+///
+/// §41.15 3.C measured the contradiction this exists to end: `capabilities`
+/// reported **16/16 `native`** in the same session, on the same machine, in which
+/// `telemetry-once` returned `"storage": []` and gpu declared `Unavailable`.
+/// `windows_table()` is a static map with no runtime input, so it answered
+/// `native` on every Windows host in every state — including hosts where the
+/// collectors are genuinely absent. Three deciders, disagreeing (§20.1.1 site 9).
+///
+/// A capability now has two independent parts, and both must hold: the platform
+/// must support it, **and** the collector must have produced something.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TelemetryObservation {
+    pub cpu: bool,
+    pub memory: bool,
+    pub storage: bool,
+    pub gpu: bool,
+}
+
+impl TelemetryObservation {
+    /// Nothing has been observed. Every telemetry capability degrades — this is
+    /// deliberately not the same as `Native`, because "we did not look" must not
+    /// render as "we looked and it works".
+    pub const UNOBSERVED: Self = Self {
+        cpu: false,
+        memory: false,
+        storage: false,
+        gpu: false,
+    };
+
+    fn measured(&self, capability: PlatformCapability) -> Option<bool> {
+        match capability {
+            PlatformCapability::TelemetryCpu => Some(self.cpu),
+            PlatformCapability::TelemetryMemory => Some(self.memory),
+            PlatformCapability::TelemetryStorage => Some(self.storage),
+            PlatformCapability::TelemetryGpu => Some(self.gpu),
+            _ => None,
+        }
+    }
+}
+
+/// Downgrades a platform answer that the collectors contradict.
+///
+/// Only ever downgrades: an observation can take `Native` to `Degraded`, and it
+/// never promotes a `NotAvailable` platform answer into something better.
+fn reconcile(availability: Availability, measured: Option<bool>) -> Availability {
+    match (availability, measured) {
+        (Availability::Native, Some(false)) => Availability::Degraded {
+            note_key: keys::COLLECTOR_REPORTED_NOTHING,
+        },
+        (other, _) => other,
+    }
 }
 
 /// FROZEN Windows table: everything Native, exactly as shipped today.
@@ -382,6 +439,11 @@ pub fn available_on(platform: Platform, capability: PlatformCapability) -> Avail
 }
 
 /// Full matrix for the running OS (startup log + wire surface).
+/// The **platform's** capability shape: what this OS and SKU can support.
+///
+/// This is not an answer about what was measured. Product surfaces must use
+/// [`matrix_for_current_platform_observed`] so `capabilities` cannot contradict
+/// the collectors — see §20.1.1 site 9 and §41.15 3.C.
 pub fn matrix_for_current_platform() -> Vec<(&'static str, Availability)> {
     let platform = Platform::current();
     PlatformCapability::ALL
@@ -392,6 +454,24 @@ pub fn matrix_for_current_platform() -> Vec<(&'static str, Availability)> {
                 _ => available_on(platform, *c),
             };
             (c.as_str(), availability)
+        })
+        .collect()
+}
+
+/// The platform's shape, reconciled against what the collectors actually
+/// measured. This is the answer the product reports.
+pub fn matrix_for_current_platform_observed(
+    observed: TelemetryObservation,
+) -> Vec<(&'static str, Availability)> {
+    let platform = Platform::current();
+    PlatformCapability::ALL
+        .iter()
+        .map(|c| {
+            let availability = match platform {
+                Platform::Windows => available_on_windows_sku(current_windows_sku(), *c),
+                _ => available_on(platform, *c),
+            };
+            (c.as_str(), reconcile(availability, observed.measured(*c)))
         })
         .collect()
 }

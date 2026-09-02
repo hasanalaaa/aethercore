@@ -1342,7 +1342,9 @@ pub fn handle_request(
             }
             // ---------------- Phase 26/27: honest platform + engine surface ----------
             request::Payload::GetPlatformCapabilities(_) => {
-                let capabilities = aethercore_platform_capabilities::matrix_for_current_platform()
+                let capabilities = aethercore_platform_capabilities::matrix_for_current_platform_observed(
+                    crate::performance::observe_telemetry(),
+                )
                     .into_iter()
                     .map(|(name, availability)| {
                         let state = match &availability {

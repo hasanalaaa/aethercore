@@ -5082,7 +5082,7 @@ assumed: `IsInRole(Administrator) = True`, `HUSSEIN\husen`, `PROCESSOR_ARCHITECT
 | item | what it proves | status | evidence |
 |---|---|---|---|
 | 1.A | the four tests that should have caught DBT-P41-002, committed failing | **DONE** | §42.1 — 4/4 FAILED on real x64, output verbatim below |
-| 1.B | one contract replaces the nine availability rules; both mechanisms fixed | pending | |
+| 1.B | one contract replaces the nine availability rules; both mechanisms fixed | **DONE** | §42.2 — 9 rules → 1 contract, 3 further defects found (DBT-P42-001/002/003), 7/7 tests pass |
 | 1.C | the fix proven on this machine with numbers | pending | |
 | 2.A | MSI rebuilt with the fix, zero ICE | pending | |
 | 2.B | uninstall + fourteen-check survivor sweep | pending | |
@@ -5160,3 +5160,212 @@ no fault, and the single gpu `Unavailable` whose detail string §41.16 3b proved
 false. The load harness spins every logical processor for 300 ms before sampling
 and holds it across the sample, so "the machine was idle" is not available as an
 explanation — and §41.15 had already measured 7.01% on an *unloaded* box.
+
+## 42.2 PART 1.B — one contract, and the mechanisms underneath it
+
+### The contract
+
+`Reading<T>` in `crates/performance-telemetry/src/lib.rs`. A struct wrapping a
+**private** enum, so `Measured` is unconstructible — inside this crate as well as
+outside it — without passing evidence to a constructor:
+
+    pub fn from_evidence(Option<T>, || CollectorFault) -> Reading<T>      // None ⇒ Unavailable
+    pub fn from_collection(Vec<T>, || CollectorFault) -> Reading<Vec<T>>  // empty ⇒ Unavailable
+    pub fn unavailable(CollectorFault) -> Reading<T>
+    pub fn into_parts(self, || fallback) -> (T, Option<CollectorFault>)
+
+`CollectedSubsystems` holds one `Reading` per subsystem, and
+`into_snapshot(interval)` is the only path from collectors to a `PerfSnapshot`.
+The fallback in `into_parts` is reachable **only** on the `Unavailable` arm, so a
+snapshot field holding a zero always has a fault standing beside it. A zero can
+appear; an unexplained zero cannot.
+
+**Why this shape and not the brief's other two.** `sample` returning `Result`
+does not fix anything — §20.1.4 is explicit that `Ok(PerfSnapshot::default())`
+stays legal, so the hole survives the signature change. Dropping `Default` from
+the payload types breaks the wire structs the renderer, the proto bridge and the
+bottleneck analyzer all read, for no gain: the defect is not that a zero exists,
+it is that a zero could be published **without a reason**. `Reading` puts the
+decision at the point of collection, where the evidence is, and the `Option`-in
+constructor is what closes §20.1.3(a)'s real mechanism — `.unwrap_or(0)` turning
+a failed read into a confident measurement. Every `.unwrap_or(0)` in the Windows
+provider is now either gone or accompanied by a named degradation fault.
+
+### How many of the nine availability rules survived
+
+**None survived as an independent rule.** Five were deleted outright; four remain
+as *reason strings* that the type now forces the collector to supply — they no
+longer decide availability, they explain it.
+
+| # | §20.1.1 site | outcome |
+|---|---|---|
+| 1 | cpu, query open | **converted** — `Reading::unavailable`, now type-required |
+| 2 | cpu, collect failed | **converted** — same |
+| 3 | power `\|\| true` dead `else` | **DELETED** — availability now reads `CallNtPowerInformation`'s actual outcome; the unreachable branch is gone |
+| 4 | memory | **converted**, and split: a failed `GlobalMemoryStatusEx` makes memory unavailable; failed PDH counters are a `memory.counters` partial |
+| 5 | storage, query open only | **converted**, and the four fault-free exits it did not cover are covered by the contract |
+| 6 | gpu `engines.is_empty()` | **DELETED** — `Reading::from_collection` performs that check for every collection payload, so gpu's bespoke rule is redundant |
+| 7 | processTop `let _ = faults;` | **DELETED** — replaced by an explicit `NotCollected` reading with the real reason |
+| 8 | CLI `offline.rs:241` second gpu rule | **DELETED** — the CLI now reads `measured_subsystems().gpu`, the collector's own answer, so CLI and service can no longer disagree from the identical snapshot |
+| 9 | `windows_table()` static `native` | **DELETED as an unconditional claim** — `matrix_for_current_platform_observed()` reconciles the platform shape against what the collectors measured |
+
+Nine independent deciders became **one**.
+
+### Mechanism 1 — `read_u64` (DBT-P41-002b, a memory-safety fix)
+
+`PdhFmtCounterValue` is now declared `repr(C)` — `{ CStatus: u32, _pad: u32,
+large_value: i64 }`, 16 bytes, `largeValue` at offset 8 — and the extern binding
+declares the parameter as `*mut PdhFmtCounterValue` rather than `*mut i64`. The
+8-byte destination for a 16-byte write is gone **structurally**: there is no
+longer a smaller type to pass. `PDH_VALUE_SLOT_BYTES` is derived with
+`size_of::<PdhFmtCounterValue>()` so it cannot drift from the struct.
+
+`decode_pdh_value` reads offset 8 and returns `None` unless `CStatus` is
+`VALID_DATA (0)` or `NEW_DATA (1)`. A status code can no longer be returned as a
+measurement.
+
+### Mechanism 2 — storage's pattern (§20.1.3(c))
+
+The pattern is bound to a named `Vec<u16>` that outlives both calls and is
+NUL-terminated through `chain(once(0))`, replacing the dropped temporary and the
+raw-string trailing sequence that was two characters rather than a NUL. Every
+exit — query-open, both expansion calls, no usable instances, and no readable
+counter — pushes a fault with the PDH return code in it.
+
+### THREE FURTHER DEFECTS FOUND WHILE FIXING THESE
+
+These were not in §20.1 and are not restatements. Each was found by the fix, and
+each was measured.
+
+**DBT-P42-001 — the `PdhExpandWildCardPathW` binding has the wrong arity.**
+The real export takes **five** parameters
+(`szDataSource, szWildCardPath, mszExpandedPathList, pcchPathListLength, dwFlags`);
+the shipping declaration had **three**, and typed the output buffer `*mut PWSTR`
+where the API takes a `PZZWSTR` — a plain buffer. Verified against the bindings
+this crate already depends on: `windows-0.62.2`
+`src/Windows/Win32/System/Performance/mod.rs:342`. No linker can catch a wrong
+signature behind a correct export name.
+
+On x64 every argument therefore landed in the wrong register — the wildcard path
+arrived as `szDataSource`, the out-pointer as `szWildCardPath` — and the callee
+read `dwFlags` from uninitialised stack beyond the shadow space. **This is why
+`needed` came back 0 with no failure code**, which §41.15 could only narrow to
+"one of the two exits after `PdhExpandWildCardPathW`". The answer is neither: the
+call never had a chance to succeed. Passing a real buffer through the same broken
+declaration faults immediately —
+
+    process didn't exit successfully: dbt_p41_002.exe
+    (exit code: 0xc0000005, STATUS_ACCESS_VIOLATION)
+
+— which is how it was found. §41.15's open item *"which of storage's four exits
+fires"* is now **RESOLVED**, and the answer supersedes the two candidates it
+narrowed to.
+
+**DBT-P42-002 — percentage counters were being read as basis points.**
+Separate from the offset, and hidden by it. `\Processor Information(_Total)\%
+Processor Time` returns a *percentage*; the code assigned it straight into a
+`_bp` field. With the offset fixed but before this was found, the provider
+reported **91 bp** — 0.91% — while every logical processor was spinning. 91 was
+the percentage. §41.15's own reference reading makes it unambiguous: 7.01% is
+701 bp, not 7. `percentage_to_bp` now applies the x100, and percentage counters
+are read with `PDH_FMT_DOUBLE` rather than `PDH_FMT_LARGE`, which was also
+truncating 7.01 to 7 and `Avg. Disk sec/Transfer` to 0.
+
+**DBT-P42-003 — counters were read before the collection that gives them data.**
+`sample_storage` collected twice *before adding any counter* (a query with no
+counters fails outright) and then added each counter and read it immediately.
+Rate and percentage counters have no value after a single collection. So even
+with the wildcard expansion working and the offset fixed, every storage read
+would have returned nothing. `sample_gpu` and `sample_memory` had the same
+single-collection defect. `QueryHandle::collect_twice` now enforces the
+add-then-collect-twice-then-read order.
+
+A fourth, smaller one, fixed in place: `PdhExpandWildCardPathW` returns **full
+counter paths**, not bare instance names, and the code re-wrapped each returned
+string as if it were an instance — which would have built
+`\PhysicalDisk(\PhysicalDisk(0 C:)\% Disk Time)\% Disk Time`.
+`instance_from_counter_path` parses the instance out, and is unit-tested.
+
+### ARM64 — yes, this changes it, and here is the statement the brief asked for
+
+`windows_impl.rs` is `#[cfg(windows)]`, not `#[cfg(target_arch)]`. **The ARM64
+Windows pipeline runs this exact file**, so every change above applies to it
+identically. Specifically, on ARM64 as on x64:
+
+- the 8-byte destination for a 16-byte PDH write is removed (the ABI fact is
+  identical on both — §20.1.7 records `PDH_FMT_COUNTERVALUE` as 16 bytes with
+  `largeValue` at offset 8 on both LP64/LLP64 targets);
+- the 3-vs-5 parameter `PdhExpandWildCardPathW` call is corrected — and note that
+  P36 touched this exact binding *for ARM64*, to fix an LNK2019, without the
+  arity being noticed;
+- cpu/storage/gpu report real numbers where ARM64 previously reported the same
+  zeros, because the defect was never architecture-specific.
+
+The ARM64 change is a **fix of the same defect**, not a behavioural divergence,
+and no ARM64-only code path exists to diverge. It has **not been re-qualified on
+ARM64 hardware in this session** — no ARM64 machine is attached. That is the
+honest limit: the change is correct by the same reasoning and the same tests, and
+it is unverified on ARM64 silicon. Recorded as **DBT-P42-004**.
+
+### Scoped out, deliberately
+
+The macOS and Linux providers still construct `PerfSnapshot` literally rather
+than through `CollectedSubsystems`. They already declare faults for their
+degraded subsystems, and they are `#[cfg]`-gated so they **cannot be compiled or
+tested on this host** — changing code this session cannot build is a worse risk
+than leaving a smaller hole open. Recorded as **DBT-P42-005**, not worked around.
+
+### Test result after 1.B
+
+    aethercore-performance-telemetry --test dbt_p41_002
+    running 7 tests
+    test a_bad_status_is_not_decoded_as_a_double ... ok
+    test instance_is_parsed_out_of_an_expanded_counter_path ... ok
+    test pdh_value_is_decoded_from_large_value_not_cstatus ... ok
+    test a_percentage_counter_becomes_basis_points ... ok
+    test no_collector_returns_an_empty_payload_without_a_fault ... ok
+    test real_windows_provider_reports_non_zero_cpu_under_load ... ok
+    test capabilities_never_claim_native_for_a_subsystem_that_reported_nothing ... ok
+    test result: ok. 7 passed; 0 failed
+
+    aethercore-platform-capabilities --test matrix
+    test an_unmeasured_telemetry_subsystem_is_never_reported_native ... ok
+    test an_observation_never_promotes_a_capability ... ok
+    test observation_downgrades_only_the_subsystem_that_reported_nothing ... ok
+    test windows_matrix_is_all_native_frozen ... ok        <- the frozen table is intact
+    test result: ok. 10 passed; 0 failed
+
+The three capability unit tests matter because the integration test
+`capabilities_never_claim_native_for_a_subsystem_that_reported_nothing` now
+passes **on this machine's healthy hardware** — which is exactly the §20.1.6 trap
+of mistaking luck for correctness. The unit tests hold the property under a
+hostile observation on any host.
+
+### Whole workspace
+
+    cargo build --workspace --tests   EXIT 0
+    cargo test  --workspace           204 passed, 1 failed, 5 ignored over 31 suites
+                                      (excluding aethercore-driver-hub)
+    aethercore-driver-hub --lib       12 passed, 6 failed
+
+**Both failure sets are PRE-EXISTING and were verified as such**, by stashing this
+session's changes and re-running:
+
+- `aethercore-driver-hub --lib`, 6 failures — identical list before and after.
+  The crate does not depend on `performance-telemetry` or
+  `platform-capabilities`. **DBT-P42-006**, untouched by P42.
+- `aethercore-intelligence-core --test offline_boundary`, 1 failure — it shells
+  out to `cargo metadata --offline` and the local registry cache is missing
+  `android_system_properties v0.1.6`. An environment gap, not a code defect.
+  Identical before and after. **DBT-P42-007**.
+
+### A build-environment fact worth carrying forward
+
+`cargo build --workspace` fails at link with
+`LNK1181: cannot open input file 'DismApi.lib'` unless `LIB` includes
+
+    C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\SDKs\DismApi\Lib\amd64
+
+Note `amd64`, not `x64` — the same ADK naming quirk §41.4 1a recorded. It affects
+`aethercore-system-repair` and `aethercore-pc-intelligence` only, and neither is
+touched by P42.

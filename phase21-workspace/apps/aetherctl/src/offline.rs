@@ -167,9 +167,30 @@ pub fn offline_engine_source() -> &'static str {
     }
 }
 
+/// Takes one real snapshot and reports what the collectors measured.
+///
+/// §41.15 3.C: `capabilities` used to answer from a static table with no runtime
+/// input, so it reported `telemetryStorage: native` in the same session in which
+/// `telemetry-once` returned `"storage": []`. It now costs one passive sample
+/// (~250 ms, the same tick `telemetry-once` takes) and cannot contradict them.
+pub fn observe_telemetry() -> aethercore_platform_capabilities::TelemetryObservation {
+    let interval = std::time::Duration::from_millis(
+        aethercore_performance_telemetry::MIN_INTERVAL_MS as u64,
+    );
+    let measured = aethercore_performance_telemetry::default_platform()
+        .sample(interval)
+        .measured_subsystems();
+    aethercore_platform_capabilities::TelemetryObservation {
+        cpu: measured.cpu,
+        memory: measured.memory,
+        storage: measured.storage,
+        gpu: measured.gpu,
+    }
+}
+
 fn capabilities_data() -> Result<serde_json::Value, CliError> {
     let rows: Vec<serde_json::Value> =
-        aethercore_platform_capabilities::matrix_for_current_platform()
+        aethercore_platform_capabilities::matrix_for_current_platform_observed(observe_telemetry())
             .into_iter()
             .map(|(name, availability)| {
                 let (state, key) = match availability {
@@ -239,7 +260,13 @@ fn telemetry_once(interval_ms: u32) -> Result<serde_json::Value, CliError> {
             })
         })
         .collect();
-    let gpu = if snapshot.gpu.adapter_id.is_empty() && snapshot.gpu.engines.is_empty() {
+    // §20.1.1 site 8: this was a SECOND, independent gpu-availability rule that
+    // the collector knew nothing about, and which the service path
+    // (`performance.rs::gpu_sample_proto`) did not have — so the CLI and the
+    // service gave different answers about gpu presence from the identical
+    // snapshot. The collector's own reading is now the only decider: gpu is null
+    // exactly when the collector declared gpu unavailable.
+    let gpu = if !snapshot.measured_subsystems().gpu {
         serde_json::Value::Null
     } else {
         serde_json::json!({

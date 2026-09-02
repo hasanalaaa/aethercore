@@ -11,8 +11,8 @@ use aethercore_performance_optimization::{
     ActionKind, ExecutionItem, ExecutionStatus, Plan, Reversibility,
 };
 use aethercore_performance_telemetry::{
-    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfSnapshot, PowerSample,
-    ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
+    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform, PerfSnapshot,
+    PowerSample, ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
 };
 
 pub(crate) fn thermal_reason_proto(value: ThermalThrottleReason) -> v1::ThermalThrottleReason {
@@ -412,5 +412,24 @@ impl PerformanceEngine {
 
     pub fn optimization_status(&self, plan_id: &str) -> Option<OptStatus> {
         self.governor.status(plan_id)
+    }
+}
+
+/// One passive sample, reduced to what the collectors measured.
+///
+/// The `capabilities` verb reports through this so it cannot answer `native` for
+/// a subsystem whose collector declared a fault or returned nothing — the
+/// contradiction §41.15 3.C measured (16/16 `native` beside `"storage": []`).
+pub(crate) fn observe_telemetry() -> aethercore_platform_capabilities::TelemetryObservation {
+    let interval =
+        std::time::Duration::from_millis(aethercore_performance_telemetry::MIN_INTERVAL_MS as u64);
+    let measured = aethercore_performance_telemetry::default_platform()
+        .sample(interval)
+        .measured_subsystems();
+    aethercore_platform_capabilities::TelemetryObservation {
+        cpu: measured.cpu,
+        memory: measured.memory,
+        storage: measured.storage,
+        gpu: measured.gpu,
     }
 }

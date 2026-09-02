@@ -205,3 +205,91 @@ fn product_type_code_maps_the_documented_registry_strings() {
         WindowsSku::ServerCore
     );
 }
+
+// ---------------------------------------------------------------------------
+// P42 — capabilities may not contradict the collectors (§20.1.1 site 9)
+// ---------------------------------------------------------------------------
+
+/// The durable form of the DBT-P41-002 test 4. The integration test in
+/// `performance-telemetry` asserts the same property against *this* machine's
+/// real collectors, which passes whenever the hardware is healthy — exactly the
+/// §20.1.6 "gpu got it right by accident" trap. This one holds the property
+/// under a hostile observation regardless of the host.
+#[test]
+fn an_unmeasured_telemetry_subsystem_is_never_reported_native() {
+    use aethercore_platform_capabilities::{
+        TelemetryObservation, matrix_for_current_platform_observed,
+    };
+
+    let nothing_measured = matrix_for_current_platform_observed(TelemetryObservation::UNOBSERVED);
+    for name in [
+        "telemetryCpu",
+        "telemetryMemory",
+        "telemetryStorage",
+        "telemetryGpu",
+    ] {
+        let (_, availability) = nothing_measured
+            .iter()
+            .find(|(n, _)| *n == name)
+            .unwrap_or_else(|| panic!("{name} missing from the matrix"));
+        assert!(
+            !is_native(availability),
+            "{name} reported `native` while its collector measured nothing: {availability:?}"
+        );
+    }
+}
+
+/// One unmeasured subsystem must not drag down the others, and non-telemetry
+/// capabilities are untouched by a telemetry observation.
+#[test]
+fn observation_downgrades_only_the_subsystem_that_reported_nothing() {
+    use aethercore_platform_capabilities::{
+        TelemetryObservation, matrix_for_current_platform, matrix_for_current_platform_observed,
+    };
+
+    let observed = matrix_for_current_platform_observed(TelemetryObservation {
+        cpu: true,
+        memory: true,
+        storage: false,
+        gpu: true,
+    });
+    let platform_shape = matrix_for_current_platform();
+    for (name, availability) in &observed {
+        let (_, unobserved) = platform_shape
+            .iter()
+            .find(|(n, _)| n == name)
+            .expect("same capability set");
+        if *name == "telemetryStorage" {
+            assert!(
+                !is_native(availability),
+                "storage measured nothing but still reports {availability:?}"
+            );
+        } else {
+            assert_eq!(
+                availability, unobserved,
+                "{name} changed on an observation that did not concern it"
+            );
+        }
+    }
+}
+
+/// An observation may only ever downgrade. A platform that does not offer a
+/// capability must not be promoted by a collector claiming to have measured it.
+#[test]
+fn an_observation_never_promotes_a_capability() {
+    use aethercore_platform_capabilities::{
+        TelemetryObservation, matrix_for_current_platform, matrix_for_current_platform_observed,
+    };
+
+    let all_measured = matrix_for_current_platform_observed(TelemetryObservation {
+        cpu: true,
+        memory: true,
+        storage: true,
+        gpu: true,
+    });
+    assert_eq!(
+        all_measured,
+        matrix_for_current_platform(),
+        "a fully-measured observation must leave the platform matrix unchanged"
+    );
+}

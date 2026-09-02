@@ -270,3 +270,71 @@ fn capabilities_never_claim_native_for_a_subsystem_that_reported_nothing() {
         snapshot.collector_faults
     );
 }
+
+// ---------------------------------------------------------------------------
+// The pure helpers the fix introduced
+// ---------------------------------------------------------------------------
+
+/// `PdhExpandWildCardPathW` returns **full counter paths**, not bare instance
+/// names. The shipping code treated each returned string as an instance and
+/// re-wrapped it, which would have built
+/// `\PhysicalDisk(\PhysicalDisk(0 C:)\% Disk Time)\% Disk Time`. That third
+/// mechanism was never observed only because the expansion never succeeded.
+#[test]
+fn instance_is_parsed_out_of_an_expanded_counter_path() {
+    use aethercore_performance_telemetry::__test::instance_from_counter_path;
+
+    assert_eq!(
+        instance_from_counter_path(r"\PhysicalDisk(0 C:)\% Disk Time"),
+        Some("0 C:")
+    );
+    assert_eq!(
+        instance_from_counter_path(r"\PhysicalDisk(_Total)\% Disk Time"),
+        Some("_Total")
+    );
+    // GPU engine instances contain their own parentheses-free but comma-rich
+    // shape; the last ')' is the closing one.
+    assert_eq!(
+        instance_from_counter_path(
+            r"\GPU Engine(pid_10148_luid_0x00000000_0x00010F21_phys_0_eng_0_engtype_3D)\Utilization Percentage"
+        ),
+        Some("pid_10148_luid_0x00000000_0x00010F21_phys_0_eng_0_engtype_3D")
+    );
+    assert_eq!(instance_from_counter_path(r"\System\Context Switches/sec"), None);
+    assert_eq!(instance_from_counter_path(r"\PhysicalDisk()\% Disk Time"), None);
+}
+
+/// A `%` counter's value is a percentage, not basis points. §41.15 measured
+/// `\Processor(_Total)\% Processor Time` at **7.01**, i.e. 701 bp. Reading the
+/// right offset without this conversion under-reports CPU by 100x — observed as
+/// 91 bp under a full-core spin while the machine was 91% busy.
+#[test]
+fn a_percentage_counter_becomes_basis_points() {
+    use aethercore_performance_telemetry::__test::percentage_to_bp;
+
+    assert_eq!(percentage_to_bp(7.01), 701);
+    assert_eq!(percentage_to_bp(0.0), 0);
+    assert_eq!(percentage_to_bp(100.0), 10_000);
+    // `% Disk Time` legitimately exceeds 100 on multi-spindle devices; clamp.
+    assert_eq!(percentage_to_bp(340.0), 10_000);
+    assert_eq!(percentage_to_bp(-1.0), 0);
+}
+
+/// A status code must never be mistaken for a fractional measurement either.
+#[test]
+fn a_bad_status_is_not_decoded_as_a_double() {
+    use aethercore_performance_telemetry::__test::decode_pdh_double;
+
+    let mut slot = [0u8; 16];
+    slot[8..16].copy_from_slice(&7.01f64.to_le_bytes());
+    assert_eq!(decode_pdh_double(&slot), Some(7.01));
+
+    // PDH_CSTATUS_INVALID_DATA
+    slot[0..4].copy_from_slice(&0xC0000BBAu32.to_le_bytes());
+    assert_eq!(decode_pdh_double(&slot), None);
+
+    // A NaN payload is not a measurement.
+    let mut slot = [0u8; 16];
+    slot[8..16].copy_from_slice(&f64::NAN.to_le_bytes());
+    assert_eq!(decode_pdh_double(&slot), None);
+}
