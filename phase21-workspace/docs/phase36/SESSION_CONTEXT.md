@@ -6061,3 +6061,95 @@ antivirus and tamper protection all True; PUA 2; MAPS 2; UAC `EnableLUA` 1 and
 `ConsentPromptBehaviorAdmin` 5; all three firewall profiles True; no registry or
 policy value disabling SmartScreen. Identical to §41.18, across a full uninstall
 and reinstall. **No security regression.**
+
+# PHASE 43 — VERIFY THE P42 FIX ON ARM64, AND SETTLE THE NUMERIC BIAS (2026-09-02)
+
+Brief: `phase21-workspace/docs/phase41/P43-ARM64-VERIFY.md`. This session runs on
+the Mac at `/Users/hasanalaaa/dev/aethercore` and drives the Parallels "Windows 11"
+VM through `prlctl`; it is not a session inside the VM.
+
+## 43.0 RESUME THE VM
+
+**Observed differs from the brief's assumption, recorded verbatim rather than
+theorised about:** the brief says "The VM is currently suspended. Resume it."
+`prlctl list -a` at the start of this session showed:
+
+    STATUS       IP_ADDR         NAME
+    running      -               Windows 11
+
+The VM was already running, not suspended — no `prlctl resume` was needed or run.
+`prlctl snapshot-switch` was not run either way, consistent with the brief's
+standing prohibition.
+
+Current snapshot, read via `prlctl snapshot-list "Windows 11"` (marked `*`):
+
+    {d652cd40-877c-4a9a-bb1b-2e3637a96ec2}
+
+Neither forbidden UUID (`P36-CLEAN-BASELINE {6b721a10-...}` /
+`P36-PRE-NATIVE-MUTATION {e9434b5f-...}`). Confirmed reachable:
+
+    prlctl exec "Windows 11" cmd.exe /c "echo REACHABLE && ver"
+    REACHABLE
+    Microsoft Windows [Version 10.0.26200.9168]
+
+State recorded before anything was changed:
+
+    installed AetherCore product   0.1.11   InstallDate 20260901
+    ProductCode                    {98FCE2D5-44F0-A27C-A48B-8720FFE672F0}
+      (distinct from the x64 ProductCode {0F9F349D-...} in §42.4 — expected,
+      the ProductCode is derived from version+arch per §42.5)
+    service AetherCoreMaintenance  Running, Automatic
+
+## 43.1 PART 1.A — bringing the VM's working copy to a39a1bc
+
+**How the VM's working copy is fed: a copy, not a git clone, and not the share
+directly.** `p36_relbuild.cmd` (`C:\AetherCore-P36\logs\p36_relbuild.cmd`) `cd`s
+into `C:\AetherCore-P36\workspace\AetherCore-Phase35-Master-Delivery` before
+building. That directory has no `.git` (`Test-Path ...\.git` → `False`), so
+`git log --oneline -1` / `git config core.autocrlf` — the brief's literal
+verification commands — do not apply; there is no git repository to ask. The
+underlying concern (CRLF corruption breaking the project's SHA256 checks) is
+answered a different way below.
+
+A live path from the Mac does exist and was not previously being used to feed
+the build: the VM has a Parallels shared folder, reachable inside `prlctl exec`
+sessions via UNC (`\\Mac\dev\...`) even though the interactive user's mapped
+drive letters — `Y: \\Mac\dev` per `net use` — are **not** visible to a
+non-interactive `prlctl exec` session (`Get-PSDrive` shows no `Y:` there; the
+UNC path works regardless of drive-letter mapping). Recorded because it cost
+real time: `Get-ChildItem Y:\` silently found no drive, `\\Mac\dev\...` worked.
+
+**Before syncing**, hashed three files that changed in P42 against the VM's
+existing copy, to establish what state it was actually in:
+
+    file                                          Mac (a39a1bc)   VM (before sync)
+    crates/performance-telemetry/src/windows_impl.rs  e8bad8bd...   ec42d793...  MISMATCH
+    crates/performance-telemetry/tests/dbt_p41_002.rs f7413192...   MISSING      MISMATCH
+    crates/performance-telemetry/src/lib.rs           6e3e1bf8...   fa49f1ae...  MISMATCH
+
+`dbt_p41_002.rs` — the test file P42 Part 1.A added — did not exist on the VM at
+all. **The VM's copy pre-dated P42**, confirming the brief's premise directly
+rather than assuming it.
+
+**Bring-to-a39a1bc, verified before acting on it**: `git diff a39a1bc HEAD --stat`
+on the Mac shows the only change since `a39a1bc` is the addition of
+`docs/phase41/P43-ARM64-VERIFY.md` itself (194 insertions, one file) — so the
+Mac's current working tree is byte-identical to `a39a1bc` for every source file.
+Synced `apps/`, `crates/`, `services/`, `tools/`, `.cargo/`, `Cargo.toml` and
+`Cargo.lock` from the Mac's `phase21-workspace` to the VM's build directory via
+`robocopy /MIR` over the UNC share (binary SMB copy, no line-ending translation
+— this is what answers the autocrlf concern without git being present).
+Robocopy exit codes: `apps`=3, `crates`=3, `services`=3, `tools`=1, `.cargo`=1 —
+all in the 0-7 "success" range (codes ≥8 would be a failure; none seen).
+
+**Verified after syncing**, same four files plus one more:
+
+    file                                                Mac (a39a1bc)   VM (after sync)
+    crates/performance-telemetry/src/windows_impl.rs    e8bad8bd...     e8bad8bd...   MATCH
+    crates/performance-telemetry/tests/dbt_p41_002.rs   f7413192...     f7413192...   MATCH
+    crates/performance-telemetry/src/lib.rs             6e3e1bf8...     6e3e1bf8...   MATCH
+    crates/platform-capabilities/src/lib.rs             01a6da44...     01a6da44...   MATCH
+
+**1.A verdict: the VM's working copy now matches `a39a1bc` for every source file
+checked**, verified by SHA256 rather than by `git log`, because the working copy
+is fed by copy rather than by clone.
