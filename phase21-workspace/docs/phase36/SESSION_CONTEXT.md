@@ -6225,3 +6225,107 @@ the file pass** — the original four the brief named plus the three unit tests
 Identical result set to §42.2's post-fix x64 run (same 7 test names, all `ok`).
 **No architecture divergence in Part 1.** Part 1 verdict: the fix builds and
 passes its own regression suite on ARM64, matching x64 exactly.
+
+## 43.4 PART 2.A/2.B — product readings vs host counters, under load
+
+**A methodology note that cost real time.** This VM has 4 logical processors
+(`[Environment]::ProcessorCount`), not x64's 22. A single `prlctl exec` script
+that both generated CPU/disk load (via `Task.Run` inside the same process) and
+then queried `telemetry-once`/`Get-Counter` failed intermittently and
+non-deterministically — `PrlVmGuest_RunProgram: Unable to open new session` on
+some attempts, `PrlJob_GetResult: Invalid argument` on another, success on
+others, with no state left behind on the VM to explain it (checked: no stray
+processes, CPU idle between attempts). Load generated via `System.Threading.
+Tasks.Task` inside that same process also did not sustain — `Get-Process` on
+the launching PowerShell host showed under half a CPU-second consumed after
+40+ seconds of intended spinning, so the "load" in those attempts was mostly
+not real. **What worked reliably: separate, short `prlctl exec` calls — one
+per `Start-Process`, launching genuine independent OS processes (each a plain
+`powershell -Command "while(1){}"`) — then a separate short call to measure.**
+Real sustained load was confirmed before trusting any reading:
+`Get-Process` showed three processes each accumulating ~25-26 CPU-seconds
+over ~3 elapsed seconds (i.e. near-saturated), and a `Get-Counter` check read
+75.7% before the product was ever queried.
+
+Binary under test: `target\release\aetherctl.exe`, built this session (1.B).
+`telemetry-once` is offline (§41.15's correction — it cannot cross the
+service boundary), so this is a direct measurement of the fix; it does not by
+itself say anything about the service path (see §43.6 / Part 4).
+
+### Round 1
+
+    product   totalBusyBp 7670 (76.70%)   contextSwitchesPerSec 344
+    host      \Processor Information(_Total)\% Processor Time   75.85%
+              \System\Context Switches/sec                       415
+    storage (product): [{"deviceId":"physicaldisk:0 C:", activeTimeBp:0, avgTransferLatencyUs:0, readBytesPerSec:0, writeBytesPerSec:0}]
+    storage (host):    \PhysicalDisk(0 c:)\% Disk Time = 0, \Avg. Disk sec/Transfer = 0, \Disk Write Bytes/sec = 0
+    gpu (product): engineCount 16, no fault
+    perProcessorBusyBp: []
+
+### Round 2
+
+    product   totalBusyBp 7499 (74.99%)   contextSwitchesPerSec 2165
+    host      \Processor Information(_Total)\% Processor Time   75.46%
+              \System\Context Switches/sec                       132
+    storage/gpu/perProcessorBusyBp: identical shape to round 1, all zero on disk
+
+**Storage: honestly zero on both sides, not a defect being hidden.** The disk
+load process (write+read a 16 MB file in a loop, no `WriteThrough`) was
+confirmed running throughout — the same live-load check above included this
+process — but neither the product nor `Get-Counter` ever registered non-zero
+`% Disk Time` / write-rate on `PhysicalDisk(0 c:)` in either round. This VM's
+single virtual disk absorbs a 16 MB overwrite loop fast enough that it never
+shows as "busy" at a ~250 ms/1 s sampling grain — a property of this disk and
+this workload, not a product defect: the host counter reads exactly the same
+zero the product does. **No disk-latency comparison point exists for ARM64**,
+unlike x64's `833 µs vs 240 µs` reading — recorded as a limitation rather than
+omitted silently.
+
+Cleanup: all launched load processes stopped, temp files removed, verified
+before moving on (`Get-Process powershell` showed none but the query itself).
+
+## 43.5 PART 2.C — the numeric bias question, settled
+
+x64's bias, from the brief (§42.3 / §42.8):
+
+    cpu offline    product 58.38%   host 50.91%    delta +7.47 pts   ratio 1.147
+    cpu service    product 52.31%   host 48.22%    delta +4.09 pts   ratio 1.085
+    disk latency   product 833 us   host 240 us    delta +593 us     ratio 3.47
+
+ARM64, this session, offline path only (two rounds, §43.4):
+
+    round 1   product 76.70%   host 75.85%   delta +0.85 pts   ratio 1.011
+    round 2   product 74.99%   host 75.46%   delta -0.47 pts   ratio 0.994
+
+**Observed outcome: ARM64 shows no consistent bias.** x64's deltas were
+positive in every one of three independent readings (two cpu, one disk),
+ranging +4.1 to +7.5 points on cpu and 3.47x on disk latency — the same
+direction every time, which is what made the brief call it "not sampling
+noise" in the first place. ARM64's two cpu deltas are an order of magnitude
+smaller (+0.85, -0.47 points) and **flip sign** between rounds, which is the
+signature of measurement noise around zero, not a systematic overshoot.
+
+**This is the brief's second, "surprising" branch: the bias reads as
+x64-specific, not shared logic.** Stated with the honest limits on this
+result: only two rounds, offline path only (the service path needs the
+installed-service reading — Part 4, snapshot-gated, not run in Part 2), and
+no disk-latency point exists for ARM64 at all (§43.4) so the disk half of
+x64's bias is simply unmeasured here, not confirmed absent. **DBT-P42-011 is
+not widened by this session** — the evidence points away from a shared-logic
+cause, not toward one. Do not fix it, per the brief; this session establishes
+which branch, not a repair.
+
+## 43.6 PART 2.D — `perProcessorBusyBp` on ARM64
+
+`[]` in every capture this session — both rounds in §43.4, and the earlier
+unloaded baseline read during the session-flakiness investigation. Never `[]`
+alternating with populated, never 22 (or 4) zero entries — consistently the
+empty array `[]`.
+
+**EXPECTED `[]`, confirming a feature gap rather than an architecture-
+dependent symptom. OBSERVED: `[]`, matching.** §20.1.3(b) and DBT-P42-009 both
+describe this as `per_processor_busy_bp` never being written on Windows at
+all (`sample_cpu` starts from `CpuSample::default()` and no line of
+`windows_impl.rs` assigns the field) — a fact about the source, not about
+either architecture's counters, and this session's ARM64 reading is
+consistent with that on every capture.
