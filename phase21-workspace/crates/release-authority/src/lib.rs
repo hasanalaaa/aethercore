@@ -535,4 +535,45 @@ mod tests {
     #[test] fn key_rotation_requires_old_trusted_authority() { let (old, seed) = key(11, "old"); let (new_key, _) = key(12, "new"); let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![old] }; let mut rotation = KeyRotation { schema: ROTATION_SCHEMA.into(), old_key_id: "old".into(), new_key, authorized_by: "old".into(), signature_hex: String::new() }; rotation.signature_hex = hex::encode(SigningKey::from_bytes(&seed).sign(&rotation.unsigned_bytes().unwrap()).to_bytes()); let next = rotation.authorize(&ring).unwrap(); assert!(next.keys.iter().any(|k| k.key_id == "new")); }
     #[test] fn rollback_cannot_be_reused_for_different_current_version() { let (trusted, seed) = key(13, "r2"); let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted] }; let installed = identity("3.0.0"); let auth = RollbackAuthorization { schema: ROLLBACK_SCHEMA.into(), product_id: "AetherCore".into(), current_version: "2.0.0".into(), authorized_target_version: "1.9.0".into(), channel: ReleaseChannel::Stable, reason_code: "hotfix".into(), expires_epoch: 20, signer_key_id: "r2".into() }; let sig = sign_bytes(&canonical_json(&auth).unwrap(), "r2", &seed).unwrap(); assert!(matches!(verify_rollback_authorization(&auth, &sig, &ring, 2, &installed), Err(AuthorityError::UnauthorizedRollback))); }
     #[test] fn sources_and_archive_members_are_bounded() { assert!(UpdateSource::Https { url: "https://updates.invalid/a".into(), timeout_ms: 10_000, max_bytes: 100 }.validate().is_ok()); assert!(UpdateSource::Https { url: "http://updates.invalid/a".into(), timeout_ms: 10_000, max_bytes: 100 }.validate().is_err()); assert!(validate_archive_member("bin/a.exe").is_ok()); assert!(validate_archive_member("../escape").is_err()); assert!(validate_archive_member("C:/escape").is_err()); assert!(validate_archive_member("/absolute").is_err()); }
+
+    // DBT-P46-B25. compare_versions silently reads a non-numeric segment as 0
+    // (`.unwrap_or(0)`), which is only safe because its two current callers
+    // (verify_update_metadata / verify_rollback_authorization) already reject a
+    // malformed version via `valid_version()` before ever calling it — and no
+    // single silent fallback is safe for BOTH callers' opposite-direction
+    // semantics (see the commit message). So the fix is not a fallback value,
+    // it's making the precondition loud instead of silent.
+
+    // Pins the existing (correct) defense at both call sites: a structurally
+    // malformed target version is rejected before compare_versions ever runs.
+    #[test]
+    fn malformed_target_version_is_rejected_before_comparison_in_update_metadata() {
+        let (trusted, seed) = key(14, "malformed-update");
+        let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted] };
+        let installed = identity("2.0.0");
+        let mut metadata = UpdateMetadata { schema: UPDATE_METADATA_SCHEMA.into(), product_id: "AetherCore".into(), channel: ReleaseChannel::Stable, current_version: "2.0.0".into(), target_identity: identity("2.1.0"), platform: TargetPlatform::Windows, architecture: TargetArchitecture::X86_64, package_url: "https://updates.invalid/a.msi".into(), package_length: 4, package_sha256: "aa".repeat(32), release_manifest_sha256: "bb".repeat(32), signing_key_id: "malformed-update".into(), update_contract_version: UPDATE_CONTRACT_VERSION.into(), release_notes_reference: None, generated_epoch: 1, expires_epoch: 10 };
+        metadata.target_identity.version = "2.1.abc".into();
+        let sig = sign_bytes(&canonical_json(&metadata).unwrap(), "malformed-update", &seed).unwrap();
+        assert!(matches!(verify_update_metadata(&metadata, &sig, &ring, 2, &installed), Err(AuthorityError::InvalidIdentity(_))), "a malformed target version must be rejected as an identity-validation failure, never reach the version comparison");
+    }
+
+    #[test]
+    fn malformed_authorized_target_version_is_rejected_before_comparison_in_rollback() {
+        let (trusted, seed) = key(15, "malformed-rollback");
+        let ring = TrustedKeyring { schema: KEYRING_SCHEMA.into(), keys: vec![trusted] };
+        let installed = identity("2.0.0");
+        let auth = RollbackAuthorization { schema: ROLLBACK_SCHEMA.into(), product_id: "AetherCore".into(), current_version: "2.0.0".into(), authorized_target_version: "1.abc.0".into(), channel: ReleaseChannel::Stable, reason_code: "security-hotfix".into(), expires_epoch: 20, signer_key_id: "malformed-rollback".into() };
+        let sig = sign_bytes(&canonical_json(&auth).unwrap(), "malformed-rollback", &seed).unwrap();
+        assert!(matches!(verify_rollback_authorization(&auth, &sig, &ring, 2, &installed), Err(AuthorityError::UnauthorizedRollback)), "a malformed rollback target version must be rejected, never reach the version comparison");
+    }
+
+    // The precondition compare_versions actually depends on, made loud: calling
+    // it directly with a version valid_version() would reject must panic in
+    // debug/test builds rather than silently miscompare. Before the fix this
+    // test fails (no panic — `unwrap_or(0)` just returns a value).
+    #[test]
+    #[should_panic(expected = "valid_version")]
+    fn compare_versions_panics_on_unvalidated_input_instead_of_silently_defaulting_to_zero() {
+        compare_versions("1.2.abc", "1.2.0");
+    }
 }
