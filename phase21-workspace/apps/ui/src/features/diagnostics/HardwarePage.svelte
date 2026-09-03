@@ -7,6 +7,7 @@
   import { diagnosticRunning, memoryEvents, startDiagnosticsScan, storageActionCount } from './controller';
   import ProviderFaultsPanel from './ProviderFaultsPanel.svelte';
   import { formatBytes } from '../shared';
+  import { EmptyState } from '../../design/signature';
 
   $: snapshot = $streamState.snapshot;
   $: diagnostics = $streamState.diagnostics;
@@ -33,7 +34,9 @@
 </section>
 
 {#if diagnostics.state === 'Idle'}
-  <section class="panel activity-empty"><div class="empty"><div class="empty-icon">▱</div><h4>{t('hardware.emptyTitle',locale)}</h4><p>{t('hardware.emptyCopy',locale)}</p><button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={() => startDiagnosticsScan('hardware')} disabled={busy || !snapshot.connected}>{t('hardware.collect',locale)}</button></div></section>
+  <section class="panel activity-empty"><EmptyState title={t('hardware.emptyTitle',locale)} body={t('hardware.emptyCopy',locale)}>
+    <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={() => startDiagnosticsScan('hardware')} disabled={busy || !snapshot.connected}>{t('hardware.collect',locale)}</button>
+  </EmptyState></section>
 {:else}
   <section class="storage-grid">
     {#each diagnostics.storage as disk (disk.deviceId)}

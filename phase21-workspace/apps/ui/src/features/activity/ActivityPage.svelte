@@ -2,6 +2,7 @@
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { t } from '../../lib/i18n';
+  import { EmptyState } from '../../design/signature';
   $: snapshot = $streamState.snapshot;
   $: recoveryEntries = $streamState.recoveryEntries;
   $: schedulerEvent = $streamState.schedulerEvent;
@@ -64,5 +65,5 @@
   {/if}
 </section>
 {#if recoveryEntries.length === 0}
-  <section class="panel activity-empty"><div class="empty"><div class="empty-icon">◇</div><h4>{t('activity.emptyTitle',locale)}</h4><p>{t('activity.emptyCopy',locale)}</p></div></section>
+  <section class="panel activity-empty"><EmptyState title={t('activity.emptyTitle',locale)} body={t('activity.emptyCopy',locale)} /></section>
 {/if}

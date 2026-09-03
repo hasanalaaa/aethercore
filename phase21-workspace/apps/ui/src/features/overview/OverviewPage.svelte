@@ -7,6 +7,7 @@
   import { localizePlanKind, localizeRisk, localizeState, t, td } from '../../lib/i18n';
   import SystemCarePanel from '../system-care/SystemCarePanel.svelte';
   import AboutPanel from '../../components/AboutPanel.svelte';
+  import { EmptyState } from '../../design/signature';
 
   $: snapshot = $streamState.snapshot;
   $: hub = $streamState.hub;
@@ -56,13 +57,13 @@
         {/if}
       </div>
     {:else}
-      <div class="empty"><div class="empty-icon">◇</div><h4>{t('overview.noActive',locale)}</h4><p>{t('overview.noActiveCopy',locale)}</p></div>
+      <EmptyState title={t('overview.noActive',locale)} body={t('overview.noActiveCopy',locale)} />
     {/if}
   </article>
 
   <article class="panel driver-preview">
     <div class="panel-head"><div><p class="eyebrow">{t('overview.driverServicing',locale)}</p><h3>{t('overview.safeDriver',locale)}</h3></div><span class="live-badge">{t('common.live',locale)}</span></div>
-    {#if hub.state === 'Ready'}<div class="preview-number">{hub.summary.selectableUpdateCount}</div>{:else}<div class="preview-state"><span aria-hidden="true">◎</span><strong>{t('common.notCollected',locale)}</strong></div>{/if}
+    {#if hub.state === 'Ready'}<div class="preview-number">{hub.summary.selectableUpdateCount}</div>{:else}<div class="preview-state"><strong>{t('common.notCollected',locale)}</strong></div>{/if}
     <p>{hub.state === 'Ready' ? t('overview.driverReadyCopy',locale) : t('overview.driverIdleCopy',locale)}</p>
     <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={() => { setPage('drivers'); if (hub.state === 'Idle') startScan(); }}>{t('overview.openDrivers',locale)}</button>
   </article>
@@ -82,6 +83,7 @@
 <style>
   .overview-scan-cta{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 18px;margin:0 0 14px;border:1px solid var(--ac-border-subtle);border-radius:var(--ac-radius-md);background:var(--ac-material-elevated);box-shadow:var(--ac-shadow-card)}
   .overview-scan-cta strong,.overview-scan-cta span{display:block}.overview-scan-cta strong{font-size:1rem;margin:.15rem 0}.overview-scan-cta span{color:var(--ac-text-3);font-size:.82rem}.overview-scan-cta button{padding:.68rem 1rem;border-radius:var(--ac-radius-sm);white-space:nowrap}
-  .preview-state{display:flex;align-items:center;gap:.65rem;margin-block:.7rem 1rem;color:var(--ac-text-2)}
-  .preview-state span{display:grid;place-items:center;inline-size:2rem;block-size:2rem;border:1px solid var(--ac-border-default);border-radius:50%;color:var(--ac-accent);font-size:1.2rem}
+  /* Where a count would be. The ringed glyph went with the empty state it
+     belonged to; the reading itself is what matters here. */
+  .preview-state{display:flex;align-items:center;gap:.65rem;margin-block:.7rem 1rem;color:var(--ac-text-3);font-family:var(--ac-font-mono);font-size:var(--ac-type-technical);letter-spacing:.1em;text-transform:uppercase}
 </style>

@@ -33,6 +33,9 @@
     <div class="empty-state-copy">
       <span class="empty-state-title" data-tone={tone}>{title}</span>
       <p class="empty-state-body">{body}</p>
+      <!-- The one action that would end this empty state, when there is one.
+           Five of the seven screens with an empty state have exactly one. -->
+      <div class="empty-state-action"><slot /></div>
     </div>
   </div>
 
@@ -89,6 +92,9 @@
     color: var(--ac-text-4);
     text-wrap: pretty;
   }
+
+  .empty-state-action:empty { display: none; }
+  .empty-state-action { margin-block-start: var(--ac-space-2); }
 
   .empty-state-channels {
     display: grid;

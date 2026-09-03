@@ -14,6 +14,7 @@
   import { TechnicalText, Pressable } from '../../design/primitives';
   import { fluidPress } from '../../design/motion';
   import { t, td } from '../../lib/i18n';
+  import { EmptyState } from '../../design/signature';
 
   type FleetHostRow = {
     hostId: string;
@@ -358,11 +359,7 @@
       </div>
     </div>
     {#if snapshot.hosts.length === 0}
-      <div class="empty compact">
-        <div class="empty-icon">⌁</div>
-        <h4>{t('fleet.emptyTitle', locale)}</h4>
-        <p>{t('fleet.emptyCopy', locale)}</p>
-      </div>
+      <EmptyState title={t('fleet.emptyTitle', locale)} body={t('fleet.emptyCopy', locale)} />
     {:else}
       {#each snapshot.hosts as host (host.hostId)}
         {@const remote = remoteResults[host.hostId]}

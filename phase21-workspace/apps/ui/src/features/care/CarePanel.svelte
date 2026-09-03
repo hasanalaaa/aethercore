@@ -20,6 +20,7 @@
   import { t, td, tp, hasMessageKey } from '../../lib/i18n';
   import type { MessageKey } from '../../lib/i18n';
   import type { CareStepReport } from '../../lib/contracts';
+  import { EmptyState } from '../../design/signature';
   import {
     authorizeAndStartCare,
     cancelCare,
@@ -83,7 +84,7 @@
   </div>
 
   {#if !care || care.steps.length === 0}
-    <p class="empty">{t('care.empty', locale)}</p>
+    <EmptyState title={t('common.notCollected', locale)} body={t('care.empty', locale)} />
   {:else}
     {#if care.planDigestSha256}
       <p class="digest">
@@ -151,10 +152,6 @@
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
     cursor: pointer;
-  }
-  .empty {
-    color: var(--muted-foreground);
-    padding: var(--space-4);
   }
   .digest {
     margin-block: var(--space-2) var(--space-3);
