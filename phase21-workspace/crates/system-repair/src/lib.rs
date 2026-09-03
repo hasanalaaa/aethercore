@@ -363,10 +363,13 @@ impl RepairCoordinator {
     }
 
     fn assessment(&self) -> RepairAssessment {
+        // DBT-P46-B8: recover a poisoned lock's last-written value rather than
+        // silently discarding it for an empty default — the pattern already
+        // used throughout this codebase (e.g. diagnostic-engine, operation-kernel).
         self.assessment
             .read()
-            .map(|assessment| assessment.clone())
-            .unwrap_or_default()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     pub fn assessment_for_owner(&self, owner_principal_key: &str) -> Result<RepairAssessment> {
@@ -986,4 +989,44 @@ fn update_exec(
     }
     db.upsert_maintenance_execution(&record)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod dbt_p46_b8_tests {
+    use super::*;
+    use std::sync::RwLock;
+
+    // DBT-P46-B8: assessment() read a poisoned lock (left behind by a prior
+    // panic while holding the write lock) as `.unwrap_or_default()` — silently
+    // discarding the last-known-good assessment in favor of an empty one. This
+    // crate has no existing test scaffolding to construct a full RepairEngine
+    // (needs OperationEngine + Database), so this proves the exact recovery
+    // mechanism the fix applies, on the same lock type the real field uses.
+    #[test]
+    fn poisoned_assessment_lock_recovers_the_last_written_value_not_a_default() {
+        let lock: RwLock<RepairAssessment> = RwLock::new(RepairAssessment {
+            assessment_id: "real-assessment".into(),
+            ..RepairAssessment::default()
+        });
+        let poison_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = lock.write().unwrap();
+            panic!("simulated panic while holding the write lock");
+        }));
+        assert!(poison_result.is_err(), "the panic must have actually happened");
+        assert!(lock.is_poisoned(), "the lock must now be poisoned");
+
+        // Old behavior: .read().map(|a| a.clone()).unwrap_or_default()
+        let old_behavior = lock.read().map(|a| a.clone()).unwrap_or_default();
+        assert_eq!(
+            old_behavior.assessment_id, "",
+            "documents the bug this fix removes: a poisoned lock silently became an empty default"
+        );
+
+        // New behavior, as applied in `assessment()`.
+        let recovered = lock.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        assert_eq!(
+            recovered.assessment_id, "real-assessment",
+            "a poisoned lock must recover the last-written value, not silently default"
+        );
+    }
 }

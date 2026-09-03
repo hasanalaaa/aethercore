@@ -2708,10 +2708,12 @@ struct DesktopScheduleStore {
 
 impl aethercore_fleet::SchedulerStore for DesktopScheduleStore {
     fn schedules(&self) -> Vec<aethercore_fleet::FleetSchedule> {
+        // DBT-P46-B31: recover a poisoned lock's last-written value instead of
+        // silently discarding it for an empty default.
         self.schedules
             .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
     fn save_schedule(&self, schedule: &aethercore_fleet::FleetSchedule) {
         if let Ok(mut guard) = self.schedules.lock() {
@@ -2935,5 +2937,33 @@ fn main() {
     if let Err(error) = result {
         eprintln!("AetherCore desktop runtime failed: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod dbt_p46_b31_tests {
+    use std::sync::Mutex;
+
+    // DBT-P46-B31: same shape as DBT-P46-B8 (system-repair) and DBT-P46-B18
+    // (cleaner) — DesktopScheduleStore::schedules() read a poisoned lock as
+    // `.unwrap_or_default()`, discarding the fleet schedule list rather than
+    // recovering it. FleetSchedule has no Default and no test scaffolding
+    // exists in this binary, so this proves the exact recovery mechanism on
+    // the same Mutex<Vec<T>> shape the real field uses.
+    #[test]
+    fn poisoned_schedules_lock_recovers_the_last_written_value_not_a_default() {
+        let lock: Mutex<Vec<u32>> = Mutex::new(vec![7, 8, 9]);
+        let poison_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = lock.lock().unwrap();
+            panic!("simulated panic while holding the lock");
+        }));
+        assert!(poison_result.is_err());
+        assert!(lock.is_poisoned());
+
+        let old_behavior = lock.lock().map(|g| g.clone()).unwrap_or_default();
+        assert!(old_behavior.is_empty(), "documents the bug this fix removes");
+
+        let recovered = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        assert_eq!(recovered, vec![7, 8, 9], "a poisoned lock must recover the last-written value");
     }
 }
