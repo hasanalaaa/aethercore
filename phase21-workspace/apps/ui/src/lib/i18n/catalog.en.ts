@@ -1677,6 +1677,7 @@ export const enCatalog = {
   'evidence.label': 'Evidence',
   'verified.hint': 'Cryptographically verified',
   'verified.label': 'Verified',
+  'insight.uncitableDropped': '{count} suggestion(s) were withheld: they could not cite an observation.',
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;

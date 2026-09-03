@@ -1677,4 +1677,5 @@ export const arCatalog = {
   'evidence.label': 'الدليل',
   'verified.hint': 'تم التحقق منه تشفيريًا',
   'verified.label': 'موثّق',
+  'insight.uncitableDropped': 'حُجب {count} اقتراح لعدم قدرته على الاستناد إلى رصد.',
 } satisfies Record<MessageKey, string>;
