@@ -95,6 +95,9 @@ message CrashRecordInfo {
   string source = 9;
   string confidence = 10;
   string summary = 11;
+  // DBT-P46-B6: true when the dump file's mtime was actually read; false
+  // means recorded_unix_ms is a fallback (0), not a real timestamp.
+  bool has_recorded_unix_ms = 12;
 }
 message DiagnosticCardInfo {
   string card_id = 1;
@@ -121,6 +124,10 @@ message DiagnosticsSnapshot {
   DiscoveryState state_code = 12;
   repeated ProviderFaultInfo provider_faults = 13;
 }
-message DiagnosticHistoryEntryInfo { string scan_id = 1; string state = 2; int64 collected_unix_ms = 3; uint32 warning_count = 4; uint32 card_count = 5; }
+// DBT-P46-B4: has_card_count is false only when the stored snapshot JSON for
+// this history row could not be parsed (corrupted or schema-incompatible) —
+// card_count is then a fallback (0), not a measured card count. true and 0
+// together mean a real scan whose snapshot genuinely produced zero cards.
+message DiagnosticHistoryEntryInfo { string scan_id = 1; string state = 2; int64 collected_unix_ms = 3; uint32 warning_count = 4; uint32 card_count = 5; bool has_card_count = 6; }
 message DiagnosticsSnapshotResponse { DiagnosticsSnapshot snapshot = 1; }
 message DiagnosticsHistoryResponse { repeated DiagnosticHistoryEntryInfo entries = 1; }

@@ -588,6 +588,24 @@ mod tests{
     // not silently share a value that reads as a real window in UI text
     // ("...in the last 0 days").
     #[test]fn crash_provider_failure_defaults_the_window_not_to_zero(){let(db,p)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(CrashUnavailableMock));start_scan_leased(&e,OWNER).unwrap();for _ in 0..100{if !e.snapshot().state.running(){break}std::thread::sleep(std::time::Duration::from_millis(10));}let s=e.snapshot();assert_eq!(s.state,ScanState::Partial);assert_eq!(s.event_window_days,aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS,"a failed crash provider must not report a 0-day event window");drop(e);drop(db);let _=std::fs::remove_file(p);}
+    // DBT-P46-B4. Hasan's wire-contract decision (§46.15): has_card_count means
+    // "the value was determined", NOT "the value is non-zero" — so the case that
+    // matters most is a VALID snapshot that genuinely has zero cards vs. a
+    // snapshot whose stored JSON cannot be parsed at all. Before the fix both
+    // reported card_count: 0 with nothing to tell them apart.
+    #[test]fn a_real_zero_card_scan_is_distinguishable_from_an_unparseable_one(){
+        let(db,p)=db();
+        let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(Mock{h:HardwareTelemetrySnapshot::default(),c:CrashDiagnosticsSnapshot::default()}));
+        let empty_but_real=DiagnosticsSnapshot::default();
+        db.save_diagnostic_snapshot(&aethercore_persistence::DiagnosticSnapshotRecord{snapshot_id:"real-zero".into(),owner_principal_key:OWNER.into(),state:"Ready".into(),collected_unix_ms:2,warning_count:0,snapshot_json:serde_json::to_string(&empty_but_real).unwrap()}).unwrap();
+        db.save_diagnostic_snapshot(&aethercore_persistence::DiagnosticSnapshotRecord{snapshot_id:"unparseable".into(),owner_principal_key:OWNER.into(),state:"Ready".into(),collected_unix_ms:1,warning_count:0,snapshot_json:"{ this is not valid json".into()}).unwrap();
+        let entries=e.history(OWNER,10).unwrap();
+        let real=entries.iter().find(|x|x.scan_id=="real-zero").expect("the real-zero row");
+        let broken=entries.iter().find(|x|x.scan_id=="unparseable").expect("the unparseable row");
+        assert_eq!(real.card_count,Some(0),"a scan that genuinely produced zero cards must report a determined zero");
+        assert_eq!(broken.card_count,None,"an unparseable stored snapshot must not report zero cards as if it had been measured");
+        drop(e);drop(db);let _=std::fs::remove_file(p);
+    }
     #[test]fn diagnostic_snapshot_is_principal_bound(){let(db,p)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(Mock{h:HardwareTelemetrySnapshot::default(),c:CrashDiagnosticsSnapshot::default()}));start_scan_leased(&e,OWNER).unwrap();let other="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";assert!(matches!(e.snapshot_for_owner(other),Err(DiagnosticError::OwnershipMismatch)));drop(e);drop(db);let _=std::fs::remove_file(p);}
     #[test]fn unavailable_event_source_never_becomes_no_logged_errors(){let cards=build_cards_with_availability(&[],Some(&MemoryTelemetry::default()),&[],&[],false,0);assert!(cards.iter().any(|c|c.card_id=="memory:whea-unavailable"));assert!(!cards.iter().any(|c|c.card_id=="memory:no-logged-errors"));}
 

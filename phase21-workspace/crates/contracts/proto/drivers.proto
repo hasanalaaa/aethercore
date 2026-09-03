@@ -181,7 +181,15 @@ message DriverInstallStatus {
   repeated DriverInstallItemStatus items = 18;
   uint64 bytes_downloaded = 19;
   uint64 bytes_total = 20;
+  // DBT-P46-B11/B16: has_completed_unix_ms false means not completed yet, not
+  // a fallback. has_bytes_downloaded/has_bytes_total false means the WUA
+  // progress read itself failed this tick — distinct from a real 0, which is
+  // a legitimate "no bytes transferred yet" or (for bytes_total) "size
+  // unknown" value.
   OperationState state_code = 21;
+  bool has_completed_unix_ms = 24;
+  bool has_bytes_downloaded = 25;
+  bool has_bytes_total = 26;
 }
 message RecoveryEntry {
   int64 seq = 1;

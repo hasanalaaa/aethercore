@@ -59,6 +59,8 @@ message CleanupStatus {
   int64 completed_unix_ms = 15;
   repeated CleanupItemStatus items = 16;
   OperationState state_code = 17;
+  // DBT-P46-B17: false means this plan has not completed yet, not a fallback.
+  bool has_completed_unix_ms = 18;
 }
 message CleanupSnapshotResponse { CleanupSnapshot snapshot = 1; }
 message CleanupStatusResponse { CleanupStatus status = 1; }
