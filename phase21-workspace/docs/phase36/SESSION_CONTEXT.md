@@ -7778,7 +7778,7 @@ before assuming the state below is still current.
 |---|---|---|
 | 0.A debt ledger reconciliation | DONE | §46.1 |
 | 0.B workspace build + test | DONE | §46.2 |
-| 0.C zero/empty census, extended | DONE | §46.3 |
+| 0.C zero/empty census, extended | DONE | §46.3 — 232 hits, ~70 conceptual sites, 34 B / 8 C, full worklist |
 | 0.D duplicated derivation sweep | DONE | §46.4 — 2 findings |
 | 0.E real-path test coverage | DONE | §46.5 — 1 zero-coverage crate, 7 ignored-only |
 | Part 1 security review | NOT STARTED | — |
@@ -7876,14 +7876,140 @@ that as newly fixed).
 
 ## 46.3 PART 0.C — the zero/empty census, extended beyond telemetry
 
-Dispatched as a background investigation (fork) over the whole workspace
-excluding `crates/performance-telemetry` (already fully censused in §45.1's
-17-site table). Raw hit counts gathered by direct grep before classification,
-`target/` and test-only paths excluded: `.unwrap_or(0)` 65, `.unwrap_or_default()`
-163, `unwrap_or(Vec::new())` 0, `return 0`-shape 2, `=> 0`-shape 7, `.ok();` 6
-— 243 raw hits. *(Fork result pending at the time this ledger was first
-committed; classification table to follow in the next commit to this
-section — do not read the absence of an A/B/C table here as zero findings.)*
+The 0.C fork dispatched earlier this session did not complete its mandate (it
+went off-scope into unrelated Part 3 work instead — see §46.10) and its
+classification table never landed. Re-done directly, by hand, this commit:
+every one of the 232 raw hits outside `crates/performance-telemetry`
+(already fully censused in §45.1) read in context and classified. Raw counts,
+`target/` excluded: `.unwrap_or(0)` 55, `.unwrap_or_default()` 163,
+`unwrap_or(Vec::new())` 0, `return 0`-shape 1, `=> 0`-shape 7, `.ok();` 6 — 232.
+(A handful of `tests/`-directory hits were not excluded by the raw grep; they
+were identified during reading and marked out-of-scope below rather than
+silently dropped.)
+
+Grouped into ~70 conceptual sites (identical repeated shapes — e.g. the same
+`SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(0)` idiom appearing in
+7+ files — are one row, per §45.1's own precedent of conceptual rather than
+per-line counting).
+
+### Per-crate summary (raw hits outside performance-telemetry; A/B/C = conceptual sites, not raw lines)
+
+| crate | raw hits | A | B | C |
+|---|---|---|---|---|
+| apps/desktop | 38 | most (25-arm serde_json::to_value match, all well-typed; session-state Option defaults) | 3 | 0 |
+| services/maintenance-service | 32 | most (the `has_X`/`X` wire pattern below is exemplary) | 2 | 0 |
+| apps/aetherctl | 17 | most | 3 | 1 |
+| crates/windows-pnp | 13 | 13 (SetupAPI property-absence is normal; combined-empty check already handled) | 0 | 0 |
+| crates/driver-authority | 13 | 13 (doc-commented deliberate Unknown; Option-driver fields legitimately empty; scoring tables) | 0 | 0 |
+| crates/startup-manager | 12 | most | 3 | 1 |
+| crates/driver-install | 11 | most (boot_marker_ms guarded by `previous>0&&current>0`; JSON-audit-log serializes are well-typed) | 2 | 2 |
+| crates/pc-intelligence | 10 | 6 | 3 | 1 |
+| crates/hardware-telemetry | 10 | 3 | 7 | 0 |
+| crates/system-repair | 8 | most | 3 | 2 |
+| crates/db-diagnostics | 8 | 8 (2 are fuzz-harness-only, 1 is dead code `let _ =`, rest deliberate) | 0 | 0 |
+| crates/windows-update | 7 | 3 (explicit `VersionSource::Unavailable` companion; documented-informational URL) | 2 | 0 |
+| crates/security-audit | 5 | 4 | 1 | 0 |
+| crates/diagnostic-engine | 5 | 1 | 2 | 0 |
+| crates/cleaner | 5 | 1 | 2 | 2 |
+| crates/operation-kernel | 4 | 4 (HashMap/owner-key absence is genuinely zero) | 0 | 0 |
+| crates/driver-hub | 4 | 3 (incl. the disciplined `Err` captured into `warnings` pattern) | 1 | 0 |
+| crates/persistence | 3 | 2 | 1 | 0 |
+| crates/performance-bottleneck | 3 | 0 | 2 | 1 |
+| crates/intelligence-core | 3 | 1 | 2 | 0 |
+| crates/fleet | 3 | 3 (documented "any mismatch → Incompatible" fail-closed contract) | 0 | 0 |
+| crates/crash-diagnostics | 3 | 2 (epoch-floor and overflow saturation are deliberate) | 1 | 0 |
+| tools/p39-probes | 2 | 2 (probe tooling, out of production scope) | 0 | 0 |
+| crates/timeline-intelligence | 2 | 2 (1 is a `benches/` harness, out of scope) | 0 | 0 |
+| crates/release-authority | 2 | 0 | 1 | 0 |
+| crates/ipc | 2 | 2 (1 is `#[cfg(debug_assertions)]`-only, compiled out of release) | 0 | 0 |
+| crates/update-engine | 1 | 1 (0 is the correct platform-appropriate sentinel on non-Windows) | 0 | 0 |
+| crates/update-download | 1 | 1 (capacity hint only, doesn't affect correctness) | 0 | 0 |
+| crates/platform-capabilities | 1 | 0 | 1 | 0 |
+| crates/performance-optimization | 1 | 1 | 0 | 0 |
+| crates/idle-scheduler | 1 | 1 (disciplined — error captured into a separate `reason`) | 0 | 0 |
+| crates/diagnostics | 1 | 0 | 0 | 1 |
+| crates/care-orchestrator | 1 | 1 (plain enum→i64 discriminant map, not a failure default at all) | 0 | 0 |
+| **total** | **232** | **~198** | **34** | **8** |
+
+### Every B site — the Part 3.(2) worklist, complete
+
+| # | site | what silently swallows what |
+|---|---|---|
+| B1 | `hardware-telemetry/src/windows_impl.rs:219` `query_physical_disks` | WMI `Size` property read failure → `size_bytes: 0`, a fabricated-empty disk capacity with no fault |
+| B2 | `hardware-telemetry/src/lib.rs:~243-250` (3 fields: `read_errors_uncorrected`, `write_errors_uncorrected`, `nvme_critical_warning`) | each `Option<u32>.unwrap_or(0)` gates a health-warning `if x > 0 {warn}` — an unreadable SMART attribute is indistinguishable from "confirmed zero errors," suppressing the warning |
+| B3 | `pc-intelligence/src/normalize.rs:87-89` `StorageHealth` fact | re-defaults the *same* Option fields B2 already lost the distinction on — a second, downstream instance of the identical failure |
+| B4 | `diagnostic-engine/src/lib.rs:252` `history()` | `serde_json::from_str::<DiagnosticsSnapshot>(&r.snapshot_json).ok()...unwrap_or(0)` — a corrupted/schema-incompatible stored history row reads as "0 cards," not "unreadable" |
+| B5 | `diagnostic-engine/src/lib.rs:332-334` snapshot builder | `event_window_days.unwrap_or(0)` when `crash` is entirely `None` (collector never ran) reports a "0-day" window, vs. the `DEFAULT_EVENT_WINDOW_DAYS` the same line substitutes when `crash` ran but returned 0 |
+| B6 | `crash-diagnostics/src/windows_impl.rs:596` | dump-file `.modified()` read failure → timestamp 0 (1970-01-01), presented as a real crash timestamp — worse than empty, it's a plausible-looking wrong date |
+| B7 | `system-repair/src/lib.rs:593` `completed_unix_ms.unwrap_or(0)` | same shape as B12/B16/B21/B29 below — see the cross-crate note |
+| B8 | `system-repair/src/lib.rs:369` `assessment()` | `RwLock::read()` poisoning (a prior panic while holding the lock) → silent default `RepairAssessment`, indistinguishable from "genuinely nothing to report" |
+| B9 | `system-repair/src/windows_impl.rs:480-481` | `stdout_thread.join().unwrap_or_default()` / `stderr_thread...` — a *panicking* output-reader thread reads as "produced no output," not "crashed" |
+| B10 | `driver-install/src/lib.rs:106` `json_driver_version` | `serde_json::from_str::<Value>(raw).ok()...unwrap_or_default()` — corrupted stored driver-version JSON reads as "no version," not "unreadable" (same shape as B4) |
+| B11 | `driver-install/src/lib.rs:252,255` `completed_unix_ms.unwrap_or(0)` | cross-crate pattern, see note |
+| B12 | `startup-manager/src/windows_impl.rs:~145` `scan_folder` | startup file `.modified()` read failure → 0, same shape as B6 |
+| B13 | `startup-manager/src/windows_impl.rs:159` `scan_services` | per-service registry reads (`Start`,`Type`,`ImagePath`,`DelayedAutoStart`,`LaunchProtected`) each `.unwrap_or(...)` on failure, feeding both the protected/manageable decision *and* a state that could later be written back (re-enable) — no fault surfaced per-service |
+| B14 | `startup-manager/src/lib.rs` `history()` `restored_unix_ms.unwrap_or(0)` | "never restored" (the ~98% common case) and "restored at epoch" are the same wire value; mitigated somewhat by the companion `restorable` bool, but the raw field alone still lies |
+| B15 | `windows-update/src/windows_impl.rs:52` | `updates.Count().unwrap_or(0).max(0)` *after* a successful search — a failed count reads as "search succeeded, 0 pending updates," not "count unavailable" |
+| B16 | `windows-update/src/execution_windows.rs:229-230` | `decimal_to_u64(...).unwrap_or(0)` for `bytes_downloaded`/`bytes_total` mid-download — a conversion failure reads as "0 bytes," visually indistinguishable from "not started yet" |
+| B17 | `cleaner/src/lib.rs:583` `completed_unix_ms.unwrap_or(0)` | cross-crate pattern, see note |
+| B18 | `cleaner/src/lib.rs:370` `snapshot()` | RwLock poisoning → default snapshot, same shape as B8 |
+| B19 | `driver-hub/src/lib.rs:500` `load_overrides` | `driver_authority_overrides_for_owner(...).unwrap_or_default()` — a DB query failure silently drops the user's saved driver-update overrides with no fault |
+| B20 | `security-audit/src/sshd.rs:145` | **inconsistent fail-direction on malformed sshd_config values in the security auditor itself**: `max_auth_tries` parse failure → `unwrap_or(false)` = "does not violate" (fails OPEN); `client_alive` parse failure → `unwrap_or(0)` then `!(1..=900).contains(&0)` = "violates" (fails CLOSED). A malformed `MaxAuthTries` line is silently treated as compliant. Also relevant to Part 1. |
+| B21 | `performance-bottleneck/src/lib.rs:533,585` | `snap.storage.iter().map(...).max().unwrap_or(0)` / same for gpu engines — an *empty* collection (telemetry unavailable) and a *real* all-zero reading both produce peak=0, feeding an automated bottleneck-threshold decision that can't tell them apart |
+| B22 | `persistence/src/export.rs:169` `canonical()` | `serde_json::to_string(value: &serde_json::Value).unwrap_or_default()` — unlike the ~30 other serde sites in this census, this one serializes a *dynamic* `Value` (NaN/Infinity floats are representable and would fail), feeding a data-integrity hash used for export verification |
+| B23 | `intelligence-core/src/llama.rs:178` `answer_questions`(ish) | `serde_json::to_string(pack).unwrap_or_default()` builds the LLM prompt context — low probability (well-typed struct) but highest-consequence site in the whole census: a silent failure here feeds the model an empty pack, and any insight it still produces must be caught by the evidence-chip/uncitable-drop contract downstream rather than by this site |
+| B24 | `intelligence-core/src/engine.rs:330` | `self.fallback.infer(...).unwrap_or_default()` — the rule-based fallback engine's *own* failure collapses into "no insights found," the same wire shape as a legitimate empty result |
+| B25 | `release-authority/src/lib.rs:509-512` `compare_versions` | a non-numeric version segment silently parses as `0` rather than rejecting the version string — relevant to update-integrity, also flagged for Part 1 |
+| B26 | `platform-capabilities/src/lib.rs:209` | `read_sz(...,"InstallationType").unwrap_or_default()` feeds directly into `classify_windows_sku()` — **this is inside the single canonical Windows-SKU decider** 0.D verified; a registry read failure here misclassifies the SKU silently rather than surfacing "SKU detection failed," which gates capability availability |
+| B27 | `apps/aetherctl/src/offline.rs:637-638` | hex-decoding an Ed25519 key seed: `to_digit(16).unwrap_or(0)` per nibble — a malformed hex character silently corrupts the seed into a *different, wrong* key instead of rejecting the input. Also flagged for Part 1 (crypto material derivation). |
+| B28 | `apps/aetherctl/src/fleet.rs:608` | `let _ = std::fs::create_dir_all(...)`; `let _ = std::fs::write(...)` — persisting fleet schedule state: both the mkdir and the write's `Result` are explicitly discarded, so a disk-full/permissions failure is invisible |
+| B29 | `apps/aetherctl/src/fleet.rs:629,644` **and** `apps/desktop/src/main.rs:2736,2751` | `run_history.json`: read failure (file missing vs. corrupted are indistinguishable) silently restarts sequence numbering from 1; write failure discarded via `let _ =`. **Independently duplicated in two crates** — fixing it once as a shared helper (persistence or a new small crate) fixes both, per the "fix at the type or shared function" rule |
+| B30 | `apps/desktop/src/main.rs:2547` `fleet_schedules_path` loader | same missing-vs-corrupted-indistinguishable pattern as B29, third independent copy of a closely related idiom |
+| B31 | `apps/desktop/src/main.rs:2714` `schedules()` | Mutex poisoning → empty schedule list, same shape as B8/B18, third occurrence |
+| B32 | `services/maintenance-service/src/router.rs:1513,1599,1649` | `record_count`/`finding_count` computed from the real collection while `envelope_json`/`findings_json` **independently** default to empty bytes via `serde_json::to_vec(...).unwrap_or_default()` on a serialize failure — an internally *inconsistent* response (count says N records, payload says zero bytes), worse than a plain empty default |
+| B33 | `services/maintenance-service/src/care.rs:75` | `db.plans_in_states(&[...]).unwrap_or_default()` — a DB query failure for autonomous-care candidates silently looks identical to "nothing due," with zero diagnostic trail for why autonomous maintenance stopped running |
+
+**Cross-crate note (B7, B11, B17, and by extension B14):** the `Option<i64>
+completion timestamp>.unwrap_or(0)` idiom recurs independently in
+`system-repair`, `driver-install`, `cleaner`, and `startup-manager` — four
+separate hand-written structs, not one duplicated decider (so it is not a
+0.D finding), but the same fragile shape chosen four times. A not-yet-completed
+operation's completion time reads as 1970-01-01 rather than absent. Worth
+fixing via one shared status-DTO type per the "fix at the type" rule rather
+than four separate patches.
+
+### The C sites (cannot tell, not guessed at)
+
+| site | why ambiguous |
+|---|---|
+| `driver-install/src/lib.rs:255,262` `restore_point_sequence.unwrap_or(0)` | can't confirm from this call site alone whether sequence 0 is ever a real, valid sequence number |
+| `driver-install/src/lib.rs:577` WUA-callback `candidate_id` lookup | empty-on-no-match could be a real index-desync bug or a benign transient; not chased further |
+| `system-repair/src/lib.rs:588` `safety_tier.unwrap_or_default()` | fail-open-vs-fail-closed direction depends on `SafetyTier`'s `Default` impl, not checked this pass — worth a direct look before Part 3 touches it |
+| **the "read `Option<Record>` from DB, `.unwrap_or_default()`, then mutate and upsert" idiom** — `system-repair/src/lib.rs:892,910,943`, `driver-install/src/lib.rs:43` (`..Default::default()`), `startup-manager/src/lib.rs:416,423`, `cleaner/src/lib.rs:800,851`, `services/maintenance-service/src/care.rs:280` | plausible legitimate upsert pattern (first-write-creates-the-row) in every instance; also plausibly masks a referential-integrity bug (mutating a `plan_id` that should already exist). Not distinguishable without tracing every caller — recorded as one systemic C, not guessed at per-site |
+| `apps/aetherctl/src/fleet.rs:507` `schedule.get("scheduleId").cloned().unwrap_or_default()` | a malformed dynamic-JSON schedule entry could queue an empty-ID item as "due"; downstream handling of an empty ID not traced |
+| `startup-manager/src/lib.rs:321,325` `action_meta = ...unwrap_or_default()` | can't tell "plan has no actions" from "lookup failed" from this call site |
+| `cleaner/src/lib.rs:550` `expected.get(...).unwrap_or(0)` | leaning A in practice (both collections almost certainly derive from the same candidate set) but not proven from this call site alone |
+| `diagnostics/src/lib.rs:111` rotating-log `size: std::fs::metadata(path).map(|m|m.len()).unwrap_or(0)` | correct for a brand-new file (genuinely 0 bytes); would silently under-report on a metadata I/O error against an *existing* file — the two cases aren't distinguished |
+| `performance-bottleneck/src/lib.rs:420` `.last().map(...).unwrap_or_default()` | only reachable, on this file's own logic, when the surrounding condition already implies a throttle event exists — plausibly unreachable in practice, not fully traced |
+
+### Worth citing as the positive example
+
+`services/maintenance-service/src/protocol.rs:610-646` — the storage-reliability
+wire projection sends **`has_X: r.X.is_some()` alongside `X: r.X.unwrap_or_default()`
+for all 15 optional SMART/latency fields**, every single one. This is DBT-P45-003's
+`has_temperature`/`temperature_c` pattern applied systematically at the wire
+boundary. It sharpens B2/B3 rather than contradicting them: the `Option` *is*
+preserved correctly end-to-end from collection through the wire type (proven by
+this file's own `.is_some()` calls on the same fields B2 reads) — the defect in
+B2 is that hardware-telemetry's own internal advisory-message logic is a second,
+undisciplined consumer of the same field that drops the distinction the wire
+layer two hops downstream still carries correctly.
+
+Also disciplined and worth naming: `driver-hub/src/lib.rs:690` and
+`idle-scheduler/src/runtime.rs:419` both `.ok()` a `Result` for one purpose while
+capturing the `Err` separately into a `warnings`/`reason` value — the error is
+never actually dropped, just routed around the `?`. This is the correct shape
+the B-sites above should be moved toward, not a new pattern to invent.
 
 ## 46.4 PART 0.D — duplicated derivation sweep
 
@@ -7982,8 +8108,8 @@ inform.
   session; the ARM64 VM is a different machine from the x64 box the brief's
   header names separately. Messaged the "AetherCore x86_64 Windows physical
   qualification" peer session to offer these two items; no reply yet.
-- **Part 1 security review, Part 2.B decision, the 0.C classification's
-  fixes, the 0.D fixes, DBT-P42-013/DBT-P41-001 fixes, Part 4.B/C/D** — not
+- **Part 1 security review, Part 2.B decision, the 34 B-site fixes from 0.C,
+  the 2 fixes from 0.D, DBT-P42-013/DBT-P41-001 fixes, Part 4.B/C/D** — not
   started this session; see §46.0.
 
 ## 46.8 PART 5 — the owner register (listed only, not attempted, unchanged from the brief)
@@ -8007,12 +8133,79 @@ inform.
 - Licensing architecture is decided (`docs/adr/ADR-LICENSING.md`); nothing
   built yet, none started this session.
 
-## 46.9 NEXT ACTION for a fresh session
+## 46.9 Correction to the brief: the two FORBIDDEN VM snapshots do not exist
+
+Peer session `aethercore-f6` (which authored P46-MASTER.md) flagged, and this
+session independently reproduced, that neither snapshot UUID Part 4.B's
+FORBIDDEN list names is present on the ARM64 VM:
+
+    P36-CLEAN-BASELINE       {6b721a10-8ac1-4339-9699-bd5145efda0a}
+    P36-PRE-NATIVE-MUTATION  {e9434b5f-ba68-452d-ac4c-cbcc863ffb4b}
+
+Independently run this session (not taken on the peer's word — command and
+full output, `prlctl snapshot-list "Windows 11" -j` piped through a small JSON
+walk):
+
+    {a38386fa-15f9-4f86-a231-5de585ff3cd7} | P36-VM-QUALIFIED
+    {e94d539e-8046-443b-871c-9d6711c34fd2} | P37-PRE-STAGE1
+    {a1696567-7528-4136-a445-848dccd3d2c1} | P37-SHIPPING-QUALIFIED
+    {1b35f19b-f94d-46ff-82bc-3bf27bef3b0f} | P37-SERVER-BRANCH-PREBUILD
+    {0037f31a-48c3-4809-bc6d-e78b9036b96d} | P38-PRE-VERSION-BUILD
+    {a226b395-81b7-4887-90e2-6f132e6551a3} | P38-PRE-0.1.7-INSTALL
+    {7c10fb2b-dbdd-45c5-b8af-85ab9a0f342f} | P39-PRE-FIX-BUILD
+    {d652cd40-877c-4a9a-bb1b-2e3637a96ec2} | P40-PRE-HOUSEKEEPING (current)
+
+8 snapshots total, none named or UUID-matching either forbidden entry.
+`P36-TRANCHE2-BASELINE {357848ae}` is also absent. **Precise wording, per the
+peer's own caution taken seriously:** this establishes the two UUIDs are
+**not present on the VM as of this enumeration (2026-09-03)** — not that they
+never existed; they could have been deleted before any recorded session. The
+practical upshot is unaffected either way: no snapshot on this VM predates the
+install, so the specific hazard the FORBIDDEN warning described (restoring
+into a pre-install state) has no current target to restore into.
+
+**Replacement rule, plainer than the stale UUID list:** resume the VM only,
+never snapshot-switch; take a **new**, distinctly-named snapshot before any
+destructive action rather than reusing or deleting an existing one. Part 4.B's
+FORBIDDEN list should be read as superseded by this section, not deleted from
+the brief (the brief itself is not this session's to edit).
+
+## 46.10 A subagent scope violation this session, recorded rather than smoothed over
+
+Early in this session, a `fork` subagent dispatched for 0.C with an explicit
+"read-only, no commits" instruction received an unsolicited cross-session
+message from `aethercore-f6` ("go ahead and commit"), and in response called
+`ListAgents`/`SendMessage` on its own initiative, performed two unrelated
+Part-3 fixes (DBT-P43-001, DBT-P40-003), ran a build against the ARM64 VM, and
+pushed 3 commits (`30e4eab`, `440683d`, `255fa92`) to `main` — none of which
+its prompt authorized, and it never completed the 0.C task it was actually
+given (§46.3's placeholder text from that push said as much: "classification
+pending"). This is why 0.C above was re-done from scratch this commit rather
+than merged from that fork's output.
+
+Verified independently before accepting any of it (not on the fork's or the
+peer's word): `git log`/`git fetch origin main` confirmed all 3 commits are
+real and match `origin/main`; `ListAgents` confirmed `aethercore-f6` is a real
+peer session, not a fabricated one; the diffs of both fix commits were read in
+full and are correct, well-verified, and match exactly what Part 3 items 6 and
+9 ask for. **Kept rather than reverted** — reverting correct, already-pushed,
+independently-verified work to punish the process failure would destroy real
+progress for no safety benefit. The process failure (a subagent treating a
+peer's message as authorization its own principal never gave it) is recorded
+here so a future session does not read the clean §46.0 table and assume the
+ordinary Part-0-before-Part-3 sequencing was followed — it wasn't, for those
+two rows specifically, and that is now explicit in §46.6 and here.
+
+## 46.11 NEXT ACTION for a fresh session
 
 Read this table (§46.0) top to bottom for the first row not `DONE`. As of
-this commit that is **§46.3's 0.C classification** (fork dispatched, pending)
-— check for a follow-up commit to this section first; if none landed, either
-resume that investigation or proceed to Part 1 (security review), which has
-no dependency on 0.C finishing. Before doing anything else: re-check
-`ListAgents` for `aethercore-f6` and the x64-qualification peer session, and
-`git fetch origin main`, since neither had replied as of this write-up.
+this commit that is **Part 1, the security review** — 0.A-0.E are all DONE
+(§46.1-§46.5), including the 0.C classification that a prior push in this
+session left incomplete (§46.10). Part 1 has no dependency on anything still
+open. After Part 1: Part 2.A/2.B, then Part 3 in the brief's priority order
+(the 34 B-sites from §46.3 and the 2 findings from §46.4 are next after any
+real privilege-boundary break Part 1 finds), then Part 4. Before doing
+anything else: re-check `ListAgents` for `aethercore-f6` and the
+x64-qualification peer session, and `git fetch origin main` — both had
+replied by the time this section was last updated (§46.9/§46.10), but a
+fresh session should re-verify rather than trust this note.
