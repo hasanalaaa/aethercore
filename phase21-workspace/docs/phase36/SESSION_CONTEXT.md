@@ -7294,3 +7294,91 @@ Windows or Linux host, same limit §44 recorded):
 All three: warnings only, and the warnings are pre-existing (`generation`
 dead-code, a few unused imports in test files untouched by this phase) —
 none introduced by this session's diff.
+
+## 45.3 PART 3 — tests that would have caught it, and the 50-run rate
+
+**Deterministic pure-function tests, updated in `native_providers.rs`**
+(the two the brief asked for by name; both were pre-existing tests whose
+assertions embedded the old, wrong contract and had to change, not new
+files):
+
+- `tick_delta_math_matches_injected_counters` / `hostile_tick_counters_clamp_without_panicking`
+  (macOS): the "identical counters" and "counter regression" cases now
+  assert `busy_bp_from_ticks(..) == None`, not `== 0`. Before this
+  session's fix these two specific assertions would have **failed to
+  compile** (return type was still `u32`); against the *pre-fix logic* with
+  the *new* assertion they'd have failed at runtime (`0 != None`'s moral
+  equivalent — the old code has no `None` to return at all). Either way,
+  this is the exact test the brief specified: "two identical `CpuTicks` —
+  must NOT return a measurement."
+- `proc_stat_delta_math_handles_hostile_counters` (Linux `linux_parsers`,
+  compiles and runs on any host — pure parser/math, no `/proc` access):
+  same change for `busy_bp_from_proc`, including the "regression" case
+  (`Δtotal` saturates to 0 from a going-backwards counter, not just
+  identical inputs) — a second, distinct way to hit `total == 0` that the
+  brief's own example didn't name but the fix's contract covers uniformly.
+
+**The regression test the brief's Part 3 opening paragraph is about** —
+`dbt_p42_005.rs`'s `real_macos_provider_reports_non_zero_cpu_under_load`,
+the exact harness that caught DBT-P44-003 by luck. Its assertion was
+`cpu.total_busy_bp > 0`, unconditionally — which is itself now a stale
+contract: a bounded number of ties can still happen (§45.2's retry is
+bounded on purpose, not unlimited), and when every retry inside the budget
+ties, `total_busy_bp: 0` is the **correct**, honestly-faulted answer, not a
+defect. Updated to accept `total_busy_bp > 0 OR an honest cpu Unavailable
+fault naming the tick-delta retry exhaustion` — the same "zero-with-a-
+reason is fine, zero-with-silence is not" invariant this crate already
+applies elsewhere (`no_collector_returns_an_empty_payload_without_a_fault`,
+same file). This keeps the test able to catch the **original** defect (a
+confident zero, no `cpu` fault) while not flaking forever on the new,
+honest, rare case.
+
+**The 50-run measurement, raw, not summarized:**
+
+    cargo test -p aethercore-performance-telemetry --test dbt_p42_005 \
+      -- macos::real_macos_provider_reports_non_zero_cpu_under_load
+
+    run as 50 independent process invocations (--test-threads=1 each, same
+    protocol as §45.0's confirmation), instrumented for this measurement
+    only (removed before commit) to print cpu.total_busy_bp regardless of
+    pass/fail:
+
+    total_busy_bp value        count (of 50)
+    ------------------------   -------------
+    10000                      47
+    9893                       1
+    9841                       1
+    0                          1
+
+    totalBusyBp == 0 occurrences: 1 / 50   (down from 7 / 40 pre-fix, §45.0)
+    test pass:  50 / 50
+    test fail:   0 / 50
+
+**Against the brief's stated EXPECTED ("zero occurrences of `totalBusyBp: 0`
+under guaranteed load"): not literally met — 1 occurrence remains.** Stated
+plainly rather than reframed as a pass: the bounded retry (5 attempts,
+~120ms each, capped at the sampling `interval`) cuts the tie rate by
+~9x (17.5% → 2%) but does not eliminate it, because it is bounded on
+purpose — an unbounded retry would let one bad tick hang the sampler
+indefinitely, which is a worse defect than an occasional honest
+`Unavailable`. **What *is* true, and is the actual goal the brief is
+after: that one remaining occurrence is never again an unexplained lie.**
+Every one of the 50 runs' `total_busy_bp` values, including the single
+zero, is now accounted for by either a real measurement or a named `cpu`
+fault — verified by the updated test passing on all 50, and shown directly
+in the raw failure line the fix produces for that one case:
+
+    cpu=CpuSample { per_processor_busy_bp: [], total_busy_bp: 0, ... }
+    faults=[CollectorFault { collector: "cpu", kind: "Unavailable",
+      detail: "no tick delta in sampling window after 5 attempt(s)
+               spanning 490ms" }, ...]
+
+Recorded as **DBT-P45-004, open**: full elimination of the tie (not just
+honest labeling of it) was not attempted this session. Two directions
+exist and neither was chosen without more data: raise the retry ceiling
+(delays the sampler further on the already-rare bad case) or find a
+tick source with a documented update cadence to size the first sleep
+correctly instead of guessing 120ms (needs investigation this session did
+not do — §45.0 explicitly left "why 120ms sometimes isn't enough"
+unanswered, and DBT-P45-004 inherits that same open question rather than
+re-opening it under a new number).

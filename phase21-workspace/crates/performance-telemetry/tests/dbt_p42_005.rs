@@ -47,20 +47,22 @@ fn faults_for<'a>(snapshot: &'a PerfSnapshot, collector: &str) -> Vec<&'a Collec
 /// tests, which run as separate `cargo test` binaries.
 ///
 /// **`totalBusyBp: 0` measured at ~1-in-10 under this exact harness on this
-/// real Apple Silicon host — DBT-P44-003, open.** Ruled out, not assumed:
-/// this is not purely cross-binary contention (`--test dbt_p42_005` alone,
-/// no other binary running, still flaked in a 10-run series) and not purely
-/// post-stress-test settling (recurred with no preceding manual load).
-/// `busy_bp_from_ticks`'s `total == 0` tie fires far more often under
-/// guaranteed full-core load than its "rare edge case" framing assumed when
-/// it was written — root cause NOT established this session (candidates:
-/// `host_statistics64`'s tick data may coalesce at a coarser interval than
-/// this harness's 120ms window on this hardware; not verified). This does
-/// not undermine the real-provider proof in SESSION_CONTEXT.md §44.4 — four
-/// manual `aetherctl telemetry-once` invocations under real load, run
-/// directly rather than through this harness, never returned zero. Left
-/// open rather than papered over with a retry loop that would hide the rate
-/// this session just measured.
+/// real Apple Silicon host — DBT-P44-003, CLOSED by SESSION_CONTEXT.md §45.**
+/// §45.0 confirmed the mechanism by instrumentation against pristine P44
+/// source (not assumed): every flake showed `busy_bp_from_ticks`'s two
+/// tick observations byte-for-byte identical (`total == 0`) — a window that
+/// was genuinely too short, not a different defect. §45.2 pushed the
+/// contract to this exact field boundary — `busy_bp_from_ticks` now returns
+/// `Option<u32>`, `None` on the tie — and the caller retries within the
+/// sampling budget before giving up. §45.3 re-measured this same harness at
+/// 1/50 (2%), down from 7/40 (17.5%); the one remaining occurrence carries
+/// an honest `cpu: Unavailable` fault naming the retry exhaustion, not a
+/// silent zero. Full elimination was not attempted (would need either an
+/// unbounded retry or a different tick source) — recorded as DBT-P45-004,
+/// open, not worked around. Does not undermine the real-provider proof in
+/// §44.4 — four manual `aetherctl telemetry-once` invocations under real
+/// load, run directly rather than through this harness, never returned
+/// zero.
 static LOAD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Loads every logical processor hard for the duration of `body`, mirroring
@@ -109,10 +111,22 @@ mod macos {
     fn real_macos_provider_reports_non_zero_cpu_under_load() {
         let snapshot = real_snapshot_under_load();
         let cpu = &snapshot.cpu;
+        // DBT-P45-001: `totalBusyBp: 0` is legitimate now in exactly one case —
+        // every retry inside the sampling budget still tied (§45.2's bounded
+        // retry exhausted), and the whole `cpu` subsystem reports
+        // `Reading::unavailable` with a fault naming it. That is an honest
+        // "could not measure", not the silent lie this test originally caught
+        // (a confident zero with no `cpu` fault at all). Distinguish the two
+        // rather than asserting non-zero unconditionally, which would make this
+        // test flake forever on the rare, now-honestly-reported case.
+        let cpu_unavailable = faults_for(&snapshot, "cpu")
+            .iter()
+            .any(|fault| fault.collector == "cpu" && fault.detail.contains("tick delta"));
         assert!(
-            cpu.total_busy_bp > 0,
-            "every logical processor was spinning; totalBusyBp must not be 0. \
-             cpu={cpu:?} faults={:?}",
+            cpu.total_busy_bp > 0 || cpu_unavailable,
+            "every logical processor was spinning; totalBusyBp must not be a silent 0 — either \
+             a real measurement or an honest `cpu` Unavailable fault naming the tick-delta \
+             retry exhaustion. cpu={cpu:?} faults={:?}",
             snapshot.collector_faults
         );
     }
