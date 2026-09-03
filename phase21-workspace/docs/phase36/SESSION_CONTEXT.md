@@ -7785,7 +7785,7 @@ before assuming the state below is still current.
 | 2.A DBT-P42-011 x64 bias | NOT STARTED, adjacent finding surfaced | §46.16 — a real x64-hardware peer session reports 0 with no fault where a fault should exist; not independently re-verified, not folded into a verdict |
 | 2.B DBT-P42-009/010 decision | NOT STARTED | — |
 | 3.(1) Part 1 privilege breaks | DONE (none found) | §46.11 — nothing to fix at this priority tier |
-| 3.(2) every B from 0.C | IN PROGRESS | §46.12-§46.15 — 10 fixed (B13 added), 4 reclassified A, 9 need owner wire decision — Hasan decided (§46.15/user directive): has_* companion bool, all nine, one pass — in progress, 10 untriaged |
+| 3.(2) every B from 0.C | IN PROGRESS | §46.12-§46.17 — 17 fixed, 4 reclassified A, 0 blocked (the 9 wire sites are DONE, §46.17), 9 untriaged |
 | 3.(3) every count>1 from 0.D | NOT STARTED | §46.4 has the list, none fixed yet |
 | 3.(4) DBT-P42-006 driver-hub | DONE (reclassified) | §46.2 — 18/18 pass, not reproducing |
 | 3.(5) DBT-P42-007 offline_boundary | DONE (reclassified) | §46.2 — cache populated, 1/1 pass |
@@ -8589,11 +8589,104 @@ proposal (install lands first, Part 4.A's lifecycle half and a
 service-backed DBT-P42-011 re-measurement come near-free off the back of
 it) is sound and this session has no better one to offer.
 
-## 46.17 NEXT ACTION for a fresh session
+## 46.17 PART 3 — the nine wire-contract sites, decided by Hasan and applied in one pass
+
+Hasan's decision on the nine sites §46.14 deferred, quoted in substance so no
+later session reopens it: **`has_*` companion bool, all of them, one pass —
+not the documented-sentinel alternative.** His reasoning, on the record: the
+precedent already exists and is proven in `protocol.rs` itself
+(`has_temperature`/`temperature_c`, cited as the positive example in §46.11),
+so inventing a second convention for the same problem would be duplicated
+derivation; the sentinel option is "the shape that failed for five phases" —
+the entire P42→P45 arc exists because a zero meaning "not measured" was
+consumed as a measurement, and choosing it would re-introduce that class
+deliberately, at the wire this time; and it extends to the wire the same
+principle already applied at the subsystem boundary (P42) and the field
+boundary (P45) — the type must not be able to express a measurement that was
+never made. Timing settled it: adding a field is a wire break, nothing has
+shipped to a user, so it is free today and expensive forever after the first
+shipped installer.
+
+**Two semantics, not one**, per his explicit instruction:
+
+- **Timestamps (B6, B7, B11, B14, B17)** — `has_*` means *the event happened
+  and the time is known*.
+- **Counts and bytes (B4 `card_count`, B16 `bytes_downloaded`/`bytes_total`)**
+  — `has_*` means *the value was determined*, **not** *the value is
+  non-zero*. Zero cards, zero pending updates and zero bytes transferred so
+  far are all real, legitimate values.
+
+**Schema** (`e88292e`, additive only — no existing field number or type
+touched):
+
+| proto | field | id | site |
+|---|---|---|---|
+| diagnostics | `DiagnosticHistoryEntryInfo.has_card_count` | 6 | B4 |
+| diagnostics | `CrashRecordInfo.has_recorded_unix_ms` | 12 | B6 |
+| repair | `SystemRepairStatus.has_completed_unix_ms` | 22 | B7 |
+| drivers | `DriverInstallStatus.has_completed_unix_ms` | 24 | B11 |
+| drivers | `DriverInstallStatus.has_bytes_downloaded` / `has_bytes_total` | 25/26 | B16 |
+| startup | `StartupHistoryEntryInfo.has_restored_unix_ms` | 14 | B14 |
+| cleanup | `CleanupStatus.has_completed_unix_ms` | 18 | B17 |
+
+`protoc` caught a real field-number collision on the first build
+(`DriverInstallStatus` already used 21 for `state_code`, past where the
+earlier read of that message stopped) — corrected to 24/25/26 before the
+commit, not worked around.
+
+**B15 dropped from the pass, exactly as Hasan instructed if it turned out not
+to be wire-copied.** Re-checked first: `pending_update_count` appears in zero
+`.proto` files, zero `protocol.rs` lines and zero `aetherctl` paths. It got
+the B1/B2 treatment instead — the existing `detail` string now states the
+count could not be read, rather than reporting a confident 0 alongside
+"discovery completed successfully".
+
+**An error I made and caught before committing, recorded because the census
+exists to catch exactly this shape:** the first version of B16's projection
+was `has_bytes_total: v.bytes_total > 0` — inferring determinedness from
+zeroness, which is the same lie in a different hat and precisely what Hasan's
+message warned against. The honest fix required determinedness to survive a
+service restart, not just live telemetry, so **migration `0016`** adds
+`bytes_downloaded_known`/`bytes_total_known` to `plan_executions` (additive
+`ALTER`, deliberately not a table rebuild — that table carries in-flight
+driver-install state). Rows written before 0016 read as *not determined*,
+the only honest reading of data from before the distinction existed.
+
+**Three consequential decisions the type change forced, each taken
+deliberately rather than defaulted:**
+
+1. `diagnostic-engine`'s crash↔WHEA correlation now correlates **nothing**
+   when a dump has no readable time, instead of comparing against a
+   fabricated epoch-0 (which would silently mean "no WHEA events near this
+   crash").
+2. `pc-intelligence` still emits the crash fact when the time is unknown, at
+   scan time with `Freshness::Historical` — the dump proves a crash
+   *happened*, so dropping the fact would hide real evidence, while asserting
+   epoch 0 would invent a time it never established.
+3. `crash_id` falls back to `"{name}:unknown-time"` — stable per dump file,
+   and unable to collide with a dump genuinely stamped at the epoch.
+
+**Measured:** `cargo build --workspace` EXIT 0; `cargo test --workspace`
+**131/131 result blocks ok, 599 tests passed, 0 failed**; `cargo check
+--target x86_64-pc-windows-msvc` EXIT 0 for `crash-diagnostics`,
+`windows-update` and `hardware-telemetry` (the touched Windows-only crates
+that escape §46.13's sqlite cross-compile blocker). Commits `e88292e`
+(schema + B4 failing test), then B4's fix, then `5c1406d` (the remaining
+six plus B15).
+
+**Part 3 B-site standing after this pass: 17 fixed (B1, B2, B4, B5, B6, B7,
+B8, B11, B13, B14, B15, B16, B17, B18, B19, B20, B25), 4 reclassified to A
+(B22, B24, B27, B32), 0 blocked on an owner decision — the nine are done.
+9 remain untriaged: B3, B9, B10, B21, B26, B28, B29, B30, B33.**
+
+## 46.18 NEXT ACTION for a fresh session
 
 Read this table (§46.0) top to bottom for the first row not `DONE`. As of
-this commit: **Hasan has decided the 9 wire-contract sites named in
-§46.14's table — has_* companion bool for all nine, one pass,
+this commit: **the 9 wire-contract sites are DONE (§46.17) — Hasan's
+has_* decision was applied in full and is not open work. Do not reopen it,
+and do not propose the documented-sentinel alternative; it was considered
+and rejected for a stated reason.** The original decision text, kept because
+it governs any FUTURE field of the same shape: has_* companion bool,
 tests committed failing first. Do not re-litigate this decision or propose
 the documented-sentinel alternative again; it was considered and rejected
 for a stated reason (re-introduces the exact class of defect P42→P45 fixed
