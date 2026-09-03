@@ -7782,10 +7782,10 @@ before assuming the state below is still current.
 | 0.D duplicated derivation sweep | DONE | §46.4 — 2 findings |
 | 0.E real-path test coverage | DONE | §46.5 — 1 zero-coverage crate, 7 ignored-only |
 | Part 1 security review | DONE | §46.11 — no privilege-boundary break; 4 findings folded into 0.C/0.D |
-| 2.A DBT-P42-011 x64 bias | NOT STARTED | needs x64 Windows; unreachable this session |
+| 2.A DBT-P42-011 x64 bias | NOT STARTED, adjacent finding surfaced | §46.16 — a real x64-hardware peer session reports 0 with no fault where a fault should exist; not independently re-verified, not folded into a verdict |
 | 2.B DBT-P42-009/010 decision | NOT STARTED | — |
 | 3.(1) Part 1 privilege breaks | DONE (none found) | §46.11 — nothing to fix at this priority tier |
-| 3.(2) every B from 0.C | IN PROGRESS | §46.12-§46.14 — 9 fixed, 4 reclassified A, 9 need owner wire decision, 10 untriaged |
+| 3.(2) every B from 0.C | IN PROGRESS | §46.12-§46.15 — 10 fixed (B13 added), 4 reclassified A, 9 need owner wire decision — Hasan decided (§46.15/user directive): has_* companion bool, all nine, one pass — in progress, 10 untriaged |
 | 3.(3) every count>1 from 0.D | NOT STARTED | §46.4 has the list, none fixed yet |
 | 3.(4) DBT-P42-006 driver-hub | DONE (reclassified) | §46.2 — 18/18 pass, not reproducing |
 | 3.(5) DBT-P42-007 offline_boundary | DONE (reclassified) | §46.2 — cache populated, 1/1 pass |
@@ -7794,7 +7794,7 @@ before assuming the state below is still current.
 | 3.(8) DBT-P41-001 MSVCP140/VCRUNTIME140 | NOT STARTED | §46.1 — confirmed still open |
 | 3.(9) DBT-P40-003 gd4_live_audit | **DONE** | commit `440683d` |
 | 3.(10) anything else, worst-first | ONGOING | §46.1/§46.4 feed this |
-| 4.A x64 release pipeline | NOT STARTED | needs x64 Windows; unreachable this session |
+| 4.A x64 release pipeline | claimed substantially DONE by a peer session | §46.16 — real x64 hardware, full pipeline reported EXIT 0, a real Product.wxs defect found+fixed; NOT independently re-verified by this session, install/lifecycle half still blocked on their UAC |
 | 4.B Gate 5 on ARM64 | NOT STARTED | VM reachability confirmed this session |
 | 4.C icon pipeline | NOT STARTED | — |
 | 4.D Svelte port | NOT STARTED | — |
@@ -8482,29 +8482,147 @@ spanning two crates, counted once here) plus a rounding difference in the
 original census's own tally, not a lost site — every id from B1 to B33 that
 exists appears exactly once in one of the four buckets above.**
 
-## 46.15 NEXT ACTION for a fresh session
+## 46.15 A correction to commit `f8e4142`, and B13 fixed + verified for real
+
+**The correction, stated plainly because the commit message that landed it
+does not:** `f8e4142` ("docs(p46): two parallel lanes that cannot collide
+with main", authored by peer session `aethercore-f6`) also contains
+`phase21-workspace/crates/startup-manager/src/windows_impl.rs` (+38/−5) —
+this session's B13 fix, in progress at the moment `f8e4142` was committed.
+`aethercore-f6` used `git add -A` while committing two unrelated brief
+files in what turned out to be a **shared physical working directory**
+with this session (not a separate clone) and swept up this session's
+uncommitted edit. Verified independently before accepting the
+explanation: `git show f8e4142 -- .../windows_impl.rs` is byte-identical
+to what this session wrote; no content was lost or altered. Per
+`aethercore-f6`'s own two options and this session's agreement — leave the
+commit as-is (no history rewrite; this project has never force-rewritten
+pushed history) and record the truth here, rather than a revert+recommit
+pair that would make the log noisier without making it more honest.
+
+**A process note this discovery forces:** this session and `aethercore-f6`
+share one working directory, not independent clones. `git status` before
+staging, and staging explicit paths rather than `-A`, are both now load-bearing
+for BOTH sessions, not just good practice — confirmed as already adopted by
+`aethercore-f6` going forward (their message) and adopted here too, effective
+this commit.
+
+**B13, verified for real, not just read carefully:** the fix that was
+in-flight at `f8e4142` — `scan_services` no longer bakes a transient
+registry-read failure on `Start`/`DelayedAutoStart` into `original_state_json`,
+which `apply()` later replays verbatim into `set_service_start()` on
+`Restore`. Before this fix, one bad read at inventory time could leave a
+real, previously-healthy service disabled forever with no way to recover
+the true original value. Now: if either field fails to read, that service
+is excluded from the manageable inventory (not guessed at) and a warning
+names it. `Type`/`ImagePath`/`LaunchProtected` are unaffected (read-only
+inputs to the protection classification, never written back — a failed
+read there still safely defaults toward MORE protection, as before).
+
+This crate depends on `aethercore-persistence` (§46.13's documented sqlite
+cross-compile gap), so this needed the VM, not just `cargo check`. Verified
+for real this session: workspace synced to the VM via a git archive over
+the Parallels shared network (`10.211.55.2:8791`, since `\\Mac\...` shared
+folders are unreachable from a `prlctl exec` session — a second, narrower
+environmental note beside §46.13's), then, using the exact
+`p36_relbuild.cmd` toolchain (`VsDevCmd -arch=arm64`, `clang-cl`, `LIBCLANG_PATH`):
+
+    cargo check -p aethercore-startup-manager -p aethercore-system-repair
+      -p aethercore-cleaner -p aethercore-driver-hub -p aethercore-desktop --tests
+    EXITCODE=0
+
+**This also retroactively verifies B8, B18, B19, B31** (`system-repair`,
+`cleaner`, `driver-hub`, `desktop`), none of which had ever compiled on a
+real Windows host before this check — only natively on macOS, which cannot
+exercise their `windows_impl.rs`/Windows-specific paths. All five: EXIT 0,
+no new warnings, only pre-existing unrelated ones (deprecated field use in
+`desktop`, dead code in `driver-hub`, unused imports predating this
+session's changes).
+
+## 46.16 Two more peer sessions surfaced real news — verified, not yet acted on
+
+**`AetherCore x86_64 Windows physical qualification`** is running on a
+genuinely separate physical machine (MSI Pulse 16 AI, real x64 silicon, not
+the ARM64 VM), mid-brief on its own P41 physical-qualification work — 6
+commits already on `main` (`52cd0f7`..`8612d7b`, 2026-09-02, verified via
+`git log`/`git branch --contains`, properly merged, not a divergent
+branch). Their session is behind on pulls (their last-known HEAD `779f6ba`
+predates `P46-MASTER.md`'s own commit `7b2edbe`), which is why their world
+and this session's didn't line up until they messaged in — not a real
+conflict, just a stale checkout on their end.
+
+Two things from them, relevant to this brief, **not yet independently
+re-verified by this session — recorded as their claim, with their own
+commit citations, until this session (or a future one) checks the diffs
+directly:**
+
+- **Part 4.A (x64 release pipeline) is substantially done on their box**:
+  full pipeline exit 0 end to end, `wix msi validate` EMPTY/zero-ICE,
+  16-row payload matching ARM64's own count, MSI sha256 recorded. They
+  found and fixed a real defect blocking every x64 build:
+  `installer/wix/Product.wxs` hardcoded the ARM64-only
+  `libomp140.aarch64.dll`; x64/MSVC actually imports `VCOMP140.DLL` (confirmed
+  via `llvm-readobj coff-imports` on the real binaries) — now selected by
+  the WiX preprocessor on `$(sys.BUILDARCH)`, deliberately not a `-d`
+  variable because `check-msi-payload.ps1` derives its allowlist from
+  literal `Source="..."` strings. Their own words: "the remaining delta is
+  really the install/lifecycle half," which is blocked on their end by a
+  declined UAC elevation (their Gate 2), pending their user.
+- **DBT-P42-011 adjacent finding, on real x64 silicon**: offline
+  `aetherctl telemetry-once` returns `cpu.totalBusyBp: 0`,
+  `perProcessorBusyBp: []`, `storage: []`, **with no `collectorFault` on
+  either** — contrasted explicitly with their gpu collector, which
+  correctly returns null *plus* a typed fault. 0% busy across 22 logical
+  processors during an active build is not plausible. They read this as
+  possibly the same provider-window issue (DBT-P42-011) surfacing as
+  absence rather than under-reporting on THIS specific host — stated as a
+  hypothesis, explicitly not theorized further, with the caveat that this
+  is the offline path only; the service-backed path needs their blocked
+  install first.
+
+**Not acted on this session because it isn't this session's call:** they
+were explicit that a handoff isn't decided ("I'm not taking the handoff
+unilaterally... both your items would contend for the same machine and the
+same blocked elevation... surfacing your request to them now"). Relayed to
+Hasan rather than directed. If their Gate 2 unblocks, their own sequencing
+proposal (install lands first, Part 4.A's lifecycle half and a
+service-backed DBT-P42-011 re-measurement come near-free off the back of
+it) is sound and this session has no better one to offer.
+
+## 46.17 NEXT ACTION for a fresh session
 
 Read this table (§46.0) top to bottom for the first row not `DONE`. As of
-this commit, Part 3 is IN PROGRESS. §46.14's final paragraph is the
-authoritative current count: 9 B-sites fixed, 4 reclassified to A, 9
-recorded as needing an explicit wire-contract decision (§46.14's table names
-every one, plus the recommended direction — do not re-derive this, read it),
-**10 still genuinely untriaged: B3, B9, B10, B13, B21, B26, B28, B29, B30,
-B33**. Start with B13 (highest remaining severity per §46.14's own note) or
-B9/B10/B28/B29/B30/B33 (all six share a shape this session already fixed
-once — B19's "thread a warning/Option through an existing flexible field"
-pattern — so they should go quickly). **Before fixing any of them, read the
-FULL surrounding function, not just the census's narrow grep context** —
-§46.12 found 4 of the first 7 sites worked were already-guarded-elsewhere
-false positives. **Also check whether the fix would touch a value already
-exposed on the wire as a plain (non-Option) field** (protocol.rs / a .proto
-message) — if so, record it like B4/B6/B7/B11/B12/B14/B15/B16/B17 rather
-than changing the contract unilaterally. **For any Windows-only fix in a
-crate depending on `aethercore-persistence`, `cargo check --target
-x86_64-pc-windows-msvc` will not work from this Mac** (§46.13 — cc-rs can't
-cross-compile libsqlite3-sys's C source without a real MSVC toolchain); push
-to the VM instead, or rely on the native macOS build for non-`windows_impl.rs`
-code. The 2 findings from §46.4 (service-name and install-path literal
+this commit: **Hasan has decided the 9 wire-contract sites named in
+§46.14's table — has_* companion bool for all nine, one pass,
+tests committed failing first. Do not re-litigate this decision or propose
+the documented-sentinel alternative again; it was considered and rejected
+for a stated reason (re-introduces the exact class of defect P42→P45 fixed
+at the subsystem and field boundaries, now at the wire boundary).** Two
+semantic shapes, not one — get this right per field: for the six timestamp
+sites (B6, B7, B11, B12, B14, B17) `has_*` means "the event happened and
+the time is known"; for the count/byte sites (B4 `card_count`, B15
+`pending_update_count` if it turns out to be wire-copied at all — re-check
+first, §46.14 flagged it as unconfirmed — and B16
+`bytes_downloaded`/`bytes_total`) `has_*` means "the value was determined,"
+**not** "the value is non-zero" — zero cards, zero pending updates, and zero
+bytes transferred so far are all real, valid values that must stay
+representable. If B15 is not actually wire-copied, fix it the B1/B2 way
+(existing flexible companion field) and drop it from this pass rather than
+adding an unnecessary field. After the nine: continue with the 10
+untriaged sites (B3, B9, B10, B21, B26, B28, B29, B30, B33 — B13 is DONE,
+§46.15). B9/B10/B28/B29/B30/B33 likely share B19's shape (thread a
+warning/Option through an existing flexible field) and should go quickly.
+**Before fixing any site, read the FULL surrounding function, not just the
+census's narrow grep context** — §46.12 found 4 of the first 7 sites worked
+were already-guarded-elsewhere false positives. **For any Windows-only fix
+in a crate depending on `aethercore-persistence`, `cargo check --target
+x86_64-pc-windows-msvc` will not work from this Mac** (§46.13/§46.15 — cc-rs
+can't cross-compile libsqlite3-sys's C source, and Parallels shared folders
+are unreachable from `prlctl exec`) — sync a git archive to the VM over the
+shared network instead (§46.15 has the working recipe and the toolchain
+env vars) and use the real toolchain; don't settle for "reviewed by hand"
+when the VM is reachable and the fix is consequential enough to warrant it.
+The 2 findings from §46.4 (service-name and install-path literal
 duplication) are untouched and still open after this. Part 2.A needs an x64
 Windows host, unreachable
 from this Mac session — offer it to (or check progress from) the "AetherCore
