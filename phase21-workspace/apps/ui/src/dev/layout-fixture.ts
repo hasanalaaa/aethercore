@@ -87,7 +87,12 @@ function candidate(i: number): DriverCandidate {
     maxDownloadBytes: 58_200_000,
     targetVersion: '23.60.2.5',
     targetVersionSource: 'DriverPackageMetadata',
-    selectable: true,
+    // The service decides selectable from executable() && WindowsManaged, and
+    // derives selection_policy from it (driver-hub/src/lib.rs:945-955). The
+    // fixture previously marked every candidate selectable with a
+    // `selectionPolicy` of 'UserSelectable' — a value the service never emits —
+    // so the refusal path was never rendered, let alone measured.
+    selectable: i % 3 !== 2,
     selectedByDefault: i === 1,
     recommended: i === 1,
     recommendationReasons: ['NewerThanInstalled', 'SignedByVendor'],
@@ -98,7 +103,9 @@ function candidate(i: number): DriverCandidate {
     officialSource: 'https://update.microsoft.com',
     acquisitionMode: 'Automatic',
     installationMode: 'Automatic',
-    selectionPolicy: 'UserSelectable',
+    selectionPolicy: i % 3 === 2
+      ? (i % 2 ? 'FirmwareManualReview' : 'OfficialVendorUtility')
+      : 'SelectableRecommended',
   });
 }
 

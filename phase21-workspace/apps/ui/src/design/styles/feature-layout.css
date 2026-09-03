@@ -598,8 +598,14 @@ header .sub {
   box-shadow:inset 0 0 0 4px #16222a
 }
 
+/* A refused candidate wears the denied identity: dashed 1.5px where every other
+   border is solid, 8px where every other row is 20px. Dimming alone said only
+   "unavailable", which is indistinguishable from broken. */
 .candidate-row.locked {
-  cursor:default
+  cursor:default;
+  border:1.5px dashed var(--role-denied-dash);
+  border-radius:var(--ac-radius-denied);
+  background:var(--role-denied-wash)
 }
 
 .candidate-row.locked .candidate-check {

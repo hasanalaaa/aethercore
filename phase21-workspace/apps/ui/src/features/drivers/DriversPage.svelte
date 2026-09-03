@@ -9,7 +9,29 @@
     startDriverInstall, startDriverScan as startScan, toggleCandidate, toggleExpanded
   } from './controller';
   import { formatBytes, formatRange, shortDigest, stageTone, stateLabel, targetEvidence, targetLabel } from '../shared';
-  import { localizeMatchQuality, localizeOwnedText, localizeState, t, td, type MessageKey } from '../../lib/i18n';
+  import { hasMessageKey, localizeMatchQuality, localizeOwnedText, localizeState, t, td, type MessageKey } from '../../lib/i18n';
+  import type { DriverCandidate } from '../../lib/contracts';
+  import { PolicyDenied, type PolicyDenial } from '../../design/signature';
+
+  /**
+   * A candidate the service will not let AetherCore install, and the rule behind
+   * it. `selectionPolicy` is the service's own value — `FirmwareManualReview`,
+   * `OfficialVendorUtility` or `ReviewOnly` — never a string composed here, so
+   * what the user reads is what the driver hub actually decided.
+   *
+   * Returns null when the candidate is selectable: there is nothing to refuse,
+   * and the denied element must never appear where nothing was denied.
+   */
+  function refusalFor(candidate: DriverCandidate): PolicyDenial | null {
+    if (candidate.selectable) return null;
+    const rule = candidate.selectionPolicy || 'ReviewOnly';
+    const key = `drivers.selectionPolicy.${rule}`;
+    return {
+      label: hasMessageKey(key) ? td(key as MessageKey, locale) : t('drivers.selectionPolicy.other', locale),
+      rule,
+    };
+  }
+
 
   $: snapshot = $streamState.snapshot;
   $: hub = $streamState.hub;
@@ -148,7 +170,7 @@
           </div>
 
           {#if device.candidates.length}
-            <div class="candidate-list">{#each device.candidates as candidate (candidate.candidateId)}<label class:locked={!candidate.selectable} class:recommended={candidate.recommendationState === 'Recommended'} class="candidate-row"><input type="checkbox" checked={!!selected[candidate.candidateId]} disabled={!candidate.selectable} onchange={(event) => toggleCandidate(candidate.candidateId,(event.currentTarget as HTMLInputElement).checked)}/><span class="candidate-check"></span><div><div class="candidate-title-line"><strong><TechnicalText value={candidate.title}/></strong>{#if candidate.recommendationState === 'Recommended'}<span class="recommend-chip">{t('drivers.recommended',locale)}</span>{:else if candidate.recommendationState === 'Alternative'}<span class="alternative-chip">{t('drivers.alternative',locale)}</span>{/if}</div><p>{localizeMatchQuality(candidate.matchQuality,locale)} · <TechnicalText value={candidate.matchedHardwareId}/></p><p class="authority-line"><span class="source-chip">{candidate.authorityName || candidate.provider || t('drivers.officialSource',locale)}</span> · {td(`drivers.installMode.${candidate.installationMode}` as MessageKey,locale)}</p></div><div class="candidate-meta"><strong>{#if candidate.targetVersion}<TechnicalText value={candidate.targetVersion}/>{:else}{targetLabel(candidate,locale)}{/if}</strong><small>{targetEvidence(candidate,locale)} · {formatRange(candidate.minDownloadBytes,candidate.maxDownloadBytes,locale)}</small><small>{#if candidate.recommendationReasons.length}<TechnicalText value={candidate.recommendationReasons[0]}/>{/if}</small></div>{#if candidate.firmwareManaged}<span class="vendor-chip">{t('drivers.chip.firmwareReview',locale)}</span>{:else if candidate.vendorManaged}<span class="vendor-chip">{t('drivers.chip.officialUtility',locale)}</span>{:else}<span class="windows-chip">{candidate.authorityName || t('drivers.chip.windowsOffer',locale)}</span>{/if}</label>{/each}</div>
+            <div class="candidate-list">{#each device.candidates as candidate (candidate.candidateId)}<label class:locked={!candidate.selectable} class:recommended={candidate.recommendationState === 'Recommended'} class="candidate-row"><input type="checkbox" checked={!!selected[candidate.candidateId]} disabled={!candidate.selectable} onchange={(event) => toggleCandidate(candidate.candidateId,(event.currentTarget as HTMLInputElement).checked)}/><span class="candidate-check"></span><div><div class="candidate-title-line"><strong><TechnicalText value={candidate.title}/></strong>{#if candidate.recommendationState === 'Recommended'}<span class="recommend-chip">{t('drivers.recommended',locale)}</span>{:else if candidate.recommendationState === 'Alternative'}<span class="alternative-chip">{t('drivers.alternative',locale)}</span>{/if}</div><p>{localizeMatchQuality(candidate.matchQuality,locale)} · <TechnicalText value={candidate.matchedHardwareId}/></p><p class="authority-line"><span class="source-chip">{candidate.authorityName || candidate.provider || t('drivers.officialSource',locale)}</span> · {td(`drivers.installMode.${candidate.installationMode}` as MessageKey,locale)}</p></div><div class="candidate-meta"><strong>{#if candidate.targetVersion}<TechnicalText value={candidate.targetVersion}/>{:else}{targetLabel(candidate,locale)}{/if}</strong><small>{targetEvidence(candidate,locale)} · {formatRange(candidate.minDownloadBytes,candidate.maxDownloadBytes,locale)}</small><small>{#if candidate.recommendationReasons.length}<TechnicalText value={candidate.recommendationReasons[0]}/>{/if}</small></div>{#if refusalFor(candidate)}{@const refusal = refusalFor(candidate)}{#if refusal}<PolicyDenied denial={refusal} deniedLabel={t('policy.bandLabel',locale)} />{/if}{:else if candidate.firmwareManaged}<span class="vendor-chip">{t('drivers.chip.firmwareReview',locale)}</span>{:else if candidate.vendorManaged}<span class="vendor-chip">{t('drivers.chip.officialUtility',locale)}</span>{:else}<span class="windows-chip">{candidate.authorityName || t('drivers.chip.windowsOffer',locale)}</span>{/if}</label>{/each}</div>
           {/if}
 
           {#if device.managementAuthorities.length}

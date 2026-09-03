@@ -1679,6 +1679,13 @@ export const enCatalog = {
   'verified.label': 'Verified',
   'insight.uncitableDropped': '{count} suggestion(s) were withheld: they could not cite an observation.',
   'about.capabilitiesEmpty': 'The capability matrix is read from the local service. It appears here once the service has reported one.',
+  'drivers.selectionPolicy.FirmwareManualReview': 'Firmware — manual review required',
+  'drivers.selectionPolicy.OfficialVendorUtility': 'Installed by the vendor utility',
+  'drivers.selectionPolicy.ReviewOnly': 'Offered for review only',
+  'drivers.selectionPolicy.other': 'Not installable from here',
+  'drivers.policyHoldsEyebrow': 'Policy holds',
+  'drivers.policyHoldsTitle': 'Offers AetherCore will not install',
+  'drivers.policyHoldsCopy': 'These updates were found and are shown in full, but AetherCore refuses to install them itself. Each names the rule that refuses it. They are not counted as available updates.',
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;

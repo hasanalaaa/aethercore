@@ -1679,4 +1679,11 @@ export const arCatalog = {
   'verified.label': 'موثّق',
   'insight.uncitableDropped': 'حُجب {count} اقتراح لعدم قدرته على الاستناد إلى رصد.',
   'about.capabilitiesEmpty': 'تُقرأ مصفوفة القدرات من الخدمة المحلية. تظهر هنا بعد أن تُبلّغ الخدمة عنها.',
+  'drivers.selectionPolicy.FirmwareManualReview': 'برنامج ثابت — يتطلب مراجعة يدوية',
+  'drivers.selectionPolicy.OfficialVendorUtility': 'يُثبَّت عبر أداة المصنّع',
+  'drivers.selectionPolicy.ReviewOnly': 'معروض للمراجعة فقط',
+  'drivers.selectionPolicy.other': 'لا يُثبَّت من هنا',
+  'drivers.policyHoldsEyebrow': 'ما يمنعه النظام',
+  'drivers.policyHoldsTitle': 'عروض لن يثبّتها AetherCore',
+  'drivers.policyHoldsCopy': 'عُثر على هذه التحديثات وتُعرض كاملة، لكن AetherCore يرفض تثبيتها بنفسه. كل واحد منها يذكر القاعدة التي ترفضه. ولا تُحتسب ضمن التحديثات المتاحة.',
 } satisfies Record<MessageKey, string>;
