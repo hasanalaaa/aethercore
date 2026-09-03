@@ -7750,3 +7750,269 @@ three targets (macOS native, `x86_64-unknown-linux-gnu`,
 (`cargo test -p aethercore-performance-telemetry --lib --tests`) 18/18
 pass; `cargo build --workspace --tests` EXIT 0; 50-run re-measurement
 1/50, 50/50 pass, identical to the pre-simplification loop.
+
+# PHASE 46 — P46-MASTER: AUDIT, SECURITY REVIEW, FIX, FINISH (2026-09-03)
+
+Session host: the Mac (`/Users/hasanalaaa/dev/aethercore`), `aarch64-apple-darwin`,
+with a running Parallels ARM64 Windows 11 VM reachable via `prlctl exec`
+(confirmed alive this session: `ver` → build 10.0.26200.9168). No x64 Windows
+host is reachable from this session.
+
+**Concurrent-session note, recorded because it changes how this session
+behaved:** `ListAgents` showed a peer interactive session `aethercore-f6`
+(started 3h before this one) and several Remote Control sessions named after
+pieces of this exact brief ("AetherCore x86_64 Windows physical
+qualification", "AetherCore design system modernization", "AetherCore P36
+complete VM qualification"), all on this same machine/account. Messaged
+`aethercore-f6` and the x64-qualification session before the first commit,
+asking for coordination and offering the x64-only items (2.A, 4.A) to the
+latter; neither had replied as of this write-up. `git fetch origin main` was
+re-checked immediately before every push in this session (3 so far) and found
+no foreign commits each time — no collision occurred, but a fresh session
+resuming this ledger should re-check `ListAgents` and `git log origin/main`
+before assuming the state below is still current.
+
+## 46.0 PROGRESS TABLE (authoritative — resume from here)
+
+| item | status | evidence |
+|---|---|---|
+| 0.A debt ledger reconciliation | DONE | §46.1 |
+| 0.B workspace build + test | DONE | §46.2 |
+| 0.C zero/empty census, extended | DONE | §46.3 |
+| 0.D duplicated derivation sweep | DONE | §46.4 — 2 findings |
+| 0.E real-path test coverage | DONE | §46.5 — 1 zero-coverage crate, 7 ignored-only |
+| Part 1 security review | NOT STARTED | — |
+| 2.A DBT-P42-011 x64 bias | NOT STARTED | needs x64 Windows; unreachable this session |
+| 2.B DBT-P42-009/010 decision | NOT STARTED | — |
+| 3.(1) Part 1 privilege breaks | NOT STARTED | depends on Part 1 |
+| 3.(2) every B from 0.C | NOT STARTED | §46.3 has the list, none fixed yet |
+| 3.(3) every count>1 from 0.D | NOT STARTED | §46.4 has the list, none fixed yet |
+| 3.(4) DBT-P42-006 driver-hub | DONE (reclassified) | §46.2 — 18/18 pass, not reproducing |
+| 3.(5) DBT-P42-007 offline_boundary | DONE (reclassified) | §46.2 — cache populated, 1/1 pass |
+| 3.(6) DBT-P43-001 p36_relbuild.cmd | **DONE** | commit `30e4eab` |
+| 3.(7) DBT-P42-013 temp files | NOT STARTED | §46.1 — reproduces worse than documented (36 files, 4 sites) |
+| 3.(8) DBT-P41-001 MSVCP140/VCRUNTIME140 | NOT STARTED | §46.1 — confirmed still open |
+| 3.(9) DBT-P40-003 gd4_live_audit | **DONE** | commit `440683d` |
+| 3.(10) anything else, worst-first | ONGOING | §46.1/§46.4 feed this |
+| 4.A x64 release pipeline | NOT STARTED | needs x64 Windows; unreachable this session |
+| 4.B Gate 5 on ARM64 | NOT STARTED | VM reachability confirmed this session |
+| 4.C icon pipeline | NOT STARTED | — |
+| 4.D Svelte port | NOT STARTED | — |
+| Part 5 owner register | DONE (listed, not attempted) | §46.8 |
+
+## 46.1 PART 0.A — the existing debt ledger, reconciled against current code
+
+Every `DBT-*` open at the end of P45, checked against current code/behaviour
+this session (file:line where static, raw command output where behavioural).
+Ledger items already `CLOSED`/`FIXED` at the end of P45 were not re-litigated
+unless this session's other work touched them.
+
+| id | end-of-P45 state | this session's finding | evidence |
+|---|---|---|---|
+| DBT-P41-001 | open | **still open** | no `MSVCP140`/`VCRUNTIME140` anywhere in `scripts/build-installer.ps1` or `installer/wix/*.wxs` |
+| DBT-P42-006 | "pre-existing" (P42); "no longer reproduces, 18/18" (P44 footnote) | **confirmed again: 0 failures** | this session's `cargo test --workspace`: `aethercore_driver_hub` unittests — 18 passed; 0 failed |
+| DBT-P42-007 | "pre-existing… environment, not code" | **no longer real** — the environment fixed itself | `android_system_properties-0.1.6` now present in `~/.cargo/registry/cache/…` and `~/.cargo/registry/src/…`; `cargo metadata --offline` exits 0 directly; `offline_boundary` test: 1 passed, 0 failed |
+| DBT-P42-009 | open | **still open** | `crates/performance-telemetry/src/windows_impl.rs:423` — `per_processor_busy_bp: Vec::new()`, unconditional |
+| DBT-P42-010 | open | **still open** | `crates/performance-telemetry/src/windows_impl.rs:803-804` — comment confirms DXGI adapter traversal was never implemented |
+| DBT-P42-011 | open (the x64 bias) | unchanged — investigation item, not a code state | carried to Part 2.A |
+| DBT-P42-012 | fixed in code (§44.5), unverified on Windows | **still fixed in code, still unverified end-to-end** — the 6 numbered checks in §44.5 need a real `build-installer.ps1` + WiX run, deferred to §46's Part 4.B so the VM is touched once for the full lifecycle rather than twice | `scripts/build-installer.ps1` unchanged since §44.5 |
+| DBT-P42-013 | open, 11 files in Windows `%TEMP%` | **still open, and worse than documented**: 36 leftover `aethercore-*` files/sidecars in this Mac's `$TMPDIR` after one `cargo test --workspace` run, from 4 distinct never-cleaned sources | `crates/diagnostic-engine/src/lib.rs:578` (`aethercore-diag-{uuid}.db` + `.db-wal`/`.db-shm`, 9 UUIDs × 2 = 18 files), `crates/diagnostics/src/lib.rs:255` (`aethercore-log-rot-test-{pid}`), `crates/diagnostics/src/lib.rs:296` (`aethercore-log-writer-test-{pid}`), `crates/fleet/tests/gd_proofs.rs:167` (`aethercore-gd3-known-hosts-{pid}`, 13 occurrences), `crates/fleet/src/transport.rs:540,598,664` (`aethercore-transport-proof-{}-{}`) |
+| DBT-P43-001 | decision recorded, not executed | **DONE** | commit `30e4eab` — brought into repo at `scripts/p36vm/p36_relbuild.cmd`, phantom `--example ipc_two_client_probe` step removed, verified on the ARM64 VM: exit 0, `Finished` in 4.56s |
+| DBT-P45-004 | open (2% residual tie) | unchanged, no new data this session | carries forward |
+| site #7 (C), `linux_impl.rs::parse_proc_stat_cpu` | left open | unchanged | carries forward, still no debt ID (documented ambiguity, not a defect) |
+| DBT-P40-003 | open (`gd4_live_audit.rs` needed relocating) | **DONE** | commit `440683d` — moved to `tools/gd4-audit`, byte-identical digest before/after (`98de3d20e701c4ac…`) |
+| DBT-P36-004 | RELEASE BLOCKER, owner item | unchanged | §46.8 |
+
+## 46.2 PART 0.B — the whole workspace builds and tests
+
+**`cargo build --release`** (from `phase21-workspace`): `Finished` \`release\`
+profile [optimized] target(s) in **52.26s** (incremental — 52 pre-existing
+`.d` files in `target/release`, only 6 crates recompiled this run). **0
+errors.** 90 individual `warning:`-prefixed lines (74 diagnostics + 16
+per-crate/bin summary lines) across 16 compilation units: `aethercore-ipc`
+(5), `aethercore-hardware-telemetry` (8), `aethercore-driver-hub` (1),
+`aethercore-windows-repair-intelligence` (1), `aethercore-security` (2),
+`aethercore-cleaner` (6), `aethercore-startup-manager` (1),
+`aethercore-driver-backup` (2), `aethercore-timeline-intelligence` (1),
+`aethercore-db-diagnostics` (4), `aethercore-update-broker` (4),
+`aethercore-install-hardener` (4), `aethercore-consent-broker` (3),
+`aethercore-performance-telemetry` (1), `aethercore-maintenance-service`
+(25), `aethercore-desktop` (6) — all dead-code/unused-import/deprecated-use
+class, none are compile errors.
+
+**`cargo test --workspace`: 100% pass, 0 failures**, every "test result:"
+line in the raw log reads `ok` (unit tests, integration test binaries, and
+every doctest across all 54 members). **This contradicts the brief's own
+stated EXPECTED** ("you will find pre-existing failures: `DBT-P42-006`: 6 in
+`aethercore-driver-hub`; `DBT-P42-007`: `offline_boundary`"). Per the brief's
+own rule ("observed differs → stop, record the raw observation verbatim, do
+not theorise"), this is recorded as an observation, not explained away:
+neither the brief's premise nor a "someone silently fixed it" story is
+assumed. Both items were independently re-checked directly (not just read
+off the aggregate count):
+
+- `driver-hub`: `Running unittests src/lib.rs
+  (target/debug/deps/aethercore_driver_hub-…)` → `test result: ok. 18
+  passed; 0 failed`. Matches P44's own footnote ("no longer reproduces —
+  18/18 pass", §44.7) exactly; contradicts P42's original 6-failure report.
+  This session did not touch `driver-hub` source, so this is a re-confirmation
+  of P44's finding, not a new fix.
+- `offline_boundary`: `Running tests/offline_boundary.rs
+  (target/debug/deps/offline_boundary-…)` → `test result: ok. 1 passed; 0
+  failed`. Root cause checked directly rather than assumed: `find
+  ~/.cargo/registry -iname "*android_system_properties*"` now finds both the
+  `.crate` file and extracted `src/` for v0.1.6 in the local cache; `cargo
+  metadata --offline` run standalone from `phase21-workspace` exits 0. The
+  registry cache gap DBT-P42-007 was recorded against no longer exists on
+  this machine — most likely filled incidentally by the non-offline `cargo`
+  invocations across P43–P45 (each of which built/tested against the full
+  dependency graph at least once), not by any deliberate action.
+
+Neither is "fixed" in the sense of a code change — both are reclassified from
+"pre-existing failure" to "not currently reproducing," with the mechanism
+named for one (`P42-007`) and cross-session-confirmed-unreproducing for the
+other (`P42-006`, cause still not chased, per P44's own note not to read
+that as newly fixed).
+
+## 46.3 PART 0.C — the zero/empty census, extended beyond telemetry
+
+Dispatched as a background investigation (fork) over the whole workspace
+excluding `crates/performance-telemetry` (already fully censused in §45.1's
+17-site table). Raw hit counts gathered by direct grep before classification,
+`target/` and test-only paths excluded: `.unwrap_or(0)` 65, `.unwrap_or_default()`
+163, `unwrap_or(Vec::new())` 0, `return 0`-shape 2, `=> 0`-shape 7, `.ok();` 6
+— 243 raw hits. *(Fork result pending at the time this ledger was first
+committed; classification table to follow in the next commit to this
+section — do not read the absence of an A/B/C table here as zero findings.)*
+
+## 46.4 PART 0.D — duplicated derivation sweep
+
+| decided value | deciders found | sites | verdict |
+|---|---|---|---|
+| platform tag | 1 | `crates/security-audit/src/lib.rs:113` (`platform_tag()`) | EXPECTED met |
+| Windows SKU | 1 | `crates/platform-capabilities/src/lib.rs:148` (`current_windows_sku()`), built on the pure classifier at `:107` | EXPECTED met |
+| product version | 1 | `scripts/Get-ProductVersion.ps1` — every PS build script's sourcing from it is statically enforced by `scripts/static_validate.py`; `Product.wxs`/`Bundle.wxs` consume it only as the build-time `$(var.ProductVersion)` parameter; `tauri.conf.json` carries no independent version field | EXPECTED met |
+| pipe name | 1 | `crates/ipc/src/lib.rs:9` (`PIPE_NAME`), wrapped (not duplicated) by `configured_pipe_name()` | EXPECTED met |
+| **service name** | **3, plus 2 non-derived duplicates of the principal string** | `crates/ipc/src/windows_impl.rs:127` (`TRUSTED_SERVICE_NAME`), `apps/install-hardener/src/main.rs:9` (`SERVICE_NAME`), `services/maintenance-service/src/main.rs:47` (`SERVICE_NAME`) — all independently = `"AetherCoreMaintenance"`; plus `crates/ipc/src/windows_impl.rs:128` and `apps/install-hardener/src/main.rs:10`, each separately hardcoding `"NT SERVICE\AetherCoreMaintenance"` instead of `format!(r"NT SERVICE\{NAME}")` | **FINDING** — count above 1, agreeing today, free to drift silently |
+| model hash | 1 | `crates/intelligence-core/src/llama.rs:22` (`verify_model_hash`) | EXPECTED met |
+| capability `native` status | 1 per platform/SKU table (`windows_table`, `windows_server_table`, `macos_table`, `linux_table`, all in `crates/platform-capabilities/src/lib.rs`), unified through `available_on`/`available_on_windows_sku`, reconciled against real measurement via `reconcile()`/`matrix_for_current_platform_observed` | EXPECTED met — verified, not assumed: the apparent second Windows entry point (`available_on(Windows,_)`, SKU-blind, vs. `available_on_windows_sku`, SKU-aware) is a documented, intentional split (frozen workstation-baseline caller vs. SKU-aware caller), not an accidental duplicate |
+| **install path** — the literal product/folder name `"AetherCore"` (install dir, data dir, and the update protocol's `product_id` field) | **23 independent literal occurrences across 9 files in 7 crates/apps, 0 shared constant** | `crates/security/src/lib.rs:692`; `crates/release-authority/src/lib.rs:122,333,527,531,533,534,536` (7, of which 5 are in its own `#[cfg(test)]` fixtures); `crates/pc-intelligence/src/normalize.rs:160`; `apps/install-hardener/src/main.rs:57,95,96`; `apps/aetherctl/src/offline.rs:80`; `apps/aetherctl/src/transport.rs:86,123`; `apps/aetherctl/src/fleet.rs:41,79`; `apps/desktop/src/main.rs:1216,1391,1704,2812`; `services/maintenance-service/src/support.rs:20`; `services/maintenance-service/src/main.rs:250` | **FINDING** — count above 1; no `PRODUCT_NAME`-style constant exists anywhere in the workspace (including `crates/contracts`, the natural home — `crates/ipc`'s own `PIPE_NAME` already demonstrates the pattern this value should follow) |
+
+Excluded from the install-path finding: the `ProgramFiles`/`ProgramFiles(x86)`/
+`ProgramW6432` environment-variable reads in `crates/gpu-policy`,
+`apps/install-hardener`, `apps/desktop` — querying the OS per-process for its
+own canonical path is correct, not a duplicated decision.
+
+Both findings feed Part 3.(3) — neither is fixed yet.
+
+## 46.5 PART 0.E — real-path test coverage
+
+13 `*_impl.rs` files, 12 crates.
+
+| crate (impl file) | real-path test exists | auto-run (not `#[ignore]`) | runnable from this session |
+|---|---|---|---|
+| cleaner (windows) | yes — `phase9_tests` in the impl file itself (real, not mocked, file-identity ops) + `tests/live_scan.rs` | `phase9_tests`: yes; `live_scan.rs`: no | no (`cfg(windows)`) |
+| crash-diagnostics (windows) | **no — zero real-path coverage anywhere.** Its only 3 tests (`filetime_conversion_is_saturating_and_epoch_aware`, `render_caps_are_explicit_and_small`, `render_property_count_is_rejected_before_allocation_when_pathological`) are pure-logic; crate has no `tests/` dir | n/a | n/a |
+| driver-backup (windows) | only `tests/live_backup.rs` | no | no |
+| hardware-telemetry (windows) | only 1 test, in `lib.rs` (`live_storage_and_memory_collection_is_read_only`) | no | no |
+| ipc (windows) | `tests/windows_roundtrip.rs` | **yes** | no (needs Windows) |
+| ipc (unix) | `tests/unix_adversarial.rs`, 8 tests | **yes** | **yes — runs here** |
+| restore-point (windows) | only `tests/live_restore.rs` | no | no |
+| startup-manager (windows) | only `live_inventory_is_read_only`; its 4 other tests are pure logic | no | no |
+| system-repair (windows) | only `tests/live_assessment.rs` | no | no |
+| windows-pnp (windows) | only `tests/live_inventory.rs` | no | no |
+| windows-update (windows) | only `tests/live_wua.rs` | no | no |
+| performance-telemetry (windows) | `tests/dbt_p41_002.rs`, 7 tests, constructs `WindowsPerfPlatform` 3× | **yes** | no (needs Windows) — exercised for real on x64 (§42) and ARM64 (§43) in prior sessions |
+| performance-telemetry (macos) | `tests/native_providers.rs`, `MacosPerfPlatform::new()` real | **yes** | **yes — runs here** |
+| performance-telemetry (linux) | `native_providers.rs`'s Linux section is pure-parser-against-fixture only (its own doc comment says so); the live-sampling path is `cfg`-gated to real Linux and has never executed in this project's history | — | no — no Linux host has ever been available to any session (matches the pre-existing, still-open `QD-027-002`) |
+
+**Zero-coverage crate: `crash-diagnostics`** — the answer to "what is the
+shape of the next total failure."
+
+**Exists-but-never-exercised (7 crates):** `driver-backup`,
+`hardware-telemetry`, `restore-point`, `startup-manager`, `system-repair`,
+`windows-pnp`, `windows-update` each have exactly one real-path test, and
+every one is `#[ignore]`d — meaning a plain `cargo test`, even run as admin
+on the correct Windows host, exercises none of them. Coverage exists in the
+repository but not in the gate anyone actually runs — the same shape as
+defect pattern #3, one step short of what happened to `ipc` before Phase 36.
+
+**Best covered:** `ipc` (both sides real and non-ignored — the crate this
+brief names as the historical example) and `performance-telemetry`
+(`windows_impl.rs`/`macos_impl.rs` both real and non-ignored; `linux_impl.rs`
+is the one gap, pre-existing and already tracked, not new).
+
+## 46.6 Part-3 items closed this session (out of strict Part-0-first order)
+
+Both were already fully diagnosed and decision-recorded by prior sessions
+(§44.6 and the P40 note respectively) with nothing left but execution; doing
+them now, opportunistically, while the ARM64 VM was already warm for
+verification, cost nothing the Part-0 audit needed and left two fewer rows
+in Part 3 later. Neither involved a judgment call the audit was supposed to
+inform.
+
+- **DBT-P43-001, CLOSED.** `p36_relbuild.cmd` copied off the VM
+  (`C:\AetherCore-P36\logs\p36_relbuild.cmd`, verified present, 893 bytes)
+  into `scripts/p36vm/p36_relbuild.cmd`; the phantom
+  `cargo build --release -p aethercore-ipc --example ipc_two_client_probe`
+  step removed after independently re-confirming (not just trusting §43.9's
+  prose) that no `examples/` dir, `[[example]]` entry, or reference to that
+  name exists anywhere in `aethercore-ipc`. Verified for real on the VM: the
+  fixed script pushed via base64, executed against the existing
+  `C:\AetherCore-P36\workspace\AetherCore-Phase35-Master-Delivery` checkout,
+  `Finished` \`release\` profile in 4.56s, `EXITCODE=0`. The original
+  VM-only copy is untouched (not retired — its replacement is proven but the
+  brief's own prior guidance says don't delete the fallback first). Commit
+  `30e4eab`.
+- **DBT-P40-003, CLOSED.** `crates/security-audit/examples/gd4_live_audit.rs`
+  was the fourth occurrence of a three-times-already-fixed class (`DBT-P36-001`,
+  `DBT-P36-008`, `DBT-P40-001`/`tools/p39-probes`): a manual macOS-only probe
+  living inside a shipping crate's `examples/`, where it has no Windows build
+  path but could still be swept into a Windows payload check. `git mv`'d to
+  `tools/gd4-audit/src/gd4_live_audit.rs` as a new workspace member, same
+  shape as `tools/p39-probes`/`tools/ga-probe`; no source change needed.
+  Verified: `cargo check --workspace` clean after the move, and
+  `cargo run -p aethercore-gd4-audit --bin gd4_live_audit` produces the
+  byte-identical digest (`98de3d20e701c4ac…`) before and after — proving
+  behavior-preserving, not just compiling. Commit `440683d`.
+
+## 46.7 What this session could not reach
+
+- **x64 Windows** (Part 2.A, Part 4.A) — no host reachable from this Mac
+  session; the ARM64 VM is a different machine from the x64 box the brief's
+  header names separately. Messaged the "AetherCore x86_64 Windows physical
+  qualification" peer session to offer these two items; no reply yet.
+- **Part 1 security review, Part 2.B decision, the 0.C classification's
+  fixes, the 0.D fixes, DBT-P42-013/DBT-P41-001 fixes, Part 4.B/C/D** — not
+  started this session; see §46.0.
+
+## 46.8 PART 5 — the owner register (listed only, not attempted, unchanged from the brief)
+
+- The application icon artwork — `DBT-P36-004`, RELEASE BLOCKER. Committed
+  icon is a placeholder.
+- An Authenticode code-signing certificate. `release.yml` throws if
+  `AETHERCORE_CODESIGN_THUMBPRINT` is absent — fails closed, not silently.
+  ~$129/yr, SSL.com or Certum cloud-HSM. Not EV (no SmartScreen benefit since
+  Aug 2024).
+- The UAC consent click at the Parallels console (`PromptOnSecureDesktop=0`
+  on that VM, non-default, must travel with any UAC finding).
+- Gate 4 (driver install/rollback) — needs the recovery media boot-tested
+  and a printer/HID/USB-peripheral driver nominated (never storage/chipset/GPU).
+- Windows Server runtime qualification — needs a Server 2025 evaluation VM.
+- A production update endpoint, production key/HSM, dependency freeze from a
+  trusted workstation.
+- Payment and distribution — every MoR checked excludes Iraq; Payoneer
+  unresolved and unattempted; Microsoft Store won't solve signing for a
+  LocalSystem service.
+- Licensing architecture is decided (`docs/adr/ADR-LICENSING.md`); nothing
+  built yet, none started this session.
+
+## 46.9 NEXT ACTION for a fresh session
+
+Read this table (§46.0) top to bottom for the first row not `DONE`. As of
+this commit that is **§46.3's 0.C classification** (fork dispatched, pending)
+— check for a follow-up commit to this section first; if none landed, either
+resume that investigation or proceed to Part 1 (security review), which has
+no dependency on 0.C finishing. Before doing anything else: re-check
+`ListAgents` for `aethercore-f6` and the x64-qualification peer session, and
+`git fetch origin main`, since neither had replied as of this write-up.
