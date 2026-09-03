@@ -7785,7 +7785,7 @@ before assuming the state below is still current.
 | 2.A DBT-P42-011 x64 bias | NOT STARTED | needs x64 Windows; unreachable this session |
 | 2.B DBT-P42-009/010 decision | NOT STARTED | — |
 | 3.(1) Part 1 privilege breaks | NOT STARTED | depends on Part 1 |
-| 3.(2) every B from 0.C | NOT STARTED | §46.3 has the list, none fixed yet |
+| 3.(2) every B from 0.C | IN PROGRESS | §46.12 — 3 fixed, 4 reclassified A, 27 remain |
 | 3.(3) every count>1 from 0.D | NOT STARTED | §46.4 has the list, none fixed yet |
 | 3.(4) DBT-P42-006 driver-hub | DONE (reclassified) | §46.2 — 18/18 pass, not reproducing |
 | 3.(5) DBT-P42-007 offline_boundary | DONE (reclassified) | §46.2 — cache populated, 1/1 pass |
@@ -8309,19 +8309,53 @@ security-adjacent code):
 None of these four are stop-everything findings; they carry into Part 3 at
 their existing 0.C/0.D priority.
 
-## 46.12 NEXT ACTION for a fresh session
+## 46.12 PART 3 — first batch of B-site work, and a correction to §46.3's own count
+
+Worked 7 of the 34 §46.3 B-sites this batch, each with its own
+test-committed-failing-then-fix-then-measure commit pair (or single commit
+for a reclassification, where "committed failing" doesn't apply — there was
+no fix to precede). **3 fixed, 4 reclassified to A** after reading wider
+context than the original census did. Commits, in order:
+`521fb87`/`6122f39` (B20), `bc1bd47`/`097f9ba` (B25), `095fa9c`/`7b07718`
+(B2).
+
+**A methodological correction, stated plainly rather than buried in a diff:**
+the original §46.3 census was done from narrow (~8-line) grep context
+windows. Re-reading the FULL function before fixing four of these sites
+found nearby code that already made the "failure" unreachable — the census
+undercounted how far it needed to read, not the class of pattern itself.
+Every remaining un-fixed B-site in §46.3 should get this same wider-context
+check before a fix is written, not just before this note existed.
+
+| id | original call | this session's finding |
+|---|---|---|
+| **B20** | `security-audit/sshd.rs` fail-open/closed inconsistency | **Confirmed real, FIXED.** Both rules now fail closed on unparseable input. 4 tests added (file had zero prior coverage) |
+| **B25** | `release-authority::compare_versions` malformed segment → 0 | **Confirmed latent but not currently reachable** — traced both production callers, both already gate on `valid_version()` first. **FIXED anyway**, defense-in-depth: `debug_assert!` now makes the precondition loud instead of silently relying on every future caller remembering it. Also found while tracing: `security-audit::vulnjoin` has an independent, better-designed version comparator under the same function name — not the same bug, not folded in, left for a future session's judgment |
+| **B2** | `hardware-telemetry::classify_storage` SMART counters → 0 | **Confirmed real, FIXED.** No nearby guard existed for this one. `windows_health_status`'s independent Unhealthy/Warning check already caught the worst case regardless, narrowing severity but not eliminating the finding: a Healthy-but-uncheckable disk got the identical summary as a Healthy-and-confirmed-clean one |
+| **B22** | `persistence/export.rs::canonical` — `serde_json::to_string(&Value)` failure → "" | **RECLASSIFIED TO A.** `serde_json::Number::from_f64` returns `None` for NaN/Infinity (verified empirically, not assumed) — a `Value` containing them cannot be constructed through the safe API this codebase uses anywhere, and no f64/f32 field exists on the structs in this chain. `to_string(&Value)` is infallible in practice here. No fix applied — there is nothing to fix |
+| **B24** | `intelligence-core/engine.rs` fallback-engine failure → empty | **RECLASSIFIED TO A.** The only concrete `LocalReasoner` wired into `dispatch()`, `DeterministicFallbackReasoner::infer`, has zero `Err(...)` returns anywhere in its body — pure rule evaluation over an already-typed pack, no I/O. The trait allows a future implementation to fail; today's does not. No logging infrastructure exists in this crate to hook a warning into without adding new machinery for a currently-unreachable path, so nothing was added — the reachability finding itself is the record |
+| **B27** | `aetherctl/offline.rs::keys_fingerprint` malformed hex → 0 | **RECLASSIFIED TO A.** `offline.rs:629`, four lines above the `.unwrap_or(0)` calls, already validates every byte of the 64-char string is an ASCII hex digit before the parse loop runs — the loop the census flagged cannot see a non-hex character. Missed in the original census because the narrow context window started at the closing `});` of that exact check without showing the condition itself |
+| **B32** | `maintenance-service/router.rs` count/payload serialize-failure mismatch | **RECLASSIFIED TO A**, same reasoning as B22 — `ExportEnvelope`/`Vec<SecFinding>` contain only `String`/numeric/enum/`Vec`/`Option`/`Value` fields, no non-string-keyed `HashMap`, no raw `f32`/`f64`. Both `serde_json::to_vec` calls are infallible in practice |
+
+**Running total after this batch:** 3 FIXED, 4 reclassified A (not defects),
+**27 still open** in §46.3's original B-list, unchanged from the census
+until worked. §46.0 and this session's next-action note updated below.
+
+## 46.13 NEXT ACTION for a fresh session
 
 Read this table (§46.0) top to bottom for the first row not `DONE`. As of
-this commit that is **Part 2.A, the DBT-P42-011 x64 bias investigation** —
-0.A-0.E and Part 1 are all DONE (§46.1-§46.5, §46.11). Part 1 found **no
-privilege-boundary break**; its 4 findings are folded into the existing
-0.C/0.D worklist, not a separate track. Part 2.A needs an x64 Windows host,
-unreachable from this Mac session — offer it to (or check progress from) the
-"AetherCore x86_64 Windows physical qualification" peer session before
-declaring it BLOCKED-OWNER; if still unreachable, move to Part 3 and work
-the 34 B-sites (§46.3) and 2 findings (§46.4) instead, worst-consequence
-first per the brief's own fallback ordering. Before doing anything else:
-re-check `ListAgents` for `aethercore-f6` and the x64-qualification peer
-session, and `git fetch origin main` — both had replied by the time this
-section was last updated (§46.9/§46.10), but a fresh session should
-re-verify rather than trust this note.
+this commit, Part 3 is IN PROGRESS: 27 of the original 34 B-sites in §46.3
+remain (3 fixed, 4 reclassified to A — see §46.12's table for exactly
+which). **Before fixing any of the remaining 27, read the FULL surrounding
+function, not just the census's narrow grep context** — §46.12 found 4 of
+the first 7 sites worked were already-guarded-elsewhere false positives, and
+there is no reason to expect the remaining 27 are cleaner. The 2 findings
+from §46.4 (service-name and install-path literal duplication) are untouched
+and still open after this. Part 2.A needs an x64 Windows host, unreachable
+from this Mac session — offer it to (or check progress from) the "AetherCore
+x86_64 Windows physical qualification" peer session before declaring it
+BLOCKED-OWNER. Part 1 is DONE (§46.11, no privilege-boundary break). Before
+doing anything else: re-check `ListAgents` for `aethercore-f6` and the
+x64-qualification peer session, and `git fetch origin main` — both had
+replied by the time this section was last updated (§46.9/§46.10), but a
+fresh session should re-verify rather than trust this note.
