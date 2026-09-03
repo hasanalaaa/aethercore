@@ -7084,3 +7084,92 @@ own instruction (no single end-of-session commit): §44.1/44.2 in one commit
 (tests), §44.3 in one commit (the fix), §44.4 in one commit (measurement),
 §44.5 in one commit (vcomp140.dll), §44.6 in one commit (the recipe
 decision), this report in the commit that follows.
+
+# PHASE 45 — DBT-P44-003, and the class it belongs to (2026-09-03)
+
+Brief: `docs/phase41/P45-FIELD-CONTRACT.md`. Runs on the Mac, this repo.
+
+## 45.0 CONFIRMATION — the ~1-in-10 zeros ARE the `total == 0` branch
+
+Before touching `busy_bp_from_ticks`, its `total == 0` branch
+(`macos_impl.rs:118` at the time of this diagnosis, P44's numbering) was
+instrumented with `eprintln!` — one line printed on every call showing
+`busy_delta`/`total_delta` and the four raw tick fields of both `previous`
+and `current`, plus a second line specifically when `total == 0` fired. This
+was done against the **pristine P44 source** (`git stash` held this
+session's not-yet-applied fix aside during the run, `git stash pop`
+afterward — no fix code was active while confirming).
+
+`cargo test --test dbt_p42_005 -- macos::real_macos_provider_reports_non_zero_cpu_under_load --nocapture`,
+run 40 times as 40 independent process invocations (not 40 loop iterations
+inside one process, so no shared state or JIT/cache warm-up could explain a
+pattern):
+
+    passes: 33/40    fails: 7/40   (17.5% — consistent with "~1-in-10",
+                                     both are small-sample rates of the same
+                                     underlying event)
+
+**Every one of the 7 failures shows `busy_delta=0 total_delta=0` with
+`prev` and `current` byte-for-byte identical**, and the `total==0 branch
+fired` line present. Zero of the 7 failures show any other pattern (e.g. a
+nonzero total with a genuinely-idle busy delta, which would indicate a
+different defect). Two representative raw lines:
+
+    P45_DIAG busy_delta=0 total_delta=0 prev=(u78534960 s54889865 i893859367 n0) cur=(u78534960 s54889865 i893859367 n0)
+    P45_DIAG total==0 branch fired
+
+    P45_DIAG busy_delta=0 total_delta=0 prev=(u78548499 s54890329 i893859602 n0) cur=(u78548499 s54890329 i893859602 n0)
+    P45_DIAG total==0 branch fired
+
+**Confirmed: the brief's premise holds.** `host_statistics64(HOST_CPU_LOAD_INFO)`
+returned byte-for-byte identical tick counters across the ~120ms window
+between `sample_cpu`'s two observations, on this real Apple Silicon host,
+under guaranteed full-core load, at roughly this rate. *Why* the counters
+sometimes fail to advance in 120ms is still not established (mach's
+internal update cadence for this counter vs. this harness's window remains
+the open question saved for the record below) — but *that* they fail to
+advance, and that this is exactly what the zero came from, is now measured,
+not assumed. The diagnostic `eprintln!`s were removed before any fix code
+was written; `git diff` against this commit's parent touches no source
+files, matching §20.1.10/§44's own "diagnosis only" commits.
+
+## 45.1 PART 1 — the census
+
+Full sweep of `macos_impl.rs`, `linux_impl.rs`, `windows_impl.rs` (current
+`main`, i.e. post-P42/P43/P44) for every place a failure, absence, or
+degenerate case becomes a numeric zero or empty collection — starting from
+the brief's seven starter sites, extended by grepping every
+`.unwrap_or(0)` / `.unwrap_or(0.0)` / `== 0` / `Vec::new()` / silent
+`continue`/`break` in the three files and reading each one in context.
+File:line below is pre-fix (this session's starting point, `main` at the
+commit before this phase).
+
+| # | site | class | why |
+|---|---|---|---|
+| 1 | `macos_impl.rs:118` `busy_bp_from_ticks`, `total == 0 → return 0` | **B** | §45.0: confirmed root cause of DBT-P44-003. Tick counters identical across the sampling window → "no window observed", published as a confident 0% |
+| 2 | `macos_impl.rs:176-178` `sample_cpu`, `load_average().unwrap_or(0)` → `processorQueueLengthX100` | **B** | `getloadavg()` failing is silently reported as queue length 0 (an idle machine), with no fault — same `.unwrap_or(0)` shape named at `windows_impl.rs:386` |
+| 3 | `macos_impl.rs:335` `sample_storage`, `total == 0` (statfs reports zero blocks) | **A** (already fixed) | §44.3 already converted this to a named `storage` Degraded fault (`macos_impl.rs:338-346` in the pre-fix tree). Left as-is |
+| 4 | `macos_impl.rs:257` `sample_memory`, `!memsize_ok \|\| memsize == 0` | **A** (already fixed) | Already pushes a `memory.counters` `ProviderFailure` fault (§42/§44 pattern); `load_percent` correctly falls back to `0` only inside the `memsize > 0` guard |
+| 5 | `macos_impl.rs:429-432` `sample_process_top`, `got != size_of::<proc_taskinfo>() → continue` | **A** | Documented, deliberate: a pid vanishing between `proc_listpids` and `proc_pidinfo` is population churn, not a provider fault; the whole-collector empty case is separately faulted via `Reading::from_collection` |
+| 6 | `linux_impl.rs:104` `busy_bp_from_proc`, `total == 0 → return 0` | **B** | Identical shape to #1, per the brief. Not independently measured on Linux this session (no Linux host) — fixed on the same reasoning and the same pure-function contract |
+| 7 | `linux_impl.rs:91-94` `parse_proc_stat_cpu`, `num(4..7).unwrap_or(0)` for iowait/irq/softirq/steal | **C** | Cannot tell from the code whether a missing field is a genuinely-absent optional column (pre-2.6.24 kernels lack `steal`; even older kernels lack `iowait`/`irq`/`softirq`) or a malformed value — both paths return `None` from the same `parse::<u64>().ok()`. Left as-is; flagged rather than guessed at, per the brief |
+| 8 | `linux_impl.rs:338` `sample_storage`, `active_time_bp: 0` (permanent — diskstats has no capacity field) | **A** (already fixed) | Already named via the `storage.rates` Degraded fault (§44.3); a real, permanent, honestly-labeled gap, not a swallowed failure |
+| 9 | `linux_impl.rs:472-509` `sample_power` / `scan_thermal_zones` | **A** (already fixed) | DBT-P44-002 closed this: the hottest zone is now the evidence; absence degrades typed |
+| 10 | `windows_impl.rs:167-183` (pre-P42 numbering) `read_u64`/PDH offset misread | **A** (already fixed) | DBT-P41-002 mechanism 1, closed in §42.2 |
+| 11 | `windows_impl.rs` `sample_cpu` secondary counters (DPC/ISR, context switches, queue length) | **A** (already fixed) | §42.2's `cpu.counters` Degraded-fault pattern, already in place |
+| 12 | `windows_impl.rs` `sample_memory` secondary counters | **A** (already fixed) | §42.2's `memory.counters` Degraded-fault pattern, already in place |
+| 13 | `windows_impl.rs:714,723,724,725` (brief's numbering) `sample_storage`, `queue_depth_x100`/`avg_transfer_latency_us`/`read_bytes_per_sec`/`write_bytes_per_sec` via `.unwrap_or(0)` | **B** | The device's primary counter (`active_time_bp`) is gated by `?` — a device that can't prove itself is dropped. The four *secondary* counters were not: a transient PDH read failure on any of them silently became `0` with **no fault**, inconsistent with this same file's own `cpu.counters`/`memory.counters` discipline two functions up, and inconsistent with its own comment at (pre-fix) `:386` naming this exact pattern |
+| 14 | `windows_impl.rs` `sample_power`, `has_temperature`/`temperature_c` | **B** — found in this session's own sweep, not in the brief's starter list | No line of this file has ever written these fields (`CallNtPowerInformation` exposes clock/throttle state, not raw temperature). `power` was reported fully measured (no fault) regardless — the same "measured subsystem, permanently-zero sub-field, no partial fault" shape as macOS/Linux's `cpu.counters`/`storage.rates`, just not yet named on Windows |
+| 15 | `windows_impl.rs` `sample_gpu`, `expand_wildcard_path`'s `needed == 0` | **A** (already fixed) | DBT-P42-001, closed in §42.2 — returns a typed `Err` with the PDH return code |
+| 16 | `windows_impl.rs` `sample_process_top` | **A** (already fixed) | §20.1.1 site 7, closed in §42.2 — `Reading::unavailable(NotCollected)` |
+| 17 | parser skip sites: `macos_impl.rs` process-list `continue`s, `linux_impl.rs` `parse_proc_meminfo`/`parse_diskstats` malformed-row `continue`s, `windows_impl.rs` `expand_wildcard_path`/`sample_storage` instance-parsing `continue`/`break` | **A** | Every one skips one malformed/aggregate/overflow *row*, not a measurement; the enclosing collector's own empty-collection case is separately faulted via `Reading::from_collection`. Checked individually, not assumed |
+
+**Count: 17 sites examined, 4 new B (1, 2, 6, 13, 14 — five, see below), 9
+already-A (fixed by P42/P44), 1 C, 3 A/deliberate-by-design.**
+
+Correction to the header count above, stated precisely: **B sites found = 5**
+(macOS tick tie, macOS queue-length swallow, Linux tick tie, Windows storage
+secondary counters, Windows power temperature). Sites 3/4/8/9/10/11/12/15/16
+were already **B, and already fixed**, by P42/P44 before this session —
+recorded as **A** above because they are correct in the current tree, not
+because they were never a defect; §45.2 does not touch them again.
