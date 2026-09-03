@@ -46,17 +46,17 @@ wins.
 Commit and push after every one. Never in batches.
 
 ### 1 — target established
-- [ ] 1.1 shell source extracted, `DESIGN.md` read in full, this list committed
+- [x] 1.1 shell source extracted, `DESIGN.md` read in full, this list committed
 
 ### 2 — tokens, before any component
-- [ ] 2.1 six colour roles + surfaces + type/space/radius scales into `design-tokens.css`, both themes
-- [ ] 2.2 IBM Plex Sans Arabic bundled locally and subset; no CDN, no system fallback for Arabic
+- [x] 2.1 six colour roles + surfaces + type/space/radius scales into `design-tokens.css`, both themes
+- [x] 2.2 IBM Plex Sans Arabic bundled locally and subset; no CDN, no system fallback for Arabic
 
 ### 3 — the four signature elements, before the screens
-- [ ] 3.1 denied-by-policy — violet `#AD4EBC`, 1.5px dashed, 8px radius, `block` icon, names its rule in monospace, never error styling
-- [ ] 3.2 evidence chip — expands to the raw observation; typed so an uncitable insight cannot be rendered
-- [ ] 3.3 honest empty state — "Not collected yet" / "لم تُجمع بعد", `—` at rest, never a fake zero
-- [ ] 3.4 persistent policy band — always visible, lists the rules currently refusing
+- [x] 3.1 denied-by-policy — violet `#AD4EBC`, 1.5px dashed, 8px radius, `block` icon, names its rule in monospace, never error styling
+- [x] 3.2 evidence chip — expands to the raw observation; typed so an uncitable insight cannot be rendered
+- [x] 3.3 honest empty state — "Not collected yet" / "لم تُجمع بعد", `—` at rest, never a fake zero
+- [x] 3.4 persistent policy band — always visible, lists the rules currently refusing
 
 ### 4 — the screens, one commit each
 - [ ] 4.1 Overview, empty state first
