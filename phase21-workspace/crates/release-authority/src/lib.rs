@@ -504,7 +504,19 @@ fn allowed_transition(from: UpdateState, to: UpdateState) -> bool {
     matches!((from, to), (Discovered, Validated) | (Validated, Downloading) | (Downloading, Downloaded) | (Downloading, Cancelled) | (Downloaded, Verified) | (Downloaded, Failed) | (Verified, Staged) | (Verified, Failed) | (Staged, ReadyToApply) | (Staged, Cancelled) | (ReadyToApply, Applying) | (Applying, Applied) | (Applying, RebootRequired) | (Applying, RollbackRequired) | (Applying, Failed) | (RollbackRequired, RollingBack) | (RollingBack, RolledBack) | (RollingBack, Failed) | (Failed, Discovered) | (Cancelled, Discovered))
 }
 
+/// Three-way compare of two dot-separated numeric version strings.
+///
+/// DBT-P46-B25: both current callers (`verify_update_metadata`,
+/// `verify_rollback_authorization`) already reject a malformed version via
+/// `valid_version()` before calling this — and they must, because no single
+/// silent fallback for a non-numeric segment is safe for both: one call site
+/// needs a malformed value to sort low (so it can never look like a valid
+/// upgrade), the other needs it to sort high (so it can never look like a
+/// valid, strictly-older rollback target). Rather than pick one and leave the
+/// other's caller exposed if it forgets to validate, the precondition is
+/// enforced here too.
 pub fn compare_versions(a: &str, b: &str) -> i8 {
+    debug_assert!(valid_version(a) && valid_version(b), "compare_versions requires both inputs to already pass valid_version() — got {a:?}, {b:?}");
     let parse = |v: &str| -> Vec<u64> {
         v.split('.').map(|part| part.parse::<u64>().unwrap_or(0)).collect()
     };
