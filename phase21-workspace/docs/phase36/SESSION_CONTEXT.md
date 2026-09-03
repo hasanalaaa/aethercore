@@ -7781,7 +7781,7 @@ before assuming the state below is still current.
 | 0.C zero/empty census, extended | DONE | §46.3 — 232 hits, ~70 conceptual sites, 34 B / 8 C, full worklist |
 | 0.D duplicated derivation sweep | DONE | §46.4 — 2 findings |
 | 0.E real-path test coverage | DONE | §46.5 — 1 zero-coverage crate, 7 ignored-only |
-| Part 1 security review | NOT STARTED | — |
+| Part 1 security review | DONE | §46.11 — no privilege-boundary break; 4 findings folded into 0.C/0.D |
 | 2.A DBT-P42-011 x64 bias | NOT STARTED | needs x64 Windows; unreachable this session |
 | 2.B DBT-P42-009/010 decision | NOT STARTED | — |
 | 3.(1) Part 1 privilege breaks | NOT STARTED | depends on Part 1 |
@@ -8108,9 +8108,11 @@ inform.
   session; the ARM64 VM is a different machine from the x64 box the brief's
   header names separately. Messaged the "AetherCore x86_64 Windows physical
   qualification" peer session to offer these two items; no reply yet.
-- **Part 1 security review, Part 2.B decision, the 34 B-site fixes from 0.C,
-  the 2 fixes from 0.D, DBT-P42-013/DBT-P41-001 fixes, Part 4.B/C/D** — not
-  started this session; see §46.0.
+- **Part 2.B decision, the 34 B-site fixes from 0.C, the 2 fixes from 0.D,
+  DBT-P42-013/DBT-P41-001 fixes, Part 4.B/C/D** — not started this session;
+  see §46.0. (Part 1 security review was reached and completed — §46.11 —
+  after this note was first written; left here only as a historical marker
+  of what was still open mid-session.)
 
 ## 46.8 PART 5 — the owner register (listed only, not attempted, unchanged from the brief)
 
@@ -8196,16 +8198,130 @@ here so a future session does not read the clean §46.0 table and assume the
 ordinary Part-0-before-Part-3 sequencing was followed — it wasn't, for those
 two rows specifically, and that is now explicit in §46.6 and here.
 
-## 46.11 NEXT ACTION for a fresh session
+## 46.11 PART 1 — security review
+
+Read directly (not delegated, given §46.10) against every area the brief
+names. **No privilege-boundary break found.** Findings below are real but
+none rise to "stops all other work" — they are folded into the 0.C worklist
+(§46.3) rather than a separate emergency track.
+
+**The privilege boundary into the LocalSystem service, re-verified against
+the exact historical defect class.** `crates/security-audit/src/scope.rs`
+(`authorize_targets`/`OwnerScope`/`resolve_within_roots`) still enforces the
+four rules §41's fix established: no `..`, must be absolute, component-wise
+containment (not string-prefix — `C:\Users\alice-evil` does not match
+`C:\Users\alice`), and any reparse point/symlink AT OR BELOW a root is
+refused rather than followed (a link ABOVE a root, e.g. macOS's `/var` →
+`/private/var`, is resolved and allowed — correct, since containment is then
+judged on the resolved form). 8 tests cover this file, all passing per
+§46.2's `cargo test --workspace` run, including the exact "sibling root with
+a shared name prefix" and "link planted inside an owned root" cases. **Wiring
+confirmed by reading, not grepping** (a `grep -l authorize_targets` pass
+missed the actual call site — read `router.rs:1570-1580` directly instead):
+`RunSecurityAudit`'s handler builds `OwnerScope` from `peer.owner_roots()`
+and calls `authorize_targets` before `run_audit` runs, with a typed refusal
+on denial. `owner_roots()` (`crates/security/src/lib.rs:52`) is built only
+from `profile_dir`, which is resolved from `HKLM\SOFTWARE\...\ProfileList`
+(admin-writable only) using the impersonated client token's SID — read
+*after* `RevertToSelf`, deliberately outside the impersonation window — never
+from the request, never from `%USERPROFILE%`. `principal_from_token`
+additionally bounds-checks the `TOKEN_USER` SID pointer against the buffer
+range before dereferencing it (`lib.rs:218-241`) — a defensive check against
+a malformed/adversarial token response, not just the happy path.
+
+**Named-pipe/Unix-socket surface.** `crates/ipc/src/lib.rs`'s
+`read_message_with_limit` checks `len == 0 || len > limit` **before**
+allocating the receive buffer (`lib.rs:111-114`) — an attacker-controlled
+4-byte length prefix cannot force a large allocation ahead of the bound
+check. Limits are concrete, not `usize::MAX`:
+`MAX_REQUEST_FRAME_BYTES=256KiB`, `MAX_CLIENT_SESSION_FRAME_BYTES=384KiB`,
+`MAX_RESPONSE_FRAME_BYTES`/`MAX_SERVER_SESSION_FRAME_BYTES=8MiB`
+(`crates/contracts/src/lib.rs:9-14`). Typed errors exist for oversized,
+trailing-bytes, and mid-frame-disconnect cases (`lib.rs:66-68`, `190-193`).
+
+**The three network-touching crates, and the update-trust gate verified in
+code, not configuration.** Exactly 2 of the workspace's ~54 members import a
+network-capable dependency: `update-download` and `driver-acquisition`
+(`grep -rl "reqwest\|TcpStream\|std::net::"` — the one other hit,
+`crates/ipc/src/unix_impl.rs:269`, is `std::net::Shutdown::Both`, a shared
+enum reused by `UnixStream::shutdown`, not network I/O). The shipped
+`release/update-trust.template.json` is `{"enabled": false, "channels": []}`.
+This is enforced in code: `UpdateCoordinator::check_descriptor` and
+`submit_manifest` (`crates/update-engine/src/coordinator.rs:460,494`) both
+short-circuit — `Err(Disabled)` / a disabled snapshot — on `!trust.enabled`,
+**before** any manifest/signature URL is ever produced for a caller to fetch.
+The only call site of `check_descriptor` in the whole service is
+`router.rs:788`, inside the request handler answering an explicit client
+IPC call — not a timer, not `idle-scheduler`, not `care-orchestrator`. No
+autonomous/background code path can reach the network. `driver-acquisition`
+similarly takes an explicit per-request `network_policy` and is only reached
+from a user-initiated driver-hub action, never on a schedule.
+
+**Signature and hash verification: no bypass found.**
+`update-engine::manifest::verify_manifest_bytes` bounds the signature
+envelope size before parsing (`MAX_SIGNATURE_BYTES`), checks the schema
+string, requires the trust channel and `key_id` to match, and calls
+`ed25519_dalek`'s `verify_strict` (the non-malleable variant) rather than
+plain `verify`. `driver-acquisition::validate_expected_publisher`
+(`lib.rs:263-283`) checks `signature.valid`, explicitly **rejects
+test-signed binaries**, and validates the signer identity/subject against
+the request's expected publisher — with `d18_08_valid_signature_wrong_publisher_fails_closed`
+and a `test-signed` rejection test both present and passing. SHA256 digest
+is checked **before** signature verification (`lib.rs:222-224`), and a
+digest or signature failure deletes the partial download
+(`fs::remove_file(&partial)`) rather than leaving a rejected file on disk to
+be raced onto later.
+
+**Air-gap invariant, with numbers.** Zero network calls at rest, confirmed
+three ways: (1) only 2/54 crates import network I/O, both gated as above;
+(2) `crates/intelligence-core/tests/offline_boundary.rs`'s
+`offline_crates_have_no_network_capable_dependency` test passes (§46.2); (3)
+no scheduler/timer/idle-path in the codebase calls into `update-engine` or
+`driver-acquisition` — every reachable call site is a direct response to an
+explicit client IPC request. Unchanged from §41.18/§42.9's prior
+measurements (Defender/UAC/Firewall untouched this session; no
+install/uninstall cycle ran).
+
+**Findings, folded into the §46.3 worklist rather than tracked separately**
+(none is a boundary break; all are data-integrity/fail-direction issues in
+security-adjacent code):
+
+- **B20** (`security-audit/src/sshd.rs:145`) — the security auditor's own
+  sshd_config parser fails OPEN on a malformed `MaxAuthTries` value
+  (`unwrap_or(false)` = "not a violation") but fails CLOSED on a malformed
+  `ClientAliveInterval` (`unwrap_or(0)` then range-checked = "violates"). A
+  malformed config value should not silently read as compliant in a tool
+  whose entire purpose is flagging misconfiguration.
+- **B27** (`apps/aetherctl/src/offline.rs:637-638`) — a malformed hex
+  character while decoding an Ed25519 key seed silently becomes `0` rather
+  than rejecting the input, corrupting the derived key instead of refusing
+  it.
+- **B25** (`crates/release-authority/src/lib.rs:509-512`) —
+  `compare_versions` silently reads a non-numeric version segment as `0`
+  rather than rejecting the version string, relevant to update-integrity
+  comparisons.
+- Two duplicated hardcodes of `"NT SERVICE\AetherCoreMaintenance"` (§46.4's
+  service-name finding) sit beside `crates/security/src/lib.rs:395`'s
+  correctly-parameterized `format!(r"NT SERVICE\{service_name}")` in the same
+  file family — the disciplined version already exists in the codebase,
+  the other two sites should match it.
+
+None of these four are stop-everything findings; they carry into Part 3 at
+their existing 0.C/0.D priority.
+
+## 46.12 NEXT ACTION for a fresh session
 
 Read this table (§46.0) top to bottom for the first row not `DONE`. As of
-this commit that is **Part 1, the security review** — 0.A-0.E are all DONE
-(§46.1-§46.5), including the 0.C classification that a prior push in this
-session left incomplete (§46.10). Part 1 has no dependency on anything still
-open. After Part 1: Part 2.A/2.B, then Part 3 in the brief's priority order
-(the 34 B-sites from §46.3 and the 2 findings from §46.4 are next after any
-real privilege-boundary break Part 1 finds), then Part 4. Before doing
-anything else: re-check `ListAgents` for `aethercore-f6` and the
-x64-qualification peer session, and `git fetch origin main` — both had
-replied by the time this section was last updated (§46.9/§46.10), but a
-fresh session should re-verify rather than trust this note.
+this commit that is **Part 2.A, the DBT-P42-011 x64 bias investigation** —
+0.A-0.E and Part 1 are all DONE (§46.1-§46.5, §46.11). Part 1 found **no
+privilege-boundary break**; its 4 findings are folded into the existing
+0.C/0.D worklist, not a separate track. Part 2.A needs an x64 Windows host,
+unreachable from this Mac session — offer it to (or check progress from) the
+"AetherCore x86_64 Windows physical qualification" peer session before
+declaring it BLOCKED-OWNER; if still unreachable, move to Part 3 and work
+the 34 B-sites (§46.3) and 2 findings (§46.4) instead, worst-consequence
+first per the brief's own fallback ordering. Before doing anything else:
+re-check `ListAgents` for `aethercore-f6` and the x64-qualification peer
+session, and `git fetch origin main` — both had replied by the time this
+section was last updated (§46.9/§46.10), but a fresh session should
+re-verify rather than trust this note.
