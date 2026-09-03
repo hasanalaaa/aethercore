@@ -23,6 +23,7 @@ const MIGRATION_0013: &str = include_str!("../migrations/0013_phase19_windows_re
 const MIGRATION_0014: &str = include_str!("../migrations/0014_phase22_care_orchestration.sql");
 /// Phase 34 — fleet & secure remote operations (additive tables only).
 const MIGRATION_0015: &str = include_str!("../migrations/0015_phase34_fleet.sql");
+const MIGRATION_0016: &str = include_str!("../migrations/0016_p46_byte_progress_determinedness.sql");
 
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "0001_init", MIGRATION_0001),
@@ -40,6 +41,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (13, "0013_phase19_windows_repair", MIGRATION_0013),
     (14, "0014_phase22_care_orchestration", MIGRATION_0014),
     (15, "0015_phase34_fleet", MIGRATION_0015),
+    (16, "0016_p46_byte_progress_determinedness", MIGRATION_0016),
 ];
 
 #[derive(Debug, Error)]
@@ -124,8 +126,12 @@ pub struct ExecutionRecord {
     pub progress_known: bool,
     pub overall_percent: u32,
     pub current_candidate_id: String,
-    pub bytes_downloaded: u64,
-    pub bytes_total: u64,
+    /// DBT-P46-B16: None means no WUA progress tick ever determined a figure.
+    /// Some(0) means a tick determined that zero bytes had transferred.
+    pub bytes_downloaded: Option<u64>,
+    /// DBT-P46-B16: None means the total size is unknown, which is a different
+    /// fact from a zero-length download.
+    pub bytes_total: Option<u64>,
     pub detail: String,
     pub reboot_required: bool,
     pub reboot_boot_marker_ms: i64,
@@ -697,9 +703,9 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
-            "INSERT INTO plan_executions(plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-             ON CONFLICT(plan_id) DO UPDATE SET stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_candidate_id=excluded.current_candidate_id,bytes_downloaded=excluded.bytes_downloaded,bytes_total=excluded.bytes_total,detail=excluded.detail,reboot_required=excluded.reboot_required,reboot_boot_marker_ms=excluded.reboot_boot_marker_ms,restore_point_sequence=excluded.restore_point_sequence,backup_root=excluded.backup_root,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
-            params![r.plan_id,r.stage,bool_i(r.progress_known),r.overall_percent,r.current_candidate_id,u64_to_i64(r.bytes_downloaded),u64_to_i64(r.bytes_total),r.detail,bool_i(r.reboot_required),r.reboot_boot_marker_ms,r.restore_point_sequence,r.backup_root,bool_i(r.mutation_started),bool_i(r.recovery_required),r.failure_message,r.started_unix_ms,r.updated_unix_ms,r.completed_unix_ms],
+            "INSERT INTO plan_executions(plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms,bytes_downloaded_known,bytes_total_known) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             ON CONFLICT(plan_id) DO UPDATE SET stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_candidate_id=excluded.current_candidate_id,bytes_downloaded=excluded.bytes_downloaded,bytes_total=excluded.bytes_total,bytes_downloaded_known=excluded.bytes_downloaded_known,bytes_total_known=excluded.bytes_total_known,detail=excluded.detail,reboot_required=excluded.reboot_required,reboot_boot_marker_ms=excluded.reboot_boot_marker_ms,restore_point_sequence=excluded.restore_point_sequence,backup_root=excluded.backup_root,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
+            params![r.plan_id,r.stage,bool_i(r.progress_known),r.overall_percent,r.current_candidate_id,u64_to_i64(r.bytes_downloaded.unwrap_or(0)),u64_to_i64(r.bytes_total.unwrap_or(0)),r.detail,bool_i(r.reboot_required),r.reboot_boot_marker_ms,r.restore_point_sequence,r.backup_root,bool_i(r.mutation_started),bool_i(r.recovery_required),r.failure_message,r.started_unix_ms,r.updated_unix_ms,r.completed_unix_ms,bool_i(r.bytes_downloaded.is_some()),bool_i(r.bytes_total.is_some())],
         )?;
         Ok(())
     }
@@ -710,7 +716,7 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
-            "SELECT plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms FROM plan_executions WHERE plan_id=?",
+            "SELECT plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms,bytes_downloaded_known,bytes_total_known FROM plan_executions WHERE plan_id=?",
             [plan_id], row_to_execution,
         ).optional().map_err(Into::into)
     }
@@ -721,7 +727,7 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
-            "SELECT plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms FROM plan_executions ORDER BY updated_unix_ms DESC LIMIT 1",
+            "SELECT plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms,bytes_downloaded_known,bytes_total_known FROM plan_executions ORDER BY updated_unix_ms DESC LIMIT 1",
             [], row_to_execution,
         ).optional().map_err(Into::into)
     }
@@ -735,7 +741,7 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         conn.query_row(
-            "SELECT e.plan_id,e.stage,e.progress_known,e.overall_percent,e.current_candidate_id,e.bytes_downloaded,e.bytes_total,e.detail,e.reboot_required,e.reboot_boot_marker_ms,e.restore_point_sequence,e.backup_root,e.mutation_started,e.recovery_required,e.failure_message,e.started_unix_ms,e.updated_unix_ms,e.completed_unix_ms FROM plan_executions e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? ORDER BY e.updated_unix_ms DESC LIMIT 1",
+            "SELECT e.plan_id,e.stage,e.progress_known,e.overall_percent,e.current_candidate_id,e.bytes_downloaded,e.bytes_total,e.detail,e.reboot_required,e.reboot_boot_marker_ms,e.restore_point_sequence,e.backup_root,e.mutation_started,e.recovery_required,e.failure_message,e.started_unix_ms,e.updated_unix_ms,e.completed_unix_ms,e.bytes_downloaded_known,e.bytes_total_known FROM plan_executions e INNER JOIN plans p ON p.id=e.plan_id WHERE p.owner_principal_key=? ORDER BY e.updated_unix_ms DESC LIMIT 1",
             [owner_principal_key], row_to_execution,
         ).optional().map_err(Into::into)
     }
@@ -2137,8 +2143,12 @@ fn row_to_execution(row: &rusqlite::Row<'_>) -> rusqlite::Result<ExecutionRecord
         progress_known: row.get::<_, i32>(2)? != 0,
         overall_percent: row.get(3)?,
         current_candidate_id: row.get(4)?,
-        bytes_downloaded: i64_to_u64(row.get::<_, i64>(5)?),
-        bytes_total: i64_to_u64(row.get::<_, i64>(6)?),
+        // DBT-P46-B16: the _known columns (migration 0016) carry whether the
+        // stored figure was ever determined; a pre-0016 row reads as not
+        // determined, which is the honest answer for data written before the
+        // distinction existed.
+        bytes_downloaded: row.get::<_, i64>(18)?.ne(&0).then(|| i64_to_u64(row.get::<_, i64>(5).unwrap_or(0))),
+        bytes_total: row.get::<_, i64>(19)?.ne(&0).then(|| i64_to_u64(row.get::<_, i64>(6).unwrap_or(0))),
         detail: row.get(7)?,
         reboot_required: row.get::<_, i32>(8)? != 0,
         reboot_boot_marker_ms: row.get(9)?,

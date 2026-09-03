@@ -198,8 +198,8 @@ impl InstallPlatform for FakePlatform {
             percent: 100,
             current_update_index: 0,
             current_update_percent: 100,
-            bytes_downloaded: 20,
-            bytes_total: 20,
+            bytes_downloaded: Some(20),
+            bytes_total: Some(20),
         });
         before_install()?;
         self.push("wua-install");
@@ -210,8 +210,8 @@ impl InstallPlatform for FakePlatform {
             percent: 100,
             current_update_index: 0,
             current_update_percent: 100,
-            bytes_downloaded: 0,
-            bytes_total: 0,
+            bytes_downloaded: Some(0),
+            bytes_total: Some(0),
         });
         Ok(WuaExecutionResult {
             result_code: "orcSucceeded".into(),

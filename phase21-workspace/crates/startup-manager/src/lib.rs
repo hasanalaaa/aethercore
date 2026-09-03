@@ -150,7 +150,10 @@ pub struct StartupExecutionItem { pub item_id:String,pub display_name:String,pub
 pub struct StartupHistoryEntry {
     pub change_id:String, pub origin_change_id:String, pub plan_id:String, pub item_id:String,
     pub kind:String, pub display_name:String, pub direction:String, pub state:String,
-    pub detail:String, pub created_unix_ms:i64, pub updated_unix_ms:i64, pub restored_unix_ms:i64,
+    pub detail:String, pub created_unix_ms:i64, pub updated_unix_ms:i64,
+    /// DBT-P46-B14: None is the common case — most changes are never restored.
+    /// Previously flattened to 0, indistinguishable from a restore at epoch 0.
+    pub restored_unix_ms:Option<i64>,
     pub restorable:bool,
 }
 
@@ -322,7 +325,7 @@ impl StartupManager {
     }
 
     pub fn history(&self,owner_principal_key:&str,limit:usize)->Result<Vec<StartupHistoryEntry>>{
-        Ok(self.db.startup_changes_for_owner(owner_principal_key,limit)?.into_iter().map(|r|{let direction=r.direction.clone();let restorable=matches!(r.state.as_str(),"Applied"|"AppliedRecovered")&&direction=="Disable";StartupHistoryEntry{change_id:r.change_id,origin_change_id:r.origin_change_id,plan_id:r.plan_id,item_id:r.item_id,kind:r.kind,display_name:r.display_name,direction,state:r.state.clone(),detail:r.detail,created_unix_ms:r.created_unix_ms,updated_unix_ms:r.updated_unix_ms,restored_unix_ms:r.restored_unix_ms.unwrap_or(0),restorable}}).collect())
+        Ok(self.db.startup_changes_for_owner(owner_principal_key,limit)?.into_iter().map(|r|{let direction=r.direction.clone();let restorable=matches!(r.state.as_str(),"Applied"|"AppliedRecovered")&&direction=="Disable";StartupHistoryEntry{change_id:r.change_id,origin_change_id:r.origin_change_id,plan_id:r.plan_id,item_id:r.item_id,kind:r.kind,display_name:r.display_name,direction,state:r.state.clone(),detail:r.detail,created_unix_ms:r.created_unix_ms,updated_unix_ms:r.updated_unix_ms,restored_unix_ms:r.restored_unix_ms,restorable}}).collect())
     }
 
     pub fn recover_incomplete(&self)->Result<()> {

@@ -145,7 +145,10 @@ pub struct RepairExecutionStatus {
     pub verification_state: String,
     pub started_unix_ms: i64,
     pub updated_unix_ms: i64,
-    pub completed_unix_ms: i64,
+    /// DBT-P46-B7: None while the plan has not completed. Previously flattened
+    /// to 0 here, which the wire could not tell apart from a plan that
+    /// completed at unix epoch 0.
+    pub completed_unix_ms: Option<i64>,
     pub steps: Vec<RepairCheck>,
 }
 
@@ -593,7 +596,7 @@ impl RepairCoordinator {
             verification_state: record.verification_state,
             started_unix_ms: record.started_unix_ms,
             updated_unix_ms: live.as_ref().map(|value| value.emitted_unix_ms).unwrap_or(record.updated_unix_ms),
-            completed_unix_ms: record.completed_unix_ms.unwrap_or(0),
+            completed_unix_ms: record.completed_unix_ms,
             steps,
         }))
     }

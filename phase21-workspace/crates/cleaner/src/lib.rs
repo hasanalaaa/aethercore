@@ -156,7 +156,9 @@ pub struct CleanupExecutionStatus {
     pub skipped_bytes: u64,
     pub started_unix_ms: i64,
     pub updated_unix_ms: i64,
-    pub completed_unix_ms: i64,
+    /// DBT-P46-B17: None while the plan has not completed. See the same field
+    /// on system-repair's RepairExecutionStatus — one shape, four crates.
+    pub completed_unix_ms: Option<i64>,
     pub items: Vec<CleanupItemStatus>,
 }
 
@@ -582,7 +584,7 @@ impl CleanupEngine {
             skipped_bytes,
             started_unix_ms: record.started_unix_ms,
             updated_unix_ms: live.as_ref().map(|value| value.emitted_unix_ms).unwrap_or(record.updated_unix_ms),
-            completed_unix_ms: record.completed_unix_ms.unwrap_or(0),
+            completed_unix_ms: record.completed_unix_ms,
             items,
         }))
     }

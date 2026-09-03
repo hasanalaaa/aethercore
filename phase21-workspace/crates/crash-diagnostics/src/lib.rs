@@ -42,7 +42,10 @@ pub struct EventEvidence {
 #[serde(rename_all="camelCase")]
 pub struct CrashRecord {
     pub crash_id: String,
-    pub recorded_unix_ms: i64,
+    /// DBT-P46-B6: None when the dump file's mtime could not be read. Was
+    /// flattened to 0, which renders as 1970-01-01 — a plausible-looking wrong
+    /// date is worse than an absent one.
+    pub recorded_unix_ms: Option<i64>,
     pub bugcheck_code: Option<u32>,
     pub bugcheck_hex: String,
     pub parameters: Vec<String>,

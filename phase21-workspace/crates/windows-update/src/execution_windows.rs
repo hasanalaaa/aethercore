@@ -96,7 +96,9 @@ where
         let session: IUpdateSession = CoCreateInstance(&UpdateSession, None, CLSCTX_INPROC_SERVER).map_err(wua_err)?;
         session.SetClientApplicationID(&BSTR::from("AetherCore Safe Driver Installation")).map_err(wua_err)?;
         let selected = revalidate_selection(&session, identities)?;
-        progress(WuaProgress { stage: ExecutionStage::Revalidating, percent: 100, current_update_index: 0, current_update_percent: 100, bytes_downloaded: 0, bytes_total: 0 });
+        // DBT-P46-B16: None, not Some(0) — this stage reports no byte progress at
+        // all, which is not the same claim as "zero bytes transferred".
+        progress(WuaProgress { stage: ExecutionStage::Revalidating, percent: 100, current_update_index: 0, current_update_percent: 100, bytes_downloaded: None, bytes_total: None });
 
         // Ask WUA itself whether another installer owns the installation pipeline. The cross-process mutation lock
         // above only serializes AetherCore instances; IsBusy protects against the system orchestrator
@@ -226,8 +228,11 @@ unsafe fn wait_download<P: FnMut(WuaProgress)>(job: &IDownloadJob, progress: &mu
             percent: clamp_percent(unsafe { p.PercentComplete().map_err(wua_err)? }),
             current_update_index: unsafe { p.CurrentUpdateIndex().map_err(wua_err)? }.max(0) as u32,
             current_update_percent: clamp_percent(unsafe { p.CurrentUpdatePercentComplete().map_err(wua_err)? }),
-            bytes_downloaded: decimal_to_u64(&unsafe { p.TotalBytesDownloaded().map_err(wua_err)? }).unwrap_or(0),
-            bytes_total: decimal_to_u64(&unsafe { p.TotalBytesToDownload().map_err(wua_err)? }).unwrap_or(0),
+            // DBT-P46-B16: no .unwrap_or(0) — a failed conversion stays None so
+            // the consumer keeps the last known figure instead of reporting a
+            // download that appears to have rewound to zero bytes.
+            bytes_downloaded: decimal_to_u64(&unsafe { p.TotalBytesDownloaded().map_err(wua_err)? }).ok(),
+            bytes_total: decimal_to_u64(&unsafe { p.TotalBytesToDownload().map_err(wua_err)? }).ok(),
         });
         if unsafe { job.IsCompleted().map_err(wua_err)?.as_bool() } { break; }
         thread::sleep(POLL_INTERVAL);
@@ -245,8 +250,10 @@ unsafe fn wait_install<P: FnMut(WuaProgress)>(job: &IInstallationJob, progress: 
             percent: clamp_percent(unsafe { p.PercentComplete().map_err(wua_err)? }),
             current_update_index: unsafe { p.CurrentUpdateIndex().map_err(wua_err)? }.max(0) as u32,
             current_update_percent: clamp_percent(unsafe { p.CurrentUpdatePercentComplete().map_err(wua_err)? }),
-            bytes_downloaded: 0,
-            bytes_total: 0,
+            // DBT-P46-B16: the install stage reports no byte progress; None
+            // says that, where 0 would claim a measured zero.
+            bytes_downloaded: None,
+            bytes_total: None,
         });
         if unsafe { job.IsCompleted().map_err(wua_err)?.as_bool() } { break; }
         thread::sleep(POLL_INTERVAL);

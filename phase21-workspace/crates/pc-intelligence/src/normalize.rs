@@ -130,8 +130,12 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
             Domain::Diagnostics,
             "crash-diagnostics",
             ResourceRef::global("crash", &c.crash_id, "System crash"),
-            c.recorded_unix_ms,
-            Freshness::Recent,
+            // DBT-P46-B6: the dump proves a crash happened; its mtime proves
+            // WHEN. If the mtime could not be read, observe the fact at scan
+            // time and mark it Historical rather than asserting a crash time
+            // (epoch 0) the collector never established.
+            c.recorded_unix_ms.unwrap_or(snapshot.completed_unix_ms),
+            if c.recorded_unix_ms.is_some() { Freshness::Recent } else { Freshness::Historical },
             Confidence::Confirmed,
             FactPayload::Crash { crash_id: c.crash_id.clone(), bugcheck_hex: c.bugcheck_hex.clone() },
             EvidenceKind::CrashRecord,

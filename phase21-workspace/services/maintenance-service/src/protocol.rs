@@ -241,7 +241,9 @@ pub(crate) fn install_status_proto(v: InstallStatus) -> v1::DriverInstallStatus 
         failure_message: v.failure_message,
         started_unix_ms: v.started_unix_ms,
         updated_unix_ms: v.updated_unix_ms,
-        completed_unix_ms: v.completed_unix_ms,
+        // DBT-P46-B11: false means not completed yet, not "completed at epoch 0".
+        has_completed_unix_ms: v.completed_unix_ms.is_some(),
+        completed_unix_ms: v.completed_unix_ms.unwrap_or_default(),
         items: v
             .items
             .into_iter()
@@ -264,8 +266,13 @@ pub(crate) fn install_status_proto(v: InstallStatus) -> v1::DriverInstallStatus 
                 detail: item.detail,
             })
             .collect(),
-        bytes_downloaded: v.bytes_downloaded,
-        bytes_total: v.bytes_total,
+        // DBT-P46-B16: determinedness comes from the value itself, never from
+        // "is it zero" — zero bytes transferred and an unknown total are both
+        // real, and both stay representable.
+        has_bytes_downloaded: v.bytes_downloaded.is_some(),
+        bytes_downloaded: v.bytes_downloaded.unwrap_or_default(),
+        has_bytes_total: v.bytes_total.is_some(),
+        bytes_total: v.bytes_total.unwrap_or_default(),
         state_code,
     }
 }
@@ -394,7 +401,9 @@ pub(crate) fn repair_status_proto(v: RepairExecutionStatus) -> v1::SystemRepairS
         failure_message: v.failure_message,
         started_unix_ms: v.started_unix_ms,
         updated_unix_ms: v.updated_unix_ms,
-        completed_unix_ms: v.completed_unix_ms,
+        // DBT-P46-B7: false means not completed yet, not "completed at epoch 0".
+        has_completed_unix_ms: v.completed_unix_ms.is_some(),
+        completed_unix_ms: v.completed_unix_ms.unwrap_or_default(),
         steps: v.steps.into_iter().map(repair_check_proto).collect(),
         state_code,
         outcome: v.outcome,
@@ -455,7 +464,9 @@ pub(crate) fn cleanup_status_proto(v: CleanupExecutionStatus) -> v1::CleanupStat
         skipped_bytes: v.skipped_bytes,
         started_unix_ms: v.started_unix_ms,
         updated_unix_ms: v.updated_unix_ms,
-        completed_unix_ms: v.completed_unix_ms,
+        // DBT-P46-B17: false means not completed yet, not "completed at epoch 0".
+        has_completed_unix_ms: v.completed_unix_ms.is_some(),
+        completed_unix_ms: v.completed_unix_ms.unwrap_or_default(),
         items: v
             .items
             .into_iter()
@@ -574,7 +585,10 @@ pub(crate) fn startup_history_proto(v: StartupHistoryEntry) -> v1::StartupHistor
         detail: v.detail,
         created_unix_ms: v.created_unix_ms,
         updated_unix_ms: v.updated_unix_ms,
-        restored_unix_ms: v.restored_unix_ms,
+        // DBT-P46-B14: false means never restored (the common case), not
+        // "restored at epoch 0".
+        has_restored_unix_ms: v.restored_unix_ms.is_some(),
+        restored_unix_ms: v.restored_unix_ms.unwrap_or_default(),
         restorable: v.restorable,
     }
 }
@@ -692,7 +706,10 @@ pub(crate) fn diagnostics_snapshot_proto(v: DiagnosticsSnapshot) -> v1::Diagnost
             .into_iter()
             .map(|c| v1::CrashRecordInfo {
                 crash_id: c.crash_id,
-                recorded_unix_ms: c.recorded_unix_ms,
+                // DBT-P46-B6: false means the dump's mtime could not be read —
+                // distinct from a dump genuinely recorded at epoch 0.
+                has_recorded_unix_ms: c.recorded_unix_ms.is_some(),
+                recorded_unix_ms: c.recorded_unix_ms.unwrap_or_default(),
                 has_bugcheck_code: c.bugcheck_code.is_some(),
                 bugcheck_code: c.bugcheck_code.unwrap_or_default(),
                 bugcheck_hex: c.bugcheck_hex,

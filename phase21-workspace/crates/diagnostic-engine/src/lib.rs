@@ -511,7 +511,10 @@ fn build_cards_with_availability(
         let nearby_whea = events
             .iter()
             .filter(|e| e.provider.eq_ignore_ascii_case("Microsoft-Windows-WHEA-Logger"))
-            .filter(|e| (e.recorded_unix_ms - c.recorded_unix_ms).abs() <= 10 * 60 * 1000)
+            // DBT-P46-B6: a dump whose mtime could not be read has no time to
+            // correlate against, so it correlates with nothing — rather than
+            // being compared against a fabricated epoch-0 timestamp.
+            .filter(|e| c.recorded_unix_ms.is_some_and(|crash_ms| (e.recorded_unix_ms - crash_ms).abs() <= 10 * 60 * 1000))
             .collect::<Vec<_>>();
         let mut evidence = vec![
             format!("Dump: {}", c.dump_file),

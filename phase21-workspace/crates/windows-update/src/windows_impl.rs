@@ -49,9 +49,18 @@ pub fn probe_update_health() -> UpdateHealthProbe {
     let result = match unsafe { searcher.Search(&criteria) } { Ok(value)=>value, Err(error)=>return update_probe_error(error) };
     let result_code = match unsafe { result.ResultCode() } { Ok(value)=>value, Err(error)=>return update_probe_error(error) };
     let updates = match unsafe { result.Updates() } { Ok(value)=>value, Err(error)=>return update_probe_error(error) };
-    let count = unsafe { updates.Count().unwrap_or(0).max(0) as u32 };
+    // DBT-P46-B15: a failed Count() after a SUCCESSFUL search used to report
+    // "0 pending updates" as if measured. pending_update_count is not on the
+    // wire (verified: no .proto, protocol.rs or aetherctl reference), so per
+    // Hasan's instruction this carries the distinction in the existing detail
+    // string rather than adding a field nothing consumes.
+    let counted = unsafe { updates.Count() }.ok().map(|value| value.max(0) as u32);
+    let count = counted.unwrap_or(0);
     if result_code == orcSucceeded {
-        UpdateHealthProbe { result_code:"UpdateHealthy".into(), hresult:0, pending_update_count:count, detail:format!("Windows Update Agent discovery completed successfully; pending applicable updates: {count}.") }
+        match counted {
+            Some(count) => UpdateHealthProbe { result_code:"UpdateHealthy".into(), hresult:0, pending_update_count:count, detail:format!("Windows Update Agent discovery completed successfully; pending applicable updates: {count}.") },
+            None => UpdateHealthProbe { result_code:"UpdateHealthy".into(), hresult:0, pending_update_count:0, detail:"Windows Update Agent discovery completed successfully, but the pending-update count could not be read; the reported 0 is not a measurement.".into() },
+        }
     } else if result_code == orcSucceededWithErrors {
         UpdateHealthProbe { result_code:"UpdateFailure".into(), hresult:0, pending_update_count:count, detail:"Windows Update Agent discovery completed with errors; results may be incomplete.".into() }
     } else {
