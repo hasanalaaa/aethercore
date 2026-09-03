@@ -7454,3 +7454,119 @@ resolution of it**: still no positive/high bias observed on macOS at any
 load level measured across two sessions, and the one asymmetric signal
 (partial-load low) points the opposite direction from x64's high bias,
 same as §44.4 already said.
+
+## 45.5 P45 FINAL REPORT
+
+**The confirmation, first, per the brief's own gate:** yes, the ~1-in-10
+zeros are the `total == 0` branch and nothing else. §45.0 instrumented
+pristine P44 source (fix held aside via `git stash`), ran the flaky test
+as 40 independent process invocations, and found **7/7 failures** showing
+`previous == current` byte-for-byte (`busy_delta=0 total_delta=0`) with
+the `total == 0` branch firing every time — zero counterexamples. The
+brief's premise held; DBT-P44-003 is closed, correctly, as an instance of
+the class the brief named it.
+
+**The census (§45.1), full table repeated for this report's own
+completeness requirement:**
+
+| # | site | class |
+|---|---|---|
+| 1 | `macos_impl.rs` `busy_bp_from_ticks`, `total == 0` | B — fixed |
+| 2 | `macos_impl.rs` `sample_cpu`, `load_average().unwrap_or(0)` | B — fixed |
+| 3 | `macos_impl.rs` `sample_storage`, `total == 0` | A (already fixed, P44) |
+| 4 | `macos_impl.rs` `sample_memory`, `memsize == 0` | A (already fixed) |
+| 5 | `macos_impl.rs` `sample_process_top`, pid-vanished `continue` | A (deliberate) |
+| 6 | `linux_impl.rs` `busy_bp_from_proc`, `total == 0` | B — fixed |
+| 7 | `linux_impl.rs` `parse_proc_stat_cpu`, optional-field `.unwrap_or(0)` | **C — left open** |
+| 8 | `linux_impl.rs` `sample_storage`, permanent `active_time_bp: 0` | A (already fixed, P44) |
+| 9 | `linux_impl.rs` `sample_power`/`scan_thermal_zones` | A (already fixed, P44 DBT-P44-002) |
+| 10 | `windows_impl.rs` `read_u64`/PDH offset | A (already fixed, P42) |
+| 11 | `windows_impl.rs` `sample_cpu` secondary counters | A (already fixed, P42) |
+| 12 | `windows_impl.rs` `sample_memory` secondary counters | A (already fixed, P42) |
+| 13 | `windows_impl.rs` `sample_storage`, 4 secondary counters `.unwrap_or(0)` | B — fixed |
+| 14 | `windows_impl.rs` `sample_power`, `has_temperature`/`temperature_c` never written | B — fixed (found in this session's sweep) |
+| 15 | `windows_impl.rs` `sample_gpu`/`expand_wildcard_path` `needed == 0` | A (already fixed, P42) |
+| 16 | `windows_impl.rs` `sample_process_top` | A (already fixed, P42) |
+| 17 | assorted parser skip sites, all three files | A (deliberate) |
+
+Full detail, reasoning, and pre-fix file:line citations for every row:
+§45.1.
+
+**How many B sites existed, how many fixed, any left open:** **5 B sites
+found this session** (#1, 2, 6, 13, 14). **All 5 fixed** (§45.2). Separately,
+**9 sites were already B and already fixed** by P42/P44 before this
+session (#3, 4, 8, 9, 10, 11, 12, 15, 16) — not re-touched. **1 site is C**
+(#7, Linux's optional `/proc/stat` trailing fields) — left open because
+the code cannot distinguish "kernel doesn't report this column" from
+"malformed value," and the brief says say so rather than guess. Two new
+debt IDs opened and left open, neither worked around: **DBT-P45-004**
+(the fixed tie still recurs at 2%, honestly labeled, not eliminated —
+§45.3) and the **C classification itself** at site #7 (no debt ID
+assigned — it's a documented ambiguity, not a defect to track).
+
+**The 50-run zero-rate, raw:** 1/50 `totalBusyBp == 0` occurrences
+(down from 7/40 pre-fix), 50/50 test passes, 0 failures. Full value
+distribution and the raw fault line for the one zero: §45.3.
+
+**macOS readings beside the host's, with deltas:** saturated CPU +0.01pt
+(uninformative, both sides ~100%); memory total exact match, load% -0.2pt;
+storage +0.01pt; partial-load CPU -6.16pt (macOS low, consistent with
+§44.4's 2-10pt-low band, opposite sign from x64's positive bias). Full
+tables and the bias-question restatement: §45.4.
+
+**Whether Windows or ARM64 behaviour changed at all:** Windows — yes,
+narrowly: `sample_storage` (§45.2 site #13, four secondary-counter faults,
+strictly additive) and `sample_power` (§45.2 site #14, one new
+`power.temperature` fault, wire values unchanged). Cross-compiled clean
+(`cargo check --target x86_64-pc-windows-msvc --tests`, EXIT 0) but **not
+executed** — no Windows host this session, same limit every prior phase
+in this file has recorded. No other Windows file touched; `cpu`/`memory`/
+`gpu`/`processTop` samplers on Windows are byte-identical to before this
+session. ARM64: `windows_impl.rs` is `#[cfg(windows)]` not
+`#[cfg(target_arch)]` (§42.2's own finding, still true), so the ARM64
+Windows pipeline runs the same two changed functions identically to x64 —
+same reasoning as DBT-P42-004, **not independently qualified on ARM64
+hardware this session** (none attached). ARM64 macOS (this Mac's own
+architecture) ran every measurement in §45.0/45.3/45.4 directly.
+
+**Recorded rather than worked around, every debt ID this session touched:**
+
+| id | what | disposition |
+|---|---|---|
+| **DBT-P44-003** | `real_macos_provider_reports_non_zero_cpu_under_load` flaked ~1-in-10 with `totalBusyBp: 0` under load | **CLOSED.** §45.0 confirmed root cause (`total == 0` tie, not assumed); §45.2 fixed it at the field boundary |
+| **DBT-P45-001** | The class DBT-P44-003 belongs to: `busy_bp_from_ticks`/`busy_bp_from_proc` return a plain `u32`, so `total == 0` (no elapsed window) is indistinguishable from a real 0% reading | **FIXED**, §45.2 — both now return `Option<u32>`, `None` on the tie, caller retries then honestly degrades |
+| **DBT-P45-002** | Windows `sample_storage`'s four secondary PDH counters silently `.unwrap_or(0)` on a transient read failure, no fault, inconsistent with this same file's `cpu.counters`/`memory.counters` discipline two functions up | **FIXED**, §45.2 — `storage.rates` Degraded fault names the device/counter |
+| **DBT-P45-003** | Windows `sample_power` never writes `has_temperature`/`temperature_c`; `power` reports fully measured regardless | **FIXED**, §45.2 — `power.temperature` Degraded fault added. Found in this session's own sweep, not the brief's starter list |
+| **DBT-P45-004** | Even with the bounded retry, `total == 0` still recurs at ~2% (1/50, §45.3) — honestly labeled now, not eliminated | **open** — bounding the retry was deliberate (an unbounded retry can hang the sampler on one bad tick); eliminating the residual 2% needs either a higher-cost retry ceiling or a tick source with documented update cadence, neither chosen without more data than this session gathered |
+| **site #7 (C)** | `linux_impl.rs` `parse_proc_stat_cpu`'s optional trailing fields (`iowait`/`irq`/`softirq`/`steal`) via `.unwrap_or(0)` — cannot tell missing-column from malformed-value | **left open, not guessed at** — no code path distinguishes the two cases; flagged rather than fixed on a guess |
+| **DBT-P42-011** | x64 Windows reads high, ARM64 Windows doesn't, macOS's sign is unclear | **still open** — §45.4 adds a fourth/fifth macOS data point, all consistent with §44.4's prior characterization (saturated: uninformative; partial load: low, opposite sign from x64); not resolved, not expected to be by a macOS-only session |
+
+**What could not be verified on this host, named:** Linux runtime
+behavior — no readings, no host-counter comparison; only
+`cargo check --tests --target x86_64-unknown-linux-gnu` (EXIT 0) was
+possible from this Mac, same limit §44 recorded. Windows runtime behavior
+— same limit, `cargo check --tests --target x86_64-pc-windows-msvc` (EXIT
+0) only. ARM64 Windows — not attempted (out of scope; §43 already closed
+DBT-P42-004 for it separately, and this session's Windows-side changes are
+architecture-independent by the same `#[cfg(windows)]` reasoning §42.2
+already established).
+
+**Security posture:** not re-measured this session — no destructive
+action, no install/uninstall cycle, no privilege/IPC-surface change on any
+machine. Every change in this session's diff is a telemetry-collection
+contract (data honesty) or a test/doc change. Load-generation for §45.0/
+§45.3/§45.4 used background shell loops with explicitly-captured PIDs
+(`$!`, not `jobs -p`, which returned empty in this non-interactive shell —
+caught and worked around before any process was left running); verified
+via `top` clean before and after every round.
+
+**Every numbered item committed individually**, per the brief's own
+instruction: §45.0/45.1 in one commit (confirmation + census, before any
+fix — per the brief's explicit ordering requirement), §45.2 in one commit
+(the fix), §45.3 in one commit (tests + 50-run rate), §45.4 in one commit
+(measurement), this report in the commit that follows. **Not pushed to
+`origin/main`** — this session's push attempt was denied by the harness's
+permission classifier (direct pushes to the default branch need explicit
+user authorization, unlike every prior phase's session which apparently
+had it standing). All five commits are local on `main`, ready to push on
+request.
