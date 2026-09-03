@@ -6837,3 +6837,67 @@ readings, no host-counter comparison, no bias data point exist for Linux
 from this session — this is the honest limit, not a claim that the Linux
 fix "works," only that it now **type-checks**, which it did not before
 §44.3.
+
+## 44.5 PART 2.A — DBT-P42-012: vcomp140.dll now sourced and hash-verified
+
+`scripts/build-installer.ps1` previously only checked that a file named
+`vcomp140.dll` already existed somewhere in `$PayloadDir` — it never said
+where that file should come from, so the trap §42.5 found (the first
+plausible match on this machine, the `onecore` variant at 72,712 bytes, is
+wrong; the correct file is the desktop x64 redist at 193,152 bytes, sha256
+`55aba23c…`) was armed for every future build, caught only because §42
+happened to hash against a baseline recorded in an earlier session.
+
+**Changed:** added `Resolve-VcompSource` (prefers the standard MSVC
+`$env:VCToolsRedistDir` env var — set by `vcvarsall.bat` / a VS Developer
+shell, portable across machines — falling back to this project's pinned
+toolchain checkout at the exact path §42.5 measured the correct file at) and
+`Assert-VcompHash` (fails loudly, naming the expected vs. actual byte count
+and sha256, if the staged file is not byte-for-byte the desktop x64 redist).
+If `$PayloadDir` doesn't already carry `vcomp140.dll`, the script now stages
+it itself from the resolved source; either way, the hash check runs before
+the existing `$required` presence loop. This is not documentation-as-check —
+a wrong file now stops the build with the two numbers side by side, rather
+than silently packaging and passing every downstream gate the way the
+`onecore` variant did until §42 happened to hash it.
+
+**This machine cannot run this script** (`if ($env:OS -ne 'Windows_NT')
+{ throw ... }` at line 20 — this is macOS). No `pwsh` is installed here
+either, so the edit was reviewed by hand, not executed. The next Windows
+session must verify it. Numbered checks, each with an EXPECTED value:
+
+1. **Syntax parses.** `powershell -NoProfile -Command "$null = Get-Command
+   -Syntax (Join-Path (Get-Location) 'scripts\build-installer.ps1')"` or
+   simply invoke the script normally — a parse error would surface
+   immediately, before `$ErrorActionPreference` even matters.
+   **EXPECTED:** no `ParserError`; the script proceeds to its existing
+   version-check logic.
+2. **`Resolve-VcompSource` finds the file via `$env:VCToolsRedistDir` when
+   run from a VS Developer shell.** **EXPECTED:** `vcomp140.dll staged from
+   ...` is printed (only if `$PayloadDir` didn't already have the file) or
+   nothing is printed and the hash check passes silently if it did.
+3. **The hash check passes against the known-good file.** Run the build
+   once with the payload's existing (already-correct, per §42.5) staged
+   `vcomp140.dll` in place. **EXPECTED:** the script proceeds past
+   `Assert-VcompHash` with no output from it (success is silent by design,
+   matching the rest of the script's checks) and the build continues to the
+   WiX invocation.
+4. **The hash check fails loudly against the WRONG file.** Manually copy
+   the `onecore` variant (`VC\Redist\MSVC\14.44.35112\onecore\x64\
+   Microsoft.VC143.OpenMP\vcomp140.dll`, 72,712 bytes) into `$PayloadDir` as
+   `vcomp140.dll` before running the script. **EXPECTED:** the script throws
+   before reaching the WiX build, with a message containing both `72712` (or
+   the actual measured byte count) and the expected `193152` / `55aba23c…`
+   — i.e. the exact trap §42.5 hit by hand is now caught by the script
+   itself, in one run, before any WiX step.
+5. **The fallback path resolves when `$env:VCToolsRedistDir` is unset.**
+   Run from a plain shell (not a VS Developer prompt) with the pinned
+   toolchain checkout present at `C:\AetherCore-P36\toolchain\vs2022\...`.
+   **EXPECTED:** the script still finds and stages the correct file via the
+   pinned fallback path, hash check passes.
+6. **A full build still succeeds end-to-end** with this change in place —
+   re-run §42's Gate 2.A sequence (`build-installer.ps1` → `wix msi
+   validate` → `check-msi-payload.ps1`). **EXPECTED:** identical result to
+   §42.5 — exit 0, validate output EMPTY, 0 ICE, 16 payload rows, and the
+   `vcomp140.dll` row's sha256 still `55aba23c…` (this change does not
+   change which bytes ship, only how confidently the script can say so).

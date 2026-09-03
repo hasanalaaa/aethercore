@@ -34,6 +34,8 @@ $required = @(
     # P41: the x64 MSVC build imports VCOMP140.DLL (measured with llvm-readobj
     # coff-imports), where the ARM64 clang-cl build imports libomp140.aarch64.dll.
     # Product.wxs selects the right one on $(sys.BUILDARCH); this pipeline is x64.
+    # Sourced and hash-verified explicitly below (DBT-P42-012) — this file only
+    # asserts the final name is present in the payload once that has run.
     'vcomp140.dll'
 )
 # P37 Stage 1: the assets tree is packaged straight from the source tree (the embedded
@@ -42,6 +44,58 @@ $assets = Join-Path $Root 'assets'
 foreach ($rel in @('models\qwen2.5-1.5b-instruct-q4_k_m.gguf','models\models.manifest.json','models\licenses\Apache-2.0.txt','models\licenses\Qwen-GGUF-NOTICE.txt','vulndb\vulndb.json','vulndb\vulndb.manifest.json','vulndb\cis_map.json')) {
     if (-not (Test-Path (Join-Path $assets $rel))) { throw "Missing installer asset: assets\$rel" }
 }
+
+# DBT-P42-012: this script used to require vcomp140.dll in the payload without
+# saying where it should come from. §42.5 measured five files of that name on
+# the build machine and found the first plausible match — the onecore variant,
+# VC\Redist\MSVC\<ver>\onecore\x64\Microsoft.VC143.OpenMP\vcomp140.dll,
+# 72,712 bytes — is the WRONG one; it was caught only by hashing against a
+# previously-recorded baseline before building, not by anything in this script.
+# The correct file is the desktop x64 MSVC OpenMP redist: 193,152 bytes,
+# sha256 55aba23cdcd6484fbb06f4155b8ca75adfce7a881f10afd0c49457165e677164
+# (measured and installed under Gate 2, §42.5 / §41.14). Source it explicitly
+# and verify the hash — a comment naming the right file is not a check; this is.
+$VcompExpectedBytes = 193152
+$VcompExpectedSha256 = '55aba23cdcd6484fbb06f4155b8ca75adfce7a881f10afd0c49457165e677164'
+
+function Resolve-VcompSource {
+    # Preferred: the standard MSVC toolchain environment variable set by
+    # vcvarsall.bat / a Visual Studio Developer shell — portable across
+    # machines and VS installs, unlike a hardcoded path.
+    if ($env:VCToolsRedistDir) {
+        $candidate = Join-Path $env:VCToolsRedistDir 'x64\Microsoft.VC143.OpenMP\vcomp140.dll'
+        if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
+    }
+    # Fallback: this project's pinned toolchain checkout, the exact location
+    # §42.5 measured the correct file at on the release-build machine.
+    $pinned = 'C:\AetherCore-P36\toolchain\vs2022\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.OpenMP\vcomp140.dll'
+    if (Test-Path $pinned) { return (Resolve-Path $pinned).Path }
+    throw ("vcomp140.dll source not found. Checked `$env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll " +
+        "(env var " + $(if ($env:VCToolsRedistDir) { "set to $env:VCToolsRedistDir but the file is not there" } else { "not set" }) + ") " +
+        "and the pinned fallback $pinned. Run from a VS Developer shell (sets VCToolsRedistDir) or update the " +
+        "pinned path in this script to match the current toolchain checkout.")
+}
+
+function Assert-VcompHash([string]$Path) {
+    $bytes = (Get-Item $Path).Length
+    $sha256 = (Get-FileHash -Algorithm SHA256 $Path).Hash.ToLowerInvariant()
+    if ($bytes -ne $VcompExpectedBytes -or $sha256 -ne $VcompExpectedSha256) {
+        throw ("vcomp140.dll at $Path is NOT the expected desktop x64 MSVC OpenMP redist " +
+            "(expected $VcompExpectedBytes bytes / sha256 $VcompExpectedSha256; " +
+            "got $bytes bytes / sha256 $sha256). DBT-P42-012: this machine has carried five files of " +
+            "this name (onecore x64/x86, desktop x64/x86, System32) and the first plausible match is wrong. " +
+            "Do not suppress this check or substitute a different file.")
+    }
+}
+
+$vcompTarget = Join-Path $Payload 'vcomp140.dll'
+if (-not (Test-Path $vcompTarget)) {
+    $vcompSource = Resolve-VcompSource
+    Copy-Item -Path $vcompSource -Destination $vcompTarget -Force
+    Write-Host "vcomp140.dll staged from $vcompSource" -ForegroundColor Yellow
+}
+Assert-VcompHash $vcompTarget
+
 foreach ($name in $required) {
     if (-not (Test-Path (Join-Path $Payload $name))) { throw "Missing installer payload: $name" }
 }
