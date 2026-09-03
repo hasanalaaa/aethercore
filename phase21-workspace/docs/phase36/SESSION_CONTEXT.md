@@ -6455,3 +6455,167 @@ VM rather than confirmed non-biased.
 **Part 4: not taken.** Judged against the brief's own gate — see §43.8 for the
 full reasoning. No new snapshot was created; the VM's snapshot list and
 install state are exactly as found in §43.0.
+
+# PHASE 44 — CLOSE THE CONTRACT GAP ON macOS/LINUX, DISARM THE BUILD TRAPS (2026-09-03)
+
+Brief: `phase21-workspace/docs/phase41/P44-CONTRACT-AND-TRAPS.md`. This session
+runs on the Mac at `/Users/hasanalaaa/dev/aethercore`, which compiles macOS
+natively; Linux is reached via `rustup target add x86_64-unknown-linux-gnu` and
+`cargo check --target`, not by running Linux binaries.
+
+## 44.0 P44 PROGRESS TABLE (authoritative — resume from here)
+
+| item | what it proves | status | evidence |
+|---|---|---|---|
+| 1.A | what macOS/Linux providers actually permit, file:line | **DONE** | §44.1 |
+| 1.B | failing regression tests, committed failing | **DONE** | §44.2 — macOS: 1 test FAILED for real (2 defects inside it), 2 passed; Linux: lib does not compile on the target at all (pre-existing, DBT-P44-001) |
+| 1.C | contract applied to both providers | pending | |
+| 1.D | proven on this machine with numbers | pending | |
+| 2.A | vcomp140.dll sourcing trap disarmed | pending | |
+| 2.B | ARM64 recipe exit-code decision | pending | |
+
+## 44.1 PART 1.A — what macOS and Linux actually permit
+
+Read in full: `crates/performance-telemetry/src/macos_impl.rs` (507 lines),
+`src/linux_impl.rs` (519 lines). Neither goes through `Reading<T>` /
+`CollectedSubsystems` (`lib.rs:238-341`) — both build `PerfSnapshot` as a
+literal struct in `sample()` (`macos_impl.rs:494-506`,
+`linux_impl.rs:504-517`), confirming DBT-P42-005 as recorded.
+
+### Q1 — can either return success with an all-zero/empty payload and no fault
+
+**Yes, on both, in several independent shapes — none of them mirror Windows'
+shape exactly.**
+
+**macOS:**
+
+| what | file:line | shape |
+|---|---|---|
+| `cpu.dpcIsrBusyBp` / `cpu.contextSwitchesPerSec` | `macos_impl.rs:167-168` | hardcoded `0`, unconditionally, forever — no line of this file ever writes them, and cpu is otherwise reported fully measured (no `cpu` fault) |
+| `storage[].avgTransferLatencyUs` / `readBytesPerSec` / `writeBytesPerSec` | `macos_impl.rs:326-328` | same shape — hardcoded `0` on every real device, no per-field fault |
+| `processTop` empty with no fault | `macos_impl.rs:387-391` | a pid whose `proc_pidinfo` call fails is silently skipped ("this is not a provider fault" per the comment); if every pid fails that call, `sample_process_top` returns `[]` with **no fault at all** — only the earlier `proc_listpids <= 0` branch (`:358-365`) is faulted |
+| storage per-path silent skip | `macos_impl.rs:309-311` | `if total == 0 { continue; }` — no per-path fault; only the all-empty catch-all at `:331-338` covers total failure, not a partial one |
+| `busy_bp_from_ticks` tie | `macos_impl.rs:114-116` | `total == 0 → return 0` with no fault — a real read that ties is legitimate, but indistinguishable on the wire from a genuine idle reading |
+
+**Linux:**
+
+| what | file:line | shape |
+|---|---|---|
+| `power` — real thermal data collected then discarded | `linux_impl.rs:471-500` | **headline finding.** `scan_thermal_zones()` is called and its result used only to decide whether to push a `thermalPower Degraded` fault (`:473-480`, fires only if `zones.is_empty()`); the millidegree readings are **never written into `PowerSample`** — `power` is built as a disconnected literal (`:494-500`) with `has_temperature: false, temperature_c: 0` always. So on any host where zones ARE found, `power` returns a confident all-zero reading with **no fault at all**, silently discarding real evidence — stronger than "never attempted," this is "measured and thrown away" |
+| `processTop` always empty, never faulted | `linux_impl.rs:512-514` | unconditional `Vec::new()`, **zero fault ever pushed** — the exact §20.1.1 site-7 shape ("`let _ = faults; Vec::new()`") that was explicitly deleted from Windows in P42 and replaced with a `NotCollected` reading; Linux still has it verbatim |
+| `cpu.dpcIsrBusyBp` / `contextSwitchesPerSec` | `linux_impl.rs:436-443` | same permanent-hardcoded-zero shape as macOS (`..CpuSample::default()`), no fault, ever |
+| `storage[].activeTimeBp` / `avgTransferLatencyUs` / `readBytesPerSec` / `writeBytesPerSec` | `linux_impl.rs:339-347` | all four literal `0` for every device, deliberately (comment at `:335-338`), no per-field fault; only `queueDepthX100` and device identity are real |
+| `busy_bp_from_proc` tie | `linux_impl.rs:100-102` | same tie-break-returns-0-silently shape as macOS |
+
+### Q2 — Windows-equivalent mechanisms
+
+The clearest match is Linux `processTop` (`linux_impl.rs:512-514`) — the
+identical "success, empty, no fault, by design" shape as pre-fix Windows site
+7. The Linux thermal-zone-discard (`linux_impl.rs:471-500`) is a **new**
+shape not present on Windows: not an unattempted read and not a misread
+status code, but a real measurement taken and then never wired into the
+payload. Neither platform has a dropped-temporary or counter-read-before-
+collection defect — those were PDH-specific (`PdhExpandWildCardPathW`,
+DBT-P42-001/003) and neither provider uses PDH.
+
+### Q3 — how many hand-written availability rules, and do any fire by accident
+
+**macOS: 8 conditional decision branches** (cpu first-tick-read fail, cpu
+second-tick-read fail, memory `host_statistics64` fail, memory `sysctl
+hw.memsize` fail, memory `sysctl` swap fail, storage per-path `statfs` fail,
+storage all-empty catch-all, processTop `proc_listpids` fail) **+ 2
+unconditional stub degradations** (gpu, power/thermal — always faulted,
+every tick, not a branch). **Linux: 6 conditional branches** (cpu
+read/parse fail, cpu loadavg fail, memory file-read fail, memory parse fail,
+storage file-read fail, storage empty-rows, storage all-virtual-devices) **+
+1 unconditional stub** (gpu).
+
+**None fire by accident.** Unlike Windows' gpu (§20.1.6 — fired for the
+wrong reason and would have missed a real defect had the counter add
+succeeded), every macOS/Linux rule that does fire fires for the reason its
+own detail string states. The defect on these two platforms is not
+"accidental correctness" — it is coverage gaps: fields the code never
+attempts to fault for at all (Q1's table), not existing rules answering
+wrong.
+
+### A pre-existing, previously unknown defect found by reaching this host
+
+**`linux_impl.rs` does not compile on the Linux target at all** — three
+`E0308` type errors (`linux_impl.rs:446,464,475`): `sample()` declares
+`let mut faults: Vec<CollectorFault> = Vec::new();` (`:412`, an owned
+`Vec`, not a reference) and then calls the module's `fault()` helper — which
+takes `&mut Vec<CollectorFault>` (`:24`) — by value at three call sites.
+Confirmed pre-existing and independent of this session's test additions:
+
+    git stash                      # no local changes to stash — the lib itself fails
+    cargo check -p aethercore-performance-telemetry --target x86_64-unknown-linux-gnu
+    error[E0308]: mismatched types (x3), linux_impl.rs:446, 464, 475
+    error: could not compile `aethercore-performance-telemetry` (lib) due to 3 previous errors
+
+This is #[cfg(target_os = "linux")]-gated, so no macOS build has ever
+type-checked this file, and (so far as this session can determine) no CI in
+this repository builds a Linux target either — this is the same class of
+"cannot be compiled or tested on this host" that §42's brief recorded for
+Windows, except it means DBT-P42-005 understated the Linux gap: it is not
+merely "still on the old contract," the file is currently **uncompilable**.
+Recorded as **DBT-P44-001**, fixed in §44.3 as part of the Part 1.C rewrite
+(the function this bug lives in is being rewritten to the contract anyway).
+
+## 44.2 PART 1.B — the failing tests, committed failing
+
+New file: `crates/performance-telemetry/tests/dbt_p42_005.rs`,
+`#[cfg(target_os = "macos")]` / `#[cfg(target_os = "linux")]` modules, mirroring
+`dbt_p41_002.rs`'s structure. Per platform: a lower-bound CPU-under-load test,
+a "no collector returns success with a permanent-zero/empty payload and no
+fault" test built directly from §44.1's findings, and a capabilities-vs-
+collectors reconciliation test. Linux additionally gets a dedicated test for
+the thermal-zone-discard defect.
+
+**A test-isolation artifact found and fixed before results could be trusted:**
+running the file's tests in parallel (libtest's default) produced a spurious
+`totalBusyBp: 0` under load — two concurrent full-core spin harnesses in the
+same process starved each other inside the 120 ms in-tick delta window.
+Confirmed as harness noise, not a product defect, by re-running with
+`--test-threads=1` (passed) and then serializing the file's own `under_load`
+calls behind a `static LOAD_LOCK: Mutex<()>` (passed deterministically
+thereafter, output below). Recorded because the brief warns against
+theorising past an observed difference — this one *was* verified rather than
+assumed.
+
+### macOS — 1 test FAILED for real, 2 passed, verbatim
+
+    running 3 tests
+    test macos::capabilities_never_claim_native_for_a_subsystem_that_reported_nothing ... ok
+    test macos::real_macos_provider_reports_non_zero_cpu_under_load ... ok
+    test macos::no_collector_returns_an_empty_payload_without_a_fault ... FAILED
+
+    ---- macos::no_collector_returns_an_empty_payload_without_a_fault stdout ----
+    collectors returned success with nothing measured (or a permanent-zero field) and nothing declared:
+      cpu: dpcIsrBusyBp=0 contextSwitchesPerSec=0 with cpu reported fully measured and no
+           cpu.counters degradation fault; cpu=CpuSample { per_processor_busy_bp: [10000],
+           total_busy_bp: 10000, dpc_isr_busy_bp: 0, context_switches_per_sec: 0,
+           processor_queue_length_x100: 532 }
+      storage: 2 device(s) measured, every rate/latency field 0, no storage.rates degradation fault
+    all faults: [CollectorFault { collector: "gpu", kind: "Degraded", .. },
+                 CollectorFault { collector: "thermalPower", kind: "Degraded", .. }]
+
+    test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+
+Confirms exactly the two macOS findings from §44.1's table that survive under
+real load: `dpcIsrBusyBp`/`contextSwitchesPerSec` and storage's rate/latency
+fields are permanent zeros with no accompanying fault, on a machine
+`cpu.totalBusyBp` itself proves is at 100%. The other two macOS findings
+(processTop empty-with-no-fault; the per-path storage tie) did **not**
+surface in this run because they depend on rare failure conditions
+(`proc_pidinfo` failing for every pid; a `statfs` tie) that this healthy host
+does not hit — they remain real, code-permitted paths (§44.1), just not
+reproduced here. Not claimed as fixed; not silently dropped either.
+
+### Linux — the lib does not compile on the target; 3 pre-existing E0308s
+
+Cannot run tests: DBT-P44-001 (§44.1) blocks even `cargo check`. This is
+itself the honest Part 1.B result for Linux — a stronger finding than a
+runtime test failure would have been, and it is `git stash`-verified
+pre-existing, not introduced by this file.
+
+Both results are committed in this state before any fix.
