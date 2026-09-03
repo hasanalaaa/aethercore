@@ -102,7 +102,11 @@ impl Default for DiagnosticsSnapshot{fn default()->Self{Self{scan_id:String::new
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all="camelCase")]
-pub struct DiagnosticHistoryEntry { pub scan_id:String,pub state:String,pub collected_unix_ms:i64,pub warning_count:u32,pub card_count:u32 }
+// DBT-P46-B4: card_count is Option because a stored snapshot's JSON can fail to
+// parse (corrupted, or written by an incompatible schema version). None means
+// "could not be determined"; Some(0) means a scan that really did produce zero
+// cards. The wire carries the same distinction as has_card_count/card_count.
+pub struct DiagnosticHistoryEntry { pub scan_id:String,pub state:String,pub collected_unix_ms:i64,pub warning_count:u32,pub card_count:Option<u32> }
 
 pub trait Backend:Send+Sync+'static{
     fn hardware(&self, control: CollectorControl)->std::result::Result<HardwareTelemetrySnapshot,CollectorFault>;
@@ -249,7 +253,7 @@ impl DiagnosticEngine{
     }
 
     pub fn snapshot_for_owner(&self,owner_principal_key:&str)->Result<DiagnosticsSnapshot>{let current=self.inner.owner_principal_key.lock().unwrap_or_else(|p|p.into_inner());if current.as_str()!=owner_principal_key{return Err(DiagnosticError::OwnershipMismatch)}let snapshot=self.inner.snapshot.lock().unwrap_or_else(|p|p.into_inner()).clone();drop(current);Ok(snapshot)}
-    pub fn history(&self,owner_principal_key:&str,limit:usize)->Result<Vec<DiagnosticHistoryEntry>>{self.inner.db.diagnostic_snapshots_for_owner(owner_principal_key,limit).map_err(|e|DiagnosticError::Persistence(e.to_string())).map(|rows|rows.into_iter().map(|r|{let card_count=serde_json::from_str::<DiagnosticsSnapshot>(&r.snapshot_json).ok().map(|s|s.cards.len() as u32).unwrap_or(0);DiagnosticHistoryEntry{scan_id:r.snapshot_id,state:r.state,collected_unix_ms:r.collected_unix_ms,warning_count:r.warning_count,card_count}}).collect())}
+    pub fn history(&self,owner_principal_key:&str,limit:usize)->Result<Vec<DiagnosticHistoryEntry>>{self.inner.db.diagnostic_snapshots_for_owner(owner_principal_key,limit).map_err(|e|DiagnosticError::Persistence(e.to_string())).map(|rows|rows.into_iter().map(|r|{let card_count=serde_json::from_str::<DiagnosticsSnapshot>(&r.snapshot_json).ok().map(|s|s.cards.len() as u32);DiagnosticHistoryEntry{scan_id:r.snapshot_id,state:r.state,collected_unix_ms:r.collected_unix_ms,warning_count:r.warning_count,card_count}}).collect())}
 }
 
 fn is_hardware_fault_provider(provider:&str)->bool{

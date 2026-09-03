@@ -587,7 +587,10 @@ pub(crate) fn diagnostic_history_proto(
         state: v.state,
         collected_unix_ms: v.collected_unix_ms,
         warning_count: v.warning_count,
-        card_count: v.card_count,
+        // DBT-P46-B4: has_card_count is "the value was determined", not "the
+        // value is non-zero" — a real zero-card scan sends (true, 0).
+        has_card_count: v.card_count.is_some(),
+        card_count: v.card_count.unwrap_or_default(),
     }
 }
 
