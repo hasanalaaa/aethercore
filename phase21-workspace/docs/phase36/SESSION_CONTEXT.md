@@ -7164,12 +7164,133 @@ commit before this phase).
 | 16 | `windows_impl.rs` `sample_process_top` | **A** (already fixed) | §20.1.1 site 7, closed in §42.2 — `Reading::unavailable(NotCollected)` |
 | 17 | parser skip sites: `macos_impl.rs` process-list `continue`s, `linux_impl.rs` `parse_proc_meminfo`/`parse_diskstats` malformed-row `continue`s, `windows_impl.rs` `expand_wildcard_path`/`sample_storage` instance-parsing `continue`/`break` | **A** | Every one skips one malformed/aggregate/overflow *row*, not a measurement; the enclosing collector's own empty-collection case is separately faulted via `Reading::from_collection`. Checked individually, not assumed |
 
-**Count: 17 sites examined, 4 new B (1, 2, 6, 13, 14 — five, see below), 9
-already-A (fixed by P42/P44), 1 C, 3 A/deliberate-by-design.**
+**Count: 17 sites examined. 5 new B** (#1 macOS tick tie, #2 macOS
+queue-length swallow, #6 Linux tick tie, #13 Windows storage secondary
+counters, #14 Windows power temperature — the last found in this session's
+own sweep, not the brief's starter list). **9 already-A** (#3, 4, 8, 9, 10,
+11, 12, 15, 16 — fixed by P42/P44 before this session; recorded as A above
+because they are correct in the current tree, not because they were never a
+defect — §45.2 does not touch them again). **1 C** (#7, Linux optional
+`/proc/stat` fields — genuinely ambiguous, left open). **2 deliberate-A by
+design** (#5, #17).
 
-Correction to the header count above, stated precisely: **B sites found = 5**
-(macOS tick tie, macOS queue-length swallow, Linux tick tie, Windows storage
-secondary counters, Windows power temperature). Sites 3/4/8/9/10/11/12/15/16
-were already **B, and already fixed**, by P42/P44 before this session —
-recorded as **A** above because they are correct in the current tree, not
-because they were never a defect; §45.2 does not touch them again.
+## 45.2 PART 2 — the contract pushed down to the field boundary, all 5 B sites
+
+**The type-level fix, applied identically to macOS and Linux (site #1, #6):**
+
+    // before
+    pub fn busy_bp_from_ticks(previous: CpuTicks, current: CpuTicks) -> u32 {
+        ...
+        if total == 0 { return 0; }
+        ...
+    }
+    // after
+    pub fn busy_bp_from_ticks(previous: CpuTicks, current: CpuTicks) -> Option<u32> {
+        ...
+        if total == 0 { return None; }
+        ...
+        Some(ratio.min(u128::from(BP)) as u32)
+    }
+
+Same change to Linux's `busy_bp_from_proc`. `None` can no longer be
+narrowed back to a `u32` by accident — every call site must decide what
+"no window" means, which is exactly the "type must not be able to express
+a measurement that was never made" principle the brief states. No per-site
+guard was added; the one function signature is the whole fix at the pure-
+math layer.
+
+**The caller (macOS `sample_cpu`, Linux `sample()`'s cpu branch): retry
+inside the sampling budget, then degrade — not fabricate, and not give up
+on the first tie.** §45.0 measured `total == 0` as a **real, frequent**
+event on this hardware (17.5% in the 40-run diagnostic), not a one-in-a-
+million edge case — publishing `Reading::unavailable` on the very first tie
+would have traded a "0% lie" for a "cpu degrades on ~1 in 6 ticks" product
+regression, technically honest but a worse product than either. The brief's
+own text supports this: *"Where a Duration or window is genuinely too short
+to measure, that is a fault with a reason"* — the fix reads that as
+license to first find out whether the window really was too short (extend
+it, bounded) before declaring it so, rather than being required to declare
+unavailable immediately. Both platforms now:
+
+1. take the two observations as before (in-tick double read on the first
+   tick; carried state vs. fresh read on later ticks for Linux, first vs.
+   second `host_statistics64` call for macOS);
+2. compute the tick delta; if `Some`, done;
+3. if `None`, sleep another ~120ms (bounded to the remaining `interval`
+   budget, capped at 5 attempts total) and take a fresh second observation
+   against the **same original baseline**, recomputing;
+4. if every attempt inside the budget ties, the **whole `cpu` subsystem**
+   reports `Reading::unavailable` with a fault naming the attempt count and
+   elapsed time (`"no tick delta in sampling window after N attempt(s)
+   spanning Xms"`) — never a fabricated zero, and never silently degrading
+   only a sub-field while the rest of `CpuSample` (which has nothing else
+   to report without the tick delta) pretends to be measured.
+
+This is a genuine behavior change beyond "removing the lie": it also makes
+the lie's replacement rare in practice (§45.3's 50-run result), by giving
+the counters more time to advance before asking the caller to accept
+"unavailable" for a tick. It does not touch `busy_bp_from_ticks`/
+`busy_bp_from_proc`'s pure contract, which stays exactly "`None` on
+`total == 0`, no exceptions" — the retry lives in the caller, matching the
+brief's "no per-site guards **in the contract**" (the contract itself has
+none; the caller's retry is a scheduling decision, not a guard around the
+zero).
+
+**Site #2 — macOS `processorQueueLengthX100`'s `getloadavg()` failure.**
+Folded into the existing `cpu.counters` degraded-fault mechanism (§44.3's
+pattern) rather than a new fault kind: `degraded: Vec<&str>` now collects
+`"processorQueueLengthX100: getloadavg() failed"` alongside the pre-existing
+DPC/ISR/context-switches line, joined into one `cpu.counters` `Degraded`
+fault. No wire shape change; the `0` fallback is unchanged, only now always
+accompanied by a fault when it results from a failure rather than a real
+idle queue.
+
+**Site #13 — Windows `sample_storage`'s four secondary PDH counters.**
+`active_time_bp` (the primary/gating counter) is unchanged. Each of the
+four secondary reads (`queue_depth_x100`, `avg_transfer_latency_us`,
+`read_bytes_per_sec`, `write_bytes_per_sec`) now records its counter's name
+into a per-device `missing: Vec<&str>` instead of silently substituting `0`
+via `.unwrap_or(0)`; devices with any missing secondary counter are
+collected into `devices_with_missing_secondary`, and if non-empty a single
+`storage.rates` `Degraded` fault is pushed naming which device(s) and
+which counter(s) — mirroring the `storage.rates` name already used for
+macOS's and Linux's *permanent* version of the same gap (§44.3), here for
+Windows' *transient* version of it. `sample_storage` and `sample_power`
+both now take `partial: &mut Vec<CollectorFault>`, matching `sample_cpu`/
+`sample_memory`'s existing signature in the same file.
+
+**Site #14 — Windows `sample_power`'s never-written `has_temperature`/
+`temperature_c`.** A `power.temperature` `Degraded` fault is now pushed
+unconditionally on the measured path, naming the reason
+(`"raw temperature not measured on Windows: CallNtPowerInformation exposes
+clock/throttle state only"`) — the same shape as macOS/Linux's
+`cpu.counters`, applied to the one Windows sub-field this session's sweep
+found lacking it. `power`'s wire values are unchanged (still `false`/`0`);
+only the fault that explains them is new.
+
+**Site #7 (C) — left alone**, as the brief instructs for anything that
+can't be told apart from the code. No fix, no guess.
+
+**Do not change Windows or ARM64 behaviour beyond removing the lie — checked.**
+`git diff --stat` for this phase's fix commit touches only
+`macos_impl.rs`, `linux_impl.rs`, `windows_impl.rs` (sites #13/#14 only
+inside `windows_impl.rs`) and the `native_providers.rs` test file (updated
+for the `Option<u32>` signature change, §45.3). No file shared across
+platforms (`lib.rs`, `collector-runtime`, `platform-capabilities`) was
+touched — `Reading<T>`/`CollectedSubsystems` are unchanged, so nothing
+about how a `Reading` is constructed or published moved. Windows' cpu tick
+math (`read_u64`/PDH) is untouched; only its storage secondary-counter
+fallback and its power sub-field fault are new, and both are strictly
+additive (new fault pushes; no existing field's value changes on any path
+that previously succeeded).
+
+**Compiled on all three targets from this Mac** (this session has no
+Windows or Linux host, same limit §44 recorded):
+
+    cargo check -p aethercore-performance-telemetry --tests                                        EXIT 0 (macOS, native)
+    cargo check -p aethercore-performance-telemetry --tests --target x86_64-unknown-linux-gnu       EXIT 0
+    cargo check -p aethercore-performance-telemetry --tests --target x86_64-pc-windows-msvc         EXIT 0
+
+All three: warnings only, and the warnings are pre-existing (`generation`
+dead-code, a few unused imports in test files untouched by this phase) —
+none introduced by this session's diff.

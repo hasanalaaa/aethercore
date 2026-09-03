@@ -442,7 +442,7 @@ fn unreachable_fault(collector: &str) -> CollectorFault {
 }
 
 /// CallNtPowerInformation(ProcessorInformation) — thermal + power-limit evidence without WMI.
-fn sample_power() -> Reading<PowerSample> {
+fn sample_power(partial: &mut Vec<CollectorFault>) -> Reading<PowerSample> {
     let mut sample = PowerSample::default();
     // PROCESSOR_POWER_INFORMATION is variable by count; start conservative and cap the buffer.
     let max_processors: u32 = super::MAX_CPU_COUNT as u32;
@@ -533,6 +533,21 @@ fn sample_power() -> Reading<PowerSample> {
         }
         other => other,
     };
+    // DBT-P45-003 (found in this session's own sweep, not in the brief's
+    // starter list): no line of this file has ever written `has_temperature`
+    // or `temperature_c` — `CallNtPowerInformation(ProcessorInformation)`
+    // exposes clock/throttle state, not raw temperature, and no other source
+    // is read here. `power` was otherwise reported fully measured (no fault),
+    // so a consumer could not tell "genuinely no thermal event" from "this
+    // platform never measures temperature" — the exact §44 1.A cpu.counters /
+    // storage.rates shape, in a sub-field the brief's starter list missed.
+    partial.push(CollectorFault {
+        collector: "power.temperature".into(),
+        kind: "Degraded".into(),
+        detail: "raw temperature not measured on Windows: CallNtPowerInformation exposes \
+                 clock/throttle state only"
+            .into(),
+    });
     Reading::from_evidence(Some(sample), || unreachable_fault("power"))
 }
 
@@ -617,7 +632,7 @@ fn sample_memory(partial: &mut Vec<CollectorFault>) -> Reading<MemorySample> {
     Reading::from_evidence(Some(sample), || unreachable_fault("memory"))
 }
 
-fn sample_storage() -> Reading<Vec<StorageQueueSample>> {
+fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueueSample>> {
     let unavailable = |kind: &str, detail: String| {
         Reading::unavailable(CollectorFault {
             collector: "storage".into(),
@@ -698,6 +713,14 @@ fn sample_storage() -> Reading<Vec<StorageQueueSample>> {
             "PDH collection failed after adding PhysicalDisk counters".into(),
         );
     }
+    // DBT-P45-002: the four secondary counters below used to fall back to
+    // `.unwrap_or(0)` with nothing recorded — the exact §20.1.3(a) shape
+    // (".unwrap_or(0) is how a failed read became a confident zero") this
+    // provider's own comment at :386 already named, still present here.
+    // `active_time_bp` is this device's primary evidence and is gated by `?`
+    // above; a secondary counter that fails to read now degrades named,
+    // mirroring `cpu.counters`/`memory.counters` in this same file.
+    let mut devices_with_missing_secondary: Vec<String> = Vec::new();
     let devices: Vec<StorageQueueSample> = pending
         .into_iter()
         .filter_map(|device| {
@@ -707,26 +730,60 @@ fn sample_storage() -> Reading<Vec<StorageQueueSample>> {
             let active_time_bp = device.active.as_ref().and_then(|c| c.read_percent_bp())?;
             let read_or_zero =
                 |counter: &Option<CounterHandle>| counter.as_ref().and_then(|c| c.read_u64());
+            let mut missing: Vec<&str> = Vec::new();
+            let queue_depth_x100 = read_or_zero(&device.queue)
+                .map(|value| value.saturating_mul(100))
+                .unwrap_or_else(|| {
+                    missing.push("Current Disk Queue Length");
+                    0
+                });
+            // `Avg. Disk sec/Transfer` is fractional seconds; LARGE truncated
+            // every sub-second latency to 0.
+            let avg_transfer_latency_us = device
+                .latency
+                .as_ref()
+                .and_then(|c| c.read_f64())
+                .map(|seconds| (seconds.max(0.0) * 1_000_000.0).round() as u64)
+                .unwrap_or_else(|| {
+                    missing.push("Avg. Disk sec/Transfer");
+                    0
+                });
+            let read_bytes_per_sec = read_or_zero(&device.read).unwrap_or_else(|| {
+                missing.push("Disk Read Bytes/sec");
+                0
+            });
+            let write_bytes_per_sec = read_or_zero(&device.write).unwrap_or_else(|| {
+                missing.push("Disk Write Bytes/sec");
+                0
+            });
+            if !missing.is_empty() {
+                devices_with_missing_secondary.push(format!(
+                    "{}: {}",
+                    device.instance,
+                    missing.join(", ")
+                ));
+            }
             Some(StorageQueueSample {
                 device_id: format!("physicaldisk:{}", device.instance),
                 active_time_bp,
-                queue_depth_x100: read_or_zero(&device.queue)
-                    .unwrap_or(0)
-                    .saturating_mul(100),
-                // `Avg. Disk sec/Transfer` is fractional seconds; LARGE truncated
-                // every sub-second latency to 0.
-                avg_transfer_latency_us: device
-                    .latency
-                    .as_ref()
-                    .and_then(|c| c.read_f64())
-                    .map(|seconds| (seconds.max(0.0) * 1_000_000.0).round() as u64)
-                    .unwrap_or(0),
-                read_bytes_per_sec: read_or_zero(&device.read).unwrap_or(0),
-                write_bytes_per_sec: read_or_zero(&device.write).unwrap_or(0),
+                queue_depth_x100,
+                avg_transfer_latency_us,
+                read_bytes_per_sec,
+                write_bytes_per_sec,
                 friendly_name: device.instance,
             })
         })
         .collect();
+    if !devices_with_missing_secondary.is_empty() {
+        partial.push(CollectorFault {
+            collector: "storage.rates".into(),
+            kind: "Degraded".into(),
+            detail: format!(
+                "secondary PDH counters unreadable this tick: {}",
+                devices_with_missing_secondary.join("; ")
+            ),
+        });
+    }
     Reading::from_collection(devices, || CollectorFault {
         collector: "storage".into(),
         kind: "Unavailable".into(),
@@ -860,9 +917,9 @@ impl PerfPlatform for WindowsPerfPlatform {
         // published by `into_snapshot`, which is the only path to a snapshot.
         let mut partial: Vec<CollectorFault> = Vec::new();
         let cpu = sample_cpu(&mut partial, interval);
-        let power = sample_power();
+        let power = sample_power(&mut partial);
         let memory = sample_memory(&mut partial);
-        let storage = sample_storage();
+        let storage = sample_storage(&mut partial);
         let gpu = sample_gpu();
         let process_top = sample_process_top();
         let mut snapshot = CollectedSubsystems {

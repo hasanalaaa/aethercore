@@ -31,45 +31,50 @@ mod macos {
         let current = ticks(1_500, 1_500, 3_000, 0);
         assert_eq!(
             aethercore_performance_telemetry::__test::busy_bp_from_ticks(previous, current),
-            5_000
+            Some(5_000)
         );
         // Fully busy window → 10_000 bp ceiling.
         let previous = ticks(0, 0, 5_000, 0);
         let current = ticks(5_000, 0, 5_000, 0);
         assert_eq!(
             aethercore_performance_telemetry::__test::busy_bp_from_ticks(previous, current),
-            10_000
+            Some(10_000)
         );
-        // Fully idle window → 0 bp floor.
+        // Fully idle window (Δtotal=9_000, genuinely nonzero) → real 0 bp, still a
+        // measurement: distinct from the None-on-Δtotal==0 case below.
         let previous = ticks(0, 0, 0, 0);
         let current = ticks(0, 0, 9_000, 0);
         assert_eq!(
             aethercore_performance_telemetry::__test::busy_bp_from_ticks(previous, current),
-            0
+            Some(0)
         );
     }
 
     #[test]
     fn hostile_tick_counters_clamp_without_panicking() {
-        // Counter regression (reboot/journal wrap): saturates to zero-total → 0 bp.
+        // Counter regression (reboot/journal wrap): both deltas saturate to 0,
+        // so Δtotal == 0 — no window was actually observed. DBT-P45-001: this
+        // must report "no measurement" (None), not a confident 0 bp.
         let previous = ticks(u64::MAX - 10, 0, 0, 0);
         let current = ticks(5, 0, 0, 0);
         assert_eq!(
             aethercore_performance_telemetry::__test::busy_bp_from_ticks(previous, current),
-            0
+            None
         );
         // Busy counter exceeds its own total after subtraction: clamped to the ceiling.
         let previous = ticks(0, 0, 0, 0);
         let current = ticks(u64::MAX / 2, u64::MAX / 2, 0, 0);
         assert_eq!(
             aethercore_performance_telemetry::__test::busy_bp_from_ticks(previous, current),
-            10_000
+            Some(10_000)
         );
-        // Identical counters (no window): defined 0, never a division by zero.
+        // Identical counters (no window): DBT-P45-001 — no elapsed window means no
+        // measurement was made. Must be None, never a division-by-zero and never a
+        // fabricated 0.
         let frozen = ticks(7, 7, 7, 7);
         assert_eq!(
             aethercore_performance_telemetry::__test::busy_bp_from_ticks(frozen, frozen),
-            0
+            None
         );
     }
 
@@ -178,19 +183,21 @@ mod linux_parsers {
     fn proc_stat_delta_math_handles_hostile_counters() {
         let baseline = cpu_from_proc_stat(PROC_STAT).unwrap();
         // Regression: counters go backwards (container migration) → busy Δ and total Δ
-        // saturate to 0 → defined 0 bp, never a wrap or panic.
+        // both saturate to 0 → Δtotal == 0 → DBT-P45-001: no window was observed,
+        // must be None, never a fabricated 0 bp.
         let regressed = cpu_from_proc_stat("cpu  10 0 5 70 3 1 1 0 0 0\n").unwrap();
-        assert_eq!(busy_bp_from_proc(baseline, regressed), 0);
+        assert_eq!(busy_bp_from_proc(baseline, regressed), None);
         // Forward window: busy Δ=(150+0+75+20+20)-(100+0+50+10+10)=95; idle Δ=0 →
         // busy == total → ratio clamps at the ceiling: exactly 10_000 bp.
         let later = cpu_from_proc_stat("cpu  150 0 75 700 30 20 20 5 0 0\n").unwrap();
-        assert_eq!(busy_bp_from_proc(baseline, later), 10_000);
+        assert_eq!(busy_bp_from_proc(baseline, later), Some(10_000));
         // Balanced growth computes the true interior ratio (busy Δ=50, total Δ=150).
         let grown = cpu_from_proc_stat("cpu  200 0 100 800 30 20 20 5 0 0\n").unwrap();
-        let bp = busy_bp_from_proc(later, grown);
+        let bp = busy_bp_from_proc(later, grown).expect("nonzero Δtotal must measure");
         assert!(bp > 0 && bp < 10_000);
-        // Identical counters: zero window is defined as 0 bp, not a division by zero.
-        assert_eq!(busy_bp_from_proc(later, later), 0);
+        // Identical counters (Δtotal == 0): DBT-P45-001 — no elapsed window means
+        // no measurement was made, never a division by zero and never a 0 bp lie.
+        assert_eq!(busy_bp_from_proc(later, later), None);
     }
 
     #[test]

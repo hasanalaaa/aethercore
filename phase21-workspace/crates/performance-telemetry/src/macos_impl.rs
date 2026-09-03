@@ -112,16 +112,23 @@ pub fn read_cpu_ticks() -> Option<CpuTicks> {
 /// Pure tick-delta math, unit-tested against injected counter values: basis points of
 /// busy time across one delta window. Hostile counters (regressions, zero totals) clamp
 /// to the [0, 10_000] range instead of panicking or wrapping.
-pub fn busy_bp_from_ticks(previous: CpuTicks, current: CpuTicks) -> u32 {
+///
+/// `total == 0` means the tick counters did not advance between `previous` and
+/// `current` — no window was actually observed. That is "no measurement", not
+/// "0% busy": DBT-P45-001 (formerly DBT-P44-003) found this exact branch
+/// producing a confident zero, indistinguishable from a real idle reading, at
+/// ~1-in-10 under guaranteed full-core load. `None` here is what lets the
+/// caller (`sample_cpu`) tell the difference instead of publishing a lie.
+pub fn busy_bp_from_ticks(previous: CpuTicks, current: CpuTicks) -> Option<u32> {
     let busy = current.busy().saturating_sub(previous.busy());
     let total = current.total().saturating_sub(previous.total());
     if total == 0 {
-        return 0;
+        return None;
     }
     // Wide arithmetic: busy can be near u64::MAX, so the bp ratio is computed in u128
     // and clamped before narrowing (same discipline as the ring's commit pressure).
     let ratio = (u128::from(busy.min(total)) * u128::from(BP)) / u128::from(total);
-    ratio.min(u128::from(BP)) as u32
+    Some(ratio.min(u128::from(BP)) as u32)
 }
 
 fn sample_cpu(
@@ -159,7 +166,7 @@ fn sample_cpu(
         );
     };
     std::thread::sleep(Duration::from_millis(120).min(interval));
-    let Some(second) = read_cpu_ticks() else {
+    let Some(mut second) = read_cpu_ticks() else {
         return (
             unavailable(
                 "second host_statistics64 observation failed",
@@ -168,22 +175,57 @@ fn sample_cpu(
             Some(first),
         );
     };
-    // The delta spans the in-tick observation window above — real evidence either way.
-    let total_busy_bp = busy_bp_from_ticks(first, second);
+    // DBT-P45-001 (formerly DBT-P44-003): `total == 0` means the tick counters did
+    // not advance across the window just observed — `host_statistics64`'s data can
+    // fail to tick over inside a single ~120ms window under load on this hardware,
+    // measured at ~1-in-10. That is a window that was genuinely too short, not a
+    // 0% reading. Extend the window (bounded) before giving up, rather than either
+    // fabricating a zero or declaring the tick unmeasurable on the first tie.
+    const MAX_TICK_ATTEMPTS: u32 = 5;
+    let started = std::time::Instant::now();
+    let mut attempts: u32 = 1;
+    let mut total_busy_bp = busy_bp_from_ticks(first, second);
+    while total_busy_bp.is_none() && attempts < MAX_TICK_ATTEMPTS && started.elapsed() < interval {
+        std::thread::sleep(Duration::from_millis(120).min(interval));
+        let Some(next) = read_cpu_ticks() else {
+            break;
+        };
+        second = next;
+        total_busy_bp = busy_bp_from_ticks(first, second);
+        attempts += 1;
+    }
+    let Some(total_busy_bp) = total_busy_bp else {
+        return (
+            unavailable(
+                &format!(
+                    "no tick delta in sampling window after {attempts} attempt(s) \
+                     spanning {}ms",
+                    started.elapsed().as_millis()
+                ),
+                "Unavailable",
+            ),
+            Some(second),
+        );
+    };
     // host_statistics64 aggregates every logical CPU; publishing one aggregate entry keeps
     // the wire contract without inventing per-core values this source does not measure.
     let per_processor_busy_bp = vec![total_busy_bp];
+    let mut degraded: Vec<&str> = Vec::new();
     let queue_x100 = load_average()
         .map(|value| (value.max(0.0) * 100.0) as u64)
-        .unwrap_or(0);
+        .unwrap_or_else(|| {
+            degraded.push("processorQueueLengthX100: getloadavg() failed");
+            0
+        });
     // §44 1.A: no line of this file has ever written dpc_isr_busy_bp or
     // context_switches_per_sec — mach exposes neither per this provider's
     // sources. They report as the honest 0 they always were, but cpu itself
     // is measured, so the gap is now named rather than silent.
+    degraded.push("dpcIsrBusyBp/contextSwitchesPerSec: not measured on macOS");
     partial.push(CollectorFault {
         collector: "cpu.counters".into(),
         kind: "Degraded".into(),
-        detail: "counters not measured on macOS: DPC/ISR busy time, context switches/sec".into(),
+        detail: degraded.join("; "),
     });
     (
         Reading::from_evidence(

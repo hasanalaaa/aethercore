@@ -98,15 +98,21 @@ pub fn parse_proc_stat_cpu(text: &str) -> Option<ProcStatCpu> {
 }
 
 /// Pure delta math shared with unit tests; clamps hostile regressions.
-pub fn busy_bp_from_proc(previous: ProcStatCpu, current: ProcStatCpu) -> u32 {
+///
+/// `total == 0` means /proc/stat's aggregate counters did not advance between
+/// `previous` and `current` — identical shape to macOS's
+/// `busy_bp_from_ticks` (DBT-P45-001) and the same fix: no window was
+/// observed, which is "no measurement", not "0% busy". `None` lets the
+/// caller say so instead of publishing a lie.
+pub fn busy_bp_from_proc(previous: ProcStatCpu, current: ProcStatCpu) -> Option<u32> {
     let busy = current.busy().saturating_sub(previous.busy());
     let total = current.total().saturating_sub(previous.total());
     if total == 0 {
-        return 0;
+        return None;
     }
     // Wide arithmetic: counters can be near u64::MAX; ratio in u128, clamped on narrowing.
     let ratio = (u128::from(busy.min(total)) * u128::from(BP)) / u128::from(total);
-    ratio.min(u128::from(BP)) as u32
+    Some(ratio.min(u128::from(BP)) as u32)
 }
 
 fn read_proc_stat() -> Option<String> {
@@ -435,12 +441,12 @@ impl PerfPlatform for LinuxPerfPlatform {
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
                     .take();
-                let (carried, current) = match previous {
-                    Some(carried) => (Some(carried), first),
+                let (carried, mut current) = match previous {
+                    Some(carried) => (carried, first),
                     None => {
                         std::thread::sleep(Duration::from_millis(120).min(interval));
                         (
-                            Some(first),
+                            first,
                             read_proc_stat()
                                 .as_deref()
                                 .and_then(parse_proc_stat_cpu)
@@ -448,34 +454,74 @@ impl PerfPlatform for LinuxPerfPlatform {
                         )
                     }
                 };
-                let total_busy_bp = busy_bp_from_proc(carried.unwrap_or_default(), current);
-                *self.previous_stat.lock().unwrap_or_else(|p| p.into_inner()) = Some(current);
-                let mut sample = CpuSample {
-                    per_processor_busy_bp: vec![total_busy_bp],
-                    total_busy_bp,
-                    ..CpuSample::default()
-                };
-                let mut degraded: Vec<&str> = Vec::new();
-                match std::fs::read_to_string("/proc/loadavg").ok().as_deref().and_then(parse_loadavg) {
-                    Some(load) => {
-                        sample.processor_queue_length_x100 =
-                            ((load.max(0.0) * 100.0) as u64).min(u32::MAX as u64);
-                    }
-                    None => degraded.push("/proc/loadavg missing or unparseable"),
+                // DBT-P45-001 (macOS's `busy_bp_from_ticks` shape, "identical on
+                // Linux" per the brief): `total == 0` means /proc/stat's counters
+                // did not advance across the window just observed — a window
+                // that was genuinely too short, not a 0% reading. Extend it
+                // (bounded) before declaring the tick unmeasurable.
+                const MAX_TICK_ATTEMPTS: u32 = 5;
+                let started = std::time::Instant::now();
+                let mut attempts: u32 = 1;
+                let mut total_busy_bp = busy_bp_from_proc(carried, current);
+                while total_busy_bp.is_none()
+                    && attempts < MAX_TICK_ATTEMPTS
+                    && started.elapsed() < interval
+                {
+                    std::thread::sleep(Duration::from_millis(120).min(interval));
+                    let Some(next) = read_proc_stat().as_deref().and_then(parse_proc_stat_cpu)
+                    else {
+                        break;
+                    };
+                    current = next;
+                    total_busy_bp = busy_bp_from_proc(carried, current);
+                    attempts += 1;
                 }
-                // §44 1.A: no line of this file has ever written dpc_isr_busy_bp
-                // or context_switches_per_sec — /proc/stat's aggregate line
-                // does not expose either at the granularity this contract
-                // wants. They report as the honest 0 they always were, but cpu
-                // itself is measured, so the gap is now named rather than silent.
-                degraded.push("DPC/ISR busy time not measured on Linux");
-                degraded.push("context switches/sec not measured on Linux");
-                partial.push(CollectorFault {
-                    collector: "cpu.counters".into(),
-                    kind: "Degraded".into(),
-                    detail: degraded.join("; "),
-                });
-                Reading::from_evidence(Some(sample), || unreachable_fault("cpu"))
+                *self.previous_stat.lock().unwrap_or_else(|p| p.into_inner()) = Some(current);
+                match total_busy_bp {
+                    None => Reading::unavailable(CollectorFault {
+                        collector: "cpu".into(),
+                        kind: "Unavailable".into(),
+                        detail: format!(
+                            "no tick delta in sampling window after {attempts} attempt(s) \
+                             spanning {}ms",
+                            started.elapsed().as_millis()
+                        ),
+                    }),
+                    Some(total_busy_bp) => {
+                        let mut sample = CpuSample {
+                            per_processor_busy_bp: vec![total_busy_bp],
+                            total_busy_bp,
+                            ..CpuSample::default()
+                        };
+                        let mut degraded: Vec<&str> = Vec::new();
+                        match std::fs::read_to_string("/proc/loadavg")
+                            .ok()
+                            .as_deref()
+                            .and_then(parse_loadavg)
+                        {
+                            Some(load) => {
+                                sample.processor_queue_length_x100 =
+                                    ((load.max(0.0) * 100.0) as u64).min(u32::MAX as u64);
+                            }
+                            None => degraded.push("/proc/loadavg missing or unparseable"),
+                        }
+                        // §44 1.A: no line of this file has ever written
+                        // dpc_isr_busy_bp or context_switches_per_sec —
+                        // /proc/stat's aggregate line does not expose either
+                        // at the granularity this contract wants. They report
+                        // as the honest 0 they always were, but cpu itself is
+                        // measured, so the gap is now named rather than
+                        // silent.
+                        degraded.push("DPC/ISR busy time not measured on Linux");
+                        degraded.push("context switches/sec not measured on Linux");
+                        partial.push(CollectorFault {
+                            collector: "cpu.counters".into(),
+                            kind: "Degraded".into(),
+                            detail: degraded.join("; "),
+                        });
+                        Reading::from_evidence(Some(sample), || unreachable_fault("cpu"))
+                    }
+                }
             }
             _ => Reading::unavailable(CollectorFault {
                 collector: "cpu".into(),
