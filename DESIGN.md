@@ -18,16 +18,63 @@ Inspired by the 2026 design awards (Apple Design Awards, Awwwards), AetherCore m
 - **Borders:** "Liquid Edge" highlights — a 1px inner border using a soft, translucent white (`rgba(255,255,255,0.08)`) simulating light hitting the edge of glass.
 - **Typography:** `Inter Variable` or `San Francisco Pro` with dynamic weights based on context. `JetBrains Mono` for technical data, but strictly restrained to data fields.
 
-## 3. Color Palette (Restrained & Calming)
-Moving away from harsh neons to soft, purposeful gradients and monochromatic calmness.
-- **Base (The Void):** `#030508` (Deepest OLED black, mimicking physical darkness)
-- **Surfaces (Liquid Glass):** `#0E1217` at `40%` opacity (Layered frost)
-- **Primary Accent (Aurora Glow):** Soft gradient from `#5C7CFA` to `#82C91E` (Used exclusively for primary, triumphant actions).
-- **Contextual States:**
-  - **Success:** Soft Emerald glow `#2B8A3E`
-  - **Warning:** Muted Amber `#E67700`
-  - **Danger:** Deep Crimson `#C92A2A`
-- **Text:** High-contrast `rgba(255, 255, 255, 0.95)` for primary, `rgba(255, 255, 255, 0.5)` for secondary.
+## 3. Color Palette — six roles, not a mood board
+
+Superseded 2026-09-03 (brief v3). The palette below replaces the "Aurora
+Glow" gradient described in prior revisions of this file: that gradient ran
+`#5C7CFA → #82C91E`, blue into green, which meant the primary-button accent
+and the "healthy" status color were the same hue at one end. A button and a
+measurement should never look like the same kind of fact. AetherCore has
+exactly six color roles. Every state color anywhere in the product must be
+one of these six — nothing is invented per-component.
+
+| Role | Dark (fg / solid) | Light (fg / solid) | Means | Never |
+|---|---|---|---|---|
+| **Interactive** | `#5C7CFA → #7C93FF` | `#4C6EF5 → #6C8CFF` | Something actionable right now — a button, a link, a focus ring, the primary gradient. | Express a state. Never used to say a measurement is good, bad, or refused. |
+| **Verified** | `#D9B94E` / `#C9A227` | `#A9820A` | Cryptographically checked — a signed manifest, a hash-pinned model, a signed licence. | Appear as a gradient, a background fill, or on anything not actually verified. Rare by design. |
+| **Healthy** | `#69DB7C` / `#2B8A3E` | `#2F9E44` | A measurement is inside its expected range. | — |
+| **Attention** | `#FFC078` / `#E67700` | `#C96500` | Worth a look, not urgent — drifting toward a threshold. | — |
+| **Critical** | `#FF8787` / `#C92A2A` | `#C92A2A` | Outside safe range now, or a fault occurred. | — |
+| **Denied by policy** | `#9C8FD9` / `#7C6BC4` | `#6B5CA5` / `#7C6BC4` | The system refused an operation on purpose, per a named rule. | Fall into the critical/red family. A refusal is the product working as promised, not an error. |
+
+Base surfaces are unchanged: void `#030508` (dark) / `#EDF0F5` (light),
+glass panels at low-alpha white/black per theme — see the `.ae` custom
+properties in `AetherCore.html` for the literal values (`--void`, `--glass`,
+`--glass-2/3`, `--edge`, `--edge-strong`).
+
+**The fix that mattered:** the health orb's "healthy" fill used to be
+`rgba(130,201,30,0.42)` — the literal RGB of the old `--a2` green, i.e. the
+interactive accent's second gradient stop, standing in for a status. It now
+reads `rgba(43,138,62,…)`, the actual healthy-solid RGB. Interactive's
+second stop moved from green (`#82C91E`) to a second blue (`#7C93FF`) so
+this collision can't recur elsewhere in the gradient.
+
+**Colour-blind check.** Approximate hues: interactive ~230°, verified ~46°,
+healthy ~130°, attention ~30°, critical ~0°, denied ~255°. Two pairs sit
+close enough on the wheel to worry about:
+- *attention (30°) vs. verified (46°)* — the closest pair on paper. Kept
+  apart in practice because verified never appears in the tag/badge
+  vocabulary attention uses — it's a rare, fixed icon+label seal, never a
+  status pill on a row.
+- *interactive (230°) vs. denied (255°)* — closest under a blue-yellow
+  (tritanopia) simulation. Kept apart because denied never appears as a
+  gradient or a button fill (interactive's exclusive pattern), and always
+  carries a mono rule ID next to it that interactive never does.
+- *critical (0°) vs. attention (30°)* — the classic red-green-deficiency
+  confusion pair, inherited from the original palette. Mitigated the same
+  way it already was: different icons, different copy ("critical" vs.
+  "warning"), and critical alone gets the persistent toast treatment.
+
+Net rule: every hue pair close enough to risk confusion is also separated
+by a second channel — shape, rarity, or accompanying text — so no two roles
+collapse to "the same thing" even in grayscale.
+
+A seventh, non-role tint (`#8FA6FF`, tone `"info"`) remains in the row/table
+helpers for neutral reference rows ("browser session artifacts", "startup
+chain") that aren't claiming healthy/attention/critical about anything.
+It's a lighter, desaturated tint of interactive's hue but never appears in
+interactive's own pattern (buttons/gradients), so it doesn't violate the
+"interactive never expresses a state" rule — it's not a state at all.
 
 ## 4. UI Screens & Adaptive Elements
 All original interfaces retained, but reimagined with predictive AI structuring and functional motion (e.g., Dynamic Island style notifications).
