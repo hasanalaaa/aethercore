@@ -6901,3 +6901,69 @@ session must verify it. Numbered checks, each with an EXPECTED value:
    §42.5 — exit 0, validate output EMPTY, 0 ICE, 16 payload rows, and the
    `vcomp140.dll` row's sha256 still `55aba23c…` (this change does not
    change which bytes ship, only how confidently the script can say so).
+
+## 44.6 PART 2.B — DBT-P43-001: decision recorded, bring it into the repo
+
+**Decision: bring `p36_relbuild.cmd` into the repo under version control.
+Do not fix it in place on the VM.**
+
+This session cannot execute the migration — it runs on the Mac with no VM
+access (unlike §43, which drove the VM through `prlctl`; this brief does not
+mention resuming it), so the file's current content cannot be read or
+written from here. The decision and the reasoning are recorded now so a
+Windows/VM session can carry it out without re-litigating the choice.
+
+**Argument for bringing it in, not fixing in place:**
+
+1. **This is the same failure mode DBT-P42-012 just was, in this same
+   session (§44.5).** An artifact that exists only on a machine, outside
+   git, with no way for anyone off that machine to see its current content,
+   diff a change, or know what changed it last. Fixing `p36_relbuild.cmd`
+   in place would resolve DBT-P43-001's specific symptom (the phantom
+   `--example ipc_two_client_probe` step) while leaving the exact class of
+   defect that produced it fully armed for the next thing that goes wrong
+   in that file.
+2. **The rest of the release pipeline is already in the repo.**
+   `scripts/build-installer.ps1`, `scripts/check-msi-payload.ps1`,
+   `scripts/Get-ProductVersion.ps1` are all version-controlled, reviewable,
+   and diffable. `p36_relbuild.cmd` performing the ARM64 release build and
+   validation is the one piece of this pipeline that is not — an
+   inconsistency, not a deliberate boundary.
+3. **§44's own brief states the diagnosis this argues from:** "A build
+   script whose exit code cannot be trusted is a measuring instrument that
+   lies — the recurring pattern in this project." An unversioned script is
+   *why* nobody could see the phantom example target before it started
+   returning exit 101 on a clean build — there is no history to `git blame`,
+   no diff to review, no CI to catch drift. Version control does not fix
+   DBT-P43-001 by itself, but it makes the fix reviewable, and makes the
+   next regression like it visible in a diff instead of discovered by a
+   session that has to read the file cold off a VM.
+4. **Against "fix in place":** it is faster this once, but it repeats
+   exactly the mistake this session spent its first half fixing on the
+   Windows side (§44.5) — an unaudited, unversioned artifact that
+   downstream sessions have to re-discover and re-verify by hand instead of
+   reading a diff.
+
+**Concrete follow-up for the next session with VM access** (not performed
+here — no VM access this session):
+
+1. Copy `C:\AetherCore-P36\logs\p36_relbuild.cmd`'s current content into the
+   repo, e.g. `phase21-workspace\scripts\release\p36_relbuild.cmd` (or
+   wherever the existing `scripts\` convention best fits — the file is a
+   *build recipe*, same category as `build-installer.ps1`).
+2. Fix DBT-P43-001 in that copy while it's already being touched: either
+   remove the second build step (`--example ipc_two_client_probe`, which
+   `git grep` confirms has no `examples\` directory or `[[example]]` entry
+   in `aethercore-ipc` on either machine — §43.9), or gate it behind an
+   existence check that skips cleanly instead of exiting 101 on a target
+   that was never real.
+3. Commit the copy, then point whatever invokes the recipe (a scheduled
+   task, a session's manual run, documentation) at the repo path instead of
+   `C:\AetherCore-P36\logs\...`.
+4. Only after the repo copy is proven to reproduce §43.2's clean ARM64
+   build (exit 0, `Finished` in the log) should the VM-only copy be
+   retired — do not delete it first per this project's standing rule about
+   not discarding a fallback before its replacement is proven.
+
+Not performed as part of this session: no VM access, and the brief scoped
+this part to a decision, not an execution.
