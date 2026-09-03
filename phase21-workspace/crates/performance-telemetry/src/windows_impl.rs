@@ -715,11 +715,16 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
     }
     // DBT-P45-002: the four secondary counters below used to fall back to
     // `.unwrap_or(0)` with nothing recorded — the exact §20.1.3(a) shape
-    // (".unwrap_or(0) is how a failed read became a confident zero") this
-    // provider's own comment at :386 already named, still present here.
-    // `active_time_bp` is this device's primary evidence and is gated by `?`
-    // above; a secondary counter that fails to read now degrades named,
-    // mirroring `cpu.counters`/`memory.counters` in this same file.
+    // this file's own comment at :386 names. Not a stale comment describing
+    // fixed code: `git blame cc9c51e` shows :386's comment and this
+    // function's four `.unwrap_or(0)` calls were written in the SAME commit
+    // (P42, DBT-P41-002) — the commit that introduced the disciplined
+    // `degraded.push()` pattern for `cpu`'s and `memory`'s secondary
+    // counters left `storage`'s newly-rewritten secondary counters on the
+    // old, un-degraded `.unwrap_or(0)` shape, three functions away from its
+    // own stated principle. `active_time_bp` is this device's primary
+    // evidence and is gated by `?` above; the four secondary counters now
+    // get the same `degraded.push()` discipline `cpu`/`memory` already had.
     let mut devices_with_missing_secondary: Vec<String> = Vec::new();
     let devices: Vec<StorageQueueSample> = pending
         .into_iter()

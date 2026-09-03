@@ -6645,13 +6645,17 @@ tick data coalesces at a coarser interval than this harness's 120ms window
 on this Apple Silicon host, or something else; not investigated further
 this session, and not worth guessing at in place of measuring it.
 
-**Recorded as DBT-P44-003, open.** Does not reopen Part 1.D's proof: four
-manual `aetherctl telemetry-once` invocations under real, sustained load
-during §44.4 — run directly, not through this harness's rapid fresh-instance
-`under_load` pattern — never returned a zero, and all four agreed with the
-host's own counters to within a couple of points. The discrepancy is between
-this specific test harness's calling pattern and whatever the real
-provider does under it; not between the provider and the host.
+**Recorded as DBT-P44-003, open.** → **Superseded, see §45.0/§45.2: CLOSED,
+root cause confirmed by instrumentation (not the "coalesces at a coarser
+interval" guess two paragraphs up — that was never verified here) and
+fixed at the field boundary as DBT-P45-001.** Does not reopen Part 1.D's
+proof: four manual `aetherctl telemetry-once` invocations under real,
+sustained load during §44.4 — run directly, not through this harness's
+rapid fresh-instance `under_load` pattern — never returned a zero, and all
+four agreed with the host's own counters to within a couple of points. The
+discrepancy is between this specific test harness's calling pattern and
+whatever the real provider does under it; not between the provider and the
+host.
 
 ## 44.3 PART 1.C — the contract applied to both providers
 
@@ -7066,7 +7070,7 @@ Gate 2.A re-proof.
 | **DBT-P42-005** | macOS/Linux built `PerfSnapshot` literally, not through `CollectedSubsystems` | **CLOSED.** §44.3 — both platforms now route exclusively through `Reading<T>`/`CollectedSubsystems`, same shape as Windows' P42 fix |
 | **DBT-P44-001** | Linux does not compile on its own target — 3x `E0308` (faults passed by value) + 3x private-type-in-public-interface, never caught because no session had reached a Linux target before this one | **FIXED**, §44.3. `cargo check --tests --target x86_64-unknown-linux-gnu` now EXIT 0 |
 | **DBT-P44-002** | Linux `sample_power` scanned real `/sys/class/thermal_zone*/temp` data and discarded it, reporting a confident empty `PowerSample` with no fault when zones existed | **FIXED**, §44.3 — hottest zone now wired into `has_temperature`/`temperature_c` |
-| **DBT-P44-003** | `macos::real_macos_provider_reports_non_zero_cpu_under_load` (§44.2) flakes ~1-in-10 with `totalBusyBp: 0` under guaranteed full-core load — `busy_bp_from_ticks`'s `total == 0` tie fires far more often on this real Apple Silicon host than its "rare edge case" framing (§44.1) assumed | **open** — root cause not established; ruled out cross-binary contention and post-stress settling (§44.3 addendum), does not reopen Part 1.D's real-provider proof (4/4 manual `telemetry-once` readings under load never returned zero) |
+| **DBT-P44-003** | `macos::real_macos_provider_reports_non_zero_cpu_under_load` (§44.2) flakes ~1-in-10 with `totalBusyBp: 0` under guaranteed full-core load — `busy_bp_from_ticks`'s `total == 0` tie fires far more often on this real Apple Silicon host than its "rare edge case" framing (§44.1) assumed | **open** at the time of this report → **CLOSED by §45.0/§45.2, superseded by DBT-P45-001** (the class this instance belongs to: the pure tick-delta function's return type couldn't say "no window", root cause confirmed by instrumentation before any fix, not assumed) — root cause was NOT established here, do not read this row as still open |
 | **DBT-P42-012** | `build-installer.ps1` required `vcomp140.dll` without sourcing it; first plausible match on the machine is wrong | **FIXED** (unexecuted on this host), §44.5 — explicit source resolution + hash verification, 6 Windows checks left behind |
 | **DBT-P43-001** | ARM64 recipe's own exit code (101) is unusable even on a clean build, because it also tries a nonexistent `--example` target | **decision recorded**, §44.6 — bring the recipe into the repo; migration is a follow-up, not performed (no VM access) |
 | **DBT-P42-006** | `aethercore-driver-hub --lib`, 6 pre-existing failing tests | **no longer reproduces** — 18/18 pass this session (§44.3 footnote); not the code (no change to `driver-hub` since Phase 31 per `git log`), not chased further; recorded so a future session does not read this as newly fixed by P44 |
@@ -7199,42 +7203,43 @@ a measurement that was never made" principle the brief states. No per-site
 guard was added; the one function signature is the whole fix at the pure-
 math layer.
 
-**The caller (macOS `sample_cpu`, Linux `sample()`'s cpu branch): retry
-inside the sampling budget, then degrade — not fabricate, and not give up
-on the first tie.** §45.0 measured `total == 0` as a **real, frequent**
-event on this hardware (17.5% in the 40-run diagnostic), not a one-in-a-
-million edge case — publishing `Reading::unavailable` on the very first tie
-would have traded a "0% lie" for a "cpu degrades on ~1 in 6 ticks" product
-regression, technically honest but a worse product than either. The brief's
-own text supports this: *"Where a Duration or window is genuinely too short
-to measure, that is a fault with a reason"* — the fix reads that as
-license to first find out whether the window really was too short (extend
-it, bounded) before declaring it so, rather than being required to declare
-unavailable immediately. Both platforms now:
+**The caller (macOS `sample_cpu`, Linux `sample()`'s cpu branch): extend the
+window once, then degrade — not fabricate, and not give up on the first
+tie.** §45.0 measured `total == 0` as a **real, frequent** event on this
+hardware (17.5% in the 40-run diagnostic), not a one-in-a-million edge
+case — publishing `Reading::unavailable` on the very first tie would have
+traded a "0% lie" for a "cpu degrades on ~1 in 6 ticks" product regression,
+technically honest but a worse product than either. The brief's own text
+supports this: *"Where a Duration or window is genuinely too short to
+measure, that is a fault with a reason"* — the fix reads that as license to
+first find out whether the window really was too short (extend it, bounded)
+before declaring it so, rather than being required to declare unavailable
+immediately. Both platforms now:
 
 1. take the two observations as before (in-tick double read on the first
    tick; carried state vs. fresh read on later ticks for Linux, first vs.
    second `host_statistics64` call for macOS);
 2. compute the tick delta; if `Some`, done;
-3. if `None`, sleep another ~120ms (bounded to the remaining `interval`
-   budget, capped at 5 attempts total) and take a fresh second observation
-   against the **same original baseline**, recomputing;
-4. if every attempt inside the budget ties, the **whole `cpu` subsystem**
-   reports `Reading::unavailable` with a fault naming the attempt count and
-   elapsed time (`"no tick delta in sampling window after N attempt(s)
-   spanning Xms"`) — never a fabricated zero, and never silently degrading
-   only a sub-field while the rest of `CpuSample` (which has nothing else
-   to report without the tick delta) pretends to be measured.
+3. if `None`, sleep once more — a single `EXTENDED_WAIT` of 480ms, bounded
+   to the remaining `interval` budget — and take one fresh second
+   observation against the **same original baseline**, recomputing;
+4. if that also ties (or the budget was exhausted, or the extra read
+   failed), the **whole `cpu` subsystem** reports `Reading::unavailable`
+   with a fault naming the observation count and elapsed time
+   (`"no tick delta in sampling window after N observation(s) spanning
+   Xms"`) — never a fabricated zero, and never silently degrading only a
+   sub-field while the rest of `CpuSample` (which has nothing else to
+   report without the tick delta) pretends to be measured.
 
-This is a genuine behavior change beyond "removing the lie": it also makes
-the lie's replacement rare in practice (§45.3's 50-run result), by giving
-the counters more time to advance before asking the caller to accept
-"unavailable" for a tick. It does not touch `busy_bp_from_ticks`/
-`busy_bp_from_proc`'s pure contract, which stays exactly "`None` on
-`total == 0`, no exceptions" — the retry lives in the caller, matching the
-brief's "no per-site guards **in the contract**" (the contract itself has
-none; the caller's retry is a scheduling decision, not a guard around the
-zero).
+**This was originally a 5-attempt retry loop (~120ms per step, re-checking
+after each), simplified to the single 480ms wait above after review —
+§45.6 has the full reconciliation, including the experiment that showed the
+loop's extra checks never resolved anything early.** It does not touch
+`busy_bp_from_ticks`/`busy_bp_from_proc`'s pure contract, which stays
+exactly "`None` on `total == 0`, no exceptions" — the wait lives in the
+caller, matching the brief's "no per-site guards **in the contract**" (the
+contract itself has none; the caller's wait is a scheduling decision, not a
+guard around the zero).
 
 **Site #2 — macOS `processorQueueLengthX100`'s `getloadavg()` failure.**
 Folded into the existing `cpu.counters` degraded-fault mechanism (§44.3's
@@ -7372,6 +7377,15 @@ in the raw failure line the fix produces for that one case:
     faults=[CollectorFault { collector: "cpu", kind: "Unavailable",
       detail: "no tick delta in sampling window after 5 attempt(s)
                spanning 490ms" }, ...]
+
+This measurement was against the original 5-attempt loop. §45.6 replaces
+that loop with a single 480ms wait (same worst-case budget) after review
+found the loop's intermediate checks never resolved anything early; the
+fault string above becomes `"...after 2 observation(s) spanning ~600ms"`
+under the simplified code. **Re-run after the simplification: identical
+result, 1/50, 50/50 pass** — recorded in §45.6, not re-tabled here, since
+the distribution is the same shape with different exact non-1.0 values
+(real host noise between runs, not a behavior change).
 
 Recorded as **DBT-P45-004, open**: full elimination of the tie (not just
 honest labeling of it) was not attempted this session. Two directions
@@ -7570,3 +7584,169 @@ permission classifier (direct pushes to the default branch need explicit
 user authorization, unlike every prior phase's session which apparently
 had it standing). All five commits are local on `main`, ready to push on
 request.
+
+## 45.6 FOLLOW-UP REVIEW — two findings reconciled against the code, not the report
+
+Owner review of this report raised two objections after §45.5. Both were
+right to raise; both are answered here against the code and against a new
+measurement, not against what §45.1-45.5 already claimed.
+
+### 45.6.1 — the Windows census, reconciled against `git blame`, not the prose
+
+**The claim under review: "your census reads as 'all A' and the code says
+otherwise."** Read plainly, §45.1's table is not "all A" — rows #13 and
+#14 are B, found and fixed this session. But the objection is sharper than
+a row-count: it points at `windows_impl.rs:386`'s comment (*"Nothing is
+silently defaulted to zero (§20.1.3(a): `.unwrap_or(0)` is how a failed
+read became a confident measurement)"*) and asks how that comment can sit
+in a file this census calls mostly-A, when the brief itself (the
+"Windows census" section, quoting the same line) uses it as evidence the
+codebase "has known about the shape and kept using it." **Resolved
+against `git blame`, precisely, not against either reading:**
+
+    git log -S "silently defaulted to zero" -- windows_impl.rs
+    → cc9c51e "fix(p42): DBT-P41-002 fixed at the type"  (2026-09-02)
+
+    git show cc9c51e:windows_impl.rs | sed -n '700,726p'
+    → the SAME commit's sample_storage, lines 713/723/724/725,
+      .unwrap_or(0) on all four secondary counters — no degraded.push,
+      no fault, unchanged in spirit from the pre-P42 version
+      (git show cc9c51e^:windows_impl.rs confirms the pre-P42 storage
+      function had the identical .unwrap_or(0) shape on ALL FIVE
+      counters including the primary one; P42 gated only the primary
+      counter via `?`, rewrote the function around it, and left the
+      four secondary counters exactly as they were)
+
+    git show cc9c51e:windows_impl.rs | sed -n '560,617p'
+    → sample_memory, the SAME commit: secondary counters DO get
+      degraded.push() — the disciplined pattern, present
+
+**The comment is not stale, and the census was not wrong — but the
+reconciliation the brief was fishing for is real and sharper than either
+"comment is stale" or "census is wrong": one commit (`cc9c51e`, P42)
+wrote the disciplined `degraded.push()` pattern for `cpu`'s secondary
+counters, wrote the comment at `:386` naming the principle explicitly,
+applied the same pattern three functions later to `memory`'s secondary
+counters — and, in the same commit, rewrote `sample_storage` around a
+`?`-gated primary counter while leaving its four secondary counters on
+the old shape the comment two functions up had just named.** P42 knew the
+shape, fixed it twice, and missed it once, within one commit. That is a
+more specific and more useful finding than "the comment is stale" (it
+isn't) or "the census under-counted" (it didn't) — it explains *why* a
+census was still worth running on a "qualified, shipping" file: the defect
+wasn't overlooked by ignorance, it survived a fix that got 2 of 3 sites
+right and moved on. `windows_impl.rs:716-722` now cites this precisely
+(commit hash, line range, "three functions away from its own stated
+principle") rather than the vaguer "still present here" this session
+first wrote. No comment was deleted — `:386`'s comment is accurate and
+stays; a comment was *added* at the storage site making the commit-level
+inconsistency explicit rather than implicit.
+
+**Re-swept sites #10-12/#15-16 (the "A, already fixed" rows) against this
+same standard before answering:** for each, `git blame` was checked to
+confirm the fix commit and the current code both apply the
+`degraded.push()`/`Reading::unavailable` discipline with no residual
+`.unwrap_or(0)` anywhere in the current file (`grep -n "unwrap_or(0)"
+windows_impl.rs` → zero matches, post-fix; every remaining
+`.unwrap_or_else` closure pushes to a `degraded`/`missing` vec first).
+None reopened. The two genuine B sites (#13, #14) were the only ones.
+
+### 45.6.2 — the retry is a product decision now measured, not asserted
+
+**Fault message already names attempt count and elapsed time** — this was
+already true of the code before this review (`"no tick delta in sampling
+window after {N} attempt(s) spanning {X}ms"`), not a gap to close. Kept,
+adjusted only for the vocabulary change below (`observation(s)` in place
+of `attempt(s)` — see the next point).
+
+**Where the 5 came from: it was arbitrary, stated plainly.** No
+measurement or derivation produced it; it was chosen as "a small bounded
+number," the same way `120ms` for the original single sleep was chosen
+without a documented derivation back in P27. Worth naming since the
+question was asked directly rather than left implicit.
+
+**Added worst-case latency, precise:** the pre-existing path already spent
+120ms (the original single sleep before the first tick-delta computation)
+— that is not new. The retry loop added up to 4 further 120ms sleeps
+(`attempts` 1→5), i.e. **up to 480ms of new sleep**, for a worst-case
+total sampling latency of **~600ms**, versus ~120ms pre-fix. This only
+fires on the tie path (§45.3: ~2-30% of ticks depending on load pattern,
+never on the ~70-98% majority that don't tie).
+
+**Would one longer window have done the same job with less code? Measured,
+not guessed:** a throwaway experiment
+(`tests/p45_retry_experiment.rs`, written for this question, run once,
+then deleted — not part of the deliverable) called
+`read_cpu_ticks`/`busy_bp_from_ticks` directly under the same load
+harness, 300 trials, and for every tie logged **which observation number
+first resolved it**, allowing up to 8 observations (a higher ceiling than
+production's 5, to see the tail production's cap was hiding):
+
+    trials=300  no_tie=208 (69.3%)  ties=92 (30.7%)  never_resolved_by_8=2
+
+    resolved at observation 2:   0
+    resolved at observation 3:   0
+    resolved at observation 4:   9
+    resolved at observation 5:  20
+    resolved at observation 6:  23
+    resolved at observation 7:  26
+    resolved at observation 8:  12
+
+**Zero ties resolved at the first or second retry (observations 2 or 3).
+The earliest any tie resolved was the third retry (observation 4, ~480ms
+in).** That is the answer to "is the tie purely about duration, and would
+a single longer wait do the same job": **yes, a single longer wait does
+the identical job, because the retry loop's intermediate checks (at
+~120ms, ~240ms, ~360ms) never once found a resolved tie to exit early on**
+— every one of the 92 ties in this experiment was still frozen at those
+three checkpoints. A 5-step loop re-checking every 120ms and a single
+480ms sleep-then-recheck sample the tick counters at the same wall-clock
+instant for whichever check ends up being the last one taken; the loop's
+only structural advantage over one longer sleep is an early exit, and this
+data shows that early exit never fires. **Simplified accordingly** (this
+session, after this review, not before): both `macos_impl.rs` and
+`linux_impl.rs`'s retry loops are replaced with one bounded 480ms wait —
+same worst-case budget as the loop's ceiling, less code, behaviorally
+identical (re-measured: 50-run zero rate 1/50 both before and after the
+simplification, §45.3's note). The fault's `{N} attempt(s)` became
+`{N} observation(s)` (`N` is now 1 or 2, not 1-5) to match.
+
+**The more interesting finding, stated as asked:** the tie is **not** a
+quick, one-check blip that a slightly-longer window resolves — it is a
+**sustained freeze**, and the distribution above is weighted toward the
+*later* checkpoints (6, 7 higher than 4, 5) with 2/92 not clearing even by
+the 8th observation (~960ms). Production's 480ms extension only reaches
+observations 4-5, which this data shows accounts for **29 of 92 ties
+(31.5%)** — meaning roughly two-thirds of ties that occur would, on this
+data, still not have resolved inside the shipped budget, consistent with
+(if not a precise match to — different sampling density, see caveat below)
+the 50-run test's 1/50 residual. **This reframes DBT-P45-004**: the
+open item is not "an occasional retry isn't enough," it is "the mechanism
+this fix bets on — waiting longer — is only partially effective at any
+budget a product can afford to spend on one tick," which is a more
+specific and less comfortable finding than the original open-item text
+had it. Not resolved this session; the honest budget/reliability trade
+that follows from it (a much longer wait would resolve more ties but cost
+proportionally more latency on exactly the ticks already flagged as rare)
+is left for whoever picks up DBT-P45-004.
+
+**Caveat on the experiment's own numbers, stated rather than smoothed
+over:** the 30.7% base tie rate measured here does not match §45.0's 17.5%
+(7/40) or the 50-run test's implied rate — the experiment's 300 trials ran
+back-to-back inside one process under continuous load, a denser sampling
+pattern than production's once-per-`interval` cadence or the flaky test's
+fresh-process-per-trial pattern, and it would not be honest to claim the
+base rate transfers. **What does transfer, because it doesn't depend on
+the base rate at all: the *shape* of the resolution-time distribution** —
+no early resolution, weighted toward later checkpoints, a nonzero
+never-resolves tail. That shape is what answered both of the review's
+questions (prefer the simpler design; the tie is not purely durational),
+and it is the only claim from this experiment carried into the fix or
+into DBT-P45-004's reframing.
+
+**Verification after the simplification:** `cargo check --tests` on all
+three targets (macOS native, `x86_64-unknown-linux-gnu`,
+`x86_64-pc-windows-msvc`) EXIT 0; full local suite
+(`cargo test -p aethercore-performance-telemetry --lib --tests`) 18/18
+pass; `cargo build --workspace --tests` EXIT 0; 50-run re-measurement
+1/50, 50/50 pass, identical to the pre-simplification loop.

@@ -177,28 +177,40 @@ fn sample_cpu(
     };
     // DBT-P45-001 (formerly DBT-P44-003): `total == 0` means the tick counters did
     // not advance across the window just observed — `host_statistics64`'s data can
-    // fail to tick over inside a single ~120ms window under load on this hardware,
-    // measured at ~1-in-10. That is a window that was genuinely too short, not a
-    // 0% reading. Extend the window (bounded) before giving up, rather than either
-    // fabricating a zero or declaring the tick unmeasurable on the first tie.
-    const MAX_TICK_ATTEMPTS: u32 = 5;
+    // fail to tick over inside a single ~120ms window under load on this hardware.
+    // That is a window that was genuinely too short, not a 0% reading. Extend it
+    // (bounded) before giving up, rather than either fabricating a zero or
+    // declaring the tick unmeasurable on the first tie.
+    //
+    // One extended wait, not a retry loop: a throwaway experiment (300 trials
+    // under load, logged which observation resolved each tie, discarded after
+    // §45 recorded the numbers) found **no tie ever resolved before the 4th
+    // observation** (~480ms) — every earlier re-check was wasted. A loop that
+    // re-checks every ~120ms buys nothing a single sleep of the same total
+    // length doesn't already get, so it is not one; `EXTENDED_WAIT` below is
+    // the same ~480ms budget the old 5-attempt loop's worst case spent,
+    // spent once instead of in four increments.
+    const EXTENDED_WAIT: Duration = Duration::from_millis(480);
     let started = std::time::Instant::now();
-    let mut attempts: u32 = 1;
+    let mut observations: u32 = 1;
     let mut total_busy_bp = busy_bp_from_ticks(first, second);
-    while total_busy_bp.is_none() && attempts < MAX_TICK_ATTEMPTS && started.elapsed() < interval {
-        std::thread::sleep(Duration::from_millis(120).min(interval));
-        let Some(next) = read_cpu_ticks() else {
-            break;
-        };
-        second = next;
-        total_busy_bp = busy_bp_from_ticks(first, second);
-        attempts += 1;
+    if total_busy_bp.is_none() {
+        let remaining = interval.saturating_sub(started.elapsed());
+        let wait = EXTENDED_WAIT.min(remaining);
+        if !wait.is_zero() {
+            std::thread::sleep(wait);
+            if let Some(next) = read_cpu_ticks() {
+                second = next;
+                total_busy_bp = busy_bp_from_ticks(first, second);
+                observations = 2;
+            }
+        }
     }
     let Some(total_busy_bp) = total_busy_bp else {
         return (
             unavailable(
                 &format!(
-                    "no tick delta in sampling window after {attempts} attempt(s) \
+                    "no tick delta in sampling window after {observations} observation(s) \
                      spanning {}ms",
                     started.elapsed().as_millis()
                 ),

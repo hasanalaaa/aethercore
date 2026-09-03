@@ -459,22 +459,32 @@ impl PerfPlatform for LinuxPerfPlatform {
                 // did not advance across the window just observed — a window
                 // that was genuinely too short, not a 0% reading. Extend it
                 // (bounded) before declaring the tick unmeasurable.
-                const MAX_TICK_ATTEMPTS: u32 = 5;
+                //
+                // One extended wait, not a retry loop — mirrors macOS's
+                // `sample_cpu` exactly. macOS's own throwaway experiment (not
+                // reproducible here, no Linux host this session) found no tie
+                // resolves before the 4th observation (~480ms); a loop that
+                // re-checks every ~120ms cannot resolve any earlier than a
+                // single sleep of the same total length, so it is not one.
+                // Applied here on the same reasoning, not independently
+                // re-measured on this platform.
+                const EXTENDED_WAIT: Duration = Duration::from_millis(480);
                 let started = std::time::Instant::now();
-                let mut attempts: u32 = 1;
+                let mut observations: u32 = 1;
                 let mut total_busy_bp = busy_bp_from_proc(carried, current);
-                while total_busy_bp.is_none()
-                    && attempts < MAX_TICK_ATTEMPTS
-                    && started.elapsed() < interval
-                {
-                    std::thread::sleep(Duration::from_millis(120).min(interval));
-                    let Some(next) = read_proc_stat().as_deref().and_then(parse_proc_stat_cpu)
-                    else {
-                        break;
-                    };
-                    current = next;
-                    total_busy_bp = busy_bp_from_proc(carried, current);
-                    attempts += 1;
+                if total_busy_bp.is_none() {
+                    let remaining = interval.saturating_sub(started.elapsed());
+                    let wait = EXTENDED_WAIT.min(remaining);
+                    if !wait.is_zero() {
+                        std::thread::sleep(wait);
+                        if let Some(next) =
+                            read_proc_stat().as_deref().and_then(parse_proc_stat_cpu)
+                        {
+                            current = next;
+                            total_busy_bp = busy_bp_from_proc(carried, current);
+                            observations = 2;
+                        }
+                    }
                 }
                 *self.previous_stat.lock().unwrap_or_else(|p| p.into_inner()) = Some(current);
                 match total_busy_bp {
@@ -482,8 +492,8 @@ impl PerfPlatform for LinuxPerfPlatform {
                         collector: "cpu".into(),
                         kind: "Unavailable".into(),
                         detail: format!(
-                            "no tick delta in sampling window after {attempts} attempt(s) \
-                             spanning {}ms",
+                            "no tick delta in sampling window after {observations} \
+                             observation(s) spanning {}ms",
                             started.elapsed().as_millis()
                         ),
                     }),
