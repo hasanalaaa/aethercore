@@ -19,9 +19,21 @@ use std::mem::size_of;
 use std::time::Duration;
 
 use super::{
-    CollectorFault, CpuSample, GpuSample, MemorySample, PerfPlatform, PerfSnapshot, PowerSample,
-    ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
+    CollectedSubsystems, CollectorFault, CpuSample, MemorySample, PerfPlatform, PerfSnapshot,
+    ProcessCpuTopEntry, Reading, StorageQueueSample,
 };
+
+/// `Reading::from_evidence` needs a fault for the `None` arm; where the caller
+/// has already proven the `Some`, this documents that the arm is unreachable
+/// rather than inventing a plausible-looking reason for it. Mirrors
+/// `windows_impl.rs`'s helper of the same name and purpose.
+fn unreachable_fault(collector: &str) -> CollectorFault {
+    CollectorFault {
+        collector: collector.into(),
+        kind: "Internal".into(),
+        detail: "evidence was present; this fault is unreachable".into(),
+    }
+}
 
 // WAIVER (owner-review, Phase 27): `libc::mach_host_self` is marked deprecated upstream in
 // favor of the `mach2` crate. Adding a second binding crate for one symbol is out of scope;
@@ -34,14 +46,6 @@ const CPU_STATE_IDLE: usize = libc::CPU_STATE_IDLE as usize;
 const CPU_STATE_NICE: usize = libc::CPU_STATE_NICE as usize;
 /// Basis-point scale shared with the rest of the engine.
 const BP: u64 = 10_000;
-
-fn fault(faults: &mut Vec<CollectorFault>, collector: &str, kind: &str, detail: String) {
-    faults.push(CollectorFault {
-        collector: collector.into(),
-        kind: kind.into(),
-        detail,
-    });
-}
 
 /// Page size in bytes. A non-positive result (hostile kernel report) falls back to 4096
 /// rather than dividing by zero downstream.
@@ -123,34 +127,46 @@ pub fn busy_bp_from_ticks(previous: CpuTicks, current: CpuTicks) -> u32 {
 fn sample_cpu(
     previous: Option<CpuTicks>,
     interval: Duration,
-    faults: &mut Vec<CollectorFault>,
-) -> (CpuSample, Option<CpuTicks>) {
+    partial: &mut Vec<CollectorFault>,
+) -> (Reading<CpuSample>, Option<CpuTicks>) {
+    let unavailable = |detail: &str, kind: &str| {
+        Reading::unavailable(CollectorFault {
+            collector: "cpu".into(),
+            kind: kind.into(),
+            detail: detail.into(),
+        })
+    };
     // Rate counters need two observations inside one tick — the same discipline the
     // Windows PDH collector applies (collect → short sleep → collect). A failed first
     // or second observation degrades typed instead of fabricating a value.
     let Some(first) = previous.or_else(|| {
         let value = read_cpu_ticks();
         if value.is_none() {
-            fault(
-                faults,
-                "cpu",
-                "Unavailable",
-                "host_statistics64(HOST_CPU_LOAD_INFO) failed".into(),
-            );
+            partial.push(CollectorFault {
+                collector: "cpu".into(),
+                kind: "Unavailable".into(),
+                detail: "host_statistics64(HOST_CPU_LOAD_INFO) failed".into(),
+            });
         }
         value
     }) else {
-        return (CpuSample::default(), None);
+        return (
+            unavailable(
+                "host_statistics64(HOST_CPU_LOAD_INFO) failed",
+                "Unavailable",
+            ),
+            None,
+        );
     };
     std::thread::sleep(Duration::from_millis(120).min(interval));
     let Some(second) = read_cpu_ticks() else {
-        fault(
-            faults,
-            "cpu",
-            "ProviderFailure",
-            "second host_statistics64 observation failed".into(),
+        return (
+            unavailable(
+                "second host_statistics64 observation failed",
+                "ProviderFailure",
+            ),
+            Some(first),
         );
-        return (CpuSample::default(), Some(first));
     };
     // The delta spans the in-tick observation window above — real evidence either way.
     let total_busy_bp = busy_bp_from_ticks(first, second);
@@ -160,14 +176,26 @@ fn sample_cpu(
     let queue_x100 = load_average()
         .map(|value| (value.max(0.0) * 100.0) as u64)
         .unwrap_or(0);
+    // §44 1.A: no line of this file has ever written dpc_isr_busy_bp or
+    // context_switches_per_sec — mach exposes neither per this provider's
+    // sources. They report as the honest 0 they always were, but cpu itself
+    // is measured, so the gap is now named rather than silent.
+    partial.push(CollectorFault {
+        collector: "cpu.counters".into(),
+        kind: "Degraded".into(),
+        detail: "counters not measured on macOS: DPC/ISR busy time, context switches/sec".into(),
+    });
     (
-        CpuSample {
-            per_processor_busy_bp,
-            total_busy_bp,
-            dpc_isr_busy_bp: 0,
-            context_switches_per_sec: 0,
-            processor_queue_length_x100: queue_x100.min(u32::MAX as u64),
-        },
+        Reading::from_evidence(
+            Some(CpuSample {
+                per_processor_busy_bp,
+                total_busy_bp,
+                dpc_isr_busy_bp: 0,
+                context_switches_per_sec: 0,
+                processor_queue_length_x100: queue_x100.min(u32::MAX as u64),
+            }),
+            || unreachable_fault("cpu"),
+        ),
         Some(second),
     )
 }
@@ -189,7 +217,7 @@ fn swap_mib() -> [libc::c_int; 2] {
     [libc::CTL_VM, libc::VM_SWAPUSAGE]
 }
 
-fn sample_memory(faults: &mut Vec<CollectorFault>) -> MemorySample {
+fn sample_memory(partial: &mut Vec<CollectorFault>) -> Reading<MemorySample> {
     let page = page_size();
     let mut vm: libc::vm_statistics64 = zeroed();
     let mut count = libc::HOST_VM_INFO64_COUNT;
@@ -203,13 +231,11 @@ fn sample_memory(faults: &mut Vec<CollectorFault>) -> MemorySample {
         )
     };
     if status != libc::KERN_SUCCESS {
-        fault(
-            faults,
-            "memory",
-            "Unavailable",
-            "host_statistics64(HOST_VM_INFO64) failed".into(),
-        );
-        return MemorySample::default();
+        return Reading::unavailable(CollectorFault {
+            collector: "memory".into(),
+            kind: "Unavailable".into(),
+            detail: "host_statistics64(HOST_VM_INFO64) failed".into(),
+        });
     }
     let bytes = |pages: u64| pages.saturating_mul(page);
     let free = bytes(u64::from(vm.free_count));
@@ -229,12 +255,11 @@ fn sample_memory(faults: &mut Vec<CollectorFault>) -> MemorySample {
         )
     } == 0;
     if !memsize_ok || memsize == 0 {
-        fault(
-            faults,
-            "memory",
-            "ProviderFailure",
-            "sysctl(hw.memsize) unavailable".into(),
-        );
+        partial.push(CollectorFault {
+            collector: "memory.counters".into(),
+            kind: "ProviderFailure".into(),
+            detail: "sysctl(hw.memsize) unavailable".into(),
+        });
     }
 
     // Swap capacity via CTL_VM/VM_SWAPUSAGE → xsw_usage (typed failure otherwise).
@@ -251,12 +276,11 @@ fn sample_memory(faults: &mut Vec<CollectorFault>) -> MemorySample {
         )
     } == 0;
     if !swap_ok {
-        fault(
-            faults,
-            "memory",
-            "ProviderFailure",
-            "sysctl(CTL_VM/VM_SWAPUSAGE) unavailable".into(),
-        );
+        partial.push(CollectorFault {
+            collector: "memory.counters".into(),
+            kind: "ProviderFailure".into(),
+            detail: "sysctl(CTL_VM/VM_SWAPUSAGE) unavailable".into(),
+        });
     }
 
     let available = free.saturating_add(inactive.min(purgeable));
@@ -266,20 +290,23 @@ fn sample_memory(faults: &mut Vec<CollectorFault>) -> MemorySample {
     } else {
         0
     };
-    MemorySample {
-        total_physical_bytes: memsize,
-        available_physical_bytes: available,
-        standby_cache_bytes: purgeable,
-        modified_page_list_bytes: bytes(vm.pageouts),
-        commit_bytes: used,
-        commit_limit_bytes: memsize.saturating_add(swap.xsu_total),
-        // Mach fault counters are cumulative since boot, not per-second rates; publishing
-        // them under per-second contract keys would misstate their semantics. Zero is the
-        // honest value here — commit pressure above carries the memory-pressure signal.
-        hard_faults_per_sec: 0,
-        soft_faults_per_sec: 0,
-        memory_load_percent: load_percent,
-    }
+    Reading::from_evidence(
+        Some(MemorySample {
+            total_physical_bytes: memsize,
+            available_physical_bytes: available,
+            standby_cache_bytes: purgeable,
+            modified_page_list_bytes: bytes(vm.pageouts),
+            commit_bytes: used,
+            commit_limit_bytes: memsize.saturating_add(swap.xsu_total),
+            // Mach fault counters are cumulative since boot, not per-second rates; publishing
+            // them under per-second contract keys would misstate their semantics. Zero is the
+            // honest value here — commit pressure above carries the memory-pressure signal.
+            hard_faults_per_sec: 0,
+            soft_faults_per_sec: 0,
+            memory_load_percent: load_percent,
+        }),
+        || unreachable_fault("memory"),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -289,24 +316,33 @@ fn sample_memory(faults: &mut Vec<CollectorFault>) -> MemorySample {
 /// Volumes probed for honest capacity evidence. Missing volumes degrade typed.
 const STATFS_PATHS: [&std::ffi::CStr; 2] = [c"/", c"/System/Volumes/Data"];
 
-fn sample_storage(faults: &mut Vec<CollectorFault>) -> Vec<StorageQueueSample> {
+fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueueSample>> {
     let mut out = Vec::new();
     for path in STATFS_PATHS {
         let mut fs: libc::statfs = zeroed();
         let rc = unsafe { libc::statfs(path.as_ptr(), std::ptr::addr_of_mut!(fs)) };
         if rc != 0 {
-            fault(
-                faults,
-                "storage",
-                "Unavailable",
-                format!("statfs({}) failed", path.to_string_lossy()),
-            );
+            partial.push(CollectorFault {
+                collector: "storage".into(),
+                kind: "Degraded".into(),
+                detail: format!("statfs({}) failed", path.to_string_lossy()),
+            });
             continue;
         }
         let block = u64::from(fs.f_bsize.max(1));
         let total = u64::from(fs.f_blocks).saturating_mul(block);
         let available = u64::from(fs.f_bavail).saturating_mul(block);
         if total == 0 {
+            // §44 1.A: this path used to be a silent skip — no fault, no
+            // evidence either way. Named now, same as a statfs() failure.
+            partial.push(CollectorFault {
+                collector: "storage".into(),
+                kind: "Degraded".into(),
+                detail: format!(
+                    "statfs({}) reported zero total blocks",
+                    path.to_string_lossy()
+                ),
+            });
             continue;
         }
         // Honest proxy only: active_time_bp carries used-capacity basis points (capacity
@@ -328,22 +364,30 @@ fn sample_storage(faults: &mut Vec<CollectorFault>) -> Vec<StorageQueueSample> {
             write_bytes_per_sec: 0,
         });
     }
-    if out.is_empty() {
-        fault(
-            faults,
-            "storage",
-            "Unavailable",
-            "no statfs volume reported usable capacity data".into(),
-        );
+    if !out.is_empty() {
+        // §44 1.A: latency/throughput fields are permanently 0 — statfs has no
+        // rate data — while active_time_bp (capacity pressure) IS real. Named
+        // so a consumer cannot mistake the zeros for idle devices.
+        partial.push(CollectorFault {
+            collector: "storage.rates".into(),
+            kind: "Degraded".into(),
+            detail: "not measured on macOS: queue depth, transfer latency, read/write \
+                     bytes/sec (statfs exposes capacity only)"
+                .into(),
+        });
     }
-    out
+    Reading::from_collection(out, || CollectorFault {
+        collector: "storage".into(),
+        kind: "Unavailable".into(),
+        detail: "no statfs volume reported usable capacity data".into(),
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Process ranking — proc_listpids + proc_pidinfo(PROC_PIDTASKINFO)
 // ---------------------------------------------------------------------------
 
-fn sample_process_top(faults: &mut Vec<CollectorFault>) -> Vec<ProcessCpuTopEntry> {
+fn sample_process_top() -> Reading<Vec<ProcessCpuTopEntry>> {
     const MAX_PIDS: usize = 4096;
     let list_bytes = MAX_PIDS * size_of::<libc::c_int>();
     let mut buffer = vec![0u8; list_bytes];
@@ -356,13 +400,11 @@ fn sample_process_top(faults: &mut Vec<CollectorFault>) -> Vec<ProcessCpuTopEntr
         )
     };
     if written <= 0 {
-        fault(
-            faults,
-            "processTop",
-            "Unavailable",
-            "proc_listpids failed".into(),
-        );
-        return Vec::new();
+        return Reading::unavailable(CollectorFault {
+            collector: "processTop".into(),
+            kind: "Unavailable".into(),
+            detail: "proc_listpids failed".into(),
+        });
     }
     let count = (written as usize / size_of::<libc::c_int>()).min(MAX_PIDS);
     let pid_words = size_of::<libc::c_int>();
@@ -418,7 +460,21 @@ fn sample_process_top(faults: &mut Vec<CollectorFault>) -> Vec<ProcessCpuTopEntr
         ));
     }
     entries.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    entries.into_iter().map(|(_, _, entry)| entry).collect()
+    let ranked: Vec<ProcessCpuTopEntry> =
+        entries.into_iter().map(|(_, _, entry)| entry).collect();
+    // §44 1.A: the process list was enumerated (`written > 0`), but every pid
+    // between listing and `proc_pidinfo` can vanish or refuse the query
+    // (`:388-391` below, unchanged — that skip is still not itself a fault).
+    // If every one of them did, this used to return `[]` with no fault at
+    // all; `from_collection` closes exactly that gap.
+    Reading::from_collection(ranked, || CollectorFault {
+        collector: "processTop".into(),
+        kind: "Unavailable".into(),
+        detail: format!(
+            "{count} pid(s) listed but none produced a readable proc_pidinfo(PROC_PIDTASKINFO) \
+             snapshot"
+        ),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -450,7 +506,11 @@ impl PerfPlatform for MacosPerfPlatform {
         // Floor discipline: the shared MIN_INTERVAL_MS (250 ms) clamp in the ring governs
         // cadence; this provider additionally refuses sub-floor in-tick windows.
         debug_assert!(interval >= Duration::from_millis(super::MIN_INTERVAL_MS as u64));
-        let mut faults: Vec<CollectorFault> = Vec::new();
+        // Faults for degraded *parts* of measured subsystems (dotted collector
+        // names). Whole-subsystem availability is carried by the `Reading`s and
+        // published by `into_snapshot`, which is the only path to a snapshot —
+        // mirrors windows_impl.rs's `partial` split exactly.
+        let mut partial: Vec<CollectorFault> = Vec::new();
         // The platform instance is owned by one sampler; carrying the previous absolute
         // tick counter across calls lets each tick measure exactly its own interval.
         // First tick: delta spans the in-tick observation window (never zero, never fake).
@@ -459,49 +519,40 @@ impl PerfPlatform for MacosPerfPlatform {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .take();
-        let (cpu, current) = sample_cpu(previous, interval, &mut faults);
+        let (cpu, current) = sample_cpu(previous, interval, &mut partial);
         *self
             .previous_ticks
             .lock()
             .unwrap_or_else(|p| p.into_inner()) = current;
-        // GPU: honestly degraded — no IOReport/Metal source exists in this build.
-        let gpu = GpuSample {
-            adapter_id: "degraded".into(),
-            adapter_name: "GPU telemetry unavailable on macOS (no IOReport source)".into(),
-            ..GpuSample::default()
-        };
-        faults.push(CollectorFault {
+        // GPU: honestly degraded, unconditionally — no IOReport/Metal source
+        // exists in this build. There is no decision to make here, so this is
+        // `Reading::unavailable` directly rather than a rule that could
+        // silently stop firing.
+        let gpu = Reading::unavailable(CollectorFault {
             collector: "gpu".into(),
             kind: "Degraded".into(),
             detail: "no native GPU telemetry source on macOS; not simulated".into(),
         });
-        // Thermal/power: honestly degraded — no SMC access is attempted or simulated.
-        let power = PowerSample {
-            throttle_active: false,
-            throttle_reason: ThermalThrottleReason::None,
-            limit_reasons_raw: 0,
-            has_temperature: false,
-            temperature_c: 0,
-        };
-        faults.push(CollectorFault {
+        // Thermal/power: honestly degraded, unconditionally — no SMC access is
+        // attempted or simulated.
+        let power = Reading::unavailable(CollectorFault {
             collector: "thermalPower".into(),
             kind: "Degraded".into(),
             detail: "SMC thermal/power sources unavailable; not simulated".into(),
         });
-        let memory = sample_memory(&mut faults);
-        let storage = sample_storage(&mut faults);
-        let process_top = sample_process_top(&mut faults);
-        PerfSnapshot {
-            captured_unix_ms: chrono::Utc::now().timestamp_millis(),
-            interval_ms: interval.as_millis().min(u128::from(u32::MAX)) as u32,
+        let memory = sample_memory(&mut partial);
+        let storage = sample_storage(&mut partial);
+        let process_top = sample_process_top();
+        let mut snapshot = CollectedSubsystems {
             cpu,
             power,
             memory,
             storage,
             gpu,
             process_top,
-            collector_faults: faults,
         }
-        .normalized()
+        .into_snapshot(interval);
+        snapshot.collector_faults.extend(partial);
+        snapshot.normalized()
     }
 }

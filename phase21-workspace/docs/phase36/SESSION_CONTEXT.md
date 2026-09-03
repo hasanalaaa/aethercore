@@ -6619,3 +6619,106 @@ runtime test failure would have been, and it is `git stash`-verified
 pre-existing, not introduced by this file.
 
 Both results are committed in this state before any fix.
+
+## 44.3 PART 1.C — the contract applied to both providers
+
+Both `macos_impl.rs` and `linux_impl.rs` now build every subsystem as a
+`Reading<T>` and publish exclusively through `CollectedSubsystems::into_snapshot`
+— the same shape §42.2 established for Windows, including the `partial: &mut
+Vec<CollectorFault>` split for degraded *parts* of an otherwise-measured
+subsystem (dotted names: `cpu.counters`, `storage.rates`, mirroring Windows'
+`cpu.counters`/`memory.counters`).
+
+### How many availability rules survived, and why
+
+**macOS: 10 decision sites going in (§44.1's 8 conditional + 2 unconditional
+stub), 0 survive as independent hand-written rules.** All 10 are now
+`Reading::unavailable` / `Reading::from_evidence` / `Reading::from_collection`
+calls whose fault is supplied at the point of collection — same transformation
+§42.2 did for Windows, on a crate that had never gone through it. Three
+**new** dotted partial faults were added because §44.1 found real coverage
+gaps the contract migration alone does not close automatically (a subsystem
+can be "measured" by `Reading` and still carry a permanently-unmeasured
+sub-field):
+
+- `cpu.counters` — DPC/ISR busy time and context switches/sec were, and
+  remain, unmeasured on macOS; now named instead of silently `0`.
+- `storage.rates` — transfer latency and read/write bytes/sec were, and
+  remain, unmeasured (statfs has no rate data); now named.
+- The per-path storage `total == 0` silent skip (§44.1) now pushes a
+  `storage` Degraded fault instead of `continue`-ing silently.
+
+processTop's silent-empty gap (§44.1) is closed by `Reading::from_collection`
+directly — no partial fault needed, the whole-subsystem `Unavailable` now
+fires if every listed pid fails its `proc_pidinfo` query.
+
+**Linux: 7 decision sites going in (§44.1's 6 conditional + 1 unconditional
+stub), 0 survive as independent hand-written rules.** Same transformation,
+plus:
+
+- `cpu.counters` — same DPC/ISR + context-switches gap as macOS, named.
+- `storage.rates` — active time, transfer latency, read/write bytes/sec
+  (diskstats single-sample has no rate data), named.
+- **`processTop` — DBT-P42-005's Linux instance of the exact §20.1.1 site-7
+  shape** (`Vec::new()` unconditionally, zero fault ever) is now
+  `Reading::unavailable(NotCollected)`, verbatim-mirroring
+  `windows_impl.rs:837-852`'s design and its stated reason (no per-PID /proc
+  walk on the hot path — observer effect).
+- **DBT-P44-002, FIXED: `sample_power` no longer discards the thermal-zone
+  scan.** §44.1's headline finding — `scan_thermal_zones()` was read only to
+  decide whether to fault, and its millidegree readings were never written
+  into `PowerSample`. The hottest zone is now the evidence:
+  `has_temperature: true, temperature_c` from `zones.iter().max()`; absence
+  degrades exactly as before (`thermalPower Degraded`). `throttle_active`
+  stays `false` — no rated-threshold basis exists to compare against, and
+  none is invented, matching the file's own honesty discipline for every
+  other field it doesn't measure.
+
+### DBT-P44-001, FIXED — Linux did not compile on its own target
+
+§44.1 found `linux_impl.rs` failed with 3 `E0308`s (faults passed by value
+where `sample()`'s helper wanted `&mut Vec<CollectorFault>`) — subsumed by
+this rewrite, since the function carrying the bug was rewritten to route
+through `Reading<T>` anyway. A **second, independent** instance of the same
+root cause ("this file has never been type-checked on a Linux target")
+surfaced only once the first was fixed and `cargo check --tests` could get
+further: `ProcStatCpu`/`ProcMemInfo`/`DiskStatsRow` were `pub(crate)`
+(`linux_impl.rs:51,130,244`), and the crate's `__test` doc-hidden module
+re-exports functions returning them as `pub` — a private type in a publicly
+reachable signature, which the existing `tests/native_providers.rs`
+`linux_parsers` module (pre-existing, unmodified by this session) has always
+called, but never through a compiler until this session's cross-target
+check. Fixed by widening the three types to `pub`, matching the visibility
+their macOS equivalent (`CpuTicks`, `macos_impl.rs`) already had — macOS's
+was caught by every macOS build; Linux's was caught by none, ever, until
+this session reached the target.
+
+    cargo check -p aethercore-performance-telemetry --target x86_64-unknown-linux-gnu
+    cargo check -p aethercore-performance-telemetry --tests --target x86_64-unknown-linux-gnu
+    both EXIT 0, warnings only (2 pre-existing unrelated unused-import warnings
+    in tests/adversarial.rs and tests/phase27_real_sample.rs, first surfaced
+    because this is the first time those files were compiled for this target)
+
+### Windows — untouched, confirmed by diff scope
+
+Neither `windows_impl.rs` nor any file `#[cfg(windows)]`-gated was touched.
+The only shared-code file this session's Part 1.C edited outside the two
+providers is none — `Reading<T>`/`CollectedSubsystems`/`unreachable_fault`-
+style helpers are per-file (macOS and Linux each define their own
+`unreachable_fault`, same pattern as Windows', not a shared refactor into
+`lib.rs`), so there is no diff for Windows to review. `git diff --stat`:
+only `macos_impl.rs` and `linux_impl.rs` changed.
+
+### A deliberate, small wire-visible change on macOS
+
+`gpu.adapter_id`/`adapter_name` previously carried human-readable placeholder
+text (`"degraded"` / `"GPU telemetry unavailable on macOS (no IOReport
+source)"`) even though the collector had nothing measured. Routing gpu
+through `Reading::unavailable` means the wire fallback is now
+`GpuSample::default()` — empty strings — with the same information carried
+instead in the `CollectorFault.detail` that already existed. This matches
+the contract's own principle (evidence fields carry evidence or nothing; the
+fault carries the explanation) and is consistent with how Windows' gpu
+already behaved pre- and post-P42. Downstream: `offline.rs:241`'s
+now-deleted-on-Windows site-8 gpu rule reads `measured_subsystems().gpu`,
+not `adapter_id`, so this is not a second contradiction reappearing on macOS.
