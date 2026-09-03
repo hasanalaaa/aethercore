@@ -329,7 +329,7 @@ fn run(inner:Arc<Inner>,owner_principal_key:String){
     }
     let storage=hardware.as_ref().map(|h|h.storage.clone()).unwrap_or_default();
     let memory=hardware.as_ref().and_then(|h|h.memory.clone());
-    let event_window_days=crash.as_ref().map(|c| if c.event_window_days == 0 { aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS } else { c.event_window_days }).unwrap_or(0);
+    let event_window_days=crash.as_ref().map(|c| if c.event_window_days == 0 { aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS } else { c.event_window_days }).unwrap_or(aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS);
     let events=crash.as_ref().map(|c|c.events.clone()).unwrap_or_default();
     let crashes=crash.as_ref().map(|c|c.crashes.clone()).unwrap_or_default();
     let cards=build_cards_with_availability(&storage,memory.as_ref(),&events,&crashes,crash.is_some(),event_window_days);
