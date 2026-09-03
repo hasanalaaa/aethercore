@@ -7785,7 +7785,7 @@ before assuming the state below is still current.
 | 2.A DBT-P42-011 x64 bias | NOT STARTED | needs x64 Windows; unreachable this session |
 | 2.B DBT-P42-009/010 decision | NOT STARTED | — |
 | 3.(1) Part 1 privilege breaks | DONE (none found) | §46.11 — nothing to fix at this priority tier |
-| 3.(2) every B from 0.C | IN PROGRESS | §46.12 — 3 fixed, 4 reclassified A, 27 remain |
+| 3.(2) every B from 0.C | IN PROGRESS | §46.12/§46.13 — 7 fixed, 4 reclassified A, 1 needs owner decision, 22 remain |
 | 3.(3) every count>1 from 0.D | NOT STARTED | §46.4 has the list, none fixed yet |
 | 3.(4) DBT-P42-006 driver-hub | DONE (reclassified) | §46.2 — 18/18 pass, not reproducing |
 | 3.(5) DBT-P42-007 offline_boundary | DONE (reclassified) | §46.2 — cache populated, 1/1 pass |
@@ -8341,17 +8341,82 @@ check before a fix is written, not just before this note existed.
 **27 still open** in §46.3's original B-list, unchanged from the census
 until worked. §46.0 and this session's next-action note updated below.
 
-## 46.13 NEXT ACTION for a fresh session
+## 46.13 PART 3 — second batch: B5, and three poisoned-lock sites
+
+- **B5** (`diagnostic-engine`, crash-provider failure → `event_window_days=0`).
+  Confirmed real: this is the LIVE scan path (not a rarely-used secondary
+  one), and the sibling case two lines up (`crash` ran but reported 0) already
+  substitutes `DEFAULT_EVENT_WINDOW_DAYS` — the `None` case just never got the
+  same treatment. **FIXED**, one line, no wire-shape change. New mock
+  (`CrashUnavailableMock`) + test, committed failing first
+  (`event_window_days` was 0, expected 30), then the fix
+  (`15ac64d`/`c98b2c9`).
+- **B8 / B18 / B31** (`system-repair::assessment`, `cleaner::snapshot`,
+  `desktop::DesktopScheduleStore::schedules`) — all three read a poisoned
+  `RwLock`/`Mutex` via `.unwrap_or_default()`, silently discarding the
+  last-written value. **All three FIXED** to
+  `.unwrap_or_else(|poisoned| poisoned.into_inner())`, matching the pattern
+  already dominant elsewhere in this exact codebase (checked: diagnostic-engine,
+  operation-kernel, startup-manager, `services/maintenance-service/src/care.rs`
+  all already recover poisoned locks — these three were the outliers). Neither
+  `system-repair` nor `cleaner` nor `apps/desktop` had any existing test module
+  to construct the real owning type through, so each got one self-contained
+  test proving the exact recovery mechanism (real panic via `catch_unwind`,
+  real poisoning, asserting the old path loses data and the new path doesn't)
+  on the same lock type the field uses, rather than skipping verification.
+  Commit `9c4ec5e`.
+
+**A B4 finding recorded but NOT fixed, on purpose:** `diagnostic-engine::history()`'s
+`card_count` (a corrupted/schema-incompatible stored snapshot JSON parses to
+`None`, `.unwrap_or(0)` reports "0 cards" indistinguishable from a real
+empty scan) needs a wire-contract decision, not a unilateral fix —
+`DiagnosticHistoryEntry.card_count` is a plain `u32` consumed at
+`services/maintenance-service/src/protocol.rs:590` and this crate's
+principle (§4 of the operating contract) treats a wire-consumed field as a
+published contract until proven otherwise. The fix (an `Option<u32>` or a
+companion `snapshot_readable: bool`) needs an explicit decision, not an
+assumption. Left open, not worked around.
+
+**Environmental discovery, load-bearing for every remaining Windows-only
+fix:** `cargo check --target x86_64-pc-windows-msvc` fails for any crate
+that transitively depends on `aethercore-persistence` (rusqlite ->
+libsqlite3-sys's C source) — this Mac's plain `cc` cannot cross-compile that
+C code to the MSVC target; only a real MSVC toolchain (the VM has one, via
+`p36_relbuild.cmd`'s `VsDevCmd`/`clang-cl` setup) can. `hardware-telemetry`'s
+B2 fix cross-compile-checked cleanly earlier in this session specifically
+*because* it has no such dependency — that was not representative of most
+of the remaining crates. From here, Windows-only fixes in
+persistence-touching crates (`system-repair`, `driver-install`,
+`startup-manager`, `cleaner`, `windows-update`, `windows-pnp`,
+`driver-hub`, `services/maintenance-service`) can only be verified by (a)
+the native macOS build catching type errors in shared non-`windows_impl.rs`
+code, which is genuine but partial coverage, or (b) pushing to the VM,
+which has the real toolchain.
+
+**Running total after both batches: 7 FIXED (B20, B25, B2, B5, B8, B18,
+B31), 4 reclassified A (B22, B24, B27, B32), 1 recorded as needing an owner
+wire-contract decision (B4), 22 still open.**
+
+## 46.14 NEXT ACTION for a fresh session
 
 Read this table (§46.0) top to bottom for the first row not `DONE`. As of
-this commit, Part 3 is IN PROGRESS: 27 of the original 34 B-sites in §46.3
-remain (3 fixed, 4 reclassified to A — see §46.12's table for exactly
-which). **Before fixing any of the remaining 27, read the FULL surrounding
-function, not just the census's narrow grep context** — §46.12 found 4 of
-the first 7 sites worked were already-guarded-elsewhere false positives, and
-there is no reason to expect the remaining 27 are cleaner. The 2 findings
-from §46.4 (service-name and install-path literal duplication) are untouched
-and still open after this. Part 2.A needs an x64 Windows host, unreachable
+this commit, Part 3 is IN PROGRESS: 22 of the original 34 B-sites in §46.3
+remain open (7 fixed, 4 reclassified to A, 1 — B4 — recorded as needing an
+owner wire-contract decision; §46.12/§46.13 have the exact list). **Before
+fixing any of the remaining 22, read the FULL surrounding function, not
+just the census's narrow grep context** — §46.12 found 4 of the first 7
+sites worked were already-guarded-elsewhere false positives, and there is
+no reason to expect the rest are cleaner. **Also check whether the fix
+would touch a value already exposed on the wire as a plain (non-Option)
+field** (protocol.rs / a .proto message) — if so, record it like B4 rather
+than changing the contract unilaterally. **For any Windows-only fix in a
+crate depending on `aethercore-persistence`, `cargo check --target
+x86_64-pc-windows-msvc` will not work from this Mac** (§46.13 — cc-rs can't
+cross-compile libsqlite3-sys's C source without a real MSVC toolchain); push
+to the VM instead, or rely on the native macOS build for non-`windows_impl.rs`
+code. The 2 findings from §46.4 (service-name and install-path literal
+duplication) are untouched and still open after this. Part 2.A needs an x64
+Windows host, unreachable
 from this Mac session — offer it to (or check progress from) the "AetherCore
 x86_64 Windows physical qualification" peer session before declaring it
 BLOCKED-OWNER. Part 1 is DONE (§46.11, no privilege-boundary break). Before
