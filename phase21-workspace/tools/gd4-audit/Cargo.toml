@@ -1,0 +1,18 @@
+# DBT-P40-003 / P46: the Phase 32 GD-4 live host audit probe lives HERE, not in
+# the shipping crate's `examples/`. Same reasoning as DBT-P36-001, DBT-P36-008
+# and DBT-P40-001 (see tools/p39-probes): kept runnable, kept out of the
+# payload. Fourth occurrence of the class.
+[package]
+name = "aethercore-gd4-audit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "gd4_live_audit"
+path = "src/gd4_live_audit.rs"
+
+[dependencies]
+aethercore-security-audit = { path = "../../crates/security-audit" }

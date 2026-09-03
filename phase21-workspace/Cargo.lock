@@ -242,6 +242,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethercore-gd4-audit"
+version = "0.1.11"
+dependencies = [
+ "aethercore-security-audit",
+]
+
+[[package]]
 name = "aethercore-gpu-policy"
 version = "0.1.11"
 dependencies = [

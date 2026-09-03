@@ -51,6 +51,7 @@ members = [
   "crates/db-diagnostics",
   "crates/security-audit",
   "crates/fleet",
+  "tools/gd4-audit",
 ]
 resolver = "3"
 
