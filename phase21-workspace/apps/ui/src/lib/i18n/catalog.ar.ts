@@ -1678,4 +1678,5 @@ export const arCatalog = {
   'verified.hint': 'تم التحقق منه تشفيريًا',
   'verified.label': 'موثّق',
   'insight.uncitableDropped': 'حُجب {count} اقتراح لعدم قدرته على الاستناد إلى رصد.',
+  'about.capabilitiesEmpty': 'تُقرأ مصفوفة القدرات من الخدمة المحلية. تظهر هنا بعد أن تُبلّغ الخدمة عنها.',
 } satisfies Record<MessageKey, string>;

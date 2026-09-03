@@ -1678,6 +1678,7 @@ export const enCatalog = {
   'verified.hint': 'Cryptographically verified',
   'verified.label': 'Verified',
   'insight.uncitableDropped': '{count} suggestion(s) were withheld: they could not cite an observation.',
+  'about.capabilitiesEmpty': 'The capability matrix is read from the local service. It appears here once the service has reported one.',
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;
