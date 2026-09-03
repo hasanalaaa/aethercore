@@ -6469,10 +6469,11 @@ natively; Linux is reached via `rustup target add x86_64-unknown-linux-gnu` and
 |---|---|---|---|
 | 1.A | what macOS/Linux providers actually permit, file:line | **DONE** | §44.1 |
 | 1.B | failing regression tests, committed failing | **DONE** | §44.2 — macOS: 1 test FAILED for real (2 defects inside it), 2 passed; Linux: lib does not compile on the target at all (pre-existing, DBT-P44-001) |
-| 1.C | contract applied to both providers | pending | |
-| 1.D | proven on this machine with numbers | pending | |
-| 2.A | vcomp140.dll sourcing trap disarmed | pending | |
-| 2.B | ARM64 recipe exit-code decision | pending | |
+| 1.C | contract applied to both providers | **DONE** | §44.3 — 10 macOS / 7 Linux rules → 0 survivors; DBT-P44-001 and DBT-P44-002 fixed |
+| 1.D | proven on this machine with numbers | **DONE** | §44.4 — cpu exact match saturated, ±2-10pt low bias partial-load; memory exact `hw.memsize` match; storage resolved to an exact container-level match after a real 14x discrepancy was investigated, not assumed; Linux compile-checked only, no VM |
+| 2.A | vcomp140.dll sourcing trap disarmed | **DONE** | §44.5 — sourced + hash-verified, not just presence-checked; unexecuted on this host, 6 numbered Windows checks left behind |
+| 2.B | ARM64 recipe exit-code decision | **DONE** | §44.6 — decided: bring into repo, not fix in place; migration left as a concrete follow-up (no VM access this session) |
+| optional | DBT-P42-006 diagnosis | **MOOT** | §44.3 footnote — no longer reproduces, 18/18 driver-hub tests pass; not chased further, out of scope |
 
 ## 44.1 PART 1.A — what macOS and Linux actually permit
 
@@ -6619,6 +6620,38 @@ runtime test failure would have been, and it is `git stash`-verified
 pre-existing, not introduced by this file.
 
 Both results are committed in this state before any fix.
+
+### Addendum — DBT-P44-003: the CPU-under-load test flakes at ~1-in-10, unexplained
+
+**Correcting the record rather than letting a hasty read stand.** An early
+re-run of this file after the fix (§44.3) hit `totalBusyBp: 0` twice,
+each time right after Part 1.D's manual stress test (§44.4) had just been
+torn down, and 10 clean runs followed — first written up here as
+"environmental settling." That explanation does not survive a direct test:
+a further 10-run series of `cargo test -p aethercore-performance-telemetry
+--test dbt_p42_005` (this file alone, no other binary, **no preceding
+manual stress test**) still produced **1 failure in 10**, same symptom
+(`totalBusyBp: 0` under `under_load`'s guaranteed full-core spin). The
+settling story is wrong or incomplete; corrected rather than left standing.
+
+**What this session ruled out, not assumed:** not purely cross-binary
+contention (flaked running this one binary alone) and not purely
+post-stress-test settling (flaked with no preceding load). **What this
+session did not establish:** the actual root cause. `busy_bp_from_ticks`'s
+`total == 0` tie (§44.1, `macos_impl.rs:114-116`, described there as a rare
+edge case) fires roughly ten times more often under real, guaranteed
+full-core load than that framing assumed — either `host_statistics64`'s
+tick data coalesces at a coarser interval than this harness's 120ms window
+on this Apple Silicon host, or something else; not investigated further
+this session, and not worth guessing at in place of measuring it.
+
+**Recorded as DBT-P44-003, open.** Does not reopen Part 1.D's proof: four
+manual `aetherctl telemetry-once` invocations under real, sustained load
+during §44.4 — run directly, not through this harness's rapid fresh-instance
+`under_load` pattern — never returned a zero, and all four agreed with the
+host's own counters to within a couple of points. The discrepancy is between
+this specific test harness's calling pattern and whatever the real
+provider does under it; not between the provider and the host.
 
 ## 44.3 PART 1.C — the contract applied to both providers
 
@@ -6967,3 +7000,87 @@ here — no VM access this session):
 
 Not performed as part of this session: no VM access, and the brief scoped
 this part to a decision, not an execution.
+
+## 44.7 P44 FINAL REPORT
+
+**What the macOS and Linux providers actually permitted, with file:line** —
+full detail in §44.1. Headlines: macOS's `cpu.dpcIsrBusyBp`/
+`contextSwitchesPerSec` (`macos_impl.rs:167-168`, old line numbers) and
+storage rate fields (`:326-328`) were permanent zeros with no fault, ever;
+processTop (`:387-391`) could return `[]` with no fault if every pid's
+`proc_pidinfo` failed. Linux's `processTop` (`:512-514`) returned `[]`
+unconditionally with **zero fault ever** — the exact §20.1.1 site-7 shape P42
+deleted from Windows. Linux's `sample_power` (`:471-500`) scanned real
+thermal-zone data and **discarded it** rather than never attempting it —
+the sharpest single finding of §44.1.
+
+**How many availability rules survived the contract, and why** — §44.3. 10
+macOS / 7 Linux hand-written decision sites → **0 survivors on either
+platform**, same transformation §42.2 proved for Windows. None fired "by
+accident" the way Windows' gpu rule did (§20.1.6) — every rule that fired,
+fired for the reason its detail string gave; the defect here was coverage
+gaps (fields nothing ever faulted for), not wrong rules answering right by
+luck.
+
+**Every macOS reading beside the host's, delta in points and ratio, x64 bias
+check** — §44.4. CPU saturated: exact agreement both rounds (<0.1pt).
+Memory: `totalPhysicalBytes` exact match against `sysctl hw.memsize`;
+`memoryLoadPercent` within ~1pt of `top`. Storage: an investigated,
+resolved 14x discrepancy (`df -k /`'s 5% vs. the product's 71.89%) — turned
+out `df -k /` is the wrong host counterpart (sealed system volume's own
+tiny usage on APFS); `diskutil apfs list`'s container-level 71.9% matches
+the product almost exactly. **The x64 bias does not appear here** — at
+saturation both sides read 100% (uninformative); at partial load macOS reads
+2-10 points **low**, opposite sign from x64's consistent high bias and not
+as tightly clustered, read as timing-window noise rather than a confirmed
+platform bias — a genuine third-then-fourth data point after x64 (positive,
+tight) and ARM64 (near-zero, sign-flipping) on DBT-P42-011's open question,
+not a resolution of it.
+
+**Exactly what could not be verified on this host, named:**
+
+- Linux runtime behavior — no readings, no host-counter comparison, no bias
+  data point. Only `cargo check`/`cargo check --tests --target
+  x86_64-unknown-linux-gnu` (both EXIT 0) were possible from this Mac.
+- The Windows `build-installer.ps1` edit (§44.5) — this machine is not
+  Windows (`if ($env:OS -ne 'Windows_NT') { throw }`), has no `pwsh`, and
+  the script was reviewed by hand rather than executed. Six numbered checks
+  with EXPECTED values are left for the next Windows session.
+- The `p36_relbuild.cmd` migration (§44.6) — decided, not executed; no VM
+  access this session.
+- ARM64 macOS/Windows readings — this session's macOS numbers are Apple
+  Silicon (this Mac); no Windows ARM64 comparison was attempted or claimed
+  (out of scope — Part 1 of this brief is macOS/Linux, and §43 already
+  closed DBT-P42-004 for Windows ARM64 separately).
+
+**The Windows verification checks Part 2.A leaves behind** — the six
+numbered checks with EXPECTED values in §44.5, covering script syntax, both
+the env-var and pinned-path sourcing branches, a positive hash-match run, a
+deliberate negative run against the known-wrong `onecore` file, and a full
+Gate 2.A re-proof.
+
+**Recorded rather than worked around, every debt ID this session touched:**
+
+| id | what | disposition |
+|---|---|---|
+| **DBT-P42-005** | macOS/Linux built `PerfSnapshot` literally, not through `CollectedSubsystems` | **CLOSED.** §44.3 — both platforms now route exclusively through `Reading<T>`/`CollectedSubsystems`, same shape as Windows' P42 fix |
+| **DBT-P44-001** | Linux does not compile on its own target — 3x `E0308` (faults passed by value) + 3x private-type-in-public-interface, never caught because no session had reached a Linux target before this one | **FIXED**, §44.3. `cargo check --tests --target x86_64-unknown-linux-gnu` now EXIT 0 |
+| **DBT-P44-002** | Linux `sample_power` scanned real `/sys/class/thermal_zone*/temp` data and discarded it, reporting a confident empty `PowerSample` with no fault when zones existed | **FIXED**, §44.3 — hottest zone now wired into `has_temperature`/`temperature_c` |
+| **DBT-P44-003** | `macos::real_macos_provider_reports_non_zero_cpu_under_load` (§44.2) flakes ~1-in-10 with `totalBusyBp: 0` under guaranteed full-core load — `busy_bp_from_ticks`'s `total == 0` tie fires far more often on this real Apple Silicon host than its "rare edge case" framing (§44.1) assumed | **open** — root cause not established; ruled out cross-binary contention and post-stress settling (§44.3 addendum), does not reopen Part 1.D's real-provider proof (4/4 manual `telemetry-once` readings under load never returned zero) |
+| **DBT-P42-012** | `build-installer.ps1` required `vcomp140.dll` without sourcing it; first plausible match on the machine is wrong | **FIXED** (unexecuted on this host), §44.5 — explicit source resolution + hash verification, 6 Windows checks left behind |
+| **DBT-P43-001** | ARM64 recipe's own exit code (101) is unusable even on a clean build, because it also tries a nonexistent `--example` target | **decision recorded**, §44.6 — bring the recipe into the repo; migration is a follow-up, not performed (no VM access) |
+| **DBT-P42-006** | `aethercore-driver-hub --lib`, 6 pre-existing failing tests | **no longer reproduces** — 18/18 pass this session (§44.3 footnote); not the code (no change to `driver-hub` since Phase 31 per `git log`), not chased further; recorded so a future session does not read this as newly fixed by P44 |
+| **DBT-P42-009** | `perProcessorBusyBp` still `[]` on Windows | unchanged, out of scope for this session (Windows telemetry, not macOS/Linux/build traps) |
+| **DBT-P42-010, -011** | Windows gpu adapter identity/VRAM empty; byte-rate/latency counters under-report a short window | unchanged, out of scope |
+
+**Security posture:** not re-measured this session — no destructive action,
+no install/uninstall cycle, no Defender/UAC/Firewall-adjacent change on any
+machine. Nothing in this session's diff touches privilege, IPC surface, or
+anything security-relevant; every change is either a telemetry-collection
+contract (data honesty, not access) or a build-script sourcing check.
+
+**Every numbered item committed and pushed individually**, per the brief's
+own instruction (no single end-of-session commit): §44.1/44.2 in one commit
+(tests), §44.3 in one commit (the fix), §44.4 in one commit (measurement),
+§44.5 in one commit (vcomp140.dll), §44.6 in one commit (the recipe
+decision), this report in the commit that follows.

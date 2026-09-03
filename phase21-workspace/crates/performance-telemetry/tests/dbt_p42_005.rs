@@ -41,6 +41,26 @@ fn faults_for<'a>(snapshot: &'a PerfSnapshot, collector: &str) -> Vec<&'a Collec
 /// test-isolation artifact, not a product defect (confirmed by re-running
 /// with `--test-threads=1`, where the same assertion passed). Serializing
 /// here removes the confound rather than papering over it with a retry.
+///
+/// This guard is process-local: it does not serialize against
+/// `native_providers.rs`'s or `phase27_real_sample.rs`'s own real-sampling
+/// tests, which run as separate `cargo test` binaries.
+///
+/// **`totalBusyBp: 0` measured at ~1-in-10 under this exact harness on this
+/// real Apple Silicon host — DBT-P44-003, open.** Ruled out, not assumed:
+/// this is not purely cross-binary contention (`--test dbt_p42_005` alone,
+/// no other binary running, still flaked in a 10-run series) and not purely
+/// post-stress-test settling (recurred with no preceding manual load).
+/// `busy_bp_from_ticks`'s `total == 0` tie fires far more often under
+/// guaranteed full-core load than its "rare edge case" framing assumed when
+/// it was written — root cause NOT established this session (candidates:
+/// `host_statistics64`'s tick data may coalesce at a coarser interval than
+/// this harness's 120ms window on this hardware; not verified). This does
+/// not undermine the real-provider proof in SESSION_CONTEXT.md §44.4 — four
+/// manual `aetherctl telemetry-once` invocations under real load, run
+/// directly rather than through this harness, never returned zero. Left
+/// open rather than papered over with a retry loop that would hide the rate
+/// this session just measured.
 static LOAD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Loads every logical processor hard for the duration of `body`, mirroring
