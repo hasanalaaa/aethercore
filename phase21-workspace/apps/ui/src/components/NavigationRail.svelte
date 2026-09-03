@@ -77,7 +77,7 @@
   </nav>
 
   <div class="policy-card" role="note">
-    <span class="policy-mark" aria-hidden="true">◇</span>
+    <span class="policy-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none"><circle cx="12" cy="12" r="8.25"/><path d="M6.2 6.2l11.6 11.6"/></svg></span>
     <div><strong>{t('app.policyTitle', locale)}</strong><small>{t('app.policyCopy', locale)}</small></div>
   </div>
 
