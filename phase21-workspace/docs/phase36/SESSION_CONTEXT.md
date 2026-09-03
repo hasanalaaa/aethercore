@@ -6722,3 +6722,118 @@ fault carries the explanation) and is consistent with how Windows' gpu
 already behaved pre- and post-P42. Downstream: `offline.rs:241`'s
 now-deleted-on-Windows site-8 gpu rule reads `measured_subsystems().gpu`,
 not `adapter_id`, so this is not a second contradiction reappearing on macOS.
+
+## 44.4 PART 1.D — proven on this machine, with numbers
+
+    cargo test -p aethercore-performance-telemetry     7/7 tests pass (§44.2's
+                                                        dbt_p42_005.rs; the two
+                                                        real macOS assertions
+                                                        that failed pre-fix now
+                                                        pass — see below)
+    cargo build --release                              workspace-wide, EXIT 0
+
+    aethercore-performance-telemetry --test dbt_p42_005
+    running 3 tests
+    test macos::capabilities_never_claim_native_for_a_subsystem_that_reported_nothing ... ok
+    test macos::real_macos_provider_reports_non_zero_cpu_under_load ... ok
+    test macos::no_collector_returns_an_empty_payload_without_a_fault ... ok
+    test result: ok. 3 passed; 0 failed
+
+### Real provider vs the host's own counters, under load
+
+Load: `hw.ncpu` `yes > /dev/null` processes (one per logical CPU) plus a
+concurrent `dd` write+read loop against `/tmp`, driven with `aetherctl
+telemetry-once` (release build) beside `top -l 1 -n 0`, `vm_stat`, `diskutil
+apfs list`, `df -k`, `sysctl hw.memsize` in the same window.
+
+**CPU, saturated (all cores loaded):**
+
+| reading | product | host (`top`) | delta | ratio |
+|---|---|---|---|---|
+| round 1 | **10 000 bp** (100.00%) | 7.98% user + 92.1% sys = **100.08%** | −0.08 pts | 0.999 |
+| round 2 | **10 000 bp** (100.00%) | 6.44% user + 93.55% sys = **99.99%** | +0.01 pts | 1.000 |
+
+Both readings are pinned at the 10 000 bp ceiling on both sides — agreement
+is exact but the ceiling makes this pair useless for detecting a §43.5-style
+directional bias (a saturated reading cannot show whether the product reads
+high or low relative to the host). A second load level was captured
+specifically to get a non-saturated comparison:
+
+**CPU, partial load (half the spin processes killed mid-session):**
+
+| reading | product | host (`top`) | delta | ratio |
+|---|---|---|---|---|
+| round 1 | **6428 bp** (64.28%) | 7.16% + 66.99% = **74.15%** | **−9.87 pts** | 0.867 |
+| round 2 | **7081 bp** (70.81%) | 7.24% + 65.72% = **72.96%** | **−2.15 pts** | 0.971 |
+
+**Bias outcome, stated plainly, as a fourth data point after x64 (positive,
+consistent), ARM64 (negligible, sign-flipping) and this session's third: both
+partial-load readings on macOS read slightly LOW relative to `top`** —
+opposite direction from x64's Windows bias (which read consistently HIGH,
++4.1 to +7.5 pts across three readings) and larger in magnitude than ARM64's
+near-zero, sign-flipping noise (§43.5). But the two macOS deltas themselves
+are not tightly clustered the way x64's three were (−9.87 vs −2.15, a 4.6x
+spread) — this reads more like sampling-window misalignment between the
+product's 250 ms in-tick delta and `top`'s own ~1 s snapshot cadence than a
+systematic platform bias, but it is recorded as observed rather than
+explained away: **two readings, both negative, inconsistent magnitude.**
+DBT-P42-011 (the open x64/ARM64 disk-latency-and-rate-window question) is
+not widened or narrowed by this — it is a distinct question (window width,
+not sign) and macOS's rate/latency fields are honestly unmeasured (§44.3),
+not comparable at all.
+
+**Context switches / DPC-ISR:** honestly `0` on every reading, and every
+reading now carries the `cpu.counters` Degraded fault that says why
+(§44.3) — not compared against the host because the field is declared
+unmeasured, not a number claiming to be one.
+
+### Memory
+
+| reading | product | host | delta / match |
+|---|---|---|---|
+| `totalPhysicalBytes` | **38 654 705 664** | `sysctl hw.memsize` → **38654705664** | **exact match** |
+| `memoryLoadPercent` | **95%** | `top`: `PhysMem: 34G used (4059M wired, 12G compressor), 1490M unused` → 34G/(34G+1490M) ≈ **95.8%** | agrees within ~1 pt (different accounting: product's `available` = free + min(inactive, purgeable) from `host_statistics64`; `top`'s "unused" is a different macOS-specific bucketing — both honest, not the same formula) |
+
+### Storage — a real discrepancy investigated, not assumed
+
+First comparison attempted, `df -k /`: **5% capacity**, vs product's
+`activeTimeBp` **7189** (71.89%) for `deviceId: "/"` — a 14x mismatch that
+was **not** waved off. Investigated rather than assumed:
+
+    diskutil apfs list | grep "Capacity In Use By Volumes"
+    Capacity In Use By Volumes: 715142668288 B (715.1 GB) (71.9% used)
+    df -k /System/Volumes/Data → 72% Capacity
+
+**Resolved: `df -k /` reports the sealed system volume's own small exclusive
+usage; `statfs()` on an APFS volume reports the CONTAINER's shared
+free/total space (APFS volumes share one free-space pool), which is what
+this provider's `total`/`available` blocks actually measure.** The container-
+level tools agree with the product almost exactly: `diskutil apfs list`
+71.9% used vs product 71.89% (delta 0.01 pts, ratio 0.9999); `df -k
+/System/Volumes/Data` 72% vs product 71.89% (delta 0.11 pts). Both mounted
+paths (`/` and `/System/Volumes/Data`) report the identical `activeTimeBp`
+in the product's output, which is correct given they share one container —
+not a duplicate-reporting bug.
+
+`avgTransferLatencyUs`/`readBytesPerSec`/`writeBytesPerSec`: `0` on both
+devices, with the `storage.rates` Degraded fault present on every reading
+(§44.3) — statfs has no rate data, so these are declared unmeasured rather
+than compared.
+
+### Linux — what could and could not be verified on this host
+
+**Cannot be measured: no Linux host or VM is attached to this session.**
+Named rather than skipped. What *was* verified, cross-compiled from macOS:
+
+    rustup target add x86_64-unknown-linux-gnu
+    cargo check -p aethercore-performance-telemetry --target x86_64-unknown-linux-gnu           EXIT 0
+    cargo check -p aethercore-performance-telemetry --tests --target x86_64-unknown-linux-gnu    EXIT 0
+
+Both are clean as of this commit (§44.3 fixed the 6 compile errors — 3
+`E0308`, 3 private-type — that blocked this before Part 1.C). `cargo test`
+cannot run: `cargo check`/`cargo build` cross-compile without a linker;
+running the resulting binary needs an actual Linux kernel for `/proc`. No
+readings, no host-counter comparison, no bias data point exist for Linux
+from this session — this is the honest limit, not a claim that the Linux
+fix "works," only that it now **type-checks**, which it did not before
+§44.3.
