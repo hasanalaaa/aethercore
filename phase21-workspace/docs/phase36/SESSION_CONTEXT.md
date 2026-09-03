@@ -7784,7 +7784,7 @@ before assuming the state below is still current.
 | Part 1 security review | DONE | §46.11 — no privilege-boundary break; 4 findings folded into 0.C/0.D |
 | 2.A DBT-P42-011 x64 bias | NOT STARTED | needs x64 Windows; unreachable this session |
 | 2.B DBT-P42-009/010 decision | NOT STARTED | — |
-| 3.(1) Part 1 privilege breaks | NOT STARTED | depends on Part 1 |
+| 3.(1) Part 1 privilege breaks | DONE (none found) | §46.11 — nothing to fix at this priority tier |
 | 3.(2) every B from 0.C | IN PROGRESS | §46.12 — 3 fixed, 4 reclassified A, 27 remain |
 | 3.(3) every count>1 from 0.D | NOT STARTED | §46.4 has the list, none fixed yet |
 | 3.(4) DBT-P42-006 driver-hub | DONE (reclassified) | §46.2 — 18/18 pass, not reproducing |
