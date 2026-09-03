@@ -139,11 +139,13 @@ pub fn audit_sshd_config(path_str: &str) -> Result<Vec<SecFinding>, String> {
         match directives.iter().find(|(k, _, _, _)| *k == rule.keyword) {
             Some((_, val, line_no, verbatim)) => {
                 let tok = first_token(val);
+                // DBT-P46-B20: a directive present but unparseable (non-numeric, or
+                // out of u32/u64 range) cannot be verified safe, so it fails CLOSED
+                // like every other rule here — never silently read as compliant.
                 let violates = if rule.code == "ssh.max_auth_tries" {
-                    tok.parse::<u32>().map(|n| n > 4).unwrap_or(false)
+                    tok.parse::<u32>().map(|n| n > 4).unwrap_or(true)
                 } else if rule.code == "ssh.client_alive" {
-                    let n = tok.parse::<u64>().unwrap_or(0);
-                    !(1..=900).contains(&n)
+                    tok.parse::<u64>().map(|n| !(1..=900).contains(&n)).unwrap_or(true)
                 } else {
                     rule.bad_values.contains(&tok.as_str())
                 };
