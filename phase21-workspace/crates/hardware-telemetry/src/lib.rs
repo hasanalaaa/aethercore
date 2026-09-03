@@ -377,6 +377,39 @@ mod tests {
         assert!(d.reasons.iter().any(|r| r.contains("above 10 seconds")));
     }
 
+    // DBT-P46-B2: Windows reports the disk healthy, but the SMART reliability
+    // counters (read/write uncorrected errors, NVMe critical warning) were never
+    // reported (None) rather than confirmed zero. Before the fix, `.unwrap_or(0)`
+    // made this byte-identical to a disk that WAS checked and came back clean —
+    // the summary text and the (empty) reasons list gave no way to tell them
+    // apart.
+    #[test]
+    fn healthy_status_with_unreported_smart_counters_is_distinguishable_from_confirmed_clean() {
+        let mut checked_clean = StorageDeviceTelemetry { windows_health_status: "Healthy".into(), ..Default::default() };
+        checked_clean.reliability.read_errors_uncorrected = Some(0);
+        checked_clean.reliability.write_errors_uncorrected = Some(0);
+        checked_clean.reliability.nvme_critical_warning = Some(0);
+        classify_storage(&mut checked_clean);
+
+        let mut uncheckable = StorageDeviceTelemetry { windows_health_status: "Healthy".into(), ..Default::default() };
+        // read_errors_uncorrected / write_errors_uncorrected / nvme_critical_warning
+        // all stay None — never reported, not confirmed zero.
+        classify_storage(&mut uncheckable);
+
+        assert_eq!(checked_clean.severity, "Normal");
+        assert_eq!(uncheckable.severity, "Normal");
+        assert_ne!(
+            checked_clean.summary, uncheckable.summary,
+            "a disk that was actually checked and a disk whose counters were never \
+             reported must not produce the identical summary"
+        );
+        assert!(
+            !uncheckable.reasons.is_empty(),
+            "the unreported-counter case must say which counters were unavailable, \
+             got empty reasons: {uncheckable:?}"
+        );
+    }
+
     #[test]
     fn memory_pressure_text_explicitly_separates_pressure_from_hardware_health() {
         let (label, detail) = classify_memory_pressure(93);
