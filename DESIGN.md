@@ -20,61 +20,111 @@ Inspired by the 2026 design awards (Apple Design Awards, Awwwards), AetherCore m
 
 ## 3. Color Palette — six roles, not a mood board
 
-Superseded 2026-09-03 (brief v3). The palette below replaces the "Aurora
-Glow" gradient described in prior revisions of this file: that gradient ran
-`#5C7CFA → #82C91E`, blue into green, which meant the primary-button accent
-and the "healthy" status color were the same hue at one end. A button and a
-measurement should never look like the same kind of fact. AetherCore has
-exactly six color roles. Every state color anywhere in the product must be
-one of these six — nothing is invented per-component.
+Superseded 2026-09-03, corrected 2026-09-03 (owner review round 2). AetherCore
+has exactly six color roles. Every state color anywhere in the product must
+be one of these six — nothing is invented per-component.
 
 | Role | Dark (fg / solid) | Light (fg / solid) | Means | Never |
 |---|---|---|---|---|
-| **Interactive** | `#5C7CFA → #7C93FF` | `#4C6EF5 → #6C8CFF` | Something actionable right now — a button, a link, a focus ring, the primary gradient. | Express a state. Never used to say a measurement is good, bad, or refused. |
+| **Interactive** | `#5C7CFA` solid | `#4C6EF5` solid | Something actionable right now — a button, a link, a focus ring. | Express a state, or appear as a gradient. |
 | **Verified** | `#D9B94E` / `#C9A227` | `#A9820A` | Cryptographically checked — a signed manifest, a hash-pinned model, a signed licence. | Appear as a gradient, a background fill, or on anything not actually verified. Rare by design. |
 | **Healthy** | `#69DB7C` / `#2B8A3E` | `#2F9E44` | A measurement is inside its expected range. | — |
 | **Attention** | `#FFC078` / `#E67700` | `#C96500` | Worth a look, not urgent — drifting toward a threshold. | — |
 | **Critical** | `#FF8787` / `#C92A2A` | `#C92A2A` | Outside safe range now, or a fault occurred. | — |
-| **Denied by policy** | `#9C8FD9` / `#7C6BC4` | `#6B5CA5` / `#7C6BC4` | The system refused an operation on purpose, per a named rule. | Fall into the critical/red family. A refusal is the product working as promised, not an error. |
+| **Denied by policy** | `#CA92D3` / `#AD4EBC` | `#773781` / `#AD4EBC` | The system refused an operation on purpose, per a named rule. | Fall into the critical/red family. A refusal is the product working as promised, not an error. |
 
 Base surfaces are unchanged: void `#030508` (dark) / `#EDF0F5` (light),
 glass panels at low-alpha white/black per theme — see the `.ae` custom
 properties in `AetherCore.html` for the literal values (`--void`, `--glass`,
 `--glass-2/3`, `--edge`, `--edge-strong`).
 
-**The fix that mattered:** the health orb's "healthy" fill used to be
-`rgba(130,201,30,0.42)` — the literal RGB of the old `--a2` green, i.e. the
-interactive accent's second gradient stop, standing in for a status. It now
-reads `rgba(43,138,62,…)`, the actual healthy-solid RGB. Interactive's
-second stop moved from green (`#82C91E`) to a second blue (`#7C93FF`) so
-this collision can't recur elsewhere in the gradient.
+### Round 2 corrections (owner review)
 
-**Colour-blind check.** Approximate hues: interactive ~230°, verified ~46°,
-healthy ~130°, attention ~30°, critical ~0°, denied ~255°. Two pairs sit
-close enough on the wheel to worry about:
-- *attention (30°) vs. verified (46°)* — the closest pair on paper. Kept
-  apart in practice because verified never appears in the tag/badge
-  vocabulary attention uses — it's a rare, fixed icon+label seal, never a
-  status pill on a row.
-- *interactive (230°) vs. denied (255°)* — closest under a blue-yellow
-  (tritanopia) simulation. Kept apart because denied never appears as a
-  gradient or a button fill (interactive's exclusive pattern), and always
-  carries a mono rule ID next to it that interactive never does.
-- *critical (0°) vs. attention (30°)* — the classic red-green-deficiency
-  confusion pair, inherited from the original palette. Mitigated the same
-  way it already was: different icons, different copy ("critical" vs.
-  "warning"), and critical alone gets the persistent toast treatment.
+Two things were wrong in the first pass of this section, both about the same
+pair — interactive and denied, the two that must never be confused, were the
+two sitting closest together on the wheel.
 
-Net rule: every hue pair close enough to risk confusion is also separated
-by a second channel — shape, rarity, or accompanying text — so no two roles
-collapse to "the same thing" even in grayscale.
+**1. Interactive vs. denied moved from 23° apart to 64° apart, and got a
+second, non-colour signal.** The first pass put denied at `#7C6BC4` (~251°),
+23° from interactive's ~228° — both blue-violet, the smallest hue gap in the
+whole set, on exactly the pair where confusion is least acceptable. Denied
+moved to `#AD4EBC`, hue ~292° (plum/magenta), landing inside the requested
+285–300° band. That's option (a). Option (b), taken as well rather than
+instead: denied now has a shape signature nothing else in the file uses —
+a 1.5px **dashed** border (every other border in the product is solid) on an
+8px-radius chip (every other chip/tag/pill in the product is 999px, fully
+rounded), plus an icon (`block`) that was freed from a collision with the
+"Halt High-Usage Processes" button (moved to `stop_circle`) so it now belongs
+to denied exclusively. Colour, shape, and icon all have to agree before
+something reads as a policy refusal.
+
+**2. The interactive gradient is gone.** `#5C7CFA → #7C93FF` was still a
+gradient encoding nothing — the brief's own list of tells for generic work
+names decorative gradients specifically. Every button, toggle, checkbox fill,
+meter, progress bar, and avatar background that used
+`linear-gradient(…, var(--a1), var(--a2))` now uses solid `var(--a1)`. `--a2`
+is removed from both themes; nothing references it. This also fully retires
+the original bug (interactive's second stop being literal healthy-green) —
+removing the gradient removes the class of bug, not just this instance of it.
+
+### Colour-blind check — simulated, not estimated
+
+Hue-angle reasoning in the first pass was a guess and was caught being wrong
+on the pair that mattered most. This time: six solid swatches
+(`#5C7CFA #C9A227 #2B8A3E #E67700 #C92A2A #AD4EBC`, one per role) rendered in
+Chrome headless, screenshotted once with `Emulation.setEmulatedVisionDeficiency`
+set to each of `protanopia` / `deuteranopia` / `tritanopia` (and once with
+`none` as a control), pixel colour read back from the PNG, converted
+sRGB → linear → CIE XYZ → CIE Lab, and compared pairwise as ΔE (Euclidean
+distance in Lab — roughly, >10 is "clearly different colours to most
+observers", <5 is a real risk of confusion). Full 15-pair table per condition
+is in the brief-v3 session log; weakest pair per condition:
+
+| Condition | Weakest pair | ΔE | Note |
+|---|---|---|---|
+| none (control) | verified vs. attention | 35.6 | Both comfortably distinct; nothing under 35. |
+| protanopia | verified vs. attention | 13.1 | interactive vs. denied is 2nd-weakest at 20.6 — clearly separated, not a risk. |
+| deuteranopia | verified vs. attention | **7.7** | The one genuine weak spot — see below. |
+| tritanopia | interactive vs. healthy | 22.8 | interactive vs. denied is 10th of 15 at 65.3 — the round-1 worry is fully resolved here, the condition it was originally flagged under. |
+
+**interactive vs. denied, the pair this round of fixes targeted, is never the
+weakest pair under any of the four conditions** (ranks 2nd, 5th, 2nd, 10th)
+after the hue move — confirmed by simulation, not just claimed.
+
+**The real weak spot the simulation found: verified vs. attention under
+deuteranopia, ΔE=7.7.** This wasn't the pair under review, but the check is
+supposed to catch what's actually there, not just what was asked about.
+Flagging rather than silently patching: mitigated today by the same
+shape-not-colour principle as denied — verified never appears as a status
+pill/badge/tag (attention's entire vocabulary); it's a rare, fixed
+icon+label seal that only ever sits beside a licence, a model hash, or a
+consent record, never in a row's tone position. The two can't occupy the
+same visual slot, so the weak ΔE doesn't currently translate into a
+real-world confusion. If verified or attention ever grows a second visual
+form, re-run this check before shipping it.
+
+Two more pairs worth recording, inherited from the original three-color
+system and out of scope for this pass (owner approved verified/healthy/
+attention/critical unchanged): critical vs. attention weakens under
+tritanopia (40.7 → 22.9) and healthy vs. critical weakens under
+deuteranopia (105.4 → 16.5) — the classic red/green confusion, mitigated the
+way it already was, by different icons, different copy, and critical's
+exclusive toast treatment.
 
 A seventh, non-role tint (`#8FA6FF`, tone `"info"`) remains in the row/table
-helpers for neutral reference rows ("browser session artifacts", "startup
-chain") that aren't claiming healthy/attention/critical about anything.
-It's a lighter, desaturated tint of interactive's hue but never appears in
-interactive's own pattern (buttons/gradients), so it doesn't violate the
-"interactive never expresses a state" rule — it's not a state at all.
+helpers for neutral reference rows that aren't claiming healthy/attention/
+critical about anything. Never appears in interactive's own pattern
+(buttons), so it doesn't violate "interactive never expresses a state" —
+it's not a state at all.
+
+### Note for the Svelte port
+
+This artifact embeds four full static weights of IBM Plex Sans Arabic
+(~400 KB total) for simplicity and because a single self-contained HTML file
+has no build step to subset at. The production app already ships a 1.07 GB
+model — every avoidable megabyte matters there. Subset the embedded face to
+the glyphs actually used (Arabic block + the specific Latin/digit/punctuation
+set the UI strings need) before shipping.
 
 ## 4. UI Screens & Adaptive Elements
 All original interfaces retained, but reimagined with predictive AI structuring and functional motion (e.g., Dynamic Island style notifications).
