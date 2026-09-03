@@ -1,174 +1,304 @@
+/**
+ * AetherCore token layer — the single place a colour, a size or a radius is decided.
+ *
+ * Ported from the approved shell (`AetherCore.html`) and `DESIGN.md` on
+ * `design/shell-v2`. Components derive from these tokens; none of them picks a
+ * literal. That rule is not stylistic housekeeping — the first pass of this
+ * palette lost the meaning of two roles precisely because values were chosen per
+ * component and reconciled afterwards.
+ *
+ * THE SIX ROLES. Every state colour anywhere in the product is one of these.
+ * Nothing is invented per component, and no seventh role is added without
+ * re-running the colour-blind simulation in DESIGN.md.
+ *
+ *   interactive  actionable right now — a button, a link, a focus ring.
+ *                Never expresses a state. Never a gradient.
+ *   verified     cryptographically checked. Rare by design: a fixed icon+label
+ *                seal beside a licence, a model hash or a consent record, never
+ *                a status pill. (It shares a weak deuteranopia deltaE with
+ *                attention; the two can never occupy the same visual slot, which
+ *                is what keeps that weakness theoretical. See DESIGN.md.)
+ *   healthy      a measurement inside its expected range.
+ *   attention    worth a look, not urgent — drifting toward a threshold.
+ *   critical     outside safe range now, or a fault occurred.
+ *   denied       the system refused an operation on purpose, per a named rule.
+ *                NOT a member of the critical family. A refusal is the product
+ *                keeping its promise.
+ *
+ * `--role-info` is a seventh, non-role tint for neutral reference rows that
+ * claim nothing about health. It is never used in interactive's own pattern, so
+ * it does not violate "interactive never expresses a state" — it is not a state.
+ */
+
 :root {
   color-scheme: dark;
-  font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   font-optical-sizing: auto;
 
-  --ac-font-display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  --ac-font-text: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-  --ac-font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  /* ---- type ------------------------------------------------------------- */
+  /* Arabic is listed first in the RTL stack so the embedded face wins; Latin
+     inside Arabic prose falls through to Inter, which is why the Arabic subset
+     carries no Latin glyphs. */
+  --ac-font-text: 'Inter', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
+  --ac-font-display: var(--ac-font-text);
+  --ac-font-mono: 'JetBrains Mono', 'Cascadia Mono', ui-monospace, Consolas, monospace;
+  --ac-font-arabic: 'IBM Plex Sans Arabic', var(--ac-font-text);
 
-  --ac-type-display: clamp(2rem, 2.6vw, 2.75rem);
-  --ac-type-title: clamp(1.375rem, 1.8vw, 1.75rem);
-  --ac-type-headline: 1rem;
-  --ac-type-body: 0.9375rem;
-  --ac-type-callout: 0.875rem;
-  --ac-type-caption: 0.8125rem;
-  --ac-type-technical: 0.75rem;
+  --ac-type-display: 2.125rem;   /* 34px — the screen title */
+  --ac-type-title: 1.25rem;      /* 20px — dialog and section titles */
+  --ac-type-headline: 0.9375rem; /* 15px */
+  --ac-type-body: 0.84375rem;    /* 13.5px — the shell's body size */
+  --ac-type-callout: 0.78125rem; /* 12.5px */
+  --ac-type-caption: 0.71875rem; /* 11.5px */
+  --ac-type-technical: 0.6875rem;/* 11px — mono evidence and rules */
+  --ac-type-kicker: 0.6875rem;   /* 11px uppercase, 0.14em tracked */
 
-  --ac-text-1: #f7f9fb;
-  --ac-text-2: #d2d9e0;
-  --ac-text-3: #a4afb9;
-  --ac-text-4: #788590;
-  --ac-text-inverse: #081018;
+  --ac-tracking-kicker: 0.14em;
+  --ac-tracking-tag: 0.06em;
+  --ac-tracking-display: -0.025em;
 
-  --ac-bg-base: #0b1016;
-  --ac-bg-mica-fallback: rgba(10, 15, 21, 0.88);
-  --ac-material-structural: rgba(14, 20, 27, 0.74);
-  --ac-material-base: rgba(20, 28, 36, 0.68);
-  --ac-material-elevated: rgba(25, 34, 43, 0.76);
-  --ac-material-focused: rgba(22, 30, 39, 0.92);
-  --ac-layer-hover: rgba(255, 255, 255, 0.055);
-  --ac-layer-pressed: rgba(255, 255, 255, 0.09);
-  --ac-scrim: rgba(2, 5, 8, 0.58);
+  /* ---- the six roles ---------------------------------------------------- */
+  /* `fg` reads on a dark surface; `solid` is the filled/backing value. */
+  --role-interactive: #5C7CFA;
+  --role-interactive-solid: #5C7CFA;
+  --role-interactive-wash: rgba(92, 124, 250, 0.16);
+  --role-interactive-edge: rgba(92, 124, 250, 0.32);
+  --role-interactive-ink: #04060a;
 
-  --ac-blur-structural: 28px;
-  --ac-blur-elevated: 34px;
-  --ac-blur-focused: 42px;
-  --ac-saturation: 135%;
+  --role-verified: #D9B94E;
+  --role-verified-solid: #C9A227;
+  --role-verified-wash: rgba(201, 162, 39, 0.08);
+  --role-verified-edge: rgba(201, 162, 39, 0.22);
 
-  --ac-border-subtle: rgba(255, 255, 255, 0.075);
-  --ac-border-default: rgba(255, 255, 255, 0.115);
-  --ac-border-strong: rgba(255, 255, 255, 0.18);
-  --ac-highlight: rgba(255, 255, 255, 0.085);
+  --role-healthy: #69DB7C;
+  --role-healthy-solid: #2B8A3E;
+  --role-healthy-wash: rgba(43, 138, 62, 0.16);
+  --role-healthy-edge: rgba(43, 138, 62, 0.32);
 
-  --ac-accent: #d6a15f;
-  --ac-accent-strong: #f2c987;
-  --ac-accent-muted: rgba(214, 161, 95, 0.18);
-  --ac-positive: #83d5b2;
-  --ac-positive-muted: rgba(79, 176, 132, 0.16);
-  --ac-warning: #e8bd78;
-  --ac-warning-muted: rgba(220, 164, 77, 0.14);
-  --ac-danger: #ef9a9a;
-  --ac-danger-muted: rgba(218, 91, 91, 0.14);
+  --role-attention: #FFC078;
+  --role-attention-solid: #E67700;
+  --role-attention-wash: rgba(230, 119, 0, 0.14);
+  --role-attention-edge: rgba(230, 119, 0, 0.3);
 
-  --ac-radius-xs: 0.4375rem;
-  --ac-radius-sm: 0.625rem;
-  --ac-radius-md: 0.875rem;
-  --ac-radius-lg: 1.125rem;
-  --ac-radius-xl: 1.5rem;
+  --role-critical: #FF8787;
+  --role-critical-solid: #C92A2A;
+  --role-critical-wash: rgba(201, 42, 42, 0.14);
+  --role-critical-edge: rgba(201, 42, 42, 0.32);
+
+  --role-denied: #CA92D3;
+  --role-denied-solid: #AD4EBC;
+  --role-denied-wash: rgba(173, 78, 188, 0.1);
+  --role-denied-band: rgba(173, 78, 188, 0.07);
+  --role-denied-edge: rgba(173, 78, 188, 0.2);
+  --role-denied-dash: rgba(173, 78, 188, 0.55);
+
+  --role-info: #8FA6FF;
+  --role-info-wash: rgba(92, 124, 250, 0.16);
+
+  /* ---- surfaces --------------------------------------------------------- */
+  --ac-void: #030508;
+  --ac-glass: rgba(14, 18, 23, 0.55);
+  --ac-glass-2: rgba(255, 255, 255, 0.045);
+  --ac-glass-3: rgba(255, 255, 255, 0.08);
+  --ac-edge: rgba(255, 255, 255, 0.08);
+  --ac-edge-strong: rgba(255, 255, 255, 0.14);
+  --ac-sunken: rgba(0, 0, 0, 0.22);
+
+  --ac-text-1: rgba(255, 255, 255, 0.95);
+  --ac-text-2: rgba(255, 255, 255, 0.78);
+  --ac-text-3: rgba(255, 255, 255, 0.5);
+  --ac-text-4: rgba(255, 255, 255, 0.42);
+  --ac-text-inverse: #04060a;
+
+  --ac-blur-structural: 40px;
+  --ac-blur-elevated: 40px;
+  --ac-blur-focused: 50px;
+  --ac-saturation: 150%;
+
+  --ac-shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --ac-shadow-panel: 0 24px 60px -22px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --ac-shadow-float: 0 50px 110px -30px rgba(0, 0, 0, 0.85);
+  --ac-shadow-focus: 0 0 0 2px var(--ac-void), 0 0 0 4px var(--role-interactive);
+  --ac-shadow-interactive: 0 14px 30px -12px rgba(92, 124, 250, 0.8);
+
+  /* ---- geometry --------------------------------------------------------- */
+  /* Fluid topologies, per DESIGN.md §2. The 8px radius belongs to denied alone. */
+  --ac-radius-denied: 8px;       /* every other chip in the product is 999px */
+  --ac-radius-xs: 0.5rem;
+  --ac-radius-sm: 0.75rem;
+  --ac-radius-md: 1rem;          /* 16px — interactive elements */
+  --ac-radius-lg: 1.25rem;       /* 20px — rows */
+  --ac-radius-xl: 1.75rem;       /* 28px — sections */
+  --ac-radius-2xl: 2rem;         /* 32px — cards, modals, the content pane */
   --ac-radius-pill: 999px;
 
   --ac-space-1: 0.25rem;
   --ac-space-2: 0.5rem;
-  --ac-space-3: 0.75rem;
-  --ac-space-4: 1rem;
-  --ac-space-5: 1.25rem;
-  --ac-space-6: 1.5rem;
-  --ac-space-7: 2rem;
-  --ac-space-8: 2.5rem;
-  --ac-space-9: 3rem;
-  --ac-space-10: 4rem;
+  --ac-space-3: 0.625rem;
+  --ac-space-4: 0.875rem;  /* 14px — the shell's default gap */
+  --ac-space-5: 1.125rem;
+  --ac-space-6: 1.375rem;
+  --ac-space-7: 1.625rem;
+  --ac-space-8: 1.875rem;
+  --ac-space-9: 2.375rem;
+  --ac-space-10: 3rem;
 
-  --ac-shadow-card: 0 1px 0 rgba(255,255,255,.035) inset, 0 18px 42px rgba(0,0,0,.18);
-  --ac-shadow-float: 0 28px 76px rgba(0,0,0,.46), 0 1px 0 rgba(255,255,255,.09) inset;
-  --ac-shadow-focus: 0 0 0 2px var(--ac-bg-base), 0 0 0 4px rgba(142,197,245,.86);
+  --ac-feedback-fast: 250ms;
+  --ac-feedback-normal: 350ms;
+  --ac-ease-state: cubic-bezier(.22, 1, .36, 1);
+  --ac-ease-spring: cubic-bezier(.34, 1.56, .64, 1);
 
-  /* Motion timings remain for non-physical color/opacity state changes only. */
-  --ac-feedback-fast: 90ms;
-  --ac-feedback-normal: 140ms;
-  --ac-ease-state: cubic-bezier(.2,.8,.2,1);
-
-  --ac-sidebar-width: 15.5rem;
+  --ac-sidebar-width: 16.125rem; /* 258px */
   --ac-control-height: 2.5rem;
   --ac-target-min: 2.5rem;
   --ac-display-scale: 1;
 
-  --line: var(--ac-border-subtle);
+  /* ---- legacy aliases ---------------------------------------------------
+     The feature stylesheets predate the role system and consume these names.
+     They are aliases onto roles, never independent values, so that a role
+     change reaches every screen. `--ac-denied-*` is deliberately absent from
+     this block: denied must never be reachable through a generic alias that a
+     component could confuse with an error. */
+  --ac-accent: var(--role-interactive);
+  --ac-accent-strong: var(--role-interactive);
+  --ac-accent-muted: var(--role-interactive-wash);
+  --ac-positive: var(--role-healthy);
+  --ac-positive-muted: var(--role-healthy-wash);
+  --ac-warning: var(--role-attention);
+  --ac-warning-muted: var(--role-attention-wash);
+  --ac-danger: var(--role-critical);
+  --ac-danger-muted: var(--role-critical-wash);
+
+  --ac-bg-base: var(--ac-void);
+  --ac-bg-mica-fallback: var(--ac-glass);
+  --ac-material-structural: var(--ac-glass);
+  --ac-material-base: var(--ac-glass-2);
+  --ac-material-elevated: var(--ac-glass-3);
+  --ac-material-focused: var(--ac-glass);
+  --ac-layer-hover: var(--ac-glass-3);
+  --ac-layer-pressed: rgba(255, 255, 255, 0.11);
+  --ac-scrim: rgba(2, 4, 8, 0.55);
+  --ac-border-subtle: var(--ac-edge);
+  --ac-border-default: var(--ac-edge);
+  --ac-border-strong: var(--ac-edge-strong);
+  --ac-highlight: rgba(255, 255, 255, 0.07);
+
+  --line: var(--ac-edge);
   --muted: var(--ac-text-3);
+
+  font-family: var(--ac-font-text);
 }
 
-/* Light is a deliberate reading surface, not an inverted dark theme. */
-:root[data-theme="light"] {
+:root[data-locale='ar'] {
+  font-family: var(--ac-font-arabic);
+}
+
+/* Light is a deliberate reading surface, not an inverted dark theme. Only the
+   values that must change are restated; the roles keep their meanings. */
+:root[data-theme='light'] {
   color-scheme: light;
-  --ac-text-1: #17232d;
-  --ac-text-2: #344653;
-  --ac-text-3: #5e707d;
-  --ac-text-4: #788994;
-  --ac-text-inverse: #f7fbff;
-  --ac-bg-base: #f3efe7;
-  --ac-bg-mica-fallback: rgba(244, 248, 250, .94);
-  --ac-material-structural: rgba(247, 250, 251, .86);
-  --ac-material-base: rgba(255, 255, 255, .86);
-  --ac-material-elevated: rgba(255, 255, 255, .96);
-  --ac-material-focused: rgba(255, 255, 255, .985);
-  --ac-layer-hover: rgba(26, 74, 96, .07);
-  --ac-layer-pressed: rgba(26, 74, 96, .12);
-  --ac-scrim: rgba(16, 31, 40, .32);
-  --ac-border-subtle: rgba(33, 66, 83, .14);
-  --ac-border-default: rgba(33, 66, 83, .23);
-  --ac-border-strong: rgba(33, 66, 83, .38);
-  --ac-highlight: rgba(255, 255, 255, .9);
-  --ac-accent: #9b5d2c;
-  --ac-accent-strong: #75401f;
-  --ac-accent-muted: rgba(155, 93, 44, .14);
-  --ac-positive: #197152;
-  --ac-positive-muted: rgba(25, 113, 82, .12);
-  --ac-warning: #95611e;
-  --ac-warning-muted: rgba(149, 97, 30, .12);
-  --ac-danger: #a13b45;
-  --ac-danger-muted: rgba(161, 59, 69, .12);
-  --ac-shadow-card: 0 1px 0 rgba(255,255,255,.9) inset, 0 12px 30px rgba(40,65,77,.09);
-  --ac-shadow-float: 0 24px 60px rgba(40,65,77,.18), 0 1px 0 rgba(255,255,255,.96) inset;
-  --ac-shadow-focus: 0 0 0 2px var(--ac-bg-base), 0 0 0 4px rgba(23,106,139,.62);
+
+  --role-interactive: #4C6EF5;
+  --role-interactive-solid: #4C6EF5;
+  --role-interactive-wash: rgba(76, 110, 245, 0.14);
+  --role-interactive-edge: rgba(76, 110, 245, 0.3);
+  --role-interactive-ink: #ffffff;
+
+  --role-verified: #A9820A;
+  --role-verified-solid: #A9820A;
+  --role-verified-wash: rgba(169, 130, 10, 0.1);
+  --role-verified-edge: rgba(169, 130, 10, 0.26);
+
+  --role-healthy: #2F9E44;
+  --role-healthy-solid: #2B8A3E;
+  --role-healthy-wash: rgba(43, 138, 62, 0.12);
+  --role-healthy-edge: rgba(43, 138, 62, 0.28);
+
+  --role-attention: #C96500;
+  --role-attention-solid: #C96500;
+  --role-attention-wash: rgba(201, 101, 0, 0.12);
+  --role-attention-edge: rgba(201, 101, 0, 0.28);
+
+  --role-critical: #C92A2A;
+  --role-critical-solid: #C92A2A;
+  --role-critical-wash: rgba(201, 42, 42, 0.1);
+  --role-critical-edge: rgba(201, 42, 42, 0.28);
+
+  --role-denied: #773781;
+  --role-denied-solid: #AD4EBC;
+  --role-denied-wash: rgba(119, 55, 129, 0.09);
+  --role-denied-band: rgba(119, 55, 129, 0.06);
+  --role-denied-edge: rgba(119, 55, 129, 0.22);
+  --role-denied-dash: rgba(119, 55, 129, 0.55);
+
+  --role-info: #3B5BDB;
+  --role-info-wash: rgba(59, 91, 219, 0.12);
+
+  --ac-void: #EDF0F5;
+  --ac-glass: rgba(255, 255, 255, 0.62);
+  --ac-glass-2: rgba(10, 14, 20, 0.035);
+  --ac-glass-3: rgba(10, 14, 20, 0.06);
+  --ac-edge: rgba(10, 14, 20, 0.07);
+  --ac-edge-strong: rgba(10, 14, 20, 0.13);
+  --ac-sunken: rgba(10, 14, 20, 0.05);
+
+  --ac-text-1: rgba(8, 12, 18, 0.95);
+  --ac-text-2: rgba(8, 12, 18, 0.72);
+  --ac-text-3: rgba(8, 12, 18, 0.55);
+  --ac-text-4: rgba(8, 12, 18, 0.48);
+  --ac-text-inverse: #ffffff;
+
+  --ac-shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --ac-shadow-panel: 0 24px 60px -26px rgba(20, 30, 50, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --ac-shadow-float: 0 40px 90px -30px rgba(20, 30, 50, 0.34);
+  --ac-shadow-interactive: 0 14px 30px -14px rgba(76, 110, 245, 0.55);
+
+  --ac-layer-pressed: rgba(10, 14, 20, 0.09);
+  --ac-scrim: rgba(20, 30, 50, 0.34);
+  --ac-highlight: rgba(255, 255, 255, 0.9);
 }
 
-/* Light mode is deliberate; it is not a filter over dark surfaces. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-system-theme="dark"]) {
-    color-scheme: light;
-    --ac-text-1:#152230; --ac-text-2:#304457; --ac-text-3:#53697d; --ac-text-4:#6d8294; --ac-text-inverse:#f7fbff;
-    --ac-bg-base:#edf3f7; --ac-material-structural:rgba(241,247,250,.86); --ac-material-base:rgba(255,255,255,.82); --ac-material-elevated:rgba(255,255,255,.94); --ac-material-focused:#fff;
-    --ac-layer-hover:rgba(21,53,77,.055); --ac-layer-pressed:rgba(21,53,77,.1); --ac-border-subtle:rgba(20,50,71,.13); --ac-border-default:rgba(20,50,71,.2); --ac-border-strong:rgba(20,50,71,.3);
-    --ac-accent:#9b5d2c; --ac-accent-strong:#75401f; --ac-positive:#19734d; --ac-warning:#8a5a12; --ac-danger:#ad3b3b;
-    --ac-shadow-card:0 1px 0 rgba(255,255,255,.9) inset,0 12px 28px rgba(28,56,74,.1); --ac-shadow-float:0 24px 60px rgba(28,56,74,.18),0 1px 0 rgba(255,255,255,.9) inset;
-  }
-}
-
-[data-system-theme="light"] {
-  color-scheme:light;
-  --ac-text-1:#152230; --ac-text-2:#304457; --ac-text-3:#53697d; --ac-text-4:#6d8294; --ac-text-inverse:#f7fbff; --ac-bg-base:#edf3f7;
-  --ac-material-structural:rgba(241,247,250,.86); --ac-material-base:rgba(255,255,255,.82); --ac-material-elevated:rgba(255,255,255,.94); --ac-material-focused:#fff;
-  --ac-layer-hover:rgba(21,53,77,.055); --ac-layer-pressed:rgba(21,53,77,.1); --ac-border-subtle:rgba(20,50,71,.13); --ac-border-default:rgba(20,50,71,.2); --ac-border-strong:rgba(20,50,71,.3);
-  --ac-accent:#9b5d2c; --ac-accent-strong:#75401f; --ac-positive:#19734d; --ac-warning:#8a5a12; --ac-danger:#ad3b3b;
-  --ac-shadow-card:0 1px 0 rgba(255,255,255,.9) inset,0 12px 28px rgba(28,56,74,.1); --ac-shadow-float:0 24px 60px rgba(28,56,74,.18),0 1px 0 rgba(255,255,255,.9) inset;
+/* The system-theme hook the shell state also writes. Kept in lockstep with
+   [data-theme] so the two can never disagree about which surface is showing. */
+:root[data-system-theme='light'] {
+  color-scheme: light;
 }
 
 @media (prefers-contrast: more) {
   :root {
-    --ac-border-subtle: rgba(255,255,255,.2);
-    --ac-border-default: rgba(255,255,255,.3);
-    --ac-border-strong: rgba(255,255,255,.48);
-    --ac-text-3: #c5cdd5;
-    --ac-text-4: #adb7c0;
-    --ac-material-base: rgba(12,18,24,.96);
-    --ac-material-elevated: rgba(14,21,28,.98);
-    --ac-material-focused: rgba(9,14,20,.99);
+    --ac-edge: rgba(255, 255, 255, 0.22);
+    --ac-edge-strong: rgba(255, 255, 255, 0.42);
+    --ac-text-3: rgba(255, 255, 255, 0.78);
+    --ac-text-4: rgba(255, 255, 255, 0.7);
+    --ac-glass: rgba(8, 11, 15, 0.96);
+    --ac-glass-2: rgba(255, 255, 255, 0.09);
+    --ac-glass-3: rgba(255, 255, 255, 0.14);
+  }
+  :root[data-theme='light'] {
+    --ac-edge: rgba(10, 14, 20, 0.24);
+    --ac-edge-strong: rgba(10, 14, 20, 0.42);
+    --ac-text-3: rgba(8, 12, 18, 0.74);
+    --ac-text-4: rgba(8, 12, 18, 0.68);
   }
 }
 
 @media (forced-colors: active) {
   :root {
-    --ac-material-structural: Canvas;
-    --ac-material-base: Canvas;
-    --ac-material-elevated: Canvas;
-    --ac-material-focused: Canvas;
+    --ac-glass: Canvas;
+    --ac-glass-2: Canvas;
+    --ac-glass-3: Canvas;
+    --ac-void: Canvas;
     --ac-text-1: CanvasText;
     --ac-text-2: CanvasText;
     --ac-text-3: GrayText;
-    --ac-border-subtle: ButtonBorder;
-    --ac-border-default: ButtonBorder;
-    --ac-accent: Highlight;
+    --ac-text-4: GrayText;
+    --ac-edge: ButtonBorder;
+    --ac-edge-strong: ButtonBorder;
+    --role-interactive: Highlight;
+    /* Forced colours flatten the palette, so denied keeps its identity through
+       the two signals that survive: the dashed border and the 8px radius. */
+    --role-denied: LinkText;
+    --role-denied-dash: LinkText;
   }
 }

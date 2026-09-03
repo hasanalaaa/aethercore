@@ -79,8 +79,8 @@
 
 /* Evidence-first shell: the rail is a quiet instrument, not a card stack. */
 .app-sidebar { border-inline-end-color:color-mix(in srgb,var(--ac-accent) 28%,var(--ac-border-subtle)); }
-.app-sidebar::before { content:""; position:absolute; inset-block:1.3rem; inset-inline-start:-1px; inline-size:2px; background:linear-gradient(var(--ac-accent),transparent 72%); opacity:.72; }
-.brand-mark { border-radius:.55rem; background:linear-gradient(145deg,color-mix(in srgb,var(--ac-accent) 26%,#101821),#0b1118); }
+.app-sidebar::before { content:""; position:absolute; inset-block:1.3rem; inset-inline-start:-1px; inline-size:2px; background:var(--role-interactive); opacity:.72; }
+.brand-mark { border-radius:.55rem; background:var(--role-interactive); }
 .command-trigger { border-radius:.55rem; background:color-mix(in srgb,var(--ac-accent) 7%,transparent); }
 .app-nav-item { border-radius:.55rem; }
 .app-nav-item.active { border-inline-start:2px solid var(--ac-accent); padding-inline-start:calc(.58rem - 2px); background:color-mix(in srgb,var(--ac-accent) 12%,transparent); }

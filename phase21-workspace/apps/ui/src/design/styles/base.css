@@ -17,29 +17,32 @@ body {
   font-size: var(--ac-type-body);
   line-height: 1.5;
   background:
-    radial-gradient(56rem 34rem at 92% -10%, color-mix(in srgb, var(--ac-accent) 12%, transparent), transparent 65%),
+    radial-gradient(56rem 34rem at 92% -10%, color-mix(in srgb, var(--role-interactive) 12%, transparent), transparent 65%),
     linear-gradient(155deg, color-mix(in srgb, var(--ac-bg-base) 86%, #05070a), var(--ac-bg-base));
   -webkit-font-smoothing: antialiased;
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-system-theme="dark"]) body { background: radial-gradient(64rem 42rem at 88% -15%, rgba(155,93,44,.12), transparent 63%), #f3efe7; }
+/* The light surface differs only in its ambient tint; both themes read the same
+   role token, so the two can never drift apart the way the amber literal did. */
+[data-theme="light"] body {
+  background:
+    radial-gradient(56rem 34rem at 92% -10%, color-mix(in srgb, var(--role-interactive) 10%, transparent), transparent 65%),
+    var(--ac-void);
 }
-[data-system-theme="light"] body { background: radial-gradient(64rem 42rem at 88% -15%, rgba(155,93,44,.12), transparent 63%), #f3efe7; }
 button, input, textarea, select { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 button, [role="button"], input, summary { outline: none; }
 button:focus-visible, [role="button"]:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible {
-  outline: 2px solid var(--ac-accent);
+  outline: 2px solid var(--role-interactive);
   outline-offset: 2px;
   box-shadow: var(--ac-shadow-focus);
 }
-::selection { background: rgba(142,197,245,.25); color: var(--ac-text-1); }
+::selection { background: var(--role-interactive-wash); color: var(--ac-text-1); }
 .sr-only { position:absolute; inline-size:1px; block-size:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .a11y-live { position:fixed; inline-size:1px; block-size:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .skip-link {
   position:fixed; inset-block-start:.75rem; inset-inline-start:.75rem; z-index:10000;
   translate: 0 -180%; padding:.6rem .85rem; border-radius:var(--ac-radius-sm);
-  background:var(--ac-accent-strong); color:var(--ac-text-inverse); font-weight:700; text-decoration:none;
+  background:var(--role-interactive); color:var(--role-interactive-ink); font-weight:700; text-decoration:none;
 }
 .skip-link:focus { translate:0; }
 code, .technical { font-family: var(--ac-font-mono); direction:ltr; unicode-bidi:isolate; }
