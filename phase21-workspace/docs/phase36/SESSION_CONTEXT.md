@@ -7382,3 +7382,75 @@ correctly instead of guessing 120ms (needs investigation this session did
 not do — §45.0 explicitly left "why 120ms sometimes isn't enough"
 unanswered, and DBT-P45-004 inherits that same open question rather than
 re-opening it under a new number).
+
+## 45.4 PART 4 — macOS readings beside the host's, and the bias question
+
+Binary under test: `target/release/aetherctl`, built this session, this
+fix included. Load harness: `N` background `while true; do :; done` shells,
+PIDs captured explicitly via `$!` (not `jobs -p`, which returned empty in
+this non-interactive shell and would have made cleanup silently
+impossible — caught before it left anything running; verified clean via
+`top` before and after every round). Each round: spawn load, `sleep 2`,
+take host counters and the product reading back-to-back (not perfectly
+atomic — separate process invocations a few hundred ms apart — noted where
+it matters), `kill -9` every captured PID, verify `top` back near idle.
+
+### Full saturation (14 of 14 cores spinning)
+
+| metric | host | product | delta | ratio |
+|---|---|---|---|---|
+| CPU busy | `top`: 60.83% user + 39.16% sys = 99.99%, idle 0.0% | `cpu.totalBusyBp` 10000 = 100.00% | +0.01 pt | 1.0001 |
+| memory total | `sysctl hw.memsize`: 38654705664 B | `memory.totalPhysicalBytes`: 38654705664 B | 0 | 1.0000 (exact) |
+| memory load | `top`: `PhysMem: 35G used ... 587M unused` of 36864 MiB total ≈ 97.2% used | `memory.memoryLoadPercent`: 97% | -0.2 pt | 0.998 |
+| storage used | `diskutil info /`: Container Total 994,662,584,320 B, Free 277,954,723,840 B → used 72.06% | `storage[0].activeTimeBp`: 7205 = 72.05% | +0.01 pt | 1.0001 |
+
+CPU is saturated on both sides — informative that they agree, but not
+informative about bias direction (§44.4's own caveat, repeated here
+because it is still true). Storage and memory are the informative rows:
+both essentially exact, reproducing §44.4's "storage near-exact once the
+right host counterpart is used" and "memory within ~1pt of top" findings
+almost to the same decimal.
+
+### Partial load (7 of 14 cores spinning — the informative case)
+
+| metric | host | product | delta | ratio |
+|---|---|---|---|---|
+| CPU busy | `top`: 40.64% user + 27.81% sys = 68.45%, idle 31.54% | `cpu.totalBusyBp` 6229 = 62.29% | **-6.16 pt** | **0.9101** |
+
+**macOS reads low under partial load, by 6.16 points this round** — inside
+the "2-10 points low" range §44.4 measured, same sign (low, not high).
+This is the informative comparison the saturated round cannot give: at
+partial load, `top`'s and the product's sampling windows are not
+identical (top's own internal interval vs. this provider's ~120ms in-tick
+delta), and a `top`-vs-provider gap of a few points under a bursty,
+just-spawned load is consistent with that timing-window difference rather
+than a new defect — the same read this session gives §44.4's number.
+
+### The open bias question (§43.5's DBT-P42-011) — this fix changes nothing here, stated explicitly
+
+**§43.5:** x64 Windows reads consistently **high** (+7.5, +4.1 pts CPU,
+3.47x disk latency); ARM64 Windows does not. **§44.4:** macOS's first
+measurement — saturated CPU uninformative, storage near-exact once
+corrected to the right counterpart, memory within ~1pt, partial-load CPU
+**low** by 2-10pts (opposite sign from x64). **§45.4, this session:** every
+number above reproduces §44.4's characterization within the range already
+recorded — saturated CPU still uninformative (+0.01pt), storage still
+near-exact (+0.01pt), memory still within ~1pt (-0.2pt), partial-load CPU
+still low, still inside the same 2-10pt band (-6.16pt this round).
+
+**Does the DBT-P45-001..004 fix change the macOS deltas? No, and here is
+why, not just the assertion:** the fix's retry-then-honest-unavailable
+path only fires on the rare tick-tie (§45.3: 2% of single fresh-instance
+samples under the flaky test's exact harness). A `telemetry-once` /
+`aetherctl` real-world call samples through the same `sample_cpu` path but
+the tie, when it does not occur, produces the identical arithmetic this
+session's fix did not touch — `busy_bp_from_ticks`'s `Some` branch is
+byte-for-byte the same ratio computation as before, just now wrapped in
+`Option`. None of the four measurement rounds in this section hit the tie
+(all four produced a real number, no `cpu` fault in any of them) — so
+there was nothing for the fix to change in this specific data. **This is a
+fourth-then-fifth data point on DBT-P42-011's open question, not a
+resolution of it**: still no positive/high bias observed on macOS at any
+load level measured across two sessions, and the one asymmetric signal
+(partial-load low) points the opposite direction from x64's high bias,
+same as §44.4 already said.
