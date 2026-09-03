@@ -1686,6 +1686,7 @@ export const enCatalog = {
   'drivers.policyHoldsEyebrow': 'Policy holds',
   'drivers.policyHoldsTitle': 'Offers AetherCore will not install',
   'drivers.policyHoldsCopy': 'These updates were found and are shown in full, but AetherCore refuses to install them itself. Each names the rule that refuses it. They are not counted as available updates.',
+  'deepScan.uncitableDropped': '{count} finding(s) were withheld: they could not cite an observation.',
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;

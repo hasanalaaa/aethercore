@@ -1686,4 +1686,5 @@ export const arCatalog = {
   'drivers.policyHoldsEyebrow': 'ما يمنعه النظام',
   'drivers.policyHoldsTitle': 'عروض لن يثبّتها AetherCore',
   'drivers.policyHoldsCopy': 'عُثر على هذه التحديثات وتُعرض كاملة، لكن AetherCore يرفض تثبيتها بنفسه. كل واحد منها يذكر القاعدة التي ترفضه. ولا تُحتسب ضمن التحديثات المتاحة.',
+  'deepScan.uncitableDropped': 'حُجبت {count} نتيجة لعدم قدرتها على الاستناد إلى رصد.',
 } satisfies Record<MessageKey, string>;

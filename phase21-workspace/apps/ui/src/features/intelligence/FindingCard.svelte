@@ -1,10 +1,17 @@
 <script lang="ts">
   import { MaterialSurface, TechnicalText } from '../../design/primitives';
+  import { EvidenceChip, type Evidence } from '../../design/signature';
   import type { PcFinding } from '../../lib/contracts';
-  import { formatNumber, hasMessageKey, td, t, type Locale, type MessageKey } from '../../lib/i18n';
+  import { formatDateTime, formatNumber, hasMessageKey, td, t, type Locale, type MessageKey } from '../../lib/i18n';
 
   export let finding: PcFinding;
   export let locale: Locale;
+  /**
+   * The observation this finding cites. Required: `DeepScanPage` runs findings
+   * through `citedOnly` before rendering any of them, so a card is only ever
+   * built for a finding that already has one.
+   */
+  export let evidence: Evidence;
 
   function message(key: string): string {
     if (!hasMessageKey(key)) return key;
@@ -42,6 +49,9 @@
   {#if verificationLabel(finding.verificationStatus)}
     <p class="verification-note" role="status">{verificationLabel(finding.verificationStatus)}</p>
   {/if}
+  <div class="finding-evidence">
+    <EvidenceChip {evidence} {locale} />
+  </div>
   <div class="finding-properties">
     <span>{t('deepScan.resource',locale,{resource:finding.affectedResource?.displayName ?? '—'})}</span>
     <span>{t('deepScan.reboot',locale,{value:rebootLabel(finding.rebootRequirement)})}</span>
@@ -61,11 +71,6 @@
         {/each}
       </div>
     {/if}
-    <div class="evidence-list">
-      {#each finding.evidence as evidence}
-        <div><span>{evidence.source} · {evidence.kind}</span><TechnicalText value={evidence.technicalValue}/></div>
-      {/each}
-    </div>
     <small>{t('deepScan.rule',locale,{rule:finding.ruleId,version:finding.ruleVersion})}</small>
   </details>
 </MaterialSurface>
@@ -77,6 +82,7 @@
   .verification-note{margin:12px 0 0;padding:9px 11px;border-radius:10px;border:1px solid var(--ac-border-subtle);background:var(--ac-material-base);color:var(--ac-text-2);font-size:.8rem;line-height:1.45}
   .finding-properties{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0 0;padding-top:10px;border-top:1px solid var(--ac-border-subtle);color:var(--ac-text-3);font-size:.76rem}.finding-card details{margin-top:10px}.finding-card summary{cursor:pointer;color:var(--ac-text-2);font-weight:600}.finding-card details>p{color:var(--ac-text-2)}
   .correlation-detail{display:grid;gap:5px;margin:9px 0;padding:10px 11px;border-radius:10px;background:var(--ac-material-base);color:var(--ac-text-2);font-size:.78rem}.correlation-detail strong{font-weight:650;color:var(--ac-text-1)}
-  .evidence-list{display:grid;gap:6px;margin:9px 0}.evidence-list>div{padding:8px 10px;border-radius:9px;background:var(--ac-material-base)}.evidence-list span{display:block;color:var(--ac-text-3);font-size:.72rem;margin-bottom:2px}.finding-card small{color:var(--ac-text-3)}
+  .finding-evidence{margin:12px 0 0}
+  :global(.finding-card small){color:var(--ac-text-3)}
   @media (prefers-contrast:more){.severity-mark,.safety-badge,.verification-note{border-width:2px}}
 </style>

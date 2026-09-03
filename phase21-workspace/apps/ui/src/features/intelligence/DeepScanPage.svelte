@@ -7,6 +7,31 @@
   import { streamState } from '../../platform/stream-state';
   import { shellState } from '../../app/shell-state';
   import { cancelDeepScan, refreshDeepScanHistory, startDeepScan } from './controller';
+  import { citedOnly, type Evidence } from '../../design/signature';
+  import type { PcFinding } from '../../lib/contracts';
+
+  /**
+   * The observation a finding rests on, assembled only from the evidence refs
+   * the scan actually attached. The chip face names the sources and how many
+   * facts were cited; the expanded block is one line per fact — source, kind,
+   * the technical value, and when it was observed.
+   *
+   * A finding citing nothing returns null and `citedOnly` drops it, so the deep
+   * scan can never show a claim it cannot support.
+   */
+  function evidenceFor(finding: PcFinding): Evidence | null {
+    if (!finding.evidence.length) return null;
+    const sources = [...new Set(finding.evidence.map((e) => e.source).filter(Boolean))];
+    return {
+      cite: `${sources.join(' · ') || finding.evidence[0].kind} · ${finding.evidence.length}`,
+      raw: finding.evidence
+        .map((e) => `${e.source} ${e.kind}  ${e.technicalValue}  ${formatDateTime(e.observedUnixMs, locale)}`)
+        .join('\n'),
+    };
+  }
+
+  const gateFindings = (items: readonly PcFinding[]) => citedOnly<PcFinding>(items, evidenceFor);
+
 
   type Filter = 'all' | 'drivers' | 'windows' | 'hardware' | 'storage' | 'performance' | 'startup' | 'cleanup' | 'diagnostics';
   const filters: readonly { id:Filter; key:MessageKey; domains:number[] }[] = [
@@ -30,10 +55,16 @@
   $: terminal = scan.state >= 3;
   $: selectedDomains = filters.find((entry) => entry.id === filter)?.domains ?? [];
   $: visibleFindings = scan.findings.filter((finding) => !selectedDomains.length || selectedDomains.includes(finding.domain));
-  $: needsAction = visibleFindings.filter((finding) => finding.severity >= 4);
-  $: optional = visibleFindings.filter((finding) => finding.severity <= 2 && finding.remediationAvailable && finding.remediationSafety >= 1 && finding.remediationSafety <= 2);
+  // Uncitable findings are dropped before display, and the count of what was
+  // dropped is shown rather than silently shortening the list.
+  $: visibleGate = gateFindings(visibleFindings);
+  $: citedVisible = visibleGate.cited;
+  $: uncitableCount = visibleGate.dropped;
+  $: liveGate = gateFindings(scan.findings.slice(0, 3));
+  $: needsAction = citedVisible.filter((finding) => finding.severity >= 4);
+  $: optional = citedVisible.filter((finding) => finding.severity <= 2 && finding.remediationAvailable && finding.remediationSafety >= 1 && finding.remediationSafety <= 2);
   $: optionalIds = new Set(optional.map((finding) => finding.id));
-  $: recommended = visibleFindings.filter((finding) => finding.severity < 4 && !optionalIds.has(finding.id));
+  $: recommended = citedVisible.filter((finding) => finding.severity < 4 && !optionalIds.has(finding.id));
   $: limitedCollectors = scan.collectors.filter((collector) => collector.state >= 4);
   $: hasContinuityLimitation = scan.warnings.some((warning) => warning.startsWith('persistence ') || warning.startsWith('scan history '));
   $: limitationCount = limitedCollectors.length + (hasContinuityLimitation ? 1 : 0);
@@ -106,7 +137,7 @@
     <h2 id="deep-scan-live-findings-heading" class="result-heading">{t('deepScan.findingsDuringScan',locale)}</h2>
     <p class="sr-only" aria-live="polite" aria-atomic="true">{t('deepScan.findingsDiscovered',locale,{count:formatNumber(scan.findings.length,locale)})}</p>
     <div class="finding-list">
-      {#each scan.findings.slice(0,3) as finding (finding.id)}<FindingCard {finding} {locale} />{/each}
+      {#each liveGate.cited as finding (finding.id)}<FindingCard {finding} evidence={finding.evidence} {locale} />{/each}
     </div>
   </section>
 {/if}
@@ -136,7 +167,11 @@
     {/each}
   </div>
 
-  {#if visibleFindings.length === 0}
+  {#if uncitableCount > 0}
+    <p class="uncitable-note">{t('deepScan.uncitableDropped',locale,{count:formatNumber(uncitableCount,locale)})}</p>
+  {/if}
+
+  {#if citedVisible.length === 0}
     <MaterialSurface level="focused" className="healthy-result">
       <div aria-hidden="true">✓</div>
       <h3>{t('deepScan.noActionTitle',locale)}</h3>
@@ -146,16 +181,16 @@
     {#if needsAction.length}<h2 class="result-heading">{t('deepScan.group.needsAction',locale)}</h2>{/if}
     <div class="finding-list">
       {#each needsAction as finding (finding.id)}
-        <FindingCard {finding} {locale} />
+        <FindingCard {finding} evidence={finding.evidence} {locale} />
       {/each}
     </div>
     {#if recommended.length}<h2 class="result-heading">{t('deepScan.group.recommended',locale)}</h2>{/if}
     <div class="finding-list">
-      {#each recommended as finding (finding.id)}<FindingCard {finding} {locale} />{/each}
+      {#each recommended as finding (finding.id)}<FindingCard {finding} evidence={finding.evidence} {locale} />{/each}
     </div>
     {#if optional.length}<h2 class="result-heading">{t('deepScan.group.optional',locale)}</h2>{/if}
     <div class="finding-list">
-      {#each optional as finding (finding.id)}<FindingCard {finding} {locale} />{/each}
+      {#each optional as finding (finding.id)}<FindingCard {finding} evidence={finding.evidence} {locale} />{/each}
     </div>
   {/if}
 

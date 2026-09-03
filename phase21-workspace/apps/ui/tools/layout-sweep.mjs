@@ -26,7 +26,7 @@ const CHROME = process.env.CHROME_BIN
   ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 function parseArgs(argv) {
-  const args = { widths: [1280, 1024, 960], locales: ['en', 'ar'], themes: ['dark'], out: 'output/sweep', base: 'http://127.0.0.1:1420', pages: ['overview'] };
+  const args = { widths: [1280, 1024, 960], locales: ['en', 'ar'], themes: ['dark'], out: 'output/sweep', base: 'http://127.0.0.1:1420', pages: ['overview'], entry: 'layout-fixture.html' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.replace(/^--/, '');
     const value = argv[i + 1];
@@ -56,6 +56,12 @@ async function connect(port) {
 
   const socket = new WebSocket(info.webSocketDebuggerUrl);
   await new Promise((ok, fail) => { socket.onopen = ok; socket.onerror = fail; });
+  // After the handshake an unhandled 'error' event terminates the process, and
+  // Chrome drops the socket whenever it tears a target down between navigations.
+  // Fail the in-flight calls instead, so a long sweep reports rather than dies.
+  let closed = null;
+  socket.onerror = (event) => { closed = new Error(`devtools socket error: ${event?.message ?? 'unknown'}`); };
+  socket.onclose = () => { closed ??= new Error('devtools socket closed'); };
 
   let nextId = 0;
   const pending = new Map();
@@ -72,11 +78,17 @@ async function connect(port) {
     }
     for (const handler of events.get(frame.method) ?? []) handler(frame.params);
   };
+  socket.addEventListener('close', () => {
+    for (const entry of pending.values()) entry.fail(closed ?? new Error('devtools socket closed'));
+    pending.clear();
+  });
 
   const send = (method, params = {}) => new Promise((ok, fail) => {
+    if (closed) { fail(closed); return; }
     const id = (nextId += 1);
     pending.set(id, { ok, fail, method });
-    socket.send(JSON.stringify({ id, method, params }));
+    try { socket.send(JSON.stringify({ id, method, params })); }
+    catch (error) { pending.delete(id); fail(error); }
   });
   const on = (method, handler) => events.set(method, [...(events.get(method) ?? []), handler]);
   return { send, on, close: () => socket.close() };
@@ -183,6 +195,9 @@ const MEASURE = `(() => {
     policyBandVisible: Boolean(band) && bandBox.width > 0 && bandBox.height > 0,
     deniedChips: document.querySelectorAll('.policy-denied-chip').length,
     evidenceChips: document.querySelectorAll('[data-evidence-chip]').length,
+    emptyStates: document.querySelectorAll('.empty-state').length,
+    // A meter at rest must read em dash, never a zero nobody measured.
+    emDashes: (document.querySelector('main')?.textContent.match(/—/g) ?? []).length,
   };
 })()`;
 
@@ -215,13 +230,13 @@ async function main() {
             });
             // Preferences are read from storage during boot, so they must be set
             // before the document that reads them is created.
-            await cdp.send('Page.navigate', { url: `${args.base}/layout-fixture.html` });
+            await cdp.send('Page.navigate', { url: `${args.base}/${args.entry}` });
             await settle(cdp);
             await evaluate(cdp, `(() => {
               localStorage.setItem('aethercore.locale', ${JSON.stringify(locale)});
               localStorage.setItem('aethercore.theme', ${JSON.stringify(theme)});
             })()`);
-            await cdp.send('Page.navigate', { url: `${args.base}/layout-fixture.html` });
+            await cdp.send('Page.navigate', { url: `${args.base}/${args.entry}` });
             await settle(cdp);
             // Navigate the way a user does, by pressing the rail button, so the
             // measured page is one the app actually routed to.
@@ -246,7 +261,8 @@ async function main() {
               `${status}  ${name.padEnd(28)} overflowX=${measured.overflowX} `
               + `clipped=${measured.clippedCount} overlaps=${measured.overlapCount} `
               + `dir=${measured.dir} band=${measured.policyBandVisible} `
-              + `denied=${measured.deniedChips} evidence=${measured.evidenceChips}`,
+              + `denied=${measured.deniedChips} evidence=${measured.evidenceChips} `
+              + `empty=${measured.emptyStates} emdash=${measured.emDashes}`,
             );
             for (const entry of measured.clipped) console.log(`        clipped ${entry.axis} by ${entry.by}px: ${entry.tag}.${entry.cls}`);
             for (const entry of measured.overlaps) console.log(`        overlap ${entry.area}px²: "${entry.control}" over "${entry.text}"`);
