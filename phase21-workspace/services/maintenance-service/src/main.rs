@@ -249,7 +249,7 @@ fn product_data_root() -> PathBuf {
     std::env::var_os("ProgramData")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"))
-        .join("AetherCore")
+        .join(aethercore_product_identity::PRODUCT_NAME)
 }
 fn data_path() -> PathBuf {
     product_data_root().join("state").join("aethercore.db")

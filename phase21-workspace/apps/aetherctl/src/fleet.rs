@@ -38,7 +38,7 @@ fn dirs_state() -> Option<PathBuf> {
         PathBuf::from(home)
             .join("Library")
             .join("Application Support")
-            .join("AetherCore")
+            .join(aethercore_product_identity::PRODUCT_NAME)
     })
 }
 
@@ -76,7 +76,7 @@ fn dirs_state() -> Option<PathBuf> {
 /// non-admin now gets a typed local-I/O refusal instead of silently writing to a
 /// private store nobody else can see.
 fn dirs_state() -> Option<PathBuf> {
-    std::env::var_os("ProgramData").map(|dir| PathBuf::from(dir).join("AetherCore"))
+    std::env::var_os("ProgramData").map(|dir| PathBuf::from(dir).join(aethercore_product_identity::PRODUCT_NAME))
 }
 
 fn load_inventory() -> Result<FleetInventory, CliError> {

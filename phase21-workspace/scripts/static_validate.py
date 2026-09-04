@@ -848,6 +848,18 @@ checks["p46_service_name_has_one_decider"] = {
     ),
     "note": f"Service name is decided once in crates/product-identity ({SERVICE_NAME!r}); the three former Rust deciders now import it, and every non-Rust declaration is asserted against it.",
 }
+_product_name_match = re.search(r'pub const PRODUCT_NAME: &str = "([^"]+)";', product_identity)
+PRODUCT_NAME = _product_name_match.group(1) if _product_name_match else ""
+checks["p46_product_name_has_one_decider"] = {
+    # DBT-P46-D2 (§46.4 Part 0.D): the install directory, the ProgramData
+    # directory and the update protocol's product_id were 17 separate literals
+    # across 7 crates and apps. They now read one const; WiX declares the same
+    # two directory names, and this asserts they still agree.
+    "ok": bool(PRODUCT_NAME)
+    and f'<Directory Id="INSTALLFOLDER" Name="{PRODUCT_NAME}">' in product_wxs
+    and f'<Directory Id="ProgramDataRoot" Name="{PRODUCT_NAME}">' in product_wxs,
+    "note": f"Install and ProgramData directory names in Product.wxs match the single PRODUCT_NAME decider ({PRODUCT_NAME!r}).",
+}
 checks["phase8_msi_serviceconfig_not_relied_upon"] = {
     "ok": "<ServiceConfig" not in product_wxs,
     "note": "Service SID policy and delayed-auto are applied by the fixed-purpose post-InstallServices hardener, avoiding reliance on MSI ServiceConfig semantics.",

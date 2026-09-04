@@ -1213,7 +1213,7 @@ fn user_update_cache_dir() -> anyhow::Result<std::path::PathBuf> {
     let root = std::env::var_os("LOCALAPPDATA")
         .map(std::path::PathBuf::from)
         .ok_or_else(|| anyhow::anyhow!("update.error.internal"))?;
-    Ok(root.join("AetherCore").join("UpdateCache"))
+    Ok(root.join(aethercore_product_identity::PRODUCT_NAME).join("UpdateCache"))
 }
 
 struct LocalTempFile {
@@ -1388,7 +1388,7 @@ fn locate_update_broker() -> anyhow::Result<std::path::PathBuf> {
     }
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
         let installed = std::path::PathBuf::from(program_files)
-            .join("AetherCore")
+            .join(aethercore_product_identity::PRODUCT_NAME)
             .join("aethercore-update-broker.exe");
         if installed.is_file() {
             return Ok(installed);
@@ -1701,7 +1701,7 @@ fn locate_broker() -> anyhow::Result<std::path::PathBuf> {
 
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
         let installed = std::path::PathBuf::from(program_files)
-            .join("AetherCore")
+            .join(aethercore_product_identity::PRODUCT_NAME)
             .join("aethercore-consent-broker.exe");
         if installed.is_file() {
             return Ok(installed);
@@ -2851,7 +2851,7 @@ fn dirs_fleet_state() -> std::path::PathBuf {
             return std::path::PathBuf::from(home)
                 .join("Library")
                 .join("Application Support")
-                .join("AetherCore");
+                .join(aethercore_product_identity::PRODUCT_NAME);
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]

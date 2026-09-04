@@ -119,7 +119,7 @@ pub struct ReleaseIdentity {
 impl ReleaseIdentity {
     pub fn validate(&self) -> Result<(), AuthorityError> {
         if self.schema != IDENTITY_SCHEMA
-            || self.product_id != "AetherCore"
+            || self.product_id != aethercore_product_identity::PRODUCT_NAME
             || !valid_version(&self.version)
             || self.release_sequence == 0
             || !valid_version(&self.minimum_updater_version)
@@ -330,7 +330,7 @@ pub struct UpdateMetadata {
 
 impl UpdateMetadata {
     pub fn validate(&self, now_epoch: u64) -> Result<(), AuthorityError> {
-        if self.schema != UPDATE_METADATA_SCHEMA || self.product_id != "AetherCore" || self.update_contract_version != UPDATE_CONTRACT_VERSION || self.expires_epoch < now_epoch || self.expires_epoch <= self.generated_epoch || self.expires_epoch.saturating_sub(self.generated_epoch) > 30 * 24 * 3600 {
+        if self.schema != UPDATE_METADATA_SCHEMA || self.product_id != aethercore_product_identity::PRODUCT_NAME || self.update_contract_version != UPDATE_CONTRACT_VERSION || self.expires_epoch < now_epoch || self.expires_epoch <= self.generated_epoch || self.expires_epoch.saturating_sub(self.generated_epoch) > 30 * 24 * 3600 {
             return Err(AuthorityError::Freshness);
         }
         self.target_identity.validate()?;

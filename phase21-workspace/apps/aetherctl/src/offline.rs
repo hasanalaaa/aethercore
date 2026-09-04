@@ -77,7 +77,7 @@ fn execute(config: &Config, job: OfflineJob) -> Result<serde_json::Value, CliErr
     match job {
         OfflineJob::About => Ok(serde_json::json!({
             "name": "aetherctl",
-            "product": "AetherCore",
+            "product": aethercore_product_identity::PRODUCT_NAME,
             "version": env!("CARGO_PKG_VERSION"),
             "protocolVersion": aethercore_contracts::PROTOCOL_VERSION,
             "platform": platform_str(),

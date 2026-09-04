@@ -95,6 +95,7 @@ dependencies = [
  "aethercore-fleet",
  "aethercore-gpu-policy",
  "aethercore-ipc",
+ "aethercore-product-identity",
  "aethercore-support-bundle",
  "aethercore-update-download",
  "aethercore-update-engine",
@@ -407,6 +408,7 @@ dependencies = [
  "aethercore-driver-hub",
  "aethercore-operation-kernel",
  "aethercore-persistence",
+ "aethercore-product-identity",
  "aethercore-startup-manager",
  "aethercore-system-repair",
  "aethercore-update-engine",
@@ -496,6 +498,7 @@ version = "0.1.11"
 name = "aethercore-release-authority"
 version = "0.1.11"
 dependencies = [
+ "aethercore-product-identity",
  "ed25519-dalek",
  "hex",
  "serde",
@@ -714,6 +717,7 @@ dependencies = [
  "aethercore-performance-telemetry",
  "aethercore-persistence",
  "aethercore-platform-capabilities",
+ "aethercore-product-identity",
  "aethercore-release-authority",
  "aethercore-security-audit",
  "ed25519-dalek",

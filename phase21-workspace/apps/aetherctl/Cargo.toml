@@ -11,6 +11,7 @@ name = "aetherctl"
 path = "src/main.rs"
 
 [dependencies]
+aethercore-product-identity = { path = "../../crates/product-identity" }
 # Phase 28 wire-contract reuse (CX-3): the CLI consumes the SAME contracts and IPC
 # libraries as every other surface; it never re-implements framing or tags.
 aethercore-contracts = { path = "../../crates/contracts" }

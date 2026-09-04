@@ -8,7 +8,7 @@ use std::{
 
 // DBT-P46-D1: the third independent declaration of the service name, and the
 // second full re-typing of its account, both now derived from one decider.
-use aethercore_product_identity::{service_principal, SERVICE_NAME};
+use aethercore_product_identity::{service_principal, PRODUCT_NAME, SERVICE_NAME};
 const SERVICE_SDDL: &str = "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)";
 const MACHINE_MUTATION_LOCK_RELATIVE_PATH: &str = r"state\machine-mutation.lock";
 #[cfg(windows)]
@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
 fn purge_data() -> anyhow::Result<()> {
     let program_data = std::env::var_os("ProgramData")
         .ok_or_else(|| anyhow::anyhow!("ProgramData is not defined"))?;
-    let data_dir = trusted_child(PathBuf::from(program_data), "AetherCore")?;
+    let data_dir = trusted_child(PathBuf::from(program_data), PRODUCT_NAME)?;
     if !data_dir.exists() {
         return Ok(());
     }
@@ -93,8 +93,8 @@ fn apply() -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("ProgramW6432/ProgramFiles is not defined"))?;
     let program_data = std::env::var_os("ProgramData")
         .ok_or_else(|| anyhow::anyhow!("ProgramData is not defined"))?;
-    let bin_dir = trusted_child(PathBuf::from(program_files), "AetherCore")?;
-    let data_dir = trusted_child(PathBuf::from(program_data), "AetherCore")?;
+    let bin_dir = trusted_child(PathBuf::from(program_files), PRODUCT_NAME)?;
+    let data_dir = trusted_child(PathBuf::from(program_data), PRODUCT_NAME)?;
     if !bin_dir.is_dir() || !data_dir.is_dir() {
         anyhow::bail!("installer-created AetherCore directories are missing");
     }

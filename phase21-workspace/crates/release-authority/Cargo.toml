@@ -7,6 +7,7 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+aethercore-product-identity = { path = "../product-identity" }
 ed25519-dalek.workspace = true
 hex.workspace = true
 serde.workspace = true

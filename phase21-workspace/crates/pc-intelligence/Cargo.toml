@@ -7,6 +7,7 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+aethercore-product-identity = { path = "../product-identity" }
 aethercore-collector-runtime = { path = "../collector-runtime" }
 aethercore-cleaner = { path = "../cleaner" }
 aethercore-diagnostic-engine = { path = "../diagnostic-engine" }

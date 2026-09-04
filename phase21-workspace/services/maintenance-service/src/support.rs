@@ -17,7 +17,7 @@ pub(crate) fn build_sections(
         file_name: "product.json".into(),
         display_key: "support.section.product".into(),
         value: json!({
-            "product": "AetherCore",
+            "product": aethercore_product_identity::PRODUCT_NAME,
             "version": env!("CARGO_PKG_VERSION"),
             "protocolVersion": aethercore_contracts::PROTOCOL_VERSION,
             "runtime": {
