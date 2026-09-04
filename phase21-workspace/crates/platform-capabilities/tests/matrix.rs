@@ -128,6 +128,31 @@ fn windows_sku_classification_distinguishes_server_core() {
     assert_eq!(classify_windows_sku(99, ""), WindowsSku::Unknown);
 }
 
+/// DBT-P46-B26. This is the single canonical Windows-SKU decider and it gates
+/// capability availability, so a registry read that failed must not be able to
+/// answer it. `InstallationType` is exactly what separates Server from Server
+/// Core, and Server Core is the SKU with no console — the one thing the two
+/// server tables actually disagree about.
+#[test]
+fn an_unread_installation_type_cannot_answer_the_sku() {
+    // The value does not participate in a workstation's classification, so a
+    // failed read there must not degrade a correct answer.
+    assert_eq!(classify_windows_sku(1, None), WindowsSku::Workstation);
+
+    // It is the whole basis of the server split, so it must not be guessed.
+    assert_eq!(classify_windows_sku(3, None), WindowsSku::Unknown);
+    assert_eq!(classify_windows_sku(2, None), WindowsSku::Unknown);
+
+    // And an unknown SKU must not claim the one capability Server Core lacks.
+    assert!(
+        matches!(
+            available_on_windows_sku(WindowsSku::Unknown, C::CareOrchestration),
+            Availability::Degraded { .. }
+        ),
+        "Unknown cannot rule out Server Core, so it must not claim a console"
+    );
+}
+
 #[test]
 fn server_matrix_reports_client_only_surfaces_honestly() {
     for sku in [WindowsSku::Server, WindowsSku::ServerCore] {
