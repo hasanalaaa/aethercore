@@ -417,6 +417,77 @@ mod tests {
         .remove(0)
     }
 
+    fn storage_fact(
+        read_errors: Option<u64>,
+        write_errors: Option<u64>,
+        nvme_warning: Option<u8>,
+    ) -> SystemFact {
+        SystemFact::new(
+            Domain::Storage,
+            "test",
+            ResourceRef::private("storage-device", "disk0", "Disk"),
+            2,
+            Freshness::Current,
+            Confidence::Confirmed,
+            FactPayload::StorageHealth {
+                health_status: "Healthy".into(),
+                source_severity: "Healthy".into(),
+                uncorrected_read_errors: read_errors,
+                uncorrected_write_errors: write_errors,
+                nvme_critical_warning: nvme_warning,
+                nvme_media_errors_nonzero: false,
+                wear_percent: Some(10),
+                temperature_c: Some(40),
+                temperature_max_c: Some(80),
+            },
+            EvidenceKind::StorageHealth,
+            "state",
+        )
+    }
+
+    /// DBT-P46-B3. `ResolutionPolicy::MatchingHealthyState` closes an open
+    /// finding the moment a matching healthy fact appears, so this predicate is
+    /// what stands between a real storage warning and it being auto-resolved as
+    /// `healthyStateConfirmed`. A SMART counter that stopped answering must not
+    /// be able to supply that proof.
+    #[test]
+    fn unreadable_smart_counters_do_not_prove_storage_health() {
+        assert!(rules::explicitly_healthy(&storage_fact(
+            Some(0),
+            Some(0),
+            Some(0)
+        )));
+        assert!(!rules::explicitly_healthy(&storage_fact(
+            None,
+            Some(0),
+            Some(0)
+        )));
+        assert!(!rules::explicitly_healthy(&storage_fact(
+            Some(0),
+            None,
+            Some(0)
+        )));
+        assert!(!rules::explicitly_healthy(&storage_fact(
+            Some(0),
+            Some(0),
+            None
+        )));
+    }
+
+    /// The same distinction in the other direction: an unread counter is not
+    /// evidence of failure either, so it must not fabricate a Critical finding.
+    #[test]
+    fn unreadable_smart_counters_do_not_fabricate_a_storage_concern() {
+        let findings = rules::evaluate(&[storage_fact(None, None, None)], 3);
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.code != "STORAGE_RELIABILITY_CONCERN"),
+            "unread counters fabricated {:?}",
+            findings.iter().map(|f| &f.code).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn completed_owner_scope_can_authorize_resolution() {
         let finding = old_missing_driver();
