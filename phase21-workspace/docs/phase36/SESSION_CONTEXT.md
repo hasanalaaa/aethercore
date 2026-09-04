@@ -7785,7 +7785,7 @@ before assuming the state below is still current.
 | 2.A DBT-P42-011 x64 bias | NOT STARTED, adjacent finding surfaced | §46.16 — a real x64-hardware peer session reports 0 with no fault where a fault should exist; not independently re-verified, not folded into a verdict |
 | 2.B DBT-P42-009/010 decision | NOT STARTED | — |
 | 3.(1) Part 1 privilege breaks | DONE (none found) | §46.11 — nothing to fix at this priority tier |
-| 3.(2) every B from 0.C | IN PROGRESS | §46.12-§46.17 — 17 fixed, 4 reclassified A, 0 blocked (the 9 wire sites are DONE, §46.17), 9 untriaged |
+| 3.(2) every B from 0.C | **DONE** | §46.12-§46.19 — all 33 accounted: **29 fixed** (B1-B21, B23, B25, B26, B28-B31, B33), **4 reclassified A** (B22, B24, B27, B32), 0 untriaged, 0 blocked. 29 `DBT-P46-B*` markers in code, verified against this list |
 | 3.(3) every count>1 from 0.D | NOT STARTED | §46.4 has the list, none fixed yet |
 | 3.(4) DBT-P42-006 driver-hub | DONE (reclassified) | §46.2 — 18/18 pass, not reproducing |
 | 3.(5) DBT-P42-007 offline_boundary | DONE (reclassified) | §46.2 — cache populated, 1/1 pass |
@@ -8679,49 +8679,243 @@ B8, B11, B13, B14, B15, B16, B17, B18, B19, B20, B25), 4 reclassified to A
 (B22, B24, B27, B32), 0 blocked on an owner decision — the nine are done.
 9 remain untriaged: B3, B9, B10, B21, B26, B28, B29, B30, B33.**
 
+## 46.19 The last 9 untriaged B-sites — Part 3 complete
+
+Hasan's directive after the nine wire-contract sites: "then continue with the
+10 untriaged sites". B13 was already DONE (§46.15), leaving 9: B3, B9, B10,
+B21, B26, B28, B29, B30, B33. All nine are now fixed, one commit per item,
+tests committed failing first where the failure was demonstrable.
+
+| site | what it actually was | fix | commits |
+|---|---|---|---|
+| B3 | `pc-intelligence` `StorageHealth` re-defaulted the three counters B2 had just made honest | three fields → `Option`; `explicitly_healthy` requires `Some(0)`; finding rule uses `is_some_and(>0)` | `8778c33`, `e4ec70d` |
+| B9 | a *panicking* stdout/stderr reader thread read as "the command printed nothing" | `joined_stream()` in lib.rs (cross-platform, testable); note appended to `detail` after truncation | `9de0c1b` |
+| B10 | corrupted stored driver JSON read as "no version" | `json_driver_version` separates empty / parsed-without-version / unparseable; reason into `detail` | `52d5138`, `32cd65c` |
+| B21 | **census was wrong about the severity** — see below | `peak_of_reported()` takes `Option` from the closure | `d81d35b`, `a11387c` |
+| B26 | `InstallationType.unwrap_or_default()` inside the one canonical SKU decider | `classify_windows_sku(_, Option<&str>)` **and** `Unknown` → the conservative server table | `c25fa2e`, `6fef964` |
+| B28+B29+B30 | three copies of one defect across `aetherctl`, `desktop` and the trait itself | `SchedulerStore` writes return `Result`; shared `append_run_history()`; missing ≠ unreadable in both loaders | `c16362a` |
+| B33 | a DB that could not answer was reported as a **Completed** care run | `compose_plan` → `Result`; new `CareError::PlanSourcesUnavailable`; router maps it to 500 Internal, not Conflict | `12bf975` |
+
+**Three corrections to the census, stated because §46.12's lesson was that
+narrow grep context misclassifies:**
+
+1. **B21 is an evidence defect, not a decision defect.** P42 already guards
+   the decision upstream — `WindowAggregate` skips snapshots with
+   `if !snap.storage.is_empty()` and `if let Some(engine)` — so a fabricated
+   zero can neither fire nor suppress a rule. What was unguarded is the
+   evidence chip: `io_saturation` built its latency citation straight off the
+   window, and the failing test recorded it verbatim:
+   `EvidenceRef { fact_key: "storage.transferLatencyUs", observed_value: 0.0,
+   threshold: 25000.0, observed_unix_ms: 1700000011000 }` — a latency no
+   device reported, timestamped at an instant nothing was measured.
+
+2. **B26 needed a second change to be a fix at all.** Making the classifier
+   answer `Unknown` on an unread `InstallationType` changed nothing
+   observable, because `Unknown` already mapped to `windows_server_table(false)`
+   — the same non-core Server table the silent misclassification produced.
+   `CareOrchestration` is the *only* capability the two server tables
+   disagree about (Server Core has no console), so `Unknown` now takes the
+   conservative table. Without that, the "fix" would have been decoration.
+
+3. **B3 is the highest-consequence of the nine.** `explicitly_healthy` is not
+   only a display counter: `lifecycle.rs` uses it as
+   `ResolutionPolicy::MatchingHealthyState`, which marks an open finding
+   `Resolved` / `ResolutionConfirmed` with reason
+   `finding.resolution.healthyStateConfirmed`. A drive that had reported
+   uncorrected read errors would have had its Critical finding auto-closed on
+   the first scan after the SMART attribute stopped answering.
+
+**Two adjacent defects found inside functions being edited, fixed and named
+rather than smuggled in:**
+
+- `system-repair/windows_impl.rs` truncated its 48 KB detail tail as
+  `detail[detail.len()-48_000..]`. DISM and SFC output is localized, so that
+  byte offset can land mid-character — where `String` indexing **panics**,
+  inside the LocalSystem service. `trim_to_tail()` advances to a char
+  boundary; its test builds an input that provably lands mid-character first.
+- `DesktopScheduleStore::save_schedule` still skipped its write entirely on a
+  poisoned lock. B31 had been fixed in `schedules()` only, one method above.
+
+**One UI change, because B30 was otherwise incomplete at the display:** an
+unreadable schedules file rendered as "No schedules configured" — the fake
+empty state. `UiFleetSnapshot` now carries `schedulesError` and
+`FleetPage.svelte` distinguishes the two, in `en` and `ar`, in an attention
+colour rather than the policy-refusal styling.
+
+**What is NOT proven, stated plainly:** B33's test asserts the type change and
+the error mapping; it does not inject a SQLite fault.
+`aethercore-persistence` exposes no seam to fail a query on demand, and two
+attempts to force one from outside were both served from SQLite's page cache
+and returned `Ok(0)` — garbage written over the `.db` file, and over the
+`-wal` file, each under an open connection. Both observations are recorded in
+the test's own doc comment.
+
+### Measured
+
+macOS: `cargo build --workspace` EXIT 0; `cargo test --workspace`
+**131 result blocks ok, 613 passed, 0 failed** (was 599 before this pass).
+`svelte-check`: 217 files, **0 errors**, 17 warnings, none in `FleetPage`.
+`cargo check --target x86_64-pc-windows-msvc -p aethercore-platform-capabilities`
+EXIT 0.
+
+**Windows, on the ARM64 VM** (the sqlite cross-compile gap of §46.13 still
+blocks `system-repair` from the Mac, so this used the §46.15 recipe: git
+archive of HEAD served over `10.211.55.2:8791`, expanded to `C:\p46b`, built
+with the `p36_relbuild.cmd` toolchain — VsDevCmd arm64, clang-cl, Ninja,
+LIBCLANG_PATH):
+
+    cargo check -p aethercore-system-repair -p aethercore-platform-capabilities
+      -p aethercore-driver-install -p aethercore-pc-intelligence
+      -p aethercore-fleet -p aethercore-desktop
+      -p aethercore-maintenance-service -p aetherctl --tests
+    P46B_CHECK_EXITCODE=0
+
+Warnings in that log are all pre-existing and unrelated: `field 0 is never
+read` on the RAII guards `ServicingGuard` (`system-repair/windows_impl.rs:25`)
+and `MachineMutationLease` (`windows-update/execution_windows.rs:33`), unused
+import `RRF_RT_REG_DWORD` (`platform-capabilities/lib.rs:163`, left over from
+the Phase 38 DWORD correction), unused `path` in `fleet/trust.rs:358`, and
+unused import `RecoveryReadiness` in `windows-repair-intelligence`. None were
+introduced here and none were touched, per the scope rule.
+
+## 46.20 Two sites the ledger had lost — B12 and B23
+
+Counting the census at the end of §46.19 did not add up, and chasing the gap
+found two sites that the code and the ledger disagreed about. Per §46's own
+rule, the code won both times.
+
+**B12 was the ninth wire site, and it was never fixed.** Hasan's decision
+named six timestamp sites — B6, B7, B11, **B12**, B14, B17. §46.17 recorded
+the pass as complete with eight `has_*` fields plus B15 correctly dropped;
+B12 got neither, and nothing noticed because the summary counted "the nine"
+rather than the list. `startup-manager/windows_impl.rs` still carried
+`.modified()...unwrap_or(0)` at two sites.
+
+It is genuinely different from its five siblings, which is probably why it
+fell out: `NativeState` is not a proto message. It is the JSON stored as
+`original_state_json`, and `execute_plan_with_telemetry` authorises a
+mutation only when the freshly queried state string EQUALS the stored one.
+So `Option`/`null` IS the companion flag at that layer, and adding a proto
+field would have been adding a field that is not needed — Hasan's own test
+for B15. Two consequences removed: a failed mtime read stamped 1970-01-01
+into durable rollback evidence, and when the read failed at BOTH scan and
+preflight the two unknowns compared EQUAL, hiding the drift that check
+exists to catch. Content drift was still caught by the sha256 in the same
+document, which is why this stayed B-class and was not a security
+regression. Commits `ccd4fbb`, `032169d`.
+
+One thing the failing test taught: `#[serde(rename_all="camelCase")]` on an
+enum renames the VARIANTS, not struct-variant fields — the persisted key is
+`modified_unix_ms`, snake_case. My first assertion said camelCase and was
+wrong; the code was right.
+
+**B23 was never triaged at all** — it appears in §46.3's table and in no
+disposition since. Read in full, it is A-class in effect:
+`TypedEvidencePack` holds only `String`s and a unit enum, so
+`serde_json::to_string` cannot fail on it and the default is unreachable. No
+test is possible and none was written; constructing an impossible failure
+would be the "tests that never touch the real path" pattern. Fixed anyway,
+because `infer` already returns `Result<_, String>` and the correct
+expression is no longer than the wrong one. Commit `452d4af`.
+
+### Census accounting, closed
+
+| disposition | sites | count |
+|---|---|---|
+| fixed | B1–B21, B23, B25, B26, B28, B29, B30, B31, B33 | **29** |
+| reclassified to A (already guarded elsewhere / unreachable default) | B22, B24, B27, B32 | **4** |
+| untriaged | — | **0** |
+| blocked on an owner decision | — | **0** |
+
+Cross-checked mechanically, not by counting prose: `grep -rhoE
+"DBT-P46-B[0-9]+"` across `crates apps services` returns exactly those 29
+ids and no others. **Part 3 (3.(2)) is complete.**
+
+### Measured, after B12 and B23
+
+macOS: `cargo build --workspace` EXIT 0; `cargo test --workspace`
+**614 passed, 0 failed**. Windows, ARM64 VM, second sync (`C:\p46c`, same
+`p36_relbuild.cmd` toolchain):
+
+    cargo check -p aethercore-startup-manager -p aethercore-system-repair
+      -p aethercore-intelligence-core -p aethercore-platform-capabilities
+      -p aethercore-pc-intelligence -p aethercore-fleet -p aethercore-desktop
+      -p aethercore-maintenance-service -p aetherctl --tests
+    P46C_CHECK_EXITCODE=0
+
+856 log lines, **0 error lines**, 53 warning lines across 13 kinds, every one
+pre-existing and checked rather than assumed: `unused variable: path`
+(`fleet/trust.rs`), `field 0 is never read` (the RAII guards), unused imports
+`RecoveryReadiness`, `RRF_RT_REG_DWORD`, `UNIX_EPOCH` (`cleaner/lib.rs:8`),
+`IRegisteredTask`/`SERVICE_DEMAND_START`
+(`startup-manager/windows_impl.rs:32` — traced through every revision of that
+file back to `39ccab0`, unused in all of them, so not something this pass
+orphaned), and several never-used functions/fields. None were touched, per
+the scope rule.
+
 ## 46.18 NEXT ACTION for a fresh session
 
-Read this table (§46.0) top to bottom for the first row not `DONE`. As of
-this commit: **the 9 wire-contract sites are DONE (§46.17) — Hasan's
-has_* decision was applied in full and is not open work. Do not reopen it,
-and do not propose the documented-sentinel alternative; it was considered
-and rejected for a stated reason.** The original decision text, kept because
-it governs any FUTURE field of the same shape: has_* companion bool,
-tests committed failing first. Do not re-litigate this decision or propose
-the documented-sentinel alternative again; it was considered and rejected
-for a stated reason (re-introduces the exact class of defect P42→P45 fixed
-at the subsystem and field boundaries, now at the wire boundary).** Two
-semantic shapes, not one — get this right per field: for the six timestamp
-sites (B6, B7, B11, B12, B14, B17) `has_*` means "the event happened and
-the time is known"; for the count/byte sites (B4 `card_count`, B15
-`pending_update_count` if it turns out to be wire-copied at all — re-check
-first, §46.14 flagged it as unconfirmed — and B16
-`bytes_downloaded`/`bytes_total`) `has_*` means "the value was determined,"
-**not** "the value is non-zero" — zero cards, zero pending updates, and zero
-bytes transferred so far are all real, valid values that must stay
-representable. If B15 is not actually wire-copied, fix it the B1/B2 way
-(existing flexible companion field) and drop it from this pass rather than
-adding an unnecessary field. After the nine: continue with the 10
-untriaged sites (B3, B9, B10, B21, B26, B28, B29, B30, B33 — B13 is DONE,
-§46.15). B9/B10/B28/B29/B30/B33 likely share B19's shape (thread a
-warning/Option through an existing flexible field) and should go quickly.
-**Before fixing any site, read the FULL surrounding function, not just the
-census's narrow grep context** — §46.12 found 4 of the first 7 sites worked
-were already-guarded-elsewhere false positives. **For any Windows-only fix
-in a crate depending on `aethercore-persistence`, `cargo check --target
-x86_64-pc-windows-msvc` will not work from this Mac** (§46.13/§46.15 — cc-rs
-can't cross-compile libsqlite3-sys's C source, and Parallels shared folders
-are unreachable from `prlctl exec`) — sync a git archive to the VM over the
-shared network instead (§46.15 has the working recipe and the toolchain
-env vars) and use the real toolchain; don't settle for "reviewed by hand"
-when the VM is reachable and the fix is consequential enough to warrant it.
-The 2 findings from §46.4 (service-name and install-path literal
-duplication) are untouched and still open after this. Part 2.A needs an x64
-Windows host, unreachable
-from this Mac session — offer it to (or check progress from) the "AetherCore
-x86_64 Windows physical qualification" peer session before declaring it
-BLOCKED-OWNER. Part 1 is DONE (§46.11, no privilege-boundary break). Before
-doing anything else: re-check `ListAgents` for `aethercore-f6` and the
-x64-qualification peer session, and `git fetch origin main` — both had
-replied by the time this section was last updated (§46.9/§46.10), but a
-fresh session should re-verify rather than trust this note.
+**SUPERSEDED where it disagrees with §46.19/§46.20.** Kept because its
+standing rules still apply; its status claims do not. What is true now:
+
+**Part 3 (3.(2)) is COMPLETE.** All 33 B-sites are accounted for — 29 fixed,
+4 reclassified to A, 0 untriaged, 0 blocked (§46.20 has the table and the
+mechanical cross-check). Do not re-open the census, and do not re-litigate
+Hasan's `has_*` wire decision (§46.17): it was considered, decided, applied
+to all nine sites including B12 (§46.20), and the documented-sentinel
+alternative was rejected for a stated reason. The decision still governs any
+FUTURE field of the same shape, with its two semantics: for a timestamp,
+`has_*` means "the event happened and the time is known"; for a count or a
+byte total, it means "the value was determined", **not** "the value is
+non-zero". At a layer that is not the proto wire — an internal JSON state
+document, an existing flexible `detail`/`warnings` field — `Option`/`null` or
+that field IS the companion flag, and adding a proto field would be adding one
+that is not needed (B12 and B15 are the two worked examples).
+
+**Rules that still bind, and cost real time when skipped:**
+
+1. **Read the FULL surrounding function before classifying anything.**
+   §46.12 found 4 of the first 7 sites were already-guarded false positives;
+   §46.19 found B21 was an evidence defect and not the decision defect the
+   census claimed, and that B26 needed a second change to be a fix at all.
+2. **Count from the code, not from prose.** §46.20 exists because "the nine"
+   was counted as a number instead of checked against the list. `grep -rhoE
+   "DBT-P46-B[0-9]+"` is the cross-check.
+3. **`cargo check --target x86_64-pc-windows-msvc` cannot work from this Mac
+   for any crate depending on `aethercore-persistence`** (§46.13 — cc-rs
+   cannot cross-compile libsqlite3-sys's C source). Crates that escape it
+   (e.g. `platform-capabilities`) can be checked directly. For the rest, use
+   the VM: `git archive HEAD` served over `10.211.55.2:8791` (Parallels
+   shared folders are unreachable from `prlctl exec`), expanded on the VM,
+   built with the `p36_relbuild.cmd` toolchain — VsDevCmd arm64, clang-cl,
+   Ninja, LIBCLANG_PATH. §46.19 and §46.20 each record a full working run.
+   Do not settle for "reviewed by hand" when the VM is reachable.
+4. **Resume the VM, never restore a snapshot.** §46.9's two FORBIDDEN
+   snapshots stand.
+
+**What is actually open, in the order Part 3's own priority implies:**
+
+- **3.(3) — the 2 duplicated-derivation findings from §46.4** (the
+  service-name literal with 3 independent deciders; the "AetherCore"
+  install-path literal across ~23 sites). Untouched. This is the next
+  numbered item.
+- **3.(7) DBT-P42-013** — 36 temp files leaked by `cargo test`, 4 sites;
+  reproduces worse than documented.
+- **3.(8) DBT-P41-001** — MSVCP140/VCRUNTIME140 not in the MSI payload. Needs
+  a deliberate answer, not a patch.
+- **Part 2.A** — needs x64 Windows, unreachable from this Mac. Offer it to,
+  or check progress from, the "AetherCore x86_64 Windows physical
+  qualification" peer session (offline as of this session's last
+  `ListAgents`) before declaring it BLOCKED-OWNER. **2.B** is a decision, not
+  a fix.
+- **Part 4** — 4.A is claimed substantially done by that same peer session
+  and is NOT independently re-verified here (§46.16); 4.B (Gate 5 ARM64),
+  4.C (icon pipeline) and 4.D are untouched. **On 4.D: `apps/ui` already
+  exists as a Svelte app** (`FleetPage.svelte`, `catalog.en.ts`/`catalog.ar.ts`,
+  `svelte-check` clean at 217 files) — 4.D is not a green field, and the
+  brief's non-negotiables should be audited against what is there before
+  anything is ported.
+
+Before doing anything else: re-check `ListAgents` and `git fetch origin main`.
+Two concurrent-session incidents are already on this ledger (§46.10, §46.15),
+both from a shared working directory — stage explicit paths, never `git add -A`.
