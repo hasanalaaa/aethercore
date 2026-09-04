@@ -440,6 +440,58 @@ mod tests {
     use std::sync::atomic::{AtomicUsize,Ordering};
 
     const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    fn startup_file_state(modified_unix_ms: Option<i64>) -> NativeState {
+        NativeState::StartupFile {
+            path: r"C:\Users\x\Start Menu\Programs\Startup\thing.lnk".into(),
+            exists: true,
+            size_bytes: 1024,
+            modified_unix_ms,
+            sha256: "a".repeat(64),
+            backup_path: String::new(),
+            backup_exists: false,
+        }
+    }
+
+    /// DBT-P46-B12. `modified_unix_ms` is part of `original_state_json`, and
+    /// `execute_plan_with_telemetry` authorises a mutation only when the
+    /// freshly queried state string EQUALS the stored one. A failed
+    /// `.modified()` read used to write 0 there, with two consequences: it
+    /// stamps 1970-01-01 into durable rollback evidence, and when the read
+    /// fails at both scan and preflight the two unknowns compare EQUAL —
+    /// hiding exactly the drift that comparison exists to catch.
+    #[test]
+    fn an_unread_startup_file_mtime_is_not_the_epoch() {
+        let unknown = startup_file_state(None);
+        let epoch = startup_file_state(Some(0));
+        assert_ne!(
+            unknown, epoch,
+            "an unread mtime must not equal a file genuinely stamped at the epoch"
+        );
+
+        let unknown_json = serde_json::to_string(&unknown).expect("serialize");
+        let epoch_json = serde_json::to_string(&epoch).expect("serialize");
+        assert_ne!(
+            unknown_json, epoch_json,
+            "the drift check compares these strings, so they must differ"
+        );
+        assert!(
+            unknown_json.contains("\"modifiedUnixMs\":null"),
+            "unknown must be null, not 0: {unknown_json}"
+        );
+        assert!(
+            epoch_json.contains("\"modifiedUnixMs\":0"),
+            "a real epoch timestamp must stay 0: {epoch_json}"
+        );
+
+        // A known mtime keeps its exact prior representation, so state written
+        // before this change still compares equal to state written after it.
+        assert!(
+            serde_json::to_string(&startup_file_state(Some(1_700_000_000_000)))
+                .expect("serialize")
+                .contains("\"modifiedUnixMs\":1700000000000")
+        );
+    }
     fn approve(engine:&OperationEngine, plan:&PlanView){let intent=engine.begin_consent_intent(&plan.id,OWNER).unwrap();engine.approve_consent_intent(&intent.intent_id,OWNER,4242).unwrap();}
 
     struct MockPlatform{items:Vec<StartupItem>,states:Mutex<HashMap<String,String>>,mutations:AtomicUsize}
