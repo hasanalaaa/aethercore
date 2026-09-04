@@ -174,8 +174,13 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
         question: &str,
         deadline: std::time::Instant,
     ) -> Result<Vec<crate::model::Insight>, String> {
-        let prompt =
-            Self::render_prompt(&serde_json::to_string(pack).unwrap_or_default(), question);
+        // DBT-P46-B23: `infer` already has an error channel, so there is no
+        // reason to default here. An empty pack would ask the model the
+        // question with NO evidence, and anything it answered would be
+        // uncitable by construction.
+        let pack_json = serde_json::to_string(pack)
+            .map_err(|error| format!("evidence pack could not be serialized: {error}"))?;
+        let prompt = Self::render_prompt(&pack_json, question);
         if prompt.len() > Self::MAX_PROMPT_CHARS {
             return Err("prompt exceeds bounded context contract".into());
         }
