@@ -1209,7 +1209,7 @@ pub fn handle_request(
             }
             // ---------------- Phase 22: One-Click Care ----------------
             request::Payload::GetCareStatus(_) => {
-                let status = ctx.care.plan_preview(&principal_key);
+                let status = ctx.care.plan_preview(&principal_key).map_err(care_err)?;
                 publish(
                     ctx,
                     &principal_key,
@@ -1225,7 +1225,7 @@ pub fn handle_request(
             }
             request::Payload::GrantCareSessionConsent(_) => {
                 ctx.care.grant_session_consent(&principal_key);
-                let status = ctx.care.plan_preview(&principal_key);
+                let status = ctx.care.plan_preview(&principal_key).map_err(care_err)?;
                 publish(
                     ctx,
                     &principal_key,
@@ -1241,16 +1241,10 @@ pub fn handle_request(
             }
             request::Payload::StartCareRun(_) => {
                 let run_id = format!("care-{}", chrono::Utc::now().timestamp_millis());
-                let status = ctx.care.start_run(&principal_key, &run_id).map_err(|e| {
-                    ServiceError::new(
-                        6,
-                        v1::ErrorCode::Conflict,
-                        "care",
-                        "care.error.startFailed",
-                        e.to_string(),
-                        false,
-                    )
-                })?;
+                let status = ctx
+                    .care
+                    .start_run(&principal_key, &run_id)
+                    .map_err(care_err)?;
                 publish(
                     ctx,
                     &principal_key,
@@ -1266,7 +1260,7 @@ pub fn handle_request(
             }
             request::Payload::CancelCareRun(_) => {
                 ctx.care.cancel();
-                let status = ctx.care.plan_preview(&principal_key);
+                let status = ctx.care.plan_preview(&principal_key).map_err(care_err)?;
                 publish(
                     ctx,
                     &principal_key,
@@ -1737,6 +1731,27 @@ fn expected_update_broker_path() -> Result<PathBuf> {
 
 fn err<E: Into<ServiceError>>(error: E) -> ServiceError {
     error.into()
+}
+
+/// DBT-P46-B33: "the plans could not be read" is not a conflict and must not
+/// be reported as one — the request failed because the service could not tell
+/// what is due, which is a 500 the caller can distinguish from a refusal.
+fn care_err(error: aethercore_care_orchestrator::CareError) -> ServiceError {
+    match error {
+        aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(_) => ServiceError::internal(
+            "care",
+            "care.error.planSourcesUnavailable",
+            error.to_string(),
+        ),
+        other => ServiceError::new(
+            6,
+            v1::ErrorCode::Conflict,
+            "care",
+            "care.error.startFailed",
+            other.to_string(),
+            false,
+        ),
+    }
 }
 
 fn failure(header: ResponseHeader, error: ServiceError) -> Response {
