@@ -506,7 +506,6 @@ mod tests {
     use std::path::Path;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 
     /// An exit-0 program that stands in for `ssh`.
     ///
@@ -535,13 +534,13 @@ mod tests {
         stub
     }
 
-    fn trust_fixture() -> (FleetHost, TrustStore, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join(format!(
-            "aethercore-transport-proof-{}-{}",
-            std::process::id(),
-            NEXT_FIXTURE.fetch_add(1, Ordering::SeqCst)
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn trust_fixture() -> (FleetHost, TrustStore, tempfile::TempDir) {
+        // DBT-P42-013: these cleaned up at the END of the test, and again at
+        // the START of the next run to cover the times they had not. TempDir
+        // makes the end-cleanup unconditional, so a panicking test stops
+        // leaving a directory behind for the next run to find.
+        let guard = tempfile::tempdir().expect("temp dir");
+        let dir = guard.path().to_path_buf();
         let store = TrustStore::open(&dir).unwrap();
         let key = "AAAAC3NzaC1lZDI1NTE5AAAAIB3qSmVOUdM=";
         let fp = fingerprint_of_blob(key).unwrap();
@@ -567,12 +566,12 @@ mod tests {
         )
         .unwrap();
         host.pin_trust(&fp, "ssh-ed25519", 42).unwrap();
-        (host, store, dir)
+        (host, store, guard)
     }
 
     #[test]
     fn trust_1_authorized_schedule_reaches_spawn_once() {
-        let (host, store, dir) = trust_fixture();
+        let (host, store, _dir_guard) = trust_fixture();
         let spawns = std::sync::Arc::new(AtomicUsize::new(0));
         let seen = std::sync::Arc::clone(&spawns);
         let ssh_stub = ssh_true_stub();
@@ -589,17 +588,16 @@ mod tests {
         let result = transport.execute_for_profile(&host, "cis-l2");
         assert_eq!(result.outcome, RemoteOutcomeKind::Success);
         assert_eq!(spawns.load(Ordering::SeqCst), 1);
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn trust_2_missing_record_blocks_spawn() {
-        let dir = std::env::temp_dir().join(format!(
-            "aethercore-transport-proof-{}-{}",
-            std::process::id(),
-            NEXT_FIXTURE.fetch_add(1, Ordering::SeqCst)
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
+        // DBT-P42-013: these cleaned up at the END of the test, and again at
+        // the START of the next run to cover the times they had not. TempDir
+        // makes the end-cleanup unconditional, so a panicking test stops
+        // leaving a directory behind for the next run to find.
+        let guard = tempfile::tempdir().expect("temp dir");
+        let dir = guard.path().to_path_buf();
         let store = TrustStore::open(&dir).unwrap();
         let mut host = FleetHost::new(
             "host-a",
@@ -624,12 +622,11 @@ mod tests {
         );
         assert_eq!(spawns.load(Ordering::SeqCst), 0);
         host.enabled = false;
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn trust_3_mismatched_record_blocks_spawn() {
-        let (host, store, dir) = trust_fixture();
+        let (host, store, _dir_guard) = trust_fixture();
         let new_key = "AAAAC3NzaC1lZDI1NTE5AAAAIfffffffffffffff=";
         let new_fp = fingerprint_of_blob(new_key).unwrap();
         let record = TrustedHostKey::authorize(
@@ -655,17 +652,16 @@ mod tests {
             RemoteOutcomeKind::HostKeyMismatch
         );
         assert_eq!(spawns.load(Ordering::SeqCst), 0);
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn trust_4_malformed_record_is_typed_and_blocks_spawn() {
-        let dir = std::env::temp_dir().join(format!(
-            "aethercore-transport-proof-{}-{}",
-            std::process::id(),
-            NEXT_FIXTURE.fetch_add(1, Ordering::SeqCst)
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
+        // DBT-P42-013: these cleaned up at the END of the test, and again at
+        // the START of the next run to cover the times they had not. TempDir
+        // makes the end-cleanup unconditional, so a panicking test stops
+        // leaving a directory behind for the next run to find.
+        let guard = tempfile::tempdir().expect("temp dir");
+        let dir = guard.path().to_path_buf();
         let store = TrustStore::open(&dir).unwrap();
         std::fs::write(
             dir.join("trusted_keys.json"),
@@ -694,12 +690,11 @@ mod tests {
             RemoteOutcomeKind::NotVerified
         );
         assert_eq!(spawns.load(Ordering::SeqCst), 0);
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn trust_5_revocation_regenerates_and_blocks_subsequent_run() {
-        let (host, store, dir) = trust_fixture();
+        let (host, store, _dir_guard) = trust_fixture();
         store.untrust("a.example.internal", 22).unwrap();
         assert!(
             std::fs::read_to_string(store.path())
@@ -719,6 +714,5 @@ mod tests {
             RemoteOutcomeKind::NotVerified
         );
         assert_eq!(spawns.load(Ordering::SeqCst), 0);
-        let _ = std::fs::remove_dir_all(dir);
     }
 }

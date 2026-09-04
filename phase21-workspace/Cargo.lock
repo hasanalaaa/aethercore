@@ -122,6 +122,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.20",
  "uuid",
 ]
@@ -133,6 +134,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]

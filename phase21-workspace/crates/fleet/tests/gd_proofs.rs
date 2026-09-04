@@ -163,8 +163,11 @@ fn gd3_timeout_and_cancellation_typed() {
     let mut unroutable = host("host-timeout", true);
     unroutable.hostname = "203.0.113.1".into(); // TEST-NET-3, never routable
     unroutable.port = 2323;
-    let known_hosts =
-        std::env::temp_dir().join(format!("aethercore-gd3-known-hosts-{}", std::process::id()));
+    // DBT-P42-013: this file was written into %TEMP% and never removed — the
+    // one leak that still reproduces from a clean temp dir. TempDir removes it
+    // when the test ends, including when it ends by panicking.
+    let known_hosts_dir = tempfile::tempdir().expect("temp dir");
+    let known_hosts = known_hosts_dir.path().join("known_hosts");
     std::fs::write(&known_hosts, b"").unwrap();
     let transport = aethercore_fleet::SshTransport::new(Duration::from_secs(2))
         .with_known_hosts_path(&known_hosts);
