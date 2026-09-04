@@ -45,8 +45,25 @@
   const ROLE_ROOT_CAUSE = 1;
   const ROLE_CONTRIBUTING = 2;
 
-  function bpToPercent(bp: number | undefined): number {
-    return Math.round((bp ?? 0) / 100);
+  /**
+   * Basis points to whole percent. Returns undefined when the counter reported
+   * nothing, because a missing reading is not zero utilisation — see
+   * `percentOrDash`, and `bytesToGb` below, which has always worked this way.
+   */
+  function bpToPercent(bp: number | undefined): number | undefined {
+    return bp === undefined || bp === null ? undefined : Math.round(bp / 100);
+  }
+
+  /**
+   * A meter at rest reads em dash, never 0.
+   *
+   * These four tiles rendered `0%` whenever the counter was absent — from
+   * `?? 0`, from `: 0`, and from `Math.max(0, ...[])` over an empty engine list.
+   * A confident 0% is a claim that the CPU is idle and the disk is quiet, which
+   * is a measurement nobody took.
+   */
+  function percentOrDash(value: number | undefined): string {
+    return value === undefined ? '—' : `${value}%`;
   }
 
   function bytesToGb(bytes: number | undefined): string {
@@ -63,22 +80,27 @@
 
   $: if (performance.capturedUnixMs > 0) {
     cpuHistory = pushHistory(cpuHistory, bpToPercent(performance.cpu?.totalBusyBp));
-    memoryHistory = pushHistory(memoryHistory, performance.memory?.memoryLoadPercent ?? 0);
+    memoryHistory = pushHistory(memoryHistory, performance.memory?.memoryLoadPercent);
     storageHistory = pushHistory(storageHistory, peakStorage(performance));
     gpuHistory = pushHistory(gpuHistory, peakGpu(performance));
   }
 
-  function pushHistory(history: number[], value: number): number[] {
+  /** A sample that was never taken is not plotted; it does not become a zero. */
+  function pushHistory(history: number[], value: number | undefined): number[] {
+    if (value === undefined) return history;
     const next = [...history, Math.max(0, Math.min(100, value))];
     return next.length > HISTORY_LENGTH ? next.slice(next.length - HISTORY_LENGTH) : next;
   }
 
-  function peakStorage(snapshot: typeof performance): number {
-    return Math.max(0, ...snapshot.storage.map((device) => bpToPercent(device.activeTimeBp)));
+  /** Undefined when no device reported, rather than a peak of zero over nothing. */
+  function peakStorage(snapshot: typeof performance): number | undefined {
+    const samples = snapshot.storage.map((device) => bpToPercent(device.activeTimeBp)).filter((v): v is number => v !== undefined);
+    return samples.length ? Math.max(...samples) : undefined;
   }
 
-  function peakGpu(snapshot: typeof performance): number {
-    return Math.max(0, ...(snapshot.gpu?.engines ?? []).map((engine) => bpToPercent(engine.utilizationBp)));
+  function peakGpu(snapshot: typeof performance): number | undefined {
+    const samples = (snapshot.gpu?.engines ?? []).map((engine) => bpToPercent(engine.utilizationBp)).filter((v): v is number => v !== undefined);
+    return samples.length ? Math.max(...samples) : undefined;
   }
 
   /** SVG polyline points for a sparkline in a 100x28 viewBox, LTR always (technical chart). */
@@ -131,25 +153,25 @@
 <section class="cleanup-summary perf-summary">
   <article class="metric-card">
     <span>{t('perf.cpu', locale)}</span>
-    <strong class="technical-isolate" dir="ltr">{bpToPercent(performance.cpu?.totalBusyBp)}%</strong>
+    <strong class="technical-isolate" dir="ltr">{percentOrDash(bpToPercent(performance.cpu?.totalBusyBp))}</strong>
     <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(cpuHistory)} /></svg>
-    <small>{t('perf.dpcHint', locale)} <TechnicalText value={`${bpToPercent(performance.cpu?.dpcIsrBusyBp)}%`}/></small>
+    <small>{t('perf.dpcHint', locale)} <TechnicalText value={percentOrDash(bpToPercent(performance.cpu?.dpcIsrBusyBp))}/></small>
   </article>
   <article class="metric-card">
     <span>{t('perf.memory', locale)}</span>
-    <strong class="technical-isolate" dir="ltr">{performance.memory?.memoryLoadPercent ?? 0}%</strong>
+    <strong class="technical-isolate" dir="ltr">{percentOrDash(performance.memory?.memoryLoadPercent)}</strong>
     <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(memoryHistory)} /></svg>
     <small>{t('perf.standby', locale)} <TechnicalText value={`${bytesToGb(performance.memory?.standbyCacheBytes)} GB`}/></small>
   </article>
   <article class="metric-card">
     <span>{t('perf.storage', locale)}</span>
-    <strong class="technical-isolate" dir="ltr">{storageHistory.length ? peakStorage(performance) : 0}%</strong>
+    <strong class="technical-isolate" dir="ltr">{percentOrDash(peakStorage(performance))}</strong>
     <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(storageHistory)} /></svg>
-    <small>{t('perf.latency', locale)} <TechnicalText value={`${performance.storage[0]?.avgTransferLatencyUs ?? 0} µs`}/></small>
+    <small>{t('perf.latency', locale)} <TechnicalText value={performance.storage[0]?.avgTransferLatencyUs === undefined ? '—' : `${performance.storage[0].avgTransferLatencyUs} µs`}/></small>
   </article>
   <article class="metric-card">
     <span>{t('perf.gpu', locale)}</span>
-    <strong class="technical-isolate" dir="ltr">{gpuHistory.length ? peakGpu(performance) : 0}%</strong>
+    <strong class="technical-isolate" dir="ltr">{percentOrDash(peakGpu(performance))}</strong>
     <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(gpuHistory)} /></svg>
     <small>{t('perf.vram', locale)} <TechnicalText value={`${bytesToGb(performance.gpu?.dedicatedUsedBytes)}/${bytesToGb(performance.gpu?.dedicatedTotalBytes)} GB`}/></small>
   </article>
