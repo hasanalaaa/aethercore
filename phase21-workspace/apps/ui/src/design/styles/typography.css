@@ -7,7 +7,11 @@ h4 { font-size:var(--ac-type-headline); line-height:1.3; font-weight:600; }
 header .sub, .sub { color:var(--ac-text-3); font-size:var(--ac-type-body); line-height:1.62; max-width:52rem; }
 small { line-height:1.45; }
 
-[lang="ar"] body { font-family:"Segoe UI Variable Text","Segoe UI",Tahoma,Arial,sans-serif; line-height:1.62; }
+/* Arabic reads the token, which the locale hook already switched to the embedded
+   face. This rule used to name a Windows system stack outright — measured, it
+   drew 1,445 of the page's Arabic glyphs in Tahoma while the bundled face sat
+   unused. Only the line-height belongs here. */
+[lang="ar"] body { line-height:1.62; }
 [lang="ar"] h1,[lang="ar"] h2,[lang="ar"] h3,[lang="ar"] h4 { letter-spacing:0; line-height:1.2; }
 [lang="ar"] .eyebrow { letter-spacing:0; text-transform:none; }
 [dir="rtl"] code,[dir="rtl"] .technical,[dir="rtl"] .bugcheck strong,[dir="rtl"] .ata-smart-grid small,[dir="rtl"] .service-version { direction:ltr; unicode-bidi:isolate; text-align:start; }
@@ -24,7 +28,10 @@ kbd,
 }
 
 html[dir='rtl'] :is(.technical-isolate, code, kbd, [data-technical]) {
-  font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
+  /* The token already carries the Arabic face as a per-character fallback, so a
+     rule id stays in JetBrains Mono while any Arabic beside it does not drop to
+     a system serif. */
+  font-family: var(--ac-font-mono);
   letter-spacing: 0;
 }
 

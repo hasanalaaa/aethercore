@@ -732,7 +732,7 @@ header .sub {
 .device-details code {
   display:block;
   color:#82909d;
-  font-family:"Cascadia Mono",Consolas,monospace;
+  font-family:var(--ac-font-mono);
   font-size:0.75rem;
   overflow-wrap:anywhere;
   margin-bottom:2px
@@ -1462,7 +1462,7 @@ header .sub {
 }
 
 .review-facts code {
-  font-family:"Cascadia Mono",Consolas,monospace
+  font-family:var(--ac-font-mono)
 }
 
 .review-warning {
@@ -2503,7 +2503,7 @@ header .sub {
 
 .bugcheck strong {
   display:block;
-  font-family:"Cascadia Mono",Consolas,monospace;
+  font-family:var(--ac-font-mono);
   font-size:0.8125rem;
   margin:3px 0
 }

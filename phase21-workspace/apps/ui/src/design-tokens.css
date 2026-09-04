@@ -190,8 +190,23 @@
   font-family: var(--ac-font-text);
 }
 
+/* Arabic switches the TOKENS, not a selector.
+ *
+ * `:root[data-locale='ar'] { font-family: ... }` was useless here: base.css sets
+ * `body { font-family: var(--ac-font-text) }`, and body wins for its whole
+ * subtree, so the embedded face was never requested and stayed `unloaded` while
+ * Arabic rendered in Inter's fallback. Redefining the token instead reaches
+ * every rule that already reads it.
+ *
+ * The mono stack gains the Arabic face as a fallback rather than swapping to it.
+ * Font fallback is per character: Latin in a technical token still draws from
+ * JetBrains Mono, and the Arabic characters that JetBrains Mono has no coverage
+ * for draw from the embedded face instead of dropping through to a system
+ * serif. Measured before this: an Arabic mono label rendered 14 of its 18
+ * glyphs in Courier New. */
 :root[data-locale='ar'] {
-  font-family: var(--ac-font-arabic);
+  --ac-font-text: 'IBM Plex Sans Arabic', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ac-font-mono: 'JetBrains Mono', 'IBM Plex Sans Arabic', 'Cascadia Mono', ui-monospace, Consolas, monospace;
 }
 
 /* Light is a deliberate reading surface, not an inverted dark theme. Only the
