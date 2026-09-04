@@ -590,11 +590,9 @@ impl aethercore_fleet::SchedulerStore for CliScheduleStore {
             .collect()
     }
 
-    fn save_schedule(&self, schedule: &aethercore_fleet::FleetSchedule) {
-        let updated = match serde_json::to_value(schedule) {
-            Ok(value) => value,
-            Err(_) => return,
-        };
+    fn save_schedule(&self, schedule: &aethercore_fleet::FleetSchedule) -> Result<(), String> {
+        let updated = serde_json::to_value(schedule)
+            .map_err(|error| format!("schedule could not be serialized ({error})"))?;
         let mut raw = self.raw.clone();
         if let Some(slot) = raw.iter_mut().find(|v| {
             v.get("scheduleId").and_then(serde_json::Value::as_str)
@@ -602,48 +600,27 @@ impl aethercore_fleet::SchedulerStore for CliScheduleStore {
         }) {
             *slot = updated;
         }
-        let _ = std::fs::create_dir_all(self.path.parent().unwrap_or(PathBuf::new().as_path()));
-        let _ = std::fs::write(
-            &self.path,
-            serde_json::to_vec_pretty(&raw).unwrap_or_default(),
-        );
+        let bytes = serde_json::to_vec_pretty(&raw)
+            .map_err(|error| format!("schedules could not be serialized ({error})"))?;
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("{} ({error})", parent.display()))?;
+        }
+        std::fs::write(&self.path, bytes)
+            .map_err(|error| format!("{} ({error})", self.path.display()))
     }
 
-    fn append_history(&self, record: &aethercore_fleet::ScheduleRunRecord) -> i64 {
-        let schedule_id = record.schedule_id;
-        let trigger_kind = record.trigger_kind;
-        let started_unix_ms = record.started_unix_ms;
-        let finished_unix_ms = record.finished_unix_ms;
-        let hosts_attempted = record.hosts_attempted;
-        let hosts_ok = record.hosts_ok;
-        let hosts_failed = record.hosts_failed;
-        let outcome_summary = record.outcome_summary;
-        let path = self
-            .path
+    fn append_history(&self, record: &aethercore_fleet::ScheduleRunRecord) -> Result<i64, String> {
+        aethercore_fleet::append_run_history(&self.history_path(), record)
+    }
+}
+
+impl CliScheduleStore {
+    fn history_path(&self) -> PathBuf {
+        self.path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
-            .join("run_history.json");
-        let mut history: Vec<serde_json::Value> = std::fs::read(&path)
-            .ok()
-            .and_then(|raw| serde_json::from_slice(&raw).ok())
-            .unwrap_or_default();
-        let seq = history.len() as i64 + 1;
-        history.push(serde_json::json!({
-            "runSeq": seq,
-            "scheduleId": schedule_id,
-            "triggerKind": trigger_kind,
-            "startedUnixMs": started_unix_ms,
-            "finishedUnixMs": finished_unix_ms,
-            "hostsAttempted": hosts_attempted,
-            "hostsOk": hosts_ok,
-            "hostsFailed": hosts_failed,
-            "outcomeSummary": outcome_summary,
-        }));
-        let _ = std::fs::write(
-            &path,
-            serde_json::to_vec_pretty(&history).unwrap_or_default(),
-        );
-        seq
+            .join("run_history.json")
     }
 }
 

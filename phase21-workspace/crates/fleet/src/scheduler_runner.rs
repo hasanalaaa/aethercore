@@ -40,13 +40,70 @@ pub struct ScheduleRunSummary {
 }
 
 /// Injectable schedule-state persistence (schedules + append-only history).
+///
+/// DBT-P46-B28/B29: both writes used to return nothing an implementation could
+/// fail with, so every implementation discarded its errors with `let _ =`. A
+/// schedule whose advanced `next_run` never reached disk re-fires; a history
+/// record that never landed is simply absent. Both now report, and the runner
+/// carries the reason into `ScheduleRunSummary::error`.
 pub trait SchedulerStore: Send + Sync {
     /// All schedules in deterministic (schedule_id) order.
     fn schedules(&self) -> Vec<FleetSchedule>;
     /// Persist one schedule's mutated state (next_run/last_result).
-    fn save_schedule(&self, schedule: &FleetSchedule);
+    fn save_schedule(&self, schedule: &FleetSchedule) -> Result<(), String>;
     /// Append one run-history record; returns its sequence number.
-    fn append_history(&self, record: &ScheduleRunRecord) -> i64;
+    fn append_history(&self, record: &ScheduleRunRecord) -> Result<i64, String>;
+}
+
+/// Appends one run record to a JSON history file and returns its sequence
+/// number. `Ok(seq)` means the record is on disk.
+///
+/// DBT-P46-B29: this existed twice, byte for byte, in `aetherctl` and in the
+/// desktop app — two independent deciders of "what is the next run sequence".
+/// Both read the file as `.ok().and_then(parse).unwrap_or_default()`, so a
+/// history that could not be read or parsed restarted numbering at 1 and was
+/// then overwritten by the write below, losing every record it held. A file
+/// that does not exist yet is the only legitimate empty history.
+pub fn append_run_history(
+    path: &std::path::Path,
+    record: &ScheduleRunRecord,
+) -> Result<i64, String> {
+    let mut history: Vec<serde_json::Value> = match std::fs::read(path) {
+        Ok(raw) => serde_json::from_slice(&raw).map_err(|error| {
+            format!(
+                "run history at {} is unreadable ({error}); refusing to overwrite it",
+                path.display()
+            )
+        })?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => {
+            return Err(format!(
+                "run history at {} could not be read ({error}); refusing to overwrite it",
+                path.display()
+            ));
+        }
+    };
+    let seq = history.len() as i64 + 1;
+    history.push(serde_json::json!({
+        "runSeq": seq,
+        "scheduleId": record.schedule_id,
+        "triggerKind": record.trigger_kind,
+        "startedUnixMs": record.started_unix_ms,
+        "finishedUnixMs": record.finished_unix_ms,
+        "hostsAttempted": record.hosts_attempted,
+        "hostsOk": record.hosts_ok,
+        "hostsFailed": record.hosts_failed,
+        "outcomeSummary": record.outcome_summary,
+    }));
+    let bytes = serde_json::to_vec_pretty(&history)
+        .map_err(|error| format!("run history could not be serialized ({error})"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("run history directory {} ({error})", parent.display()))?;
+    }
+    std::fs::write(path, bytes)
+        .map_err(|error| format!("run history at {} ({error})", path.display()))?;
+    Ok(seq)
 }
 
 /// One run-history record (the flat parameter list factored into a type).
@@ -193,18 +250,24 @@ pub fn run_due_schedules<T: FleetTransport + 'static>(
         let finished = clock.now_unix_ms();
         let summary = match outcome {
             Ok((attempted, ok, failed, text, outcomes)) => {
-                let seq = store.append_history(&ScheduleRunRecord {
-                    schedule_id: Some(&schedule.schedule_id),
-                    trigger_kind: "schedule",
-                    started_unix_ms: started,
-                    finished_unix_ms: finished,
-                    hosts_attempted: attempted,
-                    hosts_ok: ok,
-                    hosts_failed: failed,
-                    outcome_summary: &text,
-                });
+                let mut faults = Vec::new();
+                let seq = persisted_seq(
+                    store.append_history(&ScheduleRunRecord {
+                        schedule_id: Some(&schedule.schedule_id),
+                        trigger_kind: "schedule",
+                        started_unix_ms: started,
+                        finished_unix_ms: finished,
+                        hosts_attempted: attempted,
+                        hosts_ok: ok,
+                        hosts_failed: failed,
+                        outcome_summary: &text,
+                    }),
+                    &mut faults,
+                );
                 record_result(&mut schedule, finished, attempted, ok, failed, &text);
-                store.save_schedule(&schedule);
+                if let Err(error) = store.save_schedule(&schedule) {
+                    faults.push(format!("schedule state was not persisted: {error}"));
+                }
                 let _ = outcomes;
                 ScheduleRunSummary {
                     schedule_id: schedule.schedule_id.clone(),
@@ -215,7 +278,9 @@ pub fn run_due_schedules<T: FleetTransport + 'static>(
                     hosts_failed: failed,
                     outcome_summary: text,
                     history_seq: seq,
-                    error: None,
+                    // The run itself succeeded; what failed is the record of
+                    // it, and that is not the same news.
+                    error: (!faults.is_empty()).then(|| faults.join("; ")),
                 }
             }
             Err(error) => {
@@ -224,18 +289,24 @@ pub fn run_due_schedules<T: FleetTransport + 'static>(
                 // next_run was already advanced by begin_run, and prior
                 // history + other schedules' state are untouched.
                 let error_text = error.to_string();
-                let seq = store.append_history(&ScheduleRunRecord {
-                    schedule_id: Some(&schedule.schedule_id),
-                    trigger_kind: "schedule",
-                    started_unix_ms: started,
-                    finished_unix_ms: finished,
-                    hosts_attempted: 0,
-                    hosts_ok: 0,
-                    hosts_failed: 0,
-                    outcome_summary: &error_text,
-                });
-                record_result(&mut schedule, finished, 0, 0, 0, &error.to_string());
-                store.save_schedule(&schedule);
+                let mut faults = vec![error_text.clone()];
+                let seq = persisted_seq(
+                    store.append_history(&ScheduleRunRecord {
+                        schedule_id: Some(&schedule.schedule_id),
+                        trigger_kind: "schedule",
+                        started_unix_ms: started,
+                        finished_unix_ms: finished,
+                        hosts_attempted: 0,
+                        hosts_ok: 0,
+                        hosts_failed: 0,
+                        outcome_summary: &error_text,
+                    }),
+                    &mut faults,
+                );
+                record_result(&mut schedule, finished, 0, 0, 0, &error_text);
+                if let Err(error) = store.save_schedule(&schedule) {
+                    faults.push(format!("schedule state was not persisted: {error}"));
+                }
                 ScheduleRunSummary {
                     schedule_id: schedule.schedule_id.clone(),
                     started_unix_ms: started,
@@ -243,15 +314,29 @@ pub fn run_due_schedules<T: FleetTransport + 'static>(
                     hosts_attempted: 0,
                     hosts_ok: 0,
                     hosts_failed: 0,
-                    outcome_summary: error.to_string(),
+                    outcome_summary: error_text,
                     history_seq: seq,
-                    error: Some(error.to_string()),
+                    error: Some(faults.join("; ")),
                 }
             }
         };
         summaries.push(summary);
     }
     summaries
+}
+
+/// `history_seq` 0 already means "no history record for this run" — it is what
+/// the two skip paths above report, and real sequences start at 1. A failed
+/// append reports the same 0 rather than a number nothing on disk backs, and
+/// pushes the reason into the summary's faults.
+fn persisted_seq(appended: Result<i64, String>, faults: &mut Vec<String>) -> i64 {
+    match appended {
+        Ok(seq) => seq,
+        Err(error) => {
+            faults.push(format!("run history was not recorded: {error}"));
+            0
+        }
+    }
 }
 
 #[cfg(test)]
@@ -298,6 +383,7 @@ mod tests {
         schedules: Mutex<Vec<FleetSchedule>>,
         history: Mutex<Vec<HistoryRow>>,
         next_seq: std::sync::atomic::AtomicI64,
+        fail_writes: bool,
     }
 
     impl MemoryStore {
@@ -306,6 +392,15 @@ mod tests {
                 schedules: Mutex::new(schedules),
                 history: Mutex::new(Vec::new()),
                 next_seq: std::sync::atomic::AtomicI64::new(1),
+                fail_writes: false,
+            }
+        }
+
+        /// A store on a full or read-only disk (DBT-P46-B28).
+        fn failing(schedules: Vec<FleetSchedule>) -> Self {
+            Self {
+                fail_writes: true,
+                ..Self::new(schedules)
             }
         }
     }
@@ -314,7 +409,10 @@ mod tests {
         fn schedules(&self) -> Vec<FleetSchedule> {
             self.schedules.lock().unwrap().clone()
         }
-        fn save_schedule(&self, schedule: &FleetSchedule) {
+        fn save_schedule(&self, schedule: &FleetSchedule) -> Result<(), String> {
+            if self.fail_writes {
+                return Err("disk is full".to_string());
+            }
             let mut guard = self.schedules.lock().unwrap();
             if let Some(slot) = guard
                 .iter_mut()
@@ -322,8 +420,12 @@ mod tests {
             {
                 *slot = schedule.clone();
             }
+            Ok(())
         }
-        fn append_history(&self, record: &ScheduleRunRecord) -> i64 {
+        fn append_history(&self, record: &ScheduleRunRecord) -> Result<i64, String> {
+            if self.fail_writes {
+                return Err("disk is full".to_string());
+            }
             self.history.lock().unwrap().push((
                 record.schedule_id.map(str::to_string),
                 record.trigger_kind.to_string(),
@@ -332,7 +434,7 @@ mod tests {
                 record.hosts_failed,
                 record.outcome_summary.to_string(),
             ));
-            self.next_seq.fetch_add(1, Ordering::SeqCst) - 1
+            Ok(self.next_seq.fetch_add(1, Ordering::SeqCst) - 1)
         }
     }
 
@@ -346,6 +448,83 @@ mod tests {
 
     fn config() -> OrchestratorConfig {
         OrchestratorConfig::default()
+    }
+
+    /// DBT-P46-B28/B29. A run that succeeded but whose state never reached disk
+    /// is not a clean run: `next_run` did not advance on disk, so the schedule
+    /// re-fires, and no history record exists for what did happen.
+    #[test]
+    fn persistence_failure_after_a_successful_run_is_reported_not_swallowed() {
+        let start = 1_000_000;
+        let period = 3600 * 1000;
+        let schedule = FleetSchedule::new(
+            "sched-edge",
+            vec!["group:edge".into()],
+            "cis-l1",
+            FleetCadence::EveryHours(1),
+            start,
+        )
+        .unwrap();
+        let store = MemoryStore::failing(vec![schedule]);
+        let summaries = run_due_schedules(
+            &store,
+            &inventory(),
+            &FixedClock(start + period),
+            Arc::new(FakeTransport {
+                calls: AtomicUsize::new(0),
+            }),
+            &config(),
+            &OverlapLock::default(),
+            &crate::transport::CancelToken::default(),
+        );
+        assert_eq!(summaries.len(), 1);
+        let summary = &summaries[0];
+        assert_eq!(summary.hosts_ok, 2, "the run itself still succeeded");
+        assert_eq!(
+            summary.history_seq, 0,
+            "0 already means 'no history record', and none was written"
+        );
+        let error = summary
+            .error
+            .as_deref()
+            .expect("a run whose record was lost is not a clean run");
+        assert!(
+            error.contains("run history was not recorded")
+                && error.contains("schedule state was not persisted"),
+            "both failures must be named: {error}"
+        );
+    }
+
+    /// The shared history file: a history that cannot be parsed must not be
+    /// silently renumbered from 1 and overwritten.
+    #[test]
+    fn a_corrupted_run_history_is_refused_not_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("run_history.json");
+        let record = ScheduleRunRecord {
+            schedule_id: Some("sched-edge"),
+            trigger_kind: "schedule",
+            started_unix_ms: 1,
+            finished_unix_ms: 2,
+            hosts_attempted: 1,
+            hosts_ok: 1,
+            hosts_failed: 0,
+            outcome_summary: "ok",
+        };
+
+        // A history file that does not exist yet is the one legitimate empty
+        // history, and numbering starts at 1.
+        assert_eq!(append_run_history(&path, &record), Ok(1));
+        assert_eq!(append_run_history(&path, &record), Ok(2));
+
+        std::fs::write(&path, b"{not json").unwrap();
+        let error = append_run_history(&path, &record).expect_err("must refuse");
+        assert!(error.contains("unreadable"), "{error}");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"{not json",
+            "the unreadable file must be left exactly as found, not truncated"
+        );
     }
 
     #[test]

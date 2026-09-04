@@ -72,6 +72,7 @@ export const arCatalog = {
   'fleet.scheduleTitle': 'جداول التوافق',
   'fleet.scheduleHint': 'تنشر الجداول ملف التوافق المحدد عبر نقل SSH الموثوق.',
   'fleet.scheduleEmpty': 'لا توجد جداول مهيأة.',
+  'fleet.scheduleUnreadable': 'تعذّرت قراءة جداولك المحفوظة، فلا يمكن عرض أي منها. هذا ليس كعدم وجود جداول — ولم يُكتب فوق أي شيء.',
   'fleet.scopeAll': 'كل المضيفين المفعّلين',
   'fleet.fieldScheduleId': 'معرّف الجدول',
   'fleet.fieldScope': 'نطاق المضيفين (مفصولة بفواصل)',

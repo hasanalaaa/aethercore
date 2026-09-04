@@ -26,7 +26,7 @@ pub use scheduler::{
 };
 pub use scheduler_runner::{
     MISSED_RUN_CATCHUP, RunnerError, ScheduleRunRecord, ScheduleRunSummary, SchedulerStore,
-    resolve_schedule_scope, run_due_schedules, run_one_schedule,
+    append_run_history, resolve_schedule_scope, run_due_schedules, run_one_schedule,
 };
 pub use transport::{
     REMOTE_CONTRACT_VERSION, RemoteCompatibility, RemoteOperation, SpawnHook, SshTransport,

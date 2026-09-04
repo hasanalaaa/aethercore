@@ -70,6 +70,7 @@ export const enCatalog = {
   'fleet.scheduleTitle': 'Compliance schedules',
   'fleet.scheduleHint': 'Schedules propagate their selected profile through the trusted SSH transport.',
   'fleet.scheduleEmpty': 'No schedules configured.',
+  'fleet.scheduleUnreadable': 'Your saved schedules could not be read, so none can be shown. This is not the same as having none — nothing has been overwritten.',
   'fleet.scopeAll': 'all enabled hosts',
   'fleet.fieldScheduleId': 'Schedule ID',
   'fleet.fieldScope': 'Host scope (comma-separated)',
