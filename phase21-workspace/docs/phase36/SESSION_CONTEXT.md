@@ -7786,7 +7786,7 @@ before assuming the state below is still current.
 | 2.B DBT-P42-009/010 decision | NOT STARTED | — |
 | 3.(1) Part 1 privilege breaks | DONE (none found) | §46.11 — nothing to fix at this priority tier |
 | 3.(2) every B from 0.C | **DONE** | §46.12-§46.19 — all 33 accounted: **29 fixed** (B1-B21, B23, B25, B26, B28-B31, B33), **4 reclassified A** (B22, B24, B27, B32), 0 untriaged, 0 blocked. 29 `DBT-P46-B*` markers in code, verified against this list |
-| 3.(3) every count>1 from 0.D | NOT STARTED | §46.4 has the list, none fixed yet |
+| 3.(3) every count>1 from 0.D | **DONE** | §46.21 — both findings closed: `crates/product-identity` is the single decider, 3 Rust service-name declarations and 17 production product-name literals now read it, non-Rust mirrors asserted by 2 new static gates |
 | 3.(4) DBT-P42-006 driver-hub | DONE (reclassified) | §46.2 — 18/18 pass, not reproducing |
 | 3.(5) DBT-P42-007 offline_boundary | DONE (reclassified) | §46.2 — cache populated, 1/1 pass |
 | 3.(6) DBT-P43-001 p36_relbuild.cmd | **DONE** | commit `30e4eab` |
@@ -8853,6 +8853,78 @@ file back to `39ccab0`, unused in all of them, so not something this pass
 orphaned), and several never-used functions/fields. None were touched, per
 the scope rule.
 
+## 46.21 PART 3.(3) — both 0.D findings closed
+
+§46.4 found two values with more than one decider. Both are now decided once,
+in `crates/product-identity` — a NEW crate with **zero dependencies**, and
+that is the whole reason it is a crate rather than a module in `contracts` or
+`ipc`: `apps/install-hardener` depends on nothing but `anyhow`, deliberately,
+because it is the elevated MSI helper, and it was one of the three places
+that had independently decided the service name. It follows the pattern
+`crates/ipc`'s `PIPE_NAME` already set.
+
+**D1 — the Windows service name.** `"AetherCoreMaintenance"` was declared in
+`crates/ipc` (`TRUSTED_SERVICE_NAME`), `apps/install-hardener`
+(`SERVICE_NAME`) and `services/maintenance-service` (`SERVICE_NAME`), and
+`NT SERVICE\AetherCoreMaintenance` was re-typed in full twice more rather
+than derived from the name. `service_principal()` now derives it, so the two
+halves of one identity cannot drift apart again. Commit `71fc629`.
+
+**D2 — the product name.** 25 bare `"AetherCore"` literals. 17 production
+decisions now read `PRODUCT_NAME`; **8 stay literal on purpose** — they are
+test fixtures (7 in `release-authority`, one of them a raw JSON wire fixture,
+plus 1 in `security`). A test that builds its expectation from the same
+constant the code reads proves only that the constant equals itself; those
+tests exist to say "the validator accepts the product id 'AetherCore'", so
+they have to spell it. The one place that does pin the literals is
+`product-identity`'s own test, whose doc comment states why they are a
+published contract (§4): the service is registered under that name with the
+SCM, and the directories already exist on installed machines. Deduplicating
+these is free; editing them is not. Commit `a042a8c`.
+
+**The layers outside Rust.** Seven more declarations live in WiX, two
+PowerShell scripts, and `static_validate.py` itself, and none of them can
+share a Rust const. Two new gates read the constants out of
+`product-identity/src/lib.rs` and assert every non-Rust declaration still
+spells the same name: `p46_service_name_has_one_decider` (also asserts the
+three former Rust deciders no longer declare their own) and
+`p46_product_name_has_one_decider` (INSTALLFOLDER and ProgramDataRoot in
+`Product.wxs`). One decider plus checked mirrors, instead of free literals.
+
+**The measuring instrument had to change, and this is the part worth
+reading.** `phase8_hardener_fixed_operation_only` asserted that the literal
+`'AetherCoreMaintenance'` appeared in the hardener's source. After D1 it does
+not, and the gate failed — a check demanding the duplication it should have
+wanted removed (defect pattern #4, in the gate rather than the code). It now
+asserts the hardener imports the one decider. That changed HOW the property
+is proven, not the property.
+
+### Measured
+
+This gate has 21 pre-existing failures in a non-Windows environment, so the
+number that means anything is the **delta against a run of pristine HEAD**
+extracted to a scratch directory:
+
+    baseline (HEAD)  344 checks / 21 failed
+    after D1+D2      346 checks / 21 failed
+    NEW_FAILURES=[]  NEWLY_PASSING=[]
+
+macOS: `cargo build --workspace` EXIT 0; `cargo test --workspace`
+**616 passed, 0 failed**.
+
+Windows, ARM64 VM — D1 was verified before it was pushed
+(`cargo check -p aethercore-ipc -p aethercore-install-hardener
+-p aethercore-maintenance-service -p aethercore-product-identity --tests`,
+`P46D_CHECK_EXITCODE=0`), and D2 with the **whole workspace**:
+
+    cargo check --workspace --tests
+    P46E_CHECK_EXITCODE=0
+
+1044 log lines, **0 error lines**, 49 aethercore crates checked. Warnings are
+the same pre-existing set §46.20 enumerates; the only ones inside the touched
+crates are three "function is never used" in `crates/ipc/src/lib.rs:121-130`,
+a file neither change touches.
+
 ## 46.18 NEXT ACTION for a fresh session
 
 **SUPERSEDED where it disagrees with §46.19/§46.20.** Kept because its
@@ -8895,10 +8967,9 @@ that is not needed (B12 and B15 are the two worked examples).
 
 **What is actually open, in the order Part 3's own priority implies:**
 
-- **3.(3) — the 2 duplicated-derivation findings from §46.4** (the
-  service-name literal with 3 independent deciders; the "AetherCore"
-  install-path literal across ~23 sites). Untouched. This is the next
-  numbered item.
+- **3.(3) is DONE** (§46.21). If a future value needs one decider, the home
+  already exists: `crates/product-identity`, zero dependencies, plus the
+  static gates that hold the non-Rust mirrors to it.
 - **3.(7) DBT-P42-013** — 36 temp files leaked by `cargo test`, 4 sites;
   reproduces worse than documented.
 - **3.(8) DBT-P41-001** — MSVCP140/VCRUNTIME140 not in the MSI payload. Needs
