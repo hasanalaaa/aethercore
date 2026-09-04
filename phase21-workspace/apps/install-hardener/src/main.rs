@@ -6,8 +6,9 @@ use std::{
     process::{Command, Output},
 };
 
-const SERVICE_NAME: &str = "AetherCoreMaintenance";
-const SERVICE_PRINCIPAL: &str = r"NT SERVICE\AetherCoreMaintenance";
+// DBT-P46-D1: the third independent declaration of the service name, and the
+// second full re-typing of its account, both now derived from one decider.
+use aethercore_product_identity::{service_principal, SERVICE_NAME};
 const SERVICE_SDDL: &str = "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)";
 const MACHINE_MUTATION_LOCK_RELATIVE_PATH: &str = r"state\machine-mutation.lock";
 #[cfg(windows)]
@@ -104,6 +105,8 @@ fn apply() -> anyhow::Result<()> {
     reject_reparse_tree(&data_dir)?;
     let mutation_lock = ensure_mutation_lock_file(&data_dir)?;
 
+    let principal = service_principal();
+
     // These are fixed, non-user-controlled SCM operations. The helper is intentionally not a
     // general command runner and accepts no paths or service names on its command line.
     run_checked(&sc, ["sidtype", SERVICE_NAME, "unrestricted"])?;
@@ -122,7 +125,7 @@ fn apply() -> anyhow::Result<()> {
             "*S-1-5-18:(OI)(CI)F",       // LocalSystem
             "*S-1-5-32-544:(OI)(CI)F",  // Administrators
             "*S-1-5-32-545:(OI)(CI)RX", // Users: read/execute only
-            &format!("{SERVICE_PRINCIPAL}:(OI)(CI)RX"),
+            &format!("{principal}:(OI)(CI)RX"),
         ],
     )?;
     run_icacls(
@@ -131,7 +134,7 @@ fn apply() -> anyhow::Result<()> {
         &[
             "*S-1-5-18:(OI)(CI)F",
             "*S-1-5-32-544:(OI)(CI)F",
-            &format!("{SERVICE_PRINCIPAL}:(OI)(CI)F"),
+            &format!("{principal}:(OI)(CI)F"),
         ],
     )?;
     // Give the authority file its own protected ACL so later parent drift cannot silently widen
@@ -142,7 +145,7 @@ fn apply() -> anyhow::Result<()> {
         &[
             "*S-1-5-18:F",
             "*S-1-5-32-544:F",
-            &format!("{SERVICE_PRINCIPAL}:F"),
+            &format!("{principal}:F"),
         ],
     )?;
 

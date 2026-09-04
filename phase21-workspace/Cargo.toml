@@ -5,6 +5,7 @@ members = [
   "apps/consent-broker",
   "apps/install-hardener",
   "services/maintenance-service",
+  "crates/product-identity",
   "crates/contracts",
   "crates/windows-foundation",
   "crates/collector-runtime",

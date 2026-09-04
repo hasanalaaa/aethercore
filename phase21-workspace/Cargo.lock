@@ -288,6 +288,7 @@ dependencies = [
 name = "aethercore-install-hardener"
 version = "0.1.11"
 dependencies = [
+ "aethercore-product-identity",
  "anyhow",
 ]
 
@@ -308,6 +309,7 @@ name = "aethercore-ipc"
 version = "0.1.11"
 dependencies = [
  "aethercore-contracts",
+ "aethercore-product-identity",
  "aethercore-windows-foundation",
  "prost",
  "thiserror 2.0.20",
@@ -337,6 +339,7 @@ dependencies = [
  "aethercore-performance-telemetry",
  "aethercore-persistence",
  "aethercore-platform-capabilities",
+ "aethercore-product-identity",
  "aethercore-restore-point",
  "aethercore-security",
  "aethercore-security-audit",
@@ -484,6 +487,10 @@ dependencies = [
  "serde",
  "windows 0.62.2",
 ]
+
+[[package]]
+name = "aethercore-product-identity"
+version = "0.1.11"
 
 [[package]]
 name = "aethercore-release-authority"

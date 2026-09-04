@@ -818,6 +818,36 @@ marker(
         'NT SERVICE\\AetherCoreMaintenance',
     ],
 )
+# DBT-P46-D1 (§46.4 Part 0.D): the Windows service name had three independent
+# Rust deciders, and four more declarations outside Rust that no check tied to
+# them — WiX, two PowerShell scripts, and this file, which hardcoded the
+# principal string just above. The Rust side is now one const in
+# crates/product-identity; this reads that const and asserts every non-Rust
+# declaration still spells the same name, so the layers cannot drift apart in
+# silence the way they were free to before.
+product_identity = (ROOT / "crates/product-identity/src/lib.rs").read_text(encoding="utf-8")
+_service_name_match = re.search(r'pub const SERVICE_NAME: &str = "([^"]+)";', product_identity)
+SERVICE_NAME = _service_name_match.group(1) if _service_name_match else ""
+_service_name_mirrors = {
+    "installer/wix/Product.wxs": product_wxs,
+    "scripts/install-service.ps1": (ROOT / "scripts/install-service.ps1").read_text(encoding="utf-8"),
+    "scripts/uninstall-service.ps1": (ROOT / "scripts/uninstall-service.ps1").read_text(encoding="utf-8"),
+}
+checks["p46_service_name_has_one_decider"] = {
+    "ok": bool(SERVICE_NAME)
+    and all(SERVICE_NAME in text for text in _service_name_mirrors.values())
+    and f"NT SERVICE\\{SERVICE_NAME}" in product_wxs
+    and not any(
+        'const SERVICE_NAME' in (ROOT / rust).read_text(encoding="utf-8")
+        or 'const TRUSTED_SERVICE_NAME' in (ROOT / rust).read_text(encoding="utf-8")
+        for rust in (
+            "crates/ipc/src/windows_impl.rs",
+            "apps/install-hardener/src/main.rs",
+            "services/maintenance-service/src/main.rs",
+        )
+    ),
+    "note": f"Service name is decided once in crates/product-identity ({SERVICE_NAME!r}); the three former Rust deciders now import it, and every non-Rust declaration is asserted against it.",
+}
 checks["phase8_msi_serviceconfig_not_relied_upon"] = {
     "ok": "<ServiceConfig" not in product_wxs,
     "note": "Service SID policy and delayed-auto are applied by the fixed-purpose post-InstallServices hardener, avoiding reliance on MSI ServiceConfig semantics.",
@@ -835,10 +865,22 @@ checks["phase8_msi_upgrade_and_os_gate"] = {
     "note": "MSI and Burn admit Windows 11 clients and Windows Server 2019+ member servers; domain controllers remain refused, and Server Core omits the WebView2 prerequisite and desktop feature.",
 }
 checks["phase8_hardener_fixed_operation_only"] = {
-    "ok": all(token in hardener for token in ['mode == OsStr::new("apply")', 'System32', 'AetherCoreMaintenance'])
+    # DBT-P46-D1 changed HOW this is proven, not what it proves. The hardener
+    # used to contain the service name as its own literal; it now imports the
+    # one decider, so asserting the literal here would assert the duplication
+    # this gate should want removed.
+    "ok": all(
+        token in hardener
+        for token in [
+            'mode == OsStr::new("apply")',
+            "System32",
+            "aethercore_product_identity::",
+            "SERVICE_NAME",
+        ]
+    )
     and "cmd.exe" not in hardener.lower()
     and "powershell.exe" not in hardener.lower(),
-    "note": "The elevated MSI helper accepts only the literal apply verb and invokes fixed System32 tooling for fixed AetherCore targets.",
+    "note": "The elevated MSI helper accepts only the literal apply verb and invokes fixed System32 tooling for the fixed AetherCore service, named by the single shared constant rather than a local literal.",
 }
 
 checks["phase8_msi_repair_not_disabled"] = {

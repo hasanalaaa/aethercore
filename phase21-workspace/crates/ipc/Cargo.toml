@@ -7,6 +7,7 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+aethercore-product-identity = { path = "../product-identity" }
 aethercore-contracts = { path = "../contracts" }
 prost.workspace = true
 thiserror.workspace = true

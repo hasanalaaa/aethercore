@@ -1,0 +1,13 @@
+[package]
+name = "aethercore-product-identity"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# Deliberately no dependencies. `apps/install-hardener` depends on nothing but
+# anyhow, by design, and it is one of the three places that had independently
+# decided the service name — so the shared home for these strings has to be
+# reachable without pulling prost or the windows crates in behind it.
+[dependencies]

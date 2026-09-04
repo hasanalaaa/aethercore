@@ -44,7 +44,9 @@ mod timeline;
 #[cfg(unix)]
 mod unix_composition;
 
-const SERVICE_NAME: &str = "AetherCoreMaintenance";
+// DBT-P46-D1: one decider, shared with the IPC peer check and the installer
+// hardener, which had each declared this independently.
+use aethercore_product_identity::SERVICE_NAME;
 
 fn main() -> Result<()> {
     #[cfg(windows)]
