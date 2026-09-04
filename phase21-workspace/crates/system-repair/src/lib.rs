@@ -167,6 +167,48 @@ pub trait RepairPlatform: Send + Sync + 'static {
     ) -> Result<()>;
 }
 
+/// Takes one output-reader thread's join result, recording a note instead of an
+/// empty string when the thread panicked.
+///
+/// DBT-P46-B9: `join().unwrap_or_default()` reported a reader thread that
+/// *crashed* as a command that printed nothing. The process exit code is still
+/// a real observation, so the check itself stands — but its detail must say the
+/// stream was lost rather than let silence imply the command was silent.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn joined_stream(
+    joined: std::thread::Result<String>,
+    stream: &str,
+    notes: &mut Vec<String>,
+) -> String {
+    match joined {
+        Ok(text) => text,
+        Err(_) => {
+            notes.push(format!(
+                "{stream} reader thread panicked; that stream was not captured for this check"
+            ));
+            String::new()
+        }
+    }
+}
+
+/// Trims `detail` to at most `limit` bytes, keeping the tail, without splitting
+/// a character.
+///
+/// Adjacent to DBT-P46-B9 and found in the same four lines: the tail used to be
+/// taken at a fixed byte offset. DISM and SFC output is localized, so that
+/// offset can land mid-character — and `String` indexing panics there.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn trim_to_tail(detail: &mut String, limit: usize) {
+    if detail.len() <= limit {
+        return;
+    }
+    let mut start = detail.len() - limit;
+    while !detail.is_char_boundary(start) {
+        start += 1;
+    }
+    detail.drain(..start);
+}
+
 #[cfg(windows)]
 mod dism_api;
 #[cfg(windows)]
@@ -1031,5 +1073,70 @@ mod dbt_p46_b8_tests {
             recovered.assessment_id, "real-assessment",
             "a poisoned lock must recover the last-written value, not silently default"
         );
+    }
+}
+
+#[cfg(test)]
+mod dbt_p46_b9_tests {
+    use super::*;
+
+    /// DBT-P46-B9. `run_with_accepted_codes` is Windows-only, so this proves
+    /// the exact mechanism the fix applies, against a thread that really does
+    /// panic — the same shape B8's test uses for the same reason.
+    #[test]
+    fn a_panicking_reader_thread_is_reported_not_read_as_silence() {
+        let handle = std::thread::spawn(|| -> String {
+            panic!("simulated panic inside the output reader");
+        });
+        let joined = handle.join();
+        assert!(joined.is_err(), "the reader thread must have actually panicked");
+
+        // Old behavior: join().unwrap_or_default() — a crash became "no output".
+        let mut notes = Vec::new();
+        let text = joined_stream(joined, "stdout", &mut notes);
+        assert_eq!(text, "", "there genuinely is no captured output");
+        assert_eq!(notes.len(), 1, "but the reason must not be lost");
+        assert!(
+            notes[0].contains("stdout") && notes[0].contains("panicked"),
+            "note must name the stream and say it crashed: {}",
+            notes[0]
+        );
+    }
+
+    #[test]
+    fn a_healthy_reader_thread_adds_no_note() {
+        let handle = std::thread::spawn(|| "command output".to_string());
+        let mut notes = Vec::new();
+        assert_eq!(joined_stream(handle.join(), "stdout", &mut notes), "command output");
+        assert!(notes.is_empty());
+    }
+
+    /// Adjacent defect found in the same four lines: the 48_000-byte tail was
+    /// sliced at a fixed byte offset. DISM and SFC output is localized, so that
+    /// offset can land mid-character, and `String` indexing panics there. The
+    /// old expression is written out below to show what this now avoids.
+    #[test]
+    fn tail_truncation_survives_a_multibyte_boundary() {
+        // 2-byte characters then one ASCII byte, so len - 48_000 is odd and
+        // therefore lands inside a character.
+        let mut detail = format!("{}x", "ة".repeat(30_000));
+        assert_eq!(detail.len(), 60_001);
+        assert!(
+            !detail.is_char_boundary(detail.len() - 48_000),
+            "this input must actually land mid-character, or it proves nothing"
+        );
+        trim_to_tail(&mut detail, 48_000);
+        assert!(detail.len() <= 48_000);
+        assert!(
+            detail.chars().all(|c| c == 'ة' || c == 'x'),
+            "no character was cut in half"
+        );
+    }
+
+    #[test]
+    fn tail_truncation_leaves_short_output_alone() {
+        let mut detail = "short".to_string();
+        trim_to_tail(&mut detail, 48_000);
+        assert_eq!(detail, "short");
     }
 }

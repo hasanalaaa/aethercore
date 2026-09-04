@@ -477,10 +477,13 @@ fn run_with_accepted_codes(
         thread::sleep(Duration::from_millis(500));
     };
 
-    let mut detail = stdout_thread.join().unwrap_or_default();
-    let error_output = stderr_thread.join().unwrap_or_default();
+    let mut notes = Vec::new();
+    let mut detail = super::joined_stream(stdout_thread.join(), "stdout", &mut notes);
+    let error_output = super::joined_stream(stderr_thread.join(), "stderr", &mut notes);
     if !error_output.trim().is_empty() { if !detail.is_empty() { detail.push('\n'); } detail.push_str(&error_output); }
-    if detail.len() > 48_000 { detail = detail[detail.len() - 48_000..].to_string(); }
+    super::trim_to_tail(&mut detail, 48_000);
+    // After truncation, so a lost stream is never itself truncated away.
+    for note in notes { if !detail.is_empty() { detail.push('\n'); } detail.push_str(&note); }
 
     let code = status.code().unwrap_or(-1);
     if !accepted_codes.contains(&code) {
