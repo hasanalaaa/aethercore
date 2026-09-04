@@ -267,3 +267,83 @@ fn hostile_extreme_window_stays_bounded_and_never_panics() {
     }
     assert!(report.findings.len() <= 8);
 }
+
+/// DBT-P46-B21: `analyze` takes the aggregate and the window as two separate
+/// arguments — and `PerformanceService::analyze` fetches them in two separate
+/// ring calls — so a window can legitimately carry no storage sample while the
+/// aggregate says storage was saturated. The peak of an empty collection is not
+/// zero, it is nothing, and IO_SATURATION must not cite a transfer latency no
+/// device ever reported.
+#[test]
+fn io_saturation_does_not_cite_a_latency_no_device_reported() {
+    let aggregate = aethercore_performance_telemetry::WindowAggregate {
+        sample_count: 12,
+        window_ms: 12_000,
+        storage_active_bp_peak: thresholds::STORAGE_SATURATION_PEAK_BP,
+        storage_active_bp_avg: thresholds::STORAGE_SATURATION_AVG_BP,
+        ..Default::default()
+    };
+    let window: Vec<PerfSnapshot> = (0..12)
+        .map(|index| PerfSnapshot {
+            captured_unix_ms: 1_700_000_000_000 + index * 1_000,
+            storage: Vec::new(),
+            ..Default::default()
+        })
+        .collect();
+    let report = analyze(&aggregate, &window, 1_700_000_100_000);
+    let finding = report
+        .findings
+        .iter()
+        .find(|finding| finding.code == "IO_SATURATION")
+        .expect("the aggregate reports storage saturation, so the finding stands");
+    assert!(
+        finding
+            .evidence
+            .iter()
+            .all(|ev| ev.fact_key != "storage.transferLatencyUs"),
+        "an unreported latency was cited as evidence: {:?}",
+        finding.evidence
+    );
+    assert_eq!(
+        finding.confidence,
+        Confidence::High,
+        "an unmeasured latency must not upgrade or downgrade confidence"
+    );
+}
+
+/// The other half of the same distinction: when devices DO report, the latency
+/// evidence is still cited exactly as before.
+#[test]
+fn io_saturation_still_cites_a_latency_devices_did_report() {
+    let aggregate = aethercore_performance_telemetry::WindowAggregate {
+        sample_count: 12,
+        window_ms: 12_000,
+        storage_active_bp_peak: thresholds::STORAGE_SATURATION_PEAK_BP,
+        storage_active_bp_avg: thresholds::STORAGE_SATURATION_AVG_BP,
+        ..Default::default()
+    };
+    let window: Vec<PerfSnapshot> = (0..12)
+        .map(|index| PerfSnapshot {
+            captured_unix_ms: 1_700_000_000_000 + index * 1_000,
+            storage: vec![StorageQueueSample {
+                avg_transfer_latency_us: thresholds::TRANSFER_LATENCY_US,
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .collect();
+    let report = analyze(&aggregate, &window, 1_700_000_100_000);
+    let finding = report
+        .findings
+        .iter()
+        .find(|finding| finding.code == "IO_SATURATION")
+        .expect("storage saturation finding");
+    assert!(
+        finding
+            .evidence
+            .iter()
+            .any(|ev| ev.fact_key == "storage.transferLatencyUs"),
+        "a measured latency must still be cited"
+    );
+    assert_eq!(finding.confidence, Confidence::Confirmed);
+}
