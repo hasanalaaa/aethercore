@@ -788,6 +788,50 @@ mod tests {
         assert_eq!(identities[0].revision, 4);
     }
 
+    /// DBT-P46-B10: an unreadable stored driver record and a driver that simply
+    /// has no recorded version both produced "". The version string is evidence
+    /// the owner reads to check what the install actually changed, so "we could
+    /// not tell" must not render as "there was none".
+    #[test]
+    fn unreadable_stored_driver_json_is_reported_not_read_as_no_version() {
+        let readable = InstallItemRecord {
+            before_driver_json: r#"{"version":"1.0"}"#.into(),
+            after_driver_json: r#"{"version":"2.0"}"#.into(),
+            detail: "installed".into(),
+            ..InstallItemRecord::default()
+        };
+        let status = item_status(readable);
+        assert_eq!(status.before_version, "1.0");
+        assert_eq!(status.after_version, "2.0");
+        assert_eq!(status.detail, "installed", "a clean read adds no note");
+
+        let no_prior_driver = InstallItemRecord {
+            before_driver_json: String::new(),
+            after_driver_json: r#"{"version":"2.0"}"#.into(),
+            ..InstallItemRecord::default()
+        };
+        let status = item_status(no_prior_driver);
+        assert_eq!(status.before_version, "");
+        assert_eq!(
+            status.detail, "",
+            "no driver recorded before the install is normal, not a fault"
+        );
+
+        let corrupted = InstallItemRecord {
+            before_driver_json: "{not json".into(),
+            after_driver_json: r#"{"version":"2.0"}"#.into(),
+            detail: "installed".into(),
+            ..InstallItemRecord::default()
+        };
+        let status = item_status(corrupted);
+        assert_eq!(status.before_version, "", "there genuinely is no version to show");
+        assert!(
+            status.detail.contains("unreadable") && status.detail.starts_with("installed"),
+            "the reason must reach the owner alongside the existing detail: {}",
+            status.detail
+        );
+    }
+
     #[test]
     fn preflight_driver_binding_comparison_uses_all_evidence() {
         let actual = Some(InstalledDriver { provider:"Vendor".into(), version:"2.0".into(), inf_path:"oem2.inf".into(), date:"2026-01-01".into() });
