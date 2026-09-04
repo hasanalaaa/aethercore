@@ -333,6 +333,22 @@ fn peak_of(window: &[PerfSnapshot], pick: impl Fn(&PerfSnapshot) -> u64) -> Opti
         .max_by_key(|(value, _)| *value)
 }
 
+/// Peak over the snapshots that actually reported the value.
+///
+/// DBT-P46-B21: `pick` returning `None` means that snapshot measured nothing,
+/// which is not the same as measuring zero — a snapshot with no storage device
+/// or no GPU engine must neither supply an evidence chip nor lend its timestamp
+/// to one. `None` when no snapshot in the window reported it at all.
+fn peak_of_reported(
+    window: &[PerfSnapshot],
+    pick: impl Fn(&PerfSnapshot) -> Option<u64>,
+) -> Option<(u64, i64)> {
+    window
+        .iter()
+        .filter_map(|snap| pick(snap).map(|value| (value, snap.captured_unix_ms)))
+        .max_by_key(|(value, _)| *value)
+}
+
 // ---------------------------------------------------------------------------
 // Rules
 // ---------------------------------------------------------------------------
@@ -525,12 +541,11 @@ fn io_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option
     if !saturated {
         return None;
     }
-    let latency_evidence = peak_of(window, |snap| {
+    let latency_evidence = peak_of_reported(window, |snap| {
         snap.storage
             .iter()
             .map(|device| device.avg_transfer_latency_us)
             .max()
-            .unwrap_or(0)
     });
     let mut evidence_vec = vec![evidence(
         "storage.activeBp.peak",
@@ -577,12 +592,11 @@ fn io_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option
 }
 
 fn gpu_bound(window: &[PerfSnapshot]) -> Option<RuleOutput> {
-    let peak = peak_of(window, |snap| {
+    let peak = peak_of_reported(window, |snap| {
         snap.gpu
             .engines
             .first()
             .map(|engine| u64::from(engine.utilization_bp))
-            .unwrap_or(0)
     })?;
     if peak.0 < u64::from(thresholds::GPU_SATURATION_BP) {
         return None;
