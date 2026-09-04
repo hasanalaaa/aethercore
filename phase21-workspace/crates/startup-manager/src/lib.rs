@@ -83,7 +83,12 @@ impl RecommendationDecision { pub fn as_str(self)->&'static str { match self { S
 #[serde(tag="type", rename_all="camelCase")]
 pub enum NativeState {
     RegistryValue { hive:String, key:String, value_name:String, view:String, exists:bool, value_type:u32, data_hex:String },
-    StartupFile { path:String, exists:bool, size_bytes:u64, modified_unix_ms:i64, sha256:String, backup_path:String, backup_exists:bool },
+    /// DBT-P46-B12: `modified_unix_ms` is `None` when the file's mtime could
+    /// not be read. This document is compared string-for-string to authorise a
+    /// mutation, so an unread mtime must not serialize as the epoch — two
+    /// unknowns would then compare equal and hide the drift the check exists
+    /// to catch. A known mtime keeps its exact prior representation.
+    StartupFile { path:String, exists:bool, size_bytes:u64, modified_unix_ms:Option<i64>, sha256:String, backup_path:String, backup_exists:bool },
     ScheduledTask { task_path:String, enabled:bool, xml_sha256:String },
     Service { service_name:String, start_type:u32, delayed_auto:bool, service_type:u32, binary_path:String, launch_protected:u32 },
 }
@@ -476,11 +481,13 @@ mod tests {
             "the drift check compares these strings, so they must differ"
         );
         assert!(
-            unknown_json.contains("\"modifiedUnixMs\":null"),
+            // `rename_all` on this enum renames the VARIANTS, not struct-variant
+            // fields, so the persisted key really is snake_case.
+            unknown_json.contains("\"modified_unix_ms\":null"),
             "unknown must be null, not 0: {unknown_json}"
         );
         assert!(
-            epoch_json.contains("\"modifiedUnixMs\":0"),
+            epoch_json.contains("\"modified_unix_ms\":0"),
             "a real epoch timestamp must stay 0: {epoch_json}"
         );
 
@@ -489,7 +496,7 @@ mod tests {
         assert!(
             serde_json::to_string(&startup_file_state(Some(1_700_000_000_000)))
                 .expect("serialize")
-                .contains("\"modifiedUnixMs\":1700000000000")
+                .contains("\"modified_unix_ms\":1700000000000")
         );
     }
     fn approve(engine:&OperationEngine, plan:&PlanView){let intent=engine.begin_consent_intent(&plan.id,OWNER).unwrap();engine.approve_consent_intent(&intent.intent_id,OWNER,4242).unwrap();}

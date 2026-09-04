@@ -137,7 +137,9 @@ fn scan_startup_folders(out:&mut Vec<StartupItem>,warnings:&mut Vec<String>)->Re
 fn scan_folder(path:&Path,scope:&str,out:&mut Vec<StartupItem>,warnings:&mut Vec<String>)->Result<()> {
     let Ok(entries)=std::fs::read_dir(path) else{return Ok(())};
     for e in entries.flatten(){let p=e.path();let Ok(meta)=std::fs::symlink_metadata(&p) else{continue};if !meta.is_file(){continue}if meta.file_type().is_symlink() || (meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0) != 0 {warnings.push(format!("Skipped reparse/symlink startup entry: {}",p.display()));continue}
-        let modified=meta.modified().ok().and_then(|t|t.duration_since(UNIX_EPOCH).ok()).map(|d|d.as_millis() as i64).unwrap_or(0);let name=e.file_name().to_string_lossy().to_string();let systemish=is_security_or_system_command(&p.to_string_lossy());let oversized=meta.len()>MAX_STARTUP_FILE_EVIDENCE_BYTES;let protected=systemish||oversized;
+        // DBT-P46-B12: an unread mtime stays None. This value is baked into
+        // original_state_json, which authorises the mutation by string equality.
+        let modified=meta.modified().ok().and_then(|t|t.duration_since(UNIX_EPOCH).ok()).map(|d|d.as_millis() as i64);let name=e.file_name().to_string_lossy().to_string();let systemish=is_security_or_system_command(&p.to_string_lossy());let oversized=meta.len()>MAX_STARTUP_FILE_EVIDENCE_BYTES;let protected=systemish||oversized;
         let digest=if oversized{String::new()}else{file_sha256(&p)?};
         let state=NativeState::StartupFile{path:p.to_string_lossy().into_owned(),exists:true,size_bytes:meta.len(),modified_unix_ms:modified,sha256:digest,backup_path:String::new(),backup_exists:false};
         let reason=if systemish{"Windows/security startup targets are protected."}else if oversized{"Startup entry exceeds the Phase 5 evidence-size budget and is therefore observation-only."}else{""};
@@ -192,7 +194,7 @@ fn scan_services(out:&mut Vec<StartupItem>, warnings:&mut Vec<String>)->Result<(
 }
 
 fn query_registry_state(hive:&str,key:&str,value_name:&str,view:&str,expected_type:u32,expected_hex:&str)->Result<NativeState>{let(root,key_path)=parse_hive(hive,key);let view_flag=match view{"64"=>KEY_WOW64_64KEY,"32"=>KEY_WOW64_32KEY,_=>REG_SAM_FLAGS(0)};match query_raw_value(root,&key_path,value_name,view_flag){Ok((ty,data))=>Ok(NativeState::RegistryValue{hive:hive.into(),key:key.into(),value_name:value_name.into(),view:view.into(),exists:true,value_type:ty,data_hex:hex::encode(data)}),Err(StartupError::Platform(e))if e=="not-found"=>Ok(NativeState::RegistryValue{hive:hive.into(),key:key.into(),value_name:value_name.into(),view:view.into(),exists:false,value_type:expected_type,data_hex:expected_hex.into()}),Err(e)=>Err(e)}}
-fn query_startup_file_state(path:&str,size:u64,modified:i64,expected_sha256:&str,backup:&str)->Result<NativeState>{
+fn query_startup_file_state(path:&str,size:u64,modified:Option<i64>,expected_sha256:&str,backup:&str)->Result<NativeState>{
     let p=Path::new(path);let b=Path::new(backup);
     if let Ok(m)=std::fs::symlink_metadata(p){
         if m.file_type().is_symlink() || (m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0) != 0 {return Err(StartupError::Platform("startup target became a reparse/symlink".into()))}
@@ -228,7 +230,7 @@ fn query_string(root:HKEY,key:&str,name:&str)->Result<String>{let(ty,data)=query
 fn query_multi_string(root:HKEY,key:&str,name:&str)->Result<Vec<String>>{let(ty,data)=query_raw_value(root,key,name,REG_SAM_FLAGS(0))?;if ty!=REG_MULTI_SZ.0{return Ok(vec![])}let u=bytes_to_u16(&data);Ok(String::from_utf16_lossy(&u).split('\0').filter(|s|!s.is_empty()).map(str::to_owned).collect())}
 fn parse_hive(hive:&str,key:&str)->(HKEY,String){if let Some(sid)=hive.strip_prefix("HKU\\"){if key.starts_with(&format!("{}\\",sid)){(HKEY_USERS,key.into())}else{(HKEY_USERS,format!(r"{}\{}",sid,key))}}else{(HKEY_LOCAL_MACHINE,key.into())}}
 
-fn modified_ms(m:&std::fs::Metadata)->i64{m.modified().ok().and_then(|t|t.duration_since(UNIX_EPOCH).ok()).map(|d|d.as_millis()as i64).unwrap_or(0)}
+fn modified_ms(m:&std::fs::Metadata)->Option<i64>{m.modified().ok().and_then(|t|t.duration_since(UNIX_EPOCH).ok()).map(|d|d.as_millis()as i64)}
 fn bytes_to_u16(data:&[u8])->Vec<u16>{data.chunks_exact(2).map(|c|u16::from_le_bytes([c[0],c[1]])).collect()}
 fn decode_utf16_bytes(data:&[u8])->String{let mut v=bytes_to_u16(data);while v.last()==Some(&0){v.pop();}String::from_utf16_lossy(&v)}
 fn wide(v:&str)->Vec<u16>{OsStr::new(v).encode_wide().chain(Some(0)).collect()}
