@@ -122,10 +122,10 @@ fn capability_names_are_unique() {
 
 #[test]
 fn windows_sku_classification_distinguishes_server_core() {
-    assert_eq!(classify_windows_sku(1, "Client"), WindowsSku::Workstation);
-    assert_eq!(classify_windows_sku(3, "Server"), WindowsSku::Server);
-    assert_eq!(classify_windows_sku(3, "Server Core"), WindowsSku::ServerCore);
-    assert_eq!(classify_windows_sku(99, ""), WindowsSku::Unknown);
+    assert_eq!(classify_windows_sku(1, Some("Client")), WindowsSku::Workstation);
+    assert_eq!(classify_windows_sku(3, Some("Server")), WindowsSku::Server);
+    assert_eq!(classify_windows_sku(3, Some("Server Core")), WindowsSku::ServerCore);
+    assert_eq!(classify_windows_sku(99, Some("")), WindowsSku::Unknown);
 }
 
 /// DBT-P46-B26. This is the single canonical Windows-SKU decider and it gates
@@ -211,22 +211,22 @@ fn product_type_code_maps_the_documented_registry_strings() {
     // Fail closed: anything unrecognised must NOT be claimed as a workstation.
     assert_eq!(product_type_code(""), 0);
     assert_eq!(product_type_code("Whatever"), 0);
-    assert_eq!(classify_windows_sku(product_type_code(""), ""), WindowsSku::Unknown);
+    assert_eq!(classify_windows_sku(product_type_code(""), Some("")), WindowsSku::Unknown);
 
     // End to end, the combination this box actually reports:
     // ProductOptions\ProductType = "WinNT", CurrentVersion\InstallationType = "Client".
     assert_eq!(
-        classify_windows_sku(product_type_code("WinNT"), "Client"),
+        classify_windows_sku(product_type_code("WinNT"), Some("Client")),
         WindowsSku::Workstation,
         "a Windows workstation must classify as Workstation, not Unknown"
     );
     // And the Server / Server Core split still works.
     assert_eq!(
-        classify_windows_sku(product_type_code("ServerNT"), "Server"),
+        classify_windows_sku(product_type_code("ServerNT"), Some("Server")),
         WindowsSku::Server
     );
     assert_eq!(
-        classify_windows_sku(product_type_code("ServerNT"), "Server Core"),
+        classify_windows_sku(product_type_code("ServerNT"), Some("Server Core")),
         WindowsSku::ServerCore
     );
 }

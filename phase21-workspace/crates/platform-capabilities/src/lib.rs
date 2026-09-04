@@ -104,11 +104,19 @@ pub enum WindowsSku {
 }
 
 /// Classifies the documented ProductType/InstallationType registry values.
-pub fn classify_windows_sku(product_type: u32, installation_type: &str) -> WindowsSku {
+/// DBT-P46-B26: `installation_type` is `None` when the registry value could not
+/// be read. It is the entire basis of the Server / Server Core split, so an
+/// unread value answers `Unknown` there rather than guessing the SKU that has a
+/// console. A workstation's classification does not consult it at all, so a
+/// failed read must not degrade that answer.
+pub fn classify_windows_sku(product_type: u32, installation_type: Option<&str>) -> WindowsSku {
     match product_type {
         1 => WindowsSku::Workstation,
-        2 | 3 if installation_type.eq_ignore_ascii_case("server core") => WindowsSku::ServerCore,
-        2 | 3 => WindowsSku::Server,
+        2 | 3 => match installation_type {
+            Some(value) if value.eq_ignore_ascii_case("server core") => WindowsSku::ServerCore,
+            Some(_) => WindowsSku::Server,
+            None => WindowsSku::Unknown,
+        },
         _ => WindowsSku::Unknown,
     }
 }
@@ -205,9 +213,8 @@ pub fn current_windows_sku() -> WindowsSku {
         };
         let product_type = product_type_code(&product_type_sz);
         let installation_type =
-            read_sz(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallationType")
-                .unwrap_or_default();
-        classify_windows_sku(product_type, &installation_type)
+            read_sz(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallationType");
+        classify_windows_sku(product_type, installation_type.as_deref())
     }
     #[cfg(not(windows))]
     {
@@ -350,8 +357,11 @@ pub fn available_on_windows_sku(sku: WindowsSku, capability: PlatformCapability)
         WindowsSku::Workstation => windows_table(),
         WindowsSku::Server => windows_server_table(false),
         WindowsSku::ServerCore => windows_server_table(true),
-        // Unknown Windows must not be overstated as a workstation.
-        WindowsSku::Unknown => windows_server_table(false),
+        // Unknown Windows must not be overstated as a workstation — nor, since
+        // DBT-P46-B26, as a server that has a console. Unknown cannot rule out
+        // Server Core, and CareOrchestration is the one capability the two
+        // server tables disagree about, so it takes the conservative table.
+        WindowsSku::Unknown => windows_server_table(true),
     };
     table
         .into_iter()
