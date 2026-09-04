@@ -84,9 +84,11 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
             FactPayload::StorageHealth {
                 health_status: d.windows_health_status.clone(),
                 source_severity: d.severity.clone(),
-                uncorrected_read_errors: r.read_errors_uncorrected.unwrap_or(0),
-                uncorrected_write_errors: r.write_errors_uncorrected.unwrap_or(0),
-                nvme_critical_warning: r.nvme_critical_warning.unwrap_or(0),
+                // DBT-P46-B3: carry the collector's own distinction through
+                // instead of re-defaulting it away one layer downstream of B2.
+                uncorrected_read_errors: r.read_errors_uncorrected.map(u64::from),
+                uncorrected_write_errors: r.write_errors_uncorrected.map(u64::from),
+                nvme_critical_warning: r.nvme_critical_warning,
                 nvme_media_errors_nonzero: nonzero(r.nvme_media_errors.as_deref()),
                 wear_percent: r.wear_percent_used.map(u64::from).or(r.nvme_percentage_used.map(u64::from)),
                 temperature_c: r.temperature_c.map(i64::from),
