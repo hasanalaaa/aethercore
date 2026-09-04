@@ -742,8 +742,24 @@ fn drivers_equivalent(actual:&Option<InstalledDriver>, expected:&Option<DriverEv
 fn result_code_success(v:&str)->bool { v=="orcSucceeded" }
 fn now_ms()->i64 { Utc::now().timestamp_millis() }
 fn boot_changed(previous:i64,current:i64)->bool { previous>0 && current>0 && (previous-current).abs()>30_000 }
-fn json_driver_version(raw:&str)->String { serde_json::from_str::<serde_json::Value>(raw).ok().and_then(|v|v.get("version").and_then(|x|x.as_str()).map(str::to_owned)).unwrap_or_default() }
-fn item_status(v:InstallItemRecord)->InstallItemStatus { let before_version=json_driver_version(&v.before_driver_json); let after_version=json_driver_version(&v.after_driver_json); InstallItemStatus { candidate_id:v.candidate_id,instance_id:v.instance_id,title:v.title,stage:v.stage,progress_known:v.progress_known,progress_percent:v.progress_percent,result_code:v.result_code,hresult:v.hresult,reboot_required:v.reboot_required,verified:v.verified,before_version,after_version,before_problem_code:v.before_problem_code,after_problem_code:v.after_problem_code,backup_path:v.backup_path,detail:v.detail } }
+/// DBT-P46-B10: an empty stored record is the normal "no driver was recorded"
+/// case; a record that will not parse is a fault, and the two must not both
+/// collapse into an empty version string.
+fn json_driver_version(raw:&str,which:&str,notes:&mut Vec<String>)->String {
+    if raw.trim().is_empty() { return String::new(); }
+    match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(value)=>value.get("version").and_then(|x|x.as_str()).unwrap_or_default().to_owned(),
+        Err(error)=>{ notes.push(format!("stored {which}-install driver record is unreadable ({error}); its version is unknown, not absent")); String::new() }
+    }
+}
+fn item_status(v:InstallItemRecord)->InstallItemStatus {
+    let mut notes=Vec::new();
+    let before_version=json_driver_version(&v.before_driver_json,"before",&mut notes);
+    let after_version=json_driver_version(&v.after_driver_json,"after",&mut notes);
+    let mut detail=v.detail;
+    for note in notes { if !detail.is_empty() { detail.push('\n'); } detail.push_str(&note); }
+    InstallItemStatus { candidate_id:v.candidate_id,instance_id:v.instance_id,title:v.title,stage:v.stage,progress_known:v.progress_known,progress_percent:v.progress_percent,result_code:v.result_code,hresult:v.hresult,reboot_required:v.reboot_required,verified:v.verified,before_version,after_version,before_problem_code:v.before_problem_code,after_problem_code:v.after_problem_code,backup_path:v.backup_path,detail }
+}
 
 #[cfg(windows)] mod platform { pub fn boot_marker_ms()->Result<i64,String>{ use windows::Win32::System::SystemInformation::GetTickCount64; let uptime=unsafe{GetTickCount64()} as i64; Ok(chrono::Utc::now().timestamp_millis().saturating_sub(uptime)) } }
 #[cfg(not(windows))] mod platform { pub fn boot_marker_ms()->Result<i64,String>{ Err("Windows only".into()) } }
