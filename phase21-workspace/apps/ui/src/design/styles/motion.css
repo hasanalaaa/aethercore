@@ -5,6 +5,25 @@
 [data-fluid-press][data-pressed] { filter:brightness(.965); }
 .ac-pressable { cursor:pointer; }
 
+/* A <Pressable> used WITHOUT a className is a bare wrapper, and a <button> with
+   no background rule of its own falls back to the UA default -- which under a
+   dark `color-scheme` is an opaque rgb(107, 107, 107) slab. Measured on the
+   Activity page: the ghost "Refresh" text read 1.45:1 against it. Seven of the
+   thirty-seven Pressable call sites are bare (CarePanel, TimelinePage).
+
+   `:where()` so this carries ZERO specificity: every styled call site
+   (`className="primary"`, `"scan-button"`, ...) overrides it whatever the file
+   order, and the reset only ever shows through where nothing else paints. */
+:where(.ac-pressable) {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+}
+
 .ac-fluid-dialog {
   opacity:var(--ac-dialog-progress,1);
   transform-origin:50% 12%;

@@ -105,10 +105,16 @@
   --ac-edge-strong: rgba(255, 255, 255, 0.14);
   --ac-sunken: rgba(0, 0, 0, 0.22);
 
+  /* The muted end of this ladder was below WCAG AA and had been since the shell
+     was approved. Measured on the surfaces the app actually paints, at 0.42
+     --ac-text-4 read 4.00-4.09:1 against every one of them, and 249 rendered
+     text nodes sat on it. The ladder is re-spaced rather than nudged, so the
+     four steps stay four distinguishable steps: worst readings are now
+     15.14 / 10.55 / 6.77 / 5.12:1. See tools/contrast-sweep.mjs. */
   --ac-text-1: rgba(255, 255, 255, 0.95);
   --ac-text-2: rgba(255, 255, 255, 0.78);
-  --ac-text-3: rgba(255, 255, 255, 0.5);
-  --ac-text-4: rgba(255, 255, 255, 0.42);
+  --ac-text-3: rgba(255, 255, 255, 0.6);
+  --ac-text-4: rgba(255, 255, 255, 0.5);
   --ac-text-inverse: #04060a;
 
   --ac-blur-structural: 40px;
@@ -214,40 +220,48 @@
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --role-interactive: #4C6EF5;
-  --role-interactive-solid: #4C6EF5;
-  --role-interactive-wash: rgba(76, 110, 245, 0.14);
-  --role-interactive-edge: rgba(76, 110, 245, 0.3);
+  /* One step down the same indigo ramp (6 -> 7). --role-interactive-ink is white
+     here, and white on #4C6EF5 is 4.32:1 -- below AA on the skip link and every
+     solid interactive surface. #4263EB reads 4.98:1 and keeps the hue. */
+  /* Two values, two jobs. --role-interactive is drawn as TEXT and as lines on
+     light surfaces and has to clear 4.5:1 there; --role-interactive-solid is a
+     FILL that carries --role-interactive-ink (white) and has to clear 4.5:1 the
+     other way round. #4263EB satisfies the fill (white on it is 4.98:1) and
+     fails the text job at 2.74:1 on the chip surfaces the app actually paints. */
+  --role-interactive: #163ACF;
+  --role-interactive-solid: #4263EB;
+  --role-interactive-wash: rgba(66, 99, 235, 0.14);
+  --role-interactive-edge: rgba(66, 99, 235, 0.3);
   --role-interactive-ink: #ffffff;
 
-  --role-verified: #A9820A;
+  --role-verified: #624B06;
   --role-verified-solid: #A9820A;
   --role-verified-wash: rgba(169, 130, 10, 0.1);
   --role-verified-edge: rgba(169, 130, 10, 0.26);
 
-  --role-healthy: #2F9E44;
+  --role-healthy: #1B5A27;
   --role-healthy-solid: #2B8A3E;
   --role-healthy-wash: rgba(43, 138, 62, 0.12);
   --role-healthy-edge: rgba(43, 138, 62, 0.28);
 
-  --role-attention: #C96500;
+  --role-attention: #7C3E00;
   --role-attention-solid: #C96500;
   --role-attention-wash: rgba(201, 101, 0, 0.12);
   --role-attention-edge: rgba(201, 101, 0, 0.28);
 
-  --role-critical: #C92A2A;
+  --role-critical: #972020;
   --role-critical-solid: #C92A2A;
   --role-critical-wash: rgba(201, 42, 42, 0.1);
   --role-critical-edge: rgba(201, 42, 42, 0.28);
 
-  --role-denied: #773781;
+  --role-denied: #73357D;
   --role-denied-solid: #AD4EBC;
   --role-denied-wash: rgba(119, 55, 129, 0.09);
   --role-denied-band: rgba(119, 55, 129, 0.06);
   --role-denied-edge: rgba(119, 55, 129, 0.22);
   --role-denied-dash: rgba(119, 55, 129, 0.55);
 
-  --role-info: #3B5BDB;
+  --role-info: #2241BB;
   --role-info-wash: rgba(59, 91, 219, 0.12);
 
   --ac-void: #EDF0F5;
@@ -258,10 +272,13 @@
   --ac-edge-strong: rgba(10, 14, 20, 0.13);
   --ac-sunken: rgba(10, 14, 20, 0.05);
 
+  /* Same defect, worse: at 0.55 and 0.48 these read 3.10-4.35:1 on the light
+     surfaces, and 423 rendered text nodes sat on them. Worst readings are now
+     11.33 / 7.97 / 5.94 / 4.66:1. */
   --ac-text-1: rgba(8, 12, 18, 0.95);
-  --ac-text-2: rgba(8, 12, 18, 0.72);
-  --ac-text-3: rgba(8, 12, 18, 0.55);
-  --ac-text-4: rgba(8, 12, 18, 0.48);
+  --ac-text-2: rgba(8, 12, 18, 0.8);
+  --ac-text-3: rgba(8, 12, 18, 0.7);
+  --ac-text-4: rgba(8, 12, 18, 0.62);
   --ac-text-inverse: #ffffff;
 
   --ac-shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.7);
