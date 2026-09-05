@@ -20,6 +20,7 @@
           SuppressOptionsUI="yes" />
     </BootstrapperApplication>
 
+    <Variable Name="VcRuntimeVersion" Type="string" Value="" />
     <Variable Name="WebView2MachineVersion" Type="string" Value="" />
     <Variable Name="WebView2UserVersion" Type="string" Value="" />
     <Variable Name="WindowsInstallationType" Type="string" />
@@ -32,6 +33,18 @@
         Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
         Value="pv"
         Result="value" />
+    <!-- DBT-P41-001: the VC++ runtime presence test, on the key Microsoft documents.
+         Win64="yes" reads the 64-bit view, which is where the x64 and arm64
+         redistributables register. Runtimes\debug\* is the debug_nonredist tree and
+         is deliberately not this key. -->
+    <util:RegistrySearch
+        Id="VcRuntimeSearch"
+        Variable="VcRuntimeVersion"
+        Root="HKLM"
+        Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\$(sys.BUILDARCH)"
+        Value="Version"
+        Result="value"
+        Win64="yes" />
     <util:RegistrySearch
         Id="WindowsInstallationTypeSearch"
         Variable="WindowsInstallationType"
@@ -48,6 +61,27 @@
         Result="value" />
 
     <Chain>
+      <!-- DBT-P41-001. Chained exactly as WebView2 is, and for the same reason: the
+           product does not work without it and Microsoft's redistribution guidance is
+           to run the redistributable as a prerequisite rather than copy the DLLs beside
+           the application. App-local copies were considered and rejected in P47 §47.9 —
+           Microsoft warns against that location because an app-local copy never
+           receives a security update.
+
+           Permanent="yes": other applications share these DLLs, so removing AetherCore
+           must not remove a runtime they depend on. Same reasoning as WebView2.
+           Vital="yes": if the runtime cannot be installed, the chain must stop rather
+           than proceed to an MSI whose Launch condition will refuse anyway.
+           /install /quiet /norestart are the redistributable's documented switches. -->
+      <ExePackage
+          Id="VCRedist"
+          SourceFile="$(var.VcRedist)"
+          DisplayName="Microsoft Visual C++ 2015-2022 Redistributable"
+          InstallArguments="/install /quiet /norestart"
+          PerMachine="yes"
+          Permanent="yes"
+          Vital="yes"
+          DetectCondition="(NOT (VcRuntimeVersion = &quot;&quot;))" />
       <ExePackage
           Id="WebView2EvergreenBootstrapper"
           SourceFile="$(var.WebView2Bootstrapper)"

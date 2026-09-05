@@ -5,6 +5,7 @@ param(
     [string]$MsiOut = 'out\release\AetherCore.msi',
     [string]$BundleOut = 'out\release\AetherCoreSetup.exe',
     [string]$WebView2Bootstrapper = 'out\prereqs\MicrosoftEdgeWebview2Setup.exe',
+    [string]$VcRedist = 'out\prereqs\vc_redist.x64.exe',
     [switch]$MsiOnly,
     [switch]$BundleOnly
 )
@@ -150,9 +151,21 @@ if (-not $BundleOnly) {
 if (-not $MsiOnly) {
     if (-not (Test-Path $msi)) { throw "Bundle requires an existing MSI: $msi" }
     $webview = (Resolve-Path $WebView2Bootstrapper).Path
+    # DBT-P41-001: the bundle chains the VC++ redistributable. Resolved and checked
+    # here rather than left to WiX, so a missing prerequisite fails with a sentence
+    # naming the file instead of a WiX variable error. This is the same discipline the
+    # vcomp140.dll sourcing above uses (DBT-P42-012) and for the same reason: the last
+    # time a redistributable file was picked up implicitly, the first plausible match
+    # on the build machine was the wrong one.
+    if (-not (Test-Path $VcRedist)) {
+        throw ("VC++ redistributable not found: $VcRedist. Download vc_redist.x64.exe " +
+               "from https://aka.ms/vs/17/release/vc_redist.x64.exe and place it there. " +
+               "DBT-P41-001: the bundle must chain it as a prerequisite.")
+    }
+    $vcredist = (Resolve-Path $VcRedist).Path
     & dotnet tool run wix build installer\wix\Bundle.wxs -arch x64 `
         -ext WixToolset.Util.wixext -ext WixToolset.BootstrapperApplications.wixext `
-        -o $bundle -d "ProductVersion=$Version" -d "MsiPath=$msi" -d "WebView2Bootstrapper=$webview"
+        -o $bundle -d "ProductVersion=$Version" -d "MsiPath=$msi" -d "WebView2Bootstrapper=$webview" -d "VcRedist=$vcredist"
     if ($LASTEXITCODE -ne 0) { throw 'AetherCore bootstrapper bundle build failed.' }
     Write-Host "Bundle built: $bundle" -ForegroundColor Green
 }

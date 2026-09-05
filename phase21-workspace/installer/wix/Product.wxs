@@ -45,6 +45,39 @@
     <Launch Condition="MsiNTProductType &lt;&gt; 2"
             Message="AetherCore does not support domain controllers." />
 
+    <!-- DBT-P41-001. Five of the six shipped binaries import VCRUNTIME140.dll and the
+         maintenance service also imports MSVCP140.dll. Those DLLs are NOT part of
+         Windows: Microsoft's own "Redistribute Visual C++ Files" page says an
+         application must deploy them, and that the redistributable should be run as a
+         prerequisite before the application installs. Every qualification run in this
+         project's history happened on a machine that already had them, so nothing ever
+         tested the machine that does not.
+
+         The bundle (Bundle.wxs) chains vc_redist and is the supported consumer path.
+         This condition covers the other one: a direct msiexec /i on a machine without
+         the runtime now REFUSES with a message naming what is missing, instead of
+         installing successfully and failing at service start with a dialog about a
+         missing DLL.
+
+         The key is the one Microsoft documents for detection, and $(sys.BUILDARCH)
+         selects the architecture the package was built for, exactly as the OpenMP file
+         selection below does. Registry key names are case-insensitive, so arm64/x64
+         match the keys the redistributable actually writes (measured on the ARM64
+         qualification VM: Version=v14.44.35211.00, Installed=1, under
+         Runtimes\arm64 and Runtimes\x64). Runtimes\debug\* is the
+         debug_nonredist tree and is deliberately NOT what this reads. -->
+    <Property Id="VCRUNTIMEVERSION">
+      <RegistrySearch Id="VcRuntimeVersion"
+                      Root="HKLM"
+                      Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\$(sys.BUILDARCH)"
+                      Name="Version"
+                      Type="raw"
+                      Bitness="always64" />
+    </Property>
+    <Launch
+        Condition="VCRUNTIMEVERSION"
+        Message="AetherCore requires the Microsoft Visual C++ 2015-2022 Redistributable ($(sys.BUILDARCH)), which is not installed on this computer. AetherCore's programs load VCRUNTIME140.dll and MSVCP140.dll from it. Install it first (search Microsoft for &quot;Visual C++ Redistributable&quot;, or run vc_redist.$(sys.BUILDARCH).exe), then run this installer again. AetherCoreSetup.exe installs it for you." />
+
     <!-- Direct MSI installs are supported for managed environments, but the consumer bundle is
          preferred because it also guarantees the Evergreen WebView2 prerequisite. Do not author
          ARPNOREPAIR: Windows Installer repair is intentionally part of the recovery contract. -->
