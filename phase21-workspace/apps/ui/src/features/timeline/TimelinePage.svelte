@@ -120,62 +120,62 @@
 <style>
   .timeline-panel,
   .recurrence-panel {
-    margin-block-end: var(--space-5);
+    margin-block-end: var(--ac-space-5);
   }
   .timeline-list {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
-    gap: var(--space-2);
+    gap: var(--ac-space-2);
   }
   .timeline-row {
     display: flex;
     align-items: baseline;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    background: var(--material-thin);
+    gap: var(--ac-space-4);
+    padding: var(--ac-space-3) var(--ac-space-4);
+    border-radius: var(--ac-radius-md);
+    background: var(--ac-material-base);
   }
   .timeline-row.failed {
-    background: var(--material-warning-soft, var(--material-thin));
+    background: var(--role-attention-wash);
   }
   .when {
-    color: var(--muted-foreground);
-    font-size: var(--font-size-caption);
+    color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
   }
   .what {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--ac-space-2);
     min-inline-size: 0;
   }
   .state {
     margin-inline-start: auto;
-    color: var(--muted-foreground);
-    font-size: var(--font-size-caption);
+    color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
   }
   .digest {
-    margin-block-start: var(--space-3);
-    color: var(--muted-foreground);
-    font-size: var(--font-size-caption);
+    margin-block-start: var(--ac-space-3);
+    color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
   }
   .empty {
-    color: var(--muted-foreground);
-    padding: var(--space-4);
+    color: var(--ac-text-3);
+    padding: var(--ac-space-4);
   }
   .ghost-action {
     border: none;
     background: transparent;
-    color: var(--accent);
+    color: var(--ac-accent);
     cursor: pointer;
     font: inherit;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
+    padding: var(--ac-space-1) var(--ac-space-2);
+    border-radius: var(--ac-radius-sm);
   }
   .recurrence-note p {
-    color: var(--muted-foreground);
-    font-size: var(--font-size-caption);
-    padding: var(--space-3) var(--space-4);
+    color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
+    padding: var(--ac-space-3) var(--ac-space-4);
   }
 </style>

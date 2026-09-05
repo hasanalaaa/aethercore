@@ -133,70 +133,70 @@
 
 <style>
   .care-panel {
-    margin-block-end: var(--space-5);
+    margin-block-end: var(--ac-space-5);
   }
   .primary-action {
     border: none;
-    background: var(--accent);
-    color: var(--background, #fff);
+    background: var(--ac-accent);
+    color: var(--role-interactive-ink);
     font: inherit;
-    padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-md);
+    padding: var(--ac-space-2) var(--ac-space-4);
+    border-radius: var(--ac-radius-md);
     cursor: pointer;
   }
   .ghost-action {
     border: none;
     background: transparent;
-    color: var(--accent);
+    color: var(--ac-accent);
     font: inherit;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
+    padding: var(--ac-space-1) var(--ac-space-2);
+    border-radius: var(--ac-radius-sm);
     cursor: pointer;
   }
   .digest {
-    margin-block: var(--space-2) var(--space-3);
-    color: var(--muted-foreground);
-    font-size: var(--font-size-caption);
+    margin-block: var(--ac-space-2) var(--ac-space-3);
+    color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
   }
   .care-list {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
-    gap: var(--space-2);
+    gap: var(--ac-space-2);
   }
   .care-row {
     display: flex;
     align-items: baseline;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    background: var(--material-thin);
+    gap: var(--ac-space-4);
+    padding: var(--ac-space-3) var(--ac-space-4);
+    border-radius: var(--ac-radius-md);
+    background: var(--ac-material-base);
   }
   .care-row.failed {
-    background: var(--material-warning-soft, var(--material-thin));
+    background: var(--role-attention-wash);
   }
   .kind {
     min-inline-size: 0;
   }
   .safety {
-    color: var(--muted-foreground);
-    font-size: var(--font-size-caption);
+    color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
   }
   .safety.auto {
-    color: var(--accent);
+    color: var(--ac-accent);
   }
   .outcome {
     margin-inline-start: auto;
-    color: var(--muted-foreground);
-    font-size: var(--font-size-caption);
+    color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
   }
   .summary {
-    margin-block-start: var(--space-3);
+    margin-block-start: var(--ac-space-3);
     font-weight: 600;
   }
   .summary.verified {
-    color: var(--accent);
+    color: var(--ac-accent);
   }
   .consent-scrim {
     position: fixed;
@@ -208,27 +208,30 @@
   }
   .consent-card {
     inline-size: min(30rem, calc(100vw - 3rem));
-    padding: var(--space-5);
-    border-radius: var(--radius-lg);
-    background: var(--card);
+    padding: var(--ac-space-5);
+    border-radius: var(--ac-radius-lg);
+    /* A modal over the scrim, so it takes the focused material every other
+       dialog in the product takes (FluidDialog's `.ac-material-focused`), not
+       the base card material. */
+    background: var(--ac-material-focused);
     box-shadow: 0 12px 40px rgb(0 0 0 / 25%);
   }
   .consent-card h4 {
-    margin: 0 0 var(--space-2);
+    margin: 0 0 var(--ac-space-2);
   }
   .consent-copy {
-    color: var(--muted-foreground);
-    margin-block: 0 var(--space-3);
+    color: var(--ac-text-3);
+    margin-block: 0 var(--ac-space-3);
   }
   .consent-list {
-    margin: 0 0 var(--space-4);
-    padding-inline-start: var(--space-5);
-    color: var(--muted-foreground);
-    font-size: var(--font-size-caption);
+    margin: 0 0 var(--ac-space-4);
+    padding-inline-start: var(--ac-space-5);
+    color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
   }
   .consent-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-3);
+    gap: var(--ac-space-3);
   }
 </style>

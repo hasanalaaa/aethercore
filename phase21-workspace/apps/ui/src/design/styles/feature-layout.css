@@ -2770,55 +2770,55 @@ header .sub {
 /* Phase 15 — secure update and privacy-first support export */ .system-care-grid {
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(min(20rem,100%),1fr));
-  gap:var(--space-4);
-  margin-block:var(--space-4)
+  gap:var(--ac-space-4);
+  margin-block:var(--ac-space-4)
 }
 
 .system-care-card {
   display:flex;
   flex-direction:column;
-  gap:var(--space-3)
+  gap:var(--ac-space-3)
 }
 
 .segmented {
   display:inline-flex;
   align-self:flex-start;
   padding:.2rem;
-  border:1px solid var(--border-subtle);
-  border-radius:var(--radius-pill);
-  background:var(--material-control)
+  border:1px solid var(--ac-border-subtle);
+  border-radius:var(--ac-radius-pill);
+  background:var(--ac-material-base)
 }
 
 .segmented button {
   border:0;
   background:transparent;
-  border-radius:var(--radius-pill);
+  border-radius:var(--ac-radius-pill);
   padding:.45rem .8rem;
-  color:var(--text-secondary)
+  color:var(--ac-text-2)
 }
 
 .segmented button.active {
-  background:var(--material-elevated);
-  color:var(--text-primary);
-  box-shadow:var(--shadow-xs)
+  background:var(--ac-material-elevated);
+  color:var(--ac-text-1);
+  box-shadow:var(--ac-shadow-card)
 }
 
 .system-care-status,.release-row {
   display:flex;
   justify-content:space-between;
-  gap:var(--space-3);
+  gap:var(--ac-space-3);
   align-items:center
 }
 
 .system-care-status span,.release-row span,.support-preview span {
-  color:var(--text-secondary);
-  font-size:var(--type-caption-size)
+  color:var(--ac-text-2);
+  font-size:var(--ac-type-caption)
 }
 
 .release-row {
-  padding:var(--space-3);
-  border-radius:var(--radius-md);
-  background:var(--surface-subtle)
+  padding:var(--ac-space-3);
+  border-radius:var(--ac-radius-md);
+  background:var(--ac-material-base)
 }
 
 .release-row>div {
@@ -2830,7 +2830,7 @@ header .sub {
   height:.35rem;
   border-radius:999px;
   overflow:hidden;
-  background:var(--surface-subtle)
+  background:var(--ac-material-base)
 }
 
 .progress-track>span {
@@ -2843,9 +2843,9 @@ header .sub {
 .support-preview {
   display:grid;
   gap:.45rem;
-  padding:var(--space-3);
-  border-radius:var(--radius-md);
-  background:var(--surface-subtle)
+  padding:var(--ac-space-3);
+  border-radius:var(--ac-radius-md);
+  background:var(--ac-material-base)
 }
 
 .support-preview ul {
@@ -2859,7 +2859,7 @@ header .sub {
 .support-preview li {
   display:flex;
   justify-content:space-between;
-  gap:var(--space-3)
+  gap:var(--ac-space-3)
 }
 
 .exported {
@@ -2899,42 +2899,42 @@ header .sub {
 
 
 /* Phase 18 driver preference controls: compact, source-adjacent, and keyboard reachable. */
-.candidate-preferences{display:grid;gap:.5rem;margin:.7rem 1rem 0;padding:.75rem;border-radius:14px;background:color-mix(in srgb,var(--surface-elevated) 76%,transparent)}
+.candidate-preferences{display:grid;gap:.5rem;margin:.7rem 1rem 0;padding:.75rem;border-radius:14px;background:color-mix(in srgb,var(--ac-material-elevated) 76%,transparent)}
 .candidate-preferences>div{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-width:0}
 .candidate-preferences>div>span{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
-.candidate-preferences button{border:0;border-radius:999px;padding:.38rem .65rem;background:var(--surface-muted);color:var(--text-secondary);font:inherit;cursor:pointer}
+.candidate-preferences button{border:0;border-radius:999px;padding:.38rem .65rem;background:var(--ac-material-base);color:var(--ac-text-2);font:inherit;cursor:pointer}
 .candidate-preferences button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
 @container ac-main (max-width:34rem){.candidate-preferences>div{align-items:flex-start;flex-direction:column}.candidate-preferences>div>span{justify-content:flex-start}}
 
 /* Phase 19 — evidence-driven Windows Health */
 .windows-health-hero .scan-orb.attention { box-shadow:0 0 0 1px color-mix(in srgb,var(--ac-warning) 28%,transparent),0 18px 48px color-mix(in srgb,var(--ac-warning) 12%,transparent); }
 .repair-health-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(15rem,100%),1fr)); gap:.7rem; margin:1rem 0 1.25rem; }
-.repair-health-grid article { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.75rem; min-height:4.4rem; padding:.9rem 1rem; border:1px solid var(--ac-line); border-radius:var(--ac-radius-md); background:color-mix(in srgb,var(--ac-surface) 84%,transparent); backdrop-filter:blur(18px) saturate(140%); }
-.health-state-dot { width:.58rem; height:.58rem; border-radius:999px; background:var(--ac-text-tertiary); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-text-tertiary) 10%,transparent); }
-.repair-health-grid article.healthy .health-state-dot { background:var(--ac-success); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-success) 11%,transparent); }
+.repair-health-grid article { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.75rem; min-height:4.4rem; padding:.9rem 1rem; border:1px solid var(--ac-border-default); border-radius:var(--ac-radius-md); background:color-mix(in srgb,var(--ac-material-base) 84%,transparent); backdrop-filter:blur(18px) saturate(140%); }
+.health-state-dot { width:.58rem; height:.58rem; border-radius:999px; background:var(--ac-text-3); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-text-3) 10%,transparent); }
+.repair-health-grid article.healthy .health-state-dot { background:var(--ac-positive); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-positive) 11%,transparent); }
 .repair-health-grid article.attention .health-state-dot { background:var(--ac-warning); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-warning) 11%,transparent); }
 .repair-health-grid small,.repair-health-grid strong { display:block; }
 .repair-health-grid code { font-size:.68rem; opacity:.72; }
-.repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { margin:1rem 0; padding:1.1rem; border:1px solid var(--ac-line); border-radius:var(--ac-radius-lg); background:color-mix(in srgb,var(--ac-surface) 82%,transparent); backdrop-filter:blur(22px) saturate(145%); }
+.repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { margin:1rem 0; padding:1.1rem; border:1px solid var(--ac-border-default); border-radius:var(--ac-radius-lg); background:color-mix(in srgb,var(--ac-material-base) 82%,transparent); backdrop-filter:blur(22px) saturate(145%); }
 .section-heading { display:flex; align-items:end; justify-content:space-between; gap:1rem; }
 .repair-diagnosis-list { display:grid; gap:.65rem; margin-top:.9rem; }
-.repair-diagnosis-list article { padding:.9rem 1rem; border:1px solid var(--ac-line); border-radius:var(--ac-radius-md); background:color-mix(in srgb,var(--ac-surface-raised) 82%,transparent); }
+.repair-diagnosis-list article { padding:.9rem 1rem; border:1px solid var(--ac-border-default); border-radius:var(--ac-radius-md); background:color-mix(in srgb,var(--ac-material-elevated) 82%,transparent); }
 .repair-diagnosis-list article>div { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
-.role-chip { font-size:.7rem; font-weight:700; padding:.18rem .45rem; border-radius:999px; background:var(--ac-fill-secondary); }
+.role-chip { font-size:.7rem; font-weight:700; padding:.18rem .45rem; border-radius:999px; background:var(--ac-material-base); }
 .repair-diagnosis-list details { margin-top:.65rem; }
 .recovery-readiness-card { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:1.2rem; align-items:center; }
 .recovery-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(10rem,100%),1fr)); gap:.5rem; }
-.recovery-facts div { padding:.7rem .8rem; border-radius:var(--ac-radius-sm); background:var(--ac-fill-secondary); }
+.recovery-facts div { padding:.7rem .8rem; border-radius:var(--ac-radius-sm); background:var(--ac-material-base); }
 .recovery-facts span,.recovery-facts strong { display:block; }
 .repair-evidence-disclosure>summary { cursor:pointer; font-weight:700; }
 .repair-plan-preview { display:grid; gap:.5rem; }
-.repair-plan-preview>div { display:grid; grid-template-columns:auto 1fr auto; gap:.65rem; align-items:center; padding:.68rem .75rem; border-radius:var(--ac-radius-sm); background:var(--ac-fill-secondary); }
+.repair-plan-preview>div { display:grid; grid-template-columns:auto 1fr auto; gap:.65rem; align-items:center; padding:.68rem .75rem; border-radius:var(--ac-radius-sm); background:var(--ac-material-base); }
 .healthy-repair-card,.recovery-escalation-card { grid-template-columns:1fr; }
 @container ac-main (max-width:50rem) { .recovery-readiness-card { grid-template-columns:minmax(0,1fr); } }
-@media (prefers-reduced-transparency:reduce) { .repair-health-grid article,.repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { backdrop-filter:none; background:var(--ac-surface); } }
-@media (prefers-contrast:more) { .repair-health-grid article,.repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { border-width:2px; background:var(--ac-surface); } }
+@media (prefers-reduced-transparency:reduce) { .repair-health-grid article,.repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { backdrop-filter:none; background:var(--ac-material-base); } }
+@media (prefers-contrast:more) { .repair-health-grid article,.repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { border-width:2px; background:var(--ac-material-base); } }
 .repair-dialog-plan { display:grid; gap:.45rem; margin:.9rem 0; }
-.repair-dialog-plan>div { display:grid; grid-template-columns:auto 1fr auto; gap:.6rem; align-items:center; padding:.65rem .75rem; border-radius:var(--ac-radius-sm); background:var(--ac-fill-secondary); }
+.repair-dialog-plan>div { display:grid; grid-template-columns:auto 1fr auto; gap:.6rem; align-items:center; padding:.65rem .75rem; border-radius:var(--ac-radius-sm); background:var(--ac-material-base); }
 .repair-dialog-plan small { opacity:.72; text-align:end; }
 [dir="rtl"] .repair-dialog-plan small { text-align:start; }
 
@@ -2963,14 +2963,14 @@ header .sub {
 }
 .sparkline polyline {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--ac-accent);
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 0.85;
 }
 .throttle-warning {
-  border-inline-start: 3px solid var(--warning, #e0a030);
+  border-inline-start: 3px solid var(--ac-warning);
 }
 .bottleneck-panel .finding-list {
   display: flex;
@@ -2983,12 +2983,12 @@ header .sub {
   align-items: flex-start;
   padding: 12px 14px;
   border-radius: 12px;
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--ac-material-base);
+  border: 1px solid var(--ac-border-default);
   transition: transform 100ms ease-out;
 }
 .finding-card.root-cause {
-  border-inline-start: 3px solid var(--accent);
+  border-inline-start: 3px solid var(--ac-accent);
 }
 .finding-card header {
   display: flex;
@@ -2999,7 +2999,7 @@ header .sub {
 .finding-card em {
   font-style: normal;
   font-size: 0.72rem;
-  color: var(--muted-foreground);
+  color: var(--ac-text-3);
   white-space: nowrap;
 }
 .finding-body {
@@ -3013,7 +3013,7 @@ header .sub {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: var(--muted-foreground);
+  color: var(--ac-text-3);
 }
 .analyze-button {
   margin-inline-start: 8px;
