@@ -23,7 +23,12 @@
     <Variable Name="VcRuntimeVersion" Type="string" Value="" />
     <Variable Name="WebView2MachineVersion" Type="string" Value="" />
     <Variable Name="WebView2UserVersion" Type="string" Value="" />
-    <Variable Name="WindowsInstallationType" Type="string" />
+    <!-- Value="" is required whenever Type is given (WIX0010). Without it this
+         file does not compile at all, which is why AetherCoreSetup.exe had never
+         been produced: the recorded x64 pipeline run (§46.16) is cargo -> tauri ->
+         wix build -> wix msi validate -> payload check, and builds the MSI only.
+         Proven pre-existing in §48.6 by building the pre-P48 file unchanged. -->
+    <Variable Name="WindowsInstallationType" Type="string" Value="" />
 
     <!-- Microsoft documents pv > 0.0.0.0 in either location as the presence test. -->
     <util:RegistrySearch
@@ -34,7 +39,7 @@
         Value="pv"
         Result="value" />
     <!-- DBT-P41-001: the VC++ runtime presence test, on the key Microsoft documents.
-         Win64="yes" reads the 64-bit view, which is where the x64 and arm64
+         Bitness="always64" reads the 64-bit view, which is where the x64 and arm64
          redistributables register. Runtimes\debug\* is the debug_nonredist tree and
          is deliberately not this key. -->
     <util:RegistrySearch
@@ -44,7 +49,7 @@
         Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\$(sys.BUILDARCH)"
         Value="Version"
         Result="value"
-        Win64="yes" />
+        Bitness="always64" />
     <util:RegistrySearch
         Id="WindowsInstallationTypeSearch"
         Variable="WindowsInstallationType"

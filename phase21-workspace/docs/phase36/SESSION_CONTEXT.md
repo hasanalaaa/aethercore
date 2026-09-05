@@ -9848,7 +9848,7 @@ re-argued, never allowed to block a row.
 | 3 `DBT-P41-001` on a clean machine | **DONE — PASS on ARM64** | §48.3 — snapshot `P48-PRE-REDIST-REMOVAL {318d6369-f9d9-47f9-955b-f7611a45a986}`. Runtime removed and **confirmed gone by measurement** (a plain `msiexec /x` returned 0 and removed nothing). Install **refused: 1603**, message naming the runtime in full, **nothing installed**. Binaries on that machine die `0xC0000135 STATUS_DLL_NOT_FOUND`. Runtime restored by reinstall, not by snapshot; product reinstalled exit 0, 16 files, pipe SDDL byte-identical, `engineLabel localModel`. Item 2's icon fold-in paid: OS-extracted `ProductIcon.ico` sha256 `4a49d865…`, byte-identical to source |
 | 4 `DBT-P47-001` the light theme | **DONE — PASS** | §48.4 — **0 of 2,986 text nodes below WCAG AA in either theme**, from 1,577. Worst per page: dark **4.75-5.30:1**, light **4.57-4.67:1**. Layout sweep **132/132 populated and 132/132 with no service**, 11 pages x 1280/1024/960 x en,ar x dark,light. `feature-layout.css` literals **440 -> 84**, var() references **64 -> 423**. New committed instrument `tools/contrast-sweep.mjs`, which found its own blind spot (gradients) after a screenshot contradicted it |
 | 5 whatever Item 1 says is genuinely open | **DONE** | §48.5 — `DBT-P42-005` already closed (verified, nothing remains). `DBT-P45-004` **ACCEPTED**: measured **4.0% (8/200)**, not the recorded 2% (a 1/50 sample); raising the ceiling **disproved by experiment** (480ms and 900ms budgets both 2/50), harness committed. `DBT-P48-002` **FIXED** — 7 controls that could not fire, gate committed failing first. `DBT-P48-003` raised **and fixed** — two more temp-leak families the `DBT-P42-013` fix never covered. `cargo test --workspace` **620 passed, 0 failed**, **0** temp entries left behind |
-| 6 the x64 items | NOT STARTED | — |
+| 6 the x64 items | **BLOCKED-MACHINE (6.A/6.B/6.C), and one finding that was not** | §48.6 — `HUSSEIN` unreachable on **four** independent checks. But *unbuilt* is not a machine gate: building `Bundle.wxs` found **`DBT-P48-004` — `AetherCoreSetup.exe` has never been buildable**, a WIX0010 hard error proven pre-existing by compiling the pre-P48 file unchanged. **FIXED**; bundle now builds (sha256 `796866d5…`) with `VCRedist` as the first chained package, read out of Burn's own manifest |
 | 7 release-readiness statement | NOT STARTED | — |
 
 ## 48.1 ITEM 1 — THE DEBT LEDGER, RECONCILED
@@ -9908,7 +9908,7 @@ owns it now.
 | `DBT-P40-001` | **FIXED** | `tools/p39-probes/` is a workspace member with `[[bin]] name = "p39_pipe_attack"`; nothing under `apps/aetherctl/examples/` |
 | `DBT-P40-002` | **FIXED** | `scripts/check-msi-payload.ps1` derives its allowlist from `installer/wix/Product.wxs`; wired as `[7/7]` of `scripts/build-arm64-msi.cmd` and after `wix msi validate` in `scripts/build-installer.ps1`; `check-msi-payload.selftest.ps1` exercises the clean case and **both** failure branches |
 | `DBT-P40-003` | **FIXED** `440683d` | `tools/gd4-audit/{Cargo.toml,src}` present; `crates/security-audit/examples/` does not exist |
-| `DBT-P41-001` | **FIXED on ARM64; x64 half BLOCKED-MACHINE** | §48.3 — `Launch` condition proven to refuse on a machine with the runtime removed (1603, message in full, nothing installed), and the binaries proven to die `0xC0000135` there. The `Burn` chain is authored but unbuilt: `build-installer.ps1` is x64-only and the ARM64 recipe builds no bundle |
+| `DBT-P41-001` | **FIXED on ARM64; x64 execution BLOCKED-MACHINE** | §48.3 — `Launch` condition proven to refuse on a machine with the runtime removed (1603, message in full, nothing installed), and the binaries proven to die `0xC0000135` there. §48.6 — the Burn chain is now **compiled and verified in a built bundle**, `VCRedist` first in the chain, `vc_redist.arm64.exe` as its payload. Only executing that chain on x64 remains |
 | `DBT-P41-002` | **FIXED** `cc9c51e` | fixed at the type in §42.2; measured fixed on both the offline and the service path (§42.3, §42.8) and on ARM64 (§43.7) |
 | `DBT-P41-002a` | **FIXED** | the gpu fault's false detail string is gone; gpu measures engines. Subsumed by the `DBT-P41-002` fix |
 | `DBT-P41-002b` | **FIXED structurally** | `crates/performance-telemetry/src/windows_impl.rs:263-266` — `read_u64` now decodes a full `PDH_FMT_COUNTERVALUE` through `decode_pdh_value`; there is no undersized destination left to overflow. The original question ("did it corrupt anything observable?") is moot, not answered — recorded, not claimed |
@@ -9939,6 +9939,7 @@ owns it now.
 | `DBT-P47-002` | **FIXED** `5d4b957` | `release/UNINSTALL.txt:72-79` now names `%LOCALAPPDATA%\com.aethercore.desktop` and its ~23 MB of WebView2 cache. Deliberately **not** in the MSI qualified at sha256 `0a2c2f89…`; it lands in the next package |
 | `DBT-P47-003` | **OPEN — recorded, product decision** | `per_processor_busy_bp` means "nothing measured" on Windows (`windows_impl.rs:423`) and "the aggregate, once" on macOS/Linux (`macos_impl.rs:224`, `linux_impl.rs:502`). Filling it on one platform deepens the split |
 | `DBT-P47-004` | **OPEN — recorded, no honest source** | GPU adapter identity and `dedicated_total_bytes`. No PDH counter for capacity; DXGI is COM in a session-0 LocalSystem service; WMI `AdapterRAM` is 32-bit and wraps above 4 GB. 0 is the honest reading |
+| `DBT-P48-004` | **FIXED — and it was a shipping gap nobody had seen** | §48.6 — `Bundle.wxs` carried a WIX0010 hard error predating this session, so `AetherCoreSetup.exe`, the *preferred* consumer install path, had **never been compiled**. Proven pre-existing by building the pre-P48 file from `12c7852` unchanged. Fixed; the bundle now builds and its chain is `VCRedist` → `WebView2` → `AetherCoreMsi` |
 | `DBT-P48-003` | **FIXED** | §48.5 — two temp-leak families the `DBT-P42-013` fix never covered (`axt-*` 7 dirs, `p32-gd-*` 6 dirs), both the same start-of-next-run shape. Converted to `tempfile::TempDir`. Measured after: **0** temp entries left by a full `cargo test --workspace` |
 | `DBT-P48-002` | **FIXED** | §48.5 — gate `p48_pressable_handlers_can_fire` committed **failing** in `3eb37c8`, then the seven controls rewired onto `className` + `onclick`. Gate passing, `svelte-check` back to its 16-warning baseline |
 | `DBT-P48-002` (detail) | as raised in §48.4 | seven of `Pressable`'s thirty-seven call sites (5 in `CarePanel.svelte`, 2 in `TimelinePage.svelte`) nest a `<button>` inside `Pressable`'s own `<button>`, which is invalid HTML and a nested interactive control; and they wire the handler as `<Pressable on:press={…}>` while `Pressable.svelte` has **no `createEventDispatcher`** and `fluid-press.ts` dispatches no `press` event, so the handler cannot fire. Found while tracing an opaque UA-default grey slab behind those buttons (1.45:1), which **is** fixed. Same class as the two dead Insights controls P47 fixed. Not fixed here: it is a behavioural change across two components and needs its own failing test first |
@@ -9969,6 +9970,7 @@ again. Changes since the reconciliation:
     DBT-P48-002  raised -> FIXED  Item 4 raised it, Item 5 (§48.5) fixed it
     DBT-P45-004  OPEN -> ACCEPTED Item 5 (§48.5), measured 4.0%, escape routes disproved
     DBT-P48-003  raised -> FIXED  Item 5 (§48.5)
+    DBT-P48-004  raised -> FIXED  Item 6 (§48.6) — the bundle had never compiled
 
 `DBT-P36-008` is counted FIXED, not SUPERSEDED: it was closed on its own
 evidence in 2026-08-30 and `DBT-P40-002` retired the *class*, not the row.
@@ -10828,3 +10830,109 @@ findings rest on a POSIX approximation, and that is a **security-evidence gap**,
 not a cosmetic one. It is not promoted into this item and no design is invented
 for it here: native Windows ACL evidence is a designed capability. It is stated
 in §48.7 as something a first real user's auditor would be right to question.
+
+## 48.6 ITEM 6 — THE x64 ITEMS: **BLOCKED-MACHINE**, and one thing that was not
+
+### Reachability, checked first and recorded as the brief directs
+
+`HUSSEIN`, the MSI Pulse 16 AI C1VFKG of §41. **Four independent checks, all
+negative**, one more than §47.9 ran:
+
+    ping HUSSEIN / hussein / hussein.local / HUSSEIN.local   no response, all four
+    host / dscacheutil                                       NXDOMAIN, both names
+    dns-sd -B _smb._tcp local     ONE Windows SMB service on this network:
+                                  "Windows 11" — the Parallels VM, not the physical box
+    ListAgents                    AetherCore x86_64 Windows physical qualification
+                                    [86265d]  Remote Control  OFFLINE
+                                  P46 Lane C x64 [ee2160]      OFFLINE
+                                  hussein-mutable-fiddle [2dcfc6]  OFFLINE
+
+**6.A, 6.B and 6.C are `BLOCKED-MACHINE`.** Plainly: this session cannot reach an
+x64 Windows machine, so it cannot verify the 4.A pipeline claim, cannot
+re-measure the bias, and cannot repeat Item 3's clean-machine test on x64.
+
+- **6.A** — §46.16 stays **a peer's claim, not a verdict**, unchanged.
+- **6.B** — `DBT-P42-011`. The brief's own instruction is to re-measure on the
+  current build **before explaining anything**. There is nothing here to measure
+  on: the bias was measured on x64 silicon, §43.5 already settled that ARM64
+  shows no such bias, and re-running on this Mac would answer a different
+  question. **Not attempted, not theorised, not explained.**
+- **6.C** — needs the machine and a restore point on it.
+
+`DBT-P42-012` joins them for the reason §47.7 gave: its `vcomp140.dll` sourcing
+and hash assertion live in the x64-only `build-installer.ps1`.
+
+### What was NOT blocked, and what it found
+
+Item 3 left one half of `DBT-P41-001` recorded as "authored, unbuilt". *Unbuilt*
+is not a machine gate — it is a compile, and this machine can compile. So the
+bundle was built on the ARM64 VM, not as the shipping artefact but to settle
+whether the authoring is real.
+
+**It is not, and it never was.**
+
+    wix build installer\wix\Bundle.wxs -arch arm64 ...
+    Bundle.wxs(26) : error WIX0010: The Variable/@Value attribute was not found;
+                     it is required when attribute Type is specified.
+    Bundle.wxs(40) : error WIX0004: The RegistrySearch element contains an
+                     unexpected attribute 'Win64'.
+    BUNDLE_BUILD_EXIT=4
+
+The second is **this session's**: `util:RegistrySearch` takes `Bitness` in WiX v4+,
+not v3's `Win64`. Fixed.
+
+The first is **not**, and it is the finding. `<Variable Name="WindowsInstallationType"
+Type="string" />` has no `Value`, which is a hard error. To be certain rather than
+plausible, the **pre-P48 file was built unchanged**, straight out of `12c7852`:
+
+    wix build Bundle-pre-p48.wxs -arch arm64 ...
+    Bundle-pre-p48.wxs(25) : error WIX0010: ...
+    ORIG_BUNDLE_BUILD_EXIT=10
+
+> **`DBT-P48-004` — `AetherCoreSetup.exe` has never been buildable.** `Bundle.wxs`
+> carries a WIX0010 hard error that predates this session; the bundle does not
+> compile and therefore **has never been produced**. The consumer installer — the
+> one that chains WebView2, and now `vc_redist` — is the *preferred* install path
+> in `Product.wxs`'s own comment, and it does not exist. Nobody noticed because
+> the recorded x64 pipeline (§46.16) is `cargo → tauri → wix build → wix msi
+> validate → payload check`: it builds **the MSI**, and stops. **FIXED** in this
+> item; risk was **high** and is now retired.
+
+This is the "tests that never touch the real path" pattern at package level: every
+gate in eleven phases exercised the MSI, and the artefact a real user would
+download was never once compiled.
+
+### The bundle, built — and the chain read out of Burn's own manifest
+
+    wix build installer\wix\Bundle.wxs -arch arm64 ...   BUNDLE_BUILD_EXIT=0
+    AetherCoreSetup-arm64.exe   1,113,930,403 bytes
+    sha256 796866d59d8d4c70777bb00ba175ae85ba8b63f1ebe761ccb92094d69667e413
+
+    wix burn extract ...   EXTRACT_EXIT=0   manifest.xml 6,366 B
+
+    chain, in order:
+      ExePackage   VCRedist
+      ExePackage   WebView2EvergreenBootstrapper
+      MsiPackage   AetherCoreMsi
+
+    <RegistrySearch Id="VcRuntimeSearch" Variable="VcRuntimeVersion" Root="HKLM"
+       Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\arm64" Value="Version"
+       Win64="yes" Type="value" VariableType="string" />
+    DetectCondition="(NOT (VcRuntimeVersion = &quot;&quot;))"
+    FilePath="vc_redist.arm64.exe"
+
+Read out of the **built** bundle, not the source. `Bitness="always64"` is what
+compiles to Burn's internal `Win64="yes"`, which is why the manifest shows the
+latter.
+
+**What this does and does not settle.** `DBT-P41-001`'s Burn half is now
+**authored, compiled, and present in a real bundle with the redistributable as
+its first chained package**. What remains is executing that chain on a machine
+without the runtime, and doing it for x64 — and that is the machine gate, not the
+authoring gate it was an hour ago.
+
+The two prerequisites were fetched from Microsoft and are recorded by hash, the
+same discipline `DBT-P42-012` imposed on `vcomp140.dll`:
+
+    vc_redist.arm64.exe             11,722,336 B  sha256 5139e144…
+    MicrosoftEdgeWebview2Setup.exe   1,783,000 B  sha256 17debf797a6c737959bc588236e897936ffac1af5f7e515e674ab32f9edfe719
