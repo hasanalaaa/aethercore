@@ -9017,7 +9017,7 @@ start: `0 0` — local `main` and `origin/main` identical at `77836cd`.
 | 1.C.1 the ten screens with no dedicated pass | DONE | §47.4 — 4/4 signature elements on 11/11 screens; 126 literal radii is the one finding, 3 apparent violations cleared |
 | 1.C.2 the four real defects the port surfaced | DONE | §47.4 — 2 already fixed by the port, 2 fixed here (`6fdc01c`, `df90889`); both brief counts corrected with measurements |
 | 1.C.3 ~430 colour literals in `feature-layout.css` | DECIDED — migrate, registered as `DBT-P47-001` | §47.4 — 440 literals measured; light theme reads 1.02:1 black-on-black; sweep now runs both themes, 132/132 x2 |
-| 2 Gate 5 on ARM64 (verify the §41.17 claim first) | NOT STARTED | — |
+| 2 Gate 5 on ARM64 (verify the §41.17 claim first) | **DONE — PASS** | §47.5 claim verified (evidenced for 0.1.6, stale); §47.7 re-run on 0.1.11: validate EMPTY, payload PASS, 16 rows, uninstall 0, **0 survivors on all 14**, reinstall 0, pipe SDDL byte-identical, `engineLabel localModel` from the service. `DBT-P47-002` raised; `DBT-P42-012` still needs x64 |
 | 3 icon pipeline (`DBT-P36-004` stays OPEN) | NOT STARTED | — |
 | 4 the 2.B decision (`DBT-P42-009`, `DBT-P42-010`) | NOT STARTED | — |
 | 5.A independently verify the 4.A x64 claim | NOT STARTED | — |
@@ -9377,3 +9377,226 @@ rule.
               product itself is recoverable more cheaply: the previous MSIs are
               on the VM at C:\AetherCore-P36\build\out\, including
               AetherCore-0.1.11-arm64.msi, 1,099,653,120 bytes.
+
+## 47.7 ITEM 2 — GATE 5 ON ARM64, CURRENT BUILD: **PASS**
+
+Every number below is raw output from the ARM64 VM.
+
+### Two things had to be repaired before the recipe could run at all
+
+**The VM's `node_modules` had been copied, not installed.** `pnpm install
+--frozen-lockfile` answered "Already up to date" in 1.2 s and the build died on
+`'vite' is not recognized`. `apps/ui/node_modules/.bin` held five extensionless
+Unix shims and no `.CMD` shims; `node_modules` held `vite.lnk`, `svelte.lnk`,
+`typescript.lnk`, `svelte-check.lnk` — Windows shortcut *files* where pnpm's
+symlinks should be — and the root virtual store was missing
+`.pnpm/vite@8.2.1/node_modules/vite/package.json`. A tree that had been copied
+at some point, turning every symlink into a `.lnk`. Removing both `node_modules`
+and re-running the same command fixed it: exit 0, 50 packages, **all 50 reused
+from the local content-addressable store**, nothing downloaded — so the
+lockfile still determines the tree.
+
+**`prlctl exec` argv is capped well below 16 KB.** The base64-through-argv form
+the earlier briefs prescribe fails at a 3.5 KB script with
+`PrlVmGuest_RunProgram: Unable to open new session`. Everything here stages the
+`.ps1` on the Mac and runs it from `\\Mac\dev\p36-stage\p47\` instead (§47.5).
+Scripts must also be **pure ASCII** — an em dash in a comment reached PowerShell
+mis-decoded and produced a parse error that aborted the whole file. That
+particular failure was benign because PowerShell parses before it executes, so
+the uninstall in that script did not run; the service was confirmed still
+RUNNING before retrying.
+
+### Step 1 -- source sync
+
+Tree brought to `main@b28722d` from `git archive HEAD:phase21-workspace`,
+34,703,360 bytes, 1,299 tracked files, `tar -xf` exit 0. **13 files HEAD no
+longer tracks were pruned**, including `crates/security-audit/examples/
+gd4_live_audit.rs` (moved to `tools/gd4-audit` in `440683d`), three macOS `._`
+resource forks, and a `services/maintenance-service/C??ProgramData\...`
+directory left by an old test writing to a mangled path. Spot-checked after:
+`crates/product-identity/src/lib.rs` present, `tools/gd4-audit/Cargo.toml`
+present, `apps/ui/tools/verify-tokens.mjs` present, `insights.proto` carrying
+`string id = 7`.
+
+### Step 2 -- build. EXPECTED met on all four criteria
+
+    scripts\build-arm64-msi.cmd            EXITCODE=0
+    [2/7] cargo release, fixed 5-package set   Finished in 1m 17s
+    [3/7] tauri build --no-bundle              Finished in 2m 35s
+    [5/7] wix build -arch arm64                ProductCode {98FCE2D5-44F0-A27C-A48B-8720FFE672F0}
+    [6/7] wix msi validate                     0 lines emitted  <- EMPTY, zero ICE
+    [7/7] PAYLOAD_CHECK=PASS                   every MSI file authored in Product.wxs
+
+    MSI     C:\AetherCore-P36\build\out\AetherCore-0.1.11-arm64.msi
+    bytes   1,099,857,920      (the previous 0.1.11 was 1,099,653,120 -- the
+                                delta is the Svelte port inside the desktop exe)
+    sha256  0a2c2f89334c570f2e3f5120d47da123f2ab97da74b6e59ca695c8e5509b6ab5
+
+**16 File rows**, read out of the MSI's own `File` table rather than counted off
+disk. Row 7 is `libomp140.aarch64.dll`, 599,504 B, in `ServiceComponent` — the
+P46 `$(sys.BUILDARCH)` selection (§46.16) picking the ARM64 OpenMP runtime and
+not `VCOMP140.DLL`, proven on the artefact.
+
+The ProductCode is unchanged from the installed 0.1.11 because it is a
+deterministic function of version and architecture. Same version means the same
+ProductCode means a **reinstall**, never a major upgrade -- as designed.
+
+### Step 3 -- uninstall. EXPECTED exit 0
+
+    msiexec /x {98FCE2D5-44F0-A27C-A48B-8720FFE672F0} /qn /l*v
+    UNINSTALL_EXIT=0
+    LOG_BYTES=149898   C:\AetherCore-P36\logs\p47\uninstall.log
+    MSI (c) (F8:18) [13:56:12:655]: MainEngineThread is returning 0
+
+No 1603, no `InstallValidate` return value 3, with the service RUNNING at the
+start of the transaction.
+
+### Step 4 -- the fourteen-check survivor sweep. **ZERO SURVIVORS ON ALL FOURTEEN**
+
+     1  INSTALLDIR              False                        clean
+     2  PROGRAMDATA             False                        clean
+     3  SERVICE                 absent(1060)                 clean
+     4  PIPE_COUNT              0                            clean
+     5  ARP_COUNT               0                            clean
+     6  HKLM_SOFTWARE_AETHER    False                        clean
+     7  HKCU_SOFTWARE_AETHER    False                        clean
+     8  STARTMENU               0                            clean
+     9  SCHEDULED_TASKS         0                            clean
+    10  FIREWALL_RULES          0                            clean
+    11  HKLM_SERVICES_KEY       False                        clean
+    12  EVENTLOG_SOURCE         0                             clean
+    13  HKEY_USERS_MARKERS      0                            clean
+    14  FILESYSTEM_SWEEP        4 raw hits / 0 machine-wide  clean
+    SURVIVORS = 0
+
+Check 14 by root, which is the measurement that decides it:
+
+    C:\Program Files          0 hit(s)
+    C:\Program Files (x86)    0 hit(s)
+    C:\ProgramData            0 hit(s)
+    C:\Windows\System32       0 hit(s)
+    C:\Windows\SysWOW64       0 hit(s)
+    C:\Users                  4 hit(s)
+    TOTAL=4  UNDER_USER_PROFILE=4  MACHINE_WIDE=0
+
+The sweep is read-only by construction. **Nothing was deleted by hand.** All
+four raw hits, with creation times:
+
+    2026-09-02 22:40  C:\Users\hasanalaaa\...\Recent\AetherCore.lnk
+    2026-08-31 19:02  C:\Users\hasanalaaa\...\Recent\AetherCore_Commercial_Distribution_Research.md.lnk
+    2026-08-31 20:08  C:\Users\P36StandardUser\...\Recent\AetherCore_Commercial_Distribution_Research.md.lnk
+    2026-08-31 20:33  C:\Users\P36StandardUser\AppData\Local\com.aethercore.desktop
+
+Three are Explorer Recent-items shortcuts the OS wrote, two of them for a
+*document* whose filename contains the product name. The fourth is real product
+data and is examined rather than waved away, below.
+
+### A finding the sweep produced -- **DBT-P47-002**, a documentation defect
+
+`C:\Users\P36StandardUser\AppData\Local\com.aethercore.desktop` is **274 files,
+23,258,063 bytes**, almost all of it `EBWebView\` -- the WebView2 user-data
+directory the desktop app creates at runtime, in the profile of whichever user
+ran it. Created 2026-08-31 20:33, five days before this uninstall.
+
+It is **not an uninstaller defect**: a per-machine MSI runs in one account's
+context and cannot enumerate other users' profiles. That is the same documented
+limit check 13 exists for, and it is why MACHINE_WIDE=0 is the criterion. The
+uninstall log references it zero times -- `com.aethercore.desktop` 0 hits,
+`P36StandardUser` 0 hits. The MSI never knew it was there.
+
+It **is** a defect in `release/UNINSTALL.txt`. That file's NOTES section names
+the per-user HKCU marker as the one thing that can remain in another user's
+hive, and calls it "one integer" holding "no data". It does not mention 23 MB of
+WebView2 cache in `%LOCALAPPDATA%`, and the KEPT section covers only what the
+user chose to save and changes made to Windows. The document is more absolute
+than the behaviour.
+
+> **`DBT-P47-002` -- `UNINSTALL.txt` does not mention the per-user WebView2
+> directory.** `%LOCALAPPDATA%\com.aethercore.desktop` (274 files, 23.3 MB
+> measured) survives uninstall in the profile of any user who ran the desktop
+> app and was not the account that uninstalled. Risk: **low** -- no product
+> state, no user data, browser cache only -- but the shipped promise does not
+> say so. Fix: one paragraph in the same NOTES section that already states the
+> HKCU limit. **Deliberately NOT applied to the MSI qualified above**, whose
+> payload is fixed at sha256 `0a2c2f89...`; it lands in the next package.
+
+### Step 5 -- reinstall, and every Gate 2 property re-proven
+
+    msiexec /i AetherCore-0.1.11-arm64.msi /qn /l*v      INSTALL_EXIT=0
+    LOG_BYTES=167648        MainEngineThread is returning 0
+
+| Gate 2 property | expected | observed | |
+|---|---|---|---|
+| install dir file count | 16 | **16** | PASS |
+| service state | Running | Running | PASS |
+| `sc qc` start type | AUTO_START (DELAYED) | `2 AUTO_START (DELAYED)` | PASS |
+| service account | LocalSystem | LocalSystem | PASS |
+| `sc qsidtype` | UNRESTRICTED | UNRESTRICTED | PASS |
+| pipe SDDL | the §10 baseline | **byte-identical** | PASS |
+| install-dir ACLs | §10 baseline | `NT SERVICE\AetherCoreMaintenance:(OI)(CI)(RX)`, `BUILTIN\Users:(OI)(CI)(RX)`, `BUILTIN\Administrators:(OI)(CI)(F)`, `NT AUTHORITY\SYSTEM:(OI)(CI)(F)` | PASS |
+| ARP | AetherCore 0.1.11 | `{98FCE2D5-...}` 0.1.11 | PASS |
+| `HKLM\SOFTWARE\AetherCore\InstallVersion` | 0.1.11 | 0.1.11 | PASS |
+| ProgramData recreated | yes | 5 files (state 4, logs 1, support-staging 0) | PASS |
+| `ipc_probe*` in payload | absent | absent | PASS |
+| gguf sha256 | `6a1a2eb6...9407e` | `6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e` | PASS |
+
+The pipe DACL, read with `NamedPipeClientStream(...).GetAccessControl()` and
+compared as a string against the baseline recorded at the top of this ledger:
+
+    O:S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229)
+    BYTE-IDENTICAL TO THE RECORDED BASELINE: True
+
+`(A;;0x12008b;;;AU)` is the AU pair merged -- `FR|DC = 0x120089|0x2 = 0x12008b`.
+Not drift, and the brief says so; it is also exactly the string every prior
+record on this VM carries.
+
+`sc sdshow` unchanged:
+`D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)`
+
+The 16 installed files, hashed on disk after the install:
+
+      aethercore-consent-broker.exe               587264  22cdf95286332b76579be51af2865aaebba5c0a35e718d4e86e7292dde0368b4
+      aethercore-desktop.exe                     6572032  377173eab0425f83630ab31b7511738e57524e299529164c3b2725f693441d82
+      aethercore-install-hardener.exe             255488  c1894b34a651b495d6465addeacf921e89298243dc0ff1a9adc6984c0f42adb8
+      aethercore-maintenance-service.exe         9853952  bea286a54f8f6fa8e93e186640bed91bbbe41b249d4293cf6a9fa998210cb649
+      aethercore-update-broker.exe                673280  da2c99d18daffa3e5b365f416ead5c06e54ddd92c21f93c97bf32d37d592393d
+      aetherctl.exe                              3989504  71652647dd411e92b2ac2962cc13b0a0df7f3a217f19b1b1f4edba99e5b1cb40
+      Apache-2.0.txt                               11358  cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+      cis_map.json                                  3103  9caf01b4a2f7d2bfda3111395212b27046f6ae614bc847cebaadfe33c9ee8d97
+      libomp140.aarch64.dll                       599504  d2649698fc68466ee88cf58ae3ab0fab106f29326e83aaaa5643d30651a962e3
+      models.manifest.json                           898  070b6dedc37664250e4029b8360a1e9b30a1d40b6d776a83ddd0631247dae57e
+      Qwen-GGUF-NOTICE.txt                         11343  832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e
+      qwen2.5-1.5b-instruct-q4_k_m.gguf       1117320736  6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e
+      UNINSTALL.txt                                 3206  34f5f10357de5b7cb475f9b016ebac138f6230d756ffbc837e9d2fe7b02a0ad4
+      update-trust.json                               83  d4ad925d86f64560bd80c77eae8c606fe810c5f670a7cd42df0836b0653c8b37
+      vulndb.json                                   6704  ab76528eacc58fe910d82347d49919d50949954a25649e677eaaf52fdf37f303
+      vulndb.manifest.json                           142  2c29c19b2760167fab8b292dde744da51ae8b137a01c870701287fb49d01daa6
+
+### `engineLabel` -- from the running service, which is the only thing that proves it
+
+    C:\Program Files\AetherCore\aetherctl.exe insights list
+    exit=0
+    == insights list ==
+    engineLabel                        localModel
+    insights                           []
+
+`localModel` present, `ruleFallback` absent, over the named pipe from the
+installed binary to the installed service. The contrast is recorded beside it so
+nobody substitutes the weaker check later:
+
+    aetherctl self-check --load-model
+    exit=7   aetherctl: capability not available (embeddedModelLoaderNotCompiled)
+
+Exit 7 there is correct by design and proves nothing about the service.
+
+### What this run did NOT prove, stated rather than implied
+
+**`DBT-P42-012` stays unverified end-to-end.** §46.1 parked its six numbered
+checks on "a real `build-installer.ps1` + WiX run" and deferred them to this
+lifecycle. They did not happen here, and could not: the vcomp140.dll sourcing
+and the 193,152-byte / `55aba23c...` hash assertion live in
+`scripts/build-installer.ps1`, which is the **x64** pipeline -- it hardcodes
+`-arch x64`, `AetherCore/$Version/x64` and requires `vcomp140.dll` in the
+payload. The ARM64 recipe is `scripts/build-arm64-msi.cmd` and stages
+`libomp140.aarch64.dll` instead. DBT-P42-012 needs the x64 machine, and moves to
+Item 5's blocked set rather than being quietly counted as passed here.
