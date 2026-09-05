@@ -11211,7 +11211,7 @@ the measuring-instrument pattern §47 was caught by.
 | 1 build the current source on x64 (MSI + bundle) | **DONE — every criterion met** | §49.2 — all exit 0; `wix msi validate` **0 lines emitted**, no suppression; `PAYLOAD_CHECK=PASS`; **16 File rows**, row 7 `vcomp140.dll` proving the `$(sys.BUILDARCH)` selection on the x64 artefact; MSI `77ee416b…` 1,100,271,616 B; the **first x64 bundle ever compiled**, `d0398765…` 1,128,354,997 B, chain `VCRedist` → `WebView2` → `AetherCoreMsi` read out of Burn's own manifest. `DBT-P42-012`'s guard fired correctly against the real four-file trap. New **`DBT-P49-001`** |
 | 2 Gate 5 on x64 against this build | **DONE — PASS** | §49.4 — restore point `P49-PRE-GATE5` seq **6**, verified by enumeration. Against MSI `77ee416b…`: uninstall exit 0 **twice**, **zero survivors on all fourteen both times**, `MACHINE_WIDE=0` both times, install and reinstall exit 0. 16 files **MATCHED=16 MISMATCH=0** against the built payload; service RUNNING/LocalSystem/AUTO_START(DELAYED); SID **UNRESTRICTED**; ACLs = §10 baseline; `DEV_BINARY_IN_INSTALL_IMAGE=NO`; six verbs with timings; pipe SDDL **byte-identical**; `engineLabel localModel` from the running service. `UNINSTALL.txt`'s corrected text measured claim-by-claim |
 | 3 install `AetherCoreSetup.exe` — nobody ever has | **DONE — PASS, 4 UI findings** | §49.5 — first execution by anyone. `BUNDLE_EXIT=0` in 121 s. Both prerequisites detected **Present** and skipped, MSI installed anyway, `restart: None` even on a machine already carrying `RebootPending=1`. Result **indistinguishable** from the MSI install on all 12 measured properties incl. byte-identical pipe DACL and `engineLabel localModel`. Uninstall through the bundle exit 0, **zero survivors on all fourteen**, both package caches released, prerequisites correctly survived. New **`DBT-P49-002`** (unbranded/uninformative UI) and **`DBT-P49-003`** (two `%TEMP%` logs) |
-| 4 `DBT-P42-011` the bias, re-measured | NOT STARTED | — |
+| 4 `DBT-P42-011` the bias, re-measured | **DONE — DOES NOT REPRODUCE** | §49.6 — **nine** rounds on the original machine and silicon under real sustained load. Disk-latency 3.47x **gone** (mean ratio 0.97, product *below* host in 4 of 6). Both CPU series **flip sign** — §43.5's own criterion for noise. Surviving means +3.94 / +4.22 pts are smaller than the **±14-point spread the host counter shows against itself** at 100 ms vs 1 s. Counter-object candidate **disproved**: `\Processor Information(_Total)\` and `\Processor(_Total)\` agree within 0.49 pts on a hybrid Core Ultra 9. Cause deliberately **not hunted**, per the brief. New **`DBT-P49-004`** |
 | 5 the VC++ runtime guard on x64, without breaking this machine | NOT STARTED | — |
 | 6 the statement §48.7 could not make | NOT STARTED | — |
 | owner register | listed, not attempted | §49.0 note below |
@@ -12028,3 +12028,170 @@ silently when its prerequisites are already present, uninstalls cleanly through
 its own ARP entry, releases both package caches, and leaves zero machine-wide
 survivors. What is wrong with it is entirely on the surface, and is now written
 down as `DBT-P49-002`.
+
+## 49.6 ITEM 4 — `DBT-P42-011` RE-MEASURED: **THE BIAS DOES NOT REPRODUCE**
+
+The brief's instruction was explicit: re-measure on the current build **before
+explaining anything**, and if the bias is gone, *say so and stop*. It is gone.
+This section says so, gives the numbers, gives the one control measurement that
+makes a negative result credible, and stops.
+
+### What was recorded, and what this had to reproduce
+
+    §42.3 / §42.8, on THIS machine, 2026-09-02, pre-P45-field-boundary-fix:
+      cpu offline    product 58.38%   host 50.91%   delta +7.47 pts   ratio 1.147
+      cpu service    product 52.31%   host 48.22%   delta +4.09 pts   ratio 1.085
+      disk latency   product 833 us   host 240 us   delta +593 us     ratio 3.47
+    "three readings, all the same direction, all sizeable"
+
+### How it was measured this time
+
+Same machine — `Intel(R) Core(TM) Ultra 9 185H`, 22 logical processors — against
+MSI `77ee416b…` installed and its service RUNNING. **Nine rounds**, not three.
+Real sustained load: 11 CPU-spinning .NET threads plus one 4 MB read/write loop,
+compiled with `Add-Type` and run in a **separate process** so the measuring
+script never competes with the load for a runspace. Host reading 51–63%.
+
+The one thing this run does that §42.3 did not, and the reason it can settle
+anything: **the host is read at both windows.**
+
+- `Get-Counter -SampleInterval 1` — the 1 s window §42.3 compared against.
+- `System.Diagnostics.PerformanceCounter` with a **100 ms** gap for CPU and an
+  **80 ms** gap for disk — the windows the product's own collectors use
+  (`crates/performance-telemetry/src/windows_impl.rs:369` and `:710`).
+
+### CPU — nine rounds, both paths, both host windows
+
+| # | product offline | product service | host 1 s | host 100 ms |
+|---|---|---|---|---|
+| 1 | 50.34% | 56.71% | 55.379% | 50.852% |
+| 2 | 51.46% | 67.12% | 56.864% | 54.230% |
+| 3 | 55.88% | 54.65% | 51.322% | 62.270% |
+| 4 | 64.89% | 70.37% | 63.116% | 67.743% |
+| 5 | 62.44% | 65.12% | 59.447% | 45.300% |
+| 6 | 67.50% | 54.48% | 61.431% | 70.859% |
+| 7 | 71.53% | 61.01% | 62.675% | 65.340% |
+| 8 | 79.50% | 71.15% | 63.135% | 57.694% |
+| 9 | 66.03% | 71.50% | 60.745% | 64.597% |
+
+Deltas against the 1 s host reading, in points and as a ratio — the same
+comparison §42.3 made:
+
+    offline:  -5.04 (0.909)  -5.40 (0.905)  +4.56 (1.089)  +1.77 (1.028)
+              +2.99 (1.050)  +6.07 (1.099)  +8.86 (1.141)  +16.37 (1.259)
+              +5.29 (1.087)                         mean +3.94 pts,  7 of 9 positive
+
+    service:  +1.33 (1.024)  +10.26 (1.180) +3.33 (1.065)  +7.25 (1.115)
+              +5.67 (1.095)  -6.95 (0.887)  -1.67 (0.973)  +8.02 (1.127)
+              +10.76 (1.177)                        mean +4.22 pts,  7 of 9 positive
+
+**Both series flip sign.** §43.5's whole argument for calling x64's result a real
+bias and ARM64's noise was that x64's deltas were "positive in every one of three
+independent readings" while ARM64's "flip sign between rounds, which is the
+signature of measurement noise around zero". By that same criterion, applied to
+nine rounds instead of three, **x64 now looks like ARM64 did.**
+
+### The control measurement, which is what makes the negative result credible
+
+This is not an explanation of a bias; it is the measurement that shows there is
+nothing left to explain. **The host counter, compared against itself**, read at
+the two windows in the same round:
+
+    host 100 ms  minus  host 1 s, per round:
+      -4.53   -2.63   +10.95   +4.63   -14.15   +9.43   +2.67   -5.44   +3.85
+      range -14.15 to +10.95 points        spread 25.1 points        mean +0.53
+
+**`Get-Counter` disagrees with `Get-Counter` by up to 14 points, on the same
+machine, in the same second, purely because one window is 100 ms and the other is
+1 s.** The recorded bias was +7.47 and +4.09 points. It sits comfortably inside
+the noise that the window difference alone produces, and the mean of that noise is
++0.53 — i.e. centred on zero, not on an offset.
+
+### The counter-object candidate, disproved rather than argued
+
+The brief lists `\Processor Information(_Total)\` versus `\Processor(_Total)\` as
+a candidate, noting they differ on modern CPUs. On this CPU — a hybrid
+P-core/E-core Core Ultra 9 with 22 logical processors, exactly the kind where they
+should diverge — at the 1 s window, all nine rounds:
+
+    55.379/55.379   56.864/56.794   51.322/51.274   63.116/63.080   59.447/58.954
+    61.431/61.431   62.675/62.675   63.135/63.116   60.745/60.706
+
+**Maximum difference 0.49 points.** The two objects agree. This candidate is
+eliminated by measurement, not set aside. (It is also moot: `windows_impl.rs:360`
+reads `\Processor Information(_Total)\`, and §42.3's host column used the same
+object — the two were never mismatched.)
+
+### Disk latency — the 3.47x is gone
+
+    round   product offline   product service   host 1 s    host 80 ms
+      4         195 us            203 us         240.5 us    197.4 us
+      5         202 us            390 us         274.3 us    197.8 us
+      6         181 us            225 us         250.7 us     52.7 us
+      7         201 us            648 us         112.7 us    219.4 us
+      8         511 us             46 us         945.5 us    205.2 us
+      9         227 us            200 us         186.4 us    597.7 us
+
+Product-offline against host-1 s, as a ratio: 0.81, 0.74, 0.72, 1.78, 0.54, 1.22
+— **mean 0.97, and the product reads *below* the host in four of six.** Against
+§42.3's 3.47x that is not a smaller bias, it is no bias.
+
+(Rounds 1–3 are excluded from the disk table because in that batch the product
+returned `avgTransferLatencyUs: 0` in five of six readings — **and the host at the
+product's own 80 ms window returned 0 in all three rounds too.** The two agreed
+that nothing completed in that window. Batch 2 ran under heavier disk load and
+both instruments saw real transfers.)
+
+### Verdict, stated plainly and then stopped
+
+> **`DBT-P42-011` — the x64 numeric bias DOES NOT REPRODUCE on the current
+> build.** Nine rounds on the machine and silicon the original was measured on:
+> the disk-latency 3.47x is gone (mean ratio 0.97, product below host in 4 of 6);
+> both CPU series flip sign, which is the exact criterion §43.5 used to call
+> ARM64's result noise; and the surviving mean offsets (+3.94 and +4.22 points)
+> are smaller than the ±14-point spread the **host counter shows against itself**
+> from the window difference alone.
+>
+> The recorded numbers predate P45's field-boundary fix, as §48.7 noted. Whether
+> P45 fixed it, or whether three readings were never enough to establish it,
+> **this session does not claim to know and did not try to find out** — the brief
+> forbids hunting a cause for something that is gone, and the honest answer is
+> that a three-sample result which does not survive nine samples was probably
+> never a result.
+
+**Not fixed, not re-scoped, nothing changed in the collectors.** The row moves
+from "open, unexplained" to "does not reproduce, with nine rounds of evidence".
+
+### One thing this measurement surfaced that is NOT the bias, and is not gone
+
+Recorded because it was visible directly in the captured JSON, not because it was
+hunted for. The offline path reports `"intervalMs":250` and the service path
+reports `"intervalMs":1000` — but both measured CPU over the **same 100 ms**:
+
+    crates/performance-telemetry/src/windows_impl.rs:349   let _ = interval;
+    crates/performance-telemetry/src/windows_impl.rs:369   std::thread::sleep(
+                                                             Duration::from_millis(120)
+                                                             .min(Duration::from_millis(100)))
+    crates/performance-telemetry/src/lib.rs:330            interval_ms: interval.as_millis() …
+
+`sample_cpu` takes an `interval` argument and **discards it on its first line**,
+then sleeps a hardcoded 100 ms; `into_snapshot` publishes the *requested* interval
+as `intervalMs`. Storage is the same shape at a hardcoded 80 ms
+(`windows_impl.rs:710`).
+
+> **`DBT-P49-004` — `intervalMs` does not describe the window the numbers were
+> measured over.** A consumer of the snapshot who divides by `intervalMs`, or who
+> compares two snapshots taken at different requested intervals, is using a number
+> that no collector honoured. Risk: **medium** — it is a wire-contract accuracy
+> defect, and it is precisely what made §42.3's product-vs-host comparison invalid
+> without anyone noticing. Also note `Duration::from_millis(120).min(Duration::from_millis(100))`
+> is always 100 ms; the `120` is dead. **Deliberately NOT fixed here** — the brief
+> says a cadence or denominator change alters every reading on the qualified
+> platform and needs its own review. Fixing the *reporting* (publish the window
+> actually used) and fixing the *cadence* (honour the requested interval) are two
+> different changes with two different blast radii, and that decision is not this
+> session's to make.
+
+### Cleanup
+
+    LOAD_STOPPED=True      LOAD_DIR_REMOVED=True
