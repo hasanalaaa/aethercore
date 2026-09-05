@@ -6,11 +6,16 @@ use aethercore_security_audit as sec;
 use sec::model::{AuditTarget, Confidence, Severity};
 use std::path::PathBuf;
 
-fn tempdir(name: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!("p32-gd-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).expect("tempdir");
-    base
+/// DBT-P48-003: same shape as the four sites DBT-P42-013 fixed and as
+/// `crates/ipc/tests/unix_adversarial.rs` — cleaned at the start of the NEXT
+/// run, which means a panicking run leaves it forever. Measured after one
+/// `cargo test --workspace`: six `p32-gd-*` directories left behind. The guard
+/// is returned so `TempDir`'s Drop removes it whichever way the test ends.
+fn tempdir(name: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("p32-gd-{name}-"))
+        .tempdir()
+        .expect("tempdir")
 }
 
 // ---------------- GD-1: sshd lint, weak vs hardened ----------------
@@ -38,7 +43,8 @@ ClientAliveInterval 300
 
 #[test]
 fn gd1_sshd_weak_fixture_yields_exact_findings() {
-    let dir = tempdir("gd1");
+    let dir_guard = tempdir("gd1");
+    let dir = dir_guard.path().to_path_buf();
     let cfg = dir.join("sshd_config_weak");
     std::fs::write(&cfg, WEAK_SSHD).unwrap();
     let findings = sec::sshd::audit_sshd_config(cfg.to_str().unwrap()).expect("lint runs");
@@ -76,7 +82,8 @@ fn gd1_sshd_weak_fixture_yields_exact_findings() {
 
 #[test]
 fn gd1_sshd_hardened_fixture_zero_findings() {
-    let dir = tempdir("gd1h");
+    let dir_guard = tempdir("gd1h");
+    let dir = dir_guard.path().to_path_buf();
     let cfg = dir.join("sshd_config_hard");
     std::fs::write(&cfg, HARDENED_SSHD).unwrap();
     let findings = sec::sshd::audit_sshd_config(cfg.to_str().unwrap()).expect("lint runs");
@@ -94,7 +101,8 @@ const CLEAN_BODY: &str = "password = correcthorsebatterystaple\nLOG_LEVEL=debug\
 
 #[test]
 fn gd2_secrets_planted_are_found_redacted() {
-    let dir = tempdir("gd2");
+    let dir_guard = tempdir("gd2");
+    let dir = dir_guard.path().to_path_buf();
     let f = dir.join("leaky.env");
     std::fs::write(
         &f,
@@ -124,7 +132,8 @@ fn gd2_secrets_planted_are_found_redacted() {
 
 #[test]
 fn gd2_clean_dir_zero_false_positives() {
-    let dir = tempdir("gd2c");
+    let dir_guard = tempdir("gd2c");
+    let dir = dir_guard.path().to_path_buf();
     std::fs::write(dir.join("clean.txt"), CLEAN_BODY).unwrap();
     std::fs::write(dir.join("notes.md"), "# notes\nno secrets here\n").unwrap();
     let findings = sec::secrets::scan_secrets(dir.to_str().unwrap()).expect("scan");
@@ -201,7 +210,8 @@ fn gd3_cve_join_exact_match_set() {
 fn gd5_tampered_db_refused_fail_closed() {
     use sec::vulndb::{load_verified, VulnDbError};
     use sha2::{Digest as _, Sha256};
-    let dir = tempdir("gd5");
+    let dir_guard = tempdir("gd5");
+    let dir = dir_guard.path().to_path_buf();
     let db = dir.join("vulndb.json");
     let mf = dir.join("vulndb.manifest.json");
     let entries = r#"[{"cve_id":"CVE-2026-0001","package":"openssl","introduced":"","fixed":"3.0.14","summary":"x"}]"#;
@@ -241,7 +251,8 @@ fn gd5_tampered_db_refused_fail_closed() {
 
 #[test]
 fn gd_authlog_burst_detected_and_quiet_log_clean() {
-    let dir = tempdir("gd-auth");
+    let dir_guard = tempdir("gd-auth");
+    let dir = dir_guard.path().to_path_buf();
     // 12 failures from 203.0.113.9 inside a minute ⇒ above threshold.
     let mut noisy = String::new();
     for i in 0..12 {

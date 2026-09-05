@@ -944,6 +944,34 @@ header .sub {
   gap:9px
 }
 
+/* DBT-P48-002: these two were declared in CarePanel.svelte's and
+   TimelinePage.svelte's scoped <style> blocks, where they styled a <button>
+   nested inside Pressable's own <button>. With the nesting removed the class
+   lands on the <button> that Pressable renders -- a child component's element,
+   which scoped CSS cannot reach. Every other Pressable className (.primary,
+   .secondary, .scan-button) is already declared here for exactly that reason;
+   these two now follow the same rule. Identical in both files before the move,
+   token-based already, moved rather than rewritten. */
+.primary-action {
+  border:none;
+  background: var(--ac-accent);
+  color: var(--role-interactive-ink);
+  font:inherit;
+  padding: var(--ac-space-2) var(--ac-space-4);
+  border-radius: var(--ac-radius-md);
+  cursor:pointer
+}
+
+.ghost-action {
+  border:none;
+  background:transparent;
+  color: var(--ac-accent);
+  font:inherit;
+  padding: var(--ac-space-1) var(--ac-space-2);
+  border-radius: var(--ac-radius-sm);
+  cursor:pointer
+}
+
 .primary,.secondary {
   border-radius:10px;
   padding:10px 15px;

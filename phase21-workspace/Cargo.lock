@@ -315,6 +315,7 @@ dependencies = [
  "aethercore-product-identity",
  "aethercore-windows-foundation",
  "prost",
+ "tempfile",
  "thiserror 2.0.20",
  "windows 0.62.2",
 ]

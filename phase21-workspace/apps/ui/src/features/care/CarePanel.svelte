@@ -69,17 +69,11 @@
       <h3>{t('care.title', locale)}</h3>
     </div>
     {#if !care || care.state === 'Idle' || care.state === 'AwaitingConsent' || care.state === 'Cancelled'}
-      <Pressable on:press={openCareConsent}>
-        <button class="primary-action" type="button">{t('care.start', locale)}</button>
-      </Pressable>
+      <Pressable className="primary-action" onclick={openCareConsent}>{t('care.start', locale)}</Pressable>
     {:else if care.state === 'Running'}
-      <Pressable on:press={cancelCare}>
-        <button class="ghost-action" type="button">{t('care.cancel', locale)}</button>
-      </Pressable>
+      <Pressable className="ghost-action" onclick={cancelCare}>{t('care.cancel', locale)}</Pressable>
     {:else}
-      <Pressable on:press={loadCareStatus}>
-        <button class="ghost-action" type="button">{t('care.refresh', locale)}</button>
-      </Pressable>
+      <Pressable className="ghost-action" onclick={loadCareStatus}>{t('care.refresh', locale)}</Pressable>
     {/if}
   </div>
 
@@ -120,12 +114,8 @@
         <li>{t('care.consentBulletSession', locale)}</li>
       </ul>
       <div class="consent-actions">
-        <Pressable on:press={closeCareConsent}>
-          <button class="ghost-action" type="button">{t('common.cancel', locale)}</button>
-        </Pressable>
-        <Pressable on:press={authorizeAndStartCare}>
-          <button class="primary-action" type="button">{t('care.consentAuthorize', locale)}</button>
-        </Pressable>
+        <Pressable className="ghost-action" onclick={closeCareConsent}>{t('common.cancel', locale)}</Pressable>
+        <Pressable className="primary-action" onclick={authorizeAndStartCare}>{t('care.consentAuthorize', locale)}</Pressable>
       </div>
     </div>
   </div>
@@ -134,24 +124,6 @@
 <style>
   .care-panel {
     margin-block-end: var(--ac-space-5);
-  }
-  .primary-action {
-    border: none;
-    background: var(--ac-accent);
-    color: var(--role-interactive-ink);
-    font: inherit;
-    padding: var(--ac-space-2) var(--ac-space-4);
-    border-radius: var(--ac-radius-md);
-    cursor: pointer;
-  }
-  .ghost-action {
-    border: none;
-    background: transparent;
-    color: var(--ac-accent);
-    font: inherit;
-    padding: var(--ac-space-1) var(--ac-space-2);
-    border-radius: var(--ac-radius-sm);
-    cursor: pointer;
   }
   .digest {
     margin-block: var(--ac-space-2) var(--ac-space-3);

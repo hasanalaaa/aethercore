@@ -13,26 +13,36 @@ use aethercore_ipc::{
     Transport, TransportError, TransportFrame, UnixSocketListener, UnixSocketSession,
 };
 
-fn temp_dir(tag: &str) -> PathBuf {
-    // Unix sockets are limited to ~104-byte paths (SUN_LEN) — keep it short.
-    let dir = std::env::temp_dir().join(format!("axt-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("mkdir");
+/// DBT-P48-003: this used to be `temp_dir().join("axt-{tag}-{pid}")`, removed at
+/// the START of the next run. That is the same shape DBT-P42-013 fixed in four
+/// other files — an end-of-test cleanup that a panicking test never reaches, so
+/// the directory survives until some later run happens to remove it. Measured
+/// after one `cargo test --workspace`: seven `axt-*` directories left behind.
+/// `TempDir`'s Drop is unconditional, so the caller holding the guard is what
+/// removes it, panic or not.
+///
+/// The prefix stays short on purpose: Unix socket paths are limited to ~104
+/// bytes (SUN_LEN), and `TempDir`'s own name is shorter than the one it replaces.
+fn temp_dir(tag: &str) -> tempfile::TempDir {
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("axt{tag}"))
+        .tempdir()
+        .expect("mkdir");
     // Private dir contract: 0700, matching what bind() enforces.
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).expect("chmod");
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).expect("chmod");
     dir
 }
 
-fn unique_listener(tag: &str) -> (PathBuf, UnixSocketListener) {
+fn unique_listener(tag: &str) -> (PathBuf, UnixSocketListener, tempfile::TempDir) {
     let dir = temp_dir(tag);
-    let listener = UnixSocketListener::bind(&dir).expect("bind fresh socket");
+    let listener = UnixSocketListener::bind(dir.path()).expect("bind fresh socket");
     let path = listener.socket_path().to_path_buf();
-    (path, listener)
+    (path, listener, dir)
 }
 
 #[test]
 fn roundtrip_frame_survives_transport() {
-    let (path, listener) = unique_listener("roundtrip");
+    let (path, listener, _dir) = unique_listener("roundtrip");
     let server = std::thread::spawn(move || {
         let mut session = listener.accept().expect("accept");
         let mut buf = Vec::new();
@@ -51,7 +61,8 @@ fn roundtrip_frame_survives_transport() {
 
 #[test]
 fn stale_socket_path_is_removed_and_rebound() {
-    let dir = temp_dir("stale");
+    let dir_guard = temp_dir("stale");
+    let dir = dir_guard.path().to_path_buf();
     let stale = dir.join("aethercore-maintenance.sock");
     // A dead file at the socket path (not a real socket): binding must recover.
     std::fs::write(&stale, b"stale").expect("write stale");
@@ -60,7 +71,7 @@ fn stale_socket_path_is_removed_and_rebound() {
 
 #[test]
 fn live_socket_refuses_second_bind() {
-    let (_keep, listener) = unique_listener("live");
+    let (_keep, listener, _dir) = unique_listener("live");
     let dir = listener.socket_path().parent().unwrap().to_path_buf();
     let second = UnixSocketListener::bind(&dir);
     match second {
@@ -72,7 +83,8 @@ fn live_socket_refuses_second_bind() {
 
 #[test]
 fn missing_socket_path_is_typed_stale_on_connect() {
-    let ghost = temp_dir("ghost").join("never.sock");
+    let ghost_guard = temp_dir("ghost");
+    let ghost = ghost_guard.path().join("never.sock");
     let result = UnixSocketSession::connect(&ghost);
     match result {
         Err(TransportError::EndpointStale(path)) => {
@@ -85,7 +97,8 @@ fn missing_socket_path_is_typed_stale_on_connect() {
 #[test]
 fn permission_denied_dir_blocks_bind_with_typed_error() {
     // Create a world-writable dir → bind must refuse rather than silently use it.
-    let dir = temp_dir("perms");
+    let dir_guard = temp_dir("perms");
+    let dir = dir_guard.path().to_path_buf();
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).expect("chmod");
     let result = UnixSocketListener::bind(&dir);
     match result {
@@ -112,7 +125,7 @@ fn oversized_frame_is_rejected_before_any_io() {
 
 #[test]
 fn mid_frame_disconnect_is_detected_precisely() {
-    let (path, listener) = unique_listener("midframe");
+    let (path, listener, _dir) = unique_listener("midframe");
     let server = std::thread::spawn(move || {
         let mut session = listener.accept().expect("accept");
         let mut buf = Vec::new();
@@ -198,7 +211,7 @@ use SendRawUnchecked as _SRU_ALIAS_KEEP;
 
 #[test]
 fn shutdown_is_graceful_and_repeatable_safe() {
-    let (path, listener) = unique_listener("shutdown");
+    let (path, listener, _dir) = unique_listener("shutdown");
     let server = std::thread::spawn(move || {
         let _session = listener.accept().expect("accept");
         std::thread::sleep(Duration::from_millis(50));

@@ -72,9 +72,7 @@
       <p class="eyebrow">{t('timeline.eyebrow', locale)}</p>
       <h3>{t('timeline.title', locale)}</h3>
     </div>
-    <Pressable on:press={loadTimeline}>
-      <button class="ghost-action" type="button">{t('timeline.refresh', locale)}</button>
-    </Pressable>
+    <Pressable className="ghost-action" onclick={loadTimeline}>{t('timeline.refresh', locale)}</Pressable>
   </div>
 
   {#if page && page.entries.length > 0}
@@ -105,9 +103,7 @@
       <p class="eyebrow">{t('timeline.recurrenceEyebrow', locale)}</p>
       <h3>{t('timeline.recurrenceTitle', locale)}</h3>
     </div>
-    <Pressable on:press={() => loadRecurrencePatterns()}>
-      <button class="ghost-action" type="button">{t('timeline.analyze', locale)}</button>
-    </Pressable>
+    <Pressable className="ghost-action" onclick={() => loadRecurrencePatterns()}>{t('timeline.analyze', locale)}</Pressable>
   </div>
   {#if $streamState.timelinePage === null}
     <p class="empty">{t('timeline.empty', locale)}</p>
@@ -163,15 +159,6 @@
   .empty {
     color: var(--ac-text-3);
     padding: var(--ac-space-4);
-  }
-  .ghost-action {
-    border: none;
-    background: transparent;
-    color: var(--ac-accent);
-    cursor: pointer;
-    font: inherit;
-    padding: var(--ac-space-1) var(--ac-space-2);
-    border-radius: var(--ac-radius-sm);
   }
   .recurrence-note p {
     color: var(--ac-text-3);
