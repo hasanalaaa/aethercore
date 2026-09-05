@@ -9823,3 +9823,154 @@ as SYSTEM); its argv cap is far below the 16 KB the briefs assume; and
 **Pick the icon artwork** — it is the only recorded RELEASE BLOCKER whose
 technical work is already finished, so it converts from blocker to done with one
 file and one command.
+
+---
+
+# PHASE 48 — P48-SHIP: FINISH DEVELOPMENT (2026-09-05)
+
+Session host: the Mac (`/Users/hasanalaaa/dev/aethercore`), `aarch64-apple-darwin`,
+driving the Parallels ARM64 Windows 11 VM. One session, sequential, no parallel
+lanes, no delegated commits or pushes. `git fetch origin main` at start: **`0 0`**
+— local `main` and `origin/main` identical at `ae9accf`.
+
+**What "finished" means in this phase**, taken from the brief and not softened:
+development is finished when the only things left require money the owner has
+chosen not to spend, or a physical machine that is not attached. The code-signing
+certificate is `DEFERRED-OWNER` by explicit decision — recorded once, never
+re-argued, never allowed to block a row.
+
+## 48.0 PROGRESS TABLE (authoritative — resume from here)
+
+| item | status | evidence |
+|---|---|---|
+| 1 reconcile the debt ledger | **DONE** | §48.1 — 62 authoritative ids, every one traced to code or a commit; 4 rows the brief predicted were stale confirmed stale and corrected; `DBT-P42-011`'s two texts collapsed to one row |
+| 2 the icon, closed | NOT STARTED | — |
+| 3 `DBT-P41-001` on a clean machine | NOT STARTED | — |
+| 4 `DBT-P47-001` the light theme | NOT STARTED | — |
+| 5 whatever Item 1 says is genuinely open | NOT STARTED | — |
+| 6 the x64 items | NOT STARTED | — |
+| 7 release-readiness statement | NOT STARTED | — |
+
+## 48.1 ITEM 1 — THE DEBT LEDGER, RECONCILED
+
+### Why this was first, and what was wrong with it
+
+The ledger was never one table. It is spread across `DRIFT_LEDGER.md`'s debt
+register and its Phase 40 addendum, and across the closing tables of §42.9,
+§43.8, §44.7, §45.5, §46.1 and §47.11 in this file. Each phase table recorded
+the state *as of that phase* and was never revisited, so a later fix left the
+earlier row reading `open` forever. Measured against current code, the brief's
+four predicted stale rows are all stale, and there are more:
+
+| id | last phase table says | current code says |
+|---|---|---|
+| `DBT-P42-012` | open (§42.9) | **fixed** — `scripts/build-installer.ps1:48-95` sources the file explicitly and asserts 193,152 B / `55aba23c…` |
+| `DBT-P42-013` | open (§46.1, "worse than documented") | **fixed** — `2f1ded2`, all four sites now own a `tempfile::TempDir` |
+| `DBT-P42-009` | open (§46.1) | **superseded** — decided out of scope in P47 item 4, re-raised as `DBT-P47-003` |
+| `DBT-P42-010` | open (§46.1) | **split** — VRAM half implemented in P47 item 4; remainder re-raised as `DBT-P47-004` |
+| `DBT-P42-006` | "pre-existing, 6 failing" (§42.9) | **not a defect** — `cargo test -p aethercore-driver-hub --lib` today: **18 passed; 0 failed** |
+| `DBT-P42-007` | "pre-existing… environment" (§42.9) | **not a defect** — `offline_boundary` today: **1 passed; 0 failed** |
+| `DBT-P44-003` | open (§44.7) | **superseded** — closed by §45.0/§45.2 as an instance of `DBT-P45-001`; §44.7's row already says so in prose and its own status column still reads `open` |
+
+### The duplicate, collapsed
+
+`DBT-P42-011` carries two different texts across the tables:
+
+- §42.9 / §43.8 / §46.1: *"byte-rate and latency counters under-report against a
+  1 s window"* — a cadence question about the provider's ~80 ms delta window.
+- §45.5: *"x64 Windows reads high, ARM64 Windows doesn't, macOS's sign is
+  unclear"* — an architecture question.
+
+They are the same defect seen from two angles, and the second is the one that
+matters: the first is not a defect at all (a rate over an 80 ms window is
+truthful for that window), while the second is the open question. **The
+authoritative text is the architecture one.** The other rows point here.
+
+### THE AUTHORITATIVE LEDGER
+
+Every `DBT-*` id that appears anywhere in `SESSION_CONTEXT.md` or
+`DRIFT_LEDGER.md`, exactly once, with a status traceable to code read today or
+to a commit. `FIXED` = the defect is gone and the evidence names where.
+`OPEN` = something remains and the row says what. `RECLASSIFIED` = it was never
+a defect, or stopped being one, and the row says why. `SUPERSEDED` = another id
+owns it now.
+
+| id | status | evidence, measured or read today |
+|---|---|---|
+| `DBT-P36-001` | **FIXED** `477a052` | `tools/p36-probes/` absent; `grep -rn 'p36-probes\|aethercore_ipc::probe' crates apps services tools` → **0 hits** |
+| `DBT-P36-002` | **FIXED** `477a052` | `crates/ipc/src/lib.rs:121,124` — `pub(crate) fn write_request` / `read_request`; no `pub mod probe` anywhere in the crate |
+| `DBT-P36-003` | **FIXED** `1c56080` | `crates/fleet/src/transport.rs:523-535` — `ssh_true_stub()` writes `@exit 0` into `temp_dir()/aethercore-ssh-stub-{pid}`; the VM-only path survives only in the doc comment that names the defect |
+| `DBT-P36-004` | **OPEN** at the start of this session | icon is a placeholder; recorded RELEASE BLOCKER. → **Item 2 closes it (§48.2)** |
+| `DBT-P36-005` | **FIXED** — the review happened | §46.11 is the review the row asked for: the LocalSystem privilege boundary (`scope.rs` `authorize_targets`, wiring read at `router.rs:1570-1580`), the named-pipe frame surface and its concrete limits, the update-trust gate proven in code rather than in configuration, signature/digest ordering, and the air-gap invariant with numbers. **No privilege-boundary break found**; four findings folded into the 0.C worklist, all four later reclassified A (§46.20). Residual, stated rather than hidden: the register's word was "Codex review" and this was an agent review — a second pair of eyes remains available but is not a defect |
+| `DBT-P36-006` | **OPEN** | `crates/security-audit/src/filesystem.rs:36-49` — the Windows arm still returns `0o444 \| (readonly ? 0 : 0o222)` from `permissions().readonly()`. No ACL is read. The filesystem lane's Windows findings still rest on a POSIX approximation. Needs a designed approach (native ACL evidence), not a patch |
+| `DBT-P36-007` | **OPEN by design** | retirement condition is "re-baseline at the next seal, not before". No seal has happened: `PHASE35_FINAL_SHA256.txt` is still the newest. Not actionable until a seal is taken |
+| `DBT-P36-008` | **FIXED** 2026-08-30, and structurally retired by `DBT-P40-002` | `ipc_probe.exe` removed from the install image; the payload check now answers "did a developer artefact reach the package?" by measurement instead of belief |
+| `DBT-P40-001` | **FIXED** | `tools/p39-probes/` is a workspace member with `[[bin]] name = "p39_pipe_attack"`; nothing under `apps/aetherctl/examples/` |
+| `DBT-P40-002` | **FIXED** | `scripts/check-msi-payload.ps1` derives its allowlist from `installer/wix/Product.wxs`; wired as `[7/7]` of `scripts/build-arm64-msi.cmd` and after `wix msi validate` in `scripts/build-installer.ps1`; `check-msi-payload.selftest.ps1` exercises the clean case and **both** failure branches |
+| `DBT-P40-003` | **FIXED** `440683d` | `tools/gd4-audit/{Cargo.toml,src}` present; `crates/security-audit/examples/` does not exist |
+| `DBT-P41-001` | **OPEN — release blocker, both architectures** | 5 of 6 installed ARM64 binaries import `VCRUNTIME140.dll`, the service also `MSVCP140.dll` (§47.9). Decided in P47: chain `vc_redist` as a Burn prerequisite + a `Launch` condition. → **Item 3 implements and proves it (§48.3)** |
+| `DBT-P41-002` | **FIXED** `cc9c51e` | fixed at the type in §42.2; measured fixed on both the offline and the service path (§42.3, §42.8) and on ARM64 (§43.7) |
+| `DBT-P41-002a` | **FIXED** | the gpu fault's false detail string is gone; gpu measures engines. Subsumed by the `DBT-P41-002` fix |
+| `DBT-P41-002b` | **FIXED structurally** | `crates/performance-telemetry/src/windows_impl.rs:263-266` — `read_u64` now decodes a full `PDH_FMT_COUNTERVALUE` through `decode_pdh_value`; there is no undersized destination left to overflow. The original question ("did it corrupt anything observable?") is moot, not answered — recorded, not claimed |
+| `DBT-P42-001` | **FIXED** | `windows_impl.rs:97-103` — `PdhExpandWildCardPathW` bound with all **five** parameters and `PWSTR` (a plain buffer), not `*mut PWSTR` |
+| `DBT-P42-002` | **FIXED** | `windows_impl.rs:225-226` — `percentage_to_bp(percent) = (percent * 100).round().min(10_000)`, reached through `read_percent_bp` at `:274` |
+| `DBT-P42-003` | **FIXED** | `windows_impl.rs:167-172` — `collect_twice` collects, sleeps, collects; its doc names the exact defect (counters added after the collections) |
+| `DBT-P42-004` | **FIXED** §43.7 | ARM64 build exit 0, 7/7 regression tests pass, offline readings agree with the host across two rounds |
+| `DBT-P42-005` | **FIXED** §44.3, re-verified today | all three providers end in `CollectedSubsystems { … }.into_snapshot(interval)` — `macos_impl.rs:600-608`, `linux_impl.rs:591-599`, `windows_impl.rs:969-977`. The only other `PerfSnapshot { … }` literals are `into_snapshot` itself (`lib.rs:328`) and `SyntheticPerfPlatform` (`lib.rs:491`), a fixture, not a provider. **Nothing remains** — the brief's "verify what actually remains" answer is: nothing |
+| `DBT-P42-006` | **RECLASSIFIED — not a defect** | measured today: `cargo test -p aethercore-driver-hub --lib` → **18 passed; 0 failed**. Third consecutive measurement (§44.3 footnote, §46.1, today) with no failure, and `driver-hub` has not been touched since Phase 31. The P42 observation was never reproduced |
+| `DBT-P42-007` | **RECLASSIFIED — environment, and the environment is gone** | measured today: `cargo test -p aethercore-intelligence-core --test offline_boundary` → **1 passed; 0 failed**. The missing `android_system_properties` registry-cache entry that caused it no longer exists as a condition |
+| `DBT-P42-008` | **FIXED** | `services/maintenance-service/src/performance.rs:366` names the defect it replaced (`if self.ring.latest(owner).is_none()`), and `:454` records that the condition is now testable without a service, a ring or a clock |
+| `DBT-P42-009` | **SUPERSEDED by `DBT-P47-003`** | decided out of scope in P47 item 4 with evidence: zero render sites, zero analysis reads, and macOS/Linux publish `vec![total_busy_bp]` — one field, two meanings. `windows_impl.rs:423` still reads `per_processor_busy_bp: Vec::new()`, which is the honest one of the three. The meaning must be decided before the field is filled |
+| `DBT-P42-010` | **SPLIT: half FIXED, half SUPERSEDED by `DBT-P47-004`** | VRAM usage implemented in P47 item 4 — `windows_impl.rs:886-887,908,925-926` carry `dedicated_used_bytes` / `shared_used_bytes`, measured 0 → 64,241,664 on the VM. Adapter identity and `dedicated_total_bytes` stay empty (`:927`) and are `DBT-P47-004` |
+| `DBT-P42-011` | **OPEN — the authoritative row** | the x64 byte-rate/latency bias: x64 reads high (+7.47, +4.09 points, 3.47x), ARM64 shows no consistent bias (§43.5), macOS's sign is unclear (§44.4, §45.4). The §42.9/§43.8/§46.1 text ("under-reports against a 1 s window") describes the *observation*, not the defect, and is not separately tracked. Recorded numbers predate P45's field-boundary fix. → **Item 6.B, gated on the machine** |
+| `DBT-P42-012` | **FIXED in code; end-to-end execution UNVERIFIED** | `scripts/build-installer.ps1:48-95` — explicit source resolution (`$env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll`, then a pinned fallback) and a hard assertion on 193,152 bytes / sha256 `55aba23c…`, throwing on either mismatch. The six numbered checks in §44.5 need a real x64 `build-installer.ps1` + WiX run; the ARM64 recipe stages `libomp140.aarch64.dll` and cannot exercise this path. → **Item 6, gated on the machine** |
+| `DBT-P42-013` | **FIXED** `2f1ded2` | all four leaking sites now own a `tempfile::TempDir` whose `Drop` survives a panic: `crates/diagnostic-engine/src/lib.rs:586`, `crates/diagnostics/src/lib.rs:239`, `crates/fleet/tests/gd_proofs.rs:166`, `crates/fleet/src/transport.rs:538,595,659`. The commit also corrects the §46.1 count: from a clean temp dir one run leaked **one** file, not 36 — the 36 were accumulated residue of panicking runs, which is exactly why the end-of-test cleanup was the wrong mechanism |
+| `DBT-P43-001` | **FIXED** `30e4eab` | `scripts/p36vm/p36_relbuild.cmd` is in the repo; `grep -c ipc_two_client_probe` → **0**. Verified on the VM in §46: exit 0, `Finished` in 4.56 s |
+| `DBT-P44-001` | **FIXED** §44.3, re-verified today | `cargo check -p aethercore-performance-telemetry --tests --target x86_64-unknown-linux-gnu` → **EXIT 0** (warnings only, all unused-import) |
+| `DBT-P44-002` | **FIXED** §44.3 | `crates/performance-telemetry/src/linux_impl.rs:543-556` — the hottest thermal zone is wired into `has_temperature`/`temperature_c`; the comment names the discard it replaced |
+| `DBT-P44-003` | **SUPERSEDED by `DBT-P45-001`** | §45.0 confirmed the root cause by instrumentation before any fix; §45.2 fixed it at the field boundary. §44.7's row says this in prose while its status column still reads `open` — **that column is wrong and this row replaces it** |
+| `DBT-P45-001` | **FIXED** §45.2 | `macos_impl.rs:122` and `linux_impl.rs:107` — `busy_bp_from_ticks` / `busy_bp_from_proc` both return `Option<u32>`, `None` on `total == 0`, so "no window observed" is no longer indistinguishable from a real 0% |
+| `DBT-P45-002` | **FIXED** §45.2 | `windows_impl.rs:716` names the `.unwrap_or(0)` it replaced; `:784` emits a `storage.rates` Degraded fault naming the device and counter |
+| `DBT-P45-003` | **FIXED** §45.2 | `windows_impl.rs:536-545` — `power.temperature` Degraded fault added; `power` no longer reports fully measured when it measured nothing |
+| `DBT-P45-004` | **OPEN** | the bounded retry is real — `macos_impl.rs:193-207`, one `EXTENDED_WAIT` of 480 ms, deliberately a single sleep rather than a loop, on evidence that no tie ever resolved before the 4th observation. §45.3 measured the residual at 1/50. → **Item 5** |
+| `DBT-P46-B1`…`B21`, `B23`, `B25`, `B26`, `B28`…`B31`, `B33` (29 ids) | **FIXED** | 29 distinct `DBT-P46-B*` markers counted in source today (`grep -rEoh 'DBT-P46-B[0-9]+' crates apps services tools \| sort -u \| wc -l` → **29**, 89 occurrences), matching §46's list exactly |
+| `DBT-P46-B22`, `B24`, `B27`, `B32` | **RECLASSIFIED A — not defects** | §46.20, each with a reachability argument rather than an assertion: `serde_json::Number::from_f64` returns `None` for NaN/Infinity so the flagged `Value` cannot be constructed (B22, B32); `DeterministicFallbackReasoner::infer` has zero `Err` returns (B24); `offline.rs:629` validates every byte is ASCII hex four lines above the flagged parse loop (B27) |
+| `DBT-P47-001` | **OPEN** | `feature-layout.css` carries no `data-theme` rules; light theme measured **1.02:1**. → **Item 4 (§48.4)** |
+| `DBT-P47-002` | **FIXED** `5d4b957` | `release/UNINSTALL.txt:72-79` now names `%LOCALAPPDATA%\com.aethercore.desktop` and its ~23 MB of WebView2 cache. Deliberately **not** in the MSI qualified at sha256 `0a2c2f89…`; it lands in the next package |
+| `DBT-P47-003` | **OPEN — recorded, product decision** | `per_processor_busy_bp` means "nothing measured" on Windows (`windows_impl.rs:423`) and "the aggregate, once" on macOS/Linux (`macos_impl.rs:224`, `linux_impl.rs:502`). Filling it on one platform deepens the split |
+| `DBT-P47-004` | **OPEN — recorded, no honest source** | GPU adapter identity and `dedicated_total_bytes`. No PDH counter for capacity; DXGI is COM in a session-0 LocalSystem service; WMI `AdapterRAM` is 32-bit and wraps above 4 GB. 0 is the honest reading |
+
+**Count: 73 authoritative ids**, each appearing exactly once — 40 individually
+named (P36 8, P40 3, P41 4, P42 13, P43 1, P44 3, P45 4, P47 4) plus the 33
+`DBT-P46-B*` ids, which are listed as two rows because 29 share one verdict and
+4 share another.
+
+    FIXED         55   (26 named + the 29 DBT-P46-B* markers)
+    OPEN           9   as of this reconciliation, before Items 2-6
+    RECLASSIFIED   6   (DBT-P42-006, -007, and DBT-P46-B22/B24/B27/B32)
+    SUPERSEDED     2   (DBT-P42-009 -> DBT-P47-003; DBT-P44-003 -> DBT-P45-001)
+    SPLIT          1   (DBT-P42-010: VRAM half fixed, remainder -> DBT-P47-004)
+                  ---
+                   73
+
+`DBT-P36-008` is counted FIXED, not SUPERSEDED: it was closed on its own
+evidence in 2026-08-30 and `DBT-P40-002` retired the *class*, not the row.
+
+### What is genuinely open, worst-consequence first
+
+| id | consequence if shipped as-is |
+|---|---|
+| `DBT-P41-001` | the product may not launch at all on a machine without the VC++ redistributable — and **no gate in this project's history has ever run on such a machine**. Item 3 |
+| `DBT-P47-001` | the light theme is unreadable: near-black on near-black, 1.02:1 measured, on 8 of 11 screens. It is a user-selectable mode with a toggle in the rail. Item 4 |
+| `DBT-P36-004` | the shipped mark is a placeholder. Item 2 |
+| `DBT-P42-011` | numeric bias on x64 readings, magnitude unknown on the current build. Item 6.B, machine-gated |
+| `DBT-P42-012` | the x64 payload's OpenMP runtime is sourced but the sourcing has never executed. Item 6, machine-gated |
+| `DBT-P45-004` | ~2% of macOS CPU samples degrade honestly instead of reading. Labelled, not silent. Item 5 |
+| `DBT-P36-006` | Windows filesystem security findings rest on a POSIX approximation, not ACL evidence |
+| `DBT-P47-003` / `DBT-P47-004` | one wire field with two meanings; two GPU fields that stay empty rather than invented |
+| `DBT-P36-007` | not actionable — its retirement condition (a seal) has not occurred |
+
+`DBT-P36-006` is the one open row this brief's items do not reach. It is not
+promoted into Item 5 by inventing a design for it here: native Windows ACL
+evidence is a designed capability, not a patch, and §48.7 states it as a known
+limitation a first user could hit rather than pretending it is closed.
