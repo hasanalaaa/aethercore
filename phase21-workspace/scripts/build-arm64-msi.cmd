@@ -145,7 +145,7 @@ call dotnet tool restore || exit /b 1
 rem   AssetsDir is sourced straight from the repo tree rather than copied into the
 rem   payload: the embedded model alone is 1.07 GB and copying it per build buys
 rem   nothing. Product.wxs reads it read-only at package time.
-call dotnet tool run wix build installer\wix\Product.wxs -arch arm64 -o "%MSI%" -d "PayloadDir=%PAYLOAD%" -d "AssetsDir=%SRC%\assets" -d "ProductVersion=%VERSION%" -d "ProductCode=%PRODUCTCODE%" || exit /b 1
+call dotnet tool run wix build installer\wix\Product.wxs -arch arm64 -o "%MSI%" -d "PayloadDir=%PAYLOAD%" -d "AssetsDir=%SRC%\assets" -d "IconFile=%SRC%\apps\desktop\icons\icon.ico" -d "ProductVersion=%VERSION%" -d "ProductCode=%PRODUCTCODE%" || exit /b 1
 echo === [6/7] wix msi validate (zero ICE required, no suppression)
 call dotnet tool run wix msi validate "%MSI%" || exit /b 1
 

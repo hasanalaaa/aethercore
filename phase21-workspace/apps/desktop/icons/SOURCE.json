@@ -1,0 +1,26 @@
+{
+  "schema": "aethercore.icon-source.v1",
+  "source": "/Users/hasanalaaa/dev/aethercore/design/icon/aethercore-mark.svg",
+  "sourceSha256": "65f441712c7fc8e21d5969001c027be05dd908380b06d08623edf5772b36441f",
+  "provisional": true,
+  "generatedBy": "tools/icon-pipeline/build-icons.mjs",
+  "files": {
+    "32x32.png": "f8eeeb34de7ae101f8f39b65547b865352be56e521529b4f9e24a74cbc666766",
+    "64x64.png": "492020a6494cde65608ef3dd87f61715ee836be10071f2c4e495c76eddee28ca",
+    "128x128.png": "7bd27d173e2b4e9a6a99461172142191526d38d28b46cd03bd971a207278e0b0",
+    "128x128@2x.png": "38fc5a07e94f540b0a74bd3890d0a63000acdca42f83f0fd967ece00069decc0",
+    "icon.png": "207c0de8c2164c11b51d431a8bfae56e067286032789bd04d6e2718fe4c030ce",
+    "StoreLogo.png": "9fb6e0babb0677e7c8b33ffc77c47fb3c2ddeeab1e11c6362e18b73c97415c96",
+    "Square30x30Logo.png": "27fd244c6aea22157f1178217e99c52bacd618d8c8c0538799fafe82ec4774e6",
+    "Square44x44Logo.png": "127977b4e6b40915dedd9c94783f45dceb9ae5dfae0e54a781d4687403e1df55",
+    "Square71x71Logo.png": "416a8ac1d22cd242caa29049ad748afc0f3d88e8310a641ba39ff1419f9c6caf",
+    "Square89x89Logo.png": "d63d5e5476e5ce699aff2e2fec9f1a7ba3a4127c321c27e4977e7d7351af5702",
+    "Square107x107Logo.png": "9256a3be3d73f37397b1c830e74e88c6eb3e087257f06a7e9e3960325263a2ad",
+    "Square142x142Logo.png": "d4d630d0d9f8718dba69beaf171d6009d851484eaebc516dc84a84710ba96aa7",
+    "Square150x150Logo.png": "a991ef84c69366758b9e0cbc9b7b1e39da354e26573f20a595f3c5e254cd6002",
+    "Square284x284Logo.png": "d94350ac8d8bc97af3df2d28f3e23fe594cb0c137a4b3fcf88f43f4ec4ae83b5",
+    "Square310x310Logo.png": "4ae4125b056928ff8294fec5f45c647d784d105e178bd374227a92a232d31ead",
+    "icon.ico": "4a49d865183e06f9e70f08258d3ae32e4a1842c71d149c5bffef5ec0365ea8d6",
+    "icon.icns": "00044ec3fe9d88ae988a00fcb3393d16e57a5680afc688d1765f5c6225c8b77b"
+  }
+}

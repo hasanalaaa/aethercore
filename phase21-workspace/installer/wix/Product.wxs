@@ -66,6 +66,22 @@
          before they confirm; UNINSTALL.txt beside the product carries the full text. -->
     <Property Id="ARPCOMMENTS" Value="Uninstall removes the program files, the AetherCore Maintenance service, and ALL machine data under C:\ProgramData\AetherCore (state database, logs, driver-install backups, support staging, signing key). Reports and diagnostic bundles you exported to a location YOU chose are not touched. See UNINSTALL.txt in the install folder." />
 
+    <!-- P47 item 3: the package had no product icon at all, so Add/Remove Programs
+         showed the generic MSI box. The window and Start Menu shortcut icons were
+         already correct because Tauri embeds icons/icon.ico into
+         aethercore-desktop.exe; ARP reads the Icon table and there was nothing in
+         it. Both now come from the same generated file.
+
+         SourceFile, not Source: check-msi-payload.ps1 builds its allowlist from
+         literal Source="..." strings and compares it to the MSI File table. An
+         Icon is not a File row, so this neither joins that allowlist nor needs to.
+
+         The artwork itself is PROVISIONAL and is an owner decision (DBT-P36-004).
+         tools/icon-pipeline/build-icons.mjs regenerates every icon from one SVG;
+         apps/desktop/icons/SOURCE.json records which SVG made the committed set. -->
+    <Icon Id="ProductIcon.ico" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon.ico" />
+
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="AetherCore">
