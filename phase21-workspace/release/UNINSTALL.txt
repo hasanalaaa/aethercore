@@ -68,6 +68,17 @@ NOTES, stated plainly rather than hidden
     value may remain in each of their hives. It holds no data - it is one
     integer - and Windows removes it with the profile.
 
+  * The window's browser cache is per-user, and uninstalling does not remove
+    it. AetherCore's window is rendered by Microsoft's WebView2, which keeps
+    its own cache in
+      %LOCALAPPDATA%\com.aethercore.desktop
+    for each account that opened the app. Nothing in the uninstall deletes
+    that folder, in any account, including the one running the uninstall.
+    It holds no AetherCore data - no scans, plans, findings or keys, all of
+    which live in C:\ProgramData\AetherCore and are deleted in full - only
+    WebView2's own rendering caches, measured at about 23 MB. Windows removes
+    it with the user profile, or you can delete that folder directly.
+
   * Uninstall is idempotent. Running it when the service is already stopped,
     the folder already deleted or the keys already gone completes normally; it
     does not fail on something that is already absent.
