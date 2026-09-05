@@ -9252,3 +9252,128 @@ instead of being invisible:
 The denial chip's 1px-vs-1.5px border reading is left alone, as the brief
 directs — Chrome rounds border widths and the approved shell renders
 identically.
+
+## 47.5 ITEM 2 — the §41.17 Gate 5 claim, verified against evidence
+
+The brief asks for the claim to be checked before anything is re-run. It is
+**evidenced, and it is stale.** Both halves matter.
+
+**Where it was proven.** §16.5-§16.10 (2026-08-31), on this same ARM64 VM. Not
+"a note says so" — the record carries the full lifecycle:
+
+- three cases on 0.1.5 — **A** normal (with a synthetic 5-level-deep file under
+  `recovery\driver-backups\`), **B** with `HKLM\SOFTWARE\AetherCore` deleted
+  first, **C** with the service, ProgramData, Start Menu, `aetherctl.exe` and
+  the HKLM key all deleted first — uninstall **exit 0** in all three, where
+  case C had previously exited **1603**
+- the fourteen-check survivor sweep run after every case, **zero survivors each
+  time**, on a sweep hardened after Gate S4 found one the first version missed,
+  now walking SYSTEM, SysWOW64, LocalService and NetworkService profiles as
+  well as `C:\Users`
+- reinstall of `AetherCore-0.1.6-arm64.msi` (`{863BF31B-B840-63F9-5B30-35528662C54F}`),
+  exit 0, zero `ICE\d+`, 16 files in `C:\Program Files\AetherCore`, service
+  RUNNING, pipe SDDL and install-dir ACLs identical to the §10 baseline, gguf
+  sha256 `6a1a2eb6…9407e`, `verbs-outer.ps1` 18/18 across both token contexts,
+  `insights list` reporting `engineLabel: "localModel"`
+- snapshot `P37-SHIPPING-QUALIFIED {a1696567-7528-4136-a445-848dccd3d2c1}`,
+  still present on the VM today
+
+**Why that is not enough to mark 4.B DONE.** It proved **0.1.6**. The workspace
+is at **0.1.11**, five product versions and ten phases later, and P46 changed
+things this gate is specifically about:
+
+- `product-identity` became the single decider for the **service name** and the
+  **product name** (`71fc629`, `a042a8c`) — the service name is what checks 3
+  and 5 of the survivor sweep look for, and the product name is `INSTALLFOLDER`
+  and `ProgramDataRoot`, which are checks 1 and 2
+- `Product.wxs` now selects `libomp140.aarch64.dll` vs `VCOMP140.DLL` on
+  `$(sys.BUILDARCH)` (§46.16), so the ARM64 payload authoring changed
+- **`DBT-P42-012` is explicitly parked on this exact run.** §46.1: "still fixed
+  in code, still unverified end-to-end — the 6 numbered checks in §44.5 need a
+  real `build-installer.ps1` + WiX run, deferred to §46's Part 4.B so the VM is
+  touched once for the full lifecycle rather than twice."
+
+**Verdict: the claim is true for 0.1.6 and unproven for the current build. Gate
+5 is re-run.**
+
+### VM state before anything, enumerated rather than asserted
+
+    prlctl list -a          {291d6c17-…} running "Windows 11"
+    ver                     Microsoft Windows [Version 10.0.26200.9168]
+    PROCESSOR_ARCHITECTURE  ARM64          whoami  nt authority\system
+    snapshots               8, current P40-PRE-HOUSEKEEPING {d652cd40}
+                            oldest P36-VM-QUALIFIED {a38386fa} — matches the brief
+    installed               AetherCore 0.1.11
+                            ProductCode {98FCE2D5-44F0-A27C-A48B-8720FFE672F0}
+                            InstallDate 20260901
+    service                 AetherCoreMaintenance  Running  Auto  LocalSystem
+                            "C:\Program Files\AetherCore\aethercore-maintenance-service.exe"
+    install dir             16 files
+    ProgramData\AetherCore  5 files (logs\service.jsonl 16,686;
+                            state\aethercore.db 4,096; -shm 32,768;
+                            -wal 2,385,512; machine-mutation.lock 0)
+    pipe                    AetherCore.Maintenance.v7 present
+    volumes                 C: 254.5 GB (147.2 free)   D: 0
+    restore points          NONE — System Restore is not the recovery mechanism
+                            on this VM; the named snapshot is
+    security posture        Defender realtime ON, EnableLUA 1,
+                            PromptOnSecureDesktop 0 (the recorded Parallels
+                            deviation), firewall Domain/Private/Public all True
+
+### A correction to §46.18's rule 3, measured
+
+§46.18 records "Parallels shared folders are unreachable from `prlctl exec`"
+and prescribes an HTTP server on `10.211.55.2:8791` instead. Measured today:
+the **drive letters** are unreachable — `prlctl exec` runs as
+`nt authority\system`, and `X:`/`Y:`/`Z:` are per-user mappings, so `dir Z:`
+fails. The **UNC paths are reachable**: `dir \\Mac\dev` and `dir \\psf\dev`
+both list the Mac's directory from that same SYSTEM context. The source sync
+for this item used `\\Mac\dev\p36-stage\p47\head.tar`, no server needed.
+
+## 47.6 DESTRUCTIVE ACTION RECORD — GATE 5 ON ARM64, CURRENT BUILD
+
+**Written and committed BEFORE the first destructive step**, per the standing
+rule.
+
+    ACTION=   1. Sync C:\AetherCore-P36\workspace\AetherCore-Phase35-Master-Delivery
+                 to main@b28722d from git archive HEAD, and prune tracked files
+                 HEAD no longer carries. Overwrites the qualified build tree.
+              2. scripts\build-arm64-msi.cmd — pnpm build, cargo release build of
+                 the fixed five-package set, tauri --no-bundle, stage payload,
+                 wix build -arch arm64, wix msi validate, payload check.
+                 Non-destructive to the installed product.
+              3. msiexec /x {98FCE2D5-44F0-A27C-A48B-8720FFE672F0} /qn /l*v —
+                 removes the installed AetherCore 0.1.11. DESTRUCTIVE.
+              4. Fourteen-check survivor sweep, read-only.
+              5. msiexec /i <the MSI from step 2> /qn /l*v, then re-prove every
+                 Gate 2 property.
+
+    SNAPSHOT= a NEW named snapshot P47-PRE-GATE5, taken before step 1 and
+              enumerated after, not asserted. No existing snapshot is deleted,
+              reused or restored. The VM is RESUMED, never restored.
+
+    EXPECTED= step 2: wix build exit 0, `wix msi validate` output EMPTY, payload
+                      check PASS, 16 file rows.
+              step 3: exit 0.
+              step 4: ZERO survivors on all fourteen checks. Any survivor is a
+                      finding recorded with its exact path — never deleted by
+                      hand and called a pass.
+              step 5: exit 0; 16 files installed; service RUNNING as LocalSystem;
+                      pipe DACL byte-identical to
+                      O:<service SID> G:SY D:P(A;;FA;;;<service SID>)(A;;FR;;;AU)(A;;DC;;;AU)
+                      — with (A;;0x12008b;;;AU) recognised as the SAME DACL,
+                      FR|DC = 0x120089|0x2 = 0x12008b, NOT drift;
+                      engineLabel `localModel` from the RUNNING SERVICE, not
+                      from `aetherctl self-check --load-model` (exit 7 there is
+                      correct by design and is not the proof).
+
+    NOT DONE= Defender, UAC, Firewall and SmartScreen are not touched. No
+              snapshot is deleted or restored. Versions 0.1.9 and 0.1.10 are
+              must-not-ship and are not built, installed or produced.
+              `core.autocrlf` stays false; the tree is transferred as a tar of
+              `git archive`, which does no line-ending translation.
+
+    RECOVERY= restore P47-PRE-GATE5 if the machine is left unusable. The
+              product itself is recoverable more cheaply: the previous MSIs are
+              on the VM at C:\AetherCore-P36\build\out\, including
+              AetherCore-0.1.11-arm64.msi, 1,099,653,120 bytes.
