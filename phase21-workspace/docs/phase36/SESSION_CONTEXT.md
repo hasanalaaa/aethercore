@@ -11444,3 +11444,71 @@ ProviderKey `{C047DFD5-BD01-4BF8-AEAD-54333A6C691F}`. Note that name. The MSI
 inside is authored `Visible="no"`, so a bundle install must register **one** ARP
 entry called `AetherCore Setup`, where an MSI install registers `AetherCore`.
 Item 3 measures what that difference actually costs.
+## 49.3 DESTRUCTIVE ACTION RECORD — GATE 5 ON x64, CURRENT BUILD
+
+**Written and committed BEFORE the first destructive step**, per the standing rule.
+**This machine has no snapshots.** It is the owner's real working computer.
+System Restore is the only rollback.
+
+    ACTION=   1. msiexec /x {0F9F349D-01C8-B3C2-7242-83B5D29047C9} /qn /l*v
+                 removes the AetherCore 0.1.11 installed 2026-09-02 from the
+                 unverified peer build 6ecd1ee9... DESTRUCTIVE.
+              2. Fourteen-check survivor sweep. READ-ONLY by construction.
+              3. msiexec /i outp49AetherCore-0.1.11-x64.msi, sha256 77ee416b… /qn /l*v, then every Gate 2 property.
+              4. msiexec /x ... again, sweep again.               DESTRUCTIVE.
+              5. AetherCoreSetup-0.1.11-x64.exe run as a real user would.
+                 First execution of this artefact by anyone.      DESTRUCTIVE.
+              6. Uninstall THROUGH THE BUNDLE, sweep again.       DESTRUCTIVE.
+
+    SNAPSHOT= a NEW named System Restore point P49-PRE-GATE5, created before
+              step 1 and verified by ENUMERATION with Get-ComputerRestorePoint
+              -- Checkpoint-Computer returning OK is not proof. No existing
+              restore point is deleted. Nothing is restored unless recovery is
+              actually needed.
+
+    EXPECTED= step 1: exit 0.
+              step 2: ZERO survivors on all fourteen. Any survivor is a finding
+                      recorded with its exact path -- never deleted by hand and
+                      called a pass. %LOCALAPPDATA%\com.aethercore.desktop is
+                      documented in UNINSTALL.txt (3,874 B) as surviving in the
+                      profile of any account that ran the desktop app; the
+                      criterion is MACHINE_WIDE=0, not TOTAL=0.
+              step 3: exit 0; 16 files hash-matched to the BUILT payload;
+                      service RUNNING, LocalSystem, AUTO_START (DELAYED);
+                      sc qsidtype UNRESTRICTED; install-dir ACLs equal to the
+                      §10 baseline; zero dev binaries; the four verbs returning
+                      with timings; engineLabel `localModel` FROM THE RUNNING
+                      SERVICE (aetherctl self-check --load-model exit 7 is
+                      correct by design and is NOT the proof); pipe SDDL
+                      byte-identical to
+                      O:<service SID> G:SY D:P(A;;FA;;;<service SID>)(A;;FR;;;AU)(A;;DC;;;AU)
+                      with (A;;0x12008b;;;AU) recognised as the SAME DACL --
+                      FR|DC = 0x120089|0x2 = 0x12008b, NOT drift.
+              steps 4-6: as above, plus every prompt, dialog and reboot request
+                      the bundle produces, recorded.
+
+    NOT DONE= Defender, UAC, Firewall and SmartScreen are NOT touched.
+              The VC++ redistributable is NOT removed from this machine -- P49
+              Item 5 says so explicitly and gives the reason: it is a daily-use
+              machine with no snapshots, other software depends on that runtime,
+              and the refusal is already proven on ARM64 (§48.3).
+              No driver work. Gate 4 stays stopped.
+              No existing restore point is deleted or restored.
+              core.autocrlf stays false.
+              0.1.9 and 0.1.10 are must-not-ship and are neither built nor
+              installed.
+
+    RECOVERY= Two levels, cheapest first.
+              (a) PRODUCT: the previously installed build is on this machine at
+                  out\release\AetherCore.msi, 1,100,148,736 B, sha256
+                  6ecd1ee9786731d22741edbc10e8e0c14ca8add967fe7ebe7f365b21940702a3.
+                  Reinstalling it returns the machine to exactly the state this
+                  session found it in. This is the expected recovery path for
+                  anything that goes wrong with the product itself.
+              (b) MACHINE: System Restore to P49-PRE-GATE5. Used only if the
+                  machine is left unusable. There is no disk image on this
+                  machine to fall back to -- §48.7 records that the recovery
+                  media was created, never boot-tested, and is now DETACHED.
+                  That is why (a) exists and why nothing here touches drivers,
+                  storage, chipset or GPU.
+
