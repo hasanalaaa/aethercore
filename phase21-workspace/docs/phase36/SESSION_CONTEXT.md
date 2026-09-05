@@ -11223,7 +11223,8 @@ the measuring-instrument pattern §47 was caught by.
 | 4 `DBT-P42-011` the bias, re-measured | **DONE — DOES NOT REPRODUCE** | §49.6 — **nine** rounds on the original machine and silicon under real sustained load. Disk-latency 3.47x **gone** (mean ratio 0.97, product *below* host in 4 of 6). Both CPU series **flip sign** — §43.5's own criterion for noise. Surviving means +3.94 / +4.22 pts are smaller than the **±14-point spread the host counter shows against itself** at 100 ms vs 1 s. Counter-object candidate **disproved**: `\Processor Information(_Total)\` and `\Processor(_Total)\` agree within 0.49 pts on a hybrid Core Ultra 9. Cause deliberately **not hunted**, per the brief. New **`DBT-P49-004`** |
 | 5 the VC++ runtime guard on x64, without breaking this machine | **DONE — correctly authored** | §49.7 — redistributable **NOT removed**, per the brief. `Launch` condition read out of the **built MSI's** `LaunchCondition` table (4 rows), naming `(x64)` with a real `AppSearch`/`RegLocator` wiring. Burn's `VCRedist` detection **measured working** in §49.5, not just authored. `llvm-objdump -p` over the six installed binaries: **5/6 `VCRUNTIME140.dll`**, service also `MSVCP140.dll`, `VCRUNTIME140_1.dll` **x64-only** — all three §48 expectations met. Machine carries 14.44.35211.0. **The refusal is proven on ARM64 (§48.3) and INFERRED here** |
 | 6 the statement §48.7 could not make | **DONE** | §49.8 — §48.7 marked superseded. **x64 now has a current build and every gate that is not owner-blocked passing against it** (`77ee416b…`). New bundle-lifecycle gate row. Gate 0f **downgraded by measurement** — no D:, no `D:\WindowsImageBackup`. Gate 4 still blocked, both blockers re-measured today (0 drivers offered, ResultCode 2; media detached). `DBT-P42-012` **5 of 6 checks met**, including the check-4 negative control run deliberately |
-| owner register | listed, not attempted | §49.0 note below |
+| owner register | listed, not attempted | §49.0 note below — unchanged, not re-argued |
+| ledger delta + final report | **DONE** | §49.9 — 5 rows moved, 4 new ids (`DBT-P49-001`…`-004`), none fixed, all with reasons. §49.10 — the report |
 
 **Owner register — unchanged, not attempted, not re-argued:** code-signing
 certificate (`DEFERRED-OWNER`); Gate 4 (recovery media never boot-tested and now
@@ -12494,3 +12495,126 @@ first three are done.** What is left is Gate 4, which is two owner actions and a
 device, and the certificate, which is money — plus the honest residue above:
 Windows Server has never been touched, and the two prerequisite *install* branches
 have never executed on any machine.
+
+## 49.9 THE LEDGER DELTA — rows P49 moved, and four new ids
+
+§48.1's authoritative ledger counted **77** ids. This session adds four and moves
+five. **The whole ledger was not re-counted here**, so 81 is arithmetic on §48.1's
+figure rather than an independent recount — said plainly because §48.1 exists
+precisely because counts drift.
+
+### Rows moved
+
+| id | was, end of P48 | now | evidence |
+|---|---|---|---|
+| `DBT-P41-001` | FIXED on ARM64; x64 execution `BLOCKED-MACHINE` | **FIXED on ARM64; x64 authoring verified and DETECTION measured; the refusal itself still ARM64-only** | §49.7 — `Launch` condition read out of the built x64 MSI naming `(x64)`, backed by real `AppSearch`/`RegLocator` rows; §49.5 captured Burn deciding `Detected package: VCRedist, state: Present` → `execute: None`. What has still never run **on any architecture** is the chain's *install* branch, with the runtime absent |
+| `DBT-P42-011` | **OPEN** — the x64 numeric bias, machine-gated | **DOES NOT REPRODUCE** | §49.6 — nine rounds on the original machine and silicon. Disk 3.47x gone (mean ratio 0.97). Both CPU series flip sign. Residual means smaller than the ±14-pt spread the host counter shows against **itself** at 100 ms vs 1 s. Cause deliberately not hunted |
+| `DBT-P42-012` | FIXED in code; six numbered checks need an x64 pipeline run | **FIXED, and 5 of 6 checks MET on real x64 hardware** | §49.2 (checks 1, 2, 3, 6) and §49.8 (check 4, the negative control, run deliberately). **Check 5 stays open** — the pinned fallback is the ARM64 VM's layout and `C:\AetherCore-P36` does not exist here |
+| `DBT-P47-002` | FIXED — the corrected `UNINSTALL.txt` paragraph | **FIXED, and now shipped and checked claim-by-claim in a package** | §49.4 — the 3,874 B / `086de152…` text is installed by MSI `77ee416b…`, and all ten of its measurable claims were verified against the survivor sweep. The WebView2 paragraph itself could not be re-proven here: no account on this machine has ever launched the desktop app |
+| `DBT-P48-004` | FIXED — the bundle now builds | **FIXED, and the artefact has now been BUILT AND RUN on x64** | §49.2 built `d0398765…`; §49.5 installed and uninstalled it. The row's risk ("the preferred consumer install path does not exist") is fully retired |
+
+### New ids
+
+| id | risk | what it is | fixed? |
+|---|---|---|---|
+| **`DBT-P49-001`** | low | `scripts/build-release.ps1`, the production x64 pipeline, never sets the ADK `DismApi\Lib\amd64` path into `LIB`, so a clean shell dies `LNK1181`. `build-arm64-msi.cmd:77` does set it for arm64. Same shape as `DBT-P48-004`, milder: it is documented in §41.4/§42.2 and it fails loudly rather than producing a wrong artefact | **No** — changing the release script's environment handling is its own review |
+| **`DBT-P49-002`** | cosmetic, most-exposed surface | the consumer installer's UI: title bar reads "AetherCore Setup Setup"; the logo is WiX's 852-byte stock placeholder, a **third** mark after the shipped icon and `DBT-P48-001`'s in-app mark; the welcome screen shows no version despite `ShowVersion="yes"` and no license because `LicenseUrl=""`; install progress reads "Initializing..." with an empty bar for the whole 30 s install while the *uninstall* path names the package correctly | **No** — Item 3 was to install it and report |
+| **`DBT-P49-003`** | low | the bundle leaves `AetherCore_Setup_*.elevated.log` in `%TEMP%` after install (926 B) and uninstall (935 B). Per-user, so `MACHINE_WIDE=0` holds, but product-attributable files the MSI path does not create. Same family as `DBT-P42-013` | **No** |
+| **`DBT-P49-004`** | **medium** | `intervalMs` in the telemetry snapshot does not describe the window the numbers were measured over. `windows_impl.rs:349` discards the requested interval on its first line, `:369` sleeps a hardcoded 100 ms, `:710` a hardcoded 80 ms, and `lib.rs:330` publishes the *requested* value — so the captured JSON says `intervalMs 250` offline and `1000` from the service while both measured CPU over the same 100 ms. A wire-contract accuracy defect, and it is what made §42.3's product-vs-host comparison invalid without anyone noticing. Also: `Duration::from_millis(120).min(Duration::from_millis(100))` is always 100 ms; the `120` is dead | **No** — the brief forbids it; a cadence change alters every reading on the qualified platform. Fixing the *reporting* and fixing the *cadence* are two different changes with two different blast radii |
+
+## 49.10 P49 FINAL REPORT
+
+### The table, with numbers on every row
+
+| item | verdict | the numbers |
+|---|---|---|
+| 0 machine survey | DONE | elevated `True`, `core.autocrlf false`, `Hussein`, x86_64, 401.2 GB free. Four `vcomp140.dll` on disk, first-match wrong. Pre-existing install was the ungated peer build `6ecd1ee9…` |
+| 1 build on x64 | **DONE** | ui 2.02 s, cargo 1m 54s, tauri 6m 38s, all exit 0. `wix msi validate` **0 lines**. `PAYLOAD_CHECK=PASS`. **16** File rows. MSI `77ee416b…` 1,100,271,616 B. Bundle `d0398765…` 1,128,354,997 B |
+| 2 Gate 5 on x64 | **PASS** | restore point seq **6** enumerated. Uninstall exit 0 ×2 (3233 / 3047 ms), install exit 0 ×2 (31,265 / 31,257 ms). **Zero survivors on all fourteen, twice.** `MACHINE_WIDE=0` twice. 16 files `MATCHED=16 MISMATCH=0`. Pipe SDDL byte-identical. `engineLabel localModel` |
+| 3 install the bundle | **PASS + 4 UI findings** | `BUNDLE_EXIT=0` 121 s; uninstall exit 0 192 s. Both prereqs `Present` → `execute: None`. `restart: None`. 12/12 properties identical to the MSI install. Zero survivors on all fourteen. Both caches released |
+| 4 the bias | **DOES NOT REPRODUCE** | **9** rounds. Disk mean ratio **0.97** vs recorded 3.47. CPU means +3.94 / +4.22 pts, **both series flip sign**. Host-vs-itself window spread **−14.15 to +10.95 pts** |
+| 5 the VC++ guard | **correctly authored on x64** | 4 `LaunchCondition` rows, the fourth naming `(x64)`. `llvm-objdump -p`: **5/6** `VCRUNTIME140.dll`, service also `MSVCP140.dll`, `VCRUNTIME140_1.dll` **1/6** x64-only. Machine carries 14.44.35211.0. Refusal **inferred**, not measured |
+| 6 the §48.7 statement | **DONE** | §48.7 superseded. x64 has a current build + every non-owner-blocked gate. Gate 0f **downgraded**: no D:, no `D:\WindowsImageBackup`. Gate 4 blockers re-measured: **0** drivers offered, ResultCode 2 |
+
+### The two hashes
+
+    AetherCore-0.1.11-x64.msi        1,100,271,616 B
+      sha256 77ee416b65412ef9306ed25b00d76ff98f9da3b88d1ba19a4e182461d7f7546e
+
+    AetherCoreSetup-0.1.11-x64.exe   1,128,354,997 B
+      sha256 d03987652c8853ece7b2572979999324b0f19e923f1a8a638e05aa51541cbf99
+
+### What the bundle install did that the MSI install does not
+
+1. Evaluated a prerequisite chain — both packages `Present`, both skipped, product
+   installed anyway. **It does not fail silently on the already-present branch.**
+2. Registered a second ARP key, `AetherCore Setup`, and hid the MSI's own with
+   `ARPSYSTEMCOMPONENT="1"`. Measured: **one** user-visible entry, and it is named
+   *AetherCore Setup*, not *AetherCore*.
+3. Kept a second full **1,100,271,616-byte** copy of the MSI in
+   `C:\ProgramData\Package Cache` on top of msiexec's own copy in
+   `C:\Windows\Installer` — **+1,050.3 MB** over an MSI install. Released on
+   uninstall.
+4. Launched a separate elevated engine process. **No UAC prompt was seen here and
+   that proves nothing** — it inherited elevation. A real user gets one prompt.
+   Inferred, not measured.
+5. Passed `ARPSYSTEMCOMPONENT="1" MSIFASTINSTALL="7" BURNMSIINSTALL=1
+   REINSTALLMODE="muso" REBOOT=ReallySuppress` to the MSI — sidestepping the
+   `REINSTALLMODE=vamus` footgun §48.7 lists.
+6. Left two small `.elevated.log` files in `%TEMP%` (`DBT-P49-003`).
+7. Showed a GUI — which produced `DBT-P49-002`, four cosmetic defects on the most
+   exposed surface in the product.
+
+### The bias verdict, plainly
+
+**`DBT-P42-011` does not reproduce.** Nine rounds on the machine and the silicon
+it was recorded on, under real sustained load: the disk-latency 3.47× is gone
+(mean ratio 0.97, product reading *below* the host in four of six), and both CPU
+series flip sign — which is the exact criterion §43.5 used to call ARM64's result
+noise and x64's a real bias. The residual mean offsets (+3.94 and +4.22 points)
+are smaller than the **±14-point spread the host counter shows against itself**
+purely from reading it at 100 ms versus 1 s. The brief's counter-object candidate
+is disproved by measurement: `\Processor Information(_Total)\` and
+`\Processor(_Total)\` agree to within 0.49 points across all nine rounds on a
+hybrid Core Ultra 9. Per the brief, **no cause was hunted and nothing was fixed** —
+a three-sample result that does not survive nine samples was probably never a
+result.
+
+### Recorded rather than worked around
+
+- `DBT-P49-001` — the production x64 pipeline does not set its own `LIB`.
+- `DBT-P49-002` — the consumer installer's UI, four defects, seen by every user.
+- `DBT-P49-003` — two `%TEMP%` logs the bundle leaves behind.
+- `DBT-P49-004` — `intervalMs` misdescribes the measurement window.
+- **A false finding this session nearly recorded and then killed by measurement:**
+  `doctor` exits 5 printing nothing on stdout, which read as silent failure. It
+  writes 115 bytes of typed rejection to **stderr**, and `--output json` carries
+  the same `RejectedByService` / `diagnostics.stateUnavailable` envelope. Correct
+  by design, exactly as §42.8 resolved it.
+- **The brief's own pipe-DACL method fails, for the third session running.**
+  `[System.IO.File]::Open('\\.\pipe\…')` returns *"asked to open a device that was
+  not a file"*; `NamedPipeClientStream` is what works. §41.14, §42.7, and now
+  §49.4.
+- **Gate 0f got worse, and by measurement.** §48.7 recorded `Get-Volume` showing
+  C: and D:. Today there is one lettered volume and no `D:\WindowsImageBackup`.
+
+### The machine, left better than it was found
+
+It began this session carrying an ungated 2026-09-02 build (`6ecd1ee9…`, with the
+pre-`DBT-P47-002` `UNINSTALL.txt`). It ends carrying the **qualified** build:
+
+    ARP        AetherCore 0.1.11 {0F9F349D-01C8-B3C2-7242-83B5D29047C9}
+    files      16          service    RUNNING
+    from       MSI 77ee416b…, the package every gate in §49.4 passed against
+
+Defender, UAC, Firewall and SmartScreen untouched. The VC++ redistributable
+untouched. No driver work. Restore points 3, 4 and 5 untouched;
+`SystemRestorePointCreationFrequency` returned to the Windows default. No file was
+deleted by hand in any sweep.
+
+### The single next action
+
+**Gate 4: re-attach the recovery media, boot-test it once, and nominate a
+printer-, HID- or USB-class device — it is now the only gate in the project that
+has never started, and the only thing between this build and a complete gate set
+on x64.**
