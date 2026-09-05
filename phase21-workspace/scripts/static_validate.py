@@ -848,6 +848,43 @@ checks["p46_service_name_has_one_decider"] = {
     ),
     "note": f"Service name is decided once in crates/product-identity ({SERVICE_NAME!r}); the three former Rust deciders now import it, and every non-Rust declaration is asserted against it.",
 }
+# DBT-P48-002 (§48.5): a control that cannot fire.
+#
+# `Pressable.svelte` accepts an `onclick` prop and forwards it to the <button> it
+# renders. Thirty call sites use it. Seven wrote `<Pressable on:press={...}>`
+# instead — the legacy component-event syntax, which needs a component that
+# dispatches. There is NO `createEventDispatcher`, no `dispatch(` and no
+# `CustomEvent` anywhere under apps/ui/src, so nothing in the tree can ever emit
+# a `press` event and those seven handlers were unreachable. Those same seven
+# also nested a <button> inside Pressable's own <button>, which is invalid HTML
+# and a nested interactive control.
+#
+# This is the third time this class has been found: P47 fixed two dead Insights
+# controls, and the pattern is that a control LOOKS wired because a handler is
+# named right next to it. A grep is enough to settle it, so the grep is a gate.
+_ui_src = ROOT / "apps/ui/src"
+_svelte_sources = {
+    path.relative_to(ROOT).as_posix(): path.read_text(encoding="utf-8")
+    for path in sorted(_ui_src.rglob("*.svelte"))
+}
+_press_producers = [
+    name for name, text in _svelte_sources.items()
+    if "createEventDispatcher" in text or "CustomEvent('press'" in text or 'CustomEvent("press"' in text
+]
+_pressable_on_press = sorted(
+    name for name, text in _svelte_sources.items() if re.search(r"<Pressable[^>]*\son:", text)
+)
+_pressable_nested_button = sorted(
+    name for name, text in _svelte_sources.items()
+    if re.search(r"<Pressable[^>]*>\s*<button", text)
+)
+checks["p48_pressable_handlers_can_fire"] = {
+    "ok": (not _pressable_on_press or bool(_press_producers)) and not _pressable_nested_button,
+    "press_event_producers": _press_producers,
+    "pressable_using_component_events": _pressable_on_press,
+    "pressable_nesting_a_button": _pressable_nested_button,
+    "note": "A <Pressable> must wire its handler through the onclick prop it actually accepts, and must not nest an interactive control inside its own <button>. `on:` component-event syntax is only valid if some component dispatches; none does.",
+}
 _product_name_match = re.search(r'pub const PRODUCT_NAME: &str = "([^"]+)";', product_identity)
 PRODUCT_NAME = _product_name_match.group(1) if _product_name_match else ""
 checks["p46_product_name_has_one_decider"] = {
