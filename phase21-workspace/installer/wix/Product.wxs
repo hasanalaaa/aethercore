@@ -59,6 +59,13 @@
          installing successfully and failing at service start with a dialog about a
          missing DLL.
 
+         KEEP THE MESSAGE UNDER 255 CHARACTERS AFTER $(sys.BUILDARCH) EXPANDS.
+         LaunchCondition.Description is a 255-character column and WiX reports an
+         over-long value as ICE03 String overflow, not as an error - the package still
+         builds and `wix msi validate` stops being EMPTY. The first version of this
+         message was 360 characters expanded and did exactly that; arm64 is the worst
+         case because it is two characters longer than x64.
+
          The key is the one Microsoft documents for detection, and $(sys.BUILDARCH)
          selects the architecture the package was built for, exactly as the OpenMP file
          selection below does. Registry key names are case-insensitive, so arm64/x64
@@ -76,7 +83,7 @@
     </Property>
     <Launch
         Condition="VCRUNTIMEVERSION"
-        Message="AetherCore requires the Microsoft Visual C++ 2015-2022 Redistributable ($(sys.BUILDARCH)), which is not installed on this computer. AetherCore's programs load VCRUNTIME140.dll and MSVCP140.dll from it. Install it first (search Microsoft for &quot;Visual C++ Redistributable&quot;, or run vc_redist.$(sys.BUILDARCH).exe), then run this installer again. AetherCoreSetup.exe installs it for you." />
+        Message="AetherCore requires the Microsoft Visual C++ 2015-2022 Redistributable ($(sys.BUILDARCH)), which is not installed on this computer. AetherCore loads VCRUNTIME140.dll and MSVCP140.dll from it. Install vc_redist.$(sys.BUILDARCH).exe, or run AetherCoreSetup.exe instead." />
 
     <!-- Direct MSI installs are supported for managed environments, but the consumer bundle is
          preferred because it also guarantees the Evergreen WebView2 prerequisite. Do not author
