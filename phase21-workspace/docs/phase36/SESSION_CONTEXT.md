@@ -11212,7 +11212,7 @@ the measuring-instrument pattern §47 was caught by.
 | 2 Gate 5 on x64 against this build | **DONE — PASS** | §49.4 — restore point `P49-PRE-GATE5` seq **6**, verified by enumeration. Against MSI `77ee416b…`: uninstall exit 0 **twice**, **zero survivors on all fourteen both times**, `MACHINE_WIDE=0` both times, install and reinstall exit 0. 16 files **MATCHED=16 MISMATCH=0** against the built payload; service RUNNING/LocalSystem/AUTO_START(DELAYED); SID **UNRESTRICTED**; ACLs = §10 baseline; `DEV_BINARY_IN_INSTALL_IMAGE=NO`; six verbs with timings; pipe SDDL **byte-identical**; `engineLabel localModel` from the running service. `UNINSTALL.txt`'s corrected text measured claim-by-claim |
 | 3 install `AetherCoreSetup.exe` — nobody ever has | **DONE — PASS, 4 UI findings** | §49.5 — first execution by anyone. `BUNDLE_EXIT=0` in 121 s. Both prerequisites detected **Present** and skipped, MSI installed anyway, `restart: None` even on a machine already carrying `RebootPending=1`. Result **indistinguishable** from the MSI install on all 12 measured properties incl. byte-identical pipe DACL and `engineLabel localModel`. Uninstall through the bundle exit 0, **zero survivors on all fourteen**, both package caches released, prerequisites correctly survived. New **`DBT-P49-002`** (unbranded/uninformative UI) and **`DBT-P49-003`** (two `%TEMP%` logs) |
 | 4 `DBT-P42-011` the bias, re-measured | **DONE — DOES NOT REPRODUCE** | §49.6 — **nine** rounds on the original machine and silicon under real sustained load. Disk-latency 3.47x **gone** (mean ratio 0.97, product *below* host in 4 of 6). Both CPU series **flip sign** — §43.5's own criterion for noise. Surviving means +3.94 / +4.22 pts are smaller than the **±14-point spread the host counter shows against itself** at 100 ms vs 1 s. Counter-object candidate **disproved**: `\Processor Information(_Total)\` and `\Processor(_Total)\` agree within 0.49 pts on a hybrid Core Ultra 9. Cause deliberately **not hunted**, per the brief. New **`DBT-P49-004`** |
-| 5 the VC++ runtime guard on x64, without breaking this machine | NOT STARTED | — |
+| 5 the VC++ runtime guard on x64, without breaking this machine | **DONE — correctly authored** | §49.7 — redistributable **NOT removed**, per the brief. `Launch` condition read out of the **built MSI's** `LaunchCondition` table (4 rows), naming `(x64)` with a real `AppSearch`/`RegLocator` wiring. Burn's `VCRedist` detection **measured working** in §49.5, not just authored. `llvm-objdump -p` over the six installed binaries: **5/6 `VCRUNTIME140.dll`**, service also `MSVCP140.dll`, `VCRUNTIME140_1.dll` **x64-only** — all three §48 expectations met. Machine carries 14.44.35211.0. **The refusal is proven on ARM64 (§48.3) and INFERRED here** |
 | 6 the statement §48.7 could not make | NOT STARTED | — |
 | owner register | listed, not attempted | §49.0 note below |
 
@@ -12195,3 +12195,137 @@ as `intervalMs`. Storage is the same shape at a hardcoded 80 ms
 ### Cleanup
 
     LOAD_STOPPED=True      LOAD_DIR_REMOVED=True
+
+## 49.7 ITEM 5 — THE VC++ RUNTIME GUARD ON x64, VERIFIED WITHOUT BREAKING THIS MACHINE
+
+**The redistributable was not removed, and will not be.** The brief says so and
+gives the reasons; they are restated here because a later session must not read
+this as an untested gap and "finish the job":
+
+- This is the owner's real working computer. Other software depends on that
+  runtime.
+- **It has no snapshots.** System Restore is the only rollback (§49.3).
+- The refusal is **already proven** on ARM64 — §48.3 removed the redistributable
+  from the VM under a named snapshot and measured install refusing with **1603**,
+  a message naming the runtime in full, **nothing installed**, and the binaries
+  dying `0xC0000135 STATUS_DLL_NOT_FOUND`.
+
+So this item verifies that the guard is **correctly authored on x64**, from the
+built artefacts, and says plainly what that does and does not establish.
+
+### (a) The `Launch` condition is in the built x64 MSI, and it names the runtime
+
+Read out of the MSI's own `LaunchCondition` table, not out of `Product.wxs`.
+Four rows; this is the fourth:
+
+    Condition : VCRUNTIMEVERSION
+    Message   : AetherCore requires the Microsoft Visual C++ 2015-2022
+                Redistributable (x64), which is not installed on this computer.
+                AetherCore loads VCRUNTIME140.dll and MSVCP140.dll from it.
+                Install vc_redist.x64.exe, or run AetherCoreSetup.exe instead.
+    LAUNCHCONDITION_ROW_COUNT = 4
+
+`$(sys.BUILDARCH)` expanded to **`x64`** in the message, where §48.3 read `arm64`
+in the ARM64 package. And the property is genuinely searched for, not assumed —
+the `AppSearch` and `RegLocator` tables carry the wiring:
+
+    AppSearch : VCRUNTIMEVERSION  <-  VcRuntimeVersion
+    RegLocator: VcRuntimeVersion  Root=2 (HKLM)
+                Key=SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64
+                Name=Version  Type=18
+
+The other three rows are the downgrade guard, the OS-version/SKU condition, and
+the domain-controller exclusion.
+
+### (b) The Burn chain lists `VCRedist` first — and this time it also RAN
+
+§49.2 read it out of Burn's manifest: `VCRedist` → `WebView2` → `AetherCoreMsi`,
+`CHAIN_PACKAGE_COUNT = 3`, with
+
+    RegistrySearch VcRuntimeSearch  Root=HKLM  Win64=yes
+      Key=SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64  Value=Version
+    DetectCondition="(NOT (VcRuntimeVersion = ""))"
+
+**Item 3 went further than the brief required here.** §48.6 could only say the
+chain was "authored, compiled, and present". §49.5 executed it and captured Burn
+deciding:
+
+    Detected package: VCRedist, state: Present
+    Planned  package: VCRedist, state: Present, execute: None, rollback: None
+
+So the detection half of `DBT-P41-001`'s Burn arm is now **measured working on
+x64**, on the present branch. The *install* branch — Burn actually running
+`vc_redist.x64.exe /install /quiet /norestart` because the runtime is absent —
+remains unexecuted on both architectures.
+
+### (c) What the x64 binaries actually import, read with `llvm-objdump -p`
+
+    llvm-objdump  LLVM 22.1.8-rust-1.98.0-stable
+    over the SIX INSTALLED binaries in C:\Program Files\AetherCore
+
+    binary                                runtime DLLs imported
+    aethercore-desktop.exe                (none)
+    aethercore-maintenance-service.exe    MSVCP140.dll, VCOMP140.DLL, VCRUNTIME140.dll, VCRUNTIME140_1.dll
+    aethercore-consent-broker.exe         VCRUNTIME140.dll
+    aethercore-update-broker.exe          VCRUNTIME140.dll
+    aethercore-install-hardener.exe       VCRUNTIME140.dll
+    aetherctl.exe                         VCRUNTIME140.dll
+
+    binaries importing VCRUNTIME140.dll   = 5 / 6    EXPECTED 5   MET
+    binaries importing MSVCP140.dll       = 1 / 6    the service  MET
+    binaries importing VCRUNTIME140_1.dll = 1 / 6    x64-only     MET
+    binaries importing VCOMP140.DLL       = 1 / 6    the service
+
+**All three of §48's expectations met exactly.** The one binary that imports no
+VC++ runtime is `aethercore-desktop.exe`, and its full 24-DLL import list explains
+why — it links the UCRT through the `api-ms-win-crt-*` forwarders and takes
+everything else from system DLLs:
+
+    advapi32, api-ms-win-core-synch-l1-2-0, api-ms-win-crt-{convert,heap,locale,
+    math,runtime,stdio,string}-l1-1-0, bcryptprimitives, combase, comctl32,
+    crypt32, dwmapi, gdi32, kernel32, ntdll, ole32, oleaut32, secur32, shell32,
+    shlwapi, user32, ws2_32
+
+`VCRUNTIME140_1.dll` is the x64-only one — it carries the x64 C++ exception
+unwinder, which has no ARM64 counterpart — and the fact that exactly one binary
+imports it on x64 and none can on ARM64 is why the guard has to be authored per
+architecture rather than shared. The service is also the reason `vcomp140.dll`
+ships **inside** the package as `File` row 7 rather than being taken from
+System32: it is the OpenMP runtime, and Microsoft does not redistribute it
+through the VC++ redistributable's supported install.
+
+### (d) What this machine currently has
+
+    HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64
+      Version   = v14.44.35211.00        Installed = 1
+      Major.Minor.Bld.Rbld = 14.44.35211.0
+
+    Add/Remove Programs:
+      Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211   14.44.35211.0
+      Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.44.35211   14.44.35211.0
+
+    C:\Windows\System32:
+      VCRUNTIME140.dll       124,544 B   v14.44.35211.0
+      VCRUNTIME140_1.dll      49,792 B   v14.44.35211.0
+      MSVCP140.dll           557,728 B   v14.44.35211.0
+      VCOMP140.DLL           193,152 B   v14.44.35211.0
+
+Every DLL the six binaries import is present at 14.44.35211.0, so
+`VCRUNTIMEVERSION` resolves non-empty and the `Launch` condition passes — which
+is exactly why every install in §49.4 and §49.5 succeeded rather than refusing.
+
+### What this establishes, and what it does not — stated rather than implied
+
+**Established on x64, by measurement:** the `Launch` condition exists in the
+shipped MSI, names the runtime and the architecture correctly, and is wired to a
+real registry search; the Burn chain carries `VCRedist` as its first package and
+Burn's detection of it works; and the imports the guard exists to protect are
+exactly what §48 predicted — five of six on `VCRUNTIME140.dll`, the service
+additionally on `MSVCP140.dll`, and `VCRUNTIME140_1.dll` present only here.
+
+**NOT established on x64, and deliberately not attempted:** that the refusal
+actually fires. **The refusal itself is proven on ARM64 (§48.3) and is inferred
+here.** The authoring is identical up to the `$(sys.BUILDARCH)` substitution,
+which is itself verified above — but *inferred* is not *measured*, and this row
+must not be written up as an x64 measurement by a later session. Proving it needs
+a machine without the runtime, and that machine must not be this one.
