@@ -9018,7 +9018,7 @@ start: `0 0` — local `main` and `origin/main` identical at `77836cd`.
 | 1.C.2 the four real defects the port surfaced | DONE | §47.4 — 2 already fixed by the port, 2 fixed here (`6fdc01c`, `df90889`); both brief counts corrected with measurements |
 | 1.C.3 ~430 colour literals in `feature-layout.css` | DECIDED — migrate, registered as `DBT-P47-001` | §47.4 — 440 literals measured; light theme reads 1.02:1 black-on-black; sweep now runs both themes, 132/132 x2 |
 | 2 Gate 5 on ARM64 (verify the §41.17 claim first) | **DONE — PASS** | §47.5 claim verified (evidenced for 0.1.6, stale); §47.7 re-run on 0.1.11: validate EMPTY, payload PASS, 16 rows, uninstall 0, **0 survivors on all 14**, reinstall 0, pipe SDDL byte-identical, `engineLabel localModel` from the service. `DBT-P47-002` raised; `DBT-P42-012` still needs x64 |
-| 3 icon pipeline (`DBT-P36-004` stays OPEN) | NOT STARTED | — |
+| 3 icon pipeline (`DBT-P36-004` stays **OPEN**) | **DONE** | `31445b0` pipeline + wiring, `e369010` proof. One SVG -> 17 files in 8.0 s; ico 7 entries / icns 10 chunks decoded back and verified; `--check` PASS with a working negative control; built on the VM: validate EMPTY, payload PASS, File rows still 16, `Icon` table `ProductIcon.ico`, `ARPPRODUCTICON` set, 12,928-byte stream matching `icon.ico` sha256 `4a49d865…` |
 | 4 the 2.B decision (`DBT-P42-009`, `DBT-P42-010`) | NOT STARTED | — |
 | 5.A independently verify the 4.A x64 claim | NOT STARTED | — |
 | 5.B `DBT-P42-011` re-measure on the current build | NOT STARTED | — |
