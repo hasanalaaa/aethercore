@@ -17,10 +17,18 @@
  * in plain JS: both are short, documented formats, and every library that does
  * it would be a dependency carried for two functions.
  *
- * The artwork itself is an OWNER DECISION and is not settled (DBT-P36-004).
- * This pipeline does not choose it. `--source` takes whatever SVG the owner
- * picks; `icons/SOURCE.json` records which one produced the committed set, by
- * path and sha256, so the set always has exactly one traceable ancestor.
+ * The artwork is settled: `design/icon/aethercore-mark.svg`, the geometric AE
+ * ligature, monochrome `#5C7CFA` (`--role-interactive`) on `#030508`. P48 item 2
+ * closed DBT-P36-004 on it. The pipeline still does not choose it -- `--source`
+ * takes whatever SVG replaces it, and `icons/SOURCE.json` records which one
+ * produced the committed set, by path and sha256, so the set always has exactly
+ * one traceable ancestor. Replacing the mark is one file and one command.
+ *
+ * PNG_TARGETS below and `bundle.icon` in apps/desktop/tauri.conf.json must stay
+ * in step. Order matters there and not here: tauri-build and tauri-codegen pick
+ * the FIRST entry matching an extension, so icon.png / icon.ico / icon.icns lead
+ * their classes in that array. Adding a size here means adding it there, after
+ * those three.
  */
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
@@ -297,11 +305,14 @@ async function main() {
   const relSource = source.startsWith(REPO) ? source.slice(REPO.length + 1) : source;
   writeFileSync(manifestPath, `${JSON.stringify({
     schema: 'aethercore.icon-source.v1',
-    // Recorded so the set has one traceable ancestor. The artwork itself is an
-    // owner decision (DBT-P36-004); this only says which file made these files.
+    // Recorded so the set has one traceable ancestor: this says which file made
+    // these files, and nothing else. It carried a `provisional: true` flag while
+    // DBT-P36-004 was open; that flag is gone rather than flipped to `false`,
+    // because a generator cannot know an editorial decision and a hardcoded
+    // `false` would be the same lie waiting to happen. Editorial status lives in
+    // the debt ledger.
     source: relSource,
     sourceSha256: sha256(sourceBytes),
-    provisional: true,
     generatedBy: 'tools/icon-pipeline/build-icons.mjs',
     files: Object.fromEntries(written.map((n) => [n, sha256(readFileSync(join(ICONS, n)))])),
   }, null, 2)}\n`);

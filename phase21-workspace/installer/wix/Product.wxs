@@ -76,9 +76,14 @@
          literal Source="..." strings and compares it to the MSI File table. An
          Icon is not a File row, so this neither joins that allowlist nor needs to.
 
-         The artwork itself is PROVISIONAL and is an owner decision (DBT-P36-004).
-         tools/icon-pipeline/build-icons.mjs regenerates every icon from one SVG;
-         apps/desktop/icons/SOURCE.json records which SVG made the committed set. -->
+         P48 item 2: the artwork is the product's mark, not a placeholder, and
+         DBT-P36-004 is closed. design/icon/aethercore-mark.svg is the geometric
+         AE ligature, monochrome #5C7CFA on #030508. Monochrome by design: plum
+         is the denied-by-policy role, and spending it on an icon would cost
+         that role its meaning. The owner replaces it by dropping a new SVG through
+         tools/icon-pipeline/build-icons.mjs, which regenerates all seventeen
+         files; apps/desktop/icons/SOURCE.json records which SVG made the
+         committed set, by path and sha256. -->
     <Icon Id="ProductIcon.ico" SourceFile="$(var.IconFile)" />
     <Property Id="ARPPRODUCTICON" Value="ProductIcon.ico" />
 

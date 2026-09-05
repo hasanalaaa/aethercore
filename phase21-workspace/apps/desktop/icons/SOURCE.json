@@ -2,7 +2,6 @@
   "schema": "aethercore.icon-source.v1",
   "source": "design/icon/aethercore-mark.svg",
   "sourceSha256": "65f441712c7fc8e21d5969001c027be05dd908380b06d08623edf5772b36441f",
-  "provisional": true,
   "generatedBy": "tools/icon-pipeline/build-icons.mjs",
   "files": {
     "32x32.png": "f8eeeb34de7ae101f8f39b65547b865352be56e521529b4f9e24a74cbc666766",
