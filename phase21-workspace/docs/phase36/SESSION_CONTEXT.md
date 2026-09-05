@@ -11190,3 +11190,90 @@ fix.
 **Reach `HUSSEIN` and run the pipeline, Gate 5 and Item 3's clean-machine test
 there on 0.1.11** — it is the only thing standing between this build and a
 current-build gate set on the architecture the product actually ships to.
+
+---
+
+## 49.0 PROGRESS TABLE (authoritative — resume from here)
+
+**P49 runs on the physical x64 machine `Hussein` at `C:\dev\aethercore`,
+elevated (`IsInRole(544)` = `True`, standalone CLI, not the Store package).
+`core.autocrlf` = `false`, verified before the first commit.**
+
+This is the machine every "BLOCKED-MACHINE" row in §47.9 and §48.6 was waiting
+for. It is reachable for the first time since §41.
+
+Rows move in the same commit as the work they describe. A table that lags is
+the measuring-instrument pattern §47 was caught by.
+
+| item | status | evidence |
+|---|---|---|
+| 0 elevation, autocrlf, machine survey | **DONE** | §49.1 |
+| 1 build the current source on x64 (MSI + bundle) | NOT STARTED | — |
+| 2 Gate 5 on x64 against this build | NOT STARTED | — |
+| 3 install `AetherCoreSetup.exe` — nobody ever has | NOT STARTED | — |
+| 4 `DBT-P42-011` the bias, re-measured | NOT STARTED | — |
+| 5 the VC++ runtime guard on x64, without breaking this machine | NOT STARTED | — |
+| 6 the statement §48.7 could not make | NOT STARTED | — |
+| owner register | listed, not attempted | §49.0 note below |
+
+**Owner register — unchanged, not attempted, not re-argued:** code-signing
+certificate (`DEFERRED-OWNER`); Gate 4 (recovery media never boot-tested and now
+detached, and Windows Update offers this machine zero drivers so no candidate
+device exists); Windows Server qualification; production endpoint/key/HSM;
+dependency freeze; payment.
+
+## 49.1 ITEM 0 — the machine, measured before anything is built on it
+
+    ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(544)
+    True
+
+    hostname                  Hussein
+    OS                        Windows 11 Pro 10.0.26200
+    arch                      x86_64
+    git core.autocrlf         false
+    C: free                   401.2 GB
+
+    cargo    1.98.0 (797e8a9bc 2026-08-05)
+    rustc    1.98.0 (88d9e12ae 2026-08-18)
+    node     v22.23.2
+    pnpm     11.22.0
+    dotnet   8.0.424          (WiX 6.0.2 comes from the pinned dotnet tool manifest)
+    VS       C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools
+
+### `DBT-P42-012`'s trap is live on this machine, and it is the reason the check exists
+
+Four files named `vcomp140.dll` are installed here. Sorted the way a naive
+recursive search returns them, **the first match is the wrong one**:
+
+       72712  ...\VC\Redist\MSVC\14.44.35112\onecore\x64\Microsoft.VC143.OpenMP\vcomp140.dll   <- WRONG, first hit
+       64168  ...\VC\Redist\MSVC\14.44.35112\onecore\x86\Microsoft.VC143.OPENMP\vcomp140.dll
+      193152  ...\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.OpenMP\vcomp140.dll           <- CORRECT
+      163488  ...\VC\Redist\MSVC\14.44.35112\x86\Microsoft.VC143.OPENMP\vcomp140.dll
+
+`scripts/build-installer.ps1` resolves it through `$env:VCToolsRedistDir` and
+asserts 193,152 B / sha256 `55aba23c…` before packaging. The pinned fallback path
+in that script — `C:\AetherCore-P36\toolchain\vs2022\…` — is the ARM64 VM's
+layout and **does not exist on this machine**, so the env-var branch is the one
+that must work here.
+
+### What is already installed, and why it is not the build this phase qualifies
+
+    ARP        AetherCore 0.1.11  {0F9F349D-01C8-B3C2-7242-83B5D29047C9}
+    InstallDate 20260902
+    InstallSource C:\dev\aethercore\phase21-workspace\out\release\
+    service    AetherCoreMaintenance  RUNNING
+    files      16 (9 in the install root + 7 under assets\)
+
+    out\release\AetherCore.msi   1,100,148,736 B
+      sha256 6ecd1ee9786731d22741edbc10e8e0c14ca8add967fe7ebe7f365b21940702a3
+      written 2026-09-02 18:00:13
+
+That MSI is **not** §41's `d18d89db…` and **not** anything this phase built. It is
+the artefact of the 2026-09-02 peer session §46.16 records — the one §47.9 and
+§48.6 could never independently verify, and which §48.7 correctly refused to call
+a verdict. It is stale in a way that can be pointed at rather than argued:
+`UNINSTALL.txt` on disk is **3,206 B**, the pre-`DBT-P47-002` text. The current
+package's is 3,874 B.
+
+So the machine starts this phase carrying a build no gate in this project has
+ever measured. Item 1 replaces it.
