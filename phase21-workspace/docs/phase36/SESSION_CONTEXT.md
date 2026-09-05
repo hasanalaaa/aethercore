@@ -9011,9 +9011,9 @@ start: `0 0` — local `main` and `origin/main` identical at `77836cd`.
 
 | item | status | evidence |
 |---|---|---|
-| 1.A merge main into `design/shell-v2` | IN PROGRESS | — |
-| 1.B prove the port after the merge | NOT STARTED | — |
-| 1.C merge to main, then finish what the port left open | NOT STARTED | — |
+| 1.A merge main into `design/shell-v2` | DONE | §47.1 — merge `2d7f4c3`, 5 overlapping files, 0 conflicts |
+| 1.B prove the port after the merge | DONE | §47.2 — build 0 errors, arabic 7/7, numbers exit 0, sweep 66/66 x2 |
+| 1.C merge to main | DONE | §47.3 — merge `5e18fb9`, 142 files / +16,531 lines on main, static gate delta 0 |
 | 1.C.1 the ten screens with no dedicated pass | NOT STARTED | — |
 | 1.C.2 the four real defects the port surfaced | NOT STARTED | — |
 | 1.C.3 ~430 colour literals in `feature-layout.css` | NOT STARTED | — |
@@ -9024,3 +9024,104 @@ start: `0 0` — local `main` and `origin/main` identical at `77836cd`.
 | 5.B `DBT-P42-011` re-measure on the current build | NOT STARTED | — |
 | 5.C `DBT-P41-001` MSVCP140/VCRUNTIME140 decision | NOT STARTED | — |
 | owner register | NOT STARTED | — |
+
+## 47.1 ITEM 1.A — main merged into the port branch, resolved in the design worktree
+
+Merge base `836906f`. The port branch was **34 ahead / 156 behind** main. Both
+sides enumerated by file before touching anything:
+
+    port changed   142 files
+    main changed   171 files
+    overlap          5 files
+
+The five, and what each side did:
+
+| file | main side | port side | resolution |
+|---|---|---|---|
+| `apps/ui/package.json` | removed `"version": "0.1.0"` | added `fixture` + `sweep` scripts | auto, both kept |
+| `apps/ui/src/dev/layout-fixture.ts` | `officialSource` de-schemed for `phase7_no_remote_ui_assets` | `selectionPolicy` fixture defect fixed (`+96/-2`) | auto, both kept |
+| `apps/ui/src/features/fleet/FleetPage.svelte` | `schedulesError` fault path (DBT-P46-B30) | `EmptyState` for the host list | auto, both kept |
+| `apps/ui/src/lib/i18n/catalog.en.ts` | +6 keys | +27 keys | auto |
+| `apps/ui/src/lib/i18n/catalog.ar.ts` | +6 keys | +27 keys | auto |
+
+`git merge main` in `/Users/hasanalaaa/dev/aethercore-design`: **exit 0, zero
+conflicts**, merge commit `2d7f4c3`. Both sides verified present afterwards by
+grep, not by assumption — `"fixture"`/`"sweep"` at package.json:7-8,
+`schedulesError` at FleetPage.svelte:37 and :457, `EmptyState` at :17 and :365.
+
+**The two seams the brief named, checked specifically:**
+
+- **the `has_*` wire fields (`5c1406d`).** The UI consumes none of them
+  directly. main's one UI-visible P46 wire addition is `schedulesError` on the
+  fleet snapshot, and it survived the merge with its renderer intact. Nothing
+  in `apps/ui` reads a `has_*` field, so there was nothing to reconcile.
+- **`product-identity` (`a042a8c`, `71fc629`).** The port introduces **no name
+  decision**. Its seven new non-comment `AetherCore` occurrences are all i18n
+  prose in `catalog.en.ts`/`catalog.ar.ts` (`policy.bandDescription`,
+  `drivers.policyHoldsTitle`, `drivers.policyHoldsCopy`, ×2 languages) plus one
+  `console.error` tag — joining ~40 pre-existing prose occurrences in the same
+  two files. Read the gates rather than guessing their scope:
+  `p46_service_name_has_one_decider` reads `Product.wxs`,
+  `install-service.ps1`, `uninstall-service.ps1` and three Rust files;
+  `p46_product_name_has_one_decider` reads `Product.wxs`'s `INSTALLFOLDER` and
+  `ProgramDataRoot`. Neither scopes `apps/ui`, and a TypeScript catalog cannot
+  read a Rust const. Nothing to migrate.
+
+## 47.2 ITEM 1.B — the port proven after the merge, before proposing it to main
+
+Every number below is raw output, on the merged branch.
+
+| check | EXPECTED | OBSERVED |
+|---|---|---|
+| `npm run build` | 0 errors | **0 errors** — 207 modules, 636.50 kB JS / 99.91 kB CSS, 6 font assets, 666 ms |
+| `npm run check` | no new type errors | 224 files, **0 errors**, 16 warnings, 3 files with problems |
+| `node tools/verify-arabic.mjs` | 7/7, zero system-font fallback | **7/7 PASS**, `ARABIC_EXIT=0` |
+| `node tools/verify-numbers.mjs` | zero untraceable numbers | **exit 0**, 23 numbers, all traced |
+| `layout-sweep.mjs` populated | clean at 1280/1024/960, both languages | **66/66 pass** |
+| `layout-sweep.mjs` no service | same, with no service attached | **66/66 pass** |
+
+`svelte-check` exits **1**, and that is `--fail-on-warnings` acting on 16
+pre-existing warnings, not a regression: 15 unused-CSS selectors in
+`DeepScanPage.svelte`/`FindingCard.svelte` and one `a11y` role warning in
+`FluidDialog.svelte`, none in a file this port created. The port's own
+pre-merge record was the same 16, down from 17 at its baseline.
+
+**The Arabic check was re-run from the rendered DOM, not from CSS**, which is
+the whole point of the tool — the port's headline finding was that the CSS
+asked for the bundled face while the compositor painted Tahoma. Read back
+through `CSS.getPlatformFontsForNode`, per node, with glyph counts:
+
+    80 Arabic-bearing nodes, 1778 glyphs
+    bundled      IBM Plex Sans Arabic 1560, IBM Plex Sans Arabic SmBld 101,
+                 Inter 101, JetBrains Mono 16
+    system fallback  0 glyph(s)  []
+
+and the subset face still shapes: `"التشخيص"` joined **154px** vs
+joining-blocked **217px**. Layout genuinely RTL, not mirrored LTR: rail at
+1022-1280 of 1280, `main.left=0`.
+
+`verify-numbers` printed all 23 score-shaped numbers with their source
+element; every one is a percentage of a counted total or service-authored
+prose, and **0 bare confidence scores**. The gate's own DOM counts:
+denied 22 occurrences / 90 elements, evidence 67 occurrences / 10 chips.
+
+Both sweeps report `overflowX=0 clipped=0 overlaps=0` on all 132 measurements,
+`band=true` on every one, and `dir` flips `ltr`→`rtl` with the locale.
+
+## 47.3 ITEM 1.C — the port on main
+
+`git merge --no-ff design/shell-v2` into `main`: exit 0, **142 files changed,
+16,531 insertions, 451 deletions**, commit `5e18fb9`, pushed. `origin/main`
+re-fetched immediately before the merge and found `0 0` against local.
+
+**The measuring instrument, checked before the merge rather than after.**
+`static_validate.py` was run on the merged tree and on pristine `main`, and
+compared as sets rather than as counts:
+
+    main    346 checks / 21 failed
+    merged  346 checks / 21 failed
+    NEW_FAILURES=[]  NEWLY_PASSING=[]
+
+The 21 are the same pre-existing non-Windows-environment failures §46.21
+recorded. The port adds 96 files under `apps/ui/src` and does not trip
+`phase7_no_remote_ui_assets`, which was the gate most likely to catch it.
