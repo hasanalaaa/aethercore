@@ -8990,3 +8990,37 @@ that is not needed (B12 and B15 are the two worked examples).
 Before doing anything else: re-check `ListAgents` and `git fetch origin main`.
 Two concurrent-session incidents are already on this ledger (§46.10, §46.15),
 both from a shared working directory — stage explicit paths, never `git add -A`.
+
+---
+
+# PHASE 47 — P47-FINISH: LAND THE PORT, FINISH THE GATES, HAND BACK THE DECISIONS (2026-09-05)
+
+Session host: the Mac (`/Users/hasanalaaa/dev/aethercore`), `aarch64-apple-darwin`,
+session id `aethercore-67`. One session, sequential, no delegated commits or
+pushes — per the brief's own record of what three parallel lanes cost in P46.
+
+**Concurrent sessions at start** (`ListAgents`, 2026-09-05): two interactive
+peers alive — `aethercore-82` (started 3h before this one) and
+`aethercore-design-89` (idle, started 1d before, the session that owns the
+design worktree). Seven Remote Control sessions, all offline, including
+`AetherCore x86_64 Windows physical qualification` — the peer whose 4.A claim
+Item 5.A asks this session to verify independently. `git fetch origin main` at
+start: `0 0` — local `main` and `origin/main` identical at `77836cd`.
+
+## 47.0 PROGRESS TABLE (authoritative — resume from here)
+
+| item | status | evidence |
+|---|---|---|
+| 1.A merge main into `design/shell-v2` | IN PROGRESS | — |
+| 1.B prove the port after the merge | NOT STARTED | — |
+| 1.C merge to main, then finish what the port left open | NOT STARTED | — |
+| 1.C.1 the ten screens with no dedicated pass | NOT STARTED | — |
+| 1.C.2 the four real defects the port surfaced | NOT STARTED | — |
+| 1.C.3 ~430 colour literals in `feature-layout.css` | NOT STARTED | — |
+| 2 Gate 5 on ARM64 (verify the §41.17 claim first) | NOT STARTED | — |
+| 3 icon pipeline (`DBT-P36-004` stays OPEN) | NOT STARTED | — |
+| 4 the 2.B decision (`DBT-P42-009`, `DBT-P42-010`) | NOT STARTED | — |
+| 5.A independently verify the 4.A x64 claim | NOT STARTED | — |
+| 5.B `DBT-P42-011` re-measure on the current build | NOT STARTED | — |
+| 5.C `DBT-P41-001` MSVCP140/VCRUNTIME140 decision | NOT STARTED | — |
+| owner register | NOT STARTED | — |
