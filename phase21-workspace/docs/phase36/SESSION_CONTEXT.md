@@ -11210,7 +11210,7 @@ the measuring-instrument pattern §47 was caught by.
 | 0 elevation, autocrlf, machine survey | **DONE** | §49.1 |
 | 1 build the current source on x64 (MSI + bundle) | **DONE — every criterion met** | §49.2 — all exit 0; `wix msi validate` **0 lines emitted**, no suppression; `PAYLOAD_CHECK=PASS`; **16 File rows**, row 7 `vcomp140.dll` proving the `$(sys.BUILDARCH)` selection on the x64 artefact; MSI `77ee416b…` 1,100,271,616 B; the **first x64 bundle ever compiled**, `d0398765…` 1,128,354,997 B, chain `VCRedist` → `WebView2` → `AetherCoreMsi` read out of Burn's own manifest. `DBT-P42-012`'s guard fired correctly against the real four-file trap. New **`DBT-P49-001`** |
 | 2 Gate 5 on x64 against this build | **DONE — PASS** | §49.4 — restore point `P49-PRE-GATE5` seq **6**, verified by enumeration. Against MSI `77ee416b…`: uninstall exit 0 **twice**, **zero survivors on all fourteen both times**, `MACHINE_WIDE=0` both times, install and reinstall exit 0. 16 files **MATCHED=16 MISMATCH=0** against the built payload; service RUNNING/LocalSystem/AUTO_START(DELAYED); SID **UNRESTRICTED**; ACLs = §10 baseline; `DEV_BINARY_IN_INSTALL_IMAGE=NO`; six verbs with timings; pipe SDDL **byte-identical**; `engineLabel localModel` from the running service. `UNINSTALL.txt`'s corrected text measured claim-by-claim |
-| 3 install `AetherCoreSetup.exe` — nobody ever has | NOT STARTED | — |
+| 3 install `AetherCoreSetup.exe` — nobody ever has | **DONE — PASS, 4 UI findings** | §49.5 — first execution by anyone. `BUNDLE_EXIT=0` in 121 s. Both prerequisites detected **Present** and skipped, MSI installed anyway, `restart: None` even on a machine already carrying `RebootPending=1`. Result **indistinguishable** from the MSI install on all 12 measured properties incl. byte-identical pipe DACL and `engineLabel localModel`. Uninstall through the bundle exit 0, **zero survivors on all fourteen**, both package caches released, prerequisites correctly survived. New **`DBT-P49-002`** (unbranded/uninformative UI) and **`DBT-P49-003`** (two `%TEMP%` logs) |
 | 4 `DBT-P42-011` the bias, re-measured | NOT STARTED | — |
 | 5 the VC++ runtime guard on x64, without breaking this machine | NOT STARTED | — |
 | 6 the statement §48.7 could not make | NOT STARTED | — |
@@ -11788,3 +11788,243 @@ Byte-identical pipe DACL, 16 files, service running, local model live.
 **GATE 5 ON x64, AGAINST MSI `77ee416b…`: PASS.** Uninstall exit 0 twice, zero
 survivors on all fourteen both times, `MACHINE_WIDE=0` both times, reinstall exit
 0, every Gate 2 property re-proven from measurement.
+
+## 49.5 ITEM 3 — `AetherCoreSetup.exe` INSTALLED, FOR THE FIRST TIME BY ANYONE: **PASS, with four UI findings**
+
+Before this run the consumer installer had been compiled exactly once (§48.6, on
+ARM64) and **never executed**. This is the first time any human or machine has
+run it.
+
+### The machine was left measurably clean first
+
+    msiexec /x {0F9F349D-…} /qn /l*v    UNINSTALL_EXIT=0   3073 ms   log 151,732 B
+    INSTALLDIR=False   PROGRAMDATA=False   SERVICE=absent(1060)
+    ARP_AetherCore=0   HKLM_SOFTWARE_AETHER=False
+
+And the prerequisite state the chain would have to reason about was measured
+*before* the bundle ran, because it decides which branch gets tested:
+
+    VcRuntimeVersion (HKLM\…\VC\Runtimes\x64\Version)  = v14.44.35211.00
+    WebView2MachineVersion (pv)                        = 152.0.4191.62
+    WindowsInstallationType                            = Client
+
+**Both prerequisites were already present.** So this run tests exactly the branch
+the brief calls out as a risk — "fails silently when a prerequisite is already
+present" — and not the fresh-install branch.
+
+### It was run the way a user runs it: no `/quiet`, no `/passive`, real UI
+
+    AetherCoreSetup-0.1.11-x64.exe /log <path>
+    BUNDLE_EXIT=0        BUNDLE_ELAPSED_S=121        burn log 15,174 B
+
+### The chain, from Burn's own log
+
+    Detected package: VCRedist,       state: Present, install registration state: (permanent)
+    Detected package: WebView2Ever…,  state: Present, install registration state: (permanent)
+    Detected package: AetherCoreMsi,  state: Absent
+
+    Planned package: VCRedist,        state: Present, execute: None,    rollback: None
+    Planned package: WebView2Ever…,   state: Present, execute: None,    rollback: None
+    Planned package: AetherCoreMsi,   state: Absent,  execute: Install, rollback: Uninstall
+
+    Applying execute package: AetherCoreMsi, action: Install,
+      path: C:\ProgramData\Package Cache\{0F9F349D-…}v0.1.11\AetherCore-0.1.11-x64.msi,
+      arguments: ARPSYSTEMCOMPONENT="1" MSIFASTINSTALL="7" BURNMSIINSTALL=1
+                 REINSTALLMODE="muso" REBOOT=ReallySuppress
+    Applied execute package: AetherCoreMsi, result: 0x0, restart: None
+    Apply complete, result: 0x0, restart: None, ba requested restart: No
+    Exit code: 0x0, restarting: No
+
+**Both prerequisites detected `Present` and skipped, and the product still
+installed and still reported success.** That is the failure mode the brief named,
+tested on the branch that could exhibit it, and it does not.
+
+**No reboot was requested, and none was needed.** Worth stating precisely: the
+machine itself carried `RebootPending = 1` from unrelated Windows state, and the
+bundle *still* set `WixStdBARestartRequired` to empty and exited `restarting: No`.
+It does not demand a reboot even on a machine that already owes one.
+
+### The result is indistinguishable from an MSI install — proven, not assumed
+
+Item 2's checks re-run against the **bundle-installed** product:
+
+| criterion | MSI install (§49.4) | bundle install | |
+|---|---|---|---|
+| file count | 16 | **16** | same |
+| file hashes | MATCHED=16 MISMATCH=0 | **MATCHED=16 MISMATCH=0 NOT_IN_SOURCES=0** | same |
+| OpenMP runtime | vcomp140 yes / aarch64 no | same | same |
+| dev binaries | `NO` | **`NO`** | same |
+| service | RUNNING, LocalSystem, AUTO_START (DELAYED) | identical | same |
+| `sc qsidtype` | UNRESTRICTED | **UNRESTRICTED**, same SID | same |
+| install-dir ACLs | §10 baseline | identical, field for field | same |
+| pipe DACL | `O:S-1-5-80-…G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-…)` | **byte-identical** | same |
+| `HKLM\…\InstallVersion` | 0.1.11 | 0.1.11 | same |
+| ProgramData | 5 files | 5 files | same |
+| **`engineLabel`** | **`localModel`** | **`localModel`** | same |
+| verbs | 6/6 returned | 6/6 returned, 12–711 ms | same |
+
+**Every security and behaviour property is identical.** The chain is equivalent to
+the MSI for everything the gates measure.
+
+### What the bundle install DID that the MSI install does not
+
+This is the part that had never been observed, so it is listed exhaustively.
+
+1. **It registered a second ARP key.** `{C047DFD5-BD01-4BF8-AEAD-54333A6C691F}`,
+   `DisplayName = AetherCore Setup`. The MSI's own key still exists but Burn
+   passed `ARPSYSTEMCOMPONENT="1"`, which sets `SystemComponent = 1` on it.
+   Measured rather than assumed — the registry holds two keys, and what a user
+   sees is one:
+
+        VISIBLE_ARP_ENTRIES = 1
+          AetherCore Setup  0.1.11  {C047DFD5-…}
+
+   Its `UninstallString` is the cached bundle with `/uninstall`, and there is a
+   `QuietUninstallString` too. **Correct behaviour**, and the design intent of
+   `Visible="no"` — but it means the entry a user removes is called *AetherCore
+   Setup*, not *AetherCore*.
+
+2. **It kept a second full copy of the 1.1 GB MSI on disk.** `Cache="keep"`:
+
+        C:\ProgramData\Package Cache\{0F9F349D-…}v0.1.11\AetherCore-0.1.11-x64.msi   1,100,271,616 B
+        C:\ProgramData\Package Cache\{C047DFD5-…}\AetherCoreSetup-0.1.11-x64.exe         1,082,002 B
+        C:\ProgramData\Package Cache\{C047DFD5-…}\state.rsm                                  1,038 B
+        PACKAGE_CACHE_BYTES = 1,101,354,656   (1,050.3 MB)
+
+   That sits **on top of** msiexec's own cached copy, which a plain MSI install
+   also creates:
+
+        C:\Windows\Installer\23e4f196.msi     1,100,271,616 B
+
+   So a bundle install leaves the machine holding **two** 1.1 GB copies of the
+   package plus the 1.14 GB install directory. The bundle's *additional* cost over
+   an MSI install is **1,050.3 MB**. Not a defect — it is what makes Burn repair
+   and modify work offline — but it is a real number a consumer should not
+   discover by running out of disk. Note the cached bundle .exe is only 1,082,002 B:
+   Burn caches the engine, not the 1.13 GB attached container.
+
+3. **It launched a separate elevated engine process.**
+   `i010: Launching elevated engine process. … i012: Connected to elevated engine.`
+   **This session saw no UAC prompt, and that proves nothing** — the bundle was
+   started from an already-elevated shell, so it inherited elevation. A real user
+   launching it from a standard desktop session will get one UAC prompt at the
+   moment they press Install. That is **inferred here, not measured**, and it is
+   stated that way deliberately.
+
+4. **It left two small log files in `%TEMP%` that nothing cleans up.**
+
+        926 B  AetherCore_Setup_20260906011711.elevated.log     (install)
+        935 B  AetherCore_Setup_20260906012151.elevated.log     (uninstall)
+
+   Per-user, tiny, and standard Burn behaviour — but they are product-attributable
+   files that survive uninstall and that the MSI path does not create. Raised as
+   **`DBT-P49-003`**, risk **low**, same family as `DBT-P42-013`.
+
+5. **It showed a graphical interface**, which is the whole point, and which had
+   never been looked at. That produced the findings below.
+
+### What a first real user actually sees — recorded verbatim
+
+Screen 1, before touching anything (`WixStdBA`, 750×506):
+
+    [Button  ] Install
+    [Button  ] Cancel
+    [Text    ] AetherCore Setup
+    [TitleBar] AetherCore Setup Setup
+
+Screen 2, after pressing Install, and for the whole ~30 s the MSI took:
+
+    [Text       ] Setup Progress
+    [Text       ] Processing:
+    [Text       ] Initializing...
+    [ProgressBar] Initializing...
+    [Button     ] Cancel
+
+> **`DBT-P49-002` — the consumer installer's UI is unbranded and uninformative.**
+> Four things, all visible to the first user who runs it, none of them affecting
+> what gets installed:
+>
+> **(a) The title bar reads "AetherCore Setup Setup".** `Bundle/@Name` is
+> "AetherCore Setup" and `WixStandardBootstrapperApplication` appends " Setup" to
+> it. The fix is to name the bundle "AetherCore".
+>
+> **(b) The logo is WiX's stock placeholder, not the product's mark.** The
+> extracted BA carries an 852-byte `logo.png` — a dark red square with a white
+> disc — because `Bundle.wxs` sets no `LogoFile`. §48.2 closed `DBT-P36-004` by
+> making the shipped icon deliberate artwork, and `DBT-P48-001` already records
+> that the in-app mark is a *different* mark. This is a **third** mark, and it is
+> the one a user sees first. `apps\desktop\icons\icon.ico` already exists in the
+> tree and is already passed to the MSI.
+>
+> **(c) The welcome screen is empty.** No version despite `ShowVersion="yes"`, no
+> license text or link because `LicenseUrl=""`, no install location, no
+> description — a name, a stock logo, and two buttons on 400 px of white space.
+>
+> **(d) Install progress never updates.** It reads `Processing: Initializing...`
+> with an empty bar for the entire MSI install. The *uninstall* path does not have
+> this problem — it reached `Processing: AetherCore` at t+9 s — so this is
+> specific to the install sequence, not the theme.
+>
+> Risk: **cosmetic, but on the most exposed surface in the product.** Combined
+> with the unsigned-installer SmartScreen warning (`DEFERRED-OWNER`), the first
+> thing a paying customer sees is an unsigned, unbranded dialog that appears to
+> hang for thirty seconds. **Not fixed here** — this is packaging polish and the
+> brief's Item 3 was to install it and report, not to redesign it.
+
+### Uninstall THROUGH THE BUNDLE
+
+Run the way Apps & features would, straight off the ARP `UninstallString`:
+
+    "C:\ProgramData\Package Cache\{C047DFD5-…}\AetherCoreSetup-0.1.11-x64.exe" /uninstall
+    BUNDLE_UNINSTALL_EXIT=0     BUNDLE_UNINSTALL_ELAPSED_S=192
+
+The screens, in order:
+
+    t+0s    [Text] Modify Setup            [Button] Repair  [Button] Uninstall  [Button] Cancel
+    t+7s    [Text] Setup Progress          Processing: Initializing...
+    t+9s    [Text] Setup Progress          Processing: AetherCore
+    t+13s   [Text] Uninstall Successfully Completed        [Button] Close
+
+### The sweep after the bundle uninstall: **ZERO SURVIVORS ON ALL FOURTEEN**
+
+     1  INSTALLDIR              False                    clean
+     2  PROGRAMDATA             False                    clean
+     3  SERVICE                 absent(1060)             clean
+     4  PIPE_COUNT              0                        clean
+     5  ARP_COUNT               0                        clean
+     6  HKLM_SOFTWARE_AETHER    False                    clean
+     7  HKCU_SOFTWARE_AETHER    False                    clean
+     8  STARTMENU               0                        clean
+     9  SCHEDULED_TASKS         0                        clean
+    10  FIREWALL_RULES          0                        clean
+    11  HKLM_SERVICES_KEY       False                    clean
+    12  EVENTLOG_SOURCE         0                        clean
+    13  HKEY_USERS_MARKERS      0                        clean
+    14  FILESYSTEM_SWEEP        21 raw / 0 machine-wide  clean
+    SURVIVORS = 0        MACHINE_WIDE = 0
+
+**Both caches were released**, which is the thing a bundle can get wrong and which
+nothing had ever checked:
+
+    C:\ProgramData\Package Cache\{0F9F349D-…}v0.1.11   present: False
+    C:\ProgramData\Package Cache\{C047DFD5-…}          present: False
+    C:\Windows\Installer\23e4f196.msi                  present: False
+    ARP entries matching AetherCore                    0
+
+And the two prerequisites correctly **survived**, which is what `Permanent="yes"`
+is for — removing AetherCore must not remove a runtime other software depends on:
+
+    VcRuntimeVersion       = v14.44.35211.00      still present
+    WebView2MachineVersion = 152.0.4191.62        still present
+
+Check 14 grew from 17 raw hits to 21 for four reasons, all accounted for: the two
+`AetherCore_Setup_*.elevated.log` files of `DBT-P49-003`, and two
+`bundle-*-burn_000_AetherCoreMsi.log` per-package logs that exist only because
+**this session passed `/log`** into its own scratchpad. `MACHINE_WIDE` is still 0.
+
+**ITEM 3 = PASS.** The consumer installer installs, produces a product identical
+to the MSI's on every measured property, requests no reboot, does not fail
+silently when its prerequisites are already present, uninstalls cleanly through
+its own ARP entry, releases both package caches, and leaves zero machine-wide
+survivors. What is wrong with it is entirely on the surface, and is now written
+down as `DBT-P49-002`.
