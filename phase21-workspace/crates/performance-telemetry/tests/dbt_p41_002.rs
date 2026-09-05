@@ -338,3 +338,56 @@ fn a_bad_status_is_not_decoded_as_a_double() {
     slot[8..16].copy_from_slice(&f64::NAN.to_le_bytes());
     assert_eq!(decode_pdh_double(&slot), None);
 }
+
+// ---------------------------------------------------------------------------
+// DBT-P42-010, VRAM half — a test that touches the real counters
+// ---------------------------------------------------------------------------
+
+/// `dedicated_used_bytes` and `shared_used_bytes` were `GpuSample::default()`
+/// on every Windows host, forever: `sample_gpu` built its sample as
+/// `GpuSample { engines, ..Default::default() }`, so the Performance page
+/// rendered `VRAM -/- GB` on the only platform this product ships to.
+///
+/// The assertion is guarded on the counters existing, because that is the only
+/// honest form: a host with no `GPU Adapter Memory` instances has nothing to
+/// report and 0 is correct there. Where the instances DO exist, at least one of
+/// dedicated or shared usage must be non-zero — a machine running a desktop
+/// session always has some graphics memory committed, and an integrated adapter
+/// with no dedicated VRAM reports it as shared. Before the fix this failed on
+/// any such host; after it, it reads what PDH reports.
+#[test]
+fn gpu_vram_usage_is_read_where_the_counters_exist() {
+    use aethercore_performance_telemetry::__test::expand_wildcard_path;
+
+    let dedicated = expand_wildcard_path(r"\GPU Adapter Memory(*)\Dedicated Usage")
+        .unwrap_or_default();
+    let shared = expand_wildcard_path(r"\GPU Adapter Memory(*)\Shared Usage")
+        .unwrap_or_default();
+    if dedicated.is_empty() && shared.is_empty() {
+        eprintln!("SKIPPED: this host exposes no GPU Adapter Memory counter instances");
+        return;
+    }
+
+    let snapshot = real_snapshot_under_load();
+    let gpu_measured = !snapshot.gpu.engines.is_empty();
+    if !gpu_measured {
+        // gpu already reports a typed fault in this case; that path is asserted
+        // by no_collector_returns_an_empty_payload_without_a_fault above.
+        assert!(
+            !faults_for(&snapshot, "gpu").is_empty(),
+            "gpu produced no engines and no fault"
+        );
+        return;
+    }
+
+    assert!(
+        snapshot.gpu.dedicated_used_bytes > 0 || snapshot.gpu.shared_used_bytes > 0,
+        "{} dedicated + {} shared GPU Adapter Memory instance(s) exist, gpu is measured \
+         ({} engine(s)), yet both usage totals are 0: dedicated={} shared={}",
+        dedicated.len(),
+        shared.len(),
+        snapshot.gpu.engines.len(),
+        snapshot.gpu.dedicated_used_bytes,
+        snapshot.gpu.shared_used_bytes,
+    );
+}

@@ -282,7 +282,7 @@ impl CounterHandle {
 /// temporary** and, being a raw string, its trailing `\0` was the two characters
 /// backslash and zero rather than a NUL — DBT-P41-002 mechanism 2
 /// (§20.1.3(c)). Both are fixed here, and every exit reports a reason.
-fn expand_wildcard_path(pattern: &str) -> Result<Vec<String>, String> {
+pub fn expand_wildcard_path(pattern: &str) -> Result<Vec<String>, String> {
     let wide: Vec<u16> = pattern.encode_utf16().chain(std::iter::once(0)).collect();
     let search = windows::core::PCWSTR(wide.as_ptr());
     // `pcchPathListLength` is a character count, not a byte count.
@@ -845,12 +845,46 @@ fn sample_gpu() -> Reading<GpuSample> {
             ),
         );
     }
+    // DBT-P42-010, VRAM half. `\GPU Adapter Memory(*)\Dedicated Usage` and
+    // `\Shared Usage` are ordinary PDH counters, so they ride on the query that
+    // is already open and inside the `collect_twice` already being paid for:
+    // no DXGI, no COM in a session-0 LocalSystem service, no extra sleep, and
+    // the sampling cadence is unchanged. That is the whole reason this half is
+    // implemented and the capacity half is not -- `dedicated_total_bytes` has
+    // no PDH counter, and the alternatives (DXGI DedicatedVideoMemory, or WMI
+    // AdapterRAM, whose 32-bit field wraps above 4 GB) would either add a real
+    // observer or report a confidently wrong number where 0 is honest today.
+    //
+    // Instances are per adapter, not per process (`GPU Process Memory` is the
+    // per-process counter set), so summing them answers "VRAM in use on this
+    // machine" -- the same whole-machine aggregation `engines` already applies.
+    let memory_counters = |suffix: &str| -> Vec<CounterHandle> {
+        expand_wildcard_path(&format!(r"\GPU Adapter Memory(*)\{suffix}"))
+            .unwrap_or_default()
+            .iter()
+            .take(super::MAX_GPU_ENGINES)
+            .filter_map(|path| query.add_english_counter(path))
+            .collect()
+    };
+    let dedicated_pending = memory_counters("Dedicated Usage");
+    let shared_pending = memory_counters("Shared Usage");
+
     if !query.collect_twice(Duration::from_millis(80)) {
         return unavailable(
             "ProviderFailure",
             "PDH collection failed after adding GPU Engine counters".into(),
         );
     }
+    // An adapter whose counter will not read is left out of the sum rather than
+    // counted as zero; if none read, the total stays the honest 0 it was before.
+    let sum_bytes = |counters: Vec<CounterHandle>| -> u64 {
+        counters
+            .iter()
+            .filter_map(CounterHandle::read_u64)
+            .fold(0u64, u64::saturating_add)
+    };
+    let dedicated_used_bytes = sum_bytes(dedicated_pending);
+    let shared_used_bytes = sum_bytes(shared_pending);
     let engines: Vec<GpuEngineSample> = pending
         .into_iter()
         .filter_map(|(engine_name, counter)| {
@@ -871,23 +905,28 @@ fn sample_gpu() -> Reading<GpuSample> {
             ),
         },
     )
-    .into_gpu_sample()
+    .into_gpu_sample(dedicated_used_bytes, shared_used_bytes)
 }
 
 /// Wraps the engine list back into the wire payload without losing the reading's
 /// measured-or-not decision.
 trait IntoGpuSample {
-    fn into_gpu_sample(self) -> Reading<GpuSample>;
+    fn into_gpu_sample(self, dedicated_used_bytes: u64, shared_used_bytes: u64) -> Reading<GpuSample>;
 }
 
 impl IntoGpuSample for Reading<Vec<GpuEngineSample>> {
-    fn into_gpu_sample(self) -> Reading<GpuSample> {
+    fn into_gpu_sample(self, dedicated_used_bytes: u64, shared_used_bytes: u64) -> Reading<GpuSample> {
         let (engines, fault) = self.into_parts(Vec::new);
         match fault {
             Some(fault) => Reading::unavailable(fault),
             None => Reading::from_evidence(
                 Some(GpuSample {
                     engines,
+                    dedicated_used_bytes,
+                    shared_used_bytes,
+                    // adapter_id, adapter_name and dedicated_total_bytes stay
+                    // empty on purpose -- DBT-P42-010's capacity/identity half
+                    // is recorded as out of scope in §47, not silently zeroed.
                     ..GpuSample::default()
                 }),
                 || unreachable_fault("gpu"),

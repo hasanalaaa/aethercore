@@ -431,8 +431,8 @@ pub mod __test {
     /// ABI, the units and the path shape without linking PDH.
     #[cfg(windows)]
     pub use super::windows_impl::{
-        PDH_VALUE_SLOT_BYTES, decode_pdh_double, decode_pdh_value, instance_from_counter_path,
-        percentage_to_bp,
+        PDH_VALUE_SLOT_BYTES, decode_pdh_double, decode_pdh_value, expand_wildcard_path,
+        instance_from_counter_path, percentage_to_bp,
     };
 
     #[cfg(target_os = "macos")]
