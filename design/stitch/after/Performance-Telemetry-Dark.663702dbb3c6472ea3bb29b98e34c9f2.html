@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Performance</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-surface-variant": "#a4afb9", "on-tertiary-fixed-variant": "#4a388e", "on-error-container": "#ffdad6", "on-tertiary": "#331f76", "on-surface": "#dee3eb", "error-container": "#93000a", "on-tertiary-container": "#514096", "primary-container": "#8ec5f5", surface: "#0f141a", "tertiary-fixed-dim": "#cbbeff", "outline-variant": "#41474e", "surface-container-lowest": "#0a0f15", "tertiary-container": "#c4b6ff", "surface-container": "#141c24", "primary-fixed-dim": "#95ccfc", "on-secondary-fixed-variant": "#643f03", "surface-bright": "#353a40", "surface-dim": "#080d12", outline: "#8b9199", "on-tertiary-fixed": "#1d0061", "inverse-primary": "#26638e", "surface-container-highest": "#30353c", "primary-fixed": "#cce5ff", "surface-variant": "#30353c", "tertiary-fixed": "#e6deff", "secondary-fixed-dim": "#f4bc77", "surface-container-high": "#252a31", "surface-container-low": "#171c22", "on-primary-container": "#09527c", "surface-tint": "#95ccfc", "on-primary": "#003351", "on-secondary": "#472a00", tertiary: "#e0d6ff", "on-secondary-fixed": "#2a1700", "on-primary-fixed": "#001d31", background: "#0f141a", "inverse-on-surface": "#2c3138", "inverse-surface": "#dee3eb", "secondary-fixed": "#ffddb7", secondary: "#f4bc77", "on-background": "#dee3eb", "on-primary-fixed-variant": "#004b73", error: "#ffb4ab", primary: "#bedfff", "secondary-container": "#674105", "on-error": "#690005", "on-secondary-container": "#e5ae6b", "status-policy": "#ca8103", interactive: "#5B8DEF", "attention-orange": "#D08A2E", "critical-red": "#C24D4D", "healthy-green": "#3E9E6B", "policy-violet": "#7C6BC4", "verified-gold": "#C9A227"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {unit: "4px", "panel-gap": "1px", "grid-margin": "16px", "cell-padding-y": "8px", "cell-padding-x": "12px", base: "4px", "padding-card": "20px", "margin-page": "32px", "row-height": "44px", "gutter-table": "16px", "gap-card": "16px"}, fontFamily: {"data-mono-sm": ["IBM Plex Mono"], "display-sm": ["Geist"], "headline-sm": ["Geist"], "label-caps": ["Geist"], "body-sm": ["Geist"], "body-md": ["Geist"], "data-mono": ["IBM Plex Mono"], "display-lg": ["Geist"]}, fontSize: {"data-mono-sm": ["11px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "400"}], "display-sm": ["22px", {lineHeight: "30px", letterSpacing: "-0.015em", fontWeight: "600"}], "headline-sm": ["16px", {lineHeight: "24px", fontWeight: "600"}], "label-caps": ["11px", {lineHeight: "16px", letterSpacing: "0.04em", fontWeight: "600"}], "body-sm": ["13px", {lineHeight: "20px", fontWeight: "400"}], "body-md": ["15px", {lineHeight: "24px", fontWeight: "400"}], "data-mono": ["13px", {lineHeight: "20px", fontWeight: "450"}], "display-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600"}]}}}};</script>
+<style>
+        body {
+            background-color: theme('colors.surface');
+            color: theme('colors.on-surface');
+            margin: 0;
+            overflow-x: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sparkline simple CSS */
+        .sparkline {
+            display: flex;
+            align-items: flex-end;
+            height: 24px;
+            gap: 2px;
+        }
+        .sparkline-bar {
+            width: 4px;
+            background-color: theme('colors.primary');
+            opacity: 0.6;
+            transition: height 0.2s ease, opacity 0.2s ease;
+        }
+        .sparkline-bar.active {
+            opacity: 1;
+        }
+        .sparkline-bar.danger {
+            background-color: theme('colors.error');
+        }
+        
+        .metric-value {
+            transition: color 0.3s ease;
+        }
+    </style>
+</head>
+<body class="font-body-md text-body-md bg-surface text-on-surface">
+<!-- SideNavBar (from JSON, modified active state to Performance) -->
+<nav class="bg-surface-container-lowest dark:bg-surface-container-lowest h-screen w-64 border-r border-outline-variant dark:border-outline-variant flex flex-col hidden md:flex shrink-0">
+<!-- Header -->
+<div class="p-grid-margin border-b border-outline-variant flex items-center gap-3">
+<img alt="AetherCore Logo" class="w-8 h-8 object-cover rounded-DEFAULT" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<div>
+<h1 class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface dark:text-on-surface m-0">AetherCore</h1>
+<p class="font-data-mono-sm text-data-mono-sm text-on-surface-variant m-0">Diagnostics &amp; Maintenance</p>
+</div>
+</div>
+<!-- Scrollable Tabs -->
+<div class="flex-1 overflow-y-auto py-unit">
+<ul class="list-none p-0 m-0 flex flex-col gap-unit px-unit">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">dashboard</span>
+<span>Overview</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">biotech</span>
+<span>Deep Scan</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">speed</span>
+<span>Performance</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">monitor_heart</span>
+<span>Hardware Health</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">history</span>
+<span>Crash History</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">lightbulb</span>
+<span>Insights</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">settings_input_component</span>
+<span>Drivers</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">build</span>
+<span>System Repair</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">cleaning_services</span>
+<span>Deep Clean</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">rocket_launch</span>
+<span>Startup Manager</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">restore</span>
+<span>Recovery</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined" data-weight="regular">dns</span>
+<span>Fleet</span>
+</a>
+</li>
+</ul>
+</div>
+<!-- Footer / Policy CTA -->
+<div class="border-t border-outline-variant p-grid-margin">
+<button class="w-full bg-interactive text-background font-label-caps text-label-caps py-2 border border-interactive hover:bg-primary transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">lock_open</span>
+                Authorize Changes
+            </button>
+<div class="flex justify-between mt-4">
+<a class="text-on-surface-variant hover:text-primary transition-colors" href="#" title="EN/AR"><span class="material-symbols-outlined">language</span></a>
+<a class="text-on-surface-variant hover:text-primary transition-colors" href="#" title="Dark Mode"><span class="material-symbols-outlined">dark_mode</span></a>
+<a class="text-on-surface-variant hover:text-primary transition-colors" href="#" title="v.1.4.2-stable"><span class="material-symbols-outlined">cloud_done</span></a>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
+<!-- TopAppBar (from JSON, modified for mobile or context if needed, keeping mostly intact as requested) -->
+<header class="flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container dark:bg-surface-container shrink-0">
+<div class="flex items-center gap-4">
+<!-- Mobile menu toggle -->
+<button class="md:hidden text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<div class="font-headline-sm text-headline-sm font-bold text-on-surface md:hidden">AetherCore</div>
+<!-- Breadcrumb / Contextual Title on Desktop -->
+<div class="hidden md:flex items-center gap-2 text-on-surface-variant font-data-mono text-data-mono">
+<span>Performance</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-primary">Live Telemetry</span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<!-- Search -->
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px]">search</span>
+<input class="bg-surface-container-highest border-b border-outline-variant focus:border-interactive text-on-surface font-data-mono-sm text-data-mono-sm pl-8 pr-2 py-1 outline-none w-48 placeholder-on-surface-variant/50 transition-colors" placeholder="PID, Service, Metric..." type="text"/>
+</div>
+<div class="flex items-center gap-3">
+<button class="text-on-surface-variant hover:text-primary transition-colors" title="Policy"><span class="material-symbols-outlined">policy</span></button>
+<button class="text-on-surface-variant hover:text-primary transition-colors" title="Terminal"><span class="material-symbols-outlined">terminal</span></button>
+<button class="text-on-surface-variant hover:text-primary transition-colors" title="Help"><span class="material-symbols-outlined">help_outline</span></button>
+</div>
+</div>
+</header>
+<!-- Canvas -->
+<div class="flex-1 overflow-y-auto p-grid-margin">
+<div class="max-w-6xl mx-auto flex flex-col gap-[1px] bg-outline-variant border border-outline-variant">
+<!-- Top Row: Core Metrics Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-[1px]">
+<!-- CPU Panel -->
+<div class="bg-surface-container p-4 flex flex-col justify-between min-h-[160px] relative">
+<div class="absolute left-0 top-0 bottom-0 w-unit bg-status-policy"></div>
+<div class="pl-2">
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant">CPU Core 0-15</span>
+<span class="font-data-mono-sm text-data-mono-sm bg-surface-highest border border-outline-variant px-1 text-on-surface-variant">TDP: 125W</span>
+</div>
+<div class="font-data-mono text-display-sm text-primary metric-value mb-1">4.20 GHz</div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Utilization: <span class="text-on-surface">68%</span></div>
+<!-- Sparkline (simulated) -->
+<div class="mt-4 flex flex-col gap-1">
+<div class="flex justify-between font-data-mono-sm text-data-mono-sm text-on-surface-variant opacity-50 text-[9px]">
+<span>-60s</span>
+<span>now</span>
+</div>
+<div class="sparkline h-6 items-end gap-[1px]">
+<div class="w-1 bg-primary opacity-40 h-[40%]"></div>
+<div class="w-1 bg-primary opacity-40 h-[45%]"></div>
+<div class="w-1 bg-primary opacity-40 h-[60%]"></div>
+<div class="w-1 bg-primary opacity-40 h-[50%]"></div>
+<div class="w-1 bg-primary opacity-40 h-[70%]"></div>
+<div class="w-1 bg-primary opacity-40 h-[65%]"></div>
+<div class="w-1 bg-primary opacity-40 h-[80%]"></div>
+<div class="w-1 bg-primary opacity-40 h-[75%]"></div>
+<div class="w-1 bg-primary opacity-40 h-[85%]"></div>
+<div class="w-1 bg-primary opacity-60 h-[90%]"></div>
+<div class="w-1 bg-primary opacity-80 h-[95%]"></div>
+<div class="w-1 bg-primary opacity-100 h-[68%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Memory Panel -->
+<div class="bg-surface-container p-4 flex flex-col justify-between min-h-[160px]">
+<div>
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Sys Memory</span>
+<span class="font-data-mono-sm text-data-mono-sm bg-surface-highest border border-outline-variant px-1 text-on-surface-variant">DDR5-6000</span>
+</div>
+<div class="font-data-mono text-display-sm text-on-surface mb-1">16.4 <span class="text-on-surface-variant text-body-sm">/ 32.0 GB</span></div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Commits: <span class="text-on-surface">18.2 GB</span></div>
+<div class="mt-4 flex flex-col gap-1">
+<div class="flex justify-between font-data-mono-sm text-data-mono-sm text-on-surface-variant opacity-50 text-[9px]">
+<span>-60s</span>
+<span>now</span>
+</div>
+<div class="sparkline h-6 items-end gap-[1px]">
+<!-- Stable usage -->
+<div class="w-1 bg-secondary opacity-40 h-[50%]"></div>
+<div class="w-1 bg-secondary opacity-40 h-[50%]"></div>
+<div class="w-1 bg-secondary opacity-40 h-[51%]"></div>
+<div class="w-1 bg-secondary opacity-40 h-[51%]"></div>
+<div class="w-1 bg-secondary opacity-40 h-[50%]"></div>
+<div class="w-1 bg-secondary opacity-40 h-[50%]"></div>
+<div class="w-1 bg-secondary opacity-40 h-[52%]"></div>
+<div class="w-1 bg-secondary opacity-40 h-[51%]"></div>
+<div class="w-1 bg-secondary opacity-40 h-[51%]"></div>
+<div class="w-1 bg-secondary opacity-60 h-[51%]"></div>
+<div class="w-1 bg-secondary opacity-80 h-[52%]"></div>
+<div class="w-1 bg-secondary opacity-100 h-[51%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Storage Panel -->
+<div class="bg-surface-container p-4 flex flex-col justify-between min-h-[160px]">
+<div>
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant">NVMe IO</span>
+<span class="font-data-mono-sm text-data-mono-sm bg-surface-highest border border-outline-variant px-1 text-on-surface-variant">PCIe 4.0</span>
+</div>
+<div class="font-data-mono text-display-sm text-on-surface mb-1">1.2 <span class="text-on-surface-variant text-body-sm">GB/s</span></div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">R: 800 MB/s | W: 400 MB/s</div>
+<div class="mt-4 flex flex-col gap-1">
+<div class="flex justify-between font-data-mono-sm text-data-mono-sm text-on-surface-variant opacity-50 text-[9px]">
+<span>-60s</span>
+<span>now</span>
+</div>
+<div class="sparkline h-6 items-end gap-[1px]">
+<!-- Spiky usage -->
+<div class="w-1 bg-tertiary opacity-40 h-[10%]"></div>
+<div class="w-1 bg-tertiary opacity-40 h-[15%]"></div>
+<div class="w-1 bg-tertiary opacity-40 h-[8%]"></div>
+<div class="w-1 bg-tertiary opacity-40 h-[60%]"></div>
+<div class="w-1 bg-tertiary opacity-40 h-[100%]"></div>
+<div class="w-1 bg-tertiary opacity-40 h-[20%]"></div>
+<div class="w-1 bg-tertiary opacity-40 h-[10%]"></div>
+<div class="w-1 bg-tertiary opacity-40 h-[5%]"></div>
+<div class="w-1 bg-tertiary opacity-40 h-[5%]"></div>
+<div class="w-1 bg-tertiary opacity-60 h-[10%]"></div>
+<div class="w-1 bg-tertiary opacity-80 h-[30%]"></div>
+<div class="w-1 bg-tertiary opacity-100 h-[45%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- GPU Panel (Unavailable) -->
+<div class="bg-surface-container-lowest p-4 flex flex-col justify-between min-h-[160px]">
+<div>
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant opacity-50">GPU Fan Speed</span>
+</div>
+<div class="font-data-mono text-display-sm text-on-surface-variant opacity-50 mb-1">-- RPM</div>
+<div class="font-data-mono-sm text-data-mono-sm text-on-surface-variant opacity-50">Sensor Offline</div>
+<div class="mt-4 flex items-center justify-center h-10 border border-outline-variant border-dashed">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant opacity-60">Unavailable on this platform</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Row: Bottleneck Analysis -->
+<div class="bg-surface-container p-4">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary text-[18px]">psychology</span>
+<h2 class="font-headline-sm text-headline-sm text-on-surface m-0">AI Bottleneck Attribution</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<!-- Attribution Node -->
+<div class="border border-outline-variant p-3 bg-surface-container-low">
+<div class="flex justify-between items-start mb-2">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Process</span>
+<span class="font-data-mono-sm text-data-mono-sm bg-surface-container-high px-1 text-primary">PID: 4021</span>
+</div>
+<div class="font-data-mono text-data-mono text-on-surface mb-2 truncate">docker-desktop-exe</div>
+<div class="w-full bg-surface-container-highest h-1 mb-1">
+<div class="bg-error h-1" style="width: 85%;"></div>
+</div>
+<div class="font-data-mono-sm text-data-mono-sm text-error text-right">85% impact</div>
+</div>
+<!-- Attribution Node -->
+<div class="border border-outline-variant p-3 bg-surface-container-low">
+<div class="flex justify-between items-start mb-2">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">System Call</span>
+<span class="font-data-mono-sm text-data-mono-sm bg-surface-container-high px-1 text-on-surface-variant">KERNEL</span>
+</div>
+<div class="font-data-mono text-data-mono text-on-surface mb-2 truncate">NtWriteFile</div>
+<div class="w-full bg-surface-container-highest h-1 mb-1">
+<div class="bg-tertiary h-1" style="width: 42%;"></div>
+</div>
+<div class="font-data-mono-sm text-data-mono-sm text-tertiary text-right">42% impact</div>
+</div>
+<!-- Analysis Text -->
+<div class="flex flex-col justify-center pl-2 border-l border-outline-variant">
+<p class="font-body-sm text-body-sm text-on-surface-variant m-0">
+                                Heuristic analysis indicates a high probability of IO contention caused by <span class="text-on-surface font-data-mono">PID:4021</span> writing to mapped memory regions concurrently with system pagination.
+                            </p>
+<button class="mt-2 self-start font-label-caps text-label-caps text-primary border border-primary px-3 py-1 hover:bg-primary/10 transition-colors">
+                                Isolate Process
+                            </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<script>
+        // Simple script to animate the sparklines slightly to look 'live'
+        setInterval(() => {
+            const sparklines = document.querySelectorAll('.sparkline');
+            sparklines.forEach(line => {
+                // Ignore the empty one
+                if(line.children.length === 0) return;
+                
+                // create a new bar
+                const newHeight = Math.floor(Math.random() * 50) + 40; // 40-90%
+                const currentBars = line.querySelectorAll('div');
+                const template = currentBars[currentBars.length - 1].cloneNode();
+                
+                template.style.height = `${newHeight}%`;
+                
+                // Add new
+                line.appendChild(template);
+                // Remove oldest
+                if(line.children.length > 12) {
+                    line.removeChild(line.firstElementChild);
+                }
+            });
+            
+            // Randomly twitch the CPU value
+            const cpuVal = document.querySelector('.metric-value');
+            if(cpuVal) {
+                const base = 4.15;
+                const jitter = Math.random() * 0.1;
+                cpuVal.innerText = (base + jitter).toFixed(2) + ' GHz';
+            }
+        }, 2000);
+    </script>
+</body></html>

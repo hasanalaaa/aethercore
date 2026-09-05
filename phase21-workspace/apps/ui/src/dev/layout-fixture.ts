@@ -13,6 +13,7 @@ import type {
   CleanupSnapshot,
   CrashRecord,
   DiagnosticCard,
+  DeepScanSnapshot,
   DiagnosticsSnapshot,
   DriverCandidate,
   DriverDevice,
@@ -20,6 +21,8 @@ import type {
   HardwareEvent,
   InsightsResponse,
   MemoryTelemetry,
+  PcEvidenceRef,
+  PcFinding,
   PerfSnapshot,
   Plan,
   RepairAssessment,
@@ -87,7 +90,12 @@ function candidate(i: number): DriverCandidate {
     maxDownloadBytes: 58_200_000,
     targetVersion: '23.60.2.5',
     targetVersionSource: 'DriverPackageMetadata',
-    selectable: true,
+    // The service decides selectable from executable() && WindowsManaged, and
+    // derives selection_policy from it (driver-hub/src/lib.rs:945-955). The
+    // fixture previously marked every candidate selectable with a
+    // `selectionPolicy` of 'UserSelectable' — a value the service never emits —
+    // so the refusal path was never rendered, let alone measured.
+    selectable: i % 3 !== 2,
     selectedByDefault: i === 1,
     recommended: i === 1,
     recommendationReasons: ['NewerThanInstalled', 'SignedByVendor'],
@@ -101,7 +109,9 @@ function candidate(i: number): DriverCandidate {
     officialSource: 'update.microsoft.com',
     acquisitionMode: 'Automatic',
     installationMode: 'Automatic',
-    selectionPolicy: 'UserSelectable',
+    selectionPolicy: i % 3 === 2
+      ? (i % 2 ? 'FirmwareManualReview' : 'OfficialVendorUtility')
+      : 'SelectableRecommended',
   });
 }
 
@@ -291,6 +301,89 @@ const plan: Plan = {
   requiresAuthorization: true, consentReadyUntilUnixMs: NOW + 300_000, actionCount: 5, inventoryEpoch: 1, scanId: 'cleanup-fixture-1',
 };
 
+
+/**
+ * Deep Scan findings.
+ *
+ * The Deep Scan results view had no fixture at all, so every finding card, the
+ * evidence gate and the summary grid went unrendered by any harness — the same
+ * empty-app blind spot the responsive screenshots once hid behind.
+ *
+ * The message keys are the ones the rule engine actually emits
+ * (`crates/pc-intelligence/src/rules.rs`) and that both catalogs already carry,
+ * so the cards read as they will in production rather than showing raw keys.
+ * The last finding deliberately cites nothing: it is what the citation gate has
+ * to drop, and a gate never given something to reject is not a gate.
+ */
+function evidenceRef(i: number, kind: string, source: string, value: string): PcEvidenceRef {
+  return { factId: `fact-${i}`, kind, source, observedUnixMs: NOW - i * 3_600_000, technicalValue: value };
+}
+
+function finding(over: Partial<PcFinding>): PcFinding {
+  return fill<PcFinding>({
+    id: 'finding-0', code: 'AC-0000', domain: 3, severity: 3, confidence: 4,
+    titleKey: 'finding.deviceProblem.title', summaryKey: 'finding.deviceProblem.summary',
+    technicalKey: 'finding.deviceProblem.technical',
+    messageArgs: [{ key: 'resource', value: LONG_DEVICE }],
+    evidence: [], affectedResource: { kind: 'Device', stableId: 'dev-1', displayName: LONG_DEVICE },
+    firstObservedUnixMs: NOW - 86_400_000, lastObservedUnixMs: NOW,
+    lifecycle: 'Active', remediationAvailable: true, remediationSafety: 2,
+    rebootRequirement: 'None', privilegeRequirement: 'Administrator', automaticEligible: false,
+    reversibility: 'Reversible', estimatedImpact: 'Moderate', uncertaintyKey: '', ignored: false,
+    ruleId: 'AC-DEVICE-PROBLEM', ruleVersion: 3, verificationStatus: 'NotRechecked',
+    resolutionAuthority: [], hasResolvedAt: false, resolvedAtUnixMs: 0, resolutionScanId: '',
+    resolutionReasonKey: '', resolutionEvidence: [], correlation: null,
+    ...over,
+  });
+}
+
+const FINDINGS: PcFinding[] = [
+  finding({
+    id: 'finding-device', severity: 4, code: 'AC-0031',
+    evidence: [
+      evidenceRef(0, 'PnpDeviceState', 'SetupAPI', 'CM_PROB_FAILED_START (28)'),
+      evidenceRef(1, 'DriverPackage', 'DriverStore', 'oem47.inf  23.40.1.9'),
+    ],
+  }),
+  finding({
+    id: 'finding-cleanup', severity: 2, domain: 10, code: 'AC-0104',
+    titleKey: 'finding.cleanupOpportunity.title', summaryKey: 'finding.cleanupOpportunity.summary',
+    technicalKey: 'finding.cleanupOpportunity.technical',
+    messageArgs: [], remediationSafety: 1, ruleId: 'AC-CLEANUP-OPPORTUNITY',
+    affectedResource: { kind: 'Path', stableId: 'sd', displayName: 'C:\\Windows\\SoftwareDistribution' },
+    evidence: [evidenceRef(2, 'CleanupMeasurement', 'CleanupProvider', '8.04 GB across 5 allowlisted categories')],
+  }),
+  finding({
+    id: 'finding-crash', severity: 5, domain: 7, code: 'AC-0077',
+    titleKey: 'finding.crashHardware.title', summaryKey: 'finding.crashHardware.summary',
+    technicalKey: 'finding.crashHardware.technical',
+    messageArgs: [], remediationAvailable: false, reversibility: 'NotSoftwareReversible',
+    ruleId: 'AC-CRASH-HARDWARE', verificationStatus: 'VerificationUnavailable',
+    affectedResource: { kind: 'Module', stableId: 'storahci', displayName: 'storahci.sys' },
+    evidence: [
+      evidenceRef(3, 'BugCheck', 'Minidump', '0x00000133  DPC_WATCHDOG_VIOLATION  storahci.sys'),
+      evidenceRef(4, 'WheaRecord', 'EventLog', 'WHEA-Logger 17  corrected  PCIe root port'),
+    ],
+    correlation: {
+      strength: 'Moderate', timeDistanceMs: 42_000, sharedScope: 'storage',
+      rationaleKey: 'finding.correlation.hardwareNearCrash',
+      contributingFactIds: ['fact-3', 'fact-4'],
+      conflictingEvidenceKeys: ['finding.correlation.noCrashModuleAttribution'],
+    },
+  }),
+  // Cites nothing. The gate must drop this one and say that it did.
+  finding({ id: 'finding-uncitable', severity: 1, code: 'AC-0001', evidence: [] }),
+];
+
+const deepScan: DeepScanSnapshot = fill<DeepScanSnapshot>({
+  scanId: 'deep-fixture-1', state: 4, status: 1,
+  startedUnixMs: NOW - 92_000, completedUnixMs: NOW,
+  progress: { totalWeight: 100, completedWeight: 100, percent: 100, completedTasks: 7, totalTasks: 7, activeTasks: 0, skippedTasks: 0, failedTasks: 0, unavailableTasks: 1, currentStageKey: '' },
+  factsCount: 5_182, findings: FINDINGS, remediationCandidates: [], collectors: [],
+  warnings: [], summary: { critical: 1, high: 1, moderate: 0, low: 1, informational: 1, recommendedActions: 2, optionalOptimizations: 1, healthyChecks: 41 },
+  metrics: null, machineStateFingerprint: 'ab12cd34', ruleEngineVersion: '3', appVersion: '0.1.0-fixture',
+});
+
 let sequence = 0;
 const event = <K extends UiKernelEvent['kind']>(kind: K, payload: unknown): UiKernelEvent =>
   ({ sequence: ++sequence, emittedUnixMs: NOW, kind, planId: '', payload } as UiKernelEvent);
@@ -305,6 +398,7 @@ const STREAM: readonly UiKernelEvent[] = [
   event('performanceSnapshot', performance),
   event('timelinePage', timelinePage),
   event('insights', insights),
+  event('deepScanSnapshot', deepScan),
   event('plan', plan),
   event('recoveryHistory', { entries: [fill({ seq: 1, planId: plan.id, severity: 'Informational', kind: 'RestorePoint', summary: 'Restore point created before the cleanup plan ran.', detail: 'Sequence 42', restorePointSequence: 42, backupRoot: 'C:\\ProgramData\\AetherCore\\backup\\042', createdUnixMs: NOW })] }),
   event('startupHistory', { entries: [fill({ changeId: 'ch-1', originChangeId: '', planId: plan.id, itemId: 'startup-0', kind: 'Registry', displayName: 'Adobe Creative Cloud Desktop Application Startup Helper', direction: 'Disable', state: 'Applied', detail: '', createdUnixMs: NOW, updatedUnixMs: NOW, restoredUnixMs: 0, restorable: true })] }),

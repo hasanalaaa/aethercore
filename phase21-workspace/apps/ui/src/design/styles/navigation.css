@@ -54,8 +54,12 @@
 .nav-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8125rem; font-weight:600; }
 .nav-copy small { display:block; margin-block-start:.08rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ac-text-4); font-size:.6875rem; line-height:1.25; }
 
-.policy-card { display:grid; grid-template-columns:1.65rem minmax(0,1fr); align-items:start; gap:.55rem; margin-block-start:1rem; padding:.7rem .65rem; border:1px solid color-mix(in srgb,var(--ac-warning) 30%,var(--ac-border-subtle)); border-radius:var(--ac-radius-md); background:var(--ac-warning-muted); }
-.policy-mark { display:grid; place-items:center; inline-size:1.55rem; block-size:1.55rem; border:1px solid color-mix(in srgb,var(--ac-warning) 44%,transparent); border-radius:.45rem; color:var(--ac-warning); }
+/* A policy boundary is a refusal, so it wears the denied identity — violet,
+   dashed, 8px — not attention's amber. Attention means "drifting toward a
+   threshold"; this is the product declining on purpose. */
+.policy-card { display:grid; grid-template-columns:1.65rem minmax(0,1fr); align-items:start; gap:.55rem; margin-block-start:1rem; padding:.7rem .65rem; border:1.5px dashed var(--role-denied-dash); border-radius:var(--ac-radius-denied); background:var(--role-denied-wash); }
+.policy-mark { display:grid; place-items:center; inline-size:1.55rem; block-size:1.55rem; border:1.5px dashed var(--role-denied-dash); border-radius:var(--ac-radius-denied); color:var(--role-denied); }
+.policy-mark svg { stroke:currentColor; stroke-width:1.8; stroke-linecap:round; fill:none; }
 .policy-card strong,.policy-card small { display:block; }.policy-card strong { color:var(--ac-text-2); font-size:.72rem; font-weight:680; }.policy-card small { margin-block-start:.2rem; color:var(--ac-text-3); font-size:.67rem; line-height:1.35; }
 .sidebar-controls { margin-block-start:auto; padding-block-start:1rem; }
 .theme-button { margin-block-start:.25rem; }
@@ -79,8 +83,8 @@
 
 /* Evidence-first shell: the rail is a quiet instrument, not a card stack. */
 .app-sidebar { border-inline-end-color:color-mix(in srgb,var(--ac-accent) 28%,var(--ac-border-subtle)); }
-.app-sidebar::before { content:""; position:absolute; inset-block:1.3rem; inset-inline-start:-1px; inline-size:2px; background:linear-gradient(var(--ac-accent),transparent 72%); opacity:.72; }
-.brand-mark { border-radius:.55rem; background:linear-gradient(145deg,color-mix(in srgb,var(--ac-accent) 26%,#101821),#0b1118); }
+.app-sidebar::before { content:""; position:absolute; inset-block:1.3rem; inset-inline-start:-1px; inline-size:2px; background:var(--role-interactive); opacity:.72; }
+.brand-mark { border-radius:.55rem; background:var(--role-interactive); }
 .command-trigger { border-radius:.55rem; background:color-mix(in srgb,var(--ac-accent) 7%,transparent); }
 .app-nav-item { border-radius:.55rem; }
 .app-nav-item.active { border-inline-start:2px solid var(--ac-accent); padding-inline-start:calc(.58rem - 2px); background:color-mix(in srgb,var(--ac-accent) 12%,transparent); }

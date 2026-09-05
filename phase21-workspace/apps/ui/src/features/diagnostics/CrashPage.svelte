@@ -7,6 +7,7 @@
   import { diagnosticRunning, eventTone, startDiagnosticsScan } from './controller';
   import ProviderFaultsPanel from './ProviderFaultsPanel.svelte';
   import { formatBytes, formatWhen } from '../shared';
+  import { EmptyState } from '../../design/signature';
 
   $: snapshot = $streamState.snapshot;
   $: diagnostics = $streamState.diagnostics;
@@ -30,7 +31,9 @@
   <article><span>{t('crash.shutdowns',locale)}</span><strong>{diagnostics.events.filter((event) => event.category === 'UnexpectedShutdown').length}</strong><small>{t('crash.shutdownsHint',locale)}</small></article>
   <article><span>{t('crash.snapshots',locale)}</span><strong>{diagnosticHistory.length}</strong><small>{t('crash.snapshotsHint',locale)}</small></article>
 </section>
-{#if diagnostics.state === 'Idle'}<section class="panel activity-empty"><div class="empty"><div class="empty-icon">⌁</div><h4>{t('crash.emptyTitle',locale)}</h4><p>{t('crash.emptyCopy',locale,{days:localizedWindow})}</p><button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={() => startDiagnosticsScan('crash')} disabled={busy || !snapshot.connected}>{t('crash.refresh',locale)}</button></div></section>{/if}
+{#if diagnostics.state === 'Idle'}<section class="panel activity-empty"><EmptyState title={t('crash.emptyTitle',locale)} body={t('crash.emptyCopy',locale,{days:localizedWindow})}>
+  <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={() => startDiagnosticsScan('crash')} disabled={busy || !snapshot.connected}>{t('crash.refresh',locale)}</button>
+</EmptyState></section>{/if}
 
 {#if diagnostics.crashes.length}
   <section class="crash-list"><div class="panel-head"><div><p class="eyebrow">{t('crash.dumpsEyebrow',locale)}</p><h3>{t('crash.dumpsTitle',locale)}</h3></div></div>

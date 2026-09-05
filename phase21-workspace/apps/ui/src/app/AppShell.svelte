@@ -9,6 +9,7 @@
   import { startKernelSession, type KernelSessionCleanup } from '../platform/kernel-session';
   import { streamState } from '../platform/stream-state';
   import { shellState, setPage, setPaletteOpen, toggleLocale, toggleTheme } from './shell-state';
+  import PolicyBand from '../design/signature/PolicyBand.svelte';
   import PlanDialogs from './PlanDialogs.svelte';
   import RecoveryPanel from '../features/RecoveryPanel.svelte';
   import OverviewPage from '../features/overview/OverviewPage.svelte';
@@ -74,9 +75,9 @@
           <span class="state-pip" aria-hidden="true"></span>
           {#if shellCondition === 'loading'}{t('state.loading', $shellState.locale)}{:else if shellCondition === 'error'}{t('state.error', $shellState.locale)}{:else if shellCondition === 'disconnected'}{t('state.disconnected', $shellState.locale)}{:else}{t('state.idle', $shellState.locale)}{/if}
         </span>
-        <span class="shell-state policy" data-state="denied">{t('state.deniedByPolicy', $shellState.locale)}</span>
       </div>
     </section>
+    <PolicyBand locale={$shellState.locale} />
     {#if $shellState.errorMessage}
       <div class="error-banner" role="alert">
         <strong>{t('app.actionNotCompleted', $shellState.locale)}</strong>

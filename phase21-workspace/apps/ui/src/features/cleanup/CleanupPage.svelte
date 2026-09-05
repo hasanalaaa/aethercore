@@ -6,6 +6,7 @@
   import { localizeOwnedText, localizeState, t, tp } from '../../lib/i18n';
   import { cleanupActive, cleanupUi, openCleanupReview, reviewCleanup, selectedCleanupBytes, selectedCleanupCandidates, startCleanupScan, toggleCleanup } from './controller';
   import { formatBytes, shortDigest, stageTone } from '../shared';
+  import { EmptyState } from '../../design/signature';
 
   $: snapshot = $streamState.snapshot;
   $: cleanupSnapshot = $streamState.cleanupSnapshot;
@@ -50,7 +51,9 @@
   </section>
   <section class="selection-tray cleanup-selection"><div><span class="selection-count">{selectedCleanupCandidates().length}</span><div><strong>{t('cleanup.selectionTitle',locale)}</strong><p>{t('cleanup.selectionCopy',locale,{bytes:formatBytes(selectedCleanupBytes(),locale)})}</p></div></div><button use:fluidPress={{ pressedScale:0.985 }} class="install-button" onclick={reviewCleanup} disabled={busy || !selectedCleanupCandidates().length}>{t('cleanup.review',locale)}</button></section>
 {:else if cleanupSnapshot.state === 'Idle'}
-  <section class="panel activity-empty"><div class="empty"><div class="empty-icon">✦</div><h4>{t('cleanup.emptyTitle',locale)}</h4><p>{t('cleanup.emptyCopy',locale)}</p><button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={startCleanupScan} disabled={busy || !snapshot.connected}>{t('cleanup.scan',locale)}</button></div></section>
+  <section class="panel activity-empty"><EmptyState title={t('cleanup.emptyTitle',locale)} body={t('cleanup.emptyCopy',locale)}>
+    <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={startCleanupScan} disabled={busy || !snapshot.connected}>{t('cleanup.scan',locale)}</button>
+  </EmptyState></section>
 {/if}
 
 {#if cleanupPlan && !cleanupStatus && cleanupPlan.state === 'AwaitingAuthorization'}

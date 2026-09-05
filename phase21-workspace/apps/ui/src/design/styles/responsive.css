@@ -1,3 +1,13 @@
+/* The three widths this design is measured at are 1280, 1024 and 960. 960 is
+   where an earlier attempt put a button physically over the body text, so each
+   breakpoint below states what it is protecting rather than only what it hides.
+   Verified per width by `npm run sweep`, which measures rendered boxes.
+
+   1180 (73.75rem)  the rail loses its descriptions but keeps its labels
+   1100 (68.75rem)  below 1024 the rail is an icon rail; labels move to title/aria
+    800 (50rem)     the context row stacks
+    680 (42.5rem)   the rail becomes a bottom dock */
+
 @media (max-width: 73.75rem) {
   :root { --ac-sidebar-width:13.25rem; }
   .nav-copy small { display:none; }
@@ -43,15 +53,20 @@
   .disconnected-card { grid-template-columns:auto minmax(0,1fr); padding:.9rem; }
   .disconnected-card button { grid-column:1 / -1; justify-self:stretch; }
 }
-@media (max-width: 63.75rem) {
-  :root { --ac-sidebar-width:4.75rem; }
-  .app-sidebar { padding-inline:.625rem; }
-  .brand-copy,.command-trigger span,.command-trigger kbd,.nav-copy,.nav-group h2,.nav-availability,.policy-card,.sidebar-controls span,.service-copy,.service-version { display:none; }
-  .app-brand { justify-content:center; padding-inline:0; }
-  .command-trigger,.locale-button,.app-nav-item { grid-template-columns:1fr; justify-content:center; padding-inline:0; }
-  .app-service { grid-template-columns:1fr; justify-items:center; }
-  main { padding-inline:1.35rem; }
+/* 1024 and below: the policy band stacks instead of pushing its label off the
+   row, and the screen header's actions drop under the title rather than beside
+   it — that collision is what put a button over the body text at 960. */
+@media (max-width: 64rem) {
+  .policy-band { align-items:flex-start; }
+  main header { flex-direction:column; align-items:stretch; gap:.9rem; }
+  main header > div:last-child { justify-content:flex-start; }
+  .driver-metrics,.cleanup-summary,.hardware-summary,.repair-summary,.metric-grid { grid-template-columns:repeat(auto-fit,minmax(12rem,1fr)); }
 }
+
+@media (max-width: 60rem) {
+  .driver-metrics,.cleanup-summary,.hardware-summary,.repair-summary,.metric-grid { grid-template-columns:repeat(auto-fit,minmax(10.5rem,1fr)); }
+}
+
 @media (forced-colors: active) {
   .app-sidebar,.ac-fluid-dialog,.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.storage-card,.startup-card,.cleanup-card { background:Canvas; border:1px solid ButtonBorder; box-shadow:none; backdrop-filter:none; }
   .ac-dialog-backdrop,.error-banner { backdrop-filter:none; -webkit-backdrop-filter:none; }

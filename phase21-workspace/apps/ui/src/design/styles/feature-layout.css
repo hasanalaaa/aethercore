@@ -598,8 +598,14 @@ header .sub {
   box-shadow:inset 0 0 0 4px #16222a
 }
 
+/* A refused candidate wears the denied identity: dashed 1.5px where every other
+   border is solid, 8px where every other row is 20px. Dimming alone said only
+   "unavailable", which is indistinguishable from broken. */
 .candidate-row.locked {
-  cursor:default
+  cursor:default;
+  border:1.5px dashed var(--role-denied-dash);
+  border-radius:var(--ac-radius-denied);
+  background:var(--role-denied-wash)
 }
 
 .candidate-row.locked .candidate-check {
@@ -726,7 +732,7 @@ header .sub {
 .device-details code {
   display:block;
   color:#82909d;
-  font-family:"Cascadia Mono",Consolas,monospace;
+  font-family:var(--ac-font-mono);
   font-size:0.75rem;
   overflow-wrap:anywhere;
   margin-bottom:2px
@@ -984,39 +990,9 @@ header .sub {
   cursor:not-allowed
 }
 
-.empty {
-  height:240px;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  text-align:center
-}
 
-.empty-icon {
-  width:50px;
-  height:50px;
-  border-radius:15px;
-  background:#151a20;
-  border:1px solid #2b333c;
-  display:grid;
-  place-items:center;
-  color:#7e8d9c;
-  font-size:22px
-}
 
-.empty h4 {
-  margin:14px 0 6px;
-  font-size:1rem
-}
 
-.empty p {
-  max-width:390px;
-  color:#6f7984;
-  font-size:0.875rem;
-  line-height:1.6;
-  margin:0 0 16px
-}
 
 .driver-preview {
   display:flex;
@@ -1486,7 +1462,7 @@ header .sub {
 }
 
 .review-facts code {
-  font-family:"Cascadia Mono",Consolas,monospace
+  font-family:var(--ac-font-mono)
 }
 
 .review-warning {
@@ -1553,9 +1529,10 @@ header .sub {
   font-size:0.75rem
 }
 
+/* No reserved height. The old empty block was a fixed 240px centred panel, so
+   an empty screen showed a large blank area with a sentence floating in it. */
 .activity-empty {
-  margin-top:18px;
-  min-height:280px
+  margin-top:18px
 }
 
 /* Phase 4 — system repair and allowlisted cleanup */ .phase4-hero {
@@ -2197,14 +2174,7 @@ header .sub {
   color:#505a62
 }
 
-.empty.compact {
-  padding:14px 0;
-  text-align:start
-}
 
-.empty.compact p {
-  margin:0
-}
 
 .startup-summary article:nth-child(3) {
   border-color:#3b3930
@@ -2533,7 +2503,7 @@ header .sub {
 
 .bugcheck strong {
   display:block;
-  font-family:"Cascadia Mono",Consolas,monospace;
+  font-family:var(--ac-font-mono);
   font-size:0.8125rem;
   margin:3px 0
 }

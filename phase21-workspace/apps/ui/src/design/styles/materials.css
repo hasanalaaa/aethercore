@@ -21,10 +21,9 @@ main .sub, main .footnote { max-inline-size:74ch; }
 .shell-context-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:620 .82rem/1.2 var(--ac-font-text); color:var(--ac-text-2); }
 .shell-state-group { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.4rem; }
 .shell-state { display:inline-flex; align-items:center; gap:.38rem; min-block-size:1.8rem; padding:.28rem .58rem; border:1px solid var(--ac-border-subtle); border-radius:var(--ac-radius-pill); color:var(--ac-text-3); font-size:.69rem; white-space:nowrap; }
-.shell-state[data-state="loading"] { border-color:color-mix(in srgb,var(--ac-accent) 38%,var(--ac-border-subtle)); color:var(--ac-accent-strong); }
+.shell-state[data-state="loading"] { border-color:var(--role-interactive-edge); color:var(--role-interactive); }
 .shell-state[data-state="error"] { border-color:color-mix(in srgb,var(--ac-danger) 44%,var(--ac-border-subtle)); color:var(--ac-danger); }
 .shell-state[data-state="disconnected"] { border-color:color-mix(in srgb,var(--ac-warning) 48%,var(--ac-border-subtle)); color:var(--ac-warning); background:var(--ac-warning-muted); }
-.shell-state.policy { border-color:color-mix(in srgb,var(--ac-warning) 34%,var(--ac-border-subtle)); background:var(--ac-warning-muted); color:var(--ac-warning); }
 .state-pip { inline-size:.4rem; block-size:.4rem; border-radius:50%; background:var(--ac-positive); }
 .shell-state[data-state="loading"] .state-pip { background:var(--ac-accent); }
 .shell-state[data-state="error"] .state-pip { background:var(--ac-danger); }
@@ -33,12 +32,12 @@ main .sub, main .footnote { max-inline-size:74ch; }
 .disconnected-card {
   display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:1rem;
   margin-block-end:1.25rem; padding:1.1rem 1.2rem;
-  border:1px solid color-mix(in srgb,var(--ac-warning) 38%,var(--ac-border-subtle));
-  border-radius:var(--ac-radius-lg); background:linear-gradient(135deg,var(--ac-warning-muted),color-mix(in srgb,var(--ac-material-base) 92%,transparent));
+  border:1px solid var(--role-attention-edge);
+  border-radius:var(--ac-radius-xl); background:var(--role-attention-wash);
 }
 .disconnected-card h2 { margin:.2rem 0 .35rem; font-size:1.2rem; }
 .disconnected-card p:last-child { margin:0; color:var(--ac-text-3); max-width:60ch; }
-.disconnected-mark { display:grid; place-items:center; inline-size:2.6rem; block-size:2.6rem; border:1px solid color-mix(in srgb,var(--ac-warning) 52%,transparent); border-radius:50%; color:var(--ac-warning); font-size:1.4rem; }
+.disconnected-mark { display:grid; place-items:center; inline-size:2.6rem; block-size:2.6rem; border:1px solid var(--role-attention-edge); border-radius:50%; color:var(--role-attention); font-size:1.4rem; }
 
 .ac-material { border:1px solid var(--ac-border-subtle); }
 .ac-material-base { background:var(--ac-material-base); box-shadow:var(--ac-shadow-card); }
@@ -48,26 +47,24 @@ main .sub, main .footnote { max-inline-size:74ch; }
 
 .panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.pending-install-card,.install-progress-card,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,
 .storage-card,.startup-card,.cleanup-card,.repair-check,.module-live,.module-card,.warning-strip,.protection-card,.phase4-action-card,.recovery-panel {
-  border-color:var(--ac-border-subtle);
-  background:linear-gradient(180deg,color-mix(in srgb,var(--ac-material-elevated) 92%,transparent),color-mix(in srgb,var(--ac-material-base) 90%,transparent));
+  border-color:var(--ac-edge);
+  /* Flat glass, as the shell draws it. The vertical gradient here encoded
+     nothing and fought the backdrop blur behind it. */
+  background:var(--ac-glass-2);
   box-shadow:var(--ac-shadow-card);
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-system-theme="dark"]) :is(.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.pending-install-card,.install-progress-card,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,.storage-card,.startup-card,.cleanup-card,.repair-check,.module-live,.module-card,.warning-strip,.protection-card,.phase4-action-card,.recovery-panel) { background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(241,247,250,.86)); }
-}
-[data-system-theme="light"] :is(.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.pending-install-card,.install-progress-card,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,.storage-card,.startup-card,.cleanup-card,.repair-check,.module-live,.module-card,.warning-strip,.protection-card,.phase4-action-card,.recovery-panel) { background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(241,247,250,.86)); }
-.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,.recovery-panel { border-radius:var(--ac-radius-lg); }
-.storage-card,.startup-card,.cleanup-card,.repair-check,.pending-install-card,.install-progress-card { border-radius:var(--ac-radius-md); }
+.panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,.recovery-panel { border-radius:var(--ac-radius-xl); }
+.storage-card,.startup-card,.cleanup-card,.repair-check,.pending-install-card,.install-progress-card { border-radius:var(--ac-radius-lg); }
 .driver-metrics article,.cleanup-summary article,.hardware-summary article,.metric-grid>div,.memory-facts>div,.repair-summary article,.review-facts>div {
-  border-color:var(--ac-border-subtle); background:rgba(255,255,255,.028); border-radius:var(--ac-radius-md);
+  border-color:var(--ac-edge); background:var(--ac-glass-2); border-radius:var(--ac-radius-lg);
 }
-.service-pill,.diagnostic-severity,.startup-title span,.startup-title em,.cleanup-copy em { border-color:var(--ac-border-subtle); background:rgba(255,255,255,.028); }
+.service-pill,.diagnostic-severity,.startup-title span,.startup-title em,.cleanup-copy em { border-color:var(--ac-edge); background:var(--ac-glass-2); }
 
-.primary,.install-button { background:linear-gradient(180deg,#e2f3ff,#bedff8); border-color:rgba(255,255,255,.32); color:#091119; box-shadow:inset 0 1px rgba(255,255,255,.68),0 7px 20px rgba(34,104,153,.12); }
-.secondary,.scan-button { background:rgba(255,255,255,.04); border-color:var(--ac-border-default); color:var(--ac-text-2); }
+.primary,.install-button { background:var(--role-interactive); border-color:transparent; color:var(--role-interactive-ink); box-shadow:var(--ac-shadow-interactive); font-weight:600; }
+.secondary,.scan-button { background:var(--ac-glass-2); border-color:var(--ac-edge); color:var(--ac-text-2); }
 button:disabled { cursor:not-allowed; opacity:.45; }
 
-.error-banner { position:sticky; inset-block-start:.75rem; z-index:12; border:1px solid rgba(239,154,154,.24); background:rgba(69,27,30,.88); backdrop-filter:blur(18px); box-shadow:var(--ac-shadow-float); border-radius:var(--ac-radius-md); }
+.error-banner { position:sticky; inset-block-start:.75rem; z-index:12; border:1px solid var(--role-critical-edge); background:var(--role-critical-wash); backdrop-filter:blur(18px); box-shadow:var(--ac-shadow-float); border-radius:var(--ac-radius-lg); color:var(--role-critical); }
 
 .ac-dialog-backdrop {
   position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:2rem;
@@ -75,7 +72,7 @@ button:disabled { cursor:not-allowed; opacity:.45; }
   backdrop-filter:blur(var(--ac-dialog-blur,16px)) saturate(108%);
   -webkit-backdrop-filter:blur(var(--ac-dialog-blur,16px)) saturate(108%);
 }
-.ac-fluid-dialog { width:min(42rem,calc(100vw - 3rem)); max-height:min(80vh,52rem); overflow:auto; border-radius:1.25rem; padding:1.4rem; }
+.ac-fluid-dialog { width:min(42rem,calc(100vw - 3rem)); max-height:min(80vh,52rem); overflow:auto; border-radius:var(--ac-radius-2xl); padding:1.75rem; }
 .command-backdrop { place-items:start center; padding-block-start:min(18vh,9.5rem); }
 .command-palette { width:min(40rem,calc(100vw - 3rem)); padding:0; overflow:hidden; }
 .command-search { min-height:3.75rem; display:grid; grid-template-columns:1.4rem minmax(0,1fr) auto; align-items:center; gap:.65rem; padding:0 1rem; border-block-end:1px solid var(--ac-border-subtle); color:var(--ac-text-3); }
@@ -84,16 +81,16 @@ button:disabled { cursor:not-allowed; opacity:.45; }
 .command-group + .command-group { margin-block-start:.6rem; }
 .command-group-label { display:block; padding:.35rem .55rem .25rem; color:var(--ac-text-4); font:650 .63rem/1.2 var(--ac-font-mono); letter-spacing:.1em; text-transform:uppercase; }
 .command-results button { width:100%; min-height:3.35rem; display:grid; grid-template-columns:2.1rem minmax(0,1fr) auto auto; align-items:center; gap:.55rem; text-align:start; border:1px solid transparent; border-radius:.65rem; background:transparent; color:var(--ac-text-2); padding:.4rem .55rem; cursor:pointer; }
-.command-results button.selected { background:rgba(142,197,245,.10); border-color:rgba(142,197,245,.13); color:var(--ac-text-1); }
-.command-result-icon { inline-size:1.9rem; block-size:1.9rem; display:grid; place-items:center; border-radius:.5rem; background:rgba(255,255,255,.04); color:var(--ac-accent-strong); }
+.command-results button.selected { background:var(--role-interactive-wash); border-color:var(--role-interactive-edge); color:var(--ac-text-1); }
+.command-result-icon { inline-size:1.9rem; block-size:1.9rem; display:grid; place-items:center; border-radius:.5rem; background:var(--ac-glass-2); color:var(--role-interactive); }
 .command-results strong,.command-results small { display:block; }.command-results strong { font-size:.875rem; font-weight:590; }.command-results small { margin-block-start:.15rem; color:var(--ac-text-4); font-size:.75rem; }
 .command-results em { color:var(--ac-warning); font-size:.65rem; font-style:normal; white-space:nowrap; }
 .command-empty { display:grid; justify-items:center; gap:.3rem; padding:2.5rem 1rem; text-align:center; color:var(--ac-text-4); }.command-empty svg { color:var(--ac-text-3); }.command-empty p { margin:0; color:var(--ac-text-2); font-size:.9rem; }.command-empty small { font-size:.75rem; }
 .command-palette footer { padding:.65rem .95rem; border-block-start:1px solid var(--ac-border-subtle); color:var(--ac-text-4); font-size:.75rem; }
 
-:root[data-theme="light"] .primary,
-:root[data-theme="light"] .install-button { background:linear-gradient(180deg,#ae7040,#85451f); border-color:rgba(117,64,31,.35); box-shadow:inset 0 1px rgba(255,255,255,.25),0 8px 20px rgba(117,64,31,.16); }
-:root[data-theme="light"] .app-nav-item.active { background:linear-gradient(180deg,rgba(23,106,139,.13),rgba(23,106,139,.07)); border-color:rgba(23,106,139,.2); }
+/* Light theme differs only in which value the role resolves to, so the primary
+   button needs no separate rule at all. */
+:root[data-theme="light"] .app-nav-item.active { background:var(--role-interactive-wash); border-color:var(--role-interactive-edge); }
 
 [data-transparency="reduced"] .app-sidebar,
 [data-transparency="reduced"] .ac-material,

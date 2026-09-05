@@ -7,6 +7,7 @@
   import { openStartupRestore, openStartupReview, reviewStartupPlan, selectedStartupDisables, selectedStartupServices, setStartupDecision, setStartupServiceConfirmed, startStartupScan, startupActive, startupUi } from './controller';
   import { formatWhen, shortDigest, stageTone } from '../shared';
   import type { StartupDecision, StartupItem } from '../../lib/contracts';
+  import { EmptyState } from '../../design/signature';
 
   $: snapshot = $streamState.snapshot;
   $: startupSnapshot = $streamState.startupSnapshot;
@@ -91,7 +92,9 @@
   {/if}
   <section class="selection-tray"><div><span class="selection-count">{selectedStartupDisables().length}</span><div><strong>{t('startup.selectionTitle',locale)}</strong><p>{t('startup.selectionCopy',locale)}</p></div></div><button use:fluidPress={{ pressedScale:0.985 }} class="install-button" onclick={reviewStartupPlan} disabled={busy || !selectedStartupDisables().length || (selectedStartupServices().length > 0 && !startupServiceConfirmed)}>{t('startup.review',locale)}</button></section>
 {:else if startupSnapshot.state === 'Idle'}
-  <section class="panel activity-empty"><div class="empty"><div class="empty-icon">↗</div><h4>{t('startup.emptyTitle',locale)}</h4><p>{t('startup.emptyCopy',locale)}</p><button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={startStartupScan} disabled={busy || !snapshot.connected}>{t('startup.inspect',locale)}</button></div></section>
+  <section class="panel activity-empty"><EmptyState title={t('startup.emptyTitle',locale)} body={t('startup.emptyCopy',locale)}>
+    <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={startStartupScan} disabled={busy || !snapshot.connected}>{t('startup.inspect',locale)}</button>
+  </EmptyState></section>
 {/if}
 
 {#if startupPlan && !startupStatus && startupPlan.state === 'AwaitingAuthorization'}

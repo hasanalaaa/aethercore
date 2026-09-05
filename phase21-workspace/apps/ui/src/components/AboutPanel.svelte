@@ -4,8 +4,10 @@
    * availability chips plus the honest performance engine source (native/synthetic).
    * Every state and reason key resolves through the message catalogs (EN/AR parity).
    */
+  import { onMount } from 'svelte';
   import { fluidPress } from '../design/motion';
   import { shellState } from '../app/shell-state';
+  import { EmptyState } from '../design/signature';
   import { serviceInvoke } from '../platform/service-client';
   import { TechnicalText } from '../design/primitives';
   import { t, td, hasMessageKey } from '../lib/i18n';
@@ -51,14 +53,26 @@
         serviceInvoke<PlatformCapabilities>('get_platform_capabilities'),
         serviceInvoke<EngineSource>('get_engine_source'),
       ]);
-      matrix = caps;
-      engine = source;
+      // A transport that answers without a capability list has told us nothing;
+      // treat that as not-collected rather than as an empty matrix, so the panel
+      // never claims the platform supports zero capabilities.
+      matrix = caps?.capabilities?.length ? caps : null;
+      engine = source?.source ? source : null;
       loadError = '';
     } catch (error) {
+      // The raw string stays in the console for support; the panel says
+      // "not collected", because a technical dump is not a user-facing state.
+      console.error('[AetherCore] platform capabilities unavailable', error);
       loadError = String(error);
+      matrix = null;
+      engine = null;
     }
   }
-  void load;
+
+  // Previously `void load;` — a reference, not a call. The panel never requested
+  // anything and sat on a loading ellipsis forever, which reads as "still
+  // working" rather than "nothing collected". Both reads were wrong.
+  onMount(() => { void load(); });
 </script>
 
 <section class="about-panel" aria-labelledby="about-title">
@@ -66,14 +80,13 @@
 
   <div class="row" use:fluidPress>
     <span class="label">{t('about.platform', locale)}</span>
+    <!-- `—` is the honest reading for a value never collected. -->
     <TechnicalText value={matrix?.platform ?? '—'} />
   </div>
 
   <div class="row" use:fluidPress>
     <span class="label">{t('about.engineSource', locale)}</span>
-    <span class="source">
-      {engine ? sourceLabel(engine.source) : '…'}
-    </span>
+    <span class="source">{engine ? sourceLabel(engine.source) : '—'}</span>
   </div>
 
   <h3>{t('about.capabilitiesTitle', locale)}</h3>
@@ -89,10 +102,11 @@
         </li>
       {/each}
     </ul>
-  {:else if loadError}
-    <p class="error">{loadError}</p>
   {:else}
-    <p class="loading">…</p>
+    <EmptyState
+      title={t('common.notCollected', locale)}
+      body={t('about.capabilitiesEmpty', locale)}
+    />
   {/if}
 </section>
 
@@ -106,9 +120,10 @@
   .capabilities { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   .capability { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; }
   .chip { border-radius: 999px; padding: 2px 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; }
-  .chip.native { background: var(--ac-positive-bg, rgba(48, 209, 88, 0.16)); color: var(--ac-positive, #248a3d); }
-  .chip.degraded { background: rgba(255, 159, 10, 0.16); color: var(--ac-warning, #b25000); }
-  .chip.unavailable { background: var(--ac-neutral-bg, rgba(120, 120, 128, 0.16)); color: var(--ac-text-3); }
-  .note { width: 100%; color: var(--ac-text-3); font-size: 0.72rem; direction: ltr; }
-  .error, .loading { color: var(--ac-text-3); font-size: 0.8rem; }
+  /* Roles, not literals. These three fell back to hardcoded green/orange/grey
+     because --ac-positive-bg and --ac-neutral-bg were never defined. */
+  .chip.native { background: var(--role-healthy-wash); color: var(--role-healthy); }
+  .chip.degraded { background: var(--role-attention-wash); color: var(--role-attention); }
+  .chip.unavailable { background: var(--ac-glass-2); color: var(--ac-text-3); }
+  .note { width: 100%; color: var(--ac-text-3); font-size: var(--ac-type-technical); direction: ltr; }
 </style>

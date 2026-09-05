@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Deep Scan Results</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-surface-variant": "#c3c6d4",
+                      "on-tertiary-fixed-variant": "#653e00",
+                      "on-error-container": "#ffdad6",
+                      "on-tertiary": "#472a00",
+                      "on-surface": "#e1e2ea",
+                      "error-container": "#93000a",
+                      "on-tertiary-container": "#3e2400",
+                      "primary-container": "#5d8ef1",
+                      "surface": "#111319",
+                      "tertiary-fixed-dim": "#ffb960",
+                      "outline-variant": "#424752",
+                      "surface-container-lowest": "#0c0e14",
+                      "tertiary-container": "#ca8103",
+                      "surface-container": "#1d1f26",
+                      "primary-fixed-dim": "#aec6ff",
+                      "on-secondary-fixed-variant": "#584400",
+                      "surface-bright": "#373940",
+                      "surface-dim": "#111319",
+                      "outline": "#8d909e",
+                      "on-tertiary-fixed": "#2a1700",
+                      "inverse-primary": "#1e5bba",
+                      "surface-container-highest": "#33353b",
+                      "primary-fixed": "#d8e2ff",
+                      "surface-variant": "#33353b",
+                      "tertiary-fixed": "#ffddb8",
+                      "secondary-fixed-dim": "#ecc246",
+                      "surface-container-high": "#282a30",
+                      "surface-container-low": "#191b22",
+                      "on-primary-container": "#00275e",
+                      "surface-tint": "#aec6ff",
+                      "on-primary": "#002e6b",
+                      "on-secondary": "#3d2e00",
+                      "tertiary": "#ffb960",
+                      "on-secondary-fixed": "#241a00",
+                      "on-primary-fixed": "#001a43",
+                      "background": "#111319",
+                      "inverse-on-surface": "#2e3037",
+                      "inverse-surface": "#e1e2ea",
+                      "secondary-fixed": "#ffe08e",
+                      "secondary": "#ecc246",
+                      "on-background": "#e1e2ea",
+                      "on-primary-fixed-variant": "#004397",
+                      "error": "#ffb4ab",
+                      "primary": "#aec6ff",
+                      "secondary-container": "#b18c09",
+                      "on-error": "#690005",
+                      "on-secondary-container": "#352800",
+                      "interactive": "#aec6ff",
+                      "status-policy": "#ca8103",
+                      "status-critical": "#ffb4ab",
+                      "status-review": "#ecc246",
+                      "status-healthy": "#aec6ff",
+                      "ground": "#0c0e14",
+                      "surface-raised": "#1d1f26",
+                      "surface-elevated": "#282a30"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "unit": "4px",
+                      "panel-gap": "1px",
+                      "grid-margin": "16px",
+                      "cell-padding-y": "8px",
+                      "cell-padding-x": "12px"
+              },
+              "fontFamily": {
+                      "data-mono-sm": [
+                              "IBM Plex Mono"
+                      ],
+                      "display-sm": [
+                              "IBM Plex Sans"
+                      ],
+                      "headline-sm": [
+                              "IBM Plex Sans"
+                      ],
+                      "label-caps": [
+                              "IBM Plex Sans"
+                      ],
+                      "body-sm": [
+                              "IBM Plex Sans"
+                      ],
+                      "body-md": [
+                              "IBM Plex Sans"
+                      ],
+                      "data-mono": [
+                              "IBM Plex Mono"
+                      ]
+              },
+              "fontSize": {
+                      "data-mono-sm": [
+                              "11px",
+                              {
+                                      "lineHeight": "14px",
+                                      "letterSpacing": "0.02em",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "24px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-sm": [
+                              "16px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "label-caps": [
+                              "11px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.06em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-sm": [
+                              "13px",
+                              {
+                                      "lineHeight": "18px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "data-mono": [
+                              "13px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "450"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .material-symbols-outlined {
+          font-variation-settings:
+          'FILL' 0,
+          'wght' 400,
+          'GRAD' 0,
+          'opsz' 24
+        }
+    </style>
+</head>
+<body class="bg-ground text-on-surface h-screen flex overflow-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- Side Nav Rail (Semantic Shell: Present as we are in a top-level diagnostic destination) -->
+<nav aria-label="Main Navigation" class="bg-surface-container-lowest flex flex-col h-full border-r border-outline-variant w-64 flex-shrink-0 z-10 hidden md:flex">
+<!-- Header -->
+<div class="h-16 flex items-center px-4 border-b border-outline-variant">
+<img alt="AetherCore Logo" class="h-8 w-8 mr-3 filter brightness-150 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<div>
+<h1 class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface">AetherCore</h1>
+<p class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Diagnostics &amp; Maintenance</p>
+</div>
+</div>
+<!-- Main Nav Items -->
+<div class="flex-1 overflow-y-auto py-2">
+<ul class="space-y-[1px]">
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">dashboard</span>
+                        Overview
+                    </a>
+</li>
+<li>
+<!-- Active State Logic Applied: "Deep Scan" is the active page intent -->
+<a class="flex items-center px-4 py-3 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer transition-all duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]" style="font-variation-settings: 'FILL' 1;">biotech</span>
+                        Deep Scan
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">speed</span>
+                        Performance
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">monitor_heart</span>
+                        Hardware Health
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">history</span>
+                        Crash History
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">lightbulb</span>
+                        Insights
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">settings_input_component</span>
+                        Drivers
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">build</span>
+                        System Repair
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">cleaning_services</span>
+                        Deep Clean
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">rocket_launch</span>
+                        Startup Manager
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">restore</span>
+                        Recovery
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80" href="#">
+<span class="material-symbols-outlined mr-3 text-[20px]">dns</span>
+                        Fleet
+                    </a>
+</li>
+</ul>
+</div>
+<!-- Footer / CTA -->
+<div class="p-4 border-t border-outline-variant space-y-4">
+<button class="w-full bg-interactive text-ground font-body-sm text-body-sm font-semibold py-2 border border-interactive hover:bg-primary transition-colors duration-150">
+                Authorize Changes
+            </button>
+<div class="flex justify-between items-center text-on-surface-variant">
+<button class="hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">language</span></button>
+<button class="hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">dark_mode</span></button>
+<button class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[18px]">cloud_done</span></button>
+</div>
+<p class="text-center font-data-mono-sm text-data-mono-sm text-outline">v.1.4.2-stable</p>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col min-w-0 bg-surface-bright relative">
+<!-- Mobile Top App Bar (Hidden on md and up) -->
+<header class="flex md:hidden items-center justify-between px-4 w-full h-12 bg-surface-container border-b border-outline-variant z-20">
+<div class="flex items-center gap-3">
+<img alt="AetherCore Logo" class="h-6 w-6 filter brightness-150 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface uppercase">AetherCore</span>
+</div>
+<div class="flex items-center gap-3 text-on-surface-variant">
+<button class="hover:text-primary transition-colors duration-150"><span class="material-symbols-outlined">policy</span></button>
+<button class="hover:text-primary transition-colors duration-150"><span class="material-symbols-outlined">terminal</span></button>
+<button class="hover:text-primary transition-colors duration-150"><span class="material-symbols-outlined">help_outline</span></button>
+</div>
+</header>
+<!-- Policy Band Top Banner -->
+<div class="bg-surface-container-high border-b border-outline-variant p-3 flex items-start gap-3 relative z-10 flex-shrink-0">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-status-policy"></div>
+<span class="material-symbols-outlined text-status-policy pl-3">gavel</span>
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Read-Only Assessment Mode</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Scan completed. No modifications have been executed. Review findings before authorizing repair sequence.</p>
+</div>
+</div>
+<!-- Dashboard Content Area -->
+<div class="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col gap-6 relative">
+
+<header class="mb-2 relative z-10">
+<h1 class="font-display-sm text-display-sm text-on-surface">Scan Results: X-99 Desktop Terminal</h1>
+<div class="flex items-center gap-4 mt-2 font-data-mono text-data-mono text-on-surface-variant">
+<span>Duration: 00:04:22</span>
+<span class="text-outline">|</span>
+<span>Scanned: 1,402,991 objects</span>
+<span class="text-outline">|</span>
+<span>Status: Complete</span>
+</div>
+</header>
+<!-- Grid Layout for Findings -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-[1px] bg-outline-variant border border-outline-variant relative z-10">
+<!-- Summary Column -->
+<div class="lg:col-span-3 bg-surface-raised flex flex-col h-full">
+<div class="p-4 border-b border-outline-variant bg-surface-container-low">
+<h3 class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Global Status</h3>
+</div>
+<div class="p-6 flex flex-col gap-6 flex-1">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 bg-status-critical"></div>
+<span class="font-body-md text-body-md text-on-surface">Critical</span>
+</div>
+<span class="font-data-mono text-data-mono text-status-critical">2</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 bg-status-review"></div>
+<span class="font-body-md text-body-md text-on-surface">Needs Review</span>
+</div>
+<span class="font-data-mono text-data-mono text-status-review">5</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 bg-status-healthy"></div>
+<span class="font-body-md text-body-md text-on-surface">Healthy</span>
+</div>
+<span class="font-data-mono text-data-mono text-status-healthy">1,402,984</span>
+</div>
+<div class="mt-auto pt-6 border-t border-outline-variant">
+<div class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-2">Engine Integrity</div>
+<div class="w-full bg-ground h-2 mb-1">
+<div class="bg-status-review h-full w-[94%]"></div>
+</div>
+<div class="text-right font-data-mono-sm text-data-mono-sm text-on-surface-variant">94.2%</div>
+</div>
+</div>
+</div>
+<!-- Findings Details List -->
+<div class="lg:col-span-9 bg-surface-raised flex flex-col">
+<div class="p-4 border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
+<h3 class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Engine Findings</h3>
+<div class="flex gap-2">
+<button class="px-2 py-1 border border-outline-variant font-data-mono-sm text-data-mono-sm text-on-surface hover:bg-surface-elevated transition-colors">Sort: Severity</button>
+<button class="px-2 py-1 border border-outline-variant font-data-mono-sm text-data-mono-sm text-on-surface hover:bg-surface-elevated transition-colors"><span class="material-symbols-outlined text-[14px] align-middle">filter_list</span></button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto">
+<!-- Critical Finding -->
+<div class="p-4 border-b border-outline-variant hover:bg-surface-container-highest transition-colors flex flex-col md:flex-row gap-4 items-start relative group">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-status-critical"></div>
+<div class="flex-shrink-0 w-32 pl-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant block mb-1">Engine</span>
+<span class="font-body-sm text-body-sm text-on-surface block">Storage Subsystem</span>
+</div>
+<div class="flex-1">
+<span class="font-label-caps text-label-caps text-status-critical block mb-1">Critical Degradation</span>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-2">NVMe Drive 0 Pre-Failure SMART Trip</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Drive reporting uncorrectable sector counts exceeding threshold limit. Imminent data loss risk detected on secondary partition.</p>
+</div>
+<div class="flex-shrink-0 flex flex-col items-end gap-2">
+<button class="bg-surface-elevated border border-outline-variant px-2 py-1 font-data-mono-sm text-data-mono-sm text-on-surface-variant flex items-center gap-1 hover:bg-outline-variant hover:text-on-surface transition-colors cursor-pointer group-hover:border-interactive">
+<span class="material-symbols-outlined text-[14px]">receipt_long</span>
+                                    [x-4402]
+                                </button>
+<span class="font-data-mono-sm text-data-mono-sm text-outline mt-auto">14:02:11</span>
+</div>
+</div>
+<!-- Critical Finding 2 -->
+<div class="p-4 border-b border-outline-variant hover:bg-surface-container-highest transition-colors flex flex-col md:flex-row gap-4 items-start relative group">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-status-critical"></div>
+<div class="flex-shrink-0 w-32 pl-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant block mb-1">Engine</span>
+<span class="font-body-sm text-body-sm text-on-surface block">OS Kernel</span>
+</div>
+<div class="flex-1">
+<span class="font-label-caps text-label-caps text-status-critical block mb-1">Security Vulnerability</span>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-2">Unsigned Kernel Driver Loaded</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Detected unauthorized driver (sysmon_debug.sys) operating at Ring 0. Signature verification failed during deep inspection.</p>
+</div>
+<div class="flex-shrink-0 flex flex-col items-end gap-2">
+<button class="bg-surface-elevated border border-outline-variant px-2 py-1 font-data-mono-sm text-data-mono-sm text-on-surface-variant flex items-center gap-1 hover:bg-outline-variant hover:text-on-surface transition-colors cursor-pointer group-hover:border-interactive">
+<span class="material-symbols-outlined text-[14px]">receipt_long</span>
+                                    [x-9011]
+                                </button>
+<span class="font-data-mono-sm text-data-mono-sm text-outline mt-auto">14:03:45</span>
+</div>
+</div>
+<!-- Review Finding -->
+<div class="p-4 border-b border-outline-variant hover:bg-surface-container-highest transition-colors flex flex-col md:flex-row gap-4 items-start relative group">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-status-review"></div>
+<div class="flex-shrink-0 w-32 pl-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant block mb-1">Engine</span>
+<span class="font-body-sm text-body-sm text-on-surface block">Hardware Health</span>
+</div>
+<div class="flex-1">
+<span class="font-label-caps text-label-caps text-status-review block mb-1">Needs Review</span>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-2">Thermal Throttling Event Logged</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">CPU Package temperature exceeded 95°C for 4 consecutive minutes during stress test phase. Cooling profile assessment recommended.</p>
+</div>
+<div class="flex-shrink-0 flex flex-col items-end gap-2">
+<button class="bg-surface-elevated border border-outline-variant px-2 py-1 font-data-mono-sm text-data-mono-sm text-on-surface-variant flex items-center gap-1 hover:bg-outline-variant hover:text-on-surface transition-colors cursor-pointer group-hover:border-interactive">
+<span class="material-symbols-outlined text-[14px]">receipt_long</span>
+                                    [x-2245]
+                                </button>
+<span class="font-data-mono-sm text-data-mono-sm text-outline mt-auto">14:04:12</span>
+</div>
+</div>
+<!-- Review Finding 2-->
+<div class="p-4 border-b border-outline-variant hover:bg-surface-container-highest transition-colors flex flex-col md:flex-row gap-4 items-start relative group">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-status-review"></div>
+<div class="flex-shrink-0 w-32 pl-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant block mb-1">Engine</span>
+<span class="font-body-sm text-body-sm text-on-surface block">Drivers</span>
+</div>
+<div class="flex-1">
+<span class="font-label-caps text-label-caps text-status-review block mb-1">Needs Review</span>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-2">Display Adapter Driver Deprecated</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Current display driver is 4 versions behind stable release. Known compatibility issues with recent OS security patch.</p>
+</div>
+<div class="flex-shrink-0 flex flex-col items-end gap-2">
+<button class="bg-surface-elevated border border-outline-variant px-2 py-1 font-data-mono-sm text-data-mono-sm text-on-surface-variant flex items-center gap-1 hover:bg-outline-variant hover:text-on-surface transition-colors cursor-pointer group-hover:border-interactive">
+<span class="material-symbols-outlined text-[14px]">receipt_long</span>
+                                    [x-1102]
+                                </button>
+<span class="font-data-mono-sm text-data-mono-sm text-outline mt-auto">14:05:01</span>
+</div>
+</div>
+<!-- Healthy Finding Example (Truncated list for realism) -->
+<div class="p-4 hover:bg-surface-container-highest transition-colors flex flex-col md:flex-row gap-4 items-start relative group opacity-60">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-status-healthy"></div>
+<div class="flex-shrink-0 w-32 pl-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant block mb-1">Engine</span>
+<span class="font-body-sm text-body-sm text-on-surface block">Network Stack</span>
+</div>
+<div class="flex-1">
+<span class="font-label-caps text-label-caps text-status-healthy block mb-1">Healthy</span>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-2">TCP/IP Subsystem Integrity Verified</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">No anomalous routing tables or unauthorized listener ports detected.</p>
+</div>
+<div class="flex-shrink-0 flex flex-col items-end gap-2">
+<button class="bg-surface-elevated border border-outline-variant px-2 py-1 font-data-mono-sm text-data-mono-sm text-on-surface-variant flex items-center gap-1 hover:bg-outline-variant hover:text-on-surface transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[14px]">receipt_long</span>
+                                    [x-0012]
+                                </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Simulated Proof Panel Overlay (Hidden by default, shown for structure representation) -->
+<!-- In a real app, JS would toggle 'hidden' class based on evidence chip click -->
+<aside class="hidden absolute right-0 top-0 bottom-0 w-96 bg-surface border-l border-outline-variant flex flex-col z-50 shadow-2xl transition-transform duration-300 transform translate-x-full" id="proof-panel">
+<div class="h-12 border-b border-outline-variant flex items-center justify-between px-4 bg-surface-container-low">
+<h3 class="font-label-caps text-label-caps text-on-surface tracking-widest">Evidence Proof [x-4402]</h3>
+<button class="text-on-surface-variant hover:text-on-surface" onclick="document.getElementById('proof-panel').classList.add('hidden')"><span class="material-symbols-outlined text-[20px]">close</span></button>
+</div>
+<div class="p-4 flex-1 overflow-y-auto font-data-mono text-data-mono-sm text-on-surface-variant bg-ground whitespace-pre overflow-x-auto">
+&gt; SMARTctl 7.2 2020-12-30 r5155
+&gt; Model Family:     Phison Driven SSDs
+&gt; Device Model:     NVMe INTEL SSDPEKNW512G8
+&gt; Firmware Version: 004C
+&gt; User Capacity:    512,110,190,592 bytes [512 GB]
+&gt; 
+&gt; SMART/Health Information (NVMe Log 0x02)
+&gt; Critical Warning:                   0x01 (Available Spare &lt; Threshold)
+&gt; Temperature:                        42 Celsius
+&gt; Available Spare:                    8% (Threshold: 10%)
+&gt; Available Spare Threshold:          10%
+&gt; Percentage Used:                    98%
+&gt; Data Units Read:                    14,203,112 [7.27 TB]
+&gt; Data Units Written:                 42,109,881 [21.5 TB]
+&gt; Media and Data Integrity Errors:    1,402
+&gt; Error Information (NVMe Log 0x01, max 64 entries)
+&gt; No Errors Logged
+        </div>
+<div class="p-4 border-t border-outline-variant bg-surface-container-low">
+<button class="w-full bg-transparent text-primary font-body-sm text-body-sm border border-primary py-1 hover:bg-primary-container hover:text-on-primary-container transition-colors">Export Log</button>
+</div>
+</aside>
+<script>
+        // Simple script to demonstrate opening proof panel from a chip
+        document.querySelectorAll('button:has([data-icon="receipt_long"])').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const panel = document.getElementById('proof-panel');
+                panel.classList.remove('hidden');
+                // Small delay to allow display:block to apply before animating transform
+                setTimeout(() => panel.classList.remove('translate-x-full'), 10);
+            });
+        });
+    </script>
+</body></html>

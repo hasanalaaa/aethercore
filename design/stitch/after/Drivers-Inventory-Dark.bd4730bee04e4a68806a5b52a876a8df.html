@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Drivers</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-surface-variant": "#c1c7cf", "on-tertiary-fixed-variant": "#4a388e", "on-error-container": "#ffdad6", "on-tertiary": "#331f76", "on-surface": "#dee3eb", "error-container": "#93000a", "on-tertiary-container": "#514096", "primary-container": "#8ec5f5", surface: "#0f141a", "tertiary-fixed-dim": "#cbbeff", "outline-variant": "#41474e", "surface-container-lowest": "#0a0f15", "tertiary-container": "#c4b6ff", "surface-container": "#141c24", "primary-fixed-dim": "#95ccfc", "on-secondary-fixed-variant": "#643f03", "surface-bright": "#353a40", "surface-dim": "#080d12", outline: "#8b9199", "on-tertiary-fixed": "#1d0061", "inverse-primary": "#26638e", "surface-container-highest": "#30353c", "primary-fixed": "#cce5ff", "surface-variant": "#30353c", "tertiary-fixed": "#e6deff", "secondary-fixed-dim": "#f4bc77", "surface-container-high": "#252a31", "surface-container-low": "#171c22", "on-primary-container": "#09527c", "surface-tint": "#95ccfc", "on-primary": "#003351", "on-secondary": "#472a00", tertiary: "#e0d6ff", "on-secondary-fixed": "#2a1700", "on-primary-fixed": "#001d31", background: "#0f141a", "inverse-on-surface": "#2c3138", "inverse-surface": "#dee3eb", "secondary-fixed": "#ffddb7", secondary: "#f4bc77", "on-background": "#dee3eb", "on-primary-fixed-variant": "#004b73", error: "#ffb4ab", primary: "#bedfff", "secondary-container": "#674105", "on-error": "#690005", "on-secondary-container": "#e5ae6b", interactive: "#5B8DEF", status_policy: "#ca8103", "attention-orange": "#D08A2E", "policy-violet": "#7C6BC4", "verified-gold": "#C9A227", "healthy-green": "#3E9E6B", "critical-red": "#C24D4D"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {unit: "4px", "panel-gap": "1px", "grid-margin": "16px", "cell-padding-y": "8px", "cell-padding-x": "12px", "gutter-table": "16px", "row-height": "44px", "margin-page": "32px", "gap-card": "16px", "padding-card": "20px", base: "4px"}, fontFamily: {"data-mono-sm": ["IBM Plex Mono"], "display-sm": ["Geist"], "headline-sm": ["Geist"], "label-caps": ["Geist"], "body-sm": ["Geist"], "body-md": ["Geist"], "data-mono": ["IBM Plex Mono"], "display-lg": ["Geist"]}, fontSize: {"data-mono-sm": ["11px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "400"}], "display-sm": ["22px", {lineHeight: "30px", letterSpacing: "-0.015em", fontWeight: "600"}], "headline-sm": ["16px", {lineHeight: "24px", fontWeight: "600"}], "label-caps": ["11px", {lineHeight: "16px", letterSpacing: "0.04em", fontWeight: "600"}], "body-sm": ["13px", {lineHeight: "20px", fontWeight: "400"}], "body-md": ["15px", {lineHeight: "24px", fontWeight: "400"}], "data-mono": ["13px", {lineHeight: "20px", fontWeight: "450"}], "display-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600"}]}}}};</script>
+<style>
+        body { background-color: theme('colors.surface-container-lowest'); color: theme('colors.on-surface'); }
+        /* Policy Band logic */
+        .policy-band { position: relative; }
+        .policy-band::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background-color: theme('colors.status_policy'); z-index: 10; }
+        
+        /* Custom scrollbar for data tables */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: theme('colors.surface-container-low'); }
+        ::-webkit-scrollbar-thumb { background: theme('colors.outline-variant'); }
+        ::-webkit-scrollbar-thumb:hover { background: theme('colors.outline'); }
+    </style>
+</head>
+<body class="h-screen w-full flex overflow-hidden font-body-md text-body-md bg-surface-container-lowest text-on-surface">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-screen w-64 border-r border-outline-variant bg-surface-container-lowest shrink-0">
+<!-- Header -->
+<div class="p-grid-margin border-b border-outline-variant flex flex-col gap-unit">
+<div class="flex items-center gap-2">
+<img alt="AetherCore Logo" class="w-8 h-8 object-cover rounded-sm border border-outline-variant" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<span class="font-headline-sm text-headline-sm uppercase tracking-widest text-on-surface">AetherCore</span>
+</div>
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant uppercase">Diagnostics &amp; Maintenance</span>
+</div>
+<!-- Scrollable Tabs -->
+<div class="flex-1 overflow-y-auto py-unit">
+<ul class="flex flex-col">
+<!-- Overview -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">dashboard</span>
+<span>Overview</span>
+</a>
+</li>
+<!-- Deep Scan -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">biotech</span>
+<span>Deep Scan</span>
+</a>
+</li>
+<!-- Performance -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">speed</span>
+<span>Performance</span>
+</a>
+</li>
+<!-- Hardware Health -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">monitor_heart</span>
+<span>Hardware Health</span>
+</a>
+</li>
+<!-- Crash History -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">history</span>
+<span>Crash History</span>
+</a>
+</li>
+<!-- Insights -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">lightbulb</span>
+<span>Insights</span>
+</a>
+</li>
+<!-- Drivers (ACTIVE) -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 bg-primary-container text-on-primary-container font-data-mono text-data-mono border-l-4 border-tertiary cursor-pointer transition-all duration-75 active:opacity-80 rounded-r-sm" href="#">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">settings_input_component</span>
+<span>Drivers</span>
+</a>
+</li>
+<!-- System Repair -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">build</span>
+<span>System Repair</span>
+</a>
+</li>
+<!-- Deep Clean -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">cleaning_services</span>
+<span>Deep Clean</span>
+</a>
+</li>
+<!-- Startup Manager -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">rocket_launch</span>
+<span>Startup Manager</span>
+</a>
+</li>
+<!-- Recovery -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">restore</span>
+<span>Recovery</span>
+</a>
+</li>
+<!-- Fleet -->
+<li class="px-2 py-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant font-data-mono text-data-mono hover:bg-surface-container-high transition-colors cursor-pointer duration-75 active:opacity-80 rounded-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">dns</span>
+<span>Fleet</span>
+</a>
+</li>
+</ul>
+</div>
+<!-- Footer -->
+<div class="border-t border-outline-variant p-2 flex flex-col gap-1">
+<button class="w-full bg-interactive text-surface py-2 font-label-caps text-label-caps uppercase tracking-wider hover:bg-primary transition-colors border border-outline-variant">
+                Authorize Changes
+            </button>
+<div class="flex justify-between items-center mt-2 px-2">
+<button class="text-on-surface-variant hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined text-[16px]">language</span>
+</button>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined text-[16px]">dark_mode</span>
+</button>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">cloud_done</span>
+<span class="font-data-mono-sm text-data-mono-sm">v.1.4.2-stable</span>
+</button>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 h-screen bg-surface-container-lowest">
+<!-- TopAppBar -->
+<header class="flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container shrink-0">
+<div class="flex items-center gap-4">
+<!-- Mobile Menu Toggle (hidden on desktop) -->
+<button class="md:hidden text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[16px] text-on-surface-variant">search</span>
+<input class="pl-8 pr-3 py-1 bg-surface-container-lowest border border-outline-variant text-data-mono-sm font-data-mono-sm text-on-surface focus:border-interactive focus:outline-none w-64 rounded-none placeholder:text-on-surface-variant" placeholder="Search devices, PIDs..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150">
+<span class="material-symbols-outlined text-[20px]">policy</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150">
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-150">
+<span class="material-symbols-outlined text-[20px]">help_outline</span>
+</button>
+</div>
+</header>
+<!-- Canvas -->
+<div class="flex-1 overflow-auto p-grid-margin flex flex-col gap-4">
+<!-- Page Header -->
+<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-outline-variant">
+<div>
+<h1 class="font-display-sm text-display-sm text-on-surface m-0">Device Inventory</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Driver status and component versions across current hardware topology.</p>
+</div>
+<div class="flex gap-2">
+<button class="px-4 py-1.5 border border-outline-variant text-on-surface font-label-caps text-label-caps uppercase hover:bg-surface-container-high transition-colors">
+                        Refresh Scan
+                    </button>
+<button class="px-4 py-1.5 bg-interactive text-surface border border-outline-variant font-label-caps text-label-caps uppercase hover:bg-primary transition-colors">
+                        Review Plan (2)
+                    </button>
+</div>
+</div>
+<!-- Content Panels Layout -->
+<div class="flex flex-col gap-4 h-full">
+<!-- Filter Tabs -->
+<div class="flex gap-unit border-b border-outline-variant">
+<button class="px-4 py-2 font-label-caps text-label-caps uppercase text-on-surface-variant hover:text-on-surface transition-colors">
+                        All
+                    </button>
+<button class="px-4 py-2 font-label-caps text-label-caps uppercase text-primary border-b-2 border-primary transition-colors">
+                        Updates (2)
+                    </button>
+<button class="px-4 py-2 font-label-caps text-label-caps uppercase text-on-surface-variant hover:text-on-surface transition-colors">
+                        Issues (0)
+                    </button>
+<button class="px-4 py-2 font-label-caps text-label-caps uppercase text-on-surface-variant hover:text-on-surface transition-colors">
+                        Missing (1)
+                    </button>
+</div>
+<!-- Data Table Panel -->
+<div class="border border-outline-variant flex-1 bg-surface-container-low flex flex-col overflow-hidden relative">
+<!-- Policy Band -->
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-status_policy z-10"></div>
+<div class="overflow-x-auto flex-1 pl-[4px]">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-lowest border-b border-outline-variant sticky top-0 z-0">
+<tr>
+<th class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface uppercase tracking-wider whitespace-nowrap">Device</th>
+<th class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface uppercase tracking-wider whitespace-nowrap">Vendor</th>
+<th class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface uppercase tracking-wider whitespace-nowrap">Current Version</th>
+<th class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface uppercase tracking-wider whitespace-nowrap">Available Version</th>
+<th class="py-cell-padding-y px-cell-padding-x font-label-caps text-label-caps text-on-surface uppercase tracking-wider whitespace-nowrap">Status</th>
+</tr>
+</thead>
+<tbody class="font-data-mono text-data-mono text-on-surface-variant">
+<!-- Row 1: Update Available -->
+<tr class="bg-surface-dim hover:bg-surface-container border-b border-outline-variant transition-colors group">
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<div class="flex items-center gap-2 text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-primary">memory</span>
+                                            NVD-RTX-4090
+                                        </div>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">NVIDIA Corp</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<span class="bg-surface-container-highest px-1.5 py-0.5 border border-outline-variant">535.104.05</span>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<span class="bg-surface-container-highest px-1.5 py-0.5 border border-primary text-primary">545.29.02</span>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-primary"></div>
+<span class="text-primary font-bold">Update Ready</span>
+</div>
+</td>
+</tr>
+<!-- Row 2: Update Available -->
+<tr class="bg-surface-container-lowest hover:bg-surface-container border-b border-outline-variant transition-colors group">
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<div class="flex items-center gap-2 text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-primary">router</span>
+                                            INTEL-AX210-WIFI
+                                        </div>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">Intel Inc</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<span class="bg-surface-container-highest px-1.5 py-0.5 border border-outline-variant">iwlwifi-ty-a0-gf-a0-72.ucode</span>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<span class="bg-surface-container-highest px-1.5 py-0.5 border border-primary text-primary">iwlwifi-ty-a0-gf-a0-77.ucode</span>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-primary"></div>
+<span class="text-primary font-bold">Update Ready</span>
+</div>
+</td>
+</tr>
+<!-- Row 3: Missing -->
+<tr class="bg-surface-dim hover:bg-surface-container border-b border-outline-variant transition-colors group">
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<div class="flex items-center gap-2 text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-tertiary">print</span>
+                                            UNK-DEV-04F2:B649
+                                        </div>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">Unknown</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<span class="text-on-surface-variant font-data-mono-sm italic">Not collected yet</span>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<span class="text-on-surface-variant font-data-mono-sm italic">--</span>
+</td>
+<td class="py-cell-padding-y px-cell-padding-x whitespace-nowrap">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-tertiary"></div>
+<span class="text-tertiary font-bold">Driver Missing</span>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Table Footer / Status -->
+<div class="bg-surface-container-lowest border-t border-outline-variant p-2 flex justify-between items-center pl-[12px]">
+<span class="font-data-mono-sm text-data-mono-sm text-on-surface-variant">Showing 3 of 3 items (Updates filtered)</span>
+<div class="flex gap-2">
+<button class="px-3 py-1 border border-outline-variant text-on-surface-variant font-label-caps text-label-caps uppercase hover:bg-surface-container-high transition-colors disabled:opacity-50">
+                                Prev
+                            </button>
+<button class="px-3 py-1 border border-outline-variant text-on-surface-variant font-label-caps text-label-caps uppercase hover:bg-surface-container-high transition-colors disabled:opacity-50">
+                                Next
+                            </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

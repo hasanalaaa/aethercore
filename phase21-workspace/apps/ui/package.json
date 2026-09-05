@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
+    "fixture": "vite --mode fixture --host 127.0.0.1 --port 1420",
+    "sweep": "node tools/layout-sweep.mjs",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json --threshold warning --fail-on-warnings",
     "tauri": "tauri"

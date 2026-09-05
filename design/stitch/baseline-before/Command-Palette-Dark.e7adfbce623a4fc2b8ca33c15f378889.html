@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AetherCore - Command Palette</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#c3c6d4",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary": "#472a00",
+                        "on-surface": "#e1e2ea",
+                        "error-container": "#93000a",
+                        "on-tertiary-container": "#3e2400",
+                        "primary-container": "#5d8ef1",
+                        "surface": "#111319",
+                        "tertiary-fixed-dim": "#ffb960",
+                        "outline-variant": "#424752",
+                        "surface-container-lowest": "#0c0e14",
+                        "tertiary-container": "#ca8103",
+                        "surface-container": "#1d1f26",
+                        "primary-fixed-dim": "#aec6ff",
+                        "on-secondary-fixed-variant": "#584400",
+                        "surface-bright": "#373940",
+                        "surface-dim": "#111319",
+                        "outline": "#8d909e",
+                        "on-tertiary-fixed": "#2a1700",
+                        "inverse-primary": "#1e5bba",
+                        "surface-container-highest": "#33353b",
+                        "primary-fixed": "#d8e2ff",
+                        "surface-variant": "#33353b",
+                        "tertiary-fixed": "#ffddb8",
+                        "secondary-fixed-dim": "#ecc246",
+                        "surface-container-high": "#282a30",
+                        "surface-container-low": "#191b22",
+                        "on-primary-container": "#00275e",
+                        "surface-tint": "#aec6ff",
+                        "on-primary": "#002e6b",
+                        "on-secondary": "#3d2e00",
+                        "tertiary": "#ffb960",
+                        "on-secondary-fixed": "#241a00",
+                        "on-primary-fixed": "#001a43",
+                        "background": "#111319",
+                        "inverse-on-surface": "#2e3037",
+                        "inverse-surface": "#e1e2ea",
+                        "secondary-fixed": "#ffe08e",
+                        "secondary": "#ecc246",
+                        "on-background": "#e1e2ea",
+                        "on-primary-fixed-variant": "#004397",
+                        "error": "#ffb4ab",
+                        "primary": "#aec6ff",
+                        "secondary-container": "#b18c09",
+                        "on-error": "#690005",
+                        "on-secondary-container": "#352800"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "panel-gap": "1px",
+                        "grid-margin": "16px",
+                        "cell-padding-y": "8px",
+                        "cell-padding-x": "12px"
+                    },
+                    "fontFamily": {
+                        "data-mono-sm": ["IBM Plex Mono"],
+                        "display-sm": ["IBM Plex Sans"],
+                        "headline-sm": ["IBM Plex Sans"],
+                        "label-caps": ["IBM Plex Sans"],
+                        "body-sm": ["IBM Plex Sans"],
+                        "body-md": ["IBM Plex Sans"],
+                        "data-mono": ["IBM Plex Mono"]
+                    },
+                    "fontSize": {
+                        "data-mono-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "400" }],
+                        "display-sm": ["20px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "headline-sm": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+                        "label-caps": ["11px", { "lineHeight": "16px", "letterSpacing": "0.06em", "fontWeight": "700" }],
+                        "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "data-mono": ["13px", { "lineHeight": "16px", "fontWeight": "450" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling when palette is active */
+        }
+        /* Backdrop blur for the overlay */
+        .backdrop-blur-sm {
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        
+        /* Custom scrollbar for technical look */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: theme('colors.surface-container-lowest');
+            border-left: 1px solid theme('colors.outline-variant');
+        }
+        ::-webkit-scrollbar-thumb {
+            background: theme('colors.surface-variant');
+            border: 1px solid theme('colors.outline-variant');
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: theme('colors.outline');
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex items-center justify-center p-4">
+<!-- Synthetic background to simulate being over an app -->
+<div class="fixed inset-0 z-0 opacity-20 pointer-events-none" data-alt="A dark, highly technical network operations center interface in the background, slightly blurred and out of focus. Complex data grids, telemetry graphs, and status monitors are barely visible in deep charcoal and muted blue tones. The scene conveys a sense of rigorous cybersecurity monitoring and raw data analysis. 100 words." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBSE_lIQ0-EqYybJay26amnWwwpLCcdaVchGl69qp-oqe0HwB-gJpOPKqHjzM2Pvz02TIGzrQJeiT5VuPqYI6FKEveRyZhLdu4RS74YHE2bXsw1KMGC9lU6Gm84eFFZYG95aLuaUqY9x_d07Tew6dUovllobVeLsvvmsdr3rYz2P5HHqLHLuVgORz51jIeuoFtVZqPKoYtuSVJgP8oyGLl6aW20X3mFhwigZqFW65-N_iTq_Y7Z7BQYdQ')"></div>
+<!-- Top Nav App Bar (Simulated background element) -->
+<div class="fixed top-0 left-0 right-0 z-0 opacity-30 flex items-center justify-between px-grid-margin w-full h-12 border-b border-outline-variant bg-surface-container pointer-events-none">
+<div class="flex items-center space-x-unit">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface">AetherCore</span>
+</div>
+</div>
+<!-- Command Palette Overlay Container -->
+<div class="fixed inset-0 z-50 flex items-start justify-center pt-24 sm:pt-32 px-4 backdrop-blur-sm bg-background/80" id="command-palette-backdrop">
+<!-- Command Palette Panel -->
+<div aria-label="Command Palette" aria-modal="true" class="w-full max-w-2xl bg-surface-container-highest border border-outline-variant shadow-2xl flex flex-col overflow-hidden" id="command-palette" role="dialog">
+<!-- Header / Search Area -->
+<div class="flex items-center px-4 py-3 border-b border-outline-variant bg-surface-container-lowest">
+<span class="material-symbols-outlined text-outline mr-3 text-[20px]">search</span>
+<input autofocus="" class="flex-1 bg-transparent border-none outline-none font-data-mono text-data-mono text-on-surface placeholder:text-outline focus:ring-0 p-0" id="palette-search" placeholder="Search commands, settings, or metrics..." type="text"/>
+<div class="flex items-center space-x-2 ml-3">
+<img alt="AetherCore" class="h-5 w-5 opacity-50 grayscale mix-blend-screen" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdk6Fsmtu8ZdwJaK0Fnxk3Jr-KC8v-pbvmT7KwzbmLvEsr807Y6uo-fv-DkQyWBw_OPBwuL_vGprk6Ya7IJgOqdnAOjJ1xAPgH6_Ykds6iYarKCG_USVpJcapA_ITH0qboS0OfHJFCNuPsnDutnxC1fsTqpoDPG_AsdQpNBd0GU3mBcRh7h-dh58ja52R42fNoWSe35KC_4XimrH5xQ0keGiAVZXoYsuRm4bPXAKij4CeN5H9pdYqgBA"/>
+<div class="flex items-center space-x-1">
+<kbd class="px-1.5 py-0.5 border border-outline-variant rounded bg-surface-container text-outline font-data-mono-sm text-data-mono-sm">esc</kbd>
+</div>
+</div>
+</div>
+<!-- Content Area -->
+<div class="flex-1 overflow-y-auto max-h-[60vh] bg-surface">
+<!-- Section: Navigation -->
+<div class="py-2">
+<div class="px-4 py-1 text-outline font-label-caps text-label-caps uppercase tracking-wider">Navigation</div>
+<ul class="flex flex-col">
+<!-- Active/Hovered Item -->
+<li aria-selected="true" class="group px-4 py-2 flex items-center justify-between cursor-pointer bg-primary/10 border-l-2 border-primary" role="option">
+<div class="flex items-center space-x-3">
+<span class="material-symbols-outlined text-primary text-[18px]">dashboard</span>
+<span class="font-data-mono text-data-mono text-primary">Go to Overview</span>
+</div>
+<div class="flex items-center space-x-1 opacity-100 transition-opacity">
+<kbd class="px-1.5 py-0.5 border border-primary/30 rounded bg-primary/5 text-primary font-data-mono-sm text-data-mono-sm">G</kbd>
+<kbd class="px-1.5 py-0.5 border border-primary/30 rounded bg-primary/5 text-primary font-data-mono-sm text-data-mono-sm">O</kbd>
+</div>
+</li>
+<!-- Standard Items -->
+<li class="group px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-surface-container border-l-2 border-transparent hover:border-outline-variant transition-colors" role="option">
+<div class="flex items-center space-x-3">
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[18px] transition-colors">biotech</span>
+<span class="font-data-mono text-data-mono text-on-surface-variant group-hover:text-on-surface transition-colors">Initiate Deep Scan</span>
+</div>
+<div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+<kbd class="px-1.5 py-0.5 border border-outline-variant rounded bg-surface-container text-outline font-data-mono-sm text-data-mono-sm">G</kbd>
+<kbd class="px-1.5 py-0.5 border border-outline-variant rounded bg-surface-container text-outline font-data-mono-sm text-data-mono-sm">S</kbd>
+</div>
+</li>
+<li class="group px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-surface-container border-l-2 border-transparent hover:border-outline-variant transition-colors" role="option">
+<div class="flex items-center space-x-3">
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[18px] transition-colors">monitor_heart</span>
+<span class="font-data-mono text-data-mono text-on-surface-variant group-hover:text-on-surface transition-colors">View Hardware Health</span>
+</div>
+<div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+<kbd class="px-1.5 py-0.5 border border-outline-variant rounded bg-surface-container text-outline font-data-mono-sm text-data-mono-sm">G</kbd>
+<kbd class="px-1.5 py-0.5 border border-outline-variant rounded bg-surface-container text-outline font-data-mono-sm text-data-mono-sm">H</kbd>
+</div>
+</li>
+</ul>
+</div>
+<!-- 1px Separator -->
+<div class="h-px bg-outline-variant w-full"></div>
+<!-- Section: Actions -->
+<div class="py-2">
+<div class="px-4 py-1 text-outline font-label-caps text-label-caps uppercase tracking-wider">System Actions</div>
+<ul class="flex flex-col">
+<li class="group px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-surface-container border-l-2 border-transparent hover:border-outline-variant transition-colors" role="option">
+<div class="flex items-center space-x-3 relative pl-2">
+<!-- Policy Band Indicator -->
+<div class="absolute left-0 top-0 bottom-0 w-[2px] bg-tertiary"></div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[18px] transition-colors">terminal</span>
+<span class="font-data-mono text-data-mono text-on-surface-variant group-hover:text-on-surface transition-colors">Open Root Console</span>
+</div>
+<div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+<kbd class="px-1.5 py-0.5 border border-outline-variant rounded bg-surface-container text-outline font-data-mono-sm text-data-mono-sm">⌘</kbd>
+<kbd class="px-1.5 py-0.5 border border-outline-variant rounded bg-surface-container text-outline font-data-mono-sm text-data-mono-sm">T</kbd>
+</div>
+</li>
+<li class="group px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-surface-container border-l-2 border-transparent hover:border-outline-variant transition-colors" role="option">
+<div class="flex items-center space-x-3 relative pl-2">
+<div class="absolute left-0 top-0 bottom-0 w-[2px] bg-error"></div>
+<span class="material-symbols-outlined text-error text-[18px]">restore</span>
+<span class="font-data-mono text-data-mono text-error">Emergency Recovery Mode</span>
+</div>
+<div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+<kbd class="px-1.5 py-0.5 border border-error/30 rounded bg-error/10 text-error font-data-mono-sm text-data-mono-sm">⇧</kbd>
+<kbd class="px-1.5 py-0.5 border border-error/30 rounded bg-error/10 text-error font-data-mono-sm text-data-mono-sm">R</kbd>
+</div>
+</li>
+</ul>
+</div>
+<!-- 1px Separator -->
+<div class="h-px bg-outline-variant w-full"></div>
+<!-- Section: Unavailable -->
+<div class="py-2">
+<div class="px-4 py-1 text-outline font-label-caps text-label-caps uppercase tracking-wider">Fleet Management</div>
+<ul class="flex flex-col">
+<!-- Disabled Item -->
+<li aria-disabled="true" class="px-4 py-2 flex items-center justify-between opacity-40 cursor-not-allowed border-l-2 border-transparent" role="option" title="Requires Administrator privileges">
+<div class="flex items-center space-x-3">
+<span class="material-symbols-outlined text-outline text-[18px]">dns</span>
+<span class="font-data-mono text-data-mono text-outline line-through">Provision New Node</span>
+<span class="font-data-mono-sm text-data-mono-sm text-outline ml-2">(Auth Required)</span>
+</div>
+<div class="flex items-center space-x-1">
+<span class="material-symbols-outlined text-outline text-[14px]">lock</span>
+</div>
+</li>
+<li aria-disabled="true" class="px-4 py-2 flex items-center justify-between opacity-40 cursor-not-allowed border-l-2 border-transparent" role="option" title="Network unavailable">
+<div class="flex items-center space-x-3">
+<span class="material-symbols-outlined text-outline text-[18px]">cloud_off</span>
+<span class="font-data-mono text-data-mono text-outline">Sync Fleet Configuration</span>
+</div>
+</li>
+</ul>
+</div>
+</div>
+<!-- Footer -->
+<div class="px-4 py-2 border-t border-outline-variant bg-surface-container-lowest flex justify-between items-center">
+<div class="flex space-x-4">
+<div class="flex items-center space-x-1.5">
+<span class="material-symbols-outlined text-outline text-[14px]">keyboard_return</span>
+<span class="font-data-mono-sm text-data-mono-sm text-outline">to select</span>
+</div>
+<div class="flex items-center space-x-1.5">
+<span class="material-symbols-outlined text-outline text-[14px]">unfold_more</span>
+<span class="font-data-mono-sm text-data-mono-sm text-outline">to navigate</span>
+</div>
+</div>
+<div class="font-data-mono-sm text-data-mono-sm text-outline">v.1.4.2-stable</div>
+</div>
+</div>
+</div>
+<script>
+        // Simple script to handle visual states for demonstration
+        document.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('palette-search');
+            if(input) {
+                input.focus();
+            }
+            
+            // Allow clicking backdrop to 'close' (just hides content for demo)
+            const backdrop = document.getElementById('command-palette-backdrop');
+            const palette = document.getElementById('command-palette');
+            
+            backdrop.addEventListener('click', (e) => {
+                if (e.target === backdrop) {
+                    backdrop.style.opacity = '0.5'; // visual feedback
+                    setTimeout(() => backdrop.style.opacity = '1', 200);
+                }
+            });
+        });
+    </script>
+</body></html>
