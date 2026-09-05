@@ -11209,7 +11209,7 @@ the measuring-instrument pattern §47 was caught by.
 |---|---|---|
 | 0 elevation, autocrlf, machine survey | **DONE** | §49.1 |
 | 1 build the current source on x64 (MSI + bundle) | **DONE — every criterion met** | §49.2 — all exit 0; `wix msi validate` **0 lines emitted**, no suppression; `PAYLOAD_CHECK=PASS`; **16 File rows**, row 7 `vcomp140.dll` proving the `$(sys.BUILDARCH)` selection on the x64 artefact; MSI `77ee416b…` 1,100,271,616 B; the **first x64 bundle ever compiled**, `d0398765…` 1,128,354,997 B, chain `VCRedist` → `WebView2` → `AetherCoreMsi` read out of Burn's own manifest. `DBT-P42-012`'s guard fired correctly against the real four-file trap. New **`DBT-P49-001`** |
-| 2 Gate 5 on x64 against this build | NOT STARTED | — |
+| 2 Gate 5 on x64 against this build | **DONE — PASS** | §49.4 — restore point `P49-PRE-GATE5` seq **6**, verified by enumeration. Against MSI `77ee416b…`: uninstall exit 0 **twice**, **zero survivors on all fourteen both times**, `MACHINE_WIDE=0` both times, install and reinstall exit 0. 16 files **MATCHED=16 MISMATCH=0** against the built payload; service RUNNING/LocalSystem/AUTO_START(DELAYED); SID **UNRESTRICTED**; ACLs = §10 baseline; `DEV_BINARY_IN_INSTALL_IMAGE=NO`; six verbs with timings; pipe SDDL **byte-identical**; `engineLabel localModel` from the running service. `UNINSTALL.txt`'s corrected text measured claim-by-claim |
 | 3 install `AetherCoreSetup.exe` — nobody ever has | NOT STARTED | — |
 | 4 `DBT-P42-011` the bias, re-measured | NOT STARTED | — |
 | 5 the VC++ runtime guard on x64, without breaking this machine | NOT STARTED | — |
@@ -11512,3 +11512,279 @@ System Restore is the only rollback.
                   That is why (a) exists and why nothing here touches drivers,
                   storage, chipset or GPU.
 
+
+## 49.4 ITEM 2 — GATE 5 ON x64, AGAINST THE CURRENT BUILD: **PASS**
+
+The full lifecycle, never before run on x64 against a current build. Every number
+below is raw output from this machine.
+
+### The restore point, verified by enumeration and not by a return code
+
+    Get-ComputerRestorePoint   BEFORE:  3, 4, 5   (all "Windows Update", 2026-09-03)
+
+    Checkpoint-Computer -Description 'P49-PRE-GATE5' -RestorePointType MODIFY_SETTINGS
+
+    Get-ComputerRestorePoint   AFTER:
+      SequenceNumber 6   P49-PRE-GATE5   type 12   created 2026-09-06 01:07:49
+    P49_PRE_GATE5_PRESENT = True     TOTAL_RESTORE_POINTS = 4
+
+Points 3, 4 and 5 are untouched; nothing was deleted and nothing restored. One
+thing had to be changed to make the checkpoint land at all, and it was put back:
+Windows silently drops a checkpoint taken within 1440 minutes of the last one, so
+`SystemRestorePointCreationFrequency` was set to `0` for the duration and then
+**deleted** afterwards, returning the machine to the Windows default:
+
+    SystemRestorePointCreationFrequency now = ''   (absent = default 1440 min)
+
+### Step 1 — the stale 2026-09-02 build removed
+
+Measured before touching it: 16 files, ProgramData present, service **RUNNING**,
+and `UNINSTALL.txt` at **3,206 B** — the pre-`DBT-P47-002` text, which is what
+identified this install as the unverified peer build in the first place.
+
+    msiexec /x {0F9F349D-01C8-B3C2-7242-83B5D29047C9} /qn /l*v
+    UNINSTALL_EXIT=0      ELAPSED_MS=3233      LOG_BYTES=148422
+    Windows Installer removed the product. ... Removal success or error status: 0.
+    MainEngineThread is returning 0
+
+### Step 2 — sweep after that removal: **ZERO SURVIVORS ON ALL FOURTEEN**
+
+Run before the new install, so the new install starts from a measured-clean
+machine rather than an assumed one.
+
+     1  INSTALLDIR              False                    clean
+     2  PROGRAMDATA             False                    clean
+     3  SERVICE                 absent(1060)             clean
+     4  PIPE_COUNT              0                        clean
+     5  ARP_COUNT               0                        clean
+     6  HKLM_SOFTWARE_AETHER    False                    clean
+     7  HKCU_SOFTWARE_AETHER    False                    clean
+     8  STARTMENU               0                        clean
+     9  SCHEDULED_TASKS         0                        clean
+    10  FIREWALL_RULES          0                        clean
+    11  HKLM_SERVICES_KEY       False                    clean
+    12  EVENTLOG_SOURCE         0                        clean
+    13  HKEY_USERS_MARKERS      0                        clean
+    14  FILESYSTEM_SWEEP        18 raw / 0 machine-wide  clean
+    SURVIVORS = 0        MACHINE_WIDE = 0
+
+### Step 3 — the Item 1 MSI installed
+
+    msiexec /i out\p49\AetherCore-0.1.11-x64.msi /qn /l*v
+    INSTALL_EXIT=0        ELAPSED_MS=31265      LOG_BYTES=168244
+    Windows Installer installed the product. ... Installation success or error status: 0.
+
+### Every Gate 2 property, re-measured rather than assumed
+
+| criterion | expected | observed | |
+|---|---|---|---|
+| install transaction | success | status 0, 0.1.11 | PASS |
+| installed file count | 16 | **16** | PASS |
+| file hashes vs the BUILT payload | all match | **MATCHED=16 MISMATCH=0 NOT_IN_SOURCES=0** | PASS |
+| OpenMP runtime | `vcomp140.dll`, no aarch64 | `VCOMP140_PRESENT=True`, `LIBOMP_AARCH64=False` | PASS |
+| dev binaries | none | `DEV_BINARY_IN_INSTALL_IMAGE=NO` | PASS |
+| service state | RUNNING | `STATE : 4 RUNNING` | PASS |
+| start type | AUTO_START (DELAYED) | `2 AUTO_START (DELAYED)` | PASS |
+| service account | LocalSystem | `LocalSystem` | PASS |
+| binary path | the installed exe | `"C:\Program Files\AetherCore\aethercore-maintenance-service.exe"` | PASS |
+| `sc qsidtype` | **UNRESTRICTED** | `UNRESTRICTED`, `STATUS: Active` | PASS |
+| install-dir ACLs | the §10 baseline | identical, field for field | PASS |
+| ARP | AetherCore 0.1.11 | `{0F9F349D-…}` 0.1.11, InstallDate 20260906 | PASS |
+| `HKLM\…\AetherCore\InstallVersion` | 0.1.11 | 0.1.11 | PASS |
+| ProgramData recreated | yes | 5 files | PASS |
+| pipe DACL | the §10 baseline | **byte-identical** | PASS |
+| **`engineLabel`** | **`localModel`** | **`localModel`** from the running service | **PASS** |
+
+The 16 installed files, hashed on disk and compared to the file the build
+actually consumed — not to a remembered number:
+
+      aethercore-consent-broker.exe          634368  db0eed36b4933fc280bccd72fcc0b6f80561f2f90c272649681ec4c80ecaadc6
+      aethercore-desktop.exe                7062528  58c563aa21f0b798028dd182e018ccf88d9cbc7756c93e9976aca7a2f5bd955e
+      aethercore-install-hardener.exe        273408  25689cabf005223b37549585448ebc9e82df125ee59007f438a93a6a1647d390
+      aethercore-maintenance-service.exe   10708992  3600845ca1f720f470165a8200dc57ec2b63e8940ca39c92ee0e564f9b4bd1f2
+      aethercore-update-broker.exe           738304  61699704c4aa1767187d9850e23e6ec39c7641f0f1c29e7fd70d8a9d0b3f82d4
+      aetherctl.exe                         4347904  ce360664d9a1e5e95b6a009eacc7960c4718055ed11aba6f7f48f8ba377d9f25
+      Apache-2.0.txt                          11358  cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+      cis_map.json                             3103  9caf01b4a2f7d2bfda3111395212b27046f6ae614bc847cebaadfe33c9ee8d97
+      models.manifest.json                      898  070b6dedc37664250e4029b8360a1e9b30a1d40b6d776a83ddd0631247dae57e
+      qwen2.5-1.5b-instruct-q4_k_m.gguf  1117320736  6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e
+      Qwen-GGUF-NOTICE.txt                    11343  832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e
+      UNINSTALL.txt                            3874  086de15216066da7d2329a0df31625540294fc604556425674ad54dfcb70a02e
+      update-trust.json                          83  d4ad925d86f64560bd80c77eae8c606fe810c5f670a7cd42df0836b0653c8b37
+      vcomp140.dll                           193152  55aba23cdcd6484fbb06f4155b8ca75adfce7a881f10afd0c49457165e677164
+      vulndb.json                              6704  ab76528eacc58fe910d82347d49919d50949954a25649e677eaaf52fdf37f303
+      vulndb.manifest.json                      142  2c29c19b2760167fab8b292dde744da51ae8b137a01c870701287fb49d01daa6
+
+The GGUF at `6a1a2eb6…` and `vcomp140.dll` at `55aba23c…` are byte-identical to
+every prior record on both architectures. `UNINSTALL.txt` is now **3,874 B**
+`086de152…` — the corrected text, on this machine, for the first time.
+
+### The pipe DACL
+
+    PIPE_COUNT=1     \\.\pipe\AetherCore.Maintenance.v7
+
+    PIPE_SDDL=O:S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229
+              G:SY
+              D:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-4285065559-3530017622-2858480679-3751456793-1187574229)
+
+Required: `O:<service SID> G:SY D:P(A;;FA;;;<service SID>)(A;;FR;;;AU)(A;;DC;;;AU)`.
+Owner is the service SID; group `SY`; `D:P` protected; the service-SID `FA` ACE
+present verbatim; the AU pair rendered merged as `0x12008b`, which is
+`FR|DC = 0x120089|0x2`. **The brief names that rendering explicitly and says it is
+NOT drift.** Byte-identical to the §10 baseline and to §42.7's reading on this
+same machine.
+
+`sc sdshow` unchanged:
+`D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)`
+
+**The brief's `[System.IO.File]::Open` method fails here, for the third session
+running.** With the path written correctly it returns:
+
+    FileStream was asked to open a device that was not a file. For support for
+    devices like 'com1:' or 'lpt1:', call CreateFile, then use the FileStream
+    constructors that take an OS handle as an IntPtr.
+
+`NamedPipeClientStream(...).GetAccessControl().Sddl` is the method that works, as
+§41.14 and §42.7 both recorded. Three independent sessions, same result. Recorded
+again because the brief still prescribes the method that does not work.
+
+### The verbs, against the RUNNING SERVICE, with timings
+
+    service detect    EXIT 0    423 ms   state Reachable, endpointDir C:\ProgramData\AetherCore
+    doctor            EXIT 5     15 ms   typed rejection, see below
+    scan status       EXIT 0     17 ms   appVersion 0.1.11, state idle, ruleEngineVersion phase17.1-rules-v2
+    insights list     EXIT 0     12 ms   engineLabel localModel, insights []
+    self-check        EXIT 0    694 ms   sha256Match true, manifestValid true, 1117320736 bytes
+    optimize status   EXIT 0     16 ms   status null
+
+**A false finding this session nearly recorded, and the measurement that killed
+it.** `doctor` exits 5 and prints *nothing on stdout*, which looked like a CLI
+failing silently. Separating the streams shows it does not:
+
+    STDOUT_BYTES=0
+    STDERR_BYTES=115
+      aetherctl: rejected by service (diagnostics.stateUnavailable): diagnostic state is unavailable [RejectedByService]
+
+and the stable envelope carries the same thing:
+
+    aetherctl --output json doctor   EXIT=5
+    {"schema":"aethercore.aetherctl.v1","command":"doctor","ok":false,
+     "error":{"kind":"RejectedByService","message_key":"diagnostics.stateUnavailable",
+              "detail":"rejected by service (diagnostics.stateUnavailable): diagnostic state is unavailable"}}
+
+Exit 5 immediately after a fresh install, with no diagnostic state yet, is the
+state-dependent typed rejection §42.8 resolved. Not a defect, and not silent.
+(The flag is `--output json`, not `--format json`; `--format` is `doctor`'s own
+report-format flag and returns exit 2 in that position.)
+
+### `engineLabel` — from the running service, which is the only thing that proves it
+
+    C:\Program Files\AetherCore\aetherctl.exe insights list
+    exit=0
+    engineLabel                        localModel
+    insights                           []
+
+`localModel` present, `ruleFallback` absent, over the named pipe from the
+installed binary to the installed service. The weaker check is recorded beside it
+so nobody substitutes it later:
+
+    aetherctl self-check --load-model      EXIT=7
+
+Exit 7 there is correct by design and proves nothing about the service.
+
+### Step 4 — the gate's uninstall, service RUNNING at transaction start
+
+    msiexec /x {0F9F349D-01C8-B3C2-7242-83B5D29047C9} /qn /l*v
+    UNINSTALL_EXIT=0      ELAPSED_MS=3047      LOG_BYTES=151696
+    Windows Installer removed the product. ... Removal success or error status: 0.
+    MainEngineThread is returning 0
+
+No 1603, and no `InstallValidate` return value 3, with the service RUNNING when
+the transaction opened.
+
+### Step 5 — the fourteen-check survivor sweep. **ZERO SURVIVORS ON ALL FOURTEEN**
+
+     1  INSTALLDIR              False                    clean
+     2  PROGRAMDATA             False                    clean
+     3  SERVICE                 absent(1060)             clean
+     4  PIPE_COUNT              0                        clean
+     5  ARP_COUNT               0                        clean
+     6  HKLM_SOFTWARE_AETHER    False                    clean
+     7  HKCU_SOFTWARE_AETHER    False                    clean
+     8  STARTMENU               0                        clean
+     9  SCHEDULED_TASKS         0                        clean
+    10  FIREWALL_RULES          0                        clean
+    11  HKLM_SERVICES_KEY       False                    clean
+    12  EVENTLOG_SOURCE         0                        clean
+    13  HKEY_USERS_MARKERS      0                        clean
+    14  FILESYSTEM_SWEEP        17 raw / 0 machine-wide  clean
+    SURVIVORS = 0
+
+Check 14 by root, which is the measurement that decides it:
+
+    C:\Program Files          0 hit(s)
+    C:\Program Files (x86)    0 hit(s)
+    C:\ProgramData            0 hit(s)
+    C:\Windows\System32       0 hit(s)
+    C:\Windows\SysWOW64       0 hit(s)
+    C:\Users                  17 hit(s)
+    TOTAL=17  UNDER_USER_PROFILE=17  MACHINE_WIDE=0
+
+The sweep is read-only by construction. **Nothing was deleted by hand.** All 17
+raw hits are dated **2026-09-02**, four days before this uninstall, and every one
+is accounted for: three Claude Code directories named after the *repo path*
+`C:\dev\aethercore`, ten `cargo test` temp files from that day, one elevation
+probe, one Explorer Recent-items shortcut, and the owner's own
+`OneDrive\…\aethercore-models` folder — user data in the user's own Documents,
+which `UNINSTALL.txt` and `ARPCOMMENTS` explicitly promise not to touch. Not one
+was created by the product under test.
+
+(The ten `cargo test` temp files are `DBT-P42-013`/`DBT-P48-003` residue from
+before those fixes landed. The fixes are proven by §48.5's post-fix run leaving
+**0** temp entries; these are simply older files nothing has cleaned up, and the
+sweep does not delete them.)
+
+### The sweep checked against the CORRECTED `UNINSTALL.txt`, as the brief directs
+
+`DBT-P47-002` was raised because the shipped text was more absolute than the
+behaviour. The corrected text is what is installed now (3,874 B, `086de152…`).
+Claim by claim against sweep 2:
+
+    program files removed           -> check 1   INSTALLDIR         False    OK
+    service stopped + deregistered  -> check 3   SERVICE            1060     OK
+    named pipe goes with it         -> check 4   PIPE_COUNT         0        OK
+    ALL machine data removed        -> check 2   PROGRAMDATA        False    OK
+    HKLM\SOFTWARE\AetherCore        -> check 6                      False    OK
+    Add/Remove Programs entry       -> check 5   ARP_COUNT          0        OK
+    HKCU, uninstalling account      -> check 7                      False    OK
+    Start Menu folder               -> check 8   STARTMENU          0        OK
+    "creates no scheduled tasks"    -> check 9   SCHEDULED_TASKS    0        OK
+    "and no firewall rules"         -> check 10  FIREWALL_RULES     0        OK
+
+**Every claim the document makes is measured true.** The one thing the corrected
+text *admits* survives — `%LOCALAPPDATA%\com.aethercore.desktop`, the per-user
+WebView2 cache — could not be tested here, and the reason is worth stating rather
+than glossing:
+
+    accounts on this machine with an AppData\Local\com.aethercore.desktop:  NONE
+    uninstall log references to 'com.aethercore.desktop':                   0
+    uninstall log references to 'EBWebView':                                0
+
+**The desktop app has never been launched on this machine**, so no WebView2
+user-data directory has ever been created here. The corrected paragraph is
+therefore *consistent with* this run but is **not** re-proven by it; it stays
+proven where §47.7 measured it, on the ARM64 VM at 274 files / 23,258,063 bytes.
+
+### Step 6 — reinstall, closing the lifecycle
+
+    msiexec /i out\p49\AetherCore-0.1.11-x64.msi /qn /l*v
+    INSTALL_EXIT=0        ELAPSED_MS=31257      LOG_BYTES=168244
+    FILES=16     STATE : 4 RUNNING
+    PIPE_SDDL=O:S-1-5-80-…-1187574229G:SYD:P(A;;0x12008b;;;AU)(A;;FA;;;S-1-5-80-…-1187574229)
+    insights list  EXIT=0   engineLabel  localModel
+
+Byte-identical pipe DACL, 16 files, service running, local model live.
+
+**GATE 5 ON x64, AGAINST MSI `77ee416b…`: PASS.** Uninstall exit 0 twice, zero
+survivors on all fourteen both times, `MACHINE_WIDE=0` both times, reinstall exit
+0, every Gate 2 property re-proven from measurement.
