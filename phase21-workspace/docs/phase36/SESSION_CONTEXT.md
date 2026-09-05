@@ -9733,3 +9733,93 @@ anything, and the `Launch` condition must be proven to *refuse* — which needs 
 machine without the runtime. Neither the physical x64 box nor this VM (which has
 the redistributable) can provide that. The decision is recorded; the change is
 not written blind.
+
+## 47.10 THE OWNER REGISTER — listed, not attempted, not routed around
+
+Unchanged in substance from §46.8 and the brief. What each one unblocks is
+stated, because that is the part a list of blockers usually leaves out.
+
+| # | blocker | unblocks |
+|---|---|---|
+| 1 | **The icon artwork** — `DBT-P36-004`, a recorded RELEASE BLOCKER | Nothing technical any more. The pipeline is built and proven (§47.4/`e369010`): drop the chosen SVG in, run one command, and every one of the 17 rasters plus the MSI's ARP icon follows. Until then the product ships a provisional mark. **Also reported, not changed, as the brief asks:** the stand-in mark's own committed proof sheet (`design/icon/proof.html`) still uses a cyan/teal gradient outside the six roles |
+| 2 | **An Authenticode certificate** — measured absent (0 runners, 0 variables, 0 workflow runs); ~$129/year, SSL.com or Certum cloud-HSM, individual, no hardware token. **Not EV** — Microsoft removed its SmartScreen benefit in August 2024 | Signed installers, and the SmartScreen reputation clock starting. Nothing in this session touched it |
+| 3 | **Gate 4** — boot-test the recovery media (created, never booted, and measured **detached**), and nominate a printer/HID/USB-class device. Windows Update offers this machine zero drivers. **Never storage, chipset or GPU** | The driver install/rollback gate, unstarted since §41.17. Two steps, not one: re-attach the media, then boot it |
+| 4 | **The UAC consent click**, at the Parallels console — `PromptOnSecureDesktop` is `0` there, a **non-default deviation that must travel with any UAC finding** (re-measured this session: still `0`) | The elevated half of the x64 peer session's work, and its Gate 2 |
+| 5 | **Windows Server runtime qualification** — needs a Server 2025 evaluation VM | The Server SKU floor the MSI already advertises (`MsiNTProductType = 3 AND OSCURRENTBUILD >= 17763`) but nothing has ever exercised |
+| 6 | **A production update endpoint, a production key or HSM, and a dependency freeze from a trusted workstation** | `update-trust.json` ships DISABLED with zero channels by design; this is what turns updates on |
+| 7 | **Payment** — every MoR checked excludes Iraq for sellers in writing; Payoneer is unresolved and needs a live signup attempt | Selling anything at all |
+| 8 | **The physical x64 machine, `HUSSEIN`** — offline; measured unreachable three ways this session (§47.9) | Items 5.A and 5.B, `DBT-P42-012`'s six numbered checks, and the *implementation* of the `DBT-P41-001` decision, which needs a box **without** the VC++ redistributable to prove a refusal |
+| 9 | **`feature-layout.css`'s light theme** — `DBT-P47-001`, raised this session | Not strictly an owner-only item, but the 102 dark-background rules each need a light value chosen against the approved dark appearance. That is a design pass with the owner's eye on it, not a mechanical migration |
+
+## 47.11 P47 FINAL REPORT
+
+### The table
+
+Every row is `DONE`, `DECIDED` or `BLOCKED-MACHINE`. §47.0 is authoritative.
+
+### What landed, and what was measured after it landed
+
+**The Svelte port is on `main`.** 142 files, +16,531 lines, merge `5e18fb9`.
+`main` was merged into the branch first and resolved there; all five overlapping
+files auto-merged with both sides intact. After the merge and before proposing
+it: build 0 errors, `svelte-check` 224 files / 0 errors, Arabic **7/7 with 0 of
+1,778 glyphs drawn by a system fallback** read back through
+`CSS.getPlatformFontsForNode`, `verify-numbers` exit 0 across 23 numbers, and
+the layout sweep 66/66 twice — populated and with no service attached.
+`static_validate.py` came out at **346 checks / 21 failed, byte-identical to
+main's own**, `NEW_FAILURES=[]`.
+
+**Gate 5 re-run on ARM64 for the current build: PASS.** The §41.17 claim was
+checked before anything was re-run and found *evidenced but stale* — §16.5-§16.10
+proves it for 0.1.6, and P46 moved the service and product names behind
+`product-identity`, which is what survivor checks 1, 2, 3 and 5 look for. So it
+was re-run on 0.1.11: `wix msi validate` **emitted 0 lines**, payload check PASS,
+**16 File rows** read out of the MSI's own table, uninstall exit 0, **zero
+survivors on all fourteen checks** with `MACHINE_WIDE=0`, reinstall exit 0, the
+pipe SDDL **byte-identical** to the recorded baseline, and `engineLabel:
+localModel` **from the running service** with `self-check --load-model`'s exit 7
+recorded beside it as the weaker check it is.
+
+**Four defects fixed, and two of the brief's own counts corrected by measuring
+them.** "Seven undefined custom properties" measured as **35** (37 at the
+pre-port baseline, so the port had already removed two); all 35 migrated onto
+the token vocabulary, with `verify-tokens.mjs` added as the gate and a working
+negative control. "Four dead buttons in the Insights panel" measured as **two of
+four**: the row Dismiss could never work because `IntelligenceCoordinator::list`
+dropped the session handle and `v1::Insight` had no id field, so the client sent
+a list index the registry could never match; and the ✕ control's label said
+"Dismiss insights panel" for something that cannot dismiss the panel.
+
+**The icon pipeline exists and is proven end to end.** One SVG in, 17 files out
+in 8.0 s, the `.ico` and `.icns` decoded back and verified entry by entry, and
+the generated `icon.ico` traced by sha256 from the Mac through the VM into the
+MSI's `Icon` table with `ARPPRODUCTICON` set — while the File row count stayed
+16, because an `Icon` is not a File row.
+
+**GPU VRAM usage now reads.** `sharedUsedBytes` 0 → **64,241,664** on the VM,
+from counters already on the open query: no DXGI, no COM in a session-0
+service, no extra sleep, cadence unchanged.
+
+### Recorded rather than worked around
+
+| id | what | why it is recorded and not fixed |
+|---|---|---|
+| `DBT-P47-001` | `feature-layout.css` sits outside the design system: 440 literal colour values (355 distinct), 93 literal radii, **no theme rules at all**, so the light theme paints near-black text on near-black surfaces — **1.02:1 measured**, and visible in the screenshot | 102 dark-background rules each need a light value chosen against the approved dark appearance. Landing 423 remappings unreviewed replaces a working product in one step |
+| `DBT-P47-002` | `UNINSTALL.txt` named only the per-user HKCU marker as surviving an uninstall; 274 files / 23,258,063 bytes of WebView2 cache also survive | **Fixed** in `5d4b957` — but deliberately not in the MSI qualified in §47.7, whose payload is fixed at sha256 `0a2c2f89…` |
+| `DBT-P47-003` | `perProcessorBusyBp` means "nothing measured" on Windows and "the aggregate, once" on macOS/Linux — one wire field, two meanings | The meaning is a product decision; filling it in on one platform would deepen the split |
+| `DBT-P47-004` | GPU adapter identity and `dedicated_total_bytes` | No PDH counter for capacity; DXGI is COM in a LocalSystem service, unwritable and unmeasurable from here; WMI `AdapterRAM` wraps above 4 GB and would invent a wrong number where 0 is honest |
+| `DBT-P36-004` | the icon artwork | Owner decision. **Stays OPEN** — a ready pipeline is not a closed blocker |
+| `DBT-P41-001` | **now known to be both-architecture**: 5 of 6 ARM64 binaries import `VCRUNTIME140.dll` | Decided (§47.9): chain `vc_redist` as a Burn prerequisite plus a `Launch` condition. Proving the refusal needs a box without the runtime |
+| `DBT-P42-009` / `DBT-P42-010` | see §47.8 | Decided both ways, half implemented |
+| `DBT-P42-012` | vcomp140.dll sourcing, still unverified end to end | Its hash assertion lives in the x64-only `build-installer.ps1`; the ARM64 recipe stages `libomp140.aarch64.dll` instead |
+
+Three corrections to inherited claims, each measured rather than argued:
+`prlctl exec` **can** read `\\Mac\dev` (the drive letters cannot, because it runs
+as SYSTEM); its argv cap is far below the 16 KB the briefs assume; and
+`DBT-P41-001` is not an x64-only problem.
+
+### The single next action
+
+**Pick the icon artwork** — it is the only recorded RELEASE BLOCKER whose
+technical work is already finished, so it converts from blocker to done with one
+file and one command.
