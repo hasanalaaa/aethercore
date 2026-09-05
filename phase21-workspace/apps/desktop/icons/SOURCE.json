@@ -1,6 +1,6 @@
 {
   "schema": "aethercore.icon-source.v1",
-  "source": "/Users/hasanalaaa/dev/aethercore/design/icon/aethercore-mark.svg",
+  "source": "design/icon/aethercore-mark.svg",
   "sourceSha256": "65f441712c7fc8e21d5969001c027be05dd908380b06d08623edf5772b36441f",
   "provisional": true,
   "generatedBy": "tools/icon-pipeline/build-icons.mjs",

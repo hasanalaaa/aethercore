@@ -32,6 +32,10 @@ import { fileURLToPath } from 'node:url';
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ICONS = join(ROOT, 'apps', 'desktop', 'icons');
+// The artwork lives in design/ at the repository root, one level above this
+// workspace, so SOURCE.json records paths relative to the repo -- an absolute
+// path would name one machine's home directory and resolve nowhere else.
+const REPO = resolve(ROOT, '..');
 
 /**
  * Every raster the product ships, and who consumes it. Anything not on this
@@ -260,7 +264,7 @@ async function main() {
   if (argv.includes('--source')) {
     source = resolve(process.cwd(), sourceArg);
   } else if (existsSync(manifestPath)) {
-    source = resolve(ROOT, JSON.parse(readFileSync(manifestPath, 'utf8')).source);
+    source = resolve(REPO, JSON.parse(readFileSync(manifestPath, 'utf8')).source);
   } else {
     throw new Error('--source <file.svg> is required the first time; afterwards icons/SOURCE.json records it');
   }
@@ -290,7 +294,7 @@ async function main() {
   }
 
   const written = await generate(source, ICONS);
-  const relSource = source.startsWith(ROOT) ? source.slice(ROOT.length + 1) : source;
+  const relSource = source.startsWith(REPO) ? source.slice(REPO.length + 1) : source;
   writeFileSync(manifestPath, `${JSON.stringify({
     schema: 'aethercore.icon-source.v1',
     // Recorded so the set has one traceable ancestor. The artwork itself is an
