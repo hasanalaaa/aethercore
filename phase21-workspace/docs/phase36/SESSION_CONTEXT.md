@@ -9014,9 +9014,9 @@ start: `0 0` — local `main` and `origin/main` identical at `77836cd`.
 | 1.A merge main into `design/shell-v2` | DONE | §47.1 — merge `2d7f4c3`, 5 overlapping files, 0 conflicts |
 | 1.B prove the port after the merge | DONE | §47.2 — build 0 errors, arabic 7/7, numbers exit 0, sweep 66/66 x2 |
 | 1.C merge to main | DONE | §47.3 — merge `5e18fb9`, 142 files / +16,531 lines on main, static gate delta 0 |
-| 1.C.1 the ten screens with no dedicated pass | NOT STARTED | — |
-| 1.C.2 the four real defects the port surfaced | NOT STARTED | — |
-| 1.C.3 ~430 colour literals in `feature-layout.css` | NOT STARTED | — |
+| 1.C.1 the ten screens with no dedicated pass | DONE | §47.4 — 4/4 signature elements on 11/11 screens; 126 literal radii is the one finding, 3 apparent violations cleared |
+| 1.C.2 the four real defects the port surfaced | DONE | §47.4 — 2 already fixed by the port, 2 fixed here (`6fdc01c`, `df90889`); both brief counts corrected with measurements |
+| 1.C.3 ~430 colour literals in `feature-layout.css` | DECIDED — migrate, registered as `DBT-P47-001` | §47.4 — 440 literals measured; light theme reads 1.02:1 black-on-black; sweep now runs both themes, 132/132 x2 |
 | 2 Gate 5 on ARM64 (verify the §41.17 claim first) | NOT STARTED | — |
 | 3 icon pipeline (`DBT-P36-004` stays OPEN) | NOT STARTED | — |
 | 4 the 2.B decision (`DBT-P42-009`, `DBT-P42-010`) | NOT STARTED | — |
@@ -9125,3 +9125,130 @@ compared as sets rather than as counts:
 The 21 are the same pre-existing non-Windows-environment failures §46.21
 recorded. The port adds 96 files under `apps/ui/src` and does not trip
 `phase7_no_remote_ui_assets`, which was the gate most likely to catch it.
+
+## 47.4 ITEM 1.C — what the port left open
+
+### 1.C.1 — the ten screens with no dedicated pass, checked against the vocabulary
+
+Performance, Hardware, Deep Clean, Repair, Recovery/Activity, Crash, Fleet,
+Command Palette, Consent and the rail were never checked against the shell's
+section vocabulary. Checked now, from the **rendered DOM** of 11 pages at 1280,
+against `DESIGN.md` §2 (radii, borders, mono restraint) and §3 (six roles) —
+not by reading the CSS.
+
+`DESIGN.md` §4's per-screen element list (3D health orbs, thermal maps,
+cinematic wave graphs, a floating 3D network map, a dust-clearing animation,
+`[Voice Query]`, `[Engage Gaming Mode]`) is a mood board, not a contract, and
+several of its entries would require the product to invent data it refuses to
+invent. §46/P46-LANE-B already recorded that those section types were not
+ported and why. The checkable contract is §2 and §3 plus the four signature
+elements, and that is what was measured.
+
+**The four signature elements are present on every one of the eleven screens:**
+the policy band on 11/11 (`band=1` each), denied elements 3 on every screen and
+4 on Drivers, evidence chips where the data carries citations (Deep Scan 3,
+Overview 1, Activity 1). Nothing is missing.
+
+**Finding — radii do not follow §2, and it is one file.** §2 declares three:
+cards and modals 32px, interactive 16px, micro-components 999px. Counted across
+all UI source:
+
+    167 border-radius declarations — 41 read a token, 126 are literal
+    93 of the 126 literals are in src/design/styles/feature-layout.css
+    twelve distinct literal values: 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 20px
+
+From the DOM, of 75 card-sized elements only 1 measured 16px and none measured
+32px; of 56 interactive elements 29 measured 8px, 13 measured 10px, and 2
+measured 16px. Pills are the one clean family — 60 of 60 at 999px. The token
+layer is correct (`--ac-radius-2xl` 32px, `--ac-radius-md` 16px,
+`--ac-radius-pill` 999px); the screens do not read it.
+
+**Three apparent violations, each read in full before classifying, and each
+cleared:**
+
+- `label.candidate-row.locked` (Drivers) carries a dashed border, which
+  §3 reserves for denied. Read at `feature-layout.css:604-608`: it is
+  `1.5px dashed var(--role-denied-dash)`, `var(--ac-radius-denied)`,
+  `var(--role-denied-wash)` — it **is** the denied vocabulary, on the driver
+  refusal row. The class is named `locked`; the styling is correct.
+- `.shell-context-kicker` renders in JetBrains Mono on all 11 screens.
+  `materials.css:20` — `font: 650 .66rem/1.2 var(--ac-font-mono)`, uppercase,
+  `.08em` tracked. A deliberate kicker treatment, one rule at shell level, not
+  a technical value rendered in a display face.
+- `.empty-state-title` renders in mono on the screens showing the honest empty
+  state. `EmptyState.svelte:78-84` — mono, uppercase, `.1em` tracked, is the
+  "labelled channels at rest" treatment the port's own commit `c04aa3a`
+  describes. Deliberate.
+
+### 1.C.2 — the four defects the port surfaced
+
+| defect | state | evidence |
+|---|---|---|
+| About panel never requested its data (`void load;`) | **already fixed by the port** | `AboutPanel.svelte:72-75` — `onMount(() => { void load(); })`, with the old form named in the comment |
+| fixture using `'UserSelectable'`, a value the service never emits | **already fixed by the port** | `layout-fixture.ts:93-98,112-114` — `selectionPolicy` now `FirmwareManualReview`/`OfficialVendorUtility`/`SelectableRecommended`, and the refusal path renders |
+| "four dead buttons in the Insights panel" | **corrected to two, and fixed** | §47.5 — commit `6fdc01c` |
+| "seven undefined custom properties" | **corrected to 35, and fixed** | §47.6 — commit `df90889` |
+
+### 1.C.3 — the colour literals in `feature-layout.css`: DECIDED — migrate
+
+Counted, not estimated: **423 hex literals (355 distinct) plus 17 `rgb()`/
+`rgba()` calls = 440 literal colour values** in 3,037 lines. The port's note
+said "most are neutral surface hexes"; measured by HSL saturation that is not
+what the file holds — **87 neutral (sat < 0.12), 252 low-chroma tinted
+(0.12-0.30), 84 chromatic (>= 0.30)**. 102 distinct selectors set a **dark
+background** from a literal.
+
+**The decision is migrate, and it is not a preference — the light theme is
+broken today and these literals are why.** `feature-layout.css` contains
+**zero** `data-theme` rules; light is handled only in `design-tokens.css`,
+`materials.css` and `base.css`. So under the light theme every surface that
+file paints stays dark while the text turns dark. Measured from the rendered
+DOM, 11 pages, contrast computed against the composited backdrop:
+
+    theme=dark    654 text nodes below WCAG AA, 108 distinct
+    theme=light   913 text nodes below WCAG AA, 160 distinct
+    worst light readings, all near-black on near-black:
+      1.02:1  span.technical-isolate  rgba(8,12,18,0.95) on rgb(11,15,18)  drivers
+      1.03:1  h4                      rgba(8,12,18,0.95) on rgb(13,16,19)  overview
+      1.03:1  strong                  rgba(8,12,18,0.95) on rgb(13,16,19)  startup
+      1.04:1  strong "١٫٦٠ GB"        rgba(8,12,18,0.95) on rgb(18,17,14)  cleanup
+
+Confirmed visually, not only numerically: the light-theme Overview screenshot
+shows the six capability cards as black rectangles with invisible titles, and
+the "Cleanup / Awaiting authorization" bar likewise. Light is a shipping,
+user-selectable mode — the rail carries the toggle.
+
+**Why the whole migration is not in this commit.** Each of the 102
+dark-background rules needs a light counterpart chosen against the approved
+dark appearance, which is the screenshot baseline the port itself is measured
+against; `#0f1216` becoming `var(--ac-material-base)` is not the same colour in
+dark either. Landing 423 remappings unreviewed would replace a working, approved
+appearance in one unreviewable step — the rewrite §5 forbids. It is a design
+pass of the same class as the icon artwork, and it is registered rather than
+guessed:
+
+> **`DBT-P47-001` — `feature-layout.css` sits outside the design system.**
+> 440 literal colour values (355 distinct) in a six-role system, 93 literal
+> radii (12 distinct values) in a three-radius system, and no theme rules at
+> all, which makes the light theme unreadable on eight of eleven screens
+> (1.02:1 measured). Decision: **migrate to roles and radius tokens**. Risk:
+> **high** — light theme is unreadable today. Not landed in P47 because each
+> mapping changes the approved dark appearance and needs the owner's eye.
+> Single next action: pick the light values for the 102 dark-background rules
+> against the approved dark baseline, one screen per commit, re-running the
+> contrast measurement and both-theme sweep after each.
+
+**What did land, because it is the reason nobody saw this.** Every measurement
+of this app through the entire design port ran `themes: ['dark']` —
+`layout-sweep.mjs` defaulted to it, so a light-theme artifact was never
+produced and no human ever looked at one. The default is now
+`['dark', 'light']`. It does not catch the contrast failure (the sweep measures
+geometry, and light passes it), but it means the evidence exists by default
+instead of being invisible:
+
+    populated, both themes    132/132 pass
+    no service, both themes   132/132 pass
+
+The denial chip's 1px-vs-1.5px border reading is left alone, as the brief
+directs — Chrome rounds border widths and the approved shell renders
+identically.

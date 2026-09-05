@@ -26,7 +26,11 @@ const CHROME = process.env.CHROME_BIN
   ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 function parseArgs(argv) {
-  const args = { widths: [1280, 1024, 960], locales: ['en', 'ar'], themes: ['dark'], out: 'output/sweep', base: 'http://127.0.0.1:1420', pages: ['overview'], entry: 'layout-fixture.html' };
+  // Both themes by default. Every measurement of this app through the whole
+  // design port ran `themes: ['dark']`, so no light artifact was ever produced
+  // and nobody saw that feature-layout.css paints dark surfaces the light theme
+  // never overrides — near-black text on near-black cards (DBT-P47-001).
+  const args = { widths: [1280, 1024, 960], locales: ['en', 'ar'], themes: ['dark', 'light'], out: 'output/sweep', base: 'http://127.0.0.1:1420', pages: ['overview'], entry: 'layout-fixture.html' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.replace(/^--/, '');
     const value = argv[i + 1];
