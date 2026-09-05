@@ -10966,6 +10966,15 @@ same discipline `DBT-P42-012` imposed on `vcomp140.dll`:
 
 ## 48.7 ITEM 7 — WHAT SHIPPING ACTUALLY REQUIRES
 
+> **SUPERSEDED BY §49.8 (P49, 2026-09-06).** The gate table, the unproven list and
+> the verdict below were accurate the day they were written. They are now out of
+> date in one specific way: the physical x64 machine became reachable, and the gap
+> this section names as "the largest structural gap in this qualification" —
+> *no single architecture has both a current build and a full gate set* — **is
+> closed on x64**, against MSI sha256 `77ee416b…`. `AetherCoreSetup.exe` has also
+> now been installed. **Read §49.8 for the current statement.** This section is
+> kept unedited as the record of what was true before that.
+
 This is the section the owner decides on, so it is blunt.
 
 ### The version
@@ -11213,7 +11222,7 @@ the measuring-instrument pattern §47 was caught by.
 | 3 install `AetherCoreSetup.exe` — nobody ever has | **DONE — PASS, 4 UI findings** | §49.5 — first execution by anyone. `BUNDLE_EXIT=0` in 121 s. Both prerequisites detected **Present** and skipped, MSI installed anyway, `restart: None` even on a machine already carrying `RebootPending=1`. Result **indistinguishable** from the MSI install on all 12 measured properties incl. byte-identical pipe DACL and `engineLabel localModel`. Uninstall through the bundle exit 0, **zero survivors on all fourteen**, both package caches released, prerequisites correctly survived. New **`DBT-P49-002`** (unbranded/uninformative UI) and **`DBT-P49-003`** (two `%TEMP%` logs) |
 | 4 `DBT-P42-011` the bias, re-measured | **DONE — DOES NOT REPRODUCE** | §49.6 — **nine** rounds on the original machine and silicon under real sustained load. Disk-latency 3.47x **gone** (mean ratio 0.97, product *below* host in 4 of 6). Both CPU series **flip sign** — §43.5's own criterion for noise. Surviving means +3.94 / +4.22 pts are smaller than the **±14-point spread the host counter shows against itself** at 100 ms vs 1 s. Counter-object candidate **disproved**: `\Processor Information(_Total)\` and `\Processor(_Total)\` agree within 0.49 pts on a hybrid Core Ultra 9. Cause deliberately **not hunted**, per the brief. New **`DBT-P49-004`** |
 | 5 the VC++ runtime guard on x64, without breaking this machine | **DONE — correctly authored** | §49.7 — redistributable **NOT removed**, per the brief. `Launch` condition read out of the **built MSI's** `LaunchCondition` table (4 rows), naming `(x64)` with a real `AppSearch`/`RegLocator` wiring. Burn's `VCRedist` detection **measured working** in §49.5, not just authored. `llvm-objdump -p` over the six installed binaries: **5/6 `VCRUNTIME140.dll`**, service also `MSVCP140.dll`, `VCRUNTIME140_1.dll` **x64-only** — all three §48 expectations met. Machine carries 14.44.35211.0. **The refusal is proven on ARM64 (§48.3) and INFERRED here** |
-| 6 the statement §48.7 could not make | NOT STARTED | — |
+| 6 the statement §48.7 could not make | **DONE** | §49.8 — §48.7 marked superseded. **x64 now has a current build and every gate that is not owner-blocked passing against it** (`77ee416b…`). New bundle-lifecycle gate row. Gate 0f **downgraded by measurement** — no D:, no `D:\WindowsImageBackup`. Gate 4 still blocked, both blockers re-measured today (0 drivers offered, ResultCode 2; media detached). `DBT-P42-012` **5 of 6 checks met**, including the check-4 negative control run deliberately |
 | owner register | listed, not attempted | §49.0 note below |
 
 **Owner register — unchanged, not attempted, not re-argued:** code-signing
@@ -12329,3 +12338,159 @@ here.** The authoring is identical up to the `$(sys.BUILDARCH)` substitution,
 which is itself verified above — but *inferred* is not *measured*, and this row
 must not be written up as an x64 measurement by a later session. Proving it needs
 a machine without the runtime, and that machine must not be this one.
+
+## 49.8 ITEM 6 — THE STATEMENT §48.7 COULD NOT MAKE
+
+**This section supersedes §48.7's gate table and unproven list.** §48.7 remains
+accurate as of the day it was written; every row below that differs from it
+differs because this machine became reachable.
+
+### The gap §48.7 named, and whether it is closed
+
+> §48.7: *"Read that table honestly: the x64 gates passed against a build from
+> Phase 41, and the current build's gates passed on ARM64. **No single
+> architecture has both a current build and a full gate set.**"*
+
+**x64 now does.** Against **`AetherCore-0.1.11-x64.msi`, sha256
+`77ee416b65412ef9306ed25b00d76ff98f9da3b88d1ba19a4e182461d7f7546e`, 1,100,271,616
+bytes**, built from `main@6926bc7` on the physical machine and gated on it:
+
+| gate | verdict | architecture | against which build |
+|---|---|---|---|
+| 0 machine native, protections on, restore point | **PASS** | x64 physical | §41.2, and §49.4 created and enumerated a fresh one, `P49-PRE-GATE5` seq 6 |
+| 0f full verified disk image before driver work | **DEGRADED — the image is not on this machine** | x64 physical | §41.12-13 captured it; **measured today: `Get-Volume` shows one lettered volume, C: (953 GB), no D:, and `D:\WindowsImageBackup` does not exist.** §48.7 recorded C: and D:; there is now no D: at all |
+| 1 MSI builds, zero ICE, payload explained | **PASS** | **x64 physical** | **§49.2 against `77ee416b…`** — validate **0 lines**, `PAYLOAD_CHECK=PASS`, 16 File rows |
+| 2 installed, running, security properties, local model live | **PASS** | **x64 physical** | **§49.4 against `77ee416b…`** — 16 files MATCHED=16, LocalSystem, SID UNRESTRICTED, pipe SDDL byte-identical, `engineLabel localModel` from the running service |
+| 2 (re-proven) | **PASS** | ARM64 VM | §48.3 against `fafe27a6…` |
+| 3 real-hardware evidence with numbers | **PASS** | x64 physical | §41.15-16, and **§49.6 adds nine rounds of current-build telemetry on this silicon** |
+| 4 driver install + rollback on a safe device | **NOT STARTED — HARD STOP** | — | owner + hardware; both blockers re-measured today, below |
+| 5 full lifecycle, zero survivors | **PASS** | **x64 physical** | **§49.4 against `77ee416b…`** — uninstall exit 0 twice, **zero survivors on all fourteen both times**, `MACHINE_WIDE=0`, reinstall exit 0 |
+| 5 (ARM64) | **PASS** | ARM64 VM | §47.7 against 0.1.11 arm64 |
+| **bundle install + uninstall lifecycle** | **PASS — NEW GATE, never previously runnable** | **x64 physical** | **§49.5 against `d0398765…`** — first execution by anyone; product indistinguishable from the MSI install; uninstall through the bundle, zero survivors on all fourteen, both package caches released |
+| `DBT-P41-001` refusal on a runtime-less machine | **PASS** | ARM64 VM | §48.3. On x64 the authoring is verified (§49.7) and the **refusal is inferred, not measured** |
+
+**So the honest new statement is:** *x64 has a current build, and every gate that
+is not blocked on the owner passes against it.* Gate 4 is the only gate that has
+never started, and it is blocked on hardware and an owner decision, not on the
+build. Gate 0f is the one row that got **worse**, and by measurement rather than
+by neglect: the disk image §41.12-13 captured is not attached to this machine.
+
+ARM64 keeps its own current-build gate set (§47.7, §48.3) against the ARM64
+0.1.11 `fafe27a6…`. **Both architectures now have a current build with a gate
+set. Neither has Gate 4.**
+
+### Two ledger rows this session also closes or moves
+
+**`DBT-P42-012` — five of its six numbered checks are now met on real x64
+hardware.** §46.1 and §47.7 parked them on "a real `build-installer.ps1` + WiX
+run", which had never happened because that script is x64-only. It happened
+this session:
+
+    check 1  syntax parses                      MET   the script ran to completion (§49.2)
+    check 2  resolves via $env:VCToolsRedistDir  MET   "vcomp140.dll staged from
+                                                       ...\14.44.35112\x64\Microsoft.VC143.OpenMP\vcomp140.dll"
+    check 3  hash passes on the good file        MET   silent, build continued
+    check 4  hash FAILS LOUDLY on the wrong file MET   see the negative control below
+    check 5  the pinned fallback resolves        NOT VERIFIABLE HERE
+    check 6  full build succeeds end-to-end      MET   §49.2, validate EMPTY, 16 rows,
+                                                       vcomp140.dll ships at 55aba23c…
+
+**Check 4, the negative control, run deliberately** — a guard nobody has seen
+fail is not a guard. The `onecore` variant was staged as `vcomp140.dll` and the
+build was invoked:
+
+    WRONG file: ...\14.44.35112\onecore\x64\Microsoft.VC143.OpenMP\vcomp140.dll
+                72,712 B  sha256 3b154db5fff1445ac1718f252435a76a58d884073787a44e1c0dbcc3e8774bfc
+
+    build-installer.ps1:84 threw:
+      vcomp140.dll at ...\bad-payload\vcomp140.dll is NOT the expected desktop x64
+      MSVC OpenMP redist (expected 193152 bytes / sha256 55aba23c…; got 72712 bytes
+      / sha256 3b154db5…). DBT-P42-012: this machine has carried five files of this
+      name … and the first plausible match is wrong. Do not suppress this check.
+
+    CHECK4_EXIT=1        SHOULD-NOT-EXIST.msi created?  False
+
+Both byte counts and both hashes, side by side, **before any WiX step**, and no
+package produced. That is exactly what §44.5 specified.
+
+**Check 5 is not verifiable on this machine and is not claimed.** The pinned
+fallback path is `C:\AetherCore-P36\toolchain\vs2022\…`, which is the ARM64 VM's
+layout; `C:\AetherCore-P36` does not exist here (§49.1). It stays open, and it is
+the *fallback* branch, not the branch any real build on this machine takes.
+
+**`DBT-P42-011` moves from "open, unexplained" to "does not reproduce"** — nine
+rounds, §49.6.
+
+### What remains unproven, on either architecture
+
+| unproven | why, and what would settle it |
+|---|---|
+| **Gate 4, driver install + rollback** | Both blockers re-measured **today**: (1) the recovery media is still not attached — one lettered volume, C:, and no `D:\WindowsImageBackup`; (2) `Microsoft.Update.Session` search `IsInstalled=0 and Type='Driver'` returned **ResultCode 2, 0 updates**. Needs the owner to re-attach and **boot-test** the media, and to nominate a printer/HID/USB-class device. **Never storage, chipset or GPU.** |
+| **The `vc_redist` install branch of the Burn chain** | Authored, compiled, and its **detection** now measured working on x64 (§49.5, §49.7). What has never run on either architecture is Burn actually executing `vc_redist.x64.exe /install /quiet /norestart` because the runtime was absent. Needs a machine without the runtime — **not this one** |
+| **The WebView2 install branch** | Same: WebView2 was `Present` here, so the chain skipped it. The install branch is unexecuted |
+| **`DBT-P41-001`'s refusal on x64** | Proven on ARM64 (§48.3), **inferred** on x64 (§49.7). Same machine constraint |
+| **`DBT-P42-012` check 5** | The pinned-fallback branch; not verifiable on a machine that lacks the pinned tree |
+| **Windows Server, any SKU** | The MSI advertises Server support (`MsiNTProductType = 3 AND OSCURRENTBUILD >= 17763`) and **nothing has ever run on a Server SKU.** This machine reports `InstallationType = Client`. The product still makes a claim it has never tested |
+| **Zero-session operation** | Only session-0-only operation is proven; a console session exists on this machine too |
+| **A real remote SSH audit** | Scope resolution, per-host isolation and fail-closed trust are proven; an audit against a second real machine is not |
+| **Byte-reproducible builds** | Explicitly not a criterion; `RELEASE-METADATA.json` says `msi_byte_reproducible_claim = false` |
+| **A signed installer** | `DEFERRED-OWNER`. Until then SmartScreen warns, and §49.5 measured what the unsigned dialog looks like |
+
+### Gate 4 — still blocked, and left alone
+
+Both facts re-measured today rather than carried forward:
+
+    Get-Volume            one lettered volume: C: (953 GB, Fixed)
+                          plus two unlettered system partitions (0.8 GB, 0.1 GB)
+                          D:\WindowsImageBackup                     False
+    Windows Update        Search("IsInstalled=0 and Type='Driver'")
+                          ResultCode = 2 (succeeded)
+                          DRIVER_UPDATES_OFFERED = 0
+
+**No driver work was started, and none should be.** Gate 4 needs two owner
+actions before it is even runnable: re-attach the recovery media and *boot-test*
+it, and nominate a safe device. Creating recovery media is not the same as
+proving it boots.
+
+### What a first real user hits — updated from §48.7's list of nine
+
+Items 4, 5, 6 and 8 of §48.7's list are unchanged and are not repeated. What
+changed:
+
+1. **The installer is unsigned, so SmartScreen will warn.** Unchanged —
+   `DEFERRED-OWNER`. §49.5 now records exactly what dialog that warning sits in
+   front of.
+2. **~~The bundle has never been installed by anyone.~~ CLOSED.** It has now been
+   installed, and uninstalled, on real x64 hardware, and the resulting product is
+   identical to the MSI's on every measured property (§49.5).
+3. **NEW — the installer looks unfinished.** `DBT-P49-002`: the title bar reads
+   "AetherCore Setup Setup", the logo is WiX's stock placeholder rather than the
+   mark §48.2 made deliberate, the welcome screen shows no version and no license,
+   and the progress bar sits on "Initializing..." for the whole 30-second install.
+   This is now the **first** thing a paying customer sees, and it is cosmetic —
+   which makes it cheap to fix and expensive to leave.
+4. **NEW — a bundle install costs ~1.05 GB more disk than an MSI install.**
+   §49.5: Burn keeps a full 1,100,271,616-byte copy of the MSI in
+   `C:\ProgramData\Package Cache` on top of the copy msiexec keeps in
+   `C:\Windows\Installer`. It is released on uninstall. Not a defect; a number
+   nobody had.
+5. **NEW — `intervalMs` in the telemetry snapshot does not describe the window
+   the numbers were measured over.** `DBT-P49-004`, §49.6.
+6. **A same-version reinstall needs `REINSTALLMODE=vamus`** — unchanged, and note
+   Burn sidesteps it entirely by passing `REINSTALLMODE="muso"` itself.
+
+### The verdict, rewritten
+
+§48.7's verdict ended: *"the product is qualified on ARM64 against the current
+build, and on x64 against a Phase 41 build, and the consumer installer has never
+been installed by anyone."* Two of those three clauses are now obsolete.
+
+**The product is qualified on x64 against the current build `77ee416b…`, on ARM64
+against the current build `fafe27a6…`, and the consumer installer has been
+installed, verified equivalent, and uninstalled cleanly.** §48.7 listed four
+things shipping requires, in order: reach the x64 machine, run the pipeline and
+Gate 5 there on 0.1.11, install the bundle at least once, and finish Gate 4. **The
+first three are done.** What is left is Gate 4, which is two owner actions and a
+device, and the certificate, which is money — plus the honest residue above:
+Windows Server has never been touched, and the two prerequisite *install* branches
+have never executed on any machine.
