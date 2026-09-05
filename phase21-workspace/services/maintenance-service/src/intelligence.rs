@@ -26,30 +26,38 @@ pub static EMBEDDED_ENGINE_ACTIVE: std::sync::atomic::AtomicBool =
 
 /// Session-scoped insight registry. Entries live only for this process lifetime;
 /// dismissal removes them. No persistence layer involvement anywhere.
+///
+/// The handle lives on the insight itself rather than beside it in a tuple: the
+/// registry held the id and the wire struct did not, so the client was handed
+/// insights it had no way to name and every dismissal missed. One field, one
+/// decider — what is stored and what is sent cannot drift apart.
 #[derive(Default)]
 pub struct EphemeralInsights {
     next_id: AtomicU32,
-    items: Mutex<Vec<(String, v1::Insight)>>,
+    items: Mutex<Vec<v1::Insight>>,
 }
 
 impl EphemeralInsights {
-    fn replace_all(&self, insights: Vec<v1::Insight>) {
+    /// Replaces the session set and returns it stamped with the handles the
+    /// client must send back to dismiss.
+    fn replace_all(&self, insights: Vec<v1::Insight>) -> Vec<v1::Insight> {
         let mut store = self.items.lock().unwrap_or_else(|p| p.into_inner());
         store.clear();
-        for insight in insights {
-            let id = format!("insight-{}", self.next_id.fetch_add(1, Ordering::SeqCst));
-            store.push((id, insight));
+        for mut insight in insights {
+            insight.id = format!("insight-{}", self.next_id.fetch_add(1, Ordering::SeqCst));
+            store.push(insight);
         }
+        store.clone()
     }
 
-    fn list(&self) -> Vec<(String, v1::Insight)> {
+    fn list(&self) -> Vec<v1::Insight> {
         self.items.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
     fn dismiss(&self, insight_id: &str) -> bool {
         let mut store = self.items.lock().unwrap_or_else(|p| p.into_inner());
         let before = store.len();
-        store.retain(|(id, _)| id != insight_id);
+        store.retain(|insight| insight.id != insight_id);
         store.len() != before
     }
 
@@ -130,10 +138,9 @@ impl IntelligenceCoordinator {
 
     /// Lists current session insights without running inference.
     pub fn list(&self) -> v1::InsightsResponse {
-        let items = self.session.list();
         v1::InsightsResponse {
             engine_label: self.engine_label().into(),
-            insights: items.into_iter().map(|(_, insight)| insight).collect(),
+            insights: self.session.list(),
         }
     }
 
@@ -206,6 +213,8 @@ impl IntelligenceCoordinator {
         let wire: Vec<v1::Insight> = insights
             .iter()
             .map(|insight| v1::Insight {
+                // Stamped by replace_all below; the registry is the one decider.
+                id: String::new(),
                 schema_version: insight.schema_version,
                 summary_key: insight.summary_key.clone(),
                 explanation: insight.explanation.clone(),
@@ -239,10 +248,12 @@ impl IntelligenceCoordinator {
             })
             .collect();
 
-        self.session.replace_all(wire.clone());
+        // Return what the registry now holds, not the pre-registration vector:
+        // the ids are assigned during registration, and a response without them
+        // is one the client cannot act on.
         Ok(v1::InsightsResponse {
             engine_label: self.engine_label().into(),
-            insights: wire,
+            insights: self.session.replace_all(wire),
         })
     }
 
@@ -254,5 +265,92 @@ impl IntelligenceCoordinator {
     /// Clears session insights (e.g., when a care run starts — observer hygiene).
     pub fn clear_session(&self) {
         self.session.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn insight(summary: &str) -> v1::Insight {
+        v1::Insight {
+            id: String::new(),
+            schema_version: 1,
+            summary_key: summary.into(),
+            explanation: "e".into(),
+            confidence: "Moderate".into(),
+            citations: vec![v1::InsightCitation {
+                evidence_id: "fact-0".into(),
+                surface: "repairDiagnosis".into(),
+            }],
+            engine: "ruleFallback".into(),
+        }
+    }
+
+    /// The defect this registry shipped with, written as the assertion that
+    /// would have caught it: the client was handed insights carrying no handle,
+    /// so the only value it could send was the list index, and the registry
+    /// matched on `insight-N`. Every Dismiss press was a no-op with no error.
+    #[test]
+    fn a_dismissal_by_list_index_removes_nothing() {
+        let registry = EphemeralInsights::default();
+        registry.replace_all(vec![insight("a"), insight("b"), insight("c")]);
+
+        for index in 0..3 {
+            assert!(
+                !registry.dismiss(&index.to_string()),
+                "list index {index} must not name an insight"
+            );
+        }
+        assert_eq!(registry.list().len(), 3);
+    }
+
+    /// The handle the client is given is the handle the registry matches on.
+    /// Asserted through the returned value rather than through the private
+    /// store, because what the client receives is the thing that was wrong.
+    #[test]
+    fn every_listed_insight_carries_the_handle_that_dismisses_it() {
+        let registry = EphemeralInsights::default();
+        let listed = registry.replace_all(vec![insight("a"), insight("b"), insight("c")]);
+        assert_eq!(listed.len(), 3);
+        assert!(listed.iter().all(|i| !i.id.is_empty()), "{listed:?}");
+
+        // replace_all's return and list() are the same set, ids included.
+        let ids: Vec<&str> = listed.iter().map(|i| i.id.as_str()).collect();
+        let relisted: Vec<String> = registry.list().into_iter().map(|i| i.id).collect();
+        assert_eq!(ids, relisted.iter().map(String::as_str).collect::<Vec<_>>());
+
+        assert!(registry.dismiss(&listed[1].id));
+        let after: Vec<String> = registry.list().into_iter().map(|i| i.id).collect();
+        assert_eq!(after, vec![listed[0].id.clone(), listed[2].id.clone()]);
+        assert_eq!(registry.list().len(), 2);
+    }
+
+    /// Handles are not reused across a refresh, so a stale press from a panel
+    /// showing the previous set cannot dismiss whatever now sits in its place.
+    #[test]
+    fn handles_are_not_reused_when_the_set_is_replaced() {
+        let registry = EphemeralInsights::default();
+        let first = registry.replace_all(vec![insight("a"), insight("b")]);
+        let second = registry.replace_all(vec![insight("c"), insight("d")]);
+
+        for stale in &first {
+            assert!(
+                !registry.dismiss(&stale.id),
+                "handle {} from the replaced set must not match",
+                stale.id
+            );
+        }
+        assert_eq!(registry.list().len(), 2);
+        assert!(registry.dismiss(&second[0].id));
+        assert_eq!(registry.list().len(), 1);
+    }
+
+    #[test]
+    fn dismissing_an_unknown_handle_is_reported_rather_than_swallowed() {
+        let registry = EphemeralInsights::default();
+        registry.replace_all(vec![insight("a")]);
+        assert!(!registry.dismiss("insight-999"));
+        assert_eq!(registry.list().len(), 1);
     }
 }

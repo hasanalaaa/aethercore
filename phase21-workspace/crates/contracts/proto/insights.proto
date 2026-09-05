@@ -13,6 +13,11 @@ message InsightCitation {
 }
 
 message Insight {
+  // The session handle DismissInsightRequest matches on. Assigned by the
+  // coordinator when the set is replaced, and carried to the client, which
+  // otherwise has nothing to name an insight by: every dismissal before this
+  // field existed sent a list index that could never match.
+  string id = 7;
   uint32 schema_version = 1;
   string summary_key = 2;
   string explanation = 3;

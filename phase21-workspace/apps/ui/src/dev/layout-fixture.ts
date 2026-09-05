@@ -278,6 +278,9 @@ const timelinePage: TimelineResponse = {
 const insights: InsightsResponse = {
   engineLabel: 'ruleFallback',
   insights: [{
+    // The shape the service sends: the session handle the Dismiss control
+    // returns. A fixture without it renders a control that cannot work.
+    id: 'insight-0',
     schemaVersion: 1,
     summaryKey: 'insight.storageLatency',
     explanation: 'Storage latency rose on the same days the component store reported missing payloads. The two observations share a window but the direction of cause is not established.',

@@ -77,7 +77,12 @@
   $: insights = gate.cited;
   $: uncitable = gate.dropped;
 
-  // Panel dismiss = cancellation of interest; clear local view state only.
+  /**
+   * Clears the session's insights from this view. It is not a panel dismissal:
+   * AppShell renders this panel unconditionally on Overview and Activity and
+   * there is no affordance that would bring it back, so a control that removed
+   * it would be a one-way door. The label says "clear" for that reason.
+   */
   function onDismiss(): void {
     streamState.update((s) => ({ ...s, insights: null }));
   }
@@ -99,7 +104,7 @@
       <Pressable className="primary" onclick={() => requestInsights('explain')} disabled={loading}>
         {loading ? t('insight.thinking', locale) : t('insight.explainThis', locale)}
       </Pressable>
-      <Pressable className="ghost" ariaLabel={t('insight.dismissPanel', locale)} onclick={onDismiss}>✕</Pressable>
+      <Pressable className="ghost" ariaLabel={t('insight.clearInsights', locale)} onclick={onDismiss}>✕</Pressable>
     </div>
   </div>
 
@@ -109,13 +114,13 @@
     <EmptyState title={t('common.notCollected', locale)} body={t('insight.empty', locale)} />
   {:else}
     <ul class="insight-list">
-      {#each insights as insight, index (index)}
+      {#each insights as insight (insight.id)}
         <li class="insight-card">
           <div class="insight-card-top">
             <span class="insight-confidence" data-level={insight.confidence.toLowerCase()}>
               {td(confidenceKey(insight.confidence), locale)}
             </span>
-            <Pressable className="ghost small" onclick={() => dismissInsight(String(index))}>{t('common.dismiss', locale)}</Pressable>
+            <Pressable className="ghost small" onclick={() => dismissInsight(insight.id)}>{t('common.dismiss', locale)}</Pressable>
           </div>
           <p class="insight-summary">{hasMessageKey(insight.summaryKey) ? td(insight.summaryKey, locale) : insight.summaryKey}</p>
           <p class="insight-explanation">{insight.explanation}</p>

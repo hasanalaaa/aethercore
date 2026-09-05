@@ -1651,7 +1651,7 @@ export const arCatalog = {
   'insight.engine.ruleFallback': 'ملخص قاعدي',
   'insight.explainThis': 'اشرح هذا',
   'insight.thinking': 'يفكر محلياً…',
-  'insight.dismissPanel': 'إغلاق لوحة الاستشرافات',
+  'insight.clearInsights': 'مسح الاستشرافات',
   'insight.empty': 'لا استشرافات بعد للأدلة الحالية. شغّل فحصاً أو خطوة عناية أولاً ثم أعد المحاولة.',
   'insight.citations': 'الأدلة:',
   'insight.confidence.weak': 'ثقة ضعيفة',

@@ -1651,7 +1651,7 @@ export const enCatalog = {
   'insight.engine.ruleFallback': 'Rule-based summary',
   'insight.explainThis': 'Explain this',
   'insight.thinking': 'Thinking locally…',
-  'insight.dismissPanel': 'Dismiss insights panel',
+  'insight.clearInsights': 'Clear insights',
   'insight.empty': 'No insights yet for the current evidence. Run a scan or a care step first, then ask again.',
   'insight.citations': 'Evidence:',
   'insight.confidence.weak': 'Weak confidence',
