@@ -9020,10 +9020,10 @@ start: `0 0` — local `main` and `origin/main` identical at `77836cd`.
 | 2 Gate 5 on ARM64 (verify the §41.17 claim first) | **DONE — PASS** | §47.5 claim verified (evidenced for 0.1.6, stale); §47.7 re-run on 0.1.11: validate EMPTY, payload PASS, 16 rows, uninstall 0, **0 survivors on all 14**, reinstall 0, pipe SDDL byte-identical, `engineLabel localModel` from the service. `DBT-P47-002` raised; `DBT-P42-012` still needs x64 |
 | 3 icon pipeline (`DBT-P36-004` stays **OPEN**) | **DONE** | `31445b0` pipeline + wiring, `e369010` proof. One SVG -> 17 files in 8.0 s; ico 7 entries / icns 10 chunks decoded back and verified; `--check` PASS with a working negative control; built on the VM: validate EMPTY, payload PASS, File rows still 16, `Icon` table `ProductIcon.ico`, `ARPPRODUCTICON` set, 12,928-byte stream matching `icon.ico` sha256 `4a49d865…` |
 | 4 the 2.B decision (`DBT-P42-009`, `DBT-P42-010`) | **DONE — both decided** | §47.8. `DBT-P42-009` **out of scope, recorded**: zero render sites, zero analysis reads, and macOS/Linux already publish the aggregate as a one-element vector, so the field's meaning must be decided before it is filled (new `DBT-P47-003`). `DBT-P42-010` **split**: VRAM usage **implemented** on the counters already open — measured on the VM `sharedUsedBytes` 0 -> **64,241,664**; adapter identity and `dedicatedTotalBytes` **out of scope, recorded** (new `DBT-P47-004`) |
-| 5.A independently verify the 4.A x64 claim | NOT STARTED | — |
-| 5.B `DBT-P42-011` re-measure on the current build | NOT STARTED | — |
-| 5.C `DBT-P41-001` MSVCP140/VCRUNTIME140 decision | NOT STARTED | — |
-| owner register | NOT STARTED | — |
+| 5.A independently verify the 4.A x64 claim | **BLOCKED-MACHINE** | §47.9 — `HUSSEIN` unreachable on all four names, only the VM advertises SMB, the owning Remote Control session offline. §46.16 stays their claim, not a verdict |
+| 5.B `DBT-P42-011` re-measure on the current build | **BLOCKED-MACHINE** | §47.9 — nothing to re-measure on; §43.5 already settled that ARM64 shows no such bias. Not attempted, not theorised |
+| 5.C `DBT-P41-001` MSVCP140/VCRUNTIME140 decision | **DECIDED, evidenced; implementation BLOCKED-MACHINE** | §47.9 — measured: **5 of 6 ARM64 binaries import `VCRUNTIME140.dll`**, so the debt is both-architecture, not x64-only. Option (b) disproved by Microsoft's own redistribution page. Decision: chain `vc_redist` as a Burn prerequisite + a `Launch` condition on the documented registry key; NOT app-local copies. Proving a refusal needs a machine without the runtime |
+| owner register | **DONE** | §47.10 |
 
 ## 47.1 ITEM 1.A — main merged into the port branch, resolved in the design worktree
 
@@ -9600,3 +9600,136 @@ and the 193,152-byte / `55aba23c...` hash assertion live in
 payload. The ARM64 recipe is `scripts/build-arm64-msi.cmd` and stages
 `libomp140.aarch64.dll` instead. DBT-P42-012 needs the x64 machine, and moves to
 Item 5's blocked set rather than being quietly counted as passed here.
+
+## 47.8 ITEM 4 — the 2.B decision, both halves
+
+Full reasoning and every number are in commit `561ef07`'s message. In short:
+
+- **`DBT-P42-009` `perProcessorBusyBp` — OUT OF SCOPE, recorded.** Zero
+  consumers (no component renders it; `performance-bottleneck` and
+  `intelligence-core` never read it), and macOS/Linux already publish
+  `vec![total_busy_bp]` — one element holding the aggregate. Windows' empty
+  vector is the most honest of the three. New **`DBT-P47-003`**: one wire field
+  currently means "nothing measured" on Windows and "the aggregate, once" on
+  macOS/Linux; the meaning has to be decided before the field is filled.
+- **`DBT-P42-010` — SPLIT.** VRAM **usage implemented** on counters the query
+  already carries (`sharedUsedBytes` 0 → **64,241,664** measured on the VM, and
+  `dedicatedUsedBytes` correctly still 0 on a virtual adapter with no dedicated
+  VRAM). Adapter identity and `dedicated_total_bytes` **out of scope**, new
+  **`DBT-P47-004`**: capacity has no PDH counter, DXGI means COM in a session-0
+  LocalSystem service that cannot be written or measured from this Mac, and WMI
+  `AdapterRAM` is a 32-bit field that wraps above 4 GB — it would invent a wrong
+  number where 0 is honest.
+
+## 47.9 ITEM 5 — the x64 machine: **NOT REACHABLE**
+
+Checked first, as the brief directs, and recorded rather than assumed. The
+machine is `HUSSEIN`, an MSI Pulse 16 AI C1VFKG (§41 header).
+
+    ping HUSSEIN / hussein / hussein.local / HUSSEIN.local   no response, all four
+    dns-sd -B _smb._tcp local    one Windows SMB service advertised on this
+                                 network: "Windows 11" -- the Parallels VM,
+                                 not the physical box
+    ListAgents                   "AetherCore x86_64 Windows physical
+                                 qualification" [86265d]  Remote Control
+                                 OFFLINE (also offline at session start)
+
+Three independent checks, same answer. **5.A and 5.B are `BLOCKED-MACHINE`.**
+
+- **5.A — independently verify the 4.A claim.** Requires running `cargo` →
+  `tauri` → `wix build` → `wix msi validate` → payload check on x64 and
+  recording the MSI sha256 and byte size. Not possible from here. §46.16's
+  record stands unchanged: **their claim, not a verdict.**
+- **5.B — `DBT-P42-011`, the x64 bias.** The brief's own instruction is to
+  re-measure on the current build before explaining anything. There is nothing
+  to measure on: the bias was measured on x64 silicon and this Mac and the ARM64
+  VM are the wrong hosts by construction — §43.5 already settled that ARM64
+  shows no such bias, so re-running here would answer a different question.
+  **Not attempted, not theorised.**
+
+`DBT-P42-012` joins them: §47.7 records why the ARM64 lifecycle could not pay
+it — its `vcomp140.dll` sourcing and hash assertion live in the x64-only
+`build-installer.ps1`.
+
+### 5.C — `DBT-P41-001`: **DECIDED, with evidence, and the debt is bigger than recorded**
+
+5.C asks for a decision, not another observation, and the decision does not need
+the x64 machine. Two of its three inputs were measurable here.
+
+**1. The import list, measured on the ARM64 build — and this is news.** The debt
+is recorded as an x64 problem (§41.4: "The **x64** service also imports
+`MSVCP140.dll`, `VCRUNTIME140.dll` and `VCRUNTIME140_1.dll`"). Run
+`llvm-objdump -p` over all six installed ARM64 binaries:
+
+    aethercore-maintenance-service.exe   31 imports, 10 Universal CRT
+        NOT part of Windows: libomp140.aarch64.dll, MSVCP140.dll, VCRUNTIME140.dll
+    aetherctl.exe                        17 imports, 8 Universal CRT
+        NOT part of Windows: VCRUNTIME140.dll
+    aethercore-install-hardener.exe       9 imports, 5 Universal CRT
+        NOT part of Windows: VCRUNTIME140.dll
+    aethercore-consent-broker.exe        14 imports, 6 Universal CRT
+        NOT part of Windows: VCRUNTIME140.dll
+    aethercore-update-broker.exe         17 imports, 6 Universal CRT
+        NOT part of Windows: VCRUNTIME140.dll
+    aethercore-desktop.exe               24 imports, 7 Universal CRT
+        NOT part of Windows: (none)
+
+**Five of the six ARM64 binaries import `VCRUNTIME140.dll`**, and the service
+also imports `MSVCP140.dll`. `VCRUNTIME140_1.dll` is genuinely x64-only. The
+`api-ms-win-crt-*` imports are the Universal CRT, which **is** part of Windows
+10 and later, and are not the problem.
+
+So **DBT-P41-001 is a both-architecture release blocker**, and the Gate 5 PASS
+in §47.7 was taken on a machine that cannot detect it — exactly the blind spot
+§41.4 named for x64, measured again here:
+
+    HKLM\...\VisualStudio\14.0\VC\Runtimes\arm64  Version  v14.44.35211.00
+    HKLM\...\VisualStudio\14.0\VC\Runtimes\x64    Version  v14.44.35211.00
+    System32: MSVCP140.dll 1,372,216 B; VCRUNTIME140.dll 199,200 B;
+              VCRUNTIME140_1.dll 53,320 B; vcomp140.dll 367,160 B
+
+**2. Option (b) of the brief is disproved, not merely unproven.** The brief
+allows "prove they are guaranteed present on every supported floor with a
+citation". Microsoft's own page, *Redistribute Visual C++ Files*
+(learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files,
+`ms.date` 2026-04-13), says the opposite in three places and nowhere describes
+these DLLs as part of Windows:
+
+- "When you deploy an application, you must also deploy the files that are
+  required to support it."
+- "The Visual C++ Redistributable packages install and register all Visual C++
+  libraries. If you use one, **run it as a prerequisite on the target system
+  before you install your application.**"
+- On the failure mode: "If Windows can't find one of the Redistributable DLLs
+  required by your application, it might display a message similar to this one:
+  'This application has failed to start because *library*.dll was not found.'"
+
+**3. The decision.** The same page rules out the two obvious shortcuts:
+merge modules are "**deprecated**. We don't recommend that you use them for
+application deployment"; app-local copies are possible but "**For servicing
+reasons, we don't recommend that you use this installation location**", because
+an app-local copy never receives a security update. The recommended mechanism
+is central deployment of the redistributable package, run as a prerequisite.
+
+> **Decision: chain `vc_redist.<arch>.exe` as a Burn prerequisite in
+> `Bundle.wxs`, exactly as WebView2 is already chained, and add a `Launch`
+> condition to `Product.wxs` so a direct MSI install on a machine without the
+> runtime refuses at install time instead of installing and failing at service
+> start.** The registry key to condition on is the one Microsoft documents on
+> that same page: `HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\
+> {x86|x64|arm64}`, value `Version`.
+>
+> Explicitly NOT chosen: authoring the DLLs into the payload beside
+> `vcomp140.dll`. It is the in-repo precedent, and it is the one Microsoft warns
+> against for servicing. It also has form here — §42.5 found five files named
+> `vcomp140.dll` on the build machine and the first plausible match was the
+> wrong one, caught only by hashing against a recorded baseline. Three more
+> hardcoded hashes, written without a machine to measure them on, would repeat
+> that defect rather than avoid it.
+
+**Not implemented, and that is the machine gate.** The Burn chain needs
+`vc_redist` staged and the bundle rebuilt and installed on a clean box to prove
+anything, and the `Launch` condition must be proven to *refuse* — which needs a
+machine without the runtime. Neither the physical x64 box nor this VM (which has
+the redistributable) can provide that. The decision is recorded; the change is
+not written blind.
