@@ -11208,7 +11208,7 @@ the measuring-instrument pattern §47 was caught by.
 | item | status | evidence |
 |---|---|---|
 | 0 elevation, autocrlf, machine survey | **DONE** | §49.1 |
-| 1 build the current source on x64 (MSI + bundle) | NOT STARTED | — |
+| 1 build the current source on x64 (MSI + bundle) | **DONE — every criterion met** | §49.2 — all exit 0; `wix msi validate` **0 lines emitted**, no suppression; `PAYLOAD_CHECK=PASS`; **16 File rows**, row 7 `vcomp140.dll` proving the `$(sys.BUILDARCH)` selection on the x64 artefact; MSI `77ee416b…` 1,100,271,616 B; the **first x64 bundle ever compiled**, `d0398765…` 1,128,354,997 B, chain `VCRedist` → `WebView2` → `AetherCoreMsi` read out of Burn's own manifest. `DBT-P42-012`'s guard fired correctly against the real four-file trap. New **`DBT-P49-001`** |
 | 2 Gate 5 on x64 against this build | NOT STARTED | — |
 | 3 install `AetherCoreSetup.exe` — nobody ever has | NOT STARTED | — |
 | 4 `DBT-P42-011` the bias, re-measured | NOT STARTED | — |
@@ -11277,3 +11277,170 @@ package's is 3,874 B.
 
 So the machine starts this phase carrying a build no gate in this project has
 ever measured. Item 1 replaces it.
+
+## 49.2 ITEM 1 — THE CURRENT SOURCE, BUILT ON x64: **every criterion met**
+
+The pipeline the brief names, run end to end on this machine, from `main@6926bc7`.
+
+### Two environment facts that had to be settled before anything compiled
+
+**1. `LNK1181: cannot open input file 'DismApi.lib'`.** The first `cargo build`
+died at link. This is §42.2's recorded fact, and it is worth restating because it
+bites every fresh shell: `LIB` must carry
+
+    C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\SDKs\DismApi\Lib\amd64
+
+Note **`amd64`, not `x64`** — the ADK's own naming quirk. `crates/system-repair/src/dism_api.rs:11`
+declares `#[link(name = "DismApi")]` with no build-script search path, so nothing
+in the tree supplies it.
+
+> **Recorded, not worked around: `DBT-P49-001`.** `scripts/build-arm64-msi.cmd:77`
+> sets this for arm64. **`scripts/build-release.ps1`, the production x64 pipeline,
+> sets nothing** — it silently depends on the invoking shell already having it.
+> That is the same shape as `DBT-P48-004` (a recorded pipeline that cannot
+> actually produce its artefact from a clean start), one tier milder because the
+> requirement *is* written down in §41.4 and §42.2. Risk: **low** — it fails loudly
+> at link, it never produces a wrong artefact. **Not fixed here**: changing the
+> release script's environment handling is its own review, and this session was
+> told to build, not to refactor the pipeline.
+
+**2. `vcomp140.dll`, and `DBT-P42-012` doing its job.** The script resolved it
+through `$env:VCToolsRedistDir` and reported the source it chose:
+
+    VCToolsRedistDir=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC\14.44.35112\
+    vcomp140.dll staged from ...\14.44.35112\x64\Microsoft.VC143.OpenMP\vcomp140.dll
+
+That is the **correct** file — 193,152 B, sha256 `55aba23c…` — and `Assert-VcompHash`
+passed silently, which is the whole point of the check. §49.1 recorded that four
+files of that name are installed here and that the first one a naive search
+returns is the wrong one. The trap is real on this machine and the guard held.
+
+### The build, step by step, every exit code 0
+
+    [1] pnpm --dir apps/ui build                  vite: built in 2.02s       exit 0
+    [2] cargo build --locked --release            Finished in 1m 54s         exit 0
+        -p aethercore-maintenance-service -p aethercore-consent-broker
+        -p aethercore-update-broker -p aethercore-install-hardener -p aetherctl
+    [3] tauri build --no-bundle                   Finished in 6m 38s         exit 0
+        --config installer\tauri.no-before-build.json
+    [4] stage payload                             8 files                    exit 0
+    [5] wix build Product.wxs -arch x64                                      exit 0
+    [6] wix msi validate                          0 lines emitted  <- EMPTY
+    [7] check-msi-payload.ps1                     PAYLOAD_CHECK=PASS
+        AUTHORED_FILES=17   MSI_FILE_ROWS=16
+
+`tauri.conf.json` was **not** modified; the recorded `beforeBuildCommand` defect
+is routed around with the committed overlay exactly as the brief directs.
+
+**`wix msi validate` emitted nothing at all** — zero ICE, and no `-sval`, no
+suppression list, nothing silenced. `AUTHORED_FILES=17` against `MSI_FILE_ROWS=16`
+is not a discrepancy: `Product.wxs` authors **both** OpenMP runtimes and the
+`$(sys.BUILDARCH)` preprocessor packages one.
+
+### The artefacts
+
+    AetherCore-0.1.11-x64.msi
+      bytes   1,100,271,616
+      sha256  77ee416b65412ef9306ed25b00d76ff98f9da3b88d1ba19a4e182461d7f7546e
+
+    AetherCoreSetup-0.1.11-x64.exe        <- the FIRST x64 bundle ever compiled
+      bytes   1,128,354,997
+      sha256  d03987652c8853ece7b2572979999324b0f19e923f1a8a638e05aa51541cbf99
+
+The staged payload, hashed as the build consumed it:
+
+         7062528  58c563aa21f0b798028dd182e018ccf88d9cbc7756c93e9976aca7a2f5bd955e  aethercore-desktop.exe
+        10708992  3600845ca1f720f470165a8200dc57ec2b63e8940ca39c92ee0e564f9b4bd1f2  aethercore-maintenance-service.exe
+          634368  db0eed36b4933fc280bccd72fcc0b6f80561f2f90c272649681ec4c80ecaadc6  aethercore-consent-broker.exe
+          738304  61699704c4aa1767187d9850e23e6ec39c7641f0f1c29e7fd70d8a9d0b3f82d4  aethercore-update-broker.exe
+          273408  25689cabf005223b37549585448ebc9e82df125ee59007f438a93a6a1647d390  aethercore-install-hardener.exe
+         4347904  ce360664d9a1e5e95b6a009eacc7960c4718055ed11aba6f7f48f8ba377d9f25  aetherctl.exe
+            3874  086de15216066da7d2329a0df31625540294fc604556425674ad54dfcb70a02e  UNINSTALL.txt
+              83  d4ad925d86f64560bd80c77eae8c606fe810c5f670a7cd42df0836b0653c8b37  update-trust.json
+
+`UNINSTALL.txt` is **3,874 B** — the `DBT-P47-002`-corrected text, against the
+3,206 B still sitting in `C:\Program Files\AetherCore` from the 2026-09-02 build.
+
+### The 16 File rows, read out of the MSI's own `File` table
+
+      1  DesktopExe               DesktopComponent            7062528  aethercore-desktop.exe
+      2  ConsentBrokerExe         BrokerComponent              634368  aethercore-consent-broker.exe
+      3  UpdateBrokerExe          UpdateBrokerComponent        738304  aethercore-update-broker.exe
+      4  UpdateTrustJson          UpdateTrustComponent             83  update-trust.json
+      5  InstallHardenerExe       HardenerComponent            273408  aethercore-install-hardener.exe
+      6  MaintenanceServiceExe    ServiceComponent           10708992  aethercore-maintenance-service.exe
+      7  OpenMPRuntimeDll         ServiceComponent             193152  vcomp140.dll
+      8  UninstallNoticeTxt       UninstallNoticeComponent       3874  UNINSTALL.txt
+      9  AetherCtlExe             AetherCtlComponent           4347904  aetherctl.exe
+     10  ModelLicenseApache       ModelLicenseComponent          11358  Apache-2.0.txt
+     11  ModelLicenseQwenNotice   ModelLicenseComponent          11343  Qwen-GGUF-NOTICE.txt
+     12  EmbeddedModelGguf        ModelComponent            1117320736  qwen2.5-1.5b-instruct-q4_k_m.gguf
+     13  ModelsManifestJson       ModelComponent                   898  models.manifest.json
+     14  VulnDbJson               VulnDbComponent                 6704  vulndb.json
+     15  VulnDbManifestJson       VulnDbComponent                  142  vulndb.manifest.json
+     16  CisMapJson               VulnDbComponent                 3103  cis_map.json
+    FILE_ROW_COUNT = 16
+
+**The first arch-specific trap, confirmed on the x64 artefact.** Row 7 is
+`vcomp140.dll`, 193,152 B, in `ServiceComponent` — the `$(sys.BUILDARCH)`
+selection picking the **x64** OpenMP runtime. §47.7 proved the same authoring
+picks `libomp140.aarch64.dll` on ARM64. The defect that once hard-coded the ARM64
+file, so x64 could not package at all, is now measured as fixed **on both
+architectures against a built package**, not inferred from source. The
+summary-information template reads **`x64;1033`**.
+
+    ProductCode    {0F9F349D-01C8-B3C2-7242-83B5D29047C9}
+    UpgradeCode    {45598C77-2C32-5BCE-8510-19C7E51EE3B8}
+    ProductVersion 0.1.11          ARPPRODUCTICON ProductIcon.ico
+
+The ProductCode equals the one already installed here, because it is a
+deterministic function of version and architecture. Same version, same
+ProductCode, therefore a **reinstall** — never a major upgrade, as designed.
+
+### The bundle's chain, read out of Burn's own manifest
+
+`wix burn extract` → `manifest.xml`, 6,370 B. Not a string scan of the .exe.
+
+    1. ExePackage   VCRedist
+         DetectCondition   (NOT (VcRuntimeVersion = ""))
+         InstallArguments  /install /quiet /norestart
+         Permanent yes   Vital yes   PerMachine yes
+    2. ExePackage   WebView2EvergreenBootstrapper
+         DetectCondition   ((NOT (WebView2MachineVersion = "")) AND NOT (... = "0.0.0.0")) OR (...)
+         InstallCondition  NOT (WindowsInstallationType ~= "Server Core")
+         InstallArguments  /silent /install
+         Permanent yes   Vital yes   PerMachine yes
+    3. MsiPackage   AetherCoreMsi
+         ProductCode {0F9F349D-01C8-B3C2-7242-83B5D29047C9}   Version 0.1.11
+    CHAIN_PACKAGE_COUNT = 3
+
+**`VCRedist` → `WebView2` → `AetherCoreMsi`, in that order.** EXPECTED met.
+
+    RegistrySearch VcRuntimeSearch  Root=HKLM  Win64=yes
+      Key=SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64  Value=Version
+
+`$(sys.BUILDARCH)` expanded to **`x64`** here where §48.6 read `arm64` out of the
+ARM64 bundle. `Win64="yes"` is what `Bitness="always64"` compiles to, as §48.6
+recorded.
+
+The three payloads Burn actually carries:
+
+    vc_redist.x64.exe               25,635,768 B
+    MicrosoftEdgeWebview2Setup.exe   1,783,000 B
+    AetherCore-0.1.11-x64.msi     1,100,271,616 B
+
+Both prerequisites were fetched from Microsoft and verified before use —
+Authenticode **Valid**, signer `CN=Microsoft Corporation`:
+
+    vc_redist.x64.exe               25,635,768 B  sha256 cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b   ProductVersion 14.44.35211.0
+    MicrosoftEdgeWebview2Setup.exe   1,783,000 B  sha256 17debf797a6c737959bc588236e897936ffac1af5f7e515e674ab32f9edfe719
+
+That WebView2 hash is **byte-identical to the one §48.6 recorded on the ARM64 VM**
+— an independent cross-machine check that neither session was served a
+substituted file.
+
+Bundle registration: `PerMachine=yes`, ARP display name **`AetherCore Setup`**,
+ProviderKey `{C047DFD5-BD01-4BF8-AEAD-54333A6C691F}`. Note that name. The MSI
+inside is authored `Visible="no"`, so a bundle install must register **one** ARP
+entry called `AetherCore Setup`, where an MSI install registers `AetherCore`.
+Item 3 measures what that difference actually costs.
