@@ -167,6 +167,12 @@ pub enum CareError {
     NotResumable { run_id: String, state: String },
     #[error("journal error: {0}")]
     Journal(String),
+    /// DBT-P46-B33: the owner's existing plans could not be read, so what is
+    /// due is unknown. Distinct from `Journal`, which is a failure to RECORD a
+    /// run — this one means the run must not start, and a preview must not
+    /// claim an empty plan.
+    #[error("the plans this run would compose from could not be read: {0}")]
+    PlanSourcesUnavailable(String),
 }
 
 /// Outcome polarity of a finished step. The orchestrator reports what the DOMAIN

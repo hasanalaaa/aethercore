@@ -102,7 +102,11 @@ impl Default for DiagnosticsSnapshot{fn default()->Self{Self{scan_id:String::new
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all="camelCase")]
-pub struct DiagnosticHistoryEntry { pub scan_id:String,pub state:String,pub collected_unix_ms:i64,pub warning_count:u32,pub card_count:u32 }
+// DBT-P46-B4: card_count is Option because a stored snapshot's JSON can fail to
+// parse (corrupted, or written by an incompatible schema version). None means
+// "could not be determined"; Some(0) means a scan that really did produce zero
+// cards. The wire carries the same distinction as has_card_count/card_count.
+pub struct DiagnosticHistoryEntry { pub scan_id:String,pub state:String,pub collected_unix_ms:i64,pub warning_count:u32,pub card_count:Option<u32> }
 
 pub trait Backend:Send+Sync+'static{
     fn hardware(&self, control: CollectorControl)->std::result::Result<HardwareTelemetrySnapshot,CollectorFault>;
@@ -249,7 +253,7 @@ impl DiagnosticEngine{
     }
 
     pub fn snapshot_for_owner(&self,owner_principal_key:&str)->Result<DiagnosticsSnapshot>{let current=self.inner.owner_principal_key.lock().unwrap_or_else(|p|p.into_inner());if current.as_str()!=owner_principal_key{return Err(DiagnosticError::OwnershipMismatch)}let snapshot=self.inner.snapshot.lock().unwrap_or_else(|p|p.into_inner()).clone();drop(current);Ok(snapshot)}
-    pub fn history(&self,owner_principal_key:&str,limit:usize)->Result<Vec<DiagnosticHistoryEntry>>{self.inner.db.diagnostic_snapshots_for_owner(owner_principal_key,limit).map_err(|e|DiagnosticError::Persistence(e.to_string())).map(|rows|rows.into_iter().map(|r|{let card_count=serde_json::from_str::<DiagnosticsSnapshot>(&r.snapshot_json).ok().map(|s|s.cards.len() as u32).unwrap_or(0);DiagnosticHistoryEntry{scan_id:r.snapshot_id,state:r.state,collected_unix_ms:r.collected_unix_ms,warning_count:r.warning_count,card_count}}).collect())}
+    pub fn history(&self,owner_principal_key:&str,limit:usize)->Result<Vec<DiagnosticHistoryEntry>>{self.inner.db.diagnostic_snapshots_for_owner(owner_principal_key,limit).map_err(|e|DiagnosticError::Persistence(e.to_string())).map(|rows|rows.into_iter().map(|r|{let card_count=serde_json::from_str::<DiagnosticsSnapshot>(&r.snapshot_json).ok().map(|s|s.cards.len() as u32);DiagnosticHistoryEntry{scan_id:r.snapshot_id,state:r.state,collected_unix_ms:r.collected_unix_ms,warning_count:r.warning_count,card_count}}).collect())}
 }
 
 fn is_hardware_fault_provider(provider:&str)->bool{
@@ -329,7 +333,7 @@ fn run(inner:Arc<Inner>,owner_principal_key:String){
     }
     let storage=hardware.as_ref().map(|h|h.storage.clone()).unwrap_or_default();
     let memory=hardware.as_ref().and_then(|h|h.memory.clone());
-    let event_window_days=crash.as_ref().map(|c| if c.event_window_days == 0 { aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS } else { c.event_window_days }).unwrap_or(0);
+    let event_window_days=crash.as_ref().map(|c| if c.event_window_days == 0 { aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS } else { c.event_window_days }).unwrap_or(aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS);
     let events=crash.as_ref().map(|c|c.events.clone()).unwrap_or_default();
     let crashes=crash.as_ref().map(|c|c.crashes.clone()).unwrap_or_default();
     let cards=build_cards_with_availability(&storage,memory.as_ref(),&events,&crashes,crash.is_some(),event_window_days);
@@ -507,7 +511,10 @@ fn build_cards_with_availability(
         let nearby_whea = events
             .iter()
             .filter(|e| e.provider.eq_ignore_ascii_case("Microsoft-Windows-WHEA-Logger"))
-            .filter(|e| (e.recorded_unix_ms - c.recorded_unix_ms).abs() <= 10 * 60 * 1000)
+            // DBT-P46-B6: a dump whose mtime could not be read has no time to
+            // correlate against, so it correlates with nothing — rather than
+            // being compared against a fabricated epoch-0 timestamp.
+            .filter(|e| c.recorded_unix_ms.is_some_and(|crash_ms| (e.recorded_unix_ms - crash_ms).abs() <= 10 * 60 * 1000))
             .collect::<Vec<_>>();
         let mut evidence = vec![
             format!("Dump: {}", c.dump_file),
@@ -575,11 +582,42 @@ mod tests{
     fn start_scan_leased(engine:&DiagnosticEngine,owner:&str)->Result<DiagnosticsSnapshot>{let budget=ReadBudgetManager::new(4);let lease=budget.try_acquire(ReadWorkload::Diagnostics).expect("read budget lease");engine.start_scan_with_lease(owner,lease)}
     struct Mock{h:HardwareTelemetrySnapshot,c:CrashDiagnosticsSnapshot}impl Backend for Mock{fn hardware(&self,_control:CollectorControl)->std::result::Result<HardwareTelemetrySnapshot,CollectorFault>{Ok(self.h.clone())}fn crashes(&self,_control:CollectorControl)->std::result::Result<CrashDiagnosticsSnapshot,CollectorFault>{Ok(self.c.clone())}}
     struct PartialMock; impl Backend for PartialMock { fn hardware(&self,_control:CollectorControl)->std::result::Result<HardwareTelemetrySnapshot,CollectorFault>{Err(CollectorFault::new("mock-hardware","collect",FaultKind::Unavailable,"storage provider unavailable"))} fn crashes(&self,_control:CollectorControl)->std::result::Result<CrashDiagnosticsSnapshot,CollectorFault>{Ok(CrashDiagnosticsSnapshot::default())} }
-    fn db()->(Arc<Database>,std::path::PathBuf){let p=std::env::temp_dir().join(format!("aethercore-diag-{}.db",Uuid::new_v4()));(Arc::new(Database::open(&p).unwrap()),p)}
+    struct CrashUnavailableMock; impl Backend for CrashUnavailableMock { fn hardware(&self,_control:CollectorControl)->std::result::Result<HardwareTelemetrySnapshot,CollectorFault>{Ok(HardwareTelemetrySnapshot::default())} fn crashes(&self,_control:CollectorControl)->std::result::Result<CrashDiagnosticsSnapshot,CollectorFault>{Err(CollectorFault::new("mock-crash","collect",FaultKind::Unavailable,"crash provider unavailable"))} }
+    // DBT-P42-013: this handed back a PathBuf that 7 of the 8 callers removed by
+    // hand at the end of the test — leaving the 8th, plus every panicking run,
+    // plus the sqlite -wal/-shm sidecars, behind in %TEMP%. The whole directory
+    // now dies with the test.
+    fn db()->(Arc<Database>,tempfile::TempDir){let dir=tempfile::tempdir().expect("temp dir");let p=dir.path().join(format!("aethercore-diag-{}.db",Uuid::new_v4()));(Arc::new(Database::open(&p).unwrap()),dir)}
     #[test]fn no_whea_never_becomes_ram_healthy(){let cards=build_cards(&[],&MemoryTelemetry::default(),&[],&[]);let c=cards.iter().find(|c|c.card_id=="memory:no-logged-errors").unwrap();assert!(c.summary.contains("does not prove RAM is fault-free"));}
     #[test]fn critical_storage_card_uses_backup_first_guidance(){let mut d=StorageDeviceTelemetry{device_id:"0".into(),friendly_name:"Disk".into(),severity:"ActionRequired".into(),summary:"errors".into(),reasons:vec!["uncorrected".into()],..Default::default()};let cards=build_cards(&[d.clone()],&MemoryTelemetry::default(),&[],&[]);assert!(cards[0].actions[0].contains("Back up"));d.severity="Normal".into();assert!(!build_cards(&[d],&MemoryTelemetry::default(),&[],&[]).iter().any(|c|c.domain=="Storage"));}
-    #[test]fn scan_persists_history(){let(db,p)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(Mock{h:HardwareTelemetrySnapshot::default(),c:CrashDiagnosticsSnapshot::default()}));start_scan_leased(&e,OWNER).unwrap();for _ in 0..100{if !e.snapshot().state.running(){break}std::thread::sleep(std::time::Duration::from_millis(10));}assert!(!e.history(OWNER,10).unwrap().is_empty());drop(e);drop(db);let _=std::fs::remove_file(p);}    #[test]fn partial_collector_failure_is_honest_and_persisted(){let(db,p)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(PartialMock));start_scan_leased(&e,OWNER).unwrap();for _ in 0..100{if !e.snapshot().state.running(){break}std::thread::sleep(std::time::Duration::from_millis(10));}let s=e.snapshot();assert_eq!(s.state,ScanState::Partial);assert!(s.warnings.iter().any(|w|w.contains("Hardware telemetry")));assert!(!e.history(OWNER,10).unwrap().is_empty());drop(e);drop(db);let _=std::fs::remove_file(p);}
-    #[test]fn diagnostic_snapshot_is_principal_bound(){let(db,p)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(Mock{h:HardwareTelemetrySnapshot::default(),c:CrashDiagnosticsSnapshot::default()}));start_scan_leased(&e,OWNER).unwrap();let other="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";assert!(matches!(e.snapshot_for_owner(other),Err(DiagnosticError::OwnershipMismatch)));drop(e);drop(db);let _=std::fs::remove_file(p);}
+    #[test]fn scan_persists_history(){let(db,_tmp)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(Mock{h:HardwareTelemetrySnapshot::default(),c:CrashDiagnosticsSnapshot::default()}));start_scan_leased(&e,OWNER).unwrap();for _ in 0..100{if !e.snapshot().state.running(){break}std::thread::sleep(std::time::Duration::from_millis(10));}assert!(!e.history(OWNER,10).unwrap().is_empty());drop(e);drop(db);}    #[test]fn partial_collector_failure_is_honest_and_persisted(){let(db,_tmp)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(PartialMock));start_scan_leased(&e,OWNER).unwrap();for _ in 0..100{if !e.snapshot().state.running(){break}std::thread::sleep(std::time::Duration::from_millis(10));}let s=e.snapshot();assert_eq!(s.state,ScanState::Partial);assert!(s.warnings.iter().any(|w|w.contains("Hardware telemetry")));assert!(!e.history(OWNER,10).unwrap().is_empty());drop(e);drop(db);}
+    // DBT-P46-B5: when the crash provider fails entirely (crash=None), the live
+    // scan path defaulted event_window_days to a bare 0 instead of
+    // DEFAULT_EVENT_WINDOW_DAYS — the same constant this file already
+    // substitutes two lines up when crash *ran* but reported a 0-day window.
+    // "collector didn't run" and "collector ran and reported nothing" must
+    // not silently share a value that reads as a real window in UI text
+    // ("...in the last 0 days").
+    #[test]fn crash_provider_failure_defaults_the_window_not_to_zero(){let(db,_tmp)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(CrashUnavailableMock));start_scan_leased(&e,OWNER).unwrap();for _ in 0..100{if !e.snapshot().state.running(){break}std::thread::sleep(std::time::Duration::from_millis(10));}let s=e.snapshot();assert_eq!(s.state,ScanState::Partial);assert_eq!(s.event_window_days,aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS,"a failed crash provider must not report a 0-day event window");drop(e);drop(db);}
+    // DBT-P46-B4. Hasan's wire-contract decision (§46.15): has_card_count means
+    // "the value was determined", NOT "the value is non-zero" — so the case that
+    // matters most is a VALID snapshot that genuinely has zero cards vs. a
+    // snapshot whose stored JSON cannot be parsed at all. Before the fix both
+    // reported card_count: 0 with nothing to tell them apart.
+    #[test]fn a_real_zero_card_scan_is_distinguishable_from_an_unparseable_one(){
+        let(db,_tmp)=db();
+        let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(Mock{h:HardwareTelemetrySnapshot::default(),c:CrashDiagnosticsSnapshot::default()}));
+        let empty_but_real=DiagnosticsSnapshot::default();
+        db.save_diagnostic_snapshot(&aethercore_persistence::DiagnosticSnapshotRecord{snapshot_id:"real-zero".into(),owner_principal_key:OWNER.into(),state:"Ready".into(),collected_unix_ms:2,warning_count:0,snapshot_json:serde_json::to_string(&empty_but_real).unwrap()}).unwrap();
+        db.save_diagnostic_snapshot(&aethercore_persistence::DiagnosticSnapshotRecord{snapshot_id:"unparseable".into(),owner_principal_key:OWNER.into(),state:"Ready".into(),collected_unix_ms:1,warning_count:0,snapshot_json:"{ this is not valid json".into()}).unwrap();
+        let entries=e.history(OWNER,10).unwrap();
+        let real=entries.iter().find(|x|x.scan_id=="real-zero").expect("the real-zero row");
+        let broken=entries.iter().find(|x|x.scan_id=="unparseable").expect("the unparseable row");
+        assert_eq!(real.card_count,Some(0),"a scan that genuinely produced zero cards must report a determined zero");
+        assert_eq!(broken.card_count,None,"an unparseable stored snapshot must not report zero cards as if it had been measured");
+        drop(e);drop(db);
+    }
+    #[test]fn diagnostic_snapshot_is_principal_bound(){let(db,_tmp)=db();let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(Mock{h:HardwareTelemetrySnapshot::default(),c:CrashDiagnosticsSnapshot::default()}));start_scan_leased(&e,OWNER).unwrap();let other="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";assert!(matches!(e.snapshot_for_owner(other),Err(DiagnosticError::OwnershipMismatch)));drop(e);drop(db);}
     #[test]fn unavailable_event_source_never_becomes_no_logged_errors(){let cards=build_cards_with_availability(&[],Some(&MemoryTelemetry::default()),&[],&[],false,0);assert!(cards.iter().any(|c|c.card_id=="memory:whea-unavailable"));assert!(!cards.iter().any(|c|c.card_id=="memory:no-logged-errors"));}
 
     #[test]
@@ -598,7 +636,7 @@ mod tests{
 
     #[test]
     fn nested_provider_faults_are_preserved_in_the_diagnostic_snapshot(){
-        let(db,p)=db();
+        let(db,_tmp)=db();
         let mut hardware=HardwareTelemetrySnapshot::default();
         hardware.provider_faults.push(CollectorFaultRecord::new(
             "hardware-telemetry", "nvme-health-ioctl", FaultKind::MalformedResponse, "fault injection",
@@ -613,7 +651,7 @@ mod tests{
         let s=e.snapshot();
         assert!(s.provider_faults.iter().any(|fault|fault.operation=="nvme-health-ioctl"));
         assert!(s.provider_faults.iter().any(|fault|fault.operation=="eventlog.render"));
-        drop(e);drop(db);let _=std::fs::remove_file(p);
+        drop(e);drop(db);
     }
 
 
@@ -628,7 +666,7 @@ mod tests{
 
     #[test]
     fn scan_runtime_failure_marks_collecting_snapshot_failed(){
-        let(db,p)=db();
+        let(db,_tmp)=db();
         let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(Mock{h:HardwareTelemetrySnapshot::default(),c:CrashDiagnosticsSnapshot::default()}));
         {
             let mut snapshot=e.inner.snapshot.lock().unwrap_or_else(|poison|poison.into_inner());
@@ -638,19 +676,19 @@ mod tests{
         let snapshot=e.snapshot();
         assert_eq!(snapshot.state,ScanState::Failed);
         assert!(snapshot.provider_faults.iter().any(|fault|fault.operation=="scan.run"&&fault.kind=="Internal"));
-        drop(e);drop(db);let _=std::fs::remove_file(p);
+        drop(e);drop(db);
     }
 
     #[test]
     fn provider_panic_is_contained_and_persisted_as_typed_fault(){
-        let(db,p)=db();
+        let(db,_tmp)=db();
         let e=DiagnosticEngine::with_backend(db.clone(),Arc::new(PanicHardwareMock));
         start_scan_leased(&e,OWNER).unwrap();
         for _ in 0..100{if !e.snapshot().state.running(){break}std::thread::sleep(std::time::Duration::from_millis(10));}
         let s=e.snapshot();
         assert_eq!(s.state,ScanState::Partial);
         assert!(s.provider_faults.iter().any(|fault|fault.kind=="Internal"));
-        drop(e);drop(db);let _=std::fs::remove_file(p);
+        drop(e);drop(db);
     }
 
 }

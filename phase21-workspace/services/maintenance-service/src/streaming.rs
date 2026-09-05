@@ -487,8 +487,11 @@ pub(crate) fn watch_driver_install(ctx: ServiceContext, owner: String, plan_id: 
             match ctx.installer.status(&owner, Some(&plan_id)) {
                 Ok(Some(v)) => {
                     let terminal = durable_mutation_released(&ctx, &owner, &plan_id, true);
+                    // DBT-P46-B16: {:?} rather than {} so the dedup signature
+                    // distinguishes None (never determined) from Some(0) — a
+                    // transition between the two is a real change to publish.
                     let sig = format!(
-                        "{}:{}:{}:{}:{}",
+                        "{}:{}:{}:{:?}:{}",
                         v.plan_state, v.stage, v.overall_percent, v.bytes_downloaded, v.detail
                     );
                     if sig != last {

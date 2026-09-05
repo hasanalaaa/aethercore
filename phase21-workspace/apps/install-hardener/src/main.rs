@@ -6,8 +6,9 @@ use std::{
     process::{Command, Output},
 };
 
-const SERVICE_NAME: &str = "AetherCoreMaintenance";
-const SERVICE_PRINCIPAL: &str = r"NT SERVICE\AetherCoreMaintenance";
+// DBT-P46-D1: the third independent declaration of the service name, and the
+// second full re-typing of its account, both now derived from one decider.
+use aethercore_product_identity::{service_principal, PRODUCT_NAME, SERVICE_NAME};
 const SERVICE_SDDL: &str = "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)";
 const MACHINE_MUTATION_LOCK_RELATIVE_PATH: &str = r"state\machine-mutation.lock";
 #[cfg(windows)]
@@ -25,8 +26,57 @@ fn main() -> anyhow::Result<()> {
     let _exe = args.next();
     match (args.next(), args.next()) {
         (Some(mode), None) if mode == OsStr::new("apply") => apply(),
-        _ => anyhow::bail!("usage: aethercore-install-hardener.exe apply"),
+        (Some(mode), None) if mode == OsStr::new("purge-data") => purge_data(),
+        _ => anyhow::bail!("usage: aethercore-install-hardener.exe apply|purge-data"),
     }
+}
+
+#[cfg(windows)]
+/// Deletes `%ProgramData%\AetherCore` in full, on uninstall, AFTER the service is gone.
+///
+/// WHY THIS IS NOT `util:RemoveFolderEx`. That was the first implementation and it
+/// failed a gate. RemoveFolderEx enumerates the tree and injects RemoveFile rows
+/// before CostInitialize, and Windows Installer then hard-fails at InstallValidate
+/// with error 2318 if any file it snapshotted has since disappeared. The maintenance
+/// service is still RUNNING at that point in an uninstall — StopServices does not run
+/// until the execute sequence — and it is still writing `logs\service.jsonl`. So the
+/// snapshot is taken against a live writer, and the uninstall becomes a race it can
+/// lose. Observed: exit 1603, `Error 2318: File does not exist:
+/// C:\ProgramData\AetherCore\logs\service.jsonl`, with the whole product left behind.
+///
+/// Deleting after DeleteServices is the only ordering that cannot race. It is
+/// idempotent by construction: an absent directory is success, not an error.
+///
+/// Like `apply`, this takes NO path from its command line. The directory is derived
+/// from %ProgramData% through the same trusted-path helpers, and a reparse point
+/// anywhere in the tree is refused rather than followed — a low-privilege junction
+/// planted under here must never turn an uninstall into a recursive delete somewhere
+/// else.
+fn purge_data() -> anyhow::Result<()> {
+    let program_data = std::env::var_os("ProgramData")
+        .ok_or_else(|| anyhow::anyhow!("ProgramData is not defined"))?;
+    let data_dir = trusted_child(PathBuf::from(program_data), PRODUCT_NAME)?;
+    if !data_dir.exists() {
+        return Ok(());
+    }
+    reject_reparse_tree(&data_dir)?;
+    // One retry: the service has just been deleted and a handle can still be closing.
+    for attempt in 0..2 {
+        match std::fs::remove_dir_all(&data_dir) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                if attempt == 1 {
+                    return Err(anyhow::anyhow!(
+                        "could not remove {}: {error}",
+                        data_dir.display()
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -43,8 +93,8 @@ fn apply() -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("ProgramW6432/ProgramFiles is not defined"))?;
     let program_data = std::env::var_os("ProgramData")
         .ok_or_else(|| anyhow::anyhow!("ProgramData is not defined"))?;
-    let bin_dir = trusted_child(PathBuf::from(program_files), "AetherCore")?;
-    let data_dir = trusted_child(PathBuf::from(program_data), "AetherCore")?;
+    let bin_dir = trusted_child(PathBuf::from(program_files), PRODUCT_NAME)?;
+    let data_dir = trusted_child(PathBuf::from(program_data), PRODUCT_NAME)?;
     if !bin_dir.is_dir() || !data_dir.is_dir() {
         anyhow::bail!("installer-created AetherCore directories are missing");
     }
@@ -54,6 +104,8 @@ fn apply() -> anyhow::Result<()> {
     reject_reparse_tree(&bin_dir)?;
     reject_reparse_tree(&data_dir)?;
     let mutation_lock = ensure_mutation_lock_file(&data_dir)?;
+
+    let principal = service_principal();
 
     // These are fixed, non-user-controlled SCM operations. The helper is intentionally not a
     // general command runner and accepts no paths or service names on its command line.
@@ -73,7 +125,7 @@ fn apply() -> anyhow::Result<()> {
             "*S-1-5-18:(OI)(CI)F",       // LocalSystem
             "*S-1-5-32-544:(OI)(CI)F",  // Administrators
             "*S-1-5-32-545:(OI)(CI)RX", // Users: read/execute only
-            &format!("{SERVICE_PRINCIPAL}:(OI)(CI)RX"),
+            &format!("{principal}:(OI)(CI)RX"),
         ],
     )?;
     run_icacls(
@@ -82,7 +134,7 @@ fn apply() -> anyhow::Result<()> {
         &[
             "*S-1-5-18:(OI)(CI)F",
             "*S-1-5-32-544:(OI)(CI)F",
-            &format!("{SERVICE_PRINCIPAL}:(OI)(CI)F"),
+            &format!("{principal}:(OI)(CI)F"),
         ],
     )?;
     // Give the authority file its own protected ACL so later parent drift cannot silently widen
@@ -93,7 +145,7 @@ fn apply() -> anyhow::Result<()> {
         &[
             "*S-1-5-18:F",
             "*S-1-5-32-544:F",
-            &format!("{SERVICE_PRINCIPAL}:F"),
+            &format!("{principal}:F"),
         ],
     )?;
 

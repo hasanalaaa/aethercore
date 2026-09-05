@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: AetherCore.aetherctl
+PackageVersion: 0.0.0
+PackageLocale: en-US
+Publisher: AetherCore
+PublisherUrl: PENDING_PUBLISHER_URL
+PackageName: aetherctl
+License: Proprietary
+ShortDescription: Headless command surface for AetherCore system maintenance and diagnostics.
+Description: |-
+  aetherctl is the terminal front end for AetherCore. It runs entirely on the
+  local machine: no account, no sign-in, no telemetry and no network at rest.
+  Installed on its own it provides the offline surface - self-check, capability
+  reporting, CIS compliance auditing, offline release and update verification.
+  The scanning, optimisation and repair verbs additionally require the AetherCore
+  maintenance service, which ships with the full desktop product; without it they
+  return exit code 3 and a typed ServiceUnreachable envelope rather than hanging.
+Tags:
+  - cli
+  - diagnostics
+  - maintenance
+  - offline
+  - compliance
+  - cis
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

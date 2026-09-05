@@ -11,12 +11,11 @@ $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 if ($env:OS -ne 'Windows_NT') { throw 'AetherCore production release builds must run on Windows.' }
 
+$__canonicalVersion = & "$PSScriptRoot\Get-ProductVersion.ps1"
 if (-not $Version) {
-    $cargoToml = Get-Content 'Cargo.toml' -Raw
-    if ($cargoToml -notmatch '(?ms)\[workspace\.package\].*?version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"') {
-        throw 'Unable to read workspace package version.'
-    }
-    $Version = $Matches[1]
+    $Version = $__canonicalVersion
+} elseif ($Version -ne $__canonicalVersion) {
+    throw "Requested version $Version disagrees with Cargo.toml $__canonicalVersion. The product version has ONE source: bump [workspace.package].version."
 }
 if (-not (Test-Path 'Cargo.lock') -or -not (Test-Path 'pnpm-lock.yaml') -or -not (Test-Path 'release\dependency-locks.sha256') -or -not (Test-Path 'release\dependency-manifests.sha256') -or -not (Test-Path 'release\dependency-freeze.json')) {
     throw 'Release requires approved lockfiles plus release/dependency-locks.sha256, release/dependency-manifests.sha256, and release/dependency-freeze.json. Run freeze-dependencies.ps1 on the trusted freeze workstation first.'
@@ -54,7 +53,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Svelte/TypeScript validation failed.' }
 & pnpm --dir apps/ui build
 if ($LASTEXITCODE -ne 0) { throw 'UI production build failed.' }
 
-& cargo build --locked --release -p aethercore-maintenance-service -p aethercore-consent-broker -p aethercore-update-broker -p aethercore-install-hardener
+& cargo build --locked --release -p aethercore-maintenance-service -p aethercore-consent-broker -p aethercore-update-broker -p aethercore-install-hardener -p aetherctl
 if ($LASTEXITCODE -ne 0) { throw 'Native privileged component build failed.' }
 Push-Location (Join-Path $Root 'apps\desktop')
 try {
@@ -63,7 +62,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Desktop Tauri build failed.' }
 } finally { Pop-Location }
 
-foreach ($name in @('aethercore-desktop.exe','aethercore-maintenance-service.exe','aethercore-consent-broker.exe','aethercore-update-broker.exe','aethercore-install-hardener.exe')) {
+foreach ($name in @('aethercore-desktop.exe','aethercore-maintenance-service.exe','aethercore-consent-broker.exe','aethercore-update-broker.exe','aethercore-install-hardener.exe','aetherctl.exe')) {
     Copy-Item (Join-Path $Root "target\release\$name") (Join-Path $Payload $name) -Force
 }
 
@@ -72,6 +71,8 @@ $trustSource = if ($UpdateTrustPath) { (Resolve-Path $UpdateTrustPath).Path } el
 & "$PSScriptRoot\validate-update-trust.ps1" -Path $trustSource -RequireEnabled:$RequireSigning
 if ($LASTEXITCODE -ne 0) { throw 'Update trust validation failed.' }
 Copy-Item $trustSource (Join-Path $Payload 'update-trust.json') -Force
+# P37 Stage 2: the plain-language uninstall statement, installed beside the product.
+Copy-Item (Join-Path $Root 'release\UNINSTALL.txt') (Join-Path $Payload 'UNINSTALL.txt') -Force
 
 & "$PSScriptRoot\verify-pe-hardening.ps1" -Path (Get-ChildItem $Payload -Filter '*.exe' | Select-Object -ExpandProperty FullName)
 if ($LASTEXITCODE -ne 0) { throw 'PE hardening verification failed.' }

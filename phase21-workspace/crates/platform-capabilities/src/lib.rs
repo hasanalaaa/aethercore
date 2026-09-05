@@ -1,7 +1,7 @@
 //! Phase 26 — Universal Platform Foundation: typed capability matrix.
 //!
-//! CX contract: Windows behavior is FROZEN (everything Native there, byte-for-byte
-//! unchanged); other platforms report their CURRENT reality honestly. `NotAvailable`
+//! CX contract: Windows workstation behavior stays Native; Server SKUs report their
+//! CURRENT reality honestly. `NotAvailable`
 //! is a first-class typed answer — this crate NEVER simulates an unavailable capability.
 
 use serde::{Deserialize, Serialize};
@@ -93,6 +93,135 @@ pub enum Platform {
     Linux,
 }
 
+/// Windows product family used to select the SKU-aware capability table.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WindowsSku {
+    Workstation,
+    Server,
+    ServerCore,
+    Unknown,
+}
+
+/// Classifies the documented ProductType/InstallationType registry values.
+/// DBT-P46-B26: `installation_type` is `None` when the registry value could not
+/// be read. It is the entire basis of the Server / Server Core split, so an
+/// unread value answers `Unknown` there rather than guessing the SKU that has a
+/// console. A workstation's classification does not consult it at all, so a
+/// failed read must not degrade that answer.
+pub fn classify_windows_sku(product_type: u32, installation_type: Option<&str>) -> WindowsSku {
+    match product_type {
+        1 => WindowsSku::Workstation,
+        2 | 3 => match installation_type {
+            Some(value) if value.eq_ignore_ascii_case("server core") => WindowsSku::ServerCore,
+            Some(_) => WindowsSku::Server,
+            None => WindowsSku::Unknown,
+        },
+        _ => WindowsSku::Unknown,
+    }
+}
+
+/// Maps the documented `ProductOptions\ProductType` REG_SZ to the numeric
+/// `wProductType` (`VER_NT_*`) that `classify_windows_sku` expects.
+///
+/// WHY THIS EXISTS. `current_windows_sku()` originally read a `ProductType`
+/// **DWORD** from `SOFTWARE\Microsoft\Windows NT\CurrentVersion`. No such value
+/// exists on Windows -- measured on Windows 11 Pro build 26200, where that name
+/// is ABSENT. The read therefore always failed and the function returned
+/// `WindowsSku::Unknown` on EVERY Windows host, workstation and server alike, so
+/// the SKU-aware capability table introduced with Windows Server admission never
+/// once selected the workstation table on a workstation.
+///
+/// The authoritative registry source for the numeric product type is
+/// `SYSTEM\CurrentControlSet\Control\ProductOptions\ProductType`, a REG_SZ whose
+/// documented values map onto `VER_NT_WORKSTATION` (1),
+/// `VER_NT_DOMAIN_CONTROLLER` (2) and `VER_NT_SERVER` (3) -- the same numbering
+/// Windows Installer exposes as `MsiNTProductType`, which is what
+/// `installer/wix/Product.wxs` already gates on. Anything unrecognised maps to 0,
+/// which `classify_windows_sku` turns into `Unknown`, preserving fail-closed
+/// behaviour.
+pub fn product_type_code(product_type_sz: &str) -> u32 {
+    if product_type_sz.eq_ignore_ascii_case("WinNT") {
+        1
+    } else if product_type_sz.eq_ignore_ascii_case("LanmanNT") {
+        2
+    } else if product_type_sz.eq_ignore_ascii_case("ServerNT") {
+        3
+    } else {
+        0
+    }
+}
+
+/// Reads the live Windows SKU without falling back to a workstation claim.
+pub fn current_windows_sku() -> WindowsSku {
+    #[cfg(windows)]
+    {
+        use std::ffi::c_void;
+        use windows::{
+            core::PCWSTR,
+            Win32::System::Registry::{
+                RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+            },
+        };
+
+        fn wide(value: &str) -> Vec<u16> {
+            value.encode_utf16().chain(std::iter::once(0)).collect()
+        }
+        fn read_sz(subkey: &str, value: &str) -> Option<String> {
+            let key = wide(subkey);
+            let name = wide(value);
+            let mut bytes = 0u32;
+            let status = unsafe {
+                RegGetValueW(
+                    HKEY_LOCAL_MACHINE,
+                    PCWSTR(key.as_ptr()),
+                    PCWSTR(name.as_ptr()),
+                    RRF_RT_REG_SZ,
+                    None,
+                    None,
+                    Some(&mut bytes),
+                )
+            };
+            if status.is_err() || bytes < 2 || bytes > 4096 {
+                return None;
+            }
+            let mut buffer = vec![0u16; (bytes as usize).div_ceil(2)];
+            let status = unsafe {
+                RegGetValueW(
+                    HKEY_LOCAL_MACHINE,
+                    PCWSTR(key.as_ptr()),
+                    PCWSTR(name.as_ptr()),
+                    RRF_RT_REG_SZ,
+                    None,
+                    Some(buffer.as_mut_ptr().cast::<c_void>()),
+                    Some(&mut bytes),
+                )
+            };
+            if status.is_err() {
+                return None;
+            }
+            let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
+            Some(String::from_utf16_lossy(&buffer[..end]))
+        }
+
+        // The numeric wProductType lives in ProductOptions as a REG_SZ, not as a
+        // DWORD under CurrentVersion. See product_type_code() for why.
+        let Some(product_type_sz) =
+            read_sz(r"SYSTEM\CurrentControlSet\Control\ProductOptions", "ProductType")
+        else {
+            return WindowsSku::Unknown;
+        };
+        let product_type = product_type_code(&product_type_sz);
+        let installation_type =
+            read_sz(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallationType");
+        classify_windows_sku(product_type, installation_type.as_deref())
+    }
+    #[cfg(not(windows))]
+    {
+        WindowsSku::Unknown
+    }
+}
+
 impl Platform {
     /// The compiling host's platform.
     pub fn current() -> Self {
@@ -122,12 +251,123 @@ pub mod keys {
     pub const LINUX_NO_DRIVER_STORE: &str = "cap.reason.linuxNoDriverStore";
     pub const LINUX_NO_DISM_SFC_WUA: &str = "cap.reason.linuxNoDismSfcWua";
     pub const LINUX_RESTORE_NA: &str = "cap.reason.linuxRestoreNotAvailable";
+    pub const WINDOWS_SERVER_NO_THERMAL_POWER: &str = "cap.reason.windowsServerNoThermalPower";
+    pub const WINDOWS_SERVER_NO_GAME_MODE: &str = "cap.reason.windowsServerNoGameMode";
+    pub const WINDOWS_SERVER_NO_RESTORE_POINTS: &str = "cap.reason.windowsServerNoRestorePoints";
+    pub const WINDOWS_SERVER_WUA_POLICY: &str = "cap.note.windowsServerWsusPolicy";
+    pub const WINDOWS_SERVER_CORE_NO_CONSOLE: &str = "cap.note.windowsServerCoreNoConsole";
+    /// P42: the platform supports this telemetry, but the collector that
+    /// actually reads it declared a fault or returned nothing on this host.
+    pub const COLLECTOR_REPORTED_NOTHING: &str = "cap.reason.collectorReportedNothing";
+}
+
+/// What the telemetry collectors actually measured on this host, this tick.
+///
+/// §41.15 3.C measured the contradiction this exists to end: `capabilities`
+/// reported **16/16 `native`** in the same session, on the same machine, in which
+/// `telemetry-once` returned `"storage": []` and gpu declared `Unavailable`.
+/// `windows_table()` is a static map with no runtime input, so it answered
+/// `native` on every Windows host in every state — including hosts where the
+/// collectors are genuinely absent. Three deciders, disagreeing (§20.1.1 site 9).
+///
+/// A capability now has two independent parts, and both must hold: the platform
+/// must support it, **and** the collector must have produced something.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TelemetryObservation {
+    pub cpu: bool,
+    pub memory: bool,
+    pub storage: bool,
+    pub gpu: bool,
+}
+
+impl TelemetryObservation {
+    /// Nothing has been observed. Every telemetry capability degrades — this is
+    /// deliberately not the same as `Native`, because "we did not look" must not
+    /// render as "we looked and it works".
+    pub const UNOBSERVED: Self = Self {
+        cpu: false,
+        memory: false,
+        storage: false,
+        gpu: false,
+    };
+
+    fn measured(&self, capability: PlatformCapability) -> Option<bool> {
+        match capability {
+            PlatformCapability::TelemetryCpu => Some(self.cpu),
+            PlatformCapability::TelemetryMemory => Some(self.memory),
+            PlatformCapability::TelemetryStorage => Some(self.storage),
+            PlatformCapability::TelemetryGpu => Some(self.gpu),
+            _ => None,
+        }
+    }
+}
+
+/// Downgrades a platform answer that the collectors contradict.
+///
+/// Only ever downgrades: an observation can take `Native` to `Degraded`, and it
+/// never promotes a `NotAvailable` platform answer into something better.
+fn reconcile(availability: Availability, measured: Option<bool>) -> Availability {
+    match (availability, measured) {
+        (Availability::Native, Some(false)) => Availability::Degraded {
+            note_key: keys::COLLECTOR_REPORTED_NOTHING,
+        },
+        (other, _) => other,
+    }
 }
 
 /// FROZEN Windows table: everything Native, exactly as shipped today.
 fn windows_table() -> Vec<(PlatformCapability, Availability)> {
     use PlatformCapability as C;
     C::ALL.iter().map(|c| (*c, Availability::Native)).collect()
+}
+
+fn windows_server_table(core: bool) -> Vec<(PlatformCapability, Availability)> {
+    use PlatformCapability as C;
+    use keys as k;
+    let n = || Availability::Native;
+    let d = |note| Availability::Degraded { note_key: note };
+    let na = |reason| Availability::NotAvailable { reason_key: reason };
+    vec![
+        (C::TelemetryCpu, n()),
+        (C::TelemetryMemory, n()),
+        (C::TelemetryStorage, n()),
+        (C::TelemetryGpu, n()),
+        (C::ThermalPowerClamp, na(k::WINDOWS_SERVER_NO_THERMAL_POWER)),
+        (C::DriverServicing, n()),
+        (C::SystemRepairDism, n()),
+        (C::SystemRepairSfc, n()),
+        (C::SystemRepairWua, d(k::WINDOWS_SERVER_WUA_POLICY)),
+        (C::ProcessGovernorEcoQos, n()),
+        (C::GameModeProfile, na(k::WINDOWS_SERVER_NO_GAME_MODE)),
+        (C::RestorePoints, na(k::WINDOWS_SERVER_NO_RESTORE_POINTS)),
+        (C::WindowsUpdate, d(k::WINDOWS_SERVER_WUA_POLICY)),
+        (C::TimelineIntelligence, n()),
+        (C::LocalIntelligence, n()),
+        (
+            C::CareOrchestration,
+            if core { d(k::WINDOWS_SERVER_CORE_NO_CONSOLE) } else { n() },
+        ),
+    ]
+}
+
+/// Returns the SKU-aware Windows answer while keeping `available_on(Windows, ..)` frozen for
+/// callers that explicitly request the workstation baseline.
+pub fn available_on_windows_sku(sku: WindowsSku, capability: PlatformCapability) -> Availability {
+    let table = match sku {
+        WindowsSku::Workstation => windows_table(),
+        WindowsSku::Server => windows_server_table(false),
+        WindowsSku::ServerCore => windows_server_table(true),
+        // Unknown Windows must not be overstated as a workstation — nor, since
+        // DBT-P46-B26, as a server that has a console. Unknown cannot rule out
+        // Server Core, and CareOrchestration is the one capability the two
+        // server tables disagree about, so it takes the conservative table.
+        WindowsSku::Unknown => windows_server_table(true),
+    };
+    table
+        .into_iter()
+        .find(|(candidate, _)| *candidate == capability)
+        .map(|(_, availability)| availability)
+        .unwrap_or(Availability::NotAvailable { reason_key: keys::WINDOWS_ONLY_API })
 }
 
 /// macOS table — Phase 27 reality: telemetryCpu/Memory are Native via the libc-backed
@@ -209,10 +449,53 @@ pub fn available_on(platform: Platform, capability: PlatformCapability) -> Avail
 }
 
 /// Full matrix for the running OS (startup log + wire surface).
+/// The **platform's** capability shape: what this OS and SKU can support.
+///
+/// This is not an answer about what was measured. Product surfaces must use
+/// [`matrix_for_current_platform_observed`] so `capabilities` cannot contradict
+/// the collectors — see §20.1.1 site 9 and §41.15 3.C.
 pub fn matrix_for_current_platform() -> Vec<(&'static str, Availability)> {
     let platform = Platform::current();
     PlatformCapability::ALL
         .iter()
-        .map(|c| (c.as_str(), available_on(platform, *c)))
+        .map(|c| {
+            let availability = match platform {
+                Platform::Windows => available_on_windows_sku(current_windows_sku(), *c),
+                _ => available_on(platform, *c),
+            };
+            (c.as_str(), availability)
+        })
         .collect()
+}
+
+/// The platform's shape, reconciled against what the collectors actually
+/// measured. This is the answer the product reports.
+pub fn matrix_for_current_platform_observed(
+    observed: TelemetryObservation,
+) -> Vec<(&'static str, Availability)> {
+    let platform = Platform::current();
+    PlatformCapability::ALL
+        .iter()
+        .map(|c| {
+            let availability = match platform {
+                Platform::Windows => available_on_windows_sku(current_windows_sku(), *c),
+                _ => available_on(platform, *c),
+            };
+            (c.as_str(), reconcile(availability, observed.measured(*c)))
+        })
+        .collect()
+}
+
+/// Stable wire label for the current OS and Windows SKU.
+pub fn current_platform_name() -> &'static str {
+    match Platform::current() {
+        Platform::Windows => match current_windows_sku() {
+            WindowsSku::Workstation => "windows",
+            WindowsSku::Server => "windowsServer",
+            WindowsSku::ServerCore => "windowsServerCore",
+            WindowsSku::Unknown => "windowsUnknownSku",
+        },
+        Platform::Macos => "macos",
+        Platform::Linux => "linux",
+    }
 }

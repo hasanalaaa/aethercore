@@ -44,7 +44,9 @@ mod timeline;
 #[cfg(unix)]
 mod unix_composition;
 
-const SERVICE_NAME: &str = "AetherCoreMaintenance";
+// DBT-P46-D1: one decider, shared with the IPC peer check and the installer
+// hardener, which had each declared this independently.
+use aethercore_product_identity::SERVICE_NAME;
 
 fn main() -> Result<()> {
     #[cfg(windows)]
@@ -120,7 +122,10 @@ mod unix_service {
             pid_path = Some(path);
             let _ = std::io::stdout().flush();
         }
-        for (name, availability) in aethercore_platform_capabilities::matrix_for_current_platform()
+        for (name, availability) in
+            aethercore_platform_capabilities::matrix_for_current_platform_observed(
+                crate::performance::observe_telemetry(),
+            )
         {
             let state = match &availability {
                 aethercore_platform_capabilities::Availability::Native => "native".to_string(),
@@ -206,7 +211,10 @@ mod unix_service {
             let _ = std::io::stdout().flush();
         }
         // Honest capability matrix line (Phase 26 contract).
-        for (name, availability) in aethercore_platform_capabilities::matrix_for_current_platform()
+        for (name, availability) in
+            aethercore_platform_capabilities::matrix_for_current_platform_observed(
+                crate::performance::observe_telemetry(),
+            )
         {
             let state = match &availability {
                 aethercore_platform_capabilities::Availability::Native => "native".to_string(),
@@ -241,7 +249,7 @@ fn product_data_root() -> PathBuf {
     std::env::var_os("ProgramData")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"))
-        .join("AetherCore")
+        .join(aethercore_product_identity::PRODUCT_NAME)
 }
 fn data_path() -> PathBuf {
     product_data_root().join("state").join("aethercore.db")

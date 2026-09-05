@@ -38,7 +38,7 @@ fn dirs_state() -> Option<PathBuf> {
         PathBuf::from(home)
             .join("Library")
             .join("Application Support")
-            .join("AetherCore")
+            .join(aethercore_product_identity::PRODUCT_NAME)
     })
 }
 
@@ -53,8 +53,30 @@ fn dirs_state() -> Option<PathBuf> {
 }
 
 #[cfg(not(unix))]
+/// Windows fleet state is MACHINE state, not per-user state.
+///
+/// This used to be `%APPDATA%\aethercore`, which put the fleet inventory, the
+/// schedules and — worst of the three — the SSH **trust store** inside whichever
+/// account happened to type the command. Measured consequences, all on a real
+/// install:
+///   * running as the service account, the store landed in
+///     `C:\WINDOWS\system32\config\systemprofile\AppData\Roaming\aethercore`,
+///     so an administrator's fleet was invisible to a scheduled `run-due` and to
+///     every other administrator;
+///   * it survived uninstall, because the MSI knows nothing about a roaming
+///     profile — 841 bytes including `fleet\trust\known_hosts` were still there
+///     after a clean removal that reported success.
+/// Which hosts this machine is allowed to reach over SSH is machine policy. It
+/// belongs beside the rest of the machine data, where the uninstaller's
+/// `purge-data` action already removes it.
+///
+/// Consequence, stated rather than discovered later: modifying the fleet now needs
+/// write access to `%ProgramData%\AetherCore`, i.e. administrator. For a verb that
+/// edits the machine's SSH trust store that is the correct requirement, and a
+/// non-admin now gets a typed local-I/O refusal instead of silently writing to a
+/// private store nobody else can see.
 fn dirs_state() -> Option<PathBuf> {
-    std::env::var_os("APPDATA").map(|dir| PathBuf::from(dir).join("aethercore"))
+    std::env::var_os("ProgramData").map(|dir| PathBuf::from(dir).join(aethercore_product_identity::PRODUCT_NAME))
 }
 
 fn load_inventory() -> Result<FleetInventory, CliError> {
@@ -415,14 +437,18 @@ fn execute(_config: &Config, job: FleetJob) -> Result<serde_json::Value, CliErro
                     aethercore_fleet::FleetDomainError::DuplicateScheduleId(sched.schedule_id),
                 ));
             }
-            schedules.push(serde_json::json!({
-                "scheduleId": sched.schedule_id,
-                "scope": sched.scope,
-                "profileId": sched.profile_id,
-                "enabled": sched.enabled,
-                "cadence": {"everyHours": every_hours},
-                "nextRunUnixMs": sched.next_run_unix_ms,
-            }));
+            // Serialize the TYPED value. This used to hand-build the object and it
+            // silently dropped `schema`, which FleetSchedule declares without a
+            // serde default and under deny_unknown_fields - so every schedule this
+            // command wrote was unreadable by `fleet schedule run-due`, which failed
+            // with `fleet.schedulesInvalid: missing field \`schema\``. The unit tests
+            // never caught it because they construct FleetSchedule directly and never
+            // go through this writer. Round-tripping the typed value makes the writer
+            // and the reader incapable of drifting again.
+            schedules.push(serde_json::to_value(&sched).map_err(|error| CliError::LocalIo {
+                message_key: "fleet.schedulesInvalid".to_string(),
+                detail: Some(error.to_string()),
+            })?);
             std::fs::create_dir_all(path.parent().unwrap()).map_err(|error| CliError::LocalIo {
                 message_key: "local.io.write".to_string(),
                 detail: Some(error.to_string()),
@@ -564,11 +590,9 @@ impl aethercore_fleet::SchedulerStore for CliScheduleStore {
             .collect()
     }
 
-    fn save_schedule(&self, schedule: &aethercore_fleet::FleetSchedule) {
-        let updated = match serde_json::to_value(schedule) {
-            Ok(value) => value,
-            Err(_) => return,
-        };
+    fn save_schedule(&self, schedule: &aethercore_fleet::FleetSchedule) -> Result<(), String> {
+        let updated = serde_json::to_value(schedule)
+            .map_err(|error| format!("schedule could not be serialized ({error})"))?;
         let mut raw = self.raw.clone();
         if let Some(slot) = raw.iter_mut().find(|v| {
             v.get("scheduleId").and_then(serde_json::Value::as_str)
@@ -576,48 +600,27 @@ impl aethercore_fleet::SchedulerStore for CliScheduleStore {
         }) {
             *slot = updated;
         }
-        let _ = std::fs::create_dir_all(self.path.parent().unwrap_or(PathBuf::new().as_path()));
-        let _ = std::fs::write(
-            &self.path,
-            serde_json::to_vec_pretty(&raw).unwrap_or_default(),
-        );
+        let bytes = serde_json::to_vec_pretty(&raw)
+            .map_err(|error| format!("schedules could not be serialized ({error})"))?;
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("{} ({error})", parent.display()))?;
+        }
+        std::fs::write(&self.path, bytes)
+            .map_err(|error| format!("{} ({error})", self.path.display()))
     }
 
-    fn append_history(&self, record: &aethercore_fleet::ScheduleRunRecord) -> i64 {
-        let schedule_id = record.schedule_id;
-        let trigger_kind = record.trigger_kind;
-        let started_unix_ms = record.started_unix_ms;
-        let finished_unix_ms = record.finished_unix_ms;
-        let hosts_attempted = record.hosts_attempted;
-        let hosts_ok = record.hosts_ok;
-        let hosts_failed = record.hosts_failed;
-        let outcome_summary = record.outcome_summary;
-        let path = self
-            .path
+    fn append_history(&self, record: &aethercore_fleet::ScheduleRunRecord) -> Result<i64, String> {
+        aethercore_fleet::append_run_history(&self.history_path(), record)
+    }
+}
+
+impl CliScheduleStore {
+    fn history_path(&self) -> PathBuf {
+        self.path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
-            .join("run_history.json");
-        let mut history: Vec<serde_json::Value> = std::fs::read(&path)
-            .ok()
-            .and_then(|raw| serde_json::from_slice(&raw).ok())
-            .unwrap_or_default();
-        let seq = history.len() as i64 + 1;
-        history.push(serde_json::json!({
-            "runSeq": seq,
-            "scheduleId": schedule_id,
-            "triggerKind": trigger_kind,
-            "startedUnixMs": started_unix_ms,
-            "finishedUnixMs": finished_unix_ms,
-            "hostsAttempted": hosts_attempted,
-            "hostsOk": hosts_ok,
-            "hostsFailed": hosts_failed,
-            "outcomeSummary": outcome_summary,
-        }));
-        let _ = std::fs::write(
-            &path,
-            serde_json::to_vec_pretty(&history).unwrap_or_default(),
-        );
-        seq
+            .join("run_history.json")
     }
 }
 
@@ -733,6 +736,28 @@ mod tests {
         })
         .unwrap();
         assert_eq!(value["hosts"][0]["outcome"], "not_verified");
+    }
+
+    #[test]
+    fn what_schedule_add_persists_is_what_run_due_can_read() {
+        // The gate that caught this: `fleet schedule add` then `fleet schedule run-due`
+        // returned exit 5, fleet.schedulesInvalid, "missing field `schema`". The writer
+        // hand-built its JSON and dropped a field the reader requires. This asserts the
+        // round trip the CLI actually performs, which the scheduler_runner tests do not
+        // exercise because they construct FleetSchedule values directly.
+        let sched = aethercore_fleet::FleetSchedule::new(
+            "s1",
+            vec!["h1".into(), "h2".into()],
+            "cis-l1",
+            FleetCadence::EveryHours(24),
+            1_000,
+        )
+        .unwrap();
+        let persisted = serde_json::to_value(&sched).unwrap();
+        assert_eq!(persisted["schema"], "aethercore.fleet.schedule.v1");
+        let read_back: aethercore_fleet::FleetSchedule =
+            serde_json::from_value(persisted).expect("run-due must be able to read this back");
+        assert_eq!(read_back, sched);
     }
 
     #[test]

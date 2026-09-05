@@ -258,8 +258,8 @@ mod tests {
                     health_status: "Healthy".into(),
                     source_severity: "Healthy".into(),
                     uncorrected_read_errors: errors,
-                    uncorrected_write_errors: 0,
-                    nvme_critical_warning: 0,
+                    uncorrected_write_errors: Some(0),
+                    nvme_critical_warning: Some(0),
                     nvme_media_errors_nonzero: false,
                     wear_percent: Some(10),
                     temperature_c: Some(40),
@@ -269,7 +269,16 @@ mod tests {
                 "state",
             )
         };
-        assert_ne!(machine_state_fingerprint(&[make(0)]), machine_state_fingerprint(&[make(27)]));
+        assert_ne!(
+            machine_state_fingerprint(&[make(Some(0))]),
+            machine_state_fingerprint(&[make(Some(27))])
+        );
+        // DBT-P46-B3: "counter unavailable" is a different machine state from
+        // "counter read zero", and the fingerprint must say so.
+        assert_ne!(
+            machine_state_fingerprint(&[make(Some(0))]),
+            machine_state_fingerprint(&[make(None)])
+        );
     }
 
     #[test]
@@ -310,9 +319,9 @@ mod tests {
                 FactPayload::StorageHealth {
                     health_status: "Healthy".into(),
                     source_severity: "Healthy".into(),
-                    uncorrected_read_errors: 0,
-                    uncorrected_write_errors: 0,
-                    nvme_critical_warning: 0,
+                    uncorrected_read_errors: Some(0),
+                    uncorrected_write_errors: Some(0),
+                    nvme_critical_warning: Some(0),
                     nvme_media_errors_nonzero: false,
                     wear_percent: Some(10),
                     temperature_c: Some(temperature),

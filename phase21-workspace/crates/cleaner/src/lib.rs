@@ -156,7 +156,9 @@ pub struct CleanupExecutionStatus {
     pub skipped_bytes: u64,
     pub started_unix_ms: i64,
     pub updated_unix_ms: i64,
-    pub completed_unix_ms: i64,
+    /// DBT-P46-B17: None while the plan has not completed. See the same field
+    /// on system-repair's RepairExecutionStatus — one shape, four crates.
+    pub completed_unix_ms: Option<i64>,
     pub items: Vec<CleanupItemStatus>,
 }
 
@@ -364,10 +366,12 @@ impl CleanupEngine {
     }
 
     fn snapshot(&self) -> CleanupSnapshot {
+        // DBT-P46-B18: recover a poisoned lock's last-written value instead of
+        // silently discarding it for an empty default.
         self.snapshot
             .read()
-            .map(|snapshot| snapshot.clone())
-            .unwrap_or_default()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     pub fn snapshot_for_owner(&self, owner_principal_key: &str) -> Result<CleanupSnapshot> {
@@ -580,7 +584,7 @@ impl CleanupEngine {
             skipped_bytes,
             started_unix_ms: record.started_unix_ms,
             updated_unix_ms: live.as_ref().map(|value| value.emitted_unix_ms).unwrap_or(record.updated_unix_ms),
-            completed_unix_ms: record.completed_unix_ms.unwrap_or(0),
+            completed_unix_ms: record.completed_unix_ms,
             items,
         }))
     }
@@ -921,5 +925,36 @@ pub(crate) fn cap_files(
         (files, true)
     } else {
         (files, false)
+    }
+}
+
+#[cfg(test)]
+mod dbt_p46_b18_tests {
+    use super::*;
+    use std::sync::RwLock;
+
+    // DBT-P46-B18: same shape as DBT-P46-B8 in system-repair — snapshot() read
+    // a poisoned lock as `.unwrap_or_default()`, discarding the last-known-good
+    // cleanup snapshot. No existing test scaffolding constructs a full
+    // CleanerCoordinator (needs OperationEngine + Database) in this crate, so
+    // this proves the exact recovery mechanism the fix applies.
+    #[test]
+    fn poisoned_snapshot_lock_recovers_the_last_written_value_not_a_default() {
+        let lock: RwLock<CleanupSnapshot> = RwLock::new(CleanupSnapshot {
+            scan_id: "real-scan".into(),
+            ..CleanupSnapshot::default()
+        });
+        let poison_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = lock.write().unwrap();
+            panic!("simulated panic while holding the write lock");
+        }));
+        assert!(poison_result.is_err());
+        assert!(lock.is_poisoned());
+
+        let old_behavior = lock.read().map(|s| s.clone()).unwrap_or_default();
+        assert_eq!(old_behavior.scan_id, "", "documents the bug this fix removes");
+
+        let recovered = lock.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        assert_eq!(recovered.scan_id, "real-scan", "a poisoned lock must recover the last-written value");
     }
 }

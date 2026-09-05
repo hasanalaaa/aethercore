@@ -11,8 +11,8 @@ use aethercore_performance_optimization::{
     ActionKind, ExecutionItem, ExecutionStatus, Plan, Reversibility,
 };
 use aethercore_performance_telemetry::{
-    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfSnapshot, PowerSample,
-    ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
+    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform, PerfSnapshot,
+    PowerSample, ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
 };
 
 pub(crate) fn thermal_reason_proto(value: ThermalThrottleReason) -> v1::ThermalThrottleReason {
@@ -361,8 +361,24 @@ impl PerformanceEngine {
 
     /// Ensures at least one sample exists so snapshot requests are meaningful even before the
     /// background sampler's first tick.
+    /// Ensures the owner's ring holds a reading that is actually current.
+    ///
+    /// **DBT-P42-008.** This read `if self.ring.latest(owner).is_none()`, so the
+    /// ring was seeded exactly once per owner per service lifetime and every
+    /// later `perf snapshot` returned that first reading unchanged. Measured on
+    /// this machine: three calls two seconds apart all returned
+    /// `capturedUnixMs 1788349015839`, byte-identical to the reading §41.15
+    /// recorded **three hours earlier**, from a service that had been up since
+    /// 12:09:29. The background sampler only runs after an explicit `perf start`,
+    /// so for the common case nothing ever refreshed it.
+    ///
+    /// The value returned was real; it was simply not a measurement of *now*,
+    /// which is the same class of defect as DBT-P41-002 — presenting something
+    /// that is not a current reading as if it were. A live sampler running at
+    /// this cadence keeps the ring fresh and this adds no extra tick.
     pub fn ensure_sample(&self, owner: &str, interval_ms: u32) {
-        if self.ring.latest(owner).is_none() {
+        let latest = self.ring.latest(owner).map(|s| s.captured_unix_ms);
+        if sample_is_stale(latest, chrono::Utc::now().timestamp_millis(), interval_ms) {
             let snap = self
                 .platform
                 .sample(std::time::Duration::from_millis(u64::from(interval_ms)));
@@ -412,5 +428,78 @@ impl PerformanceEngine {
 
     pub fn optimization_status(&self, plan_id: &str) -> Option<OptStatus> {
         self.governor.status(plan_id)
+    }
+}
+
+/// One passive sample, reduced to what the collectors measured.
+///
+/// The `capabilities` verb reports through this so it cannot answer `native` for
+/// a subsystem whose collector declared a fault or returned nothing — the
+/// contradiction §41.15 3.C measured (16/16 `native` beside `"storage": []`).
+pub(crate) fn observe_telemetry() -> aethercore_platform_capabilities::TelemetryObservation {
+    let interval =
+        std::time::Duration::from_millis(aethercore_performance_telemetry::MIN_INTERVAL_MS as u64);
+    let measured = aethercore_performance_telemetry::default_platform()
+        .sample(interval)
+        .measured_subsystems();
+    aethercore_platform_capabilities::TelemetryObservation {
+        cpu: measured.cpu,
+        memory: measured.memory,
+        storage: measured.storage,
+        gpu: measured.gpu,
+    }
+}
+
+/// Freshness predicate for [`PerformanceEngine::ensure_sample`], extracted so the
+/// DBT-P42-008 condition is testable without a service, a ring or a clock.
+///
+/// A reading is stale when there is none, when it is older than the requested
+/// interval, or when it is dated in the future (a clock step must not pin a
+/// stale reading in place forever).
+pub(crate) fn sample_is_stale(
+    latest_captured_unix_ms: Option<i64>,
+    now_unix_ms: i64,
+    interval_ms: u32,
+) -> bool {
+    match latest_captured_unix_ms {
+        None => true,
+        Some(captured) => {
+            let age_ms = now_unix_ms - captured;
+            age_ms < 0 || age_ms > i64::from(interval_ms)
+        }
+    }
+}
+
+#[cfg(test)]
+mod dbt_p42_008 {
+    use super::sample_is_stale;
+
+    #[test]
+    fn an_empty_ring_is_stale() {
+        assert!(sample_is_stale(None, 1_788_359_855_093, 1_000));
+    }
+
+    /// The measured case: the reading §41.15 recorded, served three hours later.
+    #[test]
+    fn a_three_hour_old_reading_is_not_a_current_measurement() {
+        assert!(
+            sample_is_stale(Some(1_788_349_015_839), 1_788_359_855_093, 1_000),
+            "a reading 10_839_254 ms old was being returned as a live snapshot"
+        );
+    }
+
+    #[test]
+    fn a_reading_inside_the_requested_interval_is_reused() {
+        let now = 1_788_359_855_093;
+        assert!(!sample_is_stale(Some(now), now, 1_000));
+        assert!(!sample_is_stale(Some(now - 999), now, 1_000));
+        assert!(sample_is_stale(Some(now - 1_001), now, 1_000));
+    }
+
+    /// A clock step backwards must not pin a stale reading in place.
+    #[test]
+    fn a_future_dated_reading_is_stale() {
+        let now = 1_788_359_855_093;
+        assert!(sample_is_stale(Some(now + 60_000), now, 1_000));
     }
 }

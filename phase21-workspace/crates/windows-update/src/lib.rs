@@ -89,8 +89,14 @@ pub struct WuaProgress {
     pub percent: u32,
     pub current_update_index: u32,
     pub current_update_percent: u32,
-    pub bytes_downloaded: u64,
-    pub bytes_total: u64,
+    /// DBT-P46-B16: None when this tick's WUA DECIMAL->u64 conversion failed.
+    /// A real 0 ("nothing transferred yet") and a failed read are different
+    /// facts; the caller keeps the last known value rather than publishing a
+    /// fabricated zero.
+    pub bytes_downloaded: Option<u64>,
+    /// DBT-P46-B16: None when unknown. An unknown total and a zero-length
+    /// download are different facts.
+    pub bytes_total: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

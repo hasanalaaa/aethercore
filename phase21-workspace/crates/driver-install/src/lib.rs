@@ -50,8 +50,12 @@ pub struct InstallStatus {
     pub progress_known: bool,
     pub overall_percent: u32,
     pub current_candidate_id: String,
-    pub bytes_downloaded: u64,
-    pub bytes_total: u64,
+    /// DBT-P46-B16: None means no progress tick ever determined a figure;
+    /// Some(0) means a tick determined that nothing had transferred yet.
+    pub bytes_downloaded: Option<u64>,
+    /// DBT-P46-B16: None means the total size is unknown — a different fact
+    /// from a zero-length download.
+    pub bytes_total: Option<u64>,
     pub detail: String,
     pub reboot_required: bool,
     pub restore_point_verified: bool,
@@ -62,7 +66,9 @@ pub struct InstallStatus {
     pub failure_message: String,
     pub started_unix_ms: i64,
     pub updated_unix_ms: i64,
-    pub completed_unix_ms: i64,
+    /// DBT-P46-B11: None while the install has not completed. See the same
+    /// field on system-repair's RepairExecutionStatus — one shape, four crates.
+    pub completed_unix_ms: Option<i64>,
     pub items: Vec<InstallItemStatus>,
 }
 
@@ -247,12 +253,12 @@ impl DriverInstallCoordinator {
         Ok(Some(InstallStatus {
             plan_id: execution.plan_id.clone(), plan_state: plan.state.as_str().into(), stage: live.as_ref().map(|v|v.stage.clone()).unwrap_or(execution.stage),
             progress_known: live.as_ref().map(|v|v.progress_known).unwrap_or(execution.progress_known), overall_percent: live.as_ref().map(|v|v.overall_percent).unwrap_or(execution.overall_percent),
-            current_candidate_id: live.as_ref().map(|v|v.current_item_id.clone()).unwrap_or(execution.current_candidate_id), bytes_downloaded: live.as_ref().map(|v|v.bytes_completed).unwrap_or(execution.bytes_downloaded), bytes_total: live.as_ref().map(|v|v.bytes_total).unwrap_or(execution.bytes_total), detail: live.as_ref().map(|v|v.detail.clone()).unwrap_or(execution.detail),
+            current_candidate_id: live.as_ref().map(|v|v.current_item_id.clone()).unwrap_or(execution.current_candidate_id), bytes_downloaded: live.as_ref().map(|v|Some(v.bytes_completed)).unwrap_or(execution.bytes_downloaded), bytes_total: live.as_ref().map(|v|Some(v.bytes_total)).unwrap_or(execution.bytes_total), detail: live.as_ref().map(|v|v.detail.clone()).unwrap_or(execution.detail),
             reboot_required: execution.reboot_required, restore_point_verified: execution.restore_point_sequence.is_some(),
             restore_point_sequence: execution.restore_point_sequence.unwrap_or(0), backup_root: execution.backup_root,
             mutation_started: execution.mutation_started, recovery_required: execution.recovery_required,
             failure_message: execution.failure_message, started_unix_ms: execution.started_unix_ms,
-            updated_unix_ms: execution.updated_unix_ms, completed_unix_ms: execution.completed_unix_ms.unwrap_or(0), items,
+            updated_unix_ms: execution.updated_unix_ms, completed_unix_ms: execution.completed_unix_ms, items,
         }))
     }
 
@@ -577,8 +583,14 @@ impl DriverInstallCoordinator {
             .unwrap_or_default();
         // Phase 10: publish every WUA callback to the in-memory telemetry plane first. Durable
         // SQLite remains a crash-safety ledger, not a UI animation transport.
-        let detail = if p.stage==ExecutionStage::Downloading && p.bytes_total>0 { format!("Downloaded {} of {} bytes.",p.bytes_downloaded,p.bytes_total) } else { execution.detail.clone() };
-        self.telemetry.publish(ProgressTelemetry{owner_principal_key:owner_principal_key.into(),plan_id:plan_id.into(),stage:stage.clone(),progress_known:true,overall_percent:p.percent,current_item_id:candidate.clone(),detail:detail.clone(),bytes_completed:p.bytes_downloaded,bytes_total:p.bytes_total,emitted_unix_ms:now});
+        // DBT-P46-B16: only claim a byte figure when this tick actually
+        // determined one. A failed WUA conversion keeps the previous detail
+        // rather than announcing a download that rewound to zero.
+        let detail = match (p.stage==ExecutionStage::Downloading, p.bytes_downloaded, p.bytes_total) {
+            (true, Some(done), Some(total)) if total>0 => format!("Downloaded {done} of {total} bytes."),
+            _ => execution.detail.clone(),
+        };
+        self.telemetry.publish(ProgressTelemetry{owner_principal_key:owner_principal_key.into(),plan_id:plan_id.into(),stage:stage.clone(),progress_known:true,overall_percent:p.percent,current_item_id:candidate.clone(),detail:detail.clone(),bytes_completed:p.bytes_downloaded.or(execution.bytes_downloaded).unwrap_or(0),bytes_total:p.bytes_total.or(execution.bytes_total).unwrap_or(0),emitted_unix_ms:now});
         let percent_delta=execution.overall_percent.abs_diff(p.percent);
         let durable_due=execution.stage!=stage || execution.current_candidate_id!=candidate || percent_delta>=5 || now.saturating_sub(execution.updated_unix_ms)>=2_000;
         if !durable_due { return Ok(()); }
@@ -595,7 +607,7 @@ impl DriverInstallCoordinator {
                 item.stage=execution.stage.clone(); item.progress_known=true; item.progress_percent=p.current_update_percent; item.updated_unix_ms=now; self.db.upsert_install_item(&item)?;
             }
         }
-        if p.stage==ExecutionStage::Downloading { execution.bytes_downloaded=p.bytes_downloaded; execution.bytes_total=p.bytes_total; execution.detail=detail; }
+        if p.stage==ExecutionStage::Downloading { if p.bytes_downloaded.is_some() { execution.bytes_downloaded=p.bytes_downloaded; } if p.bytes_total.is_some() { execution.bytes_total=p.bytes_total; } execution.detail=detail; }
         self.db.upsert_execution(&execution)?;
         Ok(())
     }
@@ -730,8 +742,24 @@ fn drivers_equivalent(actual:&Option<InstalledDriver>, expected:&Option<DriverEv
 fn result_code_success(v:&str)->bool { v=="orcSucceeded" }
 fn now_ms()->i64 { Utc::now().timestamp_millis() }
 fn boot_changed(previous:i64,current:i64)->bool { previous>0 && current>0 && (previous-current).abs()>30_000 }
-fn json_driver_version(raw:&str)->String { serde_json::from_str::<serde_json::Value>(raw).ok().and_then(|v|v.get("version").and_then(|x|x.as_str()).map(str::to_owned)).unwrap_or_default() }
-fn item_status(v:InstallItemRecord)->InstallItemStatus { let before_version=json_driver_version(&v.before_driver_json); let after_version=json_driver_version(&v.after_driver_json); InstallItemStatus { candidate_id:v.candidate_id,instance_id:v.instance_id,title:v.title,stage:v.stage,progress_known:v.progress_known,progress_percent:v.progress_percent,result_code:v.result_code,hresult:v.hresult,reboot_required:v.reboot_required,verified:v.verified,before_version,after_version,before_problem_code:v.before_problem_code,after_problem_code:v.after_problem_code,backup_path:v.backup_path,detail:v.detail } }
+/// DBT-P46-B10: an empty stored record is the normal "no driver was recorded"
+/// case; a record that will not parse is a fault, and the two must not both
+/// collapse into an empty version string.
+fn json_driver_version(raw:&str,which:&str,notes:&mut Vec<String>)->String {
+    if raw.trim().is_empty() { return String::new(); }
+    match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(value)=>value.get("version").and_then(|x|x.as_str()).unwrap_or_default().to_owned(),
+        Err(error)=>{ notes.push(format!("stored {which}-install driver record is unreadable ({error}); its version is unknown, not absent")); String::new() }
+    }
+}
+fn item_status(v:InstallItemRecord)->InstallItemStatus {
+    let mut notes=Vec::new();
+    let before_version=json_driver_version(&v.before_driver_json,"before",&mut notes);
+    let after_version=json_driver_version(&v.after_driver_json,"after",&mut notes);
+    let mut detail=v.detail;
+    for note in notes { if !detail.is_empty() { detail.push('\n'); } detail.push_str(&note); }
+    InstallItemStatus { candidate_id:v.candidate_id,instance_id:v.instance_id,title:v.title,stage:v.stage,progress_known:v.progress_known,progress_percent:v.progress_percent,result_code:v.result_code,hresult:v.hresult,reboot_required:v.reboot_required,verified:v.verified,before_version,after_version,before_problem_code:v.before_problem_code,after_problem_code:v.after_problem_code,backup_path:v.backup_path,detail }
+}
 
 #[cfg(windows)] mod platform { pub fn boot_marker_ms()->Result<i64,String>{ use windows::Win32::System::SystemInformation::GetTickCount64; let uptime=unsafe{GetTickCount64()} as i64; Ok(chrono::Utc::now().timestamp_millis().saturating_sub(uptime)) } }
 #[cfg(not(windows))] mod platform { pub fn boot_marker_ms()->Result<i64,String>{ Err("Windows only".into()) } }
@@ -749,7 +777,7 @@ mod tests {
         fn begin_restore(&self,_:&str)->std::result::Result<RestorePointEvidence,String>{Ok(RestorePointEvidence{sequence_number:7,description:"test".into(),verified_fresh:true})}
         fn end_restore(&self,_:i64,_:&str)->std::result::Result<(),String>{Ok(())} fn cancel_restore(&self,_:i64,_:&str)->std::result::Result<(),String>{Ok(())}
         fn backup_driver(&self,inf:&str,dst:&Path)->std::result::Result<BackupEvidence,String>{Ok(BackupEvidence{source_inf:inf.into(),backup_directory:dst.display().to_string(),manifest_path:"manifest".into(),file_count:1,total_bytes:1,not_applicable:false})}
-        fn execute_wua(&self,ids:&[UpdateIdentity],progress:&mut dyn FnMut(WuaProgress),before:&mut dyn FnMut()->std::result::Result<(),String>)->std::result::Result<WuaExecutionResult,String>{progress(WuaProgress{stage:ExecutionStage::Downloading,percent:50,current_update_index:0,current_update_percent:50,bytes_downloaded:5,bytes_total:10}); before()?; *self.mutation_count.lock().unwrap()+=1; Ok(WuaExecutionResult{result_code:"orcSucceeded".into(),hresult:0,reboot_required:self.reboot,updates:ids.iter().cloned().map(|identity|aethercore_windows_update::WuaUpdateResult{identity,result_code:"orcSucceeded".into(),hresult:0,reboot_required:self.reboot}).collect()})}
+        fn execute_wua(&self,ids:&[UpdateIdentity],progress:&mut dyn FnMut(WuaProgress),before:&mut dyn FnMut()->std::result::Result<(),String>)->std::result::Result<WuaExecutionResult,String>{progress(WuaProgress{stage:ExecutionStage::Downloading,percent:50,current_update_index:0,current_update_percent:50,bytes_downloaded:Some(5),bytes_total:Some(10)}); before()?; *self.mutation_count.lock().unwrap()+=1; Ok(WuaExecutionResult{result_code:"orcSucceeded".into(),hresult:0,reboot_required:self.reboot,updates:ids.iter().cloned().map(|identity|aethercore_windows_update::WuaUpdateResult{identity,result_code:"orcSucceeded".into(),hresult:0,reboot_required:self.reboot}).collect()})}
     }
 
     // Full coordinator integration tests use a service-minted Phase 2 snapshot in the Windows
@@ -774,6 +802,50 @@ mod tests {
         assert_eq!(identities.len(), 1);
         assert_eq!(identities[0].update_id, "shared-update");
         assert_eq!(identities[0].revision, 4);
+    }
+
+    /// DBT-P46-B10: an unreadable stored driver record and a driver that simply
+    /// has no recorded version both produced "". The version string is evidence
+    /// the owner reads to check what the install actually changed, so "we could
+    /// not tell" must not render as "there was none".
+    #[test]
+    fn unreadable_stored_driver_json_is_reported_not_read_as_no_version() {
+        let readable = InstallItemRecord {
+            before_driver_json: r#"{"version":"1.0"}"#.into(),
+            after_driver_json: r#"{"version":"2.0"}"#.into(),
+            detail: "installed".into(),
+            ..InstallItemRecord::default()
+        };
+        let status = item_status(readable);
+        assert_eq!(status.before_version, "1.0");
+        assert_eq!(status.after_version, "2.0");
+        assert_eq!(status.detail, "installed", "a clean read adds no note");
+
+        let no_prior_driver = InstallItemRecord {
+            before_driver_json: String::new(),
+            after_driver_json: r#"{"version":"2.0"}"#.into(),
+            ..InstallItemRecord::default()
+        };
+        let status = item_status(no_prior_driver);
+        assert_eq!(status.before_version, "");
+        assert_eq!(
+            status.detail, "",
+            "no driver recorded before the install is normal, not a fault"
+        );
+
+        let corrupted = InstallItemRecord {
+            before_driver_json: "{not json".into(),
+            after_driver_json: r#"{"version":"2.0"}"#.into(),
+            detail: "installed".into(),
+            ..InstallItemRecord::default()
+        };
+        let status = item_status(corrupted);
+        assert_eq!(status.before_version, "", "there genuinely is no version to show");
+        assert!(
+            status.detail.contains("unreadable") && status.detail.starts_with("installed"),
+            "the reason must reach the owner alongside the existing detail: {}",
+            status.detail
+        );
     }
 
     #[test]

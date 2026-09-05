@@ -83,7 +83,7 @@ pub fn default_endpoint_dir() -> std::path::PathBuf {
         None => std::env::var_os("ProgramData")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from(r"C:\ProgramData"))
-            .join("AetherCore"),
+            .join(aethercore_product_identity::PRODUCT_NAME),
     }
 }
 
@@ -120,7 +120,7 @@ pub fn pid_file_path() -> Option<std::path::PathBuf> {
             std::env::var_os("ProgramData")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| std::path::PathBuf::from(r"C:\ProgramData"))
-                .join("AetherCore")
+                .join(aethercore_product_identity::PRODUCT_NAME)
                 .join("state")
                 .join("aethercore.pid"),
         );

@@ -1,0 +1,73 @@
+AetherCore - what uninstalling removes, and what it keeps
+=========================================================
+
+AetherCore is a local-first product. It has no account, no login and no server
+copy of anything, so uninstalling is the only way anything is deleted - and it
+is meant to be complete. This file states exactly what happens.
+
+
+REMOVED when you uninstall
+--------------------------
+
+  * The program files, in full:            C:\Program Files\AetherCore
+    (all executables, the embedded language model, the offline vulnerability
+    database, the CIS profiles and their licence notices)
+
+  * The Windows service:                   AetherCoreMaintenance
+    stopped, then deregistered. Its named pipe exists only while the service
+    runs, so it goes with it.
+
+  * ALL machine data:                      C:\ProgramData\AetherCore
+    This is deleted in full, including:
+      - state\aethercore.db  - the operation journal and every recorded scan,
+        plan, finding and timeline entry
+      - state\support-signing.key - the local signing key
+      - logs\
+      - support-staging\ - diagnostic bundles that were prepared but never
+        saved anywhere else
+      - recovery\driver-backups\ - the rollback copies taken before each
+        driver install. Once AetherCore is gone there is nothing left that
+        could perform such a rollback, so they are removed with it.
+
+  * The registry keys the product created:
+      - HKLM\SOFTWARE\AetherCore
+      - the Add/Remove Programs entry
+      - HKCU\Software\AetherCore, for the account that ran the uninstall
+        (see the note below)
+
+  * The Start Menu folder.
+
+AetherCore creates no scheduled tasks and no firewall rules, so there are none
+to remove.
+
+
+KEPT - these are yours, and are never touched
+---------------------------------------------
+
+  * Every report, compliance report and diagnostic bundle you exported to a
+    location YOU chose. They stay exactly where you saved them.
+
+    A signed diagnostic bundle stays verifiable after uninstall: verification
+    needs the bundle and the public-key fingerprint you were shown when you
+    exported it, NOT the local signing key. Keep that fingerprint with the
+    bundle.
+
+  * Every change AetherCore made to YOUR system on your instruction - startup
+    items you enabled or disabled, drivers you installed, files you cleaned.
+    Those are changes to Windows, not AetherCore's own data, and uninstalling
+    an application does not reverse them. If you want a driver rolled back, do
+    it before uninstalling.
+
+
+NOTES, stated plainly rather than hidden
+----------------------------------------
+
+  * The HKCU marker is per-user. Windows Installer runs the uninstall in the
+    context of one account and cannot enumerate other users' registry hives.
+    If several people used AetherCore on this machine, a single empty marker
+    value may remain in each of their hives. It holds no data - it is one
+    integer - and Windows removes it with the profile.
+
+  * Uninstall is idempotent. Running it when the service is already stopped,
+    the folder already deleted or the keys already gone completes normally; it
+    does not fail on something that is already absent.

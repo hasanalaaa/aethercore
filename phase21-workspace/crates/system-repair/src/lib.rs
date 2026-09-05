@@ -145,7 +145,10 @@ pub struct RepairExecutionStatus {
     pub verification_state: String,
     pub started_unix_ms: i64,
     pub updated_unix_ms: i64,
-    pub completed_unix_ms: i64,
+    /// DBT-P46-B7: None while the plan has not completed. Previously flattened
+    /// to 0 here, which the wire could not tell apart from a plan that
+    /// completed at unix epoch 0.
+    pub completed_unix_ms: Option<i64>,
     pub steps: Vec<RepairCheck>,
 }
 
@@ -162,6 +165,48 @@ pub trait RepairPlatform: Send + Sync + 'static {
         action: &SystemRepairAction,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()>;
+}
+
+/// Takes one output-reader thread's join result, recording a note instead of an
+/// empty string when the thread panicked.
+///
+/// DBT-P46-B9: `join().unwrap_or_default()` reported a reader thread that
+/// *crashed* as a command that printed nothing. The process exit code is still
+/// a real observation, so the check itself stands — but its detail must say the
+/// stream was lost rather than let silence imply the command was silent.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn joined_stream(
+    joined: std::thread::Result<String>,
+    stream: &str,
+    notes: &mut Vec<String>,
+) -> String {
+    match joined {
+        Ok(text) => text,
+        Err(_) => {
+            notes.push(format!(
+                "{stream} reader thread panicked; that stream was not captured for this check"
+            ));
+            String::new()
+        }
+    }
+}
+
+/// Trims `detail` to at most `limit` bytes, keeping the tail, without splitting
+/// a character.
+///
+/// Adjacent to DBT-P46-B9 and found in the same four lines: the tail used to be
+/// taken at a fixed byte offset. DISM and SFC output is localized, so that
+/// offset can land mid-character — and `String` indexing panics there.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn trim_to_tail(detail: &mut String, limit: usize) {
+    if detail.len() <= limit {
+        return;
+    }
+    let mut start = detail.len() - limit;
+    while !detail.is_char_boundary(start) {
+        start += 1;
+    }
+    detail.drain(..start);
 }
 
 #[cfg(windows)]
@@ -363,10 +408,13 @@ impl RepairCoordinator {
     }
 
     fn assessment(&self) -> RepairAssessment {
+        // DBT-P46-B8: recover a poisoned lock's last-written value rather than
+        // silently discarding it for an empty default — the pattern already
+        // used throughout this codebase (e.g. diagnostic-engine, operation-kernel).
         self.assessment
             .read()
-            .map(|assessment| assessment.clone())
-            .unwrap_or_default()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     pub fn assessment_for_owner(&self, owner_principal_key: &str) -> Result<RepairAssessment> {
@@ -590,7 +638,7 @@ impl RepairCoordinator {
             verification_state: record.verification_state,
             started_unix_ms: record.started_unix_ms,
             updated_unix_ms: live.as_ref().map(|value| value.emitted_unix_ms).unwrap_or(record.updated_unix_ms),
-            completed_unix_ms: record.completed_unix_ms.unwrap_or(0),
+            completed_unix_ms: record.completed_unix_ms,
             steps,
         }))
     }
@@ -986,4 +1034,109 @@ fn update_exec(
     }
     db.upsert_maintenance_execution(&record)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod dbt_p46_b8_tests {
+    use super::*;
+    use std::sync::RwLock;
+
+    // DBT-P46-B8: assessment() read a poisoned lock (left behind by a prior
+    // panic while holding the write lock) as `.unwrap_or_default()` — silently
+    // discarding the last-known-good assessment in favor of an empty one. This
+    // crate has no existing test scaffolding to construct a full RepairEngine
+    // (needs OperationEngine + Database), so this proves the exact recovery
+    // mechanism the fix applies, on the same lock type the real field uses.
+    #[test]
+    fn poisoned_assessment_lock_recovers_the_last_written_value_not_a_default() {
+        let lock: RwLock<RepairAssessment> = RwLock::new(RepairAssessment {
+            assessment_id: "real-assessment".into(),
+            ..RepairAssessment::default()
+        });
+        let poison_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = lock.write().unwrap();
+            panic!("simulated panic while holding the write lock");
+        }));
+        assert!(poison_result.is_err(), "the panic must have actually happened");
+        assert!(lock.is_poisoned(), "the lock must now be poisoned");
+
+        // Old behavior: .read().map(|a| a.clone()).unwrap_or_default()
+        let old_behavior = lock.read().map(|a| a.clone()).unwrap_or_default();
+        assert_eq!(
+            old_behavior.assessment_id, "",
+            "documents the bug this fix removes: a poisoned lock silently became an empty default"
+        );
+
+        // New behavior, as applied in `assessment()`.
+        let recovered = lock.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        assert_eq!(
+            recovered.assessment_id, "real-assessment",
+            "a poisoned lock must recover the last-written value, not silently default"
+        );
+    }
+}
+
+#[cfg(test)]
+mod dbt_p46_b9_tests {
+    use super::*;
+
+    /// DBT-P46-B9. `run_with_accepted_codes` is Windows-only, so this proves
+    /// the exact mechanism the fix applies, against a thread that really does
+    /// panic — the same shape B8's test uses for the same reason.
+    #[test]
+    fn a_panicking_reader_thread_is_reported_not_read_as_silence() {
+        let handle = std::thread::spawn(|| -> String {
+            panic!("simulated panic inside the output reader");
+        });
+        let joined = handle.join();
+        assert!(joined.is_err(), "the reader thread must have actually panicked");
+
+        // Old behavior: join().unwrap_or_default() — a crash became "no output".
+        let mut notes = Vec::new();
+        let text = joined_stream(joined, "stdout", &mut notes);
+        assert_eq!(text, "", "there genuinely is no captured output");
+        assert_eq!(notes.len(), 1, "but the reason must not be lost");
+        assert!(
+            notes[0].contains("stdout") && notes[0].contains("panicked"),
+            "note must name the stream and say it crashed: {}",
+            notes[0]
+        );
+    }
+
+    #[test]
+    fn a_healthy_reader_thread_adds_no_note() {
+        let handle = std::thread::spawn(|| "command output".to_string());
+        let mut notes = Vec::new();
+        assert_eq!(joined_stream(handle.join(), "stdout", &mut notes), "command output");
+        assert!(notes.is_empty());
+    }
+
+    /// Adjacent defect found in the same four lines: the 48_000-byte tail was
+    /// sliced at a fixed byte offset. DISM and SFC output is localized, so that
+    /// offset can land mid-character, and `String` indexing panics there. The
+    /// old expression is written out below to show what this now avoids.
+    #[test]
+    fn tail_truncation_survives_a_multibyte_boundary() {
+        // 2-byte characters then one ASCII byte, so len - 48_000 is odd and
+        // therefore lands inside a character.
+        let mut detail = format!("{}x", "ة".repeat(30_000));
+        assert_eq!(detail.len(), 60_001);
+        assert!(
+            !detail.is_char_boundary(detail.len() - 48_000),
+            "this input must actually land mid-character, or it proves nothing"
+        );
+        trim_to_tail(&mut detail, 48_000);
+        assert!(detail.len() <= 48_000);
+        assert!(
+            detail.chars().all(|c| c == 'ة' || c == 'x'),
+            "no character was cut in half"
+        );
+    }
+
+    #[test]
+    fn tail_truncation_leaves_short_output_alone() {
+        let mut detail = "short".to_string();
+        trim_to_tail(&mut detail, 48_000);
+        assert_eq!(detail, "short");
+    }
 }

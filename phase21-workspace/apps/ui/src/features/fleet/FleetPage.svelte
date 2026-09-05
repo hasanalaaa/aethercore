@@ -32,6 +32,9 @@
     hosts: FleetHostRow[];
     schedules: FleetScheduleRow[];
     scheduleCount: number;
+    // Present only when the schedules could not be read: an empty list plus
+    // this set is "we could not tell", not "you have none" (DBT-P46-B30).
+    schedulesError: string | null;
     sshAvailable: boolean;
   };
   type FleetScheduleRow = {
@@ -451,7 +454,9 @@
         <div class="form-actions"><button class="primary" onclick={saveSchedule} disabled={busy}>{scheduleEditId ? t('fleet.actionScheduleUpdate', locale) : t('fleet.actionScheduleAdd', locale)}</button><button onclick={resetScheduleForm} disabled={busy}>{t('fleet.actionCancel', locale)}</button></div>
       </div>
     {/if}
-    {#if snapshot.schedules.length === 0}
+    {#if snapshot.schedulesError}
+      <p class="form-note schedule-unreadable">{t('fleet.scheduleUnreadable', locale)}<br /><TechnicalText value={snapshot.schedulesError} /></p>
+    {:else if snapshot.schedules.length === 0}
       <p class="form-note">{t('fleet.scheduleEmpty', locale)}</p>
     {:else}
       <div class="schedule-list">
@@ -522,6 +527,9 @@
   .form-actions button.primary { border-color: var(--accent); color: var(--accent); }
   .form-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
   .form-note { font-size: 0.72rem; color: var(--muted-foreground); }
+  /* A fault, not a policy refusal: it carries the attention colour the
+     rest of this page already uses for a real problem. */
+  .form-note.schedule-unreadable { color: #c2791f; }
   .fleet-hint { color: var(--muted-foreground); font-size: 0.82rem; }
   .remote-result { grid-column: 1 / -1; display: grid; gap: 0.25rem; border-inline-start: 3px solid #c2791f; padding: 0.45rem 0.65rem; background: color-mix(in srgb, var(--card) 92%, #c2791f); font-size: 0.78rem; }
   .remote-result.ok { border-inline-start-color: var(--accent); }

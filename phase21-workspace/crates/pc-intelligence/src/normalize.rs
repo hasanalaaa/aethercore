@@ -84,9 +84,11 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
             FactPayload::StorageHealth {
                 health_status: d.windows_health_status.clone(),
                 source_severity: d.severity.clone(),
-                uncorrected_read_errors: r.read_errors_uncorrected.unwrap_or(0),
-                uncorrected_write_errors: r.write_errors_uncorrected.unwrap_or(0),
-                nvme_critical_warning: r.nvme_critical_warning.unwrap_or(0),
+                // DBT-P46-B3: carry the collector's own distinction through
+                // instead of re-defaulting it away one layer downstream of B2.
+                uncorrected_read_errors: r.read_errors_uncorrected.map(u64::from),
+                uncorrected_write_errors: r.write_errors_uncorrected.map(u64::from),
+                nvme_critical_warning: r.nvme_critical_warning,
                 nvme_media_errors_nonzero: nonzero(r.nvme_media_errors.as_deref()),
                 wear_percent: r.wear_percent_used.map(u64::from).or(r.nvme_percentage_used.map(u64::from)),
                 temperature_c: r.temperature_c.map(i64::from),
@@ -130,8 +132,12 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
             Domain::Diagnostics,
             "crash-diagnostics",
             ResourceRef::global("crash", &c.crash_id, "System crash"),
-            c.recorded_unix_ms,
-            Freshness::Recent,
+            // DBT-P46-B6: the dump proves a crash happened; its mtime proves
+            // WHEN. If the mtime could not be read, observe the fact at scan
+            // time and mark it Historical rather than asserting a crash time
+            // (epoch 0) the collector never established.
+            c.recorded_unix_ms.unwrap_or(snapshot.completed_unix_ms),
+            if c.recorded_unix_ms.is_some() { Freshness::Recent } else { Freshness::Historical },
             Confidence::Confirmed,
             FactPayload::Crash { crash_id: c.crash_id.clone(), bugcheck_hex: c.bugcheck_hex.clone() },
             EvidenceKind::CrashRecord,
@@ -157,7 +163,7 @@ pub fn startup(snapshot:&StartupSnapshot)->Vec<SystemFact>{if snapshot.state!=St
 
 pub fn cleanup(snapshot:&CleanupSnapshot)->Vec<SystemFact>{if snapshot.state!=CleanupScanState::Ready{return Vec::new()}snapshot.candidates.iter().map(|c|SystemFact::new(Domain::Cleanup,"cleaner",ResourceRef::global("cleanup-candidate",&c.candidate_id,display(&c.title,"Cleanup opportunity")),snapshot.completed_unix_ms,Freshness::Current,Confidence::Confirmed,FactPayload::CleanupOpportunity{candidate_id:c.candidate_id.clone(),reclaimable_bytes:c.reclaimable_bytes,file_count:c.file_count,requires_confirmation:c.requires_explicit_confirmation},EvidenceKind::CleanupEstimate,format!("bytes={};files={}",c.reclaimable_bytes,c.file_count))).collect()}
 
-pub fn update(snapshot:&UpdateSnapshot, now:i64)->SystemFact{SystemFact::new(Domain::Updates,"update-engine",ResourceRef::global("application","aethercore","AetherCore"),if snapshot.updated_unix_ms>0{snapshot.updated_unix_ms}else{now},Freshness::Current,Confidence::Confirmed,FactPayload::UpdateState{state:format!("{:?}",snapshot.state),current_version:snapshot.current_version.clone(),available_release_id:snapshot.latest_release.as_ref().map(|release|release.release_id.clone()).unwrap_or_default(),update_available:matches!(snapshot.state,UpdateState::Available|UpdateState::Staged|UpdateState::AwaitingConsent),failed:snapshot.state==UpdateState::Failed},EvidenceKind::UpdateState,format!("state={:?};channel={:?}",snapshot.state,snapshot.channel))}
+pub fn update(snapshot:&UpdateSnapshot, now:i64)->SystemFact{SystemFact::new(Domain::Updates,"update-engine",ResourceRef::global("application","aethercore",aethercore_product_identity::PRODUCT_NAME),if snapshot.updated_unix_ms>0{snapshot.updated_unix_ms}else{now},Freshness::Current,Confidence::Confirmed,FactPayload::UpdateState{state:format!("{:?}",snapshot.state),current_version:snapshot.current_version.clone(),available_release_id:snapshot.latest_release.as_ref().map(|release|release.release_id.clone()).unwrap_or_default(),update_available:matches!(snapshot.state,UpdateState::Available|UpdateState::Staged|UpdateState::AwaitingConsent),failed:snapshot.state==UpdateState::Failed},EvidenceKind::UpdateState,format!("state={:?};channel={:?}",snapshot.state,snapshot.channel))}
 
 pub fn limitation(id:&str,state:CollectorState,detail:&str,now:i64)->SystemFact{SystemFact::new(Domain::Diagnostics,"deep-scan",ResourceRef::global("collector",id,id),now,Freshness::Current,Confidence::Confirmed,FactPayload::DiagnosticLimitation{collector:id.into(),state,detail:detail.into()},EvidenceKind::CollectorLimitation,detail)}
 fn display(value:&str,fallback:&str)->String{if value.trim().is_empty(){fallback.into()}else{value.trim().to_owned()}}

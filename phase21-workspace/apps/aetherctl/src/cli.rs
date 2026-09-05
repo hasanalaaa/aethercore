@@ -9,15 +9,34 @@ use std::time::Duration;
 pub const USAGE: &str = "\
 aetherctl -- AetherCore headless command surface
 
+AetherCore inspects, diagnoses and maintains this machine. It runs entirely on
+the machine: no account, no sign-in, no telemetry, and no network at rest. The
+desktop app and this CLI are two front ends over the same local maintenance
+service; anything you can do in the app you can script here.
+
 USAGE: aetherctl [global flags] <command> [subcommand] [command flags]
+
+START HERE
+  aetherctl service detect          is the maintenance service reachable?
+  aetherctl doctor                  one-shot health report for this machine
+  aetherctl scan status             where the current deep scan stands
+  aetherctl --output json doctor    the same thing, as a stable JSON envelope
+
+  Try this now:
+
+    aetherctl --output json service detect
+
+  Read-only commands like these never change the machine. Anything that does
+  mutate is a separate, named verb and says so.
 
 GLOBAL FLAGS (before the command):
   --socket-dir <path>    unix IPC rendezvous directory (default: platform default)
   --timeout-ms <n>       per-request deadline in milliseconds (default: 10000)
   --output <json|text>   output mode (default: text)
   --no-color             disable ANSI emphasis in text mode
+  --lang <en|ar>         message language (default: from the environment)
   --version              print version and exit
-  help                   print this usage block
+  help | --help | -h     print this usage block
 
 OFFLINE COMMANDS (no service required, strictly read-only):
   about | version | capabilities | engine-source
@@ -34,6 +53,17 @@ SERVICE COMMANDS (require the maintenance-service endpoint):
   insights  list | explain [--question <key>] | dismiss --insight-id <id>
   scan      start | cancel --scan-id <id> | status | history [--limit <n>]
 
+FLEET / SERVER (Phase 34; SSH out to hosts you have explicitly trusted):
+  fleet     add --id <id> --name <n> --host <h> [--port <p>] --user <u> [--tag <t>]
+  fleet     list | show --id <id> | remove --id <id>
+  fleet     trust add --id <id> --key-type <t> --public-key <b64> [--fingerprint <f>]
+  fleet     probe [--host <id>]... [--group <tag>]...
+  fleet     audit --profile <cis-l1|cis-l2> [--host <id>]... [--group <tag>]...
+  fleet     schedule add --id <id> --profile <p> --every-hours <n> [--host <id>]...
+  fleet     schedule list | schedule due | schedule run-due
+  A host that is not in the trust store is never contacted: every verb returns
+  outcome not_verified for it rather than opening a connection.
+
 SECURITY COMMANDS (Phase 32; offline unless noted):
   sec       audit [--ssh <cfg>] [--sudoers <f>] [--fs <dir>] [--authlog <f>]
               [--secrets <dir>] [--firewall]   (offline direct, read-only)
@@ -49,6 +79,23 @@ RELEASE / UPDATE AUTHORITY (Phase 35; offline verification is fail-closed):
   release verify --manifest <file> --signature <file> --keyring <file>
   update check | plan | download | verify | stage | status | cancel | rollback
   update offline verify <bundle.zip>
+
+EXIT CODES (stable; script against these, not against the text)
+  0   ok                      5   rejected by the service
+  2   usage error             6   consent required
+  3   service unreachable     7   capability unavailable on this platform
+  4   request timed out       8   local I/O error          130  interrupted
+
+JSON OUTPUT
+  --output json prints one object per invocation:
+    {\"schema\":\"aethercore.aetherctl.v1\",\"command\":\"<verb>\",\"ok\":<bool>,
+     \"data\":{...}}            on success
+    {\"schema\":\"aethercore.aetherctl.v1\",\"command\":\"<verb>\",\"ok\":false,
+     \"error\":{\"kind\":\"...\",\"message_key\":\"...\",\"detail\":\"...\"}}  on failure
+  The schema string, the error kinds and the exit codes are the contract.
+  Human-readable text is not. One exception, stated rather than hidden: a
+  command line that fails to PARSE is reported as text on stderr with exit 2,
+  because --output is itself part of the line being parsed.
 ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -369,7 +416,9 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
     };
 
     let command = match name.as_str() {
-        "help" => Command::Offline(OfflineJob::Help),
+        // P37 Stage 3: `--help` and `-h` are what a person types first. They used to
+        // fall through to unknownCommand, print the usage block to STDERR and exit 2.
+        "help" | "--help" | "-h" | "-?" | "/?" => Command::Offline(OfflineJob::Help),
         "about" => Command::Offline(OfflineJob::About),
         "version" => Command::Offline(OfflineJob::Version),
         "capabilities" => Command::Offline(OfflineJob::Capabilities),
@@ -1416,6 +1465,25 @@ mod tests {
         std::iter::once("aetherctl".to_string())
             .chain(items.iter().map(|s| s.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn help_is_reachable_by_every_spelling_a_person_actually_types() {
+        // P37 Stage 3: these used to be unknownCommand -> usage on stderr, exit 2.
+        for spelling in ["help", "--help", "-h", "-?", "/?"] {
+            let invocation = parse(&argv(&[spelling])).unwrap();
+            assert!(
+                matches!(invocation.command, Command::Offline(OfflineJob::Help)),
+                "{spelling} did not resolve to help"
+            );
+        }
+        // The usage block has to actually carry the three things a first-time reader
+        // needs: what it is, the common verbs, and one runnable example.
+        assert!(USAGE.contains("no account"));
+        assert!(USAGE.contains("aetherctl service detect"));
+        assert!(USAGE.contains("aetherctl --output json service detect"));
+        assert!(USAGE.contains("EXIT CODES"));
+        assert!(USAGE.contains("aethercore.aetherctl.v1"));
     }
 
     #[test]

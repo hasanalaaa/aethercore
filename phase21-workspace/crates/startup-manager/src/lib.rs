@@ -83,7 +83,12 @@ impl RecommendationDecision { pub fn as_str(self)->&'static str { match self { S
 #[serde(tag="type", rename_all="camelCase")]
 pub enum NativeState {
     RegistryValue { hive:String, key:String, value_name:String, view:String, exists:bool, value_type:u32, data_hex:String },
-    StartupFile { path:String, exists:bool, size_bytes:u64, modified_unix_ms:i64, sha256:String, backup_path:String, backup_exists:bool },
+    /// DBT-P46-B12: `modified_unix_ms` is `None` when the file's mtime could
+    /// not be read. This document is compared string-for-string to authorise a
+    /// mutation, so an unread mtime must not serialize as the epoch — two
+    /// unknowns would then compare equal and hide the drift the check exists
+    /// to catch. A known mtime keeps its exact prior representation.
+    StartupFile { path:String, exists:bool, size_bytes:u64, modified_unix_ms:Option<i64>, sha256:String, backup_path:String, backup_exists:bool },
     ScheduledTask { task_path:String, enabled:bool, xml_sha256:String },
     Service { service_name:String, start_type:u32, delayed_auto:bool, service_type:u32, binary_path:String, launch_protected:u32 },
 }
@@ -150,7 +155,10 @@ pub struct StartupExecutionItem { pub item_id:String,pub display_name:String,pub
 pub struct StartupHistoryEntry {
     pub change_id:String, pub origin_change_id:String, pub plan_id:String, pub item_id:String,
     pub kind:String, pub display_name:String, pub direction:String, pub state:String,
-    pub detail:String, pub created_unix_ms:i64, pub updated_unix_ms:i64, pub restored_unix_ms:i64,
+    pub detail:String, pub created_unix_ms:i64, pub updated_unix_ms:i64,
+    /// DBT-P46-B14: None is the common case — most changes are never restored.
+    /// Previously flattened to 0, indistinguishable from a restore at epoch 0.
+    pub restored_unix_ms:Option<i64>,
     pub restorable:bool,
 }
 
@@ -322,7 +330,7 @@ impl StartupManager {
     }
 
     pub fn history(&self,owner_principal_key:&str,limit:usize)->Result<Vec<StartupHistoryEntry>>{
-        Ok(self.db.startup_changes_for_owner(owner_principal_key,limit)?.into_iter().map(|r|{let direction=r.direction.clone();let restorable=matches!(r.state.as_str(),"Applied"|"AppliedRecovered")&&direction=="Disable";StartupHistoryEntry{change_id:r.change_id,origin_change_id:r.origin_change_id,plan_id:r.plan_id,item_id:r.item_id,kind:r.kind,display_name:r.display_name,direction,state:r.state.clone(),detail:r.detail,created_unix_ms:r.created_unix_ms,updated_unix_ms:r.updated_unix_ms,restored_unix_ms:r.restored_unix_ms.unwrap_or(0),restorable}}).collect())
+        Ok(self.db.startup_changes_for_owner(owner_principal_key,limit)?.into_iter().map(|r|{let direction=r.direction.clone();let restorable=matches!(r.state.as_str(),"Applied"|"AppliedRecovered")&&direction=="Disable";StartupHistoryEntry{change_id:r.change_id,origin_change_id:r.origin_change_id,plan_id:r.plan_id,item_id:r.item_id,kind:r.kind,display_name:r.display_name,direction,state:r.state.clone(),detail:r.detail,created_unix_ms:r.created_unix_ms,updated_unix_ms:r.updated_unix_ms,restored_unix_ms:r.restored_unix_ms,restorable}}).collect())
     }
 
     pub fn recover_incomplete(&self)->Result<()> {
@@ -437,6 +445,60 @@ mod tests {
     use std::sync::atomic::{AtomicUsize,Ordering};
 
     const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    fn startup_file_state(modified_unix_ms: Option<i64>) -> NativeState {
+        NativeState::StartupFile {
+            path: r"C:\Users\x\Start Menu\Programs\Startup\thing.lnk".into(),
+            exists: true,
+            size_bytes: 1024,
+            modified_unix_ms,
+            sha256: "a".repeat(64),
+            backup_path: String::new(),
+            backup_exists: false,
+        }
+    }
+
+    /// DBT-P46-B12. `modified_unix_ms` is part of `original_state_json`, and
+    /// `execute_plan_with_telemetry` authorises a mutation only when the
+    /// freshly queried state string EQUALS the stored one. A failed
+    /// `.modified()` read used to write 0 there, with two consequences: it
+    /// stamps 1970-01-01 into durable rollback evidence, and when the read
+    /// fails at both scan and preflight the two unknowns compare EQUAL —
+    /// hiding exactly the drift that comparison exists to catch.
+    #[test]
+    fn an_unread_startup_file_mtime_is_not_the_epoch() {
+        let unknown = startup_file_state(None);
+        let epoch = startup_file_state(Some(0));
+        assert_ne!(
+            unknown, epoch,
+            "an unread mtime must not equal a file genuinely stamped at the epoch"
+        );
+
+        let unknown_json = serde_json::to_string(&unknown).expect("serialize");
+        let epoch_json = serde_json::to_string(&epoch).expect("serialize");
+        assert_ne!(
+            unknown_json, epoch_json,
+            "the drift check compares these strings, so they must differ"
+        );
+        assert!(
+            // `rename_all` on this enum renames the VARIANTS, not struct-variant
+            // fields, so the persisted key really is snake_case.
+            unknown_json.contains("\"modified_unix_ms\":null"),
+            "unknown must be null, not 0: {unknown_json}"
+        );
+        assert!(
+            epoch_json.contains("\"modified_unix_ms\":0"),
+            "a real epoch timestamp must stay 0: {epoch_json}"
+        );
+
+        // A known mtime keeps its exact prior representation, so state written
+        // before this change still compares equal to state written after it.
+        assert!(
+            serde_json::to_string(&startup_file_state(Some(1_700_000_000_000)))
+                .expect("serialize")
+                .contains("\"modified_unix_ms\":1700000000000")
+        );
+    }
     fn approve(engine:&OperationEngine, plan:&PlanView){let intent=engine.begin_consent_intent(&plan.id,OWNER).unwrap();engine.approve_consent_intent(&intent.intent_id,OWNER,4242).unwrap();}
 
     struct MockPlatform{items:Vec<StartupItem>,states:Mutex<HashMap<String,String>>,mutations:AtomicUsize}

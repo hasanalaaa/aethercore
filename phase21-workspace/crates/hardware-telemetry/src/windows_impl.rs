@@ -209,6 +209,15 @@ fn query_physical_disks(services: &IWbemServices, control: &CollectorControl) ->
     let mut out = Vec::new();
     for o in objects {
         let device_id = prop_string(&o, "DeviceId").unwrap_or_default();
+        // DBT-P46-B1: Size unreported (WMI returned no value for this property)
+        // and Size reported as literally 0 bytes both used to become the same
+        // size_bytes: 0 — a WMI read gap looked identical to a genuinely
+        // zero-byte disk. size_bytes can't become Option<u64> without a wire
+        // contract change (services/maintenance-service/src/protocol.rs copies
+        // it as a plain field), so the distinction is recorded in
+        // `source_notes`, the same existing companion field already used two
+        // lines down for a missing DeviceId.
+        let size = prop_u64(&o, "Size");
         let mut d = StorageDeviceTelemetry {
             device_id,
             friendly_name: prop_string(&o, "FriendlyName").unwrap_or_else(|| "Physical disk".into()),
@@ -216,7 +225,7 @@ fn query_physical_disks(services: &IWbemServices, control: &CollectorControl) ->
             serial_number: prop_string(&o, "SerialNumber").unwrap_or_default(),
             bus_type: bus_name(prop_u16(&o, "BusType")),
             media_type: media_name(prop_u16(&o, "MediaType")),
-            size_bytes: prop_u64(&o, "Size").unwrap_or(0),
+            size_bytes: size.unwrap_or(0),
             windows_health_status: health_name(prop_u16(&o, "HealthStatus")),
             operational_status: Vec::new(),
             ata_smart_attributes: Vec::new(),
@@ -225,6 +234,7 @@ fn query_physical_disks(services: &IWbemServices, control: &CollectorControl) ->
             source_notes: vec!["MSFT_PhysicalDisk".into()],
         };
         if d.device_id.is_empty() { d.source_notes.push("Physical disk DeviceId was not reported.".into()); }
+        if size.is_none() { d.source_notes.push("Physical disk Size was not reported by WMI; size_bytes is not a confirmed measurement.".into()); }
         out.push(d);
     }
     Ok(out)

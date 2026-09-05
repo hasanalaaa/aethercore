@@ -124,8 +124,10 @@ const SERVER_OUTBOUND_QUEUE_CAPACITY: usize = 32;
 const SERVER_OUTBOUND_BYTE_BUDGET: usize = 16 * 1024 * 1024;
 const CLIENT_OUTBOUND_QUEUE_CAPACITY: usize = 32;
 const CLIENT_OUTBOUND_BYTE_BUDGET: usize = 4 * 1024 * 1024;
-const TRUSTED_SERVICE_NAME: &str = "AetherCoreMaintenance";
-const TRUSTED_SERVICE_ACCOUNT: &str = r"NT SERVICE\AetherCoreMaintenance";
+// DBT-P46-D1: one decider for the identity this peer check authenticates
+// against. The name and the account it derives from used to be two independent
+// literals here, and two more in apps/install-hardener.
+use aethercore_product_identity::{service_principal, SERVICE_NAME as TRUSTED_SERVICE_NAME};
 const MAX_ACCOUNT_SID_BYTES: u32 = 4 * 1024;
 const MAX_ACCOUNT_DOMAIN_CHARS: u32 = 32 * 1024;
 static TRUSTED_SERVICE_SID: OnceLock<String> = OnceLock::new();
@@ -255,7 +257,7 @@ fn trusted_service_sid_string() -> Result<String> {
         return Ok(service_sid.clone());
     }
 
-    let mut sid = lookup_account_sid(TRUSTED_SERVICE_ACCOUNT)?;
+    let mut sid = lookup_account_sid(&service_principal())?;
     let resolved = sid_to_string(PSID(sid.as_mut_ptr().cast::<c_void>()))?;
     // Races are benign: every contender resolved the same local service account. Cache the first
     // successful value so listener churn and client endpoint authentication never turn LSA account

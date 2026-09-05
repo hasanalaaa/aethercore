@@ -234,23 +234,42 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
     let r = &device.reliability;
     let mut action = Vec::new();
     let mut attention = Vec::new();
+    // DBT-P46-B2: an unreadable SMART counter (None) and a confirmed-zero one
+    // (Some(0)) used to reach the same `.unwrap_or(0) > 0` check and come out
+    // identical — a failed read silently looked like "confirmed no errors".
+    // Tracked separately here so "Normal" can say which counters, if any, it
+    // could not actually confirm, rather than presenting a gap as a clean bill
+    // of health. `windows_health_status` is unaffected: it is Windows' own
+    // independent verdict, read regardless of whether these counters exist.
+    let mut unavailable = Vec::new();
 
     if device.windows_health_status.eq_ignore_ascii_case("Unhealthy") {
         action.push("Windows reports the physical disk as unhealthy.".to_string());
     } else if device.windows_health_status.eq_ignore_ascii_case("Warning") {
         attention.push("Windows reports a warning health state for this physical disk.".to_string());
     }
-    if r.read_errors_uncorrected.unwrap_or(0) > 0 {
-        action.push(format!("{} uncorrected read error(s) were reported.", r.read_errors_uncorrected.unwrap_or(0)));
+    match r.read_errors_uncorrected {
+        Some(n) if n > 0 => action.push(format!("{n} uncorrected read error(s) were reported.")),
+        Some(_) => {}
+        None => unavailable.push("uncorrected read error count"),
     }
-    if r.write_errors_uncorrected.unwrap_or(0) > 0 {
-        action.push(format!("{} uncorrected write error(s) were reported.", r.write_errors_uncorrected.unwrap_or(0)));
+    match r.write_errors_uncorrected {
+        Some(n) if n > 0 => action.push(format!("{n} uncorrected write error(s) were reported.")),
+        Some(_) => {}
+        None => unavailable.push("uncorrected write error count"),
     }
-    if r.nvme_critical_warning.unwrap_or(0) != 0 {
-        action.push(format!("NVMe SMART critical-warning flags are set (0x{:02X}).", r.nvme_critical_warning.unwrap_or(0)));
+    match r.nvme_critical_warning {
+        Some(n) if n != 0 => action.push(format!("NVMe SMART critical-warning flags are set (0x{n:02X}).")),
+        Some(_) => {}
+        None => unavailable.push("NVMe critical-warning flags"),
     }
-    if parse_nonzero_counter(r.nvme_media_errors.as_deref()) {
-        action.push("NVMe SMART reports one or more media/data-integrity errors.".to_string());
+    match r.nvme_media_errors.as_deref() {
+        Some(v) => {
+            if parse_nonzero_counter(Some(v)) {
+                action.push("NVMe SMART reports one or more media/data-integrity errors.".to_string());
+            }
+        }
+        None => unavailable.push("NVMe media/data-integrity error count"),
     }
     if r.wear_percent_used.is_some_and(|v| v >= 100) || r.nvme_percentage_used.is_some_and(|v| v >= 100) {
         attention.push("The device-reported wear estimate has reached or exceeded its estimated wear limit.".to_string());
@@ -276,7 +295,15 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
         device.reasons = attention;
     } else if device.windows_health_status.eq_ignore_ascii_case("Healthy") {
         device.severity = "Normal".into();
-        device.summary = "Windows/device-reported metrics that are available do not currently show a reliability warning.".into();
+        if unavailable.is_empty() {
+            device.summary = "Windows/device-reported metrics that are available do not currently show a reliability warning.".into();
+        } else {
+            device.summary = format!(
+                "Windows reports this disk healthy; {} SMART/reliability counter(s) were not reported and could not be independently checked.",
+                unavailable.len()
+            );
+            device.reasons = unavailable.iter().map(|name| format!("{name}: not reported")).collect();
+        }
     } else {
         device.severity = "Unknown".into();
         device.summary = "The device does not expose enough standardized reliability information for a health conclusion.".into();
@@ -375,6 +402,39 @@ mod tests {
         classify_storage(&mut d);
         assert_eq!(d.severity, "Attention");
         assert!(d.reasons.iter().any(|r| r.contains("above 10 seconds")));
+    }
+
+    // DBT-P46-B2: Windows reports the disk healthy, but the SMART reliability
+    // counters (read/write uncorrected errors, NVMe critical warning) were never
+    // reported (None) rather than confirmed zero. Before the fix, `.unwrap_or(0)`
+    // made this byte-identical to a disk that WAS checked and came back clean —
+    // the summary text and the (empty) reasons list gave no way to tell them
+    // apart.
+    #[test]
+    fn healthy_status_with_unreported_smart_counters_is_distinguishable_from_confirmed_clean() {
+        let mut checked_clean = StorageDeviceTelemetry { windows_health_status: "Healthy".into(), ..Default::default() };
+        checked_clean.reliability.read_errors_uncorrected = Some(0);
+        checked_clean.reliability.write_errors_uncorrected = Some(0);
+        checked_clean.reliability.nvme_critical_warning = Some(0);
+        classify_storage(&mut checked_clean);
+
+        let mut uncheckable = StorageDeviceTelemetry { windows_health_status: "Healthy".into(), ..Default::default() };
+        // read_errors_uncorrected / write_errors_uncorrected / nvme_critical_warning
+        // all stay None — never reported, not confirmed zero.
+        classify_storage(&mut uncheckable);
+
+        assert_eq!(checked_clean.severity, "Normal");
+        assert_eq!(uncheckable.severity, "Normal");
+        assert_ne!(
+            checked_clean.summary, uncheckable.summary,
+            "a disk that was actually checked and a disk whose counters were never \
+             reported must not produce the identical summary"
+        );
+        assert!(
+            !uncheckable.reasons.is_empty(),
+            "the unreported-counter case must say which counters were unavailable, \
+             got empty reasons: {uncheckable:?}"
+        );
     }
 
     #[test]

@@ -10,6 +10,7 @@ license.workspace = true
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+aethercore-product-identity = { path = "../../crates/product-identity" }
 aethercore-contracts = { path = "../../crates/contracts" }
 aethercore-gpu-policy = { path = "../../crates/gpu-policy" }
 aethercore-ipc = { path = "../../crates/ipc" }

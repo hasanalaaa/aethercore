@@ -818,6 +818,48 @@ marker(
         'NT SERVICE\\AetherCoreMaintenance',
     ],
 )
+# DBT-P46-D1 (§46.4 Part 0.D): the Windows service name had three independent
+# Rust deciders, and four more declarations outside Rust that no check tied to
+# them — WiX, two PowerShell scripts, and this file, which hardcoded the
+# principal string just above. The Rust side is now one const in
+# crates/product-identity; this reads that const and asserts every non-Rust
+# declaration still spells the same name, so the layers cannot drift apart in
+# silence the way they were free to before.
+product_identity = (ROOT / "crates/product-identity/src/lib.rs").read_text(encoding="utf-8")
+_service_name_match = re.search(r'pub const SERVICE_NAME: &str = "([^"]+)";', product_identity)
+SERVICE_NAME = _service_name_match.group(1) if _service_name_match else ""
+_service_name_mirrors = {
+    "installer/wix/Product.wxs": product_wxs,
+    "scripts/install-service.ps1": (ROOT / "scripts/install-service.ps1").read_text(encoding="utf-8"),
+    "scripts/uninstall-service.ps1": (ROOT / "scripts/uninstall-service.ps1").read_text(encoding="utf-8"),
+}
+checks["p46_service_name_has_one_decider"] = {
+    "ok": bool(SERVICE_NAME)
+    and all(SERVICE_NAME in text for text in _service_name_mirrors.values())
+    and f"NT SERVICE\\{SERVICE_NAME}" in product_wxs
+    and not any(
+        'const SERVICE_NAME' in (ROOT / rust).read_text(encoding="utf-8")
+        or 'const TRUSTED_SERVICE_NAME' in (ROOT / rust).read_text(encoding="utf-8")
+        for rust in (
+            "crates/ipc/src/windows_impl.rs",
+            "apps/install-hardener/src/main.rs",
+            "services/maintenance-service/src/main.rs",
+        )
+    ),
+    "note": f"Service name is decided once in crates/product-identity ({SERVICE_NAME!r}); the three former Rust deciders now import it, and every non-Rust declaration is asserted against it.",
+}
+_product_name_match = re.search(r'pub const PRODUCT_NAME: &str = "([^"]+)";', product_identity)
+PRODUCT_NAME = _product_name_match.group(1) if _product_name_match else ""
+checks["p46_product_name_has_one_decider"] = {
+    # DBT-P46-D2 (§46.4 Part 0.D): the install directory, the ProgramData
+    # directory and the update protocol's product_id were 17 separate literals
+    # across 7 crates and apps. They now read one const; WiX declares the same
+    # two directory names, and this asserts they still agree.
+    "ok": bool(PRODUCT_NAME)
+    and f'<Directory Id="INSTALLFOLDER" Name="{PRODUCT_NAME}">' in product_wxs
+    and f'<Directory Id="ProgramDataRoot" Name="{PRODUCT_NAME}">' in product_wxs,
+    "note": f"Install and ProgramData directory names in Product.wxs match the single PRODUCT_NAME decider ({PRODUCT_NAME!r}).",
+}
 checks["phase8_msi_serviceconfig_not_relied_upon"] = {
     "ok": "<ServiceConfig" not in product_wxs,
     "note": "Service SID policy and delayed-auto are applied by the fixed-purpose post-InstallServices hardener, avoiding reliance on MSI ServiceConfig semantics.",
@@ -826,16 +868,31 @@ checks["phase8_msi_upgrade_and_os_gate"] = {
     "ok": all(token in product_wxs for token in [
         'UpgradeCode="{45598C77-2C32-5BCE-8510-19C7E51EE3B8}"',
         'MajorUpgrade Schedule="afterInstallInitialize"',
-        'Condition="VersionNT64 AND MsiNTProductType = 1 AND WindowsBuild &gt;= 22621"',
+        'Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 17763))"',
     ])
-    and 'Condition="VersionNT64 AND NTProductType = 1 AND WindowsBuildNumber &gt;= 22621"' in bundle_wxs,
-    "note": "MSI and Burn both reject unsupported/non-client Windows before product mutation; the explicit major-upgrade family uses a stable UpgradeCode.",
+    and 'Condition="VersionNT64 AND ((NTProductType = 1 AND WindowsBuildNumber &gt;= 22621) OR (NTProductType = 3 AND WindowsBuildNumber &gt;= 17763))"' in bundle_wxs
+    and 'Name="InstallationType"' in product_wxs
+    and 'Variable="WindowsInstallationType"' in bundle_wxs
+    and 'InstallCondition="NOT (WindowsInstallationType ~= &quot;Server Core&quot;)"' in bundle_wxs,
+    "note": "MSI and Burn admit Windows 11 clients and Windows Server 2019+ member servers; domain controllers remain refused, and Server Core omits the WebView2 prerequisite and desktop feature.",
 }
 checks["phase8_hardener_fixed_operation_only"] = {
-    "ok": all(token in hardener for token in ['mode == OsStr::new("apply")', 'System32', 'AetherCoreMaintenance'])
+    # DBT-P46-D1 changed HOW this is proven, not what it proves. The hardener
+    # used to contain the service name as its own literal; it now imports the
+    # one decider, so asserting the literal here would assert the duplication
+    # this gate should want removed.
+    "ok": all(
+        token in hardener
+        for token in [
+            'mode == OsStr::new("apply")',
+            "System32",
+            "aethercore_product_identity::",
+            "SERVICE_NAME",
+        ]
+    )
     and "cmd.exe" not in hardener.lower()
     and "powershell.exe" not in hardener.lower(),
-    "note": "The elevated MSI helper accepts only the literal apply verb and invokes fixed System32 tooling for fixed AetherCore targets.",
+    "note": "The elevated MSI helper accepts only the literal apply verb and invokes fixed System32 tooling for the fixed AetherCore service, named by the single shared constant rather than a local literal.",
 }
 
 checks["phase8_msi_repair_not_disabled"] = {
@@ -1802,6 +1859,82 @@ checks["sigma_adversarial_integrity_regression"] = {
         "manifest_path_escape_is_rejected", "source_symlink_is_rejected",
     ])
 }
+
+# --- Phase 38: single-source-of-truth gates -------------------------------
+# Both defects closed in Phase 38 were the same class: a value that is supposed
+# to be ONE truth was derived independently in several places and the copies
+# disagreed. These two checks make a second derivation fail the gate on any
+# host, including the ones where the Rust regression test is not discriminating.
+
+def _version_single_source() -> None:
+    problems: list[str] = []
+    cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
+    m = re.search(r"(?ms)\[workspace\.package\].*?version\s*=\s*\"([0-9]+\.[0-9]+\.[0-9]+)\"", cargo)
+    if not m:
+        problems.append("Cargo.toml has no [workspace.package] version")
+    canonical = m.group(1) if m else None
+
+    # No other manifest may declare a product version of its own.
+    tauri = json.loads((ROOT / "apps/desktop/tauri.conf.json").read_text(encoding="utf-8"))
+    if "version" in tauri:
+        problems.append(
+            "apps/desktop/tauri.conf.json declares its own version; remove the field so "
+            "tauri inherits the Cargo.toml version"
+        )
+    for pkg in ("package.json", "apps/ui/package.json"):
+        data = json.loads((ROOT / pkg).read_text(encoding="utf-8"))
+        if "version" in data:
+            problems.append(f"{pkg} declares its own version; it is private and must not")
+
+    # Build scripts must derive, never hard-code.
+    arm64 = (ROOT / "scripts/build-arm64-msi.cmd").read_text(encoding="utf-8")
+    if 'set "VERSION=0.1' in arm64:
+        problems.append("scripts/build-arm64-msi.cmd hard-codes a version literal")
+    if "Cargo.toml" not in arm64:
+        problems.append("scripts/build-arm64-msi.cmd does not derive its version from Cargo.toml")
+    for ps in ("scripts/build-release.ps1", "scripts/build-installer.ps1", "scripts/build-cli-archive.ps1"):
+        body = (ROOT / ps).read_text(encoding="utf-8")
+        if "Get-ProductVersion.ps1" not in body:
+            problems.append(f"{ps} does not derive its version from Get-ProductVersion.ps1")
+    if not (ROOT / "scripts/Get-ProductVersion.ps1").exists():
+        problems.append("scripts/Get-ProductVersion.ps1 is missing")
+
+    checks["version_single_source_of_truth"] = {
+        "ok": not problems,
+        "canonical_version": canonical,
+        "problems": problems,
+    }
+
+
+def _platform_identity_single_source() -> None:
+    problems: list[str] = []
+    helper = "aethercore_platform_capabilities::current_platform_name"
+    # Every surface that emits a platform LABEL must route through the one helper.
+    label_sites = {
+        "crates/security-audit/src/lib.rs": "platform_tag",
+        "apps/aetherctl/src/offline.rs": "platform_str",
+    }
+    for rel, fn in label_sites.items():
+        body = (ROOT / rel).read_text(encoding="utf-8")
+        m = re.search(rf"fn {fn}\(\) -> &'static str \{{(.*?)\n\}}", body, re.S)
+        if not m:
+            problems.append(f"{rel}: {fn}() not found in the expected shape")
+        elif helper not in m.group(1):
+            problems.append(
+                f"{rel}: {fn}() does not delegate to {helper}; a second platform "
+                f"derivation has been reintroduced"
+            )
+    # The literal that the old ladder produced must not come back as a platform label.
+    audit = (ROOT / "crates/security-audit/src/lib.rs").read_text(encoding="utf-8")
+    if re.search(r'cfg!\(target_os = "macos"\)[^}]*?"other"', audit, re.S):
+        problems.append(
+            'crates/security-audit/src/lib.rs: a cfg! ladder falling back to "other" is back'
+        )
+    checks["platform_identity_single_source"] = {"ok": not problems, "problems": problems}
+
+
+_version_single_source()
+_platform_identity_single_source()
 
 all_ok = all(bool(value.get("ok")) for value in checks.values())
 report = {

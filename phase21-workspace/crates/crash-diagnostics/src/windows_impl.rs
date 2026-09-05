@@ -588,12 +588,13 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
     let header_bytes = size_of::<DUMP_HEADER64>().max(size_of::<DUMP_HEADER32>());
     let mut header_data = Vec::with_capacity(header_bytes);
     file.take(header_bytes as u64).read_to_end(&mut header_data)?;
+    // DBT-P46-B6: no .unwrap_or(0) — a failed mtime read stays None rather than
+    // becoming a 1970 timestamp the UI would render as a real crash date.
     let recorded = meta
         .modified()
         .ok()
         .map(DateTime::<Utc>::from)
-        .map(|date| date.timestamp_millis())
-        .unwrap_or(0);
+        .map(|date| date.timestamp_millis());
     let mut code = None;
     let mut parameters = Vec::new();
     let mut source = "Minidump file metadata".to_string();
@@ -637,7 +638,13 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
         .file_name()
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_else(|| "minidump.dmp".into());
-    let crash_id = format!("{name}:{recorded}");
+    // DBT-P46-B6: the id stays stable per dump file when the mtime is
+    // unreadable — "unknown-time" rather than a 0 that would collide with a
+    // dump genuinely stamped at the epoch.
+    let crash_id = match recorded {
+        Some(recorded) => format!("{name}:{recorded}"),
+        None => format!("{name}:unknown-time"),
+    };
     Ok(CrashRecord {
         crash_id,
         recorded_unix_ms: recorded,

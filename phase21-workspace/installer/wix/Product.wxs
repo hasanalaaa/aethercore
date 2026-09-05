@@ -21,8 +21,8 @@
          tranche1-msi-install.log: Property(S): WindowsBuild = 9600 on build 26200).
          Root-cause remedy: read the real build number from the registry
          (HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuildNumber), which
-         is authoritative on every supported OS. Guard intent unchanged: require
-         Windows 11 build 22621 or newer. -->
+         is authoritative on every supported OS. Clients require build 22621+;
+         Windows Server 2019 and newer require build 17763+. -->
     <Property Id="OSCURRENTBUILD" Value="0">
       <RegistrySearch Id="OsCurrentBuildNumber"
                       Root="HKLM"
@@ -31,9 +31,19 @@
                       Type="raw"
                       Bitness="always64" />
     </Property>
+    <Property Id="WINDOWSINSTALLATIONTYPE">
+      <RegistrySearch Id="WindowsInstallationType"
+                      Root="HKLM"
+                      Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="InstallationType"
+                      Type="raw"
+                      Bitness="always64" />
+    </Property>
     <Launch
-        Condition="VersionNT64 AND MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621"
-        Message="AetherCore requires Windows 11 build 22621 or newer." />
+        Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 17763))"
+        Message="AetherCore supports 64-bit Windows 11 build 22621+ and Windows Server 2019, 2022, or 2025+ (build 17763+)." />
+    <Launch Condition="MsiNTProductType &lt;&gt; 2"
+            Message="AetherCore does not support domain controllers." />
 
     <!-- Direct MSI installs are supported for managed environments, but the consumer bundle is
          preferred because it also guarantees the Evergreen WebView2 prerequisite. Do not author
@@ -50,6 +60,12 @@
          it as an ordinary .lnk at install time, so behavior remains a plain shortcut
          ("find target" still works). No ICE suppression is used. -->
     <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
+
+    <!-- P37 Stage 2: uninstall leaves NOTHING behind. The statement below is what the
+         OS uninstall UI (Settings > Apps, and Programs and Features) shows the user
+         before they confirm; UNINSTALL.txt beside the product carries the full text. -->
+    <Property Id="ARPCOMMENTS" Value="Uninstall removes the program files, the AetherCore Maintenance service, and ALL machine data under C:\ProgramData\AetherCore (state database, logs, driver-install backups, support staging, signing key). Reports and diagnostic bundles you exported to a location YOU chose are not touched. See UNINSTALL.txt in the install folder." />
+
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="AetherCore">
@@ -90,8 +106,24 @@
                not include the build Redist dir, so the runtime DLL must be installed beside
                the service executable or SCM start fails with STATUS_DLL_NOT_FOUND (0xC0000135)
                which surfaces as Error 1920 and 1053. Non-System32 Microsoft VC runtime DLL
-               colocated with its consumer; update-trust and binary authority unchanged. -->
+               colocated with its consumer; update-trust and binary authority unchanged.
+
+               P41 (physical x64): the OpenMP runtime is ARCHITECTURE-SPECIFIC and this line
+               was hard-coded to the ARM64 one, so the x64 package could not build at all.
+               The ARM64 build uses clang-cl and imports the LLVM runtime libomp140.aarch64.dll;
+               the x64 build uses MSVC and imports Microsoft's VCOMP140.DLL instead. Both were
+               measured with llvm-readobj coff-imports on the actual binaries, not assumed.
+               Selected here with the WiX preprocessor rather than a -d variable on purpose:
+               scripts/check-msi-payload.ps1 derives its allowlist by reading the literal
+               Source="…" strings out of this file, so a $(var.…) filename would make the
+               authored name unmatchable and fail every build. Both literal names appear
+               below, so the derived allowlist stays a superset and the package still carries
+               exactly one of them. -->
+          <?if $(sys.BUILDARCH) = arm64 ?>
           <File Id="OpenMPRuntimeDll" Source="$(var.PayloadDir)\libomp140.aarch64.dll" />
+          <?else?>
+          <File Id="OpenMPRuntimeDll" Source="$(var.PayloadDir)\vcomp140.dll" />
+          <?endif?>
           <ServiceInstall
               Id="MaintenanceServiceInstall"
               Name="AetherCoreMaintenance"
@@ -110,6 +142,59 @@
               Remove="uninstall"
               Wait="yes" />
         </Component>
+
+        <!-- P37 Stage 1: aetherctl.exe was BUILT and hand-copied into INSTALLFOLDER but
+             never authored here, so no MSI action owned it. A clean install put seven
+             files on disk and the CLI was simply absent; the earlier clean-reinstall
+             gate only passed because a leftover copy was already there. It is now a
+             first-class component: installed, repaired and removed with the product. -->
+        <!-- P37 Stage 2: the plain-language statement of what uninstall removes and what
+             it keeps. ARPCOMMENTS carries the summary into the OS uninstall UI; this is
+             the full text, readable before the user uninstalls. -->
+        <Component Id="UninstallNoticeComponent" Guid="{2BDDC66A-D021-450F-9A27-53F0C063D1EA}" Bitness="always64">
+          <File Id="UninstallNoticeTxt" Source="$(var.PayloadDir)\UNINSTALL.txt" KeyPath="yes" Name="UNINSTALL.txt" />
+        </Component>
+
+        <Component Id="AetherCtlComponent" Guid="{D842C7E7-DD4A-433F-88E6-6B7E812DC4C1}" Bitness="always64">
+          <File Id="AetherCtlExe" Source="$(var.PayloadDir)\aetherctl.exe" KeyPath="yes" />
+        </Component>
+
+        <Directory Id="AssetsDir" Name="assets">
+          <Directory Id="AssetsModelsDir" Name="models">
+            <Directory Id="AssetsModelLicensesDir" Name="licenses">
+              <!-- Own component: a File inherits its parent Component's directory, so
+                   the licenses cannot be authored from inside ModelComponent. -->
+              <Component Id="ModelLicenseComponent" Guid="{3B9B8BEF-C513-41F1-94BF-31394ACCF11D}" Bitness="always64">
+                <File Id="ModelLicenseApache" Source="$(var.AssetsDir)\models\licenses\Apache-2.0.txt" KeyPath="yes" />
+                <File Id="ModelLicenseQwenNotice" Source="$(var.AssetsDir)\models\licenses\Qwen-GGUF-NOTICE.txt" />
+              </Component>
+            </Directory>
+
+            <!-- P37 Stage 1: the embedded reasoner is the PERMANENT default engine and it
+                 is loaded at RUNTIME from <install dir>\assets\models (composition.rs
+                 resolves product_dir from current_exe; llama.rs joins
+                 EMBEDDED_MODEL_RELATIVE_PATH). The artifact was never authored, so every
+                 installed instance failed verification at start and ran ruleFallback.
+                 The sha256 pin is compiled into the binary, so a wrong file here cannot
+                 weaken the check - it can only fail closed. Licenses ship beside it
+                 because the model is redistributed under Apache-2.0. -->
+            <Component Id="ModelComponent" Guid="{E8FCD98A-44FA-413D-9109-FE731118401B}" Bitness="always64">
+              <File Id="EmbeddedModelGguf" Source="$(var.AssetsDir)\models\qwen2.5-1.5b-instruct-q4_k_m.gguf" KeyPath="yes" />
+              <File Id="ModelsManifestJson" Source="$(var.AssetsDir)\models\models.manifest.json" />
+            </Component>
+          </Directory>
+
+          <Directory Id="AssetsVulnDbDir" Name="vulndb">
+            <!-- P37 Stage 1: the CVE lane loads a hash-pinned offline vulndb. It was never
+                 authored, so the lane reported NotAvailable on every installed machine.
+                 security-audit now resolves this directory relative to the executable. -->
+            <Component Id="VulnDbComponent" Guid="{F13EEEDD-637F-45EA-B1B8-D8D9F62A19BF}" Bitness="always64">
+              <File Id="VulnDbJson" Source="$(var.AssetsDir)\vulndb\vulndb.json" KeyPath="yes" />
+              <File Id="VulnDbManifestJson" Source="$(var.AssetsDir)\vulndb\vulndb.manifest.json" />
+              <File Id="CisMapJson" Source="$(var.AssetsDir)\vulndb\cis_map.json" />
+            </Component>
+          </Directory>
+        </Directory>
       </Directory>
     </StandardDirectory>
 
@@ -121,12 +206,14 @@
           <CreateFolder Directory="ProgramDataRoot" />
           <CreateFolder Directory="ProgramDataState" />
           <CreateFolder Directory="ProgramDataLogs" />
-          <RegistryValue Root="HKLM"
-                         Key="Software\AetherCore"
-                         Name="InstallVersion"
-                         Type="string"
-                         Value="$(var.ProductVersion)"
-                         KeyPath="yes" />
+          <!-- ForceDeleteOnUninstall: without it the Software\AetherCore key itself
+               survives as an empty shell once its values are removed. -->
+          <RegistryKey Root="HKLM" Key="Software\AetherCore" ForceDeleteOnUninstall="yes">
+            <RegistryValue Name="InstallVersion"
+                           Type="string"
+                           Value="$(var.ProductVersion)"
+                           KeyPath="yes" />
+          </RegistryKey>
         </Component>
       </Directory>
     </StandardDirectory>
@@ -143,12 +230,16 @@
              per-user-profile directory (the ICE57 mixing class). -->
         <Component Id="ProgramMenuComponent" Guid="{89E168CE-E5CD-45DA-97C8-20452172818C}">
           <RemoveFolder Id="RemoveAetherCoreProgramMenu" On="uninstall" />
-          <RegistryValue Root="HKCU"
-                         Key="Software\AetherCore"
-                         Name="ProgramMenu"
-                         Type="integer"
-                         Value="1"
-                         KeyPath="yes" />
+          <!-- P37 Stage 2: ForceDeleteOnUninstall so the HKCU marker key goes too, not
+               just its value. This only ever reaches the hive of the user who ran the
+               install (see UNINSTALL.txt) - Windows Installer cannot enumerate other
+               users' hives, and doing so would be worse behaviour, not better. -->
+          <RegistryKey Root="HKCU" Key="Software\AetherCore" ForceDeleteOnUninstall="yes">
+            <RegistryValue Name="ProgramMenu"
+                           Type="integer"
+                           Value="1"
+                           KeyPath="yes" />
+          </RegistryKey>
         </Component>
       </Directory>
     </StandardDirectory>
@@ -165,19 +256,50 @@
                   Impersonate="no"
                   Return="check"
                   HideTarget="yes" />
+    <!-- P37 Stage 2: delete C:\ProgramData\AetherCore in full, on uninstall, AFTER the
+         service is gone. Same binary, same no-arguments-from-the-command-line posture
+         as the hardener above: the directory is derived from %ProgramData% inside the
+         action and a reparse point anywhere in the tree is refused, not followed.
+
+         This deliberately REPLACES util:RemoveFolderEx, which was the first
+         implementation and failed the Stage 2 gate. RemoveFolderEx enumerates the
+         tree before CostInitialize and Windows Installer then hard-fails at
+         InstallValidate with error 2318 if anything it snapshotted has since gone.
+         The maintenance service is still RUNNING at that point - StopServices is in
+         the execute sequence, later - and still writing logs\service.jsonl, so the
+         snapshot races a live writer. Observed on the gate: uninstall exit 1603,
+         "Error 2318: File does not exist: C:\ProgramData\AetherCore\logs\service.jsonl",
+         and the entire product left on disk. Scheduling after DeleteServices is the
+         only ordering that cannot race. -->
+    <CustomAction Id="PurgeMachineData"
+                  FileRef="InstallHardenerExe"
+                  ExeCommand="purge-data"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check"
+                  HideTarget="yes" />
     <InstallExecuteSequence>
       <Custom Action="HardenInstalledSecurity" After="InstallServices" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="PurgeMachineData" After="DeleteServices" Condition="REMOVE = &quot;ALL&quot;" />
     </InstallExecuteSequence>
 
     <Feature Id="Complete" Title="AetherCore" Level="1">
-      <ComponentRef Id="DesktopComponent" />
+      <Feature Id="Desktop" Title="AetherCore desktop" Level="1">
+        <Level Condition="WINDOWSINSTALLATIONTYPE ~= &quot;Server Core&quot;" Value="0" />
+        <ComponentRef Id="DesktopComponent" />
+        <ComponentRef Id="ProgramMenuComponent" />
+      </Feature>
       <ComponentRef Id="BrokerComponent" />
       <ComponentRef Id="UpdateBrokerComponent" />
       <ComponentRef Id="UpdateTrustComponent" />
       <ComponentRef Id="HardenerComponent" />
       <ComponentRef Id="ServiceComponent" />
+      <ComponentRef Id="AetherCtlComponent" />
+      <ComponentRef Id="UninstallNoticeComponent" />
+      <ComponentRef Id="ModelComponent" />
+      <ComponentRef Id="ModelLicenseComponent" />
+      <ComponentRef Id="VulnDbComponent" />
       <ComponentRef Id="ProgramDataComponent" />
-      <ComponentRef Id="ProgramMenuComponent" />
     </Feature>
   </Package>
 </Wix>

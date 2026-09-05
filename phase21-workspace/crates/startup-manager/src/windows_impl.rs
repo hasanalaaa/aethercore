@@ -56,7 +56,7 @@ impl StartupPlatform for WindowsStartupPlatform {
         scan_registry_startup(&mut items,&mut warnings)?;
         scan_startup_folders(&mut items,&mut warnings)?;
         if let Err(e)=scan_scheduled_tasks(&mut items){warnings.push(format!("Task Scheduler inventory unavailable: {e}"));}
-        if let Err(e)=scan_services(&mut items){warnings.push(format!("Service inventory unavailable: {e}"));}
+        if let Err(e)=scan_services(&mut items,&mut warnings){warnings.push(format!("Service inventory unavailable: {e}"));}
         items.sort_by(|a,b|a.kind.cmp(&b.kind).then_with(||a.display_name.to_ascii_lowercase().cmp(&b.display_name.to_ascii_lowercase())));
         Ok((items,warnings))
     }
@@ -137,7 +137,9 @@ fn scan_startup_folders(out:&mut Vec<StartupItem>,warnings:&mut Vec<String>)->Re
 fn scan_folder(path:&Path,scope:&str,out:&mut Vec<StartupItem>,warnings:&mut Vec<String>)->Result<()> {
     let Ok(entries)=std::fs::read_dir(path) else{return Ok(())};
     for e in entries.flatten(){let p=e.path();let Ok(meta)=std::fs::symlink_metadata(&p) else{continue};if !meta.is_file(){continue}if meta.file_type().is_symlink() || (meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0) != 0 {warnings.push(format!("Skipped reparse/symlink startup entry: {}",p.display()));continue}
-        let modified=meta.modified().ok().and_then(|t|t.duration_since(UNIX_EPOCH).ok()).map(|d|d.as_millis() as i64).unwrap_or(0);let name=e.file_name().to_string_lossy().to_string();let systemish=is_security_or_system_command(&p.to_string_lossy());let oversized=meta.len()>MAX_STARTUP_FILE_EVIDENCE_BYTES;let protected=systemish||oversized;
+        // DBT-P46-B12: an unread mtime stays None. This value is baked into
+        // original_state_json, which authorises the mutation by string equality.
+        let modified=meta.modified().ok().and_then(|t|t.duration_since(UNIX_EPOCH).ok()).map(|d|d.as_millis() as i64);let name=e.file_name().to_string_lossy().to_string();let systemish=is_security_or_system_command(&p.to_string_lossy());let oversized=meta.len()>MAX_STARTUP_FILE_EVIDENCE_BYTES;let protected=systemish||oversized;
         let digest=if oversized{String::new()}else{file_sha256(&p)?};
         let state=NativeState::StartupFile{path:p.to_string_lossy().into_owned(),exists:true,size_bytes:meta.len(),modified_unix_ms:modified,sha256:digest,backup_path:String::new(),backup_exists:false};
         let reason=if systemish{"Windows/security startup targets are protected."}else if oversized{"Startup entry exceeds the Phase 5 evidence-size budget and is therefore observation-only."}else{""};
@@ -154,17 +156,45 @@ unsafe fn scan_task_folder(folder:&ITaskFolder,out:&mut Vec<StartupItem>)->Resul
     let folders=unsafe{folder.GetFolders(0)}.map_err(win)?;let fcount=unsafe{folders.Count()}.map_err(win)?;for i in 1..=fcount{let child=unsafe{folders.get_Item(&VARIANT::from(i))}.map_err(win)?;unsafe{scan_task_folder(&child,out)?;}} Ok(())
 }
 
-fn scan_services(out:&mut Vec<StartupItem>)->Result<()> {
-    let services=enum_subkeys(HKEY_LOCAL_MACHINE,SERVICES_KEY)?;let mut configs=HashMap::<String,(u32,u32,String,bool,u32,Vec<String>)>::new();
-    for name in services {let sub=format!(r"{}\{}",SERVICES_KEY,name);let start=query_dword(HKEY_LOCAL_MACHINE,&sub,"Start").unwrap_or(4);let ty=query_dword(HKEY_LOCAL_MACHINE,&sub,"Type").unwrap_or(0);let image=query_string(HKEY_LOCAL_MACHINE,&sub,"ImagePath").unwrap_or_default();let delayed=query_dword(HKEY_LOCAL_MACHINE,&sub,"DelayedAutoStart").unwrap_or(0)!=0;let launch=query_dword(HKEY_LOCAL_MACHINE,&sub,"LaunchProtected").unwrap_or(0);let deps=query_multi_string(HKEY_LOCAL_MACHINE,&sub,"DependOnService").unwrap_or_default();configs.insert(name,(start,ty,image,delayed,launch,deps));}
+// DBT-P46-B13: `start` and `delayed` are not just display fields — apply()
+// (line ~87) writes them straight back to the SCM via set_service_start()
+// whenever a disable is undone (`original_state_json`, captured here, is
+// what "Restore" replays). Before this fix, a single transient registry
+// read glitch during a read-only inventory scan (`.unwrap_or(4)` on `Start`,
+// `.unwrap_or(0)!=0` on `DelayedAutoStart`) would be baked permanently into
+// that JSON — a later "Restore" could then leave a real, previously-healthy
+// service disabled forever, because there is no way to recover the true
+// original value once the transient glitch has passed and the wrong
+// default has been serialized. `Type`/`ImagePath`/`LaunchProtected` are
+// read-only inputs to the protection classification below, never written
+// back, so a failed read there still safely defaults toward MORE
+// protection (as it already did) rather than being treated the same way.
+fn scan_services(out:&mut Vec<StartupItem>, warnings:&mut Vec<String>)->Result<()> {
+    let services=enum_subkeys(HKEY_LOCAL_MACHINE,SERVICES_KEY)?;
+    let mut configs=HashMap::<String,(Result<u32>,u32,String,Result<bool>,u32,Vec<String>)>::new();
+    for name in services {
+        let sub=format!(r"{}\{}",SERVICES_KEY,name);
+        let start=query_dword(HKEY_LOCAL_MACHINE,&sub,"Start");
+        let ty=query_dword(HKEY_LOCAL_MACHINE,&sub,"Type").unwrap_or(0);
+        let image=query_string(HKEY_LOCAL_MACHINE,&sub,"ImagePath").unwrap_or_default();
+        let delayed=query_dword(HKEY_LOCAL_MACHINE,&sub,"DelayedAutoStart").map(|v|v!=0);
+        let launch=query_dword(HKEY_LOCAL_MACHINE,&sub,"LaunchProtected").unwrap_or(0);
+        let deps=query_multi_string(HKEY_LOCAL_MACHINE,&sub,"DependOnService").unwrap_or_default();
+        configs.insert(name,(start,ty,image,delayed,launch,deps));
+    }
     let mut depended=HashSet::new();for(_,(_,_,_,_,_,deps))in &configs{for d in deps{depended.insert(d.to_ascii_lowercase());}}
     let system_root=std::env::var("SystemRoot").unwrap_or_else(|_|r"C:\Windows".into()).to_ascii_lowercase();
-    for(name,(start,ty,image,delayed,launch,_)) in configs {if start!=2{continue}let lname=name.to_ascii_lowercase();let image_lower=image.to_ascii_lowercase();let own_process=(ty&0x10)!=0&&(ty&0x20)==0;let essential=is_essential_service(&lname);let windows_binary=image_lower.contains(&system_root)||image_lower.contains("\\system32\\")||image_lower.contains("svchost.exe");let security=is_security_or_system_command(&format!("{name} {image}"));let protected_role=is_protected_service_role(&format!("{name} {image}"));let is_depended=depended.contains(&lname);let protected=launch!=0||essential||windows_binary||security||protected_role||is_depended||!own_process;let reason=if launch!=0{"Windows launch-protected service."}else if essential{"Essential Windows service policy."}else if windows_binary{"Windows-hosted service."}else if security{"Security-related service policy."}else if protected_role{"Networking, storage, input, accessibility, or other protected service role."}else if is_depended{"Another service declares a dependency on this service."}else if !own_process{"Shared/driver service types are not managed."}else{""};let state=NativeState::Service{service_name:name.clone(),start_type:start,delayed_auto:delayed,service_type:ty,binary_path:image.clone(),launch_protected:launch};out.push(StartupItem{item_id:stable_id(&format!("service|{lname}")),kind:"Service".into(),scope:"Machine service".into(),display_name:name.clone(),publisher:if protected&&windows_binary{"Windows".into()}else{"Third-party / unknown".into()},command:image.clone(),source:format!("Service: {name}"),enabled:true,manageable:!protected,protected,protection_reason:reason.into(),impact:"Unknown".into(),confidence:"InsufficientEvidence".into(),evidence_detail:if delayed{"Automatic (delayed) service; exact boot impact is not inferred without direct telemetry.".into()}else{"Automatic service; exact boot impact is not inferred without direct telemetry.".into()},recommendation:if protected{"Keep enabled".into()}else{"Review".into()},service_change:true,original_state:Some(state)});}
+    for(name,(start_result,ty,image,delayed_result,launch,_)) in configs {
+        let start=match start_result{Ok(v)=>v,Err(e)=>{warnings.push(format!("Service {name}: Start could not be read ({e}); excluded from the manageable startup inventory rather than guessed at."));continue}};
+        if start!=2{continue}
+        let delayed=match delayed_result{Ok(v)=>v,Err(e)=>{warnings.push(format!("Service {name}: DelayedAutoStart could not be read ({e}); excluded from the manageable startup inventory rather than guessed at."));continue}};
+        let lname=name.to_ascii_lowercase();let image_lower=image.to_ascii_lowercase();let own_process=(ty&0x10)!=0&&(ty&0x20)==0;let essential=is_essential_service(&lname);let windows_binary=image_lower.contains(&system_root)||image_lower.contains("\\system32\\")||image_lower.contains("svchost.exe");let security=is_security_or_system_command(&format!("{name} {image}"));let protected_role=is_protected_service_role(&format!("{name} {image}"));let is_depended=depended.contains(&lname);let protected=launch!=0||essential||windows_binary||security||protected_role||is_depended||!own_process;let reason=if launch!=0{"Windows launch-protected service."}else if essential{"Essential Windows service policy."}else if windows_binary{"Windows-hosted service."}else if security{"Security-related service policy."}else if protected_role{"Networking, storage, input, accessibility, or other protected service role."}else if is_depended{"Another service declares a dependency on this service."}else if !own_process{"Shared/driver service types are not managed."}else{""};let state=NativeState::Service{service_name:name.clone(),start_type:start,delayed_auto:delayed,service_type:ty,binary_path:image.clone(),launch_protected:launch};out.push(StartupItem{item_id:stable_id(&format!("service|{lname}")),kind:"Service".into(),scope:"Machine service".into(),display_name:name.clone(),publisher:if protected&&windows_binary{"Windows".into()}else{"Third-party / unknown".into()},command:image.clone(),source:format!("Service: {name}"),enabled:true,manageable:!protected,protected,protection_reason:reason.into(),impact:"Unknown".into(),confidence:"InsufficientEvidence".into(),evidence_detail:if delayed{"Automatic (delayed) service; exact boot impact is not inferred without direct telemetry.".into()}else{"Automatic service; exact boot impact is not inferred without direct telemetry.".into()},recommendation:if protected{"Keep enabled".into()}else{"Review".into()},service_change:true,original_state:Some(state)});
+    }
     Ok(())
 }
 
 fn query_registry_state(hive:&str,key:&str,value_name:&str,view:&str,expected_type:u32,expected_hex:&str)->Result<NativeState>{let(root,key_path)=parse_hive(hive,key);let view_flag=match view{"64"=>KEY_WOW64_64KEY,"32"=>KEY_WOW64_32KEY,_=>REG_SAM_FLAGS(0)};match query_raw_value(root,&key_path,value_name,view_flag){Ok((ty,data))=>Ok(NativeState::RegistryValue{hive:hive.into(),key:key.into(),value_name:value_name.into(),view:view.into(),exists:true,value_type:ty,data_hex:hex::encode(data)}),Err(StartupError::Platform(e))if e=="not-found"=>Ok(NativeState::RegistryValue{hive:hive.into(),key:key.into(),value_name:value_name.into(),view:view.into(),exists:false,value_type:expected_type,data_hex:expected_hex.into()}),Err(e)=>Err(e)}}
-fn query_startup_file_state(path:&str,size:u64,modified:i64,expected_sha256:&str,backup:&str)->Result<NativeState>{
+fn query_startup_file_state(path:&str,size:u64,modified:Option<i64>,expected_sha256:&str,backup:&str)->Result<NativeState>{
     let p=Path::new(path);let b=Path::new(backup);
     if let Ok(m)=std::fs::symlink_metadata(p){
         if m.file_type().is_symlink() || (m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0) != 0 {return Err(StartupError::Platform("startup target became a reparse/symlink".into()))}
@@ -200,7 +230,7 @@ fn query_string(root:HKEY,key:&str,name:&str)->Result<String>{let(ty,data)=query
 fn query_multi_string(root:HKEY,key:&str,name:&str)->Result<Vec<String>>{let(ty,data)=query_raw_value(root,key,name,REG_SAM_FLAGS(0))?;if ty!=REG_MULTI_SZ.0{return Ok(vec![])}let u=bytes_to_u16(&data);Ok(String::from_utf16_lossy(&u).split('\0').filter(|s|!s.is_empty()).map(str::to_owned).collect())}
 fn parse_hive(hive:&str,key:&str)->(HKEY,String){if let Some(sid)=hive.strip_prefix("HKU\\"){if key.starts_with(&format!("{}\\",sid)){(HKEY_USERS,key.into())}else{(HKEY_USERS,format!(r"{}\{}",sid,key))}}else{(HKEY_LOCAL_MACHINE,key.into())}}
 
-fn modified_ms(m:&std::fs::Metadata)->i64{m.modified().ok().and_then(|t|t.duration_since(UNIX_EPOCH).ok()).map(|d|d.as_millis()as i64).unwrap_or(0)}
+fn modified_ms(m:&std::fs::Metadata)->Option<i64>{m.modified().ok().and_then(|t|t.duration_since(UNIX_EPOCH).ok()).map(|d|d.as_millis()as i64)}
 fn bytes_to_u16(data:&[u8])->Vec<u16>{data.chunks_exact(2).map(|c|u16::from_le_bytes([c[0],c[1]])).collect()}
 fn decode_utf16_bytes(data:&[u8])->String{let mut v=bytes_to_u16(data);while v.last()==Some(&0){v.pop();}String::from_utf16_lossy(&v)}
 fn wide(v:&str)->Vec<u16>{OsStr::new(v).encode_wide().chain(Some(0)).collect()}

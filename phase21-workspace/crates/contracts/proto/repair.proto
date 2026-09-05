@@ -110,6 +110,10 @@ message SystemRepairStatus {
   string safety_tier = 19;
   bool reboot_required = 20;
   string verification_state = 21;
+  // DBT-P46-B7: false means this plan has not completed yet (completed_unix_ms
+  // is a fallback, not a real time) — distinct from a plan that completed at
+  // a genuine timestamp.
+  bool has_completed_unix_ms = 22;
 }
 message RepairAssessmentResponse { RepairAssessmentSnapshot assessment = 1; }
 message SystemRepairStatusResponse { SystemRepairStatus status = 1; }

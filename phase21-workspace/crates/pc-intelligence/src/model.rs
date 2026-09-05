@@ -297,9 +297,12 @@ pub enum FactPayload {
     StorageHealth {
         health_status: String,
         source_severity: String,
-        uncorrected_read_errors: u64,
-        uncorrected_write_errors: u64,
-        nvme_critical_warning: u8,
+        /// `None` when the SMART attribute was not readable on this pass.
+        /// A counter that did not answer is not a counter that read zero —
+        /// see `rules::explicitly_healthy`, which authorises resolution.
+        uncorrected_read_errors: Option<u64>,
+        uncorrected_write_errors: Option<u64>,
+        nvme_critical_warning: Option<u8>,
         nvme_media_errors_nonzero: bool,
         wear_percent: Option<u64>,
         temperature_c: Option<i64>,

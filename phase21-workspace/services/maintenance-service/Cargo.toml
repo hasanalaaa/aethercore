@@ -12,6 +12,7 @@ signal-hook = { version = "0.3", default-features = false }
 prost.workspace = true
 
 [dependencies]
+aethercore-product-identity = { path = "../../crates/product-identity" }
 aethercore-collector-runtime = { path = "../../crates/collector-runtime" }
 aethercore-idle-scheduler = { path = "../../crates/idle-scheduler" }
 aethercore-update-engine = { path = "../../crates/update-engine" }

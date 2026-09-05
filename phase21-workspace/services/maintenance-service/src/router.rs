@@ -1209,7 +1209,7 @@ pub fn handle_request(
             }
             // ---------------- Phase 22: One-Click Care ----------------
             request::Payload::GetCareStatus(_) => {
-                let status = ctx.care.plan_preview(&principal_key);
+                let status = ctx.care.plan_preview(&principal_key).map_err(care_err)?;
                 publish(
                     ctx,
                     &principal_key,
@@ -1225,7 +1225,7 @@ pub fn handle_request(
             }
             request::Payload::GrantCareSessionConsent(_) => {
                 ctx.care.grant_session_consent(&principal_key);
-                let status = ctx.care.plan_preview(&principal_key);
+                let status = ctx.care.plan_preview(&principal_key).map_err(care_err)?;
                 publish(
                     ctx,
                     &principal_key,
@@ -1241,16 +1241,10 @@ pub fn handle_request(
             }
             request::Payload::StartCareRun(_) => {
                 let run_id = format!("care-{}", chrono::Utc::now().timestamp_millis());
-                let status = ctx.care.start_run(&principal_key, &run_id).map_err(|e| {
-                    ServiceError::new(
-                        6,
-                        v1::ErrorCode::Conflict,
-                        "care",
-                        "care.error.startFailed",
-                        e.to_string(),
-                        false,
-                    )
-                })?;
+                let status = ctx
+                    .care
+                    .start_run(&principal_key, &run_id)
+                    .map_err(care_err)?;
                 publish(
                     ctx,
                     &principal_key,
@@ -1266,7 +1260,7 @@ pub fn handle_request(
             }
             request::Payload::CancelCareRun(_) => {
                 ctx.care.cancel();
-                let status = ctx.care.plan_preview(&principal_key);
+                let status = ctx.care.plan_preview(&principal_key).map_err(care_err)?;
                 publish(
                     ctx,
                     &principal_key,
@@ -1342,7 +1336,9 @@ pub fn handle_request(
             }
             // ---------------- Phase 26/27: honest platform + engine surface ----------
             request::Payload::GetPlatformCapabilities(_) => {
-                let capabilities = aethercore_platform_capabilities::matrix_for_current_platform()
+                let capabilities = aethercore_platform_capabilities::matrix_for_current_platform_observed(
+                    crate::performance::observe_telemetry(),
+                )
                     .into_iter()
                     .map(|(name, availability)| {
                         let state = match &availability {
@@ -1374,12 +1370,7 @@ pub fn handle_request(
                     .collect();
                 Ok(Some(response::Payload::PlatformCapabilitiesResponse(
                     v1::PlatformCapabilitiesResponse {
-                        platform: match aethercore_platform_capabilities::Platform::current() {
-                            aethercore_platform_capabilities::Platform::Windows => "windows",
-                            aethercore_platform_capabilities::Platform::Macos => "macos",
-                            aethercore_platform_capabilities::Platform::Linux => "linux",
-                        }
-                        .to_string(),
+                        platform: aethercore_platform_capabilities::current_platform_name().to_string(),
                         capabilities,
                     },
                 )))
@@ -1387,22 +1378,30 @@ pub fn handle_request(
             request::Payload::GetEngineSource(_) => Ok(Some(
                 response::Payload::EngineSourceResponse(v1::EngineSourceResponse {
                     source: crate::performance::engine_source().to_string(),
-                    platform: match aethercore_platform_capabilities::Platform::current() {
-                        aethercore_platform_capabilities::Platform::Windows => "windows",
-                        aethercore_platform_capabilities::Platform::Macos => "macos",
-                        aethercore_platform_capabilities::Platform::Linux => "linux",
-                    }
-                    .to_string(),
+                    platform: aethercore_platform_capabilities::current_platform_name().to_string(),
                 }),
             )),
             // ---------------- Phase 29 (T1): signed journal export -------------------
             request::Payload::ExportJournal(v) => {
                 // Read-only RPC: pulls through EXISTING persistence accessors only;
                 // single-writer discipline untouched.
-                let owner = if v.owner_principal_key.trim().is_empty() {
+                // `operations.proto` documents empty as "the calling principal's own
+                // records". A NON-empty value is a request to read someone else's, and
+                // no authorization exists in this product that grants that: there is no
+                // administrative scope, no delegation, no broker gate for it. Honouring
+                // it let any caller holding another binding key read that owner's
+                // executions, support journal and repair timeline out of a LocalSystem
+                // service. The only correct answer is to refuse.
+                let owner = if v.owner_principal_key.trim().is_empty()
+                    || v.owner_principal_key == principal_key
+                {
                     principal_key.clone()
                 } else {
-                    v.owner_principal_key.clone()
+                    return Err(ServiceError::forbidden(
+                        "persistence",
+                        "journal.ownerScopeForbidden",
+                        "owner_principal_key must be empty or equal to the calling principal",
+                    ));
                 };
                 let executions = ctx
                     .db
@@ -1523,12 +1522,14 @@ pub fn handle_request(
             }
             // ---------------- Phase 32 (T1): read-only security audit ----------------
             request::Payload::RunSecurityAudit(v) => {
-                // Read-only RPC over the aethercore-security-audit domain:
-                // parses caller-named config/log/dir targets; zero system
-                // mutations, zero elevation, zero network. Targets are owner-
-                // scoped by construction (the calling principal runs the scan
-                // against paths it names); traversal-style entries are
-                // rejected typed before any provider runs.
+                // Read-only RPC over the aethercore-security-audit domain: zero
+                // system mutations, zero network. It is NOT zero-privilege — the
+                // Windows host runs as LocalSystem and reverts impersonation before
+                // dispatch, so a caller-named path is read with the service's authority
+                // and not the caller's. Targets are therefore confined to the roots the
+                // OS reported for THIS caller's own token, which is the owner-scoped
+                // allowlist `operations.proto` has always promised here. Refusal is
+                // typed and happens before any provider runs.
                 let parsed: Result<Vec<aethercore_security_audit::model::AuditTarget>, String> =
                     serde_json::from_slice::<Vec<serde_json::Value>>(&v.targets_json)
                         .map_err(|e| format!("targets parse: {e}"))
@@ -1560,13 +1561,14 @@ pub fn handle_request(
                         ));
                     }
                 };
-                if let Err(detail) =
-                    aethercore_security_audit::validate_targets(&targets)
+                let scope = aethercore_security_audit::OwnerScope::new(peer.owner_roots());
+                if let Err(denial) =
+                    aethercore_security_audit::authorize_targets(&targets, &scope)
                 {
-                    return Err(ServiceError::invalid(
+                    return Err(ServiceError::forbidden(
                         "security",
-                        "sec.traversalRejected",
-                        detail,
+                        denial.code(),
+                        denial.to_string(),
                     ));
                 }
                 let report = aethercore_security_audit::run_audit(&targets);
@@ -1729,6 +1731,27 @@ fn expected_update_broker_path() -> Result<PathBuf> {
 
 fn err<E: Into<ServiceError>>(error: E) -> ServiceError {
     error.into()
+}
+
+/// DBT-P46-B33: "the plans could not be read" is not a conflict and must not
+/// be reported as one — the request failed because the service could not tell
+/// what is due, which is a 500 the caller can distinguish from a refusal.
+fn care_err(error: aethercore_care_orchestrator::CareError) -> ServiceError {
+    match error {
+        aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(_) => ServiceError::internal(
+            "care",
+            "care.error.planSourcesUnavailable",
+            error.to_string(),
+        ),
+        other => ServiceError::new(
+            6,
+            v1::ErrorCode::Conflict,
+            "care",
+            "care.error.startFailed",
+            other.to_string(),
+            false,
+        ),
+    }
 }
 
 fn failure(header: ResponseHeader, error: ServiceError) -> Response {

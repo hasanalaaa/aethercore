@@ -17,6 +17,7 @@ pub mod filesystem;
 pub mod firewall;
 pub mod model;
 pub mod password;
+pub mod scope;
 pub mod secrets;
 pub mod sshd;
 pub mod sudoers;
@@ -24,6 +25,8 @@ pub mod vulndb;
 pub mod vulnjoin;
 
 use serde::{Deserialize, Serialize};
+
+pub use scope::{OwnerScope, TargetDenial, authorize_targets, is_reparse_point};
 
 /// Report schema version.
 pub const REPORT_SCHEMA_VERSION: u32 = 1;
@@ -65,7 +68,7 @@ pub struct LaneReport {
 #[serde(rename_all = "camelCase")]
 pub struct SecurityAuditReport {
     pub schema_version: u32,
-    /// Host platform tag ("macos"/"linux"/"other").
+    /// Host platform/SKU tag (for example "windowsServerCore").
     pub platform: String,
     pub lanes: Vec<LaneReport>,
     /// Deterministic SHA-256 over sorted findings (see model::report_digest).
@@ -108,13 +111,7 @@ pub fn validate_targets(targets: &[model::AuditTarget]) -> Result<(), String> {
 }
 
 fn platform_tag() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else {
-        "other"
-    }
+    aethercore_platform_capabilities::current_platform_name()
 }
 
 /// Runs every requested lane. Unknown/None targets ⇒ empty request is an error
@@ -221,9 +218,23 @@ pub fn run_audit(targets: &[model::AuditTarget]) -> SecurityAuditReport {
 /// CVE join lane: verified local DB × read-only census.
 fn cve_lane() -> (String, LaneReport) {
     // Resolution order: AETHERCORE_VULNDB_DIR (owner-installed DB from
-    // `vulndb update --dest`), then the repo-relative seeded asset.
+    // `vulndb update --dest`), then the seeded asset BESIDE THE EXECUTABLE (this is
+    // where the MSI installs it), then the repo-relative path for in-tree dev runs.
+    //
+    // The exe-relative step is not cosmetic: without it an installed build resolved
+    // `assets/vulndb` against the process CWD, which on a service or a shell in any
+    // other directory is never the install directory, so the CVE lane reported
+    // NotAvailable on every installed machine no matter what the MSI shipped.
     let dir = std::env::var_os("AETHERCORE_VULNDB_DIR")
         .map(std::path::PathBuf::from)
+        .or_else(|| {
+            let beside = std::env::current_exe()
+                .ok()?
+                .parent()?
+                .join("assets")
+                .join("vulndb");
+            beside.join("vulndb.json").is_file().then_some(beside)
+        })
         .unwrap_or_else(|| std::path::PathBuf::from("assets/vulndb"));
     let db_path = dir.join("vulndb.json");
     let manifest_path = dir.join("vulndb.manifest.json");
@@ -290,6 +301,54 @@ mod tests {
             expected_or_threshold: "no | prohibit-password".into(),
             source_location: loc.into(),
         }
+    }
+
+    /// Regression test for the defect recorded twice in Phase 37 (§16.4, §16.7):
+    /// `platform_tag()` carried its OWN `cfg!` ladder that tested only macos and
+    /// linux, so Windows -- the product's PRIMARY platform -- fell through to the
+    /// `else` arm and every compliance report generated there was fingerprinted
+    /// `other:<digest>`.
+    ///
+    /// The fix is that platform identity is derived in exactly ONE place,
+    /// `aethercore_platform_capabilities::current_platform_name()`, and every
+    /// caller routes through it. This test asserts both halves: the tag names the
+    /// real host, and it AGREES with the shared helper by construction.
+    ///
+    /// Stated limit: the "never other" half is only discriminating when compiled
+    /// for Windows, because that is the only target the old ladder got wrong. The
+    /// agreement half is what makes a second, divergent derivation impossible to
+    /// reintroduce on any target; `scripts/static_validate.py` checks the same
+    /// property at the source level so it is enforced off-Windows too.
+    #[test]
+    fn platform_tag_names_the_host_and_never_falls_back_to_other() {
+        let tag = platform_tag();
+
+        assert_ne!(
+            tag, "other",
+            "platform_tag() fell back to \"other\"; a compliance report generated \
+             here would be fingerprinted as an unknown platform"
+        );
+
+        // There must be no second derivation of platform identity.
+        assert_eq!(
+            tag,
+            aethercore_platform_capabilities::current_platform_name(),
+            "platform_tag() disagrees with the shared platform helper"
+        );
+
+        #[cfg(target_os = "windows")]
+        assert!(
+            tag.starts_with("windows"),
+            "expected a windows* tag on Windows, got {tag:?}"
+        );
+        #[cfg(target_os = "macos")]
+        assert_eq!(tag, "macos");
+        #[cfg(target_os = "linux")]
+        assert_eq!(tag, "linux");
+
+        // The tag is what run_audit stamps into the report, and what
+        // apps/aetherctl/src/sec.rs turns into host_fingerprint.
+        assert_eq!(run_audit(&[model::AuditTarget::FirewallState]).platform, tag);
     }
 
     #[test]

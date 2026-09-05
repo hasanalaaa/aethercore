@@ -5,6 +5,7 @@ members = [
   "apps/consent-broker",
   "apps/install-hardener",
   "services/maintenance-service",
+  "crates/product-identity",
   "crates/contracts",
   "crates/windows-foundation",
   "crates/collector-runtime",
@@ -47,15 +48,21 @@ members = [
   "tools/update-manifest",
   "tools/support-bundle-verify",
   "tools/ga-probe",
+  "tools/p39-probes",
   "crates/db-diagnostics",
   "crates/security-audit",
   "crates/fleet",
+  "tools/gd4-audit",
 ]
 resolver = "3"
 
 [workspace.package]
 license = "Apache-2.0 OR MIT"
-version = "0.1.0"
+# SINGLE SOURCE OF TRUTH for the product version. Every crate inherits it via
+# `version.workspace = true`, so every binary reports it through CARGO_PKG_VERSION.
+# The MSI, the CLI archive and the desktop bundle all derive from this line.
+# Bump HERE and nowhere else.
+version = "0.1.11"
 edition = "2024"
 rust-version = "1.97"
 publish = false

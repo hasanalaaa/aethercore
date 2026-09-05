@@ -495,12 +495,22 @@ impl DriverHub {
         self.inner.owner_principal_key.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
-    fn load_overrides(&self, owner: &str) -> Vec<DriverOverride> {
-        let Some(database) = self.inner.database.as_ref() else { return Vec::new(); };
-        database.driver_authority_overrides_for_owner(owner, Utc::now().timestamp_millis()).unwrap_or_default().into_iter().filter_map(|r| {
-            let kind = match r.behavior.as_str() { "IgnoreExactVersion" => DriverOverrideKind::IgnoreExactVersion, "RemindLater" => DriverOverrideKind::RemindLater, "IgnoreOptional" => DriverOverrideKind::IgnoreOptional, _ => return None };
-            Some(DriverOverride { device_privacy_key:r.device_privacy_key, kind, candidate_version:r.candidate_version, authority_provider_id:r.provider_id, expires_unix_ms:r.expires_unix_ms })
-        }).collect()
+    // DBT-P46-B19: a DB read failure here used to be indistinguishable from
+    // "this owner has no saved overrides" — .unwrap_or_default() silently
+    // dropped the user's own saved driver-update preferences (e.g. "ignore
+    // this update") with no signal anywhere. Now returns the load failure as
+    // a warning string, threaded into DriverHubSnapshot.warnings by both
+    // callers, the same way a Windows Update discovery failure already is
+    // two lines above each call site.
+    fn load_overrides(&self, owner: &str) -> (Vec<DriverOverride>, Option<String>) {
+        let Some(database) = self.inner.database.as_ref() else { return (Vec::new(), None); };
+        match database.driver_authority_overrides_for_owner(owner, Utc::now().timestamp_millis()) {
+            Ok(rows) => (rows.into_iter().filter_map(|r| {
+                let kind = match r.behavior.as_str() { "IgnoreExactVersion" => DriverOverrideKind::IgnoreExactVersion, "RemindLater" => DriverOverrideKind::RemindLater, "IgnoreOptional" => DriverOverrideKind::IgnoreOptional, _ => return None };
+                Some(DriverOverride { device_privacy_key:r.device_privacy_key, kind, candidate_version:r.candidate_version, authority_provider_id:r.provider_id, expires_unix_ms:r.expires_unix_ms })
+            }).collect(), None),
+            Err(error) => (Vec::new(), Some(format!("Saved driver overrides unavailable: {error}"))),
+        }
     }
 
     fn persist_authority_snapshot(&self, owner: &str, snapshot: &DriverHubSnapshot) {
@@ -530,9 +540,10 @@ impl DriverHub {
             offers: Vec::new(), warnings: vec![format!("Windows Update discovery unavailable: {error}")],
         });
         if token.is_cancelled() { return Err(HubError::Cancelled); }
-        let overrides = self.load_overrides(owner_principal_key);
+        let (overrides, overrides_warning) = self.load_overrides(owner_principal_key);
         let mut ready = match_inventory_with_overrides(scan_id, epoch, started, devices, discovery, &overrides);
         ready.state = ScanState::Ready; ready.completed_unix_ms = Utc::now().timestamp_millis();
+        ready.warnings.extend(overrides_warning);
         let committed = commit_fence.try_commit_checked(|| {
             let mut owner = self.inner.owner_principal_key.lock().unwrap_or_else(|p| p.into_inner());
             let mut current = self.inner.snapshot.lock().unwrap_or_else(|p| p.into_inner());
@@ -628,12 +639,13 @@ impl DriverHub {
 
         self.update_state(ScanState::Matching);
         let owner = self.current_owner();
-        let overrides = self.load_overrides(&owner);
+        let (overrides, overrides_warning) = self.load_overrides(&owner);
         let mut ready = match_inventory_with_overrides(
             base.scan_id, base.inventory_epoch, base.started_unix_ms, devices, discovery, &overrides,
         );
         ready.state = ScanState::Ready;
         ready.completed_unix_ms = Utc::now().timestamp_millis();
+        ready.warnings.extend(overrides_warning);
         self.persist_authority_snapshot(&owner, &ready);
         let mut current = self.inner.snapshot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         *current = ready;

@@ -66,13 +66,23 @@ fn classify(domain_kind: &str) -> Option<CareSafety> {
 /// Only plans in `AwaitingAuthorization`-free terminal-eligible states are
 /// considered: a plan must already exist, be digest-bound and owned by this
 /// principal. The orchestrator never creates plans.
-pub fn compose_plan(db: &Database, owner_principal_key: &str) -> CarePlan {
+///
+/// DBT-P46-B33: a failed read is NOT an empty plan. `.unwrap_or_default()` here
+/// made a database that could not answer look exactly like a machine with
+/// nothing due — and `start_run` then reported that as a **Completed** care
+/// run. The failure now propagates; the caller decides how to say it.
+pub fn compose_plan(
+    db: &Database,
+    owner_principal_key: &str,
+) -> Result<CarePlan, aethercore_care_orchestrator::CareError> {
     // Eligible sources: completed scans leave plans behind only after their own
     // domain created them; we consider plans still awaiting authorization plus
     // recently created ones. Terminal plans are excluded — nothing left to run.
     let candidates = db
         .plans_in_states(&["ReadyForReview", "AwaitingAuthorization"])
-        .unwrap_or_default();
+        .map_err(|error| {
+            aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(error.to_string())
+        })?;
 
     let steps = candidates
         .into_iter()
@@ -87,10 +97,10 @@ pub fn compose_plan(db: &Database, owner_principal_key: &str) -> CarePlan {
         })
         .collect();
 
-    CarePlan::build(steps).unwrap_or_else(|| CarePlan {
+    Ok(CarePlan::build(steps).unwrap_or_else(|| CarePlan {
         steps: Vec::new(),
         plan_digest_sha256: empty_plan_digest(),
-    })
+    }))
 }
 
 fn plan_kind_of(plan: &aethercore_persistence::PlanRecord) -> &'static str {
@@ -406,15 +416,22 @@ impl CareCoordinator {
     }
 
     /// Deterministic preview of what a care run would do right now.
-    pub fn plan_preview(&self, owner_principal_key: &str) -> v1::CareRunStatus {
-        let plan = compose_plan(&self.db, owner_principal_key);
-        status_proto(
+    ///
+    /// DBT-P46-B33: an `Err` here means "we could not tell what is due". It is
+    /// deliberately not a status with zero steps, which is the answer for a
+    /// machine that genuinely has nothing to do.
+    pub fn plan_preview(
+        &self,
+        owner_principal_key: &str,
+    ) -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError> {
+        let plan = compose_plan(&self.db, owner_principal_key)?;
+        Ok(status_proto(
             "Idle",
             "Preview",
             self.consent.is_granted(owner_principal_key),
             &plan,
             &[],
-        )
+        ))
     }
 
     /// Grants one-time session consent for auto-level work.
@@ -433,7 +450,7 @@ impl CareCoordinator {
         owner_principal_key: &str,
         run_id: &str,
     ) -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError> {
-        let plan = compose_plan(&self.db, owner_principal_key);
+        let plan = compose_plan(&self.db, owner_principal_key)?;
         let journal = PersistenceJournal {
             db: self.db.clone(),
         };
@@ -541,5 +558,74 @@ pub(crate) fn status_proto(
         steps,
         updated_unix_ms: chrono_now(),
         summary_key: summary_key.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod dbt_p46_b33_tests {
+    use super::*;
+
+    fn test_db() -> (Database, std::path::PathBuf) {
+        let path = std::env::temp_dir()
+            .join(format!("aethercore-p46-b33-{}.db", uuid::Uuid::new_v4()));
+        (Database::open(&path).expect("database"), path)
+    }
+
+    /// The honest empty state must survive the fix: a machine with nothing due
+    /// still gets a real, empty plan — not an error.
+    #[test]
+    fn nothing_due_is_an_empty_plan_not_a_failure() {
+        let (db, path) = test_db();
+        let plan = compose_plan(&db, "owner-1").expect("a readable database answers");
+        assert!(plan.steps.is_empty());
+        assert_eq!(
+            plan.plan_digest_sha256,
+            empty_plan_digest(),
+            "the empty plan keeps its stable digest"
+        );
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// DBT-P46-B33. The defect was that a failed read produced the SAME value
+    /// as an empty one, and `start_run` then reported "Completed" for a run
+    /// that never looked at anything. The two are now different types, so no
+    /// status can be built from a failure at all.
+    ///
+    /// NOT PROVEN HERE, and stated rather than implied: this asserts the
+    /// mapping and the digest, not an injected SQLite fault.
+    /// `aethercore-persistence` exposes no seam to fail a query on demand, and
+    /// two attempts to force one from outside were both served from SQLite's
+    /// page cache and returned `Ok(0)` — corrupting the .db file, and
+    /// corrupting the -wal file, each under an open connection.
+    #[test]
+    fn a_read_failure_can_no_longer_become_a_completed_run() {
+        let error = aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(
+            "database is locked".to_string(),
+        );
+        assert!(
+            error.to_string().contains("could not be read"),
+            "the message must say what failed: {error}"
+        );
+        assert_ne!(
+            error,
+            aethercore_care_orchestrator::CareError::Journal("database is locked".to_string()),
+            "failing to READ what is due is not the same as failing to RECORD a run"
+        );
+
+        // What the old code produced for that same failure, for contrast: an
+        // empty plan, indistinguishable from a machine with nothing to do.
+        let empty = CarePlan {
+            steps: Vec::new(),
+            plan_digest_sha256: empty_plan_digest(),
+        };
+        let status = status_proto("Completed", "Report", true, &empty, &[]);
+        assert_eq!(status.state, "Completed");
+        assert_eq!(status.summary_key, "care.summary.completed");
+        assert!(
+            status.steps.is_empty(),
+            "documents the bug this fix removes: a database that could not \
+             answer was reported to the owner as a completed care run"
+        );
     }
 }

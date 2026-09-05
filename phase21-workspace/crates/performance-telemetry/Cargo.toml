@@ -28,6 +28,10 @@ libc = "0.2"
 uuid.workspace = true
 aethercore-performance-bottleneck = { path = "../performance-bottleneck" }
 criterion.workspace = true
+# DBT-P41-002 (P42 1.A): `capabilities` and the collectors must not contradict
+# each other. Asserting that needs both crates in one test process. Dev-only —
+# the production dependency direction is unchanged (apps depend on both).
+aethercore-platform-capabilities = { path = "../platform-capabilities" }
 
 [[bench]]
 name = "perf_ring"

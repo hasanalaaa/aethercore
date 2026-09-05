@@ -95,6 +95,9 @@ message StartupHistoryEntryInfo {
   int64 updated_unix_ms = 11;
   int64 restored_unix_ms = 12;
   bool restorable = 13;
+  // DBT-P46-B14: false is the common case (never restored) — distinct from a
+  // change that was genuinely restored at unix epoch 0.
+  bool has_restored_unix_ms = 14;
 }
 message StartupSnapshotResponse { StartupSnapshot snapshot = 1; }
 message StartupStatusResponse { StartupStatus status = 1; }

@@ -210,12 +210,180 @@ impl PerfSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// The collector contract (P42 1.B — DBT-P41-002)
+// ---------------------------------------------------------------------------
+
+/// A subsystem reading. **There is no third state.**
+///
+/// §20.1.4 records the defect this type exists to remove: `PerfPlatform::sample`
+/// returns `PerfSnapshot`, `PerfSnapshot` derives `Default`, and so an all-zero
+/// payload with an empty fault list was a legal, type-checking return —
+/// indistinguishable from a real reading of an idle machine. Nine hand-written
+/// availability rules (§20.1.1) existed to compensate for that missing contract;
+/// gpu's was the only one that fired, and §20.1.6 records that it fired **by
+/// accident**. A fix at any one call site left the other eight free to regress.
+///
+/// So the decision moves into the type. A collector either hands over something
+/// it actually read, or it says why it could not. The variants are private and
+/// the constructors take the evidence, so "success with nothing measured and
+/// nothing declared" is not representable:
+///
+/// - [`Reading::from_evidence`] takes an `Option<T>` — the shape a failed native
+///   read already has — and turns `None` into the fault the caller must supply.
+///   This is why the Windows collectors no longer `.unwrap_or(0)`: §20.1.3(a)
+///   shows that is exactly how a failed read became a confident zero.
+/// - [`Reading::from_collection`] refuses an empty collection.
+/// - [`Reading::unavailable`] is the explicit "I could not" for a collector that
+///   never got as far as a payload.
+pub struct Reading<T>(ReadingInner<T>);
+
+/// Private on purpose: `Reading::Measured` must be unconstructible, inside this
+/// crate as well as outside it, without passing evidence to a constructor.
+enum ReadingInner<T> {
+    Measured(T),
+    Unavailable(CollectorFault),
+}
+
+impl<T> Reading<T> {
+    /// Measured if the collector produced a value, otherwise the supplied fault.
+    pub fn from_evidence(measured: Option<T>, no_evidence: impl FnOnce() -> CollectorFault) -> Self {
+        match measured {
+            Some(value) => Self(ReadingInner::Measured(value)),
+            None => Self(ReadingInner::Unavailable(no_evidence())),
+        }
+    }
+
+    /// The collector could not produce a payload at all, and says why.
+    pub fn unavailable(fault: CollectorFault) -> Self {
+        Self(ReadingInner::Unavailable(fault))
+    }
+
+    /// True when this reading carries a measurement.
+    pub fn is_measured(&self) -> bool {
+        matches!(self.0, ReadingInner::Measured(_))
+    }
+
+    /// Splits into the payload the wire format needs and the fault, if any.
+    ///
+    /// The fallback is only ever reached on the `Unavailable` arm, so a snapshot
+    /// field that holds a fallback **always** has a fault standing beside it.
+    /// That is the whole guarantee: a zero can appear, but never unexplained.
+    pub fn into_parts(self, fallback: impl FnOnce() -> T) -> (T, Option<CollectorFault>) {
+        match self.0 {
+            ReadingInner::Measured(value) => (value, None),
+            ReadingInner::Unavailable(fault) => (fallback(), Some(fault)),
+        }
+    }
+}
+
+impl<T> Reading<Vec<T>> {
+    /// Measured if the collection is non-empty; an empty collection is not a
+    /// reading. §20.1.2: storage returns a `Vec` exactly like gpu and *could*
+    /// have expressed "I got nothing" — it simply never did, across four
+    /// fault-free early returns.
+    pub fn from_collection(items: Vec<T>, empty: impl FnOnce() -> CollectorFault) -> Self {
+        if items.is_empty() {
+            Self(ReadingInner::Unavailable(empty()))
+        } else {
+            Self(ReadingInner::Measured(items))
+        }
+    }
+}
+
+/// Every subsystem of one tick, each one already answered.
+///
+/// A provider cannot build this without deciding, per subsystem, measured-or-why-not
+/// — which is the single contract that replaced the nine rules of §20.1.1.
+pub struct CollectedSubsystems {
+    pub cpu: Reading<CpuSample>,
+    pub power: Reading<PowerSample>,
+    pub memory: Reading<MemorySample>,
+    pub storage: Reading<Vec<StorageQueueSample>>,
+    pub gpu: Reading<GpuSample>,
+    pub process_top: Reading<Vec<ProcessCpuTopEntry>>,
+}
+
+impl CollectedSubsystems {
+    /// Publishes the tick. Every `Unavailable` reading contributes its fault;
+    /// there is no path that drops one.
+    pub fn into_snapshot(self, interval: Duration) -> PerfSnapshot {
+        let mut faults: Vec<CollectorFault> = Vec::new();
+        let mut take = |fault: Option<CollectorFault>| {
+            if let Some(fault) = fault {
+                faults.push(fault);
+            }
+        };
+        let (cpu, fault) = self.cpu.into_parts(CpuSample::default);
+        take(fault);
+        let (power, fault) = self.power.into_parts(PowerSample::default);
+        take(fault);
+        let (memory, fault) = self.memory.into_parts(MemorySample::default);
+        take(fault);
+        let (storage, fault) = self.storage.into_parts(Vec::new);
+        take(fault);
+        let (gpu, fault) = self.gpu.into_parts(GpuSample::default);
+        take(fault);
+        let (process_top, fault) = self.process_top.into_parts(Vec::new);
+        take(fault);
+        PerfSnapshot {
+            captured_unix_ms: Utc::now().timestamp_millis(),
+            interval_ms: interval.as_millis().min(u128::from(u32::MAX)) as u32,
+            cpu,
+            power,
+            memory,
+            storage,
+            gpu,
+            process_top,
+            collector_faults: faults,
+        }
+        .normalized()
+    }
+}
+
+/// Which telemetry subsystems this snapshot actually measured.
+///
+/// §41.15 3.C measured `capabilities` reporting 16/16 `native` in the same
+/// session in which storage returned `[]` and gpu declared a fault — three
+/// deciders disagreeing. This is the one answer all of them now read.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MeasuredSubsystems {
+    pub cpu: bool,
+    pub memory: bool,
+    pub storage: bool,
+    pub gpu: bool,
+}
+
+impl PerfSnapshot {
+    /// Naming convention this reads: a fault whose `collector` is exactly the
+    /// subsystem name means the subsystem is unavailable; a dotted suffix
+    /// (`memory.counters`, `cpu.counters`) means a measured subsystem with a
+    /// degraded part.
+    pub fn measured_subsystems(&self) -> MeasuredSubsystems {
+        let available = |name: &str| {
+            !self
+                .collector_faults
+                .iter()
+                .any(|fault| fault.collector == name)
+        };
+        MeasuredSubsystems {
+            cpu: available("cpu"),
+            memory: available("memory") && self.memory.total_physical_bytes > 0,
+            storage: available("storage") && !self.storage.is_empty(),
+            gpu: available("gpu") && !self.gpu.engines.is_empty(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Platform abstraction
 // ---------------------------------------------------------------------------
 
 pub trait PerfPlatform: Send + Sync + 'static {
     /// One passive tick. Every fallible sub-collector degrades into `collector_faults`
     /// instead of failing the snapshot: partial truth beats no truth, but never lies.
+    ///
+    /// Providers publish through [`CollectedSubsystems::into_snapshot`], which is
+    /// what makes the second half of that sentence true rather than aspirational.
     fn sample(&self, interval: Duration) -> PerfSnapshot;
 }
 
@@ -258,6 +426,15 @@ pub fn default_platform() -> std::sync::Arc<dyn PerfPlatform> {
 /// part of the production call graph). Re-exports typed views of private helpers.
 #[doc(hidden)]
 pub mod __test {
+    /// DBT-P41-002 seams: the PDH formatted-value decode, the percentage
+    /// conversion, and the counter-path parser — exposed so tests can assert the
+    /// ABI, the units and the path shape without linking PDH.
+    #[cfg(windows)]
+    pub use super::windows_impl::{
+        PDH_VALUE_SLOT_BYTES, decode_pdh_double, decode_pdh_value, instance_from_counter_path,
+        percentage_to_bp,
+    };
+
     #[cfg(target_os = "macos")]
     pub use super::macos_impl::{CpuTicks, busy_bp_from_ticks, read_cpu_ticks};
 

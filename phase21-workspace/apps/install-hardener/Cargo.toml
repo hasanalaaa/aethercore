@@ -8,3 +8,4 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+aethercore-product-identity = { path = "../../crates/product-identity" }

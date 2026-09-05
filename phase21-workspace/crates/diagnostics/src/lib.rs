@@ -236,8 +236,10 @@ mod tests {
 
     #[test]
     fn rotates_at_configured_limit() {
-        let root = std::env::temp_dir().join(format!("aethercore-log-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        // DBT-P42-013: cleaned at the end AND again at the start of the next
+        // run, because the end-cleanup does not survive a panic. TempDir's does.
+        let guard = tempfile::tempdir().expect("temp dir");
+        let root = guard.path().to_path_buf();
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("service.jsonl");
         std::fs::write(&path, b"123456").unwrap();
@@ -246,14 +248,13 @@ mod tests {
         assert!(!path.exists());
         assert!(path.with_extension("previous.jsonl").exists());
 
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn rotated_generations_are_deterministic_keep_last_n() {
-        let root =
-            std::env::temp_dir().join(format!("aethercore-log-rot-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let guard =
+            tempfile::tempdir().expect("temp dir");
+        let root = guard.path().to_path_buf();
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("service.jsonl");
         std::fs::write(&path, b"current").unwrap();
@@ -286,15 +287,14 @@ mod tests {
         );
         assert!(!root.join("service.jsonl.3").exists());
 
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn rotating_writer_rolls_at_runtime_cap() {
         use std::io::Write as _;
-        let root =
-            std::env::temp_dir().join(format!("aethercore-log-writer-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let guard =
+            tempfile::tempdir().expect("temp dir");
+        let root = guard.path().to_path_buf();
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("service.jsonl");
         let file = OpenOptions::new()
@@ -323,6 +323,5 @@ mod tests {
             b"aaaaaaaaaaaaaaaa"
         );
 
-        let _ = std::fs::remove_dir_all(root);
     }
 }

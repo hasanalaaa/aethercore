@@ -117,9 +117,9 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
             } => {
                 let explicit = health_status.eq_ignore_ascii_case("Unhealthy")
                     || source_severity.eq_ignore_ascii_case("ActionRequired")
-                    || *uncorrected_read_errors > 0
-                    || *uncorrected_write_errors > 0
-                    || *nvme_critical_warning != 0
+                    || uncorrected_read_errors.is_some_and(|value| value > 0)
+                    || uncorrected_write_errors.is_some_and(|value| value > 0)
+                    || nvme_critical_warning.is_some_and(|value| value != 0)
                     || *nvme_media_errors_nonzero;
                 let attention = health_status.eq_ignore_ascii_case("Warning")
                     || wear_percent.is_some_and(|value| value >= 100)
@@ -502,9 +502,11 @@ pub fn explicitly_healthy(fact: &SystemFact) -> bool {
             health_status.eq_ignore_ascii_case("Healthy")
                 && !source_severity.eq_ignore_ascii_case("ActionRequired")
                 && !source_severity.eq_ignore_ascii_case("Warning")
-                && *uncorrected_read_errors == 0
-                && *uncorrected_write_errors == 0
-                && *nvme_critical_warning == 0
+                // DBT-P46-B3: `Some(0)`, not `0`. An unread counter cannot
+                // supply the proof that resolves an open storage finding.
+                && *uncorrected_read_errors == Some(0)
+                && *uncorrected_write_errors == Some(0)
+                && *nvme_critical_warning == Some(0)
                 && !*nvme_media_errors_nonzero
                 && !wear_percent.is_some_and(|value| value >= 100)
                 && !matches!((temperature_c, temperature_max_c), (Some(current), Some(maximum)) if *maximum > 0 && *current >= *maximum)

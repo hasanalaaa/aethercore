@@ -1,8 +1,8 @@
 //! Phase 26 — capability matrix pinning tests (cfg-gated per OS; all run on this host).
 
 use aethercore_platform_capabilities::{
-    Availability, Platform, PlatformCapability as C, available_on, keys,
-    matrix_for_current_platform,
+    Availability, Platform, PlatformCapability as C, WindowsSku, available_on,
+    available_on_windows_sku, classify_windows_sku, keys, matrix_for_current_platform,
 };
 
 fn is_na(av: &Availability) -> bool {
@@ -118,4 +118,203 @@ fn capability_names_are_unique() {
     let len = names.len();
     names.dedup();
     assert_eq!(names.len(), len, "duplicate capability name");
+}
+
+#[test]
+fn windows_sku_classification_distinguishes_server_core() {
+    assert_eq!(classify_windows_sku(1, Some("Client")), WindowsSku::Workstation);
+    assert_eq!(classify_windows_sku(3, Some("Server")), WindowsSku::Server);
+    assert_eq!(classify_windows_sku(3, Some("Server Core")), WindowsSku::ServerCore);
+    assert_eq!(classify_windows_sku(99, Some("")), WindowsSku::Unknown);
+}
+
+/// DBT-P46-B26. This is the single canonical Windows-SKU decider and it gates
+/// capability availability, so a registry read that failed must not be able to
+/// answer it. `InstallationType` is exactly what separates Server from Server
+/// Core, and Server Core is the SKU with no console — the one thing the two
+/// server tables actually disagree about.
+#[test]
+fn an_unread_installation_type_cannot_answer_the_sku() {
+    // The value does not participate in a workstation's classification, so a
+    // failed read there must not degrade a correct answer.
+    assert_eq!(classify_windows_sku(1, None), WindowsSku::Workstation);
+
+    // It is the whole basis of the server split, so it must not be guessed.
+    assert_eq!(classify_windows_sku(3, None), WindowsSku::Unknown);
+    assert_eq!(classify_windows_sku(2, None), WindowsSku::Unknown);
+
+    // And an unknown SKU must not claim the one capability Server Core lacks.
+    assert!(
+        matches!(
+            available_on_windows_sku(WindowsSku::Unknown, C::CareOrchestration),
+            Availability::Degraded { .. }
+        ),
+        "Unknown cannot rule out Server Core, so it must not claim a console"
+    );
+}
+
+#[test]
+fn server_matrix_reports_client_only_surfaces_honestly() {
+    for sku in [WindowsSku::Server, WindowsSku::ServerCore] {
+        assert!(matches!(
+            available_on_windows_sku(sku, C::ThermalPowerClamp),
+            Availability::NotAvailable { .. }
+        ));
+        assert!(matches!(
+            available_on_windows_sku(sku, C::GameModeProfile),
+            Availability::NotAvailable { .. }
+        ));
+        assert!(matches!(
+            available_on_windows_sku(sku, C::RestorePoints),
+            Availability::NotAvailable { .. }
+        ));
+    }
+    assert!(matches!(
+        available_on_windows_sku(WindowsSku::Server, C::WindowsUpdate),
+        Availability::Degraded { .. }
+    ));
+    assert!(matches!(
+        available_on_windows_sku(WindowsSku::ServerCore, C::CareOrchestration),
+        Availability::Degraded { .. }
+    ));
+}
+
+/// Regression test for the SKU-detection defect found in Phase 38.
+///
+/// `current_windows_sku()` read a `ProductType` **DWORD** from
+/// `SOFTWARE\Microsoft\Windows NT\CurrentVersion`. That value does not exist on
+/// Windows -- measured ABSENT on Windows 11 Pro build 26200 -- so the read
+/// always failed and the function returned `Unknown` on EVERY Windows host.
+/// Consequences observed on a real install of 0.1.7: `aetherctl about` reported
+/// `"platform":"windowsUnknownSku"` instead of `"windows"`, and the capability
+/// matrix fell back to the SERVER table on a workstation.
+///
+/// The numeric product type actually lives in ProductOptions as a REG_SZ. This
+/// pins that mapping, and it is discriminating on every host because it tests
+/// the pure function rather than the registry.
+#[test]
+fn product_type_code_maps_the_documented_registry_strings() {
+    use aethercore_platform_capabilities::{
+        classify_windows_sku, product_type_code, WindowsSku,
+    };
+
+    // The documented ProductOptions\ProductType values, and their VER_NT_* codes.
+    assert_eq!(product_type_code("WinNT"), 1, "workstation");
+    assert_eq!(product_type_code("LanmanNT"), 2, "domain controller");
+    assert_eq!(product_type_code("ServerNT"), 3, "server");
+
+    // Windows writes these with this exact casing, but the registry is not
+    // case-sensitive and neither is the mapping.
+    assert_eq!(product_type_code("winnt"), 1);
+    assert_eq!(product_type_code("SERVERNT"), 3);
+
+    // Fail closed: anything unrecognised must NOT be claimed as a workstation.
+    assert_eq!(product_type_code(""), 0);
+    assert_eq!(product_type_code("Whatever"), 0);
+    assert_eq!(classify_windows_sku(product_type_code(""), Some("")), WindowsSku::Unknown);
+
+    // End to end, the combination this box actually reports:
+    // ProductOptions\ProductType = "WinNT", CurrentVersion\InstallationType = "Client".
+    assert_eq!(
+        classify_windows_sku(product_type_code("WinNT"), Some("Client")),
+        WindowsSku::Workstation,
+        "a Windows workstation must classify as Workstation, not Unknown"
+    );
+    // And the Server / Server Core split still works.
+    assert_eq!(
+        classify_windows_sku(product_type_code("ServerNT"), Some("Server")),
+        WindowsSku::Server
+    );
+    assert_eq!(
+        classify_windows_sku(product_type_code("ServerNT"), Some("Server Core")),
+        WindowsSku::ServerCore
+    );
+}
+
+// ---------------------------------------------------------------------------
+// P42 — capabilities may not contradict the collectors (§20.1.1 site 9)
+// ---------------------------------------------------------------------------
+
+/// The durable form of the DBT-P41-002 test 4. The integration test in
+/// `performance-telemetry` asserts the same property against *this* machine's
+/// real collectors, which passes whenever the hardware is healthy — exactly the
+/// §20.1.6 "gpu got it right by accident" trap. This one holds the property
+/// under a hostile observation regardless of the host.
+#[test]
+fn an_unmeasured_telemetry_subsystem_is_never_reported_native() {
+    use aethercore_platform_capabilities::{
+        TelemetryObservation, matrix_for_current_platform_observed,
+    };
+
+    let nothing_measured = matrix_for_current_platform_observed(TelemetryObservation::UNOBSERVED);
+    for name in [
+        "telemetryCpu",
+        "telemetryMemory",
+        "telemetryStorage",
+        "telemetryGpu",
+    ] {
+        let (_, availability) = nothing_measured
+            .iter()
+            .find(|(n, _)| *n == name)
+            .unwrap_or_else(|| panic!("{name} missing from the matrix"));
+        assert!(
+            !is_native(availability),
+            "{name} reported `native` while its collector measured nothing: {availability:?}"
+        );
+    }
+}
+
+/// One unmeasured subsystem must not drag down the others, and non-telemetry
+/// capabilities are untouched by a telemetry observation.
+#[test]
+fn observation_downgrades_only_the_subsystem_that_reported_nothing() {
+    use aethercore_platform_capabilities::{
+        TelemetryObservation, matrix_for_current_platform, matrix_for_current_platform_observed,
+    };
+
+    let observed = matrix_for_current_platform_observed(TelemetryObservation {
+        cpu: true,
+        memory: true,
+        storage: false,
+        gpu: true,
+    });
+    let platform_shape = matrix_for_current_platform();
+    for (name, availability) in &observed {
+        let (_, unobserved) = platform_shape
+            .iter()
+            .find(|(n, _)| n == name)
+            .expect("same capability set");
+        if *name == "telemetryStorage" {
+            assert!(
+                !is_native(availability),
+                "storage measured nothing but still reports {availability:?}"
+            );
+        } else {
+            assert_eq!(
+                availability, unobserved,
+                "{name} changed on an observation that did not concern it"
+            );
+        }
+    }
+}
+
+/// An observation may only ever downgrade. A platform that does not offer a
+/// capability must not be promoted by a collector claiming to have measured it.
+#[test]
+fn an_observation_never_promotes_a_capability() {
+    use aethercore_platform_capabilities::{
+        TelemetryObservation, matrix_for_current_platform, matrix_for_current_platform_observed,
+    };
+
+    let all_measured = matrix_for_current_platform_observed(TelemetryObservation {
+        cpu: true,
+        memory: true,
+        storage: true,
+        gpu: true,
+    });
+    assert_eq!(
+        all_measured,
+        matrix_for_current_platform(),
+        "a fully-measured observation must leave the platform matrix unchanged"
+    );
 }

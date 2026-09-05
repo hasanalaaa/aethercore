@@ -139,11 +139,13 @@ pub fn audit_sshd_config(path_str: &str) -> Result<Vec<SecFinding>, String> {
         match directives.iter().find(|(k, _, _, _)| *k == rule.keyword) {
             Some((_, val, line_no, verbatim)) => {
                 let tok = first_token(val);
+                // DBT-P46-B20: a directive present but unparseable (non-numeric, or
+                // out of u32/u64 range) cannot be verified safe, so it fails CLOSED
+                // like every other rule here — never silently read as compliant.
                 let violates = if rule.code == "ssh.max_auth_tries" {
-                    tok.parse::<u32>().map(|n| n > 4).unwrap_or(false)
+                    tok.parse::<u32>().map(|n| n > 4).unwrap_or(true)
                 } else if rule.code == "ssh.client_alive" {
-                    let n = tok.parse::<u64>().unwrap_or(0);
-                    !(1..=900).contains(&n)
+                    tok.parse::<u64>().map(|n| !(1..=900).contains(&n)).unwrap_or(true)
                 } else {
                     rule.bad_values.contains(&tok.as_str())
                 };
@@ -200,5 +202,86 @@ pub fn audit_target(target: &AuditTarget) -> Result<Vec<SecFinding>, String> {
     match target {
         AuditTarget::SshdConfig { path } => audit_sshd_config(path),
         _ => Err("provider mismatch: not an sshd target".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempConfig {
+        path: std::path::PathBuf,
+    }
+
+    impl TempConfig {
+        fn write(label: &str, contents: &str) -> TempConfig {
+            let path = std::env::temp_dir().join(format!(
+                "aethercore-sshd-test-{label}-{}-{:?}.conf",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            std::fs::write(&path, contents).expect("write temp sshd_config");
+            TempConfig { path }
+        }
+    }
+
+    impl Drop for TempConfig {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+
+    fn codes(findings: &[SecFinding]) -> Vec<&str> {
+        findings.iter().map(|f| f.code.as_str()).collect()
+    }
+
+    // DBT-P46-B20: a malformed (non-numeric) MaxAuthTries value must be flagged,
+    // not silently read as compliant. Before the fix, `unwrap_or(false)` made an
+    // unparseable value indistinguishable from "4 or fewer attempts".
+    #[test]
+    fn a_non_numeric_max_auth_tries_value_is_flagged_not_silently_compliant() {
+        let cfg = TempConfig::write("bad-max-auth-tries", "MaxAuthTries abc\n");
+        let findings =
+            audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
+        assert!(
+            codes(&findings).contains(&"ssh.max_auth_tries"),
+            "a non-numeric MaxAuthTries must be flagged, got: {findings:?}"
+        );
+    }
+
+    // The sibling rule already got this right by coincidence (0 fails the 1..=900
+    // range check) — pin it explicitly so a future refactor can't regress it while
+    // "fixing" the rule above.
+    #[test]
+    fn a_non_numeric_client_alive_interval_value_is_flagged() {
+        let cfg = TempConfig::write("bad-client-alive", "ClientAliveInterval abc\n");
+        let findings =
+            audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
+        assert!(
+            codes(&findings).contains(&"ssh.client_alive"),
+            "a non-numeric ClientAliveInterval must be flagged, got: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_compliant_numeric_max_auth_tries_value_is_not_flagged() {
+        let cfg = TempConfig::write("ok-max-auth-tries", "MaxAuthTries 3\n");
+        let findings =
+            audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
+        assert!(
+            !codes(&findings).contains(&"ssh.max_auth_tries"),
+            "a compliant value must not be flagged, got: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_numeric_max_auth_tries_value_is_still_flagged() {
+        let cfg = TempConfig::write("high-max-auth-tries", "MaxAuthTries 999999999999\n");
+        let findings =
+            audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
+        assert!(
+            codes(&findings).contains(&"ssh.max_auth_tries"),
+            "an out-of-u32-range value overflows parse and must fail closed too, got: {findings:?}"
+        );
     }
 }

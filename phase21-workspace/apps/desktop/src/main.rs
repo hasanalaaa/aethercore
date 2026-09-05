@@ -1213,7 +1213,7 @@ fn user_update_cache_dir() -> anyhow::Result<std::path::PathBuf> {
     let root = std::env::var_os("LOCALAPPDATA")
         .map(std::path::PathBuf::from)
         .ok_or_else(|| anyhow::anyhow!("update.error.internal"))?;
-    Ok(root.join("AetherCore").join("UpdateCache"))
+    Ok(root.join(aethercore_product_identity::PRODUCT_NAME).join("UpdateCache"))
 }
 
 struct LocalTempFile {
@@ -1388,7 +1388,7 @@ fn locate_update_broker() -> anyhow::Result<std::path::PathBuf> {
     }
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
         let installed = std::path::PathBuf::from(program_files)
-            .join("AetherCore")
+            .join(aethercore_product_identity::PRODUCT_NAME)
             .join("aethercore-update-broker.exe");
         if installed.is_file() {
             return Ok(installed);
@@ -1701,7 +1701,7 @@ fn locate_broker() -> anyhow::Result<std::path::PathBuf> {
 
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
         let installed = std::path::PathBuf::from(program_files)
-            .join("AetherCore")
+            .join(aethercore_product_identity::PRODUCT_NAME)
             .join("aethercore-consent-broker.exe");
         if installed.is_file() {
             return Ok(installed);
@@ -2098,6 +2098,9 @@ struct UiFleetSnapshot {
     hosts: Vec<UiFleetHost>,
     schedules: Vec<UiFleetSchedule>,
     schedule_count: usize,
+    /// Present only when the schedules could not be read. An empty list plus
+    /// this set is "we could not tell", not "you have none" (DBT-P46-B30).
+    schedules_error: Option<String>,
     ssh_available: bool,
 }
 
@@ -2148,11 +2151,17 @@ fn fleet_snapshot() -> UiFleetSnapshot {
             tags: host.tags.iter().cloned().collect(),
         })
         .collect();
-    let schedules = load_fleet_schedules();
+    // DBT-P46-B30: an unreadable schedules file must render as "we could not
+    // read your schedules", never as a list of none.
+    let (schedules, schedules_error) = match load_fleet_schedules() {
+        Ok(schedules) => (schedules, None),
+        Err(error) => (Vec::new(), Some(error)),
+    };
     UiFleetSnapshot {
         hosts,
         schedule_count: schedules.len(),
         schedules: schedules.iter().map(ui_schedule).collect(),
+        schedules_error,
         ssh_available: aethercore_fleet::ssh_binary().is_some(),
     }
 }
@@ -2539,12 +2548,28 @@ fn fleet_schedules_path() -> std::path::PathBuf {
     dirs_fleet_state().join("fleet").join("schedules.json")
 }
 
-fn load_fleet_schedules() -> Vec<aethercore_fleet::FleetSchedule> {
+/// DBT-P46-B30: a schedules file that is missing and one that cannot be parsed
+/// both used to read as "no schedules", and every caller below then wrote the
+/// file back — so one unreadable byte silently destroyed the owner's saved
+/// schedules. Only a file that does not exist is an empty schedule list.
+fn load_fleet_schedules() -> Result<Vec<aethercore_fleet::FleetSchedule>, String> {
     let path = fleet_schedules_path();
-    std::fs::read(&path)
-        .ok()
-        .and_then(|raw| serde_json::from_slice(&raw).ok())
-        .unwrap_or_default()
+    let raw = match std::fs::read(&path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!(
+                "schedules at {} could not be read ({error})",
+                path.display()
+            ));
+        }
+    };
+    serde_json::from_slice(&raw).map_err(|error| {
+        format!(
+            "schedules at {} are unreadable ({error}); refusing to overwrite them",
+            path.display()
+        )
+    })
 }
 
 fn save_fleet_schedules(schedules: &[aethercore_fleet::FleetSchedule]) -> Result<(), String> {
@@ -2591,7 +2616,16 @@ fn fleet_schedule_add(input: UiScheduleInput) -> UiScheduleActionResult {
             };
         }
     };
-    let mut schedules = load_fleet_schedules();
+    let mut schedules = match load_fleet_schedules() {
+        Ok(schedules) => schedules,
+        Err(error) => {
+            return UiScheduleActionResult {
+                ok: false,
+                schedule_id: schedule.schedule_id,
+                detail: error,
+            };
+        }
+    };
     if schedules
         .iter()
         .any(|existing| existing.schedule_id == schedule.schedule_id)
@@ -2621,7 +2655,16 @@ fn fleet_schedule_add(input: UiScheduleInput) -> UiScheduleActionResult {
 
 #[command]
 fn fleet_schedule_update(input: UiScheduleInput) -> UiScheduleActionResult {
-    let mut schedules = load_fleet_schedules();
+    let mut schedules = match load_fleet_schedules() {
+        Ok(schedules) => schedules,
+        Err(error) => {
+            return UiScheduleActionResult {
+                ok: false,
+                schedule_id: input.schedule_id,
+                detail: error,
+            };
+        }
+    };
     let Some(existing) = schedules
         .iter_mut()
         .find(|schedule| schedule.schedule_id == input.schedule_id)
@@ -2677,7 +2720,16 @@ fn fleet_schedule_remove(schedule_id: String, confirm: bool) -> UiScheduleAction
             detail: "explicit confirmation required".to_string(),
         };
     }
-    let mut schedules = load_fleet_schedules();
+    let mut schedules = match load_fleet_schedules() {
+        Ok(schedules) => schedules,
+        Err(error) => {
+            return UiScheduleActionResult {
+                ok: false,
+                schedule_id,
+                detail: error,
+            };
+        }
+    };
     let before = schedules.len();
     schedules.retain(|schedule| schedule.schedule_id != schedule_id);
     if schedules.len() == before {
@@ -2708,55 +2760,45 @@ struct DesktopScheduleStore {
 
 impl aethercore_fleet::SchedulerStore for DesktopScheduleStore {
     fn schedules(&self) -> Vec<aethercore_fleet::FleetSchedule> {
+        // DBT-P46-B31: recover a poisoned lock's last-written value instead of
+        // silently discarding it for an empty default.
         self.schedules
             .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
-    fn save_schedule(&self, schedule: &aethercore_fleet::FleetSchedule) {
-        if let Ok(mut guard) = self.schedules.lock() {
-            if let Some(slot) = guard
-                .iter_mut()
-                .find(|item| item.schedule_id == schedule.schedule_id)
-            {
-                *slot = schedule.clone();
-            }
-            let _ = save_fleet_schedules(&guard);
+    fn save_schedule(&self, schedule: &aethercore_fleet::FleetSchedule) -> Result<(), String> {
+        // Same recovery as `schedules()` above (DBT-P46-B31): a poisoned lock
+        // silently skipping the write is how the state was lost in the first
+        // place.
+        let mut guard = self
+            .schedules
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(slot) = guard
+            .iter_mut()
+            .find(|item| item.schedule_id == schedule.schedule_id)
+        {
+            *slot = schedule.clone();
         }
+        save_fleet_schedules(&guard)
     }
-    fn append_history(&self, record: &aethercore_fleet::ScheduleRunRecord) -> i64 {
+    fn append_history(&self, record: &aethercore_fleet::ScheduleRunRecord) -> Result<i64, String> {
         let path = self
             .path
             .parent()
             .unwrap_or(std::path::Path::new("."))
             .join("run_history.json");
-        let mut history: Vec<serde_json::Value> = std::fs::read(&path)
-            .ok()
-            .and_then(|raw| serde_json::from_slice(&raw).ok())
-            .unwrap_or_default();
-        let seq = history.len() as i64 + 1;
-        history.push(serde_json::json!({
-            "runSeq": seq,
-            "scheduleId": record.schedule_id,
-            "triggerKind": record.trigger_kind,
-            "startedUnixMs": record.started_unix_ms,
-            "finishedUnixMs": record.finished_unix_ms,
-            "hostsAttempted": record.hosts_attempted,
-            "hostsOk": record.hosts_ok,
-            "hostsFailed": record.hosts_failed,
-            "outcomeSummary": record.outcome_summary,
-        }));
-        let _ = std::fs::write(
-            path,
-            serde_json::to_vec_pretty(&history).unwrap_or_default(),
-        );
-        seq
+        aethercore_fleet::append_run_history(&path, record)
     }
 }
 
 #[command]
 fn fleet_schedule_run_due() -> serde_json::Value {
-    let schedules = load_fleet_schedules();
+    let schedules = match load_fleet_schedules() {
+        Ok(schedules) => schedules,
+        Err(error) => return serde_json::json!({"ran": 0, "runs": [], "error": error}),
+    };
     if schedules.is_empty() {
         return serde_json::json!({"ran": 0, "runs": []});
     }
@@ -2809,7 +2851,7 @@ fn dirs_fleet_state() -> std::path::PathBuf {
             return std::path::PathBuf::from(home)
                 .join("Library")
                 .join("Application Support")
-                .join("AetherCore");
+                .join(aethercore_product_identity::PRODUCT_NAME);
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -2935,5 +2977,33 @@ fn main() {
     if let Err(error) = result {
         eprintln!("AetherCore desktop runtime failed: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod dbt_p46_b31_tests {
+    use std::sync::Mutex;
+
+    // DBT-P46-B31: same shape as DBT-P46-B8 (system-repair) and DBT-P46-B18
+    // (cleaner) — DesktopScheduleStore::schedules() read a poisoned lock as
+    // `.unwrap_or_default()`, discarding the fleet schedule list rather than
+    // recovering it. FleetSchedule has no Default and no test scaffolding
+    // exists in this binary, so this proves the exact recovery mechanism on
+    // the same Mutex<Vec<T>> shape the real field uses.
+    #[test]
+    fn poisoned_schedules_lock_recovers_the_last_written_value_not_a_default() {
+        let lock: Mutex<Vec<u32>> = Mutex::new(vec![7, 8, 9]);
+        let poison_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = lock.lock().unwrap();
+            panic!("simulated panic while holding the lock");
+        }));
+        assert!(poison_result.is_err());
+        assert!(lock.is_poisoned());
+
+        let old_behavior = lock.lock().map(|g| g.clone()).unwrap_or_default();
+        assert!(old_behavior.is_empty(), "documents the bug this fix removes");
+
+        let recovered = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        assert_eq!(recovered, vec![7, 8, 9], "a poisoned lock must recover the last-written value");
     }
 }

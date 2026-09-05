@@ -67,6 +67,10 @@ fn walk(dir: &Path, budget: &mut WalkBudget, findings_dirs: &mut Vec<PathBuf>) {
         let Ok(meta) = std::fs::symlink_metadata(&p) else {
             continue;
         };
+        // Skipped, never followed — see the note in secrets.rs::collect_files.
+        if crate::scope::is_reparse_point(&meta) {
+            continue;
+        }
         if meta.is_dir() {
             findings_dirs.push(p.clone());
             walk(&p, budget, findings_dirs);
@@ -104,6 +108,7 @@ fn collect_files(roots: &[String]) -> (Vec<PathBuf>, bool) {
                             }
                             let ep = e.path();
                             if let Ok(m) = std::fs::symlink_metadata(&ep)
+                                && !crate::scope::is_reparse_point(&m)
                                 && m.is_file()
                             {
                                 out.push(ep);
@@ -178,10 +183,12 @@ pub fn audit_filesystem(roots: &[String]) -> Result<Vec<SecFinding>, String> {
     // .ssh posture per root that IS a home-like dir.
     for root in roots {
         let ssh_dir = Path::new(root).join(".ssh");
-        let Ok(meta) = std::fs::metadata(&ssh_dir) else {
+        // symlink_metadata, not metadata: a `.ssh` that is itself a junction must be
+        // skipped rather than silently resolved to someone else's key material.
+        let Ok(meta) = std::fs::symlink_metadata(&ssh_dir) else {
             continue;
         };
-        if !meta.is_dir() {
+        if crate::scope::is_reparse_point(&meta) || !meta.is_dir() {
             continue;
         }
         let dmode = mode_bits(&meta);
@@ -208,7 +215,7 @@ pub fn audit_filesystem(roots: &[String]) -> Result<Vec<SecFinding>, String> {
                 let Ok(fm) = std::fs::symlink_metadata(&p) else {
                     continue;
                 };
-                if !fm.is_file() {
+                if crate::scope::is_reparse_point(&fm) || !fm.is_file() {
                     continue;
                 }
                 let fmode = mode_bits(&fm);
