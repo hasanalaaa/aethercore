@@ -12640,7 +12640,7 @@ Rows move in the same commit as the work they describe.
 | item | status | evidence |
 |---|---|---|
 | 1 the mapping table, committed before any component | **DONE** | §50.1 — 38 rows, every one with a verdict and a named source or `NONE` |
-| 2 the app's own content: keep / move / below the fold | OPEN | §50.2 |
+| 2 the app's own content: keep / move / below the fold | **DONE** | §50.2 — 8 sections decided, none deleted, 2 recorded as belonging elsewhere (`DBT-P50-003`) |
 | 3 build it | OPEN | §50.3 |
 | 4 the sparklines | OPEN | §50.4 |
 | gates | OPEN | §50.5 |
@@ -12714,4 +12714,30 @@ connected — it is the only slice that needs no scan.
 | 38 | hero metric "Protocol **v7**" | — | **a hardcoded literal in the markup.** `PROTOCOL_VERSION: u32 = 7` exists in `crates/contracts`, but no IPC field carries it to the UI, so the view will keep printing `v7` on the day the constant changes | **drop** — correct today, unsourced, and therefore a future lie. New id **`DBT-P50-002`** |
 
 **Three verdict counts:** wire 22 · empty-by-design 2 · drop 13.
+
+## 50.2 ITEM 2 — THE APP'S OWN CONTENT
+
+The shell was drawn for fewer, idealised sections. The app's Overview carries
+eight things the shell has no slot for. **Nothing here is deleted to make a
+layout fit.** Each is kept, folded into an element that already carries it, or
+left below the fold with the reason recorded.
+
+| app section | decision | reason |
+|---|---|---|
+| **scan CTA** — "Scan My PC" / PC intelligence strip | **promoted** into the header action row | The shell's Overview has header actions and the app's did not. This is the same button in the slot the composition gives it. Nothing lost |
+| **hero card** — orb glyph + "AetherCore is ready" + 3 metrics | **folded**, not deleted | Its four readings all survive: connected/ready → the service pill (already in the header) and the orb's meta line; `journalEventCount` → telemetry tile 4; `hub.summary.deviceCount` → the driver action-item row and its evidence. The fifth, `Protocol v7`, is dropped as an unsourced literal (row 38). The shell's orb section is the screen's anchor and two anchors is one too many |
+| **current protected operation** — plan kind, state, risk, digest, consent-window actions | **kept, below the four sections** | This is the state engine — plan digest, risk tier, the authorization window, and the only place a plan can be approved from the Overview. The shell has no slot for it and inventing one would be redesigning a screen the owner has not seen yet. It keeps its panel, directly under the grid |
+| **driver servicing preview** — selectable update count + Open Driver Hub | **kept, below the four sections** | The action-item row (row 20) *reports*; this panel *acts* — it starts the scan when the hub is Idle. Removing it would remove the only Overview affordance that starts a driver scan |
+| **six-tile module row** — Drivers, Repair, Cleanup, Startup, Hardware, Crash | **kept, below the fold** | Duplicates the navigation rail, but it is the discoverability surface for six features and the brief forbids deleting a feature to fit a layout. Left where it is |
+| **SystemCarePanel** — updates channel + support bundle export | **kept below the fold; belongs elsewhere** | This is settings-shaped, not overview-shaped. It belongs on a Care/Settings screen. There is no such screen in `NAVIGATION`, and creating one touches the other ten. Recorded as **`DBT-P50-003`** and left where it is — a slightly imperfect layout beats a lost feature |
+| **AboutPanel** — platform capability matrix + engine source | **kept below the fold; belongs elsewhere** | Same shape and same reason. Recorded under the same id |
+| **CarePanel / InsightsPanel** | **untouched** | `AppShell` renders these after `<OverviewPage>`, not inside it. Out of this file's scope, and the insights panel is where the "One-Click Optimize" action (row 5) actually lives |
+
+**Resulting order of the screen:** header (with the scan action) → policy band
+(shell chrome, persistent) → the four ported sections in a 12-column grid →
+current operation + driver servicing → module row → SystemCare → About →
+CarePanel → InsightsPanel.
+
+Two entries above the fold in the shell's composition, six below it. Eight
+sections in, eight sections out.
 
