@@ -12642,7 +12642,7 @@ Rows move in the same commit as the work they describe.
 | 1 the mapping table, committed before any component | **DONE** | §50.1 — 38 rows, every one with a verdict and a named source or `NONE` |
 | 2 the app's own content: keep / move / below the fold | **DONE** | §50.2 — 8 sections decided, none deleted, 2 recorded as belonging elsewhere (`DBT-P50-003`) |
 | 3 build it | **DONE** | §50.3 — 6 files, +531/-14, one screen. New `DBT-P50-004` (the same inherited-`flex-wrap` defect in the shared `EmptyState`, fix known, deliberately not applied) |
-| 4 the sparklines | OPEN | §50.4 |
+| 4 the sparklines | **DONE — not drawn** | §50.4 — the series exists in the service (`MAX_RING_SAMPLES = 300`) and has no wire accessor: no `repeated PerfSnapshot` in the contract. Tiles drawn without, absence stated in both languages. New `DBT-P50-005` |
 | gates | OPEN | §50.5 |
 | screenshots 1280 × 2 languages × 2 themes × populated/empty | OPEN | §50.6 |
 | report | OPEN | §50.7 |
@@ -12811,4 +12811,50 @@ exact fix, for whoever takes the other ten.
   the timestamp — the defect `TechnicalText` prevents, one level up.
 - **Action rows stack title / meta / (reading + tag)** rather than competing for
   a 5-of-12 column: at 1280 the reading was landing on top of the title.
+
+## 50.4 ITEM 4 — THE SPARKLINES: NOT DRAWN, AND EXACTLY WHAT IS MISSING
+
+The shell puts a sixteen-bar sparkline in each of the four telemetry tiles. They
+come from `spark(11, 18, 55, 96)` — a generator, not a series.
+
+**The question the brief asks is whether the app retains enough history to draw
+one. It does not, and the gap is on the wire, not in the UI.** Traced end to end:
+
+| layer | what it holds | verdict |
+|---|---|---|
+| the collector | `PerformanceRing` in `crates/performance-telemetry/src/lib.rs`. `MAX_RING_SAMPLES = 300`, ~5 min at 1 s cadence, `MIN_INTERVAL_MS = 250` | **a real series exists** |
+| the service | `PerformanceService::…` at `services/maintenance-service/src/performance.rs:400` calls `self.ring.window(owner)` — the ordered copy of that ring. It is the ring's **only** consumer, and it feeds `analyze()`, not the UI | the series is read, and consumed internally |
+| the wire | `performance.proto`: `message PerformanceSnapshotResponse { PerfSnapshot snapshot = 1; }`. `events.proto`: `PerfSnapshot performance_snapshot = 31;`. There is **no `repeated PerfSnapshot`** anywhere in the contract | **the series never leaves the service** |
+| the UI | `stream-state.ts` holds `performance: PerfSnapshot`, replaced wholesale on each event. One sample, never two | nothing to draw |
+
+So the tiles are drawn **without** sparklines, and the section says so in one
+line, in both languages, rather than leaving a silent gap:
+
+> *No sparklines: this build retains the latest sample, not a series. Drawing
+> one would mean drawing a shape nobody measured.*
+
+### What it would take
+
+**The correct fix is a wire change**, which §4 puts behind explicit approval:
+a `GetPerformanceWindowRequest` / `PerformanceWindowResponse { repeated
+PerfSnapshot samples = 1; }` pair, or a compact per-metric series message so a
+sparkline does not cost 300 full snapshots. The ring, its bound and its
+ordering already exist; only the accessor is missing. Recorded as
+**`DBT-P50-005`**.
+
+**The cheap alternative was considered and rejected.** The UI could accumulate
+its own ring of `performanceSnapshot` events, the way §50.3's service log now
+accumulates kernel events. It was not done, for a reason worth writing down: it
+would draw a line that begins when the window was opened and covers only the
+time sampling happened to be running, while the tile beside it reads a service
+that has 5 minutes of real history. Two different windows in one instrument,
+neither labelled — that is a subtler version of the fabrication this whole phase
+exists to remove.
+
+**And one thing that is true of the tiles regardless:** three of the four fill
+only while the perf sampler runs, and `startPerfSampling()` is reachable only
+from the Performance screen. On a freshly started app the orb reads `NO
+BASELINE` and those three tiles read `—`, which is correct and is what the
+no-service screenshots show. Wiring a sampler start into the Overview is a
+behaviour change on a second screen and was left alone.
 
