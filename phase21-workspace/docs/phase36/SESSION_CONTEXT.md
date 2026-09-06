@@ -12618,3 +12618,100 @@ deleted by hand in any sweep.
 printer-, HID- or USB-class device — it is now the only gate in the project that
 has never started, and the only thing between this build and a complete gate set
 on x64.**
+
+---
+
+# PHASE 50 — P50-OVERVIEW: REBUILD THE OVERVIEW ON THE SHELL'S COMPOSITION (2026-09-06)
+
+**One screen. `apps/ui/src/features/overview/OverviewPage.svelte` and what it
+renders. The other ten are not touched.**
+
+P47 ported the design *system*. It did not port the *composition*, and it said
+so. The owner installed the result and said the app still looks like the old
+one. Measured side by side he is right: the shell's Overview is two columns and
+instrument-dense — a health orb with four channel rails beside action items,
+then four telemetry tiles, then a service log — and the app's Overview is a
+single tall column of stacked cards carrying none of those four sections.
+
+## 50.0 PROGRESS TABLE (authoritative — resume from here)
+
+Rows move in the same commit as the work they describe.
+
+| item | status | evidence |
+|---|---|---|
+| 1 the mapping table, committed before any component | **DONE** | §50.1 — 38 rows, every one with a verdict and a named source or `NONE` |
+| 2 the app's own content: keep / move / below the fold | OPEN | §50.2 |
+| 3 build it | OPEN | §50.3 |
+| 4 the sparklines | OPEN | §50.4 |
+| gates | OPEN | §50.5 |
+| screenshots 1280 × 2 languages × 2 themes × populated/empty | OPEN | §50.6 |
+| report | OPEN | §50.7 |
+
+## 50.1 ITEM 1 — THE MAPPING TABLE
+
+Read from both sides before anything was written:
+
+- the shell — `tools/bundle_template.py extract AetherCore.html`, then the
+  `S.overview` screen definition (its four `this.sec(...)` calls) and the four
+  `sc-if` template blocks that render them (`isOrb`, `isList`/`isEmpty`,
+  `isMetrics`, `isLog`);
+- the app — `OverviewPage.svelte` and everything it renders, plus
+  `lib/contracts.ts` (the whole IPC surface), `platform/stream-state.ts` (what
+  the UI actually retains), and the controllers that populate each slice.
+
+**Sources are named as `streamState` paths.** `performance.*` is
+`PerfSnapshot`, pushed by the `performanceSnapshot` kernel event while the
+perf sampler is running. `diagnostics.*` is the hardware scan.
+`hub.*` is the driver scan. `cleanupSnapshot.*` is the cleanup scan.
+`snapshot.*` is the service snapshot, available whenever the service is
+connected — it is the only slice that needs no scan.
+
+| # | shell element | shell value | app's real source | verdict |
+|---|---|---|---|---|
+| **HEADER** |
+| 1 | kicker | "Adaptive dashboard" | `t('overview.eyebrow')` — copy, claims nothing | keep app's |
+| 2 | title | "System is breathing easy" | NONE — asserts a system state nobody measured | **drop the claim**, keep the app's neutral title |
+| 3 | sub | "Baseline established 4 minutes ago. AetherCore is watching **214 signals** and predicts **no degradation in the next 72 hours**." | NONE. There is no signal count, no baseline timestamp and no predictor anywhere in the product | **drop** — named in the brief, and correctly |
+| 4 | action "Run Smart Scan" | — | existing `setPage('deepScan')` CTA | wire — promoted into the header action row |
+| 5 | action "One-Click Optimize" | — | `CarePanel` (one-click care) already renders below on this page | **drop** — a second entry point to the same run, not a second feature |
+| 6 | service pill | not in the shell | `snapshot.connected`, `snapshot.serviceVersion` | keep app's |
+| **§A SYSTEM HEALTH ORB (span 7)** |
+| 7 | orb score | `94` / `72` / `—` | no service health index exists. **Derived**: `100 − mean(measured utilization channels)`, over rows 11–13 only | **wire (derived, formula published in its evidence chip)**; `—` when no channel has a reading |
+| 8 | orb label | `HEALTH INDEX` / `NO BASELINE` | whether any channel has a reading | wire |
+| 9 | orb evidence chip | "4 channels, equal-weighted" + the formula | real: each channel's reading, the arithmetic, and the two exclusions | wire |
+| 10 | orb colour | red/green/blue by fabricated criticality | `snapshot.health` is a free-form service string ("Service offline"), not an enum, and a health *threshold* is not a measurement | **drop the state hue** — the orb is monochrome `--role-interactive`, dim when it has no reading |
+| 11 | rail "CPU load" | `34%` | `performance.cpu.totalBusyBp / 100` | wire |
+| 12 | rail "Memory" | `9.3 GB` / 58% | `performance.memory.memoryLoadPercent`, value from `totalPhysicalBytes − availablePhysicalBytes` | wire |
+| 13 | rail "Disk C:" | `412 GB` / 71% — **used capacity** | NONE. `StorageTelemetry.sizeBytes` is capacity; nothing in the IPC surface reports free or used space. `grep -rn "GetDiskFreeSpace\|free_bytes\|availableBytes"` over `crates/` and `services/` returns one hit and it is memory | **drop the channel as written**; the slot becomes **Disk activity** ← `performance.storage[].activeTimeBp / 100`, which is measured. New id **`DBT-P50-001`** |
+| 14 | rail "Thermals" | `54°C` / 42% bar | `performance.power.hasTemperature ? temperatureC : unmeasured` | wire **the value only**. The bar stays empty: normalizing °C to 0–100 needs a ceiling nobody measured, and inventing one is the same lie as inventing the number |
+| 15 | thermal criticality (red at 81°C) | invented threshold | `performance.power.throttleActive` + `throttleReason` — **service-reported** | wire — the only place a state hue is earned on this section |
+| **§B ACTION ITEMS (span 5)** |
+| 16 | meta "2 suggested" / "3 urgent" / "0" | fabricated | count of rows actually built | wire |
+| 17 | row "Storage driver crashed twice · storahci.sys · 0x133" | fabricated | `diagnostics.crashes[]` — `bugcheckHex`, `source`, `confidence`, `recordedUnixMs` | wire → routes to `crash` |
+| 18 | row "GPU sustained 81°C for 22m" | fabricated | `diagnostics.events[]` + `eventWindowDays` — provider, severity, confidence | wire → routes to `hardware` |
+| 19 | row "18.4 GB reclaimable" | fabricated | `cleanupSnapshot.totalReclaimableBytes`, `.totalFileCount`, `.candidates.length` | wire → routes to `cleanup` |
+| 20 | row "2 drivers behind vendor build" | fabricated | `hub.summary.selectableUpdateCount`, `.deviceCount`, `.authorityCoverage` | wire → routes to `drivers` |
+| 21 | — (app has, shell does not) | — | `deepScan.summary` (critical/high/moderate/low, `recommendedActions`) + `ruleEngineVersion` | wire → routes to `deepScan` |
+| 22 | — (app has, shell does not) | — | `hub.summary.problemDeviceCount`, `.missingDriverCount` | wire → routes to `drivers` |
+| 23 | row evidence chips | prose restatements | every row cites its own snapshot: scan id, completion timestamp, counts. `citedOnly` is the gate — a row that cannot cite is not rendered | wire |
+| 24 | empty variant + 3 channels (Impact / Category / Reversibility) | — | `EmptyState` with channels named for the four scans that fill this list | wire (this is the honest default state of the screen) |
+| **§C DIAGNOSTIC TELEMETRY (span 12)** |
+| 25 | meta "30s window" / "no data" | fabricated | `performance.intervalMs`, `performance.capturedUnixMs` | wire |
+| 26 | tile "Responsiveness 96 idx" | fabricated composite | NONE — no responsiveness index is computed anywhere in the product | **drop** |
+| 27 | tile "Boot time 11.4 s" | fabricated | NONE — `grep -rn "boot_time\|bootTime\|BootTime"` over `crates/`, `services/`, `apps/ui/src` returns nothing | **drop** |
+| 28 | tile "Disk latency 0.42 ms" | fabricated | `performance.storage[].avgTransferLatencyUs / 1000` | wire |
+| 29 | tile "Open handles 38.2k" | fabricated | NONE — no handle counter exists | **drop** |
+| 30 | — (replacement tile) | — | `performance.memory.hardFaultsPerSec` | wire |
+| 31 | — (replacement tile) | — | `performance.cpu.contextSwitchesPerSec` | wire |
+| 32 | — (replacement tile) | — | `snapshot.journalEventCount` — the one reading available with no scan at all | wire |
+| 33 | sparkline × 4 | 16 fabricated bars each | NONE — see §50.4 | **drop, tile drawn without it** |
+| 34 | delta line × 4 ("+4 vs baseline", "-2.1s this week") | fabricated deltas | NONE — a delta is a change over time and nothing retains time | **drop**; the line carries real provenance instead (device name, sampling interval, service version) |
+| **§D CORE SERVICE LOG (span 12)** |
+| 35 | 5 log rows ("[INIT] core services starting… OK", "[DATA] manifest loaded · 214 signals") | fabricated boot text | NONE as written | **drop the text** |
+| 36 | the log section itself | — | the kernel event stream the UI already receives: `sequence`, `emittedUnixMs`, `kind`, `planId` on every `UiKernelEvent`. Retained as a bounded ring in `stream-state.ts` | **wire** |
+| 37 | blinking cursor `▊` | decorative | — | keep, guarded by `prefers-reduced-motion` |
+| **APP-ONLY, NOT IN THE SHELL** |
+| 38 | hero metric "Protocol **v7**" | — | **a hardcoded literal in the markup.** `PROTOCOL_VERSION: u32 = 7` exists in `crates/contracts`, but no IPC field carries it to the UI, so the view will keep printing `v7` on the day the constant changes | **drop** — correct today, unsourced, and therefore a future lie. New id **`DBT-P50-002`** |
+
+**Three verdict counts:** wire 22 · empty-by-design 2 · drop 13.
+
