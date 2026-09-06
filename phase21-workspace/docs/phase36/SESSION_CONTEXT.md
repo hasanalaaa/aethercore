@@ -12645,7 +12645,7 @@ Rows move in the same commit as the work they describe.
 | 4 the sparklines | **DONE — not drawn** | §50.4 — the series exists in the service (`MAX_RING_SAMPLES = 300`) and has no wire accessor: no `repeated PerfSnapshot` in the contract. Tiles drawn without, absence stated in both languages. New `DBT-P50-005` |
 | gates | **DONE — all pass** | §50.5 — numbers: 4 new/changed on this screen, all traced; arabic 7/7, 0 system fallback; tokens 443/443 resolve; sweep 12/12 populated **and** 12/12 with no service; contrast 0 below 4.5:1 across 1,174 text nodes in both themes and both languages; build clean; svelte-check 0 errors / 16 warnings, baseline held |
 | screenshots 1280 × 2 languages × 2 themes × populated/empty | **DONE** | §50.6 — 8 committed under `design/p50-overview-screenshots/`, full 24-shot sweep in `apps/ui/output/` |
-| report | OPEN | §50.7 |
+| ledger delta + report | **DONE** | §50.7 — 5 new ids (`DBT-P50-001`…`-005`), none fixed, each with its reason. §50.8 — the report |
 
 ## 50.1 ITEM 1 — THE MAPPING TABLE
 
@@ -13072,4 +13072,98 @@ with readings, six cited action items, four tiles, fourteen real log lines.
 No service: `— NO BASELINE`, four hatched rails reading `—`, `NOT COLLECTED
 YET` over three named channels each reading `—`, four tiles reading `—`, and a
 log that says the stream has not delivered an event yet. Neither one guesses.
+
+## 50.7 THE LEDGER DELTA — five new ids, none fixed, all with reasons
+
+Recorded here rather than in `DEBT_REGISTER.json`, which is the `QD-*` register
+under the p31 audit gate; every `DBT-P4x` id from P42 onward lives in this
+ledger and these follow the same convention.
+
+| id | what | why it is open, not fixed |
+|---|---|---|
+| **`DBT-P50-001`** | **No disk free/used space provider.** Nothing in the IPC surface reports free or used bytes for a volume. `StorageTelemetry.sizeBytes` is capacity; `StorageQueueSample.activeTimeBp` is busy time. `grep -rn "GetDiskFreeSpace\|free_bytes\|availableBytes\|totalFreeBytes"` over `crates/` and `services/` returns one hit, and it is memory | The shell's `Disk C: 412 GB` has no source at all, so the channel was dropped and the slot given to disk **activity**, which is measured. Adding a volume-space collector is a service change |
+| **`DBT-P50-002`** | **No protocol version on the IPC surface.** `PROTOCOL_VERSION: u32 = 7` exists in `crates/contracts/src/lib.rs`; no field carries it to the UI, and the Overview was printing a hardcoded `v7` | Dropped from the view rather than left to go stale silently. Restoring it honestly means adding a field to `Snapshot` — a wire change |
+| **`DBT-P50-003`** | **Two settings-shaped panels on the Overview**: `SystemCarePanel` (update channel, support-bundle export) and `AboutPanel` (capability matrix, engine source) | They belong on a Care/Settings screen. `NAVIGATION` has no such id, and creating one touches the other ten screens. Left below the fold — a slightly imperfect layout beats a lost feature |
+| **`DBT-P50-004`** | **`EmptyState.svelte` inherits `main :where(*) { flex-wrap: wrap }` on a flex column** and renders 496px for 396px of content when it has channels. Measured at 1280 on `index.html`. Fix: `flex-wrap: nowrap` on `.empty-state`, one declaration | `EmptyState` renders on seven screens. This session is one screen, and a silent re-layout of six others inside a commit titled "rebuild the Overview" is exactly what the scope rule exists to prevent |
+| **`DBT-P50-005`** | **No wire accessor for the performance sample series.** The ring exists (`MAX_RING_SAMPLES = 300`) and has one consumer, the bottleneck analyser. There is no `repeated PerfSnapshot` in `performance.proto` or `events.proto`, so the UI can only ever hold one sample and no sparkline can be honest | A published-contract change (§4), which needs approval before it is made |
+
+**None of the five is a regression this session introduced.** Four are absences
+the rebuild exposed by asking, element by element, where a number comes from.
+The fifth (`-004`) is a pre-existing layout defect found by measuring, and its
+sibling in the new file is fixed.
+
+## 50.8 P50 FINAL REPORT
+
+### What was asked, and what happened
+
+Rebuild the app's Overview on the shell's composition — this screen only — and
+never invent a number to do it. Both halves were done. Six files changed, +531
+/ -14, four commits, every gate re-run and pasted verbatim in §50.5.
+
+### What was dropped, named
+
+Thirteen elements. The ones that matter:
+
+- **"AetherCore is watching 214 signals and predicts no degradation in the next
+  72 hours."** No signal count, no baseline timestamp and no predictor exists
+  anywhere in this product. Marketing copy. Gone.
+- **"System is breathing easy."** A claim about system state with nothing behind
+  it.
+- **Responsiveness `96 idx`, Boot time `11.4 s`, Open handles `38.2k`** — three
+  of the shell's four telemetry tiles. No responsiveness index is computed
+  anywhere; `grep -rn "boot_time\|bootTime\|BootTime"` over `crates/`,
+  `services/` and `apps/ui/src` returns nothing; no handle counter exists.
+- **`Disk C: 412 GB`** — used capacity, which no provider in this product
+  reports (`DBT-P50-001`).
+- **Four sparklines and four delta lines** ("+4 vs baseline", "-2.1s this
+  week"). A delta is a change over time and nothing reachable by the UI retains
+  time (`DBT-P50-005`).
+- **The five-line boot log** — `[DATA] manifest loaded · 214 signals` and its
+  siblings. Invented prose.
+- **The orb's state hue**, which turns red on a fabricated criticality.
+- **`Protocol v7`** — the app's own, not the shell's: correct today, unsourced,
+  and therefore a future lie (`DBT-P50-002`).
+
+### What was built empty, and what would fill it
+
+- **The four channel rails and the orb**, whenever the perf sampler is not
+  running: `— NO BASELINE`, hatched tracks. Filled by `start_perf_sampling`,
+  reachable today only from the Performance screen.
+- **Thermals' bar** is empty *permanently and on purpose* while the reading is
+  shown. Normalizing °C to 0–100 needs a ceiling nobody measured. Filling it
+  honestly needs a service-reported thermal limit, not a constant in a stylesheet.
+- **Action items**, until a scan reports: `NOT COLLECTED YET` over three named
+  channels — Deep Scan, Drivers, Hardware Health — each reading `—`. Filled by
+  running any of those four scans.
+- **Three of the four telemetry tiles**, same condition as the rails. The
+  fourth, journal events, fills the moment the service connects.
+- **The service log**, until the kernel pushes an event. It fills by itself.
+
+### The one thing I would flag
+
+Three of the four channel rails, the orb, and three of the four tiles all depend
+on the same switch: the perf sampler, which only starts from another screen. On
+a freshly launched app the owner will see the empty variant — which is correct,
+and which the no-service screenshots show — but it means the instrument's most
+striking state is the resting one until he visits Performance once. Starting the
+sampler from the Overview is a one-line change to a second screen's controller,
+so it was not made here. It is the first question worth answering before the
+other ten screens are done.
+
+### One paragraph: what the new Overview says that the old one did not
+
+The old Overview said the product was ready. It was a column of cards that
+described features — a status hero, a plan panel, a driver preview, six tiles
+naming six modules — and the only number on it was a journal event count. The
+new one says what the machine is doing and where it knows that from. It opens
+with a reading and the arithmetic behind it, sits four measured channels beside
+it, and where a channel has no scale it shows the reading and leaves the bar
+hatched rather than draw a bar at zero. Beside that, six action items, each one
+a scan that actually ran, each carrying that scan's id, timestamp and counts one
+click away. Below, four instruments and a log of the service's own events with
+their real sequence numbers. And when nothing has been measured, the same screen
+says so twelve more times in em dashes and four more empty states, and asks for
+nothing it cannot justify. The old screen was a description of a product. This
+one is an instrument that will not lie about what it has not measured — which is
+the only claim this product has ever actually made.
 
