@@ -12643,8 +12643,8 @@ Rows move in the same commit as the work they describe.
 | 2 the app's own content: keep / move / below the fold | **DONE** | §50.2 — 8 sections decided, none deleted, 2 recorded as belonging elsewhere (`DBT-P50-003`) |
 | 3 build it | **DONE** | §50.3 — 6 files, +531/-14, one screen. New `DBT-P50-004` (the same inherited-`flex-wrap` defect in the shared `EmptyState`, fix known, deliberately not applied) |
 | 4 the sparklines | **DONE — not drawn** | §50.4 — the series exists in the service (`MAX_RING_SAMPLES = 300`) and has no wire accessor: no `repeated PerfSnapshot` in the contract. Tiles drawn without, absence stated in both languages. New `DBT-P50-005` |
-| gates | OPEN | §50.5 |
-| screenshots 1280 × 2 languages × 2 themes × populated/empty | OPEN | §50.6 |
+| gates | **DONE — all pass** | §50.5 — numbers: 4 new/changed on this screen, all traced; arabic 7/7, 0 system fallback; tokens 443/443 resolve; sweep 12/12 populated **and** 12/12 with no service; contrast 0 below 4.5:1 across 1,174 text nodes in both themes and both languages; build clean; svelte-check 0 errors / 16 warnings, baseline held |
+| screenshots 1280 × 2 languages × 2 themes × populated/empty | **DONE** | §50.6 — 8 committed under `design/p50-overview-screenshots/`, full 24-shot sweep in `apps/ui/output/` |
 | report | OPEN | §50.7 |
 
 ## 50.1 ITEM 1 — THE MAPPING TABLE
@@ -12857,4 +12857,219 @@ from the Performance screen. On a freshly started app the orb reads `NO
 BASELINE` and those three tiles read `—`, which is correct and is what the
 no-service screenshots show. Wiring a sampler start into the Overview is a
 behaviour change on a second screen and was left alone.
+
+## 50.5 GATES — RAW OUTPUT, COUNTS NOT ADJECTIVES
+
+Every command below was run against the committed tree, on the fixture server
+(`npm run fixture`), headless Chrome, 2026-09-06.
+
+### The numbers gate — EXPECTED: zero untraceable numbers
+
+**Three new numbers appear on the Overview and one changed shape. All four
+trace:**
+
+| rendered | traces to | arithmetic |
+|---|---|---|
+| `51%` in `span.orb-value` | `performance.cpu.totalBusyBp`, `performance.memory.memoryLoadPercent`, `performance.storage[].activeTimeBp` | `100 - (41.0 + 72 + 34.0)/3 = 51`. Printed in the orb's own evidence chip, and every input is on screen beside it |
+| `41%` in `span.channel-value` | `performance.cpu.totalBusyBp = 4100 bp` | `4100 / 100`. The same figure the Performance screen already renders and already traced |
+| `34%` in `span.channel-value` | `performance.storage[0].activeTimeBp = 3400 bp` | `3400 / 100`, busiest of 1 reported device |
+| `0.94` in the disk-latency tile | `performance.storage[0].avgTransferLatencyUs = 940` | `940 / 1000` ms |
+
+The memory rail shows `23.0 GB` rather than a percentage — `totalPhysicalBytes -
+availablePhysicalBytes` — so it is a byte size, not a score, and the gate
+excludes it by shape. Its 72% still enters the headroom mean, and the evidence
+chip prints it.
+
+**Also from this run:** evidence chips rendered went **10 -> 24** (seven new on
+the Overview, in each of two languages). Denied elements unchanged at 90 — the
+policy band is untouched and still persistent.
+
+    ### node tools/verify-numbers.mjs
+    === raw counts, from the rendered DOM of 11 pages x 2 languages ===
+      "denied" word occurrences        22
+      denied ELEMENTS rendered         90
+      "evidence" word occurrences      66
+      evidence CHIPS rendered          24
+
+    === every score-shaped number rendered, with its source element ===
+      en overview     51%        span.orb-value.svelte-19uo4g3      "51%"
+      en overview     41%        span.channel-value.svelte-19uo4g3  "41%"
+      en overview     34%        span.channel-value.svelte-19uo4g3  "34%"
+      en overview     0.94       strong.svelte-19uo4g3              "0.94"
+      en performance  41%        strong.technical-isolate           "41%"
+      en performance  3%         span.technical-isolate             "3%"
+      en performance  72%        strong.technical-isolate           "72%"
+      en performance  34%        strong.technical-isolate           "34%"
+      en performance  62%        strong.technical-isolate           "62%"
+      en hardware     72%        strong                             "72%"
+      en hardware     4%         strong                             "4%"
+      en hardware     100%       strong                             "100%"
+      en hardware     4%         span                               "PercentageUsed 4%"
+      en hardware     100%       span                               "AvailableSpare 100%"
+      en hardware     30%        p                                  "Available memory stayed under 30% for most of the observation window."
+      en hardware     15%        p                                  "Three of the last five sessions held available memory under 15%."
+      en hardware     72%        span                               "MemoryLoad 72%"
+      ar performance  41%        strong.technical-isolate           "41%"
+      ar performance  3%         span.technical-isolate             "3%"
+      ar performance  72%        strong.technical-isolate           "72%"
+      ar performance  34%        strong.technical-isolate           "34%"
+      ar performance  62%        strong.technical-isolate           "62%"
+      ar hardware     4%         span.technical-isolate             "PercentageUsed 4%"
+      ar hardware     100%       span.technical-isolate             "AvailableSpare 100%"
+      ar hardware     30%        span.technical-isolate             "Available memory stayed under 30% for most of the observation window."
+      ar hardware     15%        span.technical-isolate             "Three of the last five sessions held available memory under 15%."
+      ar hardware     72%        span.technical-isolate             "MemoryLoad 72%"
+
+    27 distinct score-shaped number(s) rendered.
+    Each must trace to a measurement. Percentages of a counted total and
+    service-reported ratios are traceable; a bare confidence score is not.
+
+### The Arabic gate — EXPECTED: 7/7, zero system-font fallback
+
+    ### node tools/verify-arabic.mjs
+    PASS  root is RTL
+            EXPECTED  dir=rtl lang=ar direction=rtl
+            OBSERVED  dir=rtl lang=ar locale=ar direction=rtl
+    PASS  layout is genuinely RTL, not mirrored LTR
+            EXPECTED  rail on the right half, main flush to the left edge, prose direction rtl
+            OBSERVED  rail 1022-1280 of 1280, main.left=0, railIsOnRight=true mainStartsAtLeftEdge=true prose direction=rtl text-align=start
+    PASS  technical tokens stay LTR inside RTL prose
+            EXPECTED  every .technical-isolate resolves direction:ltr
+            OBSERVED  58 nodes, 16 inside an RTL parent, allLtr=true, e.g. ["NET-NO-EGRESS","RES-LOCAL-ONLY","DRV-SIGNED-ONLY"]
+    PASS  embedded face is declared, loaded and first in the Arabic prose stack
+            EXPECTED  4 faces declared, at least one loaded, none in error, Arabic prose asks for "IBM Plex Sans Arabic" first
+            OBSERVED  declared=["400:loaded","500:loaded","600:loaded","700:loaded"] anyLoaded=true anyError=false proseStackHead="IBM Plex Sans Arabic"
+    PASS  no Arabic glyph is drawn by a system fallback font
+            EXPECTED  0 glyphs from a non-bundled font across every Arabic-bearing node
+            OBSERVED  129 Arabic nodes, 2361 glyphs; bundled = [["JetBrains Mono",208],["IBM Plex Sans Arabic",1673],["IBM Plex Sans Arabic SmBld",209],["IBM Plex Sans Arabic Medm",175],["Inter",96]]; system fallback = 0 glyph(s) []
+    PASS  the subset face still shapes Arabic
+            EXPECTED  a joined word renders narrower than the same letters with joining blocked
+            OBSERVED  "التشخيص" joined=154px vs joining-blocked=217px
+    PASS  headings are authored in Arabic
+            EXPECTED  no all-Latin heading left untranslated (product names excepted)
+            OBSERVED  18 headings, 0 all-Latin: []
+
+    7/7 checks pass
+
+### The token gate — EXPECTED: every var() resolves
+
+    ### node tools/verify-tokens.mjs
+    === 11 pages x 2 languages, read from the live CSSOM ===
+      style rules walked                 985
+      declarations referencing var()     443
+      unresolved on a matched element    0 (property, selector) pair(s), 0 distinct custom propert(ies)
+
+    PASS — every var() reference in 443 declarations resolves on every element the rule matches.
+
+### The layout sweep — EXPECTED: clean at 1280 / 1024 / 960, both languages, BOTH themes, populated AND with no service
+
+    ### node tools/layout-sweep.mjs --out output/p50-populated   (layout-fixture.html)
+    PASS  overview-1280-en-dark        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-1024-en-dark        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-960-en-dark         overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-1280-en-light       overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-1024-en-light       overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-960-en-light        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-1280-ar-dark        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-1024-ar-dark        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-960-ar-dark         overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-1280-ar-light       overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-1024-ar-light       overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=8 empty=2 emdash=3
+    PASS  overview-960-ar-light        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=8 empty=2 emdash=3
+
+    12/12 pass · artifacts in /Users/hasanalaaa/dev/aethercore/phase21-workspace/apps/ui/output/p50-populated
+
+    ### node tools/layout-sweep.mjs --entry index.html --out output/p50-noservice
+    PASS  overview-1280-en-dark        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-1024-en-dark        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-960-en-dark         overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-1280-en-light       overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-1024-en-light       overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-960-en-light        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-1280-ar-dark        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-1024-ar-dark        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-960-ar-dark         overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-1280-ar-light       overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-1024-ar-light       overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=6 emdash=15
+    PASS  overview-960-ar-light        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=6 emdash=15
+
+    12/12 pass · artifacts in /Users/hasanalaaa/dev/aethercore/phase21-workspace/apps/ui/output/p50-noservice
+
+**What those two runs say, side by side.** Populated: `evidence=8 empty=2
+emdash=3`. No service: `evidence=0 empty=6 emdash=15`. The same screen, the same
+markup — with nothing measured it renders four more empty states and twelve more
+em dashes, and claims nothing. That difference is the whole point of the phase.
+
+### The contrast instrument — EXPECTED: nothing below 4.5:1 in either theme
+
+    ### node tools/contrast-sweep.mjs --pages overview --locales en,ar   (populated)
+    PASS  overview/en/dark               nodes= 245 below=   0 exempt= 0 worst=5.23:1
+    PASS  overview/ar/dark               nodes= 244 below=   0 exempt= 0 worst=5.23:1
+    PASS  overview/en/light              nodes= 245 below=   0 exempt= 0 worst=4.67:1
+    PASS  overview/ar/light              nodes= 244 below=   0 exempt= 0 worst=4.67:1
+
+    measured 978 text node(s); 0 below threshold, 0 distinct; 0 exempt as inactive controls (WCAG 1.4.3 Incidental)
+      theme=dark      0 below, 0 distinct
+      theme=light     0 below, 0 distinct
+
+    PASS — every rendered text node meets WCAG AA in every theme measured.
+
+    ### node tools/contrast-sweep.mjs --pages overview --locales en,ar --entry index.html   (no service)
+    PASS  overview/en/dark               nodes= 171 below=   0 exempt= 0 worst=5.23:1
+    PASS  overview/ar/dark               nodes= 171 below=   0 exempt= 0 worst=5.23:1
+    PASS  overview/en/light              nodes= 171 below=   0 exempt= 0 worst=4.67:1
+    PASS  overview/ar/light              nodes= 171 below=   0 exempt= 0 worst=4.67:1
+
+    measured 684 text node(s); 0 below threshold, 0 distinct; 0 exempt as inactive controls (WCAG 1.4.3 Incidental)
+      theme=dark      0 below, 0 distinct
+      theme=light     0 below, 0 distinct
+
+    PASS — every rendered text node meets WCAG AA in every theme measured.
+
+### Build and svelte-check — EXPECTED: builds, 16-warning baseline held
+
+    ### npm run build
+    ✓ built in 789ms
+    [plugin builtin:vite-reporter] 
+    (!) Some chunks are larger than 500 kB after minification. Consider:
+    - Using dynamic import() to code-split the application
+    - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+    - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+    ### npm run check   (svelte-check, --fail-on-warnings, 16-warning baseline)
+    1788705067232 COMPLETED 225 FILES 0 ERRORS 16 WARNINGS 3 FILES_WITH_PROBLEMS
+
+`225 FILES 0 ERRORS 16 WARNINGS` — the same 16 as before this session (one
+a11y warning in `FluidDialog`, fifteen unused-selector warnings in
+`FindingCard` and `DeepScanPage`). None of them is in a file this session
+touched.
+
+### `scripts/static_validate.py` — not in the brief, run anyway
+
+    before   ok=False   21 failed
+    after    ok=False   21 failed
+    new failures: []      newly passing: []
+
+Unchanged. The 21 are pre-existing and mostly Windows-host checks that cannot
+pass on this machine.
+
+## 50.6 SCREENSHOTS
+
+**`design/p50-overview-screenshots/`**, committed — 1280 px, both languages,
+both themes, populated and with no service:
+
+    populated-overview-1280-en-dark.png     no-service-overview-1280-en-dark.png
+    populated-overview-1280-en-light.png    no-service-overview-1280-en-light.png
+    populated-overview-1280-ar-dark.png     no-service-overview-1280-ar-dark.png
+    populated-overview-1280-ar-light.png    no-service-overview-1280-ar-light.png
+
+The full 24-shot sweep (1280 / 1024 / 960 x en / ar x dark / light x both data
+states) is in `apps/ui/output/p50-populated/` and `.../p50-noservice/`, with
+`sweep.json` beside each.
+
+Read the two `en-dark` files together. Populated: `51% HEADROOM`, four rails
+with readings, six cited action items, four tiles, fourteen real log lines.
+No service: `— NO BASELINE`, four hatched rails reading `—`, `NOT COLLECTED
+YET` over three named channels each reading `—`, four tiles reading `—`, and a
+log that says the stream has not delivered an event yet. Neither one guesses.
 
