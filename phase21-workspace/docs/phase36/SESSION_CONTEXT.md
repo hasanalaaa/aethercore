@@ -12641,7 +12641,7 @@ Rows move in the same commit as the work they describe.
 |---|---|---|
 | 1 the mapping table, committed before any component | **DONE** | §50.1 — 38 rows, every one with a verdict and a named source or `NONE` |
 | 2 the app's own content: keep / move / below the fold | **DONE** | §50.2 — 8 sections decided, none deleted, 2 recorded as belonging elsewhere (`DBT-P50-003`) |
-| 3 build it | OPEN | §50.3 |
+| 3 build it | **DONE** | §50.3 — 6 files, +531/-14, one screen. New `DBT-P50-004` (the same inherited-`flex-wrap` defect in the shared `EmptyState`, fix known, deliberately not applied) |
 | 4 the sparklines | OPEN | §50.4 |
 | gates | OPEN | §50.5 |
 | screenshots 1280 × 2 languages × 2 themes × populated/empty | OPEN | §50.6 |
@@ -12740,4 +12740,75 @@ CarePanel → InsightsPanel.
 
 Two entries above the fold in the shell's composition, six below it. Eight
 sections in, eight sections out.
+
+## 50.3 ITEM 3 — BUILT
+
+**Six files, 531 insertions, 14 deletions. One screen.**
+
+| file | what changed |
+|---|---|
+| `apps/ui/src/features/overview/instrument.ts` | **new.** The derivation: `healthChannels`, `headroom`, `headroomEvidence`, `actionItems`, `telemetryTiles`. Every function names the IPC field it read or returns `undefined`. Kept out of the markup so the arithmetic is readable on its own |
+| `apps/ui/src/features/overview/OverviewPage.svelte` | the composition: four sections in a 12-column grid, then the app's six existing sections underneath, unchanged |
+| `apps/ui/src/platform/stream-state.ts` | +16 lines: a bounded ring of the last 40 kernel events. See below |
+| `catalog.en.ts` / `catalog.ar.ts` | +38 keys each, EN/AR parity |
+| `plurals.en.ts` / `plurals.ar.ts` | +4 units each (`channel`, `event`, `crashRecord`, `device`), Arabic with all six categories |
+
+### The one change outside the screen, and why
+
+`stream-state.ts` gains `serviceLog: readonly UiKernelEvent[]`, the last 40
+events, appended after the reducer's switch so an event that fails to route is
+never logged as though it had been handled.
+
+The shell's fourth section is a service log and its five lines are invented boot
+prose. The alternative to this ring was to leave the section permanently empty,
+because nothing in the UI retained the stream. But the stream is *already
+arriving* — every `UiKernelEvent` carries `sequence`, `emittedUnixMs`, `kind`
+and `planId` — and it was being read for `lastKernelSequence` and dropped. Nine
+lines make the one log on that screen a real one. It is bounded because a live
+stream has no end and the section shows a window.
+
+### A layout defect this uncovered, in `feature-layout.css`
+
+`main :where(*) { flex-wrap: wrap }` is deliberate and its own comment explains
+it: a control label is not prose, so content ROWS wrap rather than squeeze, at
+zero specificity so a row can opt out. A flex **column** that inherits it is
+sized as a wrapping column:
+
+    .tile   content height 141px   rendered height 595px
+    the diagnostic telemetry section, 740px for 287px of content
+
+Measured, not guessed — `flex-wrap: nowrap` set from the console collapsed it to
+141/287 exactly. Every column in the new file now opts out explicitly, which is
+what that rule's comment says to do.
+
+**The same defect exists in `EmptyState.svelte`,** the shared signature
+component: `.empty-state` is a flex column inside `main`, and with channels it
+renders 496px for 396px of content — measured today at 1280 on `index.html`.
+The fix is one declaration. It is **not applied**: `EmptyState` renders on seven
+screens and this session is one screen. Recorded as **`DBT-P50-004`** with the
+exact fix, for whoever takes the other ten.
+
+### The decisions inside the build
+
+- **The orb has no state hue.** The shell's turns red/green/blue on a fabricated
+  criticality. `snapshot.health` is a free-form service string ("Service
+  offline"), not an enum, and a health *threshold* is a judgement, not a
+  measurement. The dial reports only whether it has a reading at all.
+- **`51%`, not `51`.** Headroom is percentage points, so it is written as a
+  percentage — and `verify-numbers.mjs` only examines numbers of that shape. A
+  bare index would have been the most prominent figure on the screen and
+  invisible to the gate that exists to trace it.
+- **An empty channel track is hatched, not flat.** A bar at zero is a reading.
+  A channel with no scale to normalize against is not, and the two must not look
+  alike. Thermals is the second case and renders hatched with its reading intact.
+- **The one earned colour** on that section is the throttling chip, which reads
+  `power.throttleActive` — asserted by the provider, not inferred from a limit.
+- **Temperature is formatted by the locale,** not by string concatenation:
+  `${n} °C` reverses to `C° ٨٤` under RTL. `Intl` `style: 'unit'` gives `84°C`
+  and `٨٤°م`.
+- **Log lines are `direction: ltr`.** A log line is one technical token
+  sequence; under RTL the flex row otherwise prints the sequence number before
+  the timestamp — the defect `TechnicalText` prevents, one level up.
+- **Action rows stack title / meta / (reading + tag)** rather than competing for
+  a 5-of-12 column: at 1280 the reading was landing on top of the title.
 

@@ -16,4 +16,8 @@ export const arPlurals = {
   'unit.occurrence': { zero: 'لا تكرارات', one: 'تكرار واحد', two: 'تكراران', few: '{count} تكرارات', many: '{count} تكرارًا', other: '{count} تكرار' },
   'unit.careStep': { zero: 'لا خطوات عناية', one: 'خطوة عناية واحدة', two: 'خطوتا عناية', few: '{count} خطوات عناية', many: '{count} خطوة عناية', other: '{count} خطوة عناية' },
   'unit.insight': { zero: 'لا استشرافات', one: 'استشراف واحد', two: 'استشرافان', few: '{count} استشرافات', many: '{count} استشرافًا', other: '{count} استشراف' },
+  'unit.channel': { zero: 'لا قنوات', one: 'قناة واحدة', two: 'قناتان', few: '{count} قنوات', many: '{count} قناةً', other: '{count} قناة' },
+  'unit.event': { zero: 'لا أحداث', one: 'حدث واحد', two: 'حدثان', few: '{count} أحداث', many: '{count} حدثًا', other: '{count} حدث' },
+  'unit.crashRecord': { zero: 'لا سجلات أعطال', one: 'سجل عطل واحد', two: 'سجلا عطل', few: '{count} سجلات أعطال', many: '{count} سجل عطل', other: '{count} سجل عطل' },
+  'unit.device': { zero: 'لا أجهزة', one: 'جهاز واحد', two: 'جهازان', few: '{count} أجهزة', many: '{count} جهازًا', other: '{count} جهاز' },
 } satisfies Record<PluralMessageKey, ArabicPlural>;

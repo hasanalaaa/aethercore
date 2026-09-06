@@ -32,6 +32,16 @@ import type {
   UiStreamReset,
 } from '../lib/contracts';
 
+/**
+ * How many kernel events the Overview's service log keeps.
+ *
+ * The service log is the one log on that screen with a real source: every event
+ * the kernel pushes already carries its own sequence, emission time and kind.
+ * Bounded because this is a live stream with no end, and the section shows a
+ * window, not a history.
+ */
+export const SERVICE_LOG_LIMIT = 40;
+
 export type StreamState = {
   snapshot: Snapshot;
   hub: DriverHub;
@@ -63,6 +73,8 @@ export type StreamState = {
   careStatus: CareRunStatus | null;
   insights: InsightsResponse | null;
   session: UiSessionState;
+  /** The last SERVICE_LOG_LIMIT kernel events, oldest first. */
+  serviceLog: readonly UiKernelEvent[];
   lastKernelSequence: number;
 };
 
@@ -205,6 +217,7 @@ export function createInitialStreamState(): StreamState {
       replayFloorSequence: 0,
       replayComplete: false,
     },
+    serviceLog: [],
     lastKernelSequence: 0,
   };
 }
@@ -357,6 +370,9 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
     default:
       return assertNeverEvent(event);
   }
+  // Recorded after the switch so an event that fails to route is never logged as
+  // if it had been handled.
+  next.serviceLog = [...state.serviceLog, event].slice(-SERVICE_LOG_LIMIT);
   return next;
 }
 
