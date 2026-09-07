@@ -1750,6 +1750,13 @@ fn extract_perf_snapshot(resp: v1::Response) -> Result<v1::PerfSnapshot, String>
     }
 }
 
+fn extract_perf_window(resp: v1::Response) -> Result<v1::PerformanceWindowResponse, String> {
+    match resp.payload {
+        Some(response::Payload::PerformanceWindow(p)) => Ok(p),
+        _ => Err("unexpected performance window response".into()),
+    }
+}
+
 #[command]
 async fn start_perf_sampling(interval_ms: u32) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1784,6 +1791,21 @@ async fn get_performance_snapshot() -> Result<v1::PerfSnapshot, String> {
         ))
         .map_err(|e| e.to_string())?;
         extract_perf_snapshot(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn get_performance_window(max_samples: Option<u32>) -> Result<v1::PerformanceWindowResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetPerformanceWindow(
+            v1::GetPerformanceWindowRequest {
+                max_samples: max_samples.unwrap_or(300),
+            },
+        ))
+        .map_err(|e| e.to_string())?;
+        extract_perf_window(resp)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2946,6 +2968,7 @@ fn main() {
             start_perf_sampling,
             stop_perf_sampling,
             get_performance_snapshot,
+            get_performance_window,
             get_bottleneck_report,
             create_optimization_plan,
             get_timeline_page,

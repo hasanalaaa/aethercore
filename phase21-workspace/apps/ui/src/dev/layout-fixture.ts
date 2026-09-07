@@ -260,7 +260,7 @@ const performance: PerfSnapshot = {
   cpu: fill({ perProcessorBusyBp: Array.from({ length: 16 }, (_, i) => 1_200 + i * 260), totalBusyBp: 4_100, dpcIsrBusyBp: 320, contextSwitchesPerSec: 18_400, processorQueueLengthX100: 180 }),
   power: fill({ throttleActive: true, throttleReason: 4, limitReasonsRaw: 4, hasTemperature: true, temperatureC: 84 }),
   memory: fill({ totalPhysicalBytes: 34_359_738_368, availablePhysicalBytes: 9_663_676_416, standbyCacheBytes: 6_442_450_944, modifiedPageListBytes: 268_435_456, commitBytes: 26_843_545_600, commitLimitBytes: 40_802_189_312, hardFaultsPerSec: 480, softFaultsPerSec: 24_000, memoryLoadPercent: 72 }),
-  storage: [fill({ deviceId: '\\\\.\\PHYSICALDRIVE0', friendlyName: 'Samsung SSD 990 PRO with Heatsink 2TB NVMe M.2', activeTimeBp: 3_400, queueDepthX100: 210, avgTransferLatencyUs: 940, readBytesPerSec: 184_549_376, writeBytesPerSec: 52_428_800 })],
+  storage: [fill({ deviceId: '\\\\.\\PHYSICALDRIVE0', friendlyName: 'Samsung SSD 990 PRO with Heatsink 2TB NVMe M.2', activeTimeBp: 3_400, queueDepthX100: 210, avgTransferLatencyUs: 940, readBytesPerSec: 184_549_376, writeBytesPerSec: 52_428_800, totalSpaceBytes: 2_000_000_000_000, freeSpaceBytes: 1_200_000_000_000 })],
   gpu: fill({ adapterId: 'gpu-0', adapterName: 'NVIDIA GeForce RTX 4070 Laptop GPU', dedicatedUsedBytes: 5_368_709_120, dedicatedTotalBytes: 8_589_934_592, sharedUsedBytes: 1_073_741_824, engines: [fill({ engineName: '3D', utilizationBp: 6_200 }), fill({ engineName: 'VideoDecode', utilizationBp: 1_100 })], frametimeJitterUs: 2_400, compositorLagDetected: true }),
   processTop: [0, 1, 2, 3, 4].map((i) => fill({ pid: 4_000 + i, name: 'Microsoft.SharePoint.SyncEngine.Host.exe', cpuBusyBp: 1_800 - i * 240, readBytesPerSec: 10_485_760, writeBytesPerSec: 4_194_304, workingSetBytes: 1_073_741_824 })),
   collectorFaults: [fill({ collector: 'GpuEngineCounters', kind: 'Unavailable', detail: 'Counter set not present on this adapter.' })],
@@ -445,6 +445,7 @@ const handlers = new Map<string, StreamHandler[]>();
     // fixture would silently measure the empty instrument while claiming to be
     // populated. It answers with the same reading the stream replays.
     if (command === 'get_performance_snapshot') return performance;
+    if (command === 'get_performance_window') return { samples: [performance, performance] };
     // The capability matrix and the engine source are the About panel's only
     // content, and until §51.3 moved it to Settings no sweep had ever measured
     // it populated — `{}` renders its not-collected state, which is exactly the

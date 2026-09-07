@@ -2875,6 +2875,14 @@ header .sub {
   stroke-linejoin: round;
   opacity: 0.85;
 }
+.sparkline-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ac-text-4);
+  font-family: var(--ac-font-mono);
+  font-size: var(--ac-type-caption);
+}
 .throttle-warning {
   border-inline-start: 3px solid var(--ac-warning);
 }

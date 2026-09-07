@@ -1,6 +1,6 @@
-import type { PerfSnapshot } from '../../lib/contracts';
+import type { PerfSnapshot, PerformanceWindowResponse } from '../../lib/contracts';
 import { serviceInvoke } from '../../platform/service-client';
-import { patchStreamState } from '../../platform/stream-state';
+import { patchStreamState, applyPerformanceWindow } from '../../platform/stream-state';
 
 /**
  * The Overview's own reading loop — why this screen fills itself by READING
@@ -47,6 +47,18 @@ function isReading(snapshot: PerfSnapshot | undefined): snapshot is PerfSnapshot
  */
 export async function readTelemetryNow(): Promise<boolean> {
   try {
+    try {
+      const windowResp = await serviceInvoke<PerformanceWindowResponse>('get_performance_window', { maxSamples: 60 });
+      if (windowResp && Array.isArray(windowResp.samples) && windowResp.samples.length > 0) {
+        const validSamples = windowResp.samples.filter(isReading);
+        if (validSamples.length > 0) {
+          applyPerformanceWindow(validSamples);
+          return true;
+        }
+      }
+    } catch {
+      // Fall through to get_performance_snapshot
+    }
     const snapshot = await serviceInvoke<PerfSnapshot>('get_performance_snapshot');
     if (!isReading(snapshot)) return false;
     patchStreamState({ performance: snapshot });

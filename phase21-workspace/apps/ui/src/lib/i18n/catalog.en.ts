@@ -1730,6 +1730,7 @@ export const enCatalog = {
   'overview.telemetryMetaNone': 'no live capture',
   'overview.telemetryNoHistory': 'No sparklines: this build retains the latest sample, not a series. Drawing one would mean drawing a shape nobody measured.',
   'overview.tileDiskLatency': 'Disk latency',
+  'overview.diskSpace': '{free} free of {total}',
   'overview.tileHardFaults': 'Hard faults',
   'overview.tileContextSwitches': 'Context switches',
   'overview.tileJournal': 'Journal events',

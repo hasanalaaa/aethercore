@@ -144,7 +144,7 @@ export type PerfCollectorFault = { collector:string; kind:string; detail:string 
 export type CpuSample = { perProcessorBusyBp:number[]; totalBusyBp:number; dpcIsrBusyBp:number; contextSwitchesPerSec:number; processorQueueLengthX100:number };
 export type PowerSample = { throttleActive:boolean; throttleReason:number; limitReasonsRaw:number; hasTemperature:boolean; temperatureC:number };
 export type MemorySample = { totalPhysicalBytes:number; availablePhysicalBytes:number; standbyCacheBytes:number; modifiedPageListBytes:number; commitBytes:number; commitLimitBytes:number; hardFaultsPerSec:number; softFaultsPerSec:number; memoryLoadPercent:number };
-export type StorageQueueSample = { deviceId:string; friendlyName:string; activeTimeBp:number; queueDepthX100:number; avgTransferLatencyUs:number; readBytesPerSec:number; writeBytesPerSec:number };
+export type StorageQueueSample = { deviceId:string; friendlyName:string; activeTimeBp:number; queueDepthX100:number; avgTransferLatencyUs:number; readBytesPerSec:number; writeBytesPerSec:number; totalSpaceBytes:number; freeSpaceBytes:number };
 export type GpuEngineSample = { engineName:string; utilizationBp:number };
 export type GpuSample = { adapterId:string; adapterName:string; dedicatedUsedBytes:number; dedicatedTotalBytes:number; sharedUsedBytes:number; engines:GpuEngineSample[]; frametimeJitterUs:number; compositorLagDetected:boolean };
 export type ProcessCpuTopEntry = { pid:number; name:string; cpuBusyBp:number; readBytesPerSec:number; writeBytesPerSec:number; workingSetBytes:number };
@@ -154,6 +154,7 @@ export type PerfSnapshot = {
   storage:StorageQueueSample[]; gpu:GpuSample | null;
   processTop:ProcessCpuTopEntry[]; collectorFaults:PerfCollectorFault[]
 };
+export type PerformanceWindowResponse = { samples: PerfSnapshot[] };
 export type PerfMessageArg = { key:string; value:string };
 export type BottleneckEvidenceRef = { factKey:string; observedValue:number; threshold:number; observedUnixMs:number };
 export type BottleneckFinding = {

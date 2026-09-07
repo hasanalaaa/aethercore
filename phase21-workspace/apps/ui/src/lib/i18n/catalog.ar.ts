@@ -1730,6 +1730,7 @@ export const arCatalog = {
   'overview.telemetryMetaNone': 'لا التقاط مباشر',
   'overview.telemetryNoHistory': 'لا مخططات مصغّرة: هذه النسخة تحتفظ بآخر عيّنة لا بسلسلة. رسم مخطط يعني رسم شكل لم يقسه أحد.',
   'overview.tileDiskLatency': 'زمن استجابة القرص',
+  'overview.diskSpace': '{free} حُرّ من أصل {total}',
   'overview.tileHardFaults': 'أخطاء الصفحات الصلبة',
   'overview.tileContextSwitches': 'تبديلات السياق',
   'overview.tileJournal': 'أحداث السجل',

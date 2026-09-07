@@ -66,6 +66,7 @@ export type StreamState = {
   updateSnapshot: UpdateSnapshot;
   supportBundleEvent: SupportBundleEvent | null;
   performance: PerfSnapshot;
+  performanceWindow: PerfSnapshot[];
   bottleneckReport: BottleneckReport | null;
   optimizationStatus: OptimizationStatus | null;
   perfSampling: boolean;
@@ -203,6 +204,7 @@ export function createInitialStreamState(): StreamState {
       capturedUnixMs: 0, intervalMs: 0, cpu: null, power: null, memory: null,
       storage: [], gpu: null, processTop: [], collectorFaults: [],
     },
+    performanceWindow: [],
     bottleneckReport: null,
     optimizationStatus: null,
     perfSampling: false,
@@ -333,6 +335,10 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
       break;
     case 'performanceSnapshot':
       next.performance = event.payload;
+      {
+        const window = [...state.performanceWindow, event.payload];
+        next.performanceWindow = window.length > 300 ? window.slice(window.length - 300) : window;
+      }
       // `perfSampling` is whether the SERVICE's background sampler is running,
       // and only `start_perf_sampling` / `stop_perf_sampling` decide that. A
       // snapshot event arrives from every `get_performance_snapshot` — including
@@ -429,4 +435,12 @@ export function patchSnapshot(snapshot: Snapshot): void {
     if (active) next = routePlan(next, active);
     return next;
   });
+}
+
+export function applyPerformanceWindow(samples: PerfSnapshot[]): void {
+  streamState.update((state) => ({
+    ...state,
+    performanceWindow: samples.slice(-300),
+    performance: samples.length > 0 ? samples[samples.length - 1] : state.performance,
+  }));
 }

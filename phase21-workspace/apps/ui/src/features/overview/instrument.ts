@@ -63,6 +63,8 @@ export type HealthChannel = {
   raw: string;
   /** A state the SERVICE asserted, not one this file inferred. */
   serviceState?: string;
+  /** Real historical series from performance window. Omitted if samples < 2. */
+  history?: number[];
 };
 
 /** The busiest storage device in the sample, or null if none was reported. */
@@ -71,13 +73,30 @@ function busiestDevice(perf: PerfSnapshot) {
   return perf.storage.reduce((worst, device) => (device.activeTimeBp > worst.activeTimeBp ? device : worst));
 }
 
-export function healthChannels(perf: PerfSnapshot, locale: Locale): HealthChannel[] {
+export function healthChannels(perf: PerfSnapshot, locale: Locale, window?: readonly PerfSnapshot[]): HealthChannel[] {
   const unmeasured = t('overview.channelUnmeasured', locale);
   const device = busiestDevice(perf);
   const cpuPct = perf.cpu ? perf.cpu.totalBusyBp / 100 : undefined;
   const memoryPct = perf.memory ? perf.memory.memoryLoadPercent : undefined;
   const diskPct = device ? device.activeTimeBp / 100 : undefined;
   const thermal = perf.power?.hasTemperature ? perf.power.temperatureC : undefined;
+
+  const hasHistory = window && window.length >= 2;
+  const cpuHistory = hasHistory
+    ? window.map((s) => (s.cpu ? s.cpu.totalBusyBp / 100 : undefined)).filter((v): v is number => v !== undefined)
+    : undefined;
+  const memoryHistory = hasHistory
+    ? window.map((s) => (s.memory ? s.memory.memoryLoadPercent : undefined)).filter((v): v is number => v !== undefined)
+    : undefined;
+  const diskHistory = hasHistory
+    ? window.map((s) => {
+        const d = busiestDevice(s);
+        return d ? d.activeTimeBp / 100 : undefined;
+      }).filter((v): v is number => v !== undefined)
+    : undefined;
+  const thermalHistory = hasHistory
+    ? window.map((s) => (s.power?.hasTemperature ? s.power.temperatureC : undefined)).filter((v): v is number => v !== undefined)
+    : undefined;
 
   return [
     {
@@ -89,6 +108,7 @@ export function healthChannels(perf: PerfSnapshot, locale: Locale): HealthChanne
       raw: perf.cpu
         ? `cpu.totalBusyBp = ${perf.cpu.totalBusyBp} bp -> ${(perf.cpu.totalBusyBp / 100).toFixed(1)}%  (PerfSnapshot.cpu)`
         : `cpu = null  (${unmeasured})`,
+      history: cpuHistory && cpuHistory.length >= 2 ? cpuHistory : undefined,
     },
     {
       id: 'memory',
@@ -101,6 +121,7 @@ export function healthChannels(perf: PerfSnapshot, locale: Locale): HealthChanne
       raw: perf.memory
         ? `memory.memoryLoadPercent = ${perf.memory.memoryLoadPercent}%  in use = total ${perf.memory.totalPhysicalBytes} - available ${perf.memory.availablePhysicalBytes} B  (PerfSnapshot.memory)`
         : `memory = null  (${unmeasured})`,
+      history: memoryHistory && memoryHistory.length >= 2 ? memoryHistory : undefined,
     },
     {
       id: 'disk',
@@ -111,6 +132,7 @@ export function healthChannels(perf: PerfSnapshot, locale: Locale): HealthChanne
       raw: device
         ? `storage.activeTimeBp = ${device.activeTimeBp} bp -> ${(device.activeTimeBp / 100).toFixed(1)}%  on ${device.deviceId}  (PerfSnapshot.storage, busiest of ${perf.storage.length})`
         : `storage = []  (${unmeasured})`,
+      history: diskHistory && diskHistory.length >= 2 ? diskHistory : undefined,
     },
     {
       id: 'thermal',
@@ -122,6 +144,7 @@ export function healthChannels(perf: PerfSnapshot, locale: Locale): HealthChanne
         ? `power.temperatureC = ${perf.power.temperatureC}  hasTemperature = true  throttleActive = ${perf.power.throttleActive}  (PerfSnapshot.power)`
         : `power.hasTemperature = false  (${unmeasured})`,
       serviceState: perf.power?.throttleActive ? t('overview.throttling', locale) : undefined,
+      history: thermalHistory && thermalHistory.length >= 2 ? thermalHistory : undefined,
     },
   ];
 }
@@ -371,13 +394,18 @@ export function samplingNote(perf: PerfSnapshot, locale: Locale): string {
 export function telemetryTiles(perf: PerfSnapshot, snapshot: Snapshot, locale: Locale): TelemetryTile[] {
   const device = busiestDevice(perf);
   const sampled = samplingNote(perf, locale);
+  const diskNote = device
+    ? (device.totalSpaceBytes > 0
+        ? `${device.friendlyName} · ${t('overview.diskSpace', locale, { free: formatBytes(device.freeSpaceBytes, locale), total: formatBytes(device.totalSpaceBytes, locale) })}`
+        : device.friendlyName)
+    : t('overview.channelUnmeasured', locale);
   return [
     {
       id: 'disk-latency',
       label: t('overview.tileDiskLatency', locale),
       value: device ? formatNumber(device.avgTransferLatencyUs / 1000, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined,
       unit: t('overview.unitMs', locale),
-      note: device ? device.friendlyName : t('overview.channelUnmeasured', locale),
+      note: diskNote,
     },
     {
       id: 'hard-faults',

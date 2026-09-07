@@ -12,9 +12,11 @@
    * - Bidi: numbers and technical codes are isolated with TechnicalText so Arabic layout
    *   never mirrors metric values incorrectly.
    */
+  import { onMount } from 'svelte';
   import { fluidPress } from '../../design/motion';
   import { shellState } from '../../app/shell-state';
-  import { streamState } from '../../platform/stream-state';
+  import type { PerformanceWindowResponse } from '../../lib/contracts';
+  import { applyPerformanceWindow, streamState } from '../../platform/stream-state';
   import { Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
   import { t, td, tp, hasMessageKey } from '../../lib/i18n';
   import {
@@ -31,6 +33,7 @@
   $: locale = $shellState.locale;
   $: busy = $shellState.busy;
   $: performance = $streamState.performance;
+  $: performanceWindow = $streamState.performanceWindow;
   $: report = $streamState.bottleneckReport;
   $: sampling = $streamState.perfSampling;
   $: selectedIds = $perfUi.selectedFindingIds;
@@ -41,6 +44,17 @@
   serviceInvoke<{ source: string; platform: string }>('get_engine_source')
     .then((source) => (engineSource = source))
     .catch(() => (engineSource = null));
+
+  onMount(async () => {
+    try {
+      const resp = await serviceInvoke<PerformanceWindowResponse>('get_performance_window', { maxSamples: 60 });
+      if (resp?.samples?.length) {
+        applyPerformanceWindow(resp.samples);
+      }
+    } catch {
+      // ignore
+    }
+  });
 
   const ROLE_ROOT_CAUSE = 1;
   const ROLE_CONTRIBUTING = 2;
@@ -78,7 +92,24 @@
   let gpuHistory: number[] = [];
   const HISTORY_LENGTH = 60;
 
-  $: if (performance.capturedUnixMs > 0) {
+  $: if (performanceWindow && performanceWindow.length > 0) {
+    cpuHistory = performanceWindow
+      .map((s) => bpToPercent(s.cpu?.totalBusyBp))
+      .filter((v): v is number => v !== undefined)
+      .slice(-HISTORY_LENGTH);
+    memoryHistory = performanceWindow
+      .map((s) => s.memory?.memoryLoadPercent)
+      .filter((v): v is number => v !== undefined)
+      .slice(-HISTORY_LENGTH);
+    storageHistory = performanceWindow
+      .map((s) => peakStorage(s))
+      .filter((v): v is number => v !== undefined)
+      .slice(-HISTORY_LENGTH);
+    gpuHistory = performanceWindow
+      .map((s) => peakGpu(s))
+      .filter((v): v is number => v !== undefined)
+      .slice(-HISTORY_LENGTH);
+  } else if (performance.capturedUnixMs > 0) {
     cpuHistory = pushHistory(cpuHistory, bpToPercent(performance.cpu?.totalBusyBp));
     memoryHistory = pushHistory(memoryHistory, performance.memory?.memoryLoadPercent);
     storageHistory = pushHistory(storageHistory, peakStorage(performance));
@@ -154,25 +185,41 @@
   <article class="metric-card">
     <span>{t('perf.cpu', locale)}</span>
     <strong class="technical-isolate" dir="ltr">{percentOrDash(bpToPercent(performance.cpu?.totalBusyBp))}</strong>
-    <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(cpuHistory)} /></svg>
+    {#if cpuHistory.length >= 2}
+      <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(cpuHistory)} /></svg>
+    {:else}
+      <span class="sparkline sparkline-empty" aria-hidden="true">—</span>
+    {/if}
     <small>{t('perf.dpcHint', locale)} <TechnicalText value={percentOrDash(bpToPercent(performance.cpu?.dpcIsrBusyBp))}/></small>
   </article>
   <article class="metric-card">
     <span>{t('perf.memory', locale)}</span>
     <strong class="technical-isolate" dir="ltr">{percentOrDash(performance.memory?.memoryLoadPercent)}</strong>
-    <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(memoryHistory)} /></svg>
+    {#if memoryHistory.length >= 2}
+      <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(memoryHistory)} /></svg>
+    {:else}
+      <span class="sparkline sparkline-empty" aria-hidden="true">—</span>
+    {/if}
     <small>{t('perf.standby', locale)} <TechnicalText value={`${bytesToGb(performance.memory?.standbyCacheBytes)} GB`}/></small>
   </article>
   <article class="metric-card">
     <span>{t('perf.storage', locale)}</span>
     <strong class="technical-isolate" dir="ltr">{percentOrDash(peakStorage(performance))}</strong>
-    <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(storageHistory)} /></svg>
+    {#if storageHistory.length >= 2}
+      <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(storageHistory)} /></svg>
+    {:else}
+      <span class="sparkline sparkline-empty" aria-hidden="true">—</span>
+    {/if}
     <small>{t('perf.latency', locale)} <TechnicalText value={performance.storage[0]?.avgTransferLatencyUs === undefined ? '—' : `${performance.storage[0].avgTransferLatencyUs} µs`}/></small>
   </article>
   <article class="metric-card">
     <span>{t('perf.gpu', locale)}</span>
     <strong class="technical-isolate" dir="ltr">{percentOrDash(peakGpu(performance))}</strong>
-    <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(gpuHistory)} /></svg>
+    {#if gpuHistory.length >= 2}
+      <svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points={sparkPath(gpuHistory)} /></svg>
+    {:else}
+      <span class="sparkline sparkline-empty" aria-hidden="true">—</span>
+    {/if}
     <small>{t('perf.vram', locale)} <TechnicalText value={`${bytesToGb(performance.gpu?.dedicatedUsedBytes)}/${bytesToGb(performance.gpu?.dedicatedTotalBytes)} GB`}/></small>
   </article>
 </section>

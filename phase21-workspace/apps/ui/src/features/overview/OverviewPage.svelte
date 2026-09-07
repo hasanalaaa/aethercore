@@ -46,11 +46,12 @@
 
   $: snapshot = $streamState.snapshot;
   $: performance = $streamState.performance;
+  $: performanceWindow = $streamState.performanceWindow;
   $: serviceLog = $streamState.serviceLog;
   $: busy = $shellState.busy;
   $: locale = $shellState.locale;
 
-  $: channels = healthChannels(performance, locale);
+  $: channels = healthChannels(performance, locale, performanceWindow);
   $: index = headroom(channels);
   $: orbEvidence = headroomEvidence(channels, performance, locale);
   /**
@@ -88,6 +89,21 @@
     const pad = (value: number): string => String(value).padStart(2, '0');
     return `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
   }
+
+  /** SVG polyline points for a channel sparkline in a 60x16 viewBox, LTR always. */
+  function channelSparkPath(history: number[]): string {
+    if (history.length < 2) return '';
+    const max = 100;
+    const step = 60 / (history.length - 1);
+    return history
+      .map((val, idx) => {
+        const clamped = Math.max(0, Math.min(max, val));
+        const x = (idx * step).toFixed(1);
+        const y = (16 - (clamped / max) * 14 - 1).toFixed(1);
+        return `${x},${y}`;
+      })
+      .join(' ');
+  }
 </script>
 
 <header>
@@ -124,6 +140,13 @@
               <span class="channel-track" data-normalized={channel.pct !== undefined}>
                 {#if channel.pct !== undefined}<span class="channel-fill" style="inline-size:{Math.min(100, Math.max(0, channel.pct))}%"></span>{/if}
               </span>
+              {#if channel.history && channel.history.length >= 2}
+                <svg class="channel-sparkline" viewBox="0 0 60 16" preserveAspectRatio="none" aria-hidden="true">
+                  <polyline points={channelSparkPath(channel.history)} />
+                </svg>
+              {:else}
+                <span class="channel-sparkline channel-sparkline-empty" aria-hidden="true">—</span>
+              {/if}
               <span class="channel-value">{channel.value ?? '—'}</span>
             </div>
             {#if channel.serviceState}<span class="channel-state">{channel.serviceState}</span>{/if}
@@ -397,6 +420,28 @@
     font-family: var(--ac-font-mono);
     font-size: var(--ac-type-caption);
     color: var(--ac-text-1);
+  }
+  .channel-sparkline {
+    inline-size: 3.75rem;
+    block-size: 1rem;
+    flex-shrink: 0;
+    direction: ltr;
+  }
+  .channel-sparkline polyline {
+    fill: none;
+    stroke: var(--role-interactive);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.85;
+  }
+  .channel-sparkline-empty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ac-text-4);
+    font-family: var(--ac-font-mono);
+    font-size: var(--ac-type-caption);
   }
   .channel-note { margin: 0; max-inline-size: 58ch; font-size: var(--ac-type-callout); line-height: 1.65; color: var(--ac-text-4); text-wrap: pretty; }
   .orb-channels .secondary { align-self: flex-start; }
