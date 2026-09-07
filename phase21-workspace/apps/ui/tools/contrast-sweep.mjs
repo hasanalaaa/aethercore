@@ -43,7 +43,7 @@ const CHROME = process.env.CHROME_BIN
   ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 const ALL_PAGES = ['overview', 'deepScan', 'drivers', 'repair', 'cleanup', 'startup',
-  'performance', 'hardware', 'crash', 'activity', 'fleet'];
+  'performance', 'hardware', 'crash', 'activity', 'fleet', 'settings'];
 
 function parseArgs(argv) {
   const args = {

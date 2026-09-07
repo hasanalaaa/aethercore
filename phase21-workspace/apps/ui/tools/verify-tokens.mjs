@@ -29,7 +29,7 @@ import { tmpdir } from 'node:os';
 
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const BASE = process.env.AETHERCORE_BASE ?? 'http://127.0.0.1:1420';
-const PAGES = ['overview', 'deepScan', 'drivers', 'repair', 'cleanup', 'startup', 'performance', 'hardware', 'crash', 'activity', 'fleet'];
+const PAGES = ['overview', 'deepScan', 'drivers', 'repair', 'cleanup', 'startup', 'performance', 'hardware', 'crash', 'activity', 'fleet', 'settings'];
 const LOCALES = ['en', 'ar'];
 /** Below this, the walk found nothing to check and the run proves nothing. */
 const MIN_DECLARATIONS = 100;

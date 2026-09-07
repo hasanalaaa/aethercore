@@ -22,6 +22,13 @@ import { tmpdir } from 'node:os';
 
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const BASE = process.env.AETHERCORE_BASE ?? 'http://127.0.0.1:1420';
+/**
+ * Which screen to check. Default `overview`, so the gate's command and its
+ * output are unchanged. §51.3 moved four sections off the Overview onto a new
+ * Settings screen and three more onto Activity, and this gate reads one screen —
+ * without this flag their Arabic stopped being checked by anything.
+ */
+const PAGE = (process.argv.indexOf('--page') >= 0 ? process.argv[process.argv.indexOf('--page') + 1] : 'overview');
 const EMBEDDED_FACE = 'IBM Plex Sans Arabic';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -99,6 +106,17 @@ async function main() {
     await evaluate(`localStorage.setItem('aethercore.locale', 'ar')`);
     await cdp.send('Page.navigate', { url: `${BASE}/layout-fixture.html` });
     await settle();
+    if (PAGE !== 'overview') {
+      const reached = await evaluate(`(async () => {
+        const button = document.querySelector('button[data-nav-item][data-page=' + JSON.stringify(${JSON.stringify(PAGE)}) + ']');
+        if (!button) return false;
+        button.click();
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return document.querySelector('.app-shell')?.dataset.page === ${JSON.stringify(PAGE)};
+      })()`);
+      if (!reached) throw new Error(`could not route to page "${PAGE}"`);
+      await settle();
+    }
 
     // 1 — the root is RTL, and says so in every place that matters.
     const root = await evaluate(`({

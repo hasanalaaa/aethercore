@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const BASE = process.env.AETHERCORE_BASE ?? 'http://127.0.0.1:1420';
-const PAGES = ['overview', 'deepScan', 'drivers', 'repair', 'cleanup', 'startup', 'performance', 'hardware', 'crash', 'activity', 'fleet'];
+const PAGES = ['overview', 'deepScan', 'drivers', 'repair', 'cleanup', 'startup', 'performance', 'hardware', 'crash', 'activity', 'fleet', 'settings'];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -140,7 +140,7 @@ async function main() {
     await rm(profile, { recursive: true, force: true }).catch(() => {});
   }
 
-  console.log('=== raw counts, from the rendered DOM of 11 pages x 2 languages ===');
+  console.log(`=== raw counts, from the rendered DOM of ${PAGES.length} pages x 2 languages ===`);
   console.log(`  "denied" word occurrences        ${totals.denied}`);
   console.log(`  denied ELEMENTS rendered         ${totals.deniedElements}`);
   console.log(`  "evidence" word occurrences      ${totals.evidence}`);
