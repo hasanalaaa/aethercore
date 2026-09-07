@@ -1,5 +1,5 @@
 .app-brand {
-  display:flex; align-items:center; gap:.75rem; min-height:3.4rem; padding-inline:.5rem; margin-block-end:.9rem;
+  display:flex; align-items:center; gap:.65rem; min-height:2.65rem; padding-inline:.45rem; margin-block-end:.45rem;
 }
 .brand-mark {
   inline-size:2.25rem; block-size:2.25rem; flex:0 0 auto; display:grid; place-items:center;
@@ -19,12 +19,13 @@
 .brand-copy small { display:block; margin-block-start:.12rem; color:var(--ac-text-4); font-size:.75rem; line-height:1.25; }
 
 .command-trigger,.locale-button,.app-nav-item {
-  min-block-size:var(--ac-target-min); inline-size:100%; border:1px solid transparent; border-radius:.72rem;
+  inline-size:100%; border:1px solid transparent; border-radius:.55rem;
   background:transparent; color:var(--ac-text-3); cursor:pointer;
 }
 .command-trigger {
-  display:grid; grid-template-columns:1.25rem minmax(0,1fr) auto; align-items:center; gap:.6rem;
-  margin-block-end:.9rem; padding:.58rem .7rem; text-align:start;
+  min-block-size:2.25rem;
+  display:grid; grid-template-columns:1.25rem minmax(0,1fr) auto; align-items:center; gap:.5rem;
+  margin-block-end:.45rem; padding:.42rem .6rem; text-align:start;
   border-color:var(--ac-border-subtle); background:rgba(255,255,255,.024);
 }
 .command-trigger:hover { background:var(--ac-layer-hover); color:var(--ac-text-2); border-color:var(--ac-border-default); }
@@ -34,12 +35,13 @@
   background:rgba(0,0,0,.18); color:var(--ac-text-4); font:500 .6875rem/1.2 var(--ac-font-text); text-align:center;
 }
 
-.app-sidebar nav { display:grid; gap:1rem; min-block-size:0; overflow:auto; scrollbar-width:thin; }
-.nav-group { display:grid; gap:.2rem; }
-.nav-group h2 { margin:0 .6rem .28rem; color:var(--ac-text-4); font:650 .625rem/1.2 var(--ac-font-text); letter-spacing:.12em; text-transform:uppercase; }
+.app-sidebar nav { display:grid; gap:.4rem; min-block-size:0; overflow:auto; scrollbar-width:thin; }
+.nav-group { display:grid; gap:2px; }
+.nav-group h2 { margin:0 .45rem .12rem; color:var(--ac-text-4); font:650 .58rem/1.2 var(--ac-font-text); letter-spacing:.1em; text-transform:uppercase; }
 .app-nav-item {
-  display:grid; grid-template-columns:1.75rem minmax(0,1fr); align-items:center; gap:.55rem;
-  padding:.48rem .58rem; text-align:start;
+  min-block-size:2.15rem;
+  display:grid; grid-template-columns:1.45rem minmax(0,1fr); align-items:center; gap:.45rem;
+  padding:.22rem .45rem; text-align:start;
 }
 .app-nav-item:hover { color:var(--ac-text-2); background:var(--ac-layer-hover); }
 .app-nav-item.active {
@@ -47,38 +49,42 @@
   background:linear-gradient(180deg,rgba(142,197,245,.105),rgba(142,197,245,.065));
   box-shadow:inset 0 1px rgba(255,255,255,.035);
 }
-.nav-icon { inline-size:1.75rem; block-size:1.75rem; display:grid; place-items:center; border-radius:.48rem; color:var(--ac-text-4); }
+.nav-icon { inline-size:1.45rem; block-size:1.45rem; display:grid; place-items:center; border-radius:.4rem; color:var(--ac-text-4); }
 .app-nav-item.active .nav-icon { color:var(--ac-accent-strong); background:rgba(142,197,245,.08); }
 .nav-availability { align-self:start; color:var(--ac-warning); font-size:1.1rem; line-height:1; }
 .nav-copy { min-inline-size:0; }
-.nav-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8125rem; font-weight:600; }
-.nav-copy small { display:block; margin-block-start:.08rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ac-text-4); font-size:.6875rem; line-height:1.25; }
+.nav-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.78rem; font-weight:600; line-height:1.15; }
+.nav-copy small { display:block; margin-block-start:.02rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ac-text-4); font-size:.65rem; line-height:1.15; }
 
 /* A policy boundary is a refusal, so it wears the denied identity — violet,
    dashed, 8px — not attention's amber. Attention means "drifting toward a
    threshold"; this is the product declining on purpose. */
-.policy-card { display:grid; grid-template-columns:1.65rem minmax(0,1fr); align-items:start; gap:.55rem; margin-block-start:1rem; padding:.7rem .65rem; border:1.5px dashed var(--role-denied-dash); border-radius:var(--ac-radius-denied); background:var(--role-denied-wash); }
-.policy-mark { display:grid; place-items:center; inline-size:1.55rem; block-size:1.55rem; border:1.5px dashed var(--role-denied-dash); border-radius:var(--ac-radius-denied); color:var(--role-denied); }
+.policy-card { display:grid; grid-template-columns:1.45rem minmax(0,1fr); align-items:start; gap:.45rem; margin-block-start:.45rem; padding:.45rem .55rem; border:1.5px dashed var(--role-denied-dash); border-radius:var(--ac-radius-denied); background:var(--role-denied-wash); }
+.policy-mark { display:grid; place-items:center; inline-size:1.4rem; block-size:1.4rem; border:1.5px dashed var(--role-denied-dash); border-radius:var(--ac-radius-denied); color:var(--role-denied); }
 .policy-mark svg { stroke:currentColor; stroke-width:1.8; stroke-linecap:round; fill:none; }
-.policy-card strong,.policy-card small { display:block; }.policy-card strong { color:var(--ac-text-2); font-size:.72rem; font-weight:680; }.policy-card small { margin-block-start:.2rem; color:var(--ac-text-3); font-size:.67rem; line-height:1.35; }
-.sidebar-controls { margin-block-start:auto; padding-block-start:1rem; }
-.theme-button { margin-block-start:.25rem; }
+.policy-card strong,.policy-card small { display:block; }
+.policy-card strong { color:var(--ac-text-2); font-size:.72rem; font-weight:680; line-height:1.2; }
+.policy-card small { margin-block-start:.1rem; color:var(--ac-text-3); font-size:.65rem; line-height:1.25; }
+.sidebar-controls { display:flex; gap:8px; flex-direction:row; align-items:center; margin-block-start:auto; padding-block-start:.5rem; }
+.theme-button { margin-block-start:0; }
 .locale-button {
-  display:grid; grid-template-columns:1.25rem minmax(0,1fr); align-items:center; gap:.55rem;
-  padding:.5rem .6rem; text-align:start;
+  flex:1; min-inline-size:0; min-block-size:2.25rem;
+  display:flex; align-items:center; justify-content:center; gap:.35rem;
+  padding:.35rem .45rem; text-align:center;
 }
+.locale-button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.75rem; }
 .locale-button:hover { background:var(--ac-layer-hover); color:var(--ac-text-2); }
 
 .app-service {
-  display:grid; grid-template-columns:.6rem minmax(0,1fr) auto; align-items:center; gap:.55rem;
-  margin-block-start:.65rem; padding:.72rem .55rem .1rem; border-block-start:1px solid var(--ac-border-subtle);
+  display:grid; grid-template-columns:.5rem minmax(0,1fr) auto; align-items:center; gap:.45rem;
+  margin-block-start:.35rem; padding:.4rem .55rem .05rem; border-block-start:1px solid var(--ac-border-subtle);
 }
 .status-dot { inline-size:.45rem; block-size:.45rem; border-radius:50%; background:var(--ac-danger); box-shadow:0 0 .6rem rgba(239,154,154,.18); }
 .status-dot.online { background:var(--ac-positive); box-shadow:0 0 .7rem rgba(131,213,178,.35); }
 .service-copy { min-inline-size:0; }
 .service-copy small,.service-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .service-copy small { color:var(--ac-text-4); font-size:.6875rem; }
-.service-copy strong { margin-block-start:.08rem; color:var(--ac-text-2); font-size:.75rem; font-weight:600; }
+.service-copy strong { margin-block-start:.06rem; color:var(--ac-text-2); font-size:.73rem; font-weight:600; }
 .service-version { color:var(--ac-text-4); font-size:.6875rem; font-family:var(--ac-font-mono); direction:ltr; unicode-bidi:isolate; }
 
 /* Evidence-first shell: the rail is a quiet instrument, not a card stack. */
@@ -87,4 +93,4 @@
 .brand-mark { border-radius:.55rem; background:var(--role-interactive); }
 .command-trigger { border-radius:.55rem; background:color-mix(in srgb,var(--ac-accent) 7%,transparent); }
 .app-nav-item { border-radius:.55rem; }
-.app-nav-item.active { border-inline-start:2px solid var(--ac-accent); padding-inline-start:calc(.58rem - 2px); background:color-mix(in srgb,var(--ac-accent) 12%,transparent); }
+.app-nav-item.active { border-inline-start:2px solid var(--ac-accent); padding-inline-start:calc(.45rem - 2px); background:color-mix(in srgb,var(--ac-accent) 12%,transparent); }

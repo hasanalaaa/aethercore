@@ -11,7 +11,7 @@
 @media (max-width: 73.75rem) {
   :root { --ac-sidebar-width:13.25rem; }
   .nav-copy small { display:none; }
-  .app-nav-item { min-height:2.75rem; }
+  .app-nav-item { min-height:2.15rem; min-block-size:2.15rem; }
   main { padding-inline:1.5rem; }
 }
 
@@ -22,6 +22,7 @@
   .brand-copy,.command-trigger span,.command-trigger kbd,.nav-copy,.nav-group h2,.nav-availability,.policy-card,.sidebar-controls span,.service-copy,.service-version { display:none; }
   .app-brand { justify-content:center; padding-inline:0; }
   .command-trigger,.locale-button,.app-nav-item { grid-template-columns:1fr; justify-content:center; padding-inline:0; }
+  .sidebar-controls { flex-direction:column; gap:4px; }
   .app-service { grid-template-columns:1fr; justify-items:center; }
   main { padding-inline:1.35rem; }
   .app-nav-item.active { padding-inline-start:0; border-inline-start:0; box-shadow:inset 2px 0 var(--ac-accent); }

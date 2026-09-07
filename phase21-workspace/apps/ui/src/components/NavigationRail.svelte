@@ -67,7 +67,7 @@
             onclick={() => onNavigate(item.id)}
             onkeydown={navKey}
           >
-            <span class="nav-icon"><AppIcon name={item.icon} size={18}/></span>
+            <span class="nav-icon"><AppIcon name={item.icon} size={16}/></span>
             <span class="nav-copy"><strong>{td(item.labelKey, locale)}</strong><small>{td(item.descriptionKey, locale)}</small></span>
             {#if item.availability === 'online' && !connected}<span class="nav-availability" title={t('palette.unavailable', locale)} aria-label={t('palette.unavailable', locale)}>·</span>{/if}
           </button>

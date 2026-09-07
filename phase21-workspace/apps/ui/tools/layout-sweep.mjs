@@ -205,6 +205,8 @@ const MEASURE = `(() => {
     // How tall the routed screen actually is. A screen the user must scroll
     // through twice is a layout finding no overflow or overlap check can see.
     pageHeight: Math.round(document.querySelector('main')?.scrollHeight ?? 0),
+    navScrollHeight: Math.round(document.querySelector('.app-sidebar nav')?.scrollHeight ?? 0),
+    navClientHeight: Math.round(document.querySelector('.app-sidebar nav')?.clientHeight ?? 0),
   };
 })()`;
 
@@ -270,7 +272,7 @@ async function main() {
               + `dir=${measured.dir} band=${measured.policyBandVisible} `
               + `denied=${measured.deniedChips} evidence=${measured.evidenceChips} `
               + `empty=${measured.emptyStates} emdash=${measured.emDashes} `
-              + `height=${measured.pageHeight}`,
+              + `height=${measured.pageHeight} nav=${measured.navScrollHeight}/${measured.navClientHeight}`,
             );
             for (const entry of measured.clipped) console.log(`        clipped ${entry.axis} by ${entry.by}px: ${entry.tag}.${entry.cls}`);
             for (const entry of measured.overlaps) console.log(`        overlap ${entry.area}px²: "${entry.control}" over "${entry.text}"`);

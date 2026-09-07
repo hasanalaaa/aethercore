@@ -1,7 +1,7 @@
 .app-shell { display:grid; grid-template-columns:var(--ac-sidebar-width) minmax(0,1fr); min-height:100vh; isolation:isolate; background:transparent; }
 .app-sidebar {
   position:fixed; inset-block:0; inset-inline-start:0; width:var(--ac-sidebar-width); z-index:20;
-  display:flex; flex-direction:column; padding:1.35rem .875rem .875rem;
+  display:flex; flex-direction:column; padding:1rem .75rem .65rem;
   border-inline-end:1px solid var(--ac-border-subtle);
   background:var(--ac-material-structural);
   backdrop-filter:blur(var(--ac-blur-structural)) saturate(var(--ac-saturation));
