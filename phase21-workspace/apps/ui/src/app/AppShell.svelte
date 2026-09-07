@@ -26,6 +26,7 @@
   import CarePanel from '../features/care/CarePanel.svelte';
   import InsightsPanel from '../features/insights/InsightsPanel.svelte';
   import FleetPage from '../features/fleet/FleetPage.svelte';
+  import SettingsPage from '../features/settings/SettingsPage.svelte';
 
   let windowCleanup: WindowUxCleanup | undefined;
   let kernelCleanup: KernelSessionCleanup | undefined;
@@ -40,7 +41,7 @@
     if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'k') {
       event.preventDefault(); setPaletteOpen(!$shellState.paletteOpen); return;
     }
-    if (!editing && event.ctrlKey && event.shiftKey && /^[0-9Ff]$/.test(event.key)) {
+    if (!editing && event.ctrlKey && event.shiftKey && /^[0-9FfSs]$/.test(event.key)) {
       const item = NAVIGATION.find((candidate) => candidate.shortcut.endsWith(`+${event.key.toUpperCase()}`));
       if (item) { event.preventDefault(); setPage(item.id); }
       return;
@@ -102,6 +103,7 @@
         {:else if $shellState.activePage === 'hardware'}<HardwarePage />
         {:else if $shellState.activePage === 'crash'}<CrashPage />
         {:else if $shellState.activePage === 'fleet'}<FleetPage />
+        {:else if $shellState.activePage === 'settings'}<SettingsPage />
         {:else if $shellState.activePage === 'activity'}
           <ActivityPage />
           <TimelinePanel />

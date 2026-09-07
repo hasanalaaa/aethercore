@@ -25,8 +25,6 @@
   import { authorizeDriverPlan, startDriverInstall } from '../drivers/controller';
   import { shortDigest } from '../shared';
   import { localizePlanKind, localizeRisk, localizeState, t, td, tp } from '../../lib/i18n';
-  import SystemCarePanel from '../system-care/SystemCarePanel.svelte';
-  import AboutPanel from '../../components/AboutPanel.svelte';
   import { TechnicalText } from '../../design/primitives';
   import { EmptyState, EvidenceChip, citedOnly } from '../../design/signature';
   import { actionItems, headroom, headroomEvidence, headroomLabel, healthChannels, telemetryTiles, type ActionItem } from './instrument';
@@ -233,10 +231,6 @@
     {/if}
   </article>
 </section>
-
-<SystemCarePanel />
-
-<AboutPanel />
 
 <style>
   /* ---- the ported composition -------------------------------------------

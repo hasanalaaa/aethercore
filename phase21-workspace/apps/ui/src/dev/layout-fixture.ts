@@ -387,6 +387,20 @@ const deepScan: DeepScanSnapshot = fill<DeepScanSnapshot>({
   metrics: null, machineStateFingerprint: 'ab12cd34', ruleEngineVersion: '3', appVersion: '0.1.0-fixture',
 });
 
+const platformCapabilities = {
+  // The service's own vocabulary: `PlatformCapability::as_str` in
+  // `crates/platform-capabilities`, and `windows_table()` — "FROZEN Windows
+  // table: everything Native, exactly as shipped today". A fixture that invents
+  // its own capability names measures a screen the product does not have.
+  platform: 'windows',
+  capabilities: [
+    'telemetryCpu', 'telemetryMemory', 'telemetryStorage', 'telemetryGpu',
+    'thermalPowerClamp', 'driverServicing', 'systemRepairDism', 'systemRepairSfc',
+    'systemRepairWua', 'processGovernorEcoQos', 'gameModeProfile', 'restorePoints',
+    'windowsUpdate', 'timelineIntelligence', 'localIntelligence', 'careOrchestration',
+  ].map((name) => ({ name, availability: { state: 'native', key: '' } })),
+};
+
 let sequence = 0;
 const event = <K extends UiKernelEvent['kind']>(kind: K, payload: unknown): UiKernelEvent =>
   ({ sequence: ++sequence, emittedUnixMs: NOW, kind, planId: '', payload } as UiKernelEvent);
@@ -431,6 +445,12 @@ const handlers = new Map<string, StreamHandler[]>();
     // fixture would silently measure the empty instrument while claiming to be
     // populated. It answers with the same reading the stream replays.
     if (command === 'get_performance_snapshot') return performance;
+    // The capability matrix and the engine source are the About panel's only
+    // content, and until §51.3 moved it to Settings no sweep had ever measured
+    // it populated — `{}` renders its not-collected state, which is exactly the
+    // blindness this fixture exists to remove.
+    if (command === 'get_platform_capabilities') return platformCapabilities;
+    if (command === 'get_engine_source') return { source: 'native', platform: 'windows' };
     return {};
   },
   listen: async (name: string, handler: StreamHandler) => {

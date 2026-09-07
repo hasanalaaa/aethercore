@@ -13191,7 +13191,7 @@ Rows move in the same commit as the work they describe.
 | 0 the measuring instrument | **DONE** | `layout-sweep.mjs` reports `height` — the number this session is judged on was not observable by any gate before |
 | 1 make the Overview fill itself | **DONE** | §51.1 — the facts, the measured cost, the decision, and the two behaviours it corrected |
 | 2 cut the six-tile grid | **DONE** | §51.2 — all six tiles measured at **0 interactive descendants**; all six pages reached from the rail. −338 px en / −354 px ar |
-| 3 re-home the rest | **IN PROGRESS** | §51.3 — 1 BELONGS, 2 DROPS … |
+| 3 re-home the rest | **IN PROGRESS** | §51.3 — 1 BELONGS, 1 DROPS, 4 SETTINGS (`DBT-P50-003` closed) … |
 | gates | | |
 | screenshots | | |
 | ledger delta + report | | |
@@ -13435,3 +13435,50 @@ the `.driver-preview` / `.preview-number` / `.preview-state` rules.
 whose height came from the taller panel beside it. Removing it removed a
 duplicate, not a scroll — recorded because the point of measuring is to notice
 when a deletion buys nothing.
+
+### 3. AetherCore updates → **SETTINGS**
+### 4. Diagnostic support bundle → **SETTINGS**
+### 5. About this build → **SETTINGS**
+### 6. Platform capabilities → **SETTINGS**
+
+Four sections, one destination, and the reason is the same for all four: **none
+of them reports the state of the machine.** The update channel and the support
+bundle are things the user *chooses*; the build identity and the capability
+matrix are facts about the *program*, not about the PC it is diagnosing. On a
+screen whose whole claim is "here is what your machine is doing, and here is
+where I know it from", they were four panels answering a different question.
+
+P50 reached the same verdict and could not act on it: `NAVIGATION` had no
+Settings id, and it recorded **`DBT-P50-003`** rather than create one inside a
+one-screen brief. **This session created it. `DBT-P50-003` is closed.**
+
+`src/features/settings/SettingsPage.svelte` renders `SystemCarePanel` and
+`AboutPanel` — the same two components, **unmodified**. The cost was one
+`PageId`, one `NAVIGATION` row, one nav group (`system` / "System" / "النظام"),
+one icon, one branch in `AppShell`, and one character class in the shell's
+keyboard handler so `Ctrl+Shift+S` resolves like the other ten. The command
+palette picked it up with no change at all — it reads `NAVIGATION`.
+
+**Exercised on the destination, not assumed.** At 1280 in the fixture, on
+`settings`:
+
+    heading                "Settings"
+    sections present       AetherCore updates · Diagnostic support bundle
+                           About this build · Platform capabilities
+    update channel         Stable aria-pressed=true / Beta false
+      → clicked Beta       Stable false / Beta true          — the control works
+    support bundle         "Inspect" action present
+    platform              "windows"
+    engine source         "Native platform provider"
+    capability chips       16, all Native, 0 raw untranslated keys
+
+**A fixture gap this exposed, and closed.** The About panel's entire content
+comes from `get_platform_capabilities` and `get_engine_source`, and the fixture
+answered `{}` to both — so in every layout sweep this project has ever run, that
+panel rendered its not-collected state. It has never been measured populated.
+The fixture now answers both, using the **service's own vocabulary**
+(`PlatformCapability::as_str`, and `windows_table()`'s "everything Native,
+exactly as shipped today") rather than invented names.
+
+**1280, populated: 3,772 → 3,099 px (en) · 3,728 → 3,088 px (ar).**
+Settings itself measures 1,569 px (en) / 1,593 px (ar), clean at 1280.

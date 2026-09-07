@@ -1,9 +1,9 @@
 import type { MessageKey } from './i18n';
 
 /** Stable semantic route identifiers. Display labels live exclusively in the message catalogs. */
-export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'fleet';
-export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'theme' | 'check' | 'warning' | 'service' | 'fleet';
-export type NavigationGroup = 'observe' | 'act' | 'history';
+export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'fleet' | 'settings';
+export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'theme' | 'check' | 'warning' | 'service' | 'fleet' | 'settings';
+export type NavigationGroup = 'observe' | 'act' | 'history' | 'system';
 export type NavigationAvailability = 'available' | 'online';
 
 export type NavigationItem = {
@@ -28,10 +28,16 @@ export const NAVIGATION: readonly NavigationItem[] = [
   { id: 'crash', icon: 'crash', labelKey: 'nav.crash', descriptionKey: 'nav.crashDescription', shortcut: 'Ctrl+Shift+9', group: 'observe', availability: 'available' },
   { id: 'activity', icon: 'activity', labelKey: 'nav.activity', descriptionKey: 'nav.activityDescription', shortcut: 'Ctrl+Shift+0', group: 'history', availability: 'available' },
   { id: 'fleet', icon: 'fleet', labelKey: 'nav.fleet', descriptionKey: 'nav.fleetDescription', shortcut: 'Ctrl+Shift+F', group: 'history', availability: 'online' },
+  // §51.3 and DBT-P50-003. Four sections on the Overview were configuration
+  // wearing status styling — the update channel, the support bundle, the build
+  // identity and the capability matrix. This is the destination they needed and
+  // the app did not have.
+  { id: 'settings', icon: 'settings', labelKey: 'nav.settings', descriptionKey: 'nav.settingsDescription', shortcut: 'Ctrl+Shift+S', group: 'system', availability: 'available' },
 ] as const;
 
 export const NAVIGATION_GROUPS: readonly { id: NavigationGroup; labelKey: MessageKey }[] = [
   { id: 'observe', labelKey: 'nav.group.observe' },
   { id: 'act', labelKey: 'nav.group.act' },
   { id: 'history', labelKey: 'nav.group.history' },
+  { id: 'system', labelKey: 'nav.group.system' },
 ] as const;
