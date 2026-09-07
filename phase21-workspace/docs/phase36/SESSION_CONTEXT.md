@@ -13566,3 +13566,78 @@ to 1,991 px, nine pixels under the target, which is not a margin.
 **EXPECTED: under 2,000 px at 1280 wide, populated, in both languages.
 OBSERVED: 1,744 px (en) and 1,702 px (ar).** Sweep clean 12/12 at
 1280 / 1024 / 960 × en/ar × dark/light.
+
+## 51.5 THE TWO DEBT ITEMS THE BRIEF PUT IN SCOPE
+
+### `DBT-P50-004` — the shared `EmptyState`: **FIXED, all seven screens verified**
+
+Reproduced first, at 1280 on `index.html`, exactly as P50 recorded it:
+
+    overview  action items  rendered 496px   flex-wrap: wrap   3 channels
+              same node with flex-wrap:nowrap set from the console → 396px
+
+The cause is the one P50 named: `main :where(*) { flex-wrap: wrap }` in
+`feature-layout.css` is a deliberate zero-specificity rule for content ROWS, and
+`.empty-state` is a flex COLUMN that never opted out. It only bites when the
+component is given channels — two flex children instead of one.
+
+Fixed with the one declaration P50 wrote down. **Measured on every screen the
+component renders on, before and after:**
+
+| screen | empty states | rendered before | rendered after |
+|---|---|---|---|
+| overview | 3 (one with 3 channels) | **496** · 68 · 68 | **396** · 68 · 68 |
+| activity | 3 (activity, care, insights) | 68 · 47 · 68 | 68 · 47 · 68 |
+| cleanup | 1 | 127 | 127 |
+| crash | 1 | 127 | 127 |
+| hardware | 1 | 127 | 127 |
+| startup | 1 | 107 | 107 |
+| settings | 1 (about) | 47 | 47 |
+
+Eleven empty states on seven screens. **One got 100 px shorter; the other ten are
+identical to the pixel**, and all eleven now compute `flex-wrap: nowrap`. No
+screen regressed.
+
+### `DBT-P50-002` — `Protocol v7`: **CLOSED — already dropped, and the key with it**
+
+The brief says wire it or drop it. **Observed: it is not in the markup.** P50's
+row 38 already dropped it when it rebuilt the hero, and the id was recorded
+against the absence rather than against a live literal. Verified rather than
+assumed — rendered text of `main` on the populated Overview:
+
+    /Protocol/gi → 0 matches      /v7/gi → 0 matches
+
+What remained were two orphaned catalog entries, `overview.protocol` in both
+languages, with no reader anywhere in `src/`. Deleted.
+
+**Wiring it was not chosen, and the reason stands.** `PROTOCOL_VERSION: u32 = 7`
+lives in `crates/contracts/src/lib.rs`; no field on `Snapshot` carries it to the
+UI. Adding one is a change to a published contract (§4) and needs approval
+before it is made, not after. Recorded there; closed here as dropped.
+
+### `DBT-P50-005` — **NOT STARTED. What it needs, and nothing else.**
+
+The brief is explicit that this one requires the owner's approval before
+implementation. It was not begun. What approval would be approving:
+
+- **The change is on the wire, not in the UI.** `performance.proto` carries
+  `message PerformanceSnapshotResponse { PerfSnapshot snapshot = 1; }` and
+  `events.proto` carries `PerfSnapshot performance_snapshot = 31;`. There is no
+  `repeated PerfSnapshot` anywhere in the contract, so the series cannot leave
+  the service whatever the UI does.
+- **The series already exists.** `PerformanceRing` holds `MAX_RING_SAMPLES = 300`
+  ordered samples (~5 min at 1 s), and `PerformanceService` already calls
+  `self.ring.window(owner)` — for `analyze()`, its only consumer. The ring, its
+  bound and its ordering are built. **Only the accessor is missing.**
+- **What it would add:** a `GetPerformanceWindowRequest` /
+  `PerformanceWindowResponse { repeated PerfSnapshot samples = 1; }` pair, or a
+  compact per-metric series message so a four-tile sparkline does not cost 300
+  full snapshots on the wire. Both are additive; neither changes an existing
+  message.
+- **Why it is gated:** §4 puts published contracts — proto messages consumed
+  outside this repository — behind explicit approval with a stated migration
+  path. That approval has not been given.
+- **What this session learned that changes its shape.** §51.1 found that the
+  UI receives a `performanceSnapshot` event only per `get_performance_snapshot`
+  call, so even the Performance screen's own four sparklines have never held
+  more than one point. A window accessor would fix both screens, not one.

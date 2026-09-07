@@ -281,7 +281,6 @@ export const arCatalog = {
   'overview.ready': 'AetherCore جاهز',
   'overview.unavailable': 'الخدمة غير متاحة',
   'overview.heroCopy': 'يجمع المحرّك الأصلي والسجل الدائم وإجراءات الصيانة المحمية والتشخيص القائم على الأدلة في تجربة مكتبية واحدة متماسكة.',
-  'overview.protocol': 'البروتوكول',
   'overview.journal': 'السجل',
   'overview.driverScan': 'فحص التعريفات',
   'overview.stateEngine': 'محرّك الحالة',

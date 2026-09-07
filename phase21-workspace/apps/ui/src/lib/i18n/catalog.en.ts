@@ -279,7 +279,6 @@ export const enCatalog = {
   'overview.ready': 'AetherCore is ready',
   'overview.unavailable': 'Service unavailable',
   'overview.heroCopy': 'The native engine, durable journal, protected maintenance actions and evidence-only diagnostics share one coherent desktop experience.',
-  'overview.protocol': 'Protocol',
   'overview.journal': 'Journal',
   'overview.driverScan': 'Driver scan',
   'overview.stateEngine': 'STATE ENGINE',

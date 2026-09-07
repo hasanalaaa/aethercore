@@ -56,7 +56,13 @@
 </div>
 
 <style>
-  .empty-state { display: flex; flex-direction: column; gap: var(--ac-space-6); }
+  /* `main :where(*) { flex-wrap: wrap }` in feature-layout.css is a deliberate
+     zero-specificity rule for content ROWS — a control label is not prose, so a
+     row wraps rather than squeezes, and a column opts out. This is a column, and
+     it never did. Measured at 1280 on `index.html`: with channels it rendered
+     496px for 396px of content, on every screen this component appears on.
+     DBT-P50-004, found by P50 and left because it is not one screen. */
+  .empty-state { display: flex; flex-direction: column; flex-wrap: nowrap; gap: var(--ac-space-6); }
   .empty-state-head { display: flex; align-items: flex-start; gap: var(--ac-space-4); }
 
   .empty-state-mark {
