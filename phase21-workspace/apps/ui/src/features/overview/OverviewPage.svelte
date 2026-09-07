@@ -41,7 +41,7 @@
   import { localizePlanKind, localizeRisk, localizeState, t, td, tp } from '../../lib/i18n';
   import { TechnicalText } from '../../design/primitives';
   import { EmptyState, EvidenceChip, citedOnly } from '../../design/signature';
-  import { actionItems, headroom, headroomEvidence, headroomLabel, healthChannels, telemetryTiles, type ActionItem } from './instrument';
+  import { actionItems, headroom, headroomEvidence, headroomLabel, healthChannels, samplingNote, telemetryTiles, type ActionItem } from './instrument';
 
   $: snapshot = $streamState.snapshot;
   $: performance = $streamState.performance;
@@ -176,7 +176,7 @@
   <section class="instrument-section span-instrument" aria-label={t('overview.telemetry',locale)}>
     <div class="instrument-head">
       <span class="instrument-title">{t('overview.telemetry',locale)}</span>
-      <span class="instrument-meta" class:reading={sampled}>{sampled ? t('overview.noteSampling',locale,{interval:performance.intervalMs}) : t('overview.telemetryMetaNone',locale)}</span>
+      <span class="instrument-meta" class:reading={sampled}>{sampled ? samplingNote(performance, locale) : t('overview.telemetryMetaNone',locale)}</span>
     </div>
 
     <div class="tile-grid">
