@@ -107,6 +107,8 @@ message Request {
     ExportJournalRequest export_journal = 89;
     // Phase 32: Security Audit Domain (read-only; additive; next free tag).
     RunSecurityAuditRequest run_security_audit = 90;
+    // Phase 53: Telemetry Wire Contract — performance window series (additive tag 91).
+    GetPerformanceWindowRequest get_performance_window = 91;
   }
 }
 message Response {
@@ -165,6 +167,8 @@ message Response {
     ExportJournalResponse export_journal_response = 51;
     // Phase 32: Security Audit Domain (additive; next free tag).
     SecurityAuditResponse security_audit_response = 52;
+    // Phase 53: Telemetry Wire Contract — performance window series (additive tag 91).
+    PerformanceWindowResponse performance_window = 91;
   }
 }
 message RunSecurityAuditRequest {

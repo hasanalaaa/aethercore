@@ -19,6 +19,11 @@ message StopPerfSamplingRequest {}
 
 message GetPerformanceSnapshotRequest {}
 
+message GetPerformanceWindowRequest {
+  // Requested maximum samples. Clamped to [1, 300].
+  uint32 max_samples = 1;
+}
+
 message GetBottleneckReportRequest {}
 
 message CreateOptimizationPlanRequest {
@@ -30,6 +35,7 @@ message StartOptimizationRequest { string plan_id = 1; }
 message GetOptimizationStatusRequest { string plan_id = 1; }
 
 message PerformanceSnapshotResponse { PerfSnapshot snapshot = 1; }
+message PerformanceWindowResponse { repeated PerfSnapshot samples = 1; }
 message BottleneckReportResponse { BottleneckReport report = 1; }
 message OptimizationStatusResponse { OptimizationStatus status = 1; }
 message OptimizationPlanSnapshotResponse { OptimizationPlanSnapshot plan = 1; }
