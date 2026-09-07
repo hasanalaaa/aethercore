@@ -426,6 +426,11 @@ const handlers = new Map<string, StreamHandler[]>();
       });
       return session;
     }
+    // The Overview reads this on a loop (§51.1). Answering `{}` would hand it a
+    // snapshot with no capture time — which its boundary check rejects, so the
+    // fixture would silently measure the empty instrument while claiming to be
+    // populated. It answers with the same reading the stream replays.
+    if (command === 'get_performance_snapshot') return performance;
     return {};
   },
   listen: async (name: string, handler: StreamHandler) => {

@@ -13167,3 +13167,180 @@ nothing it cannot justify. The old screen was a description of a product. This
 one is an instrument that will not lie about what it has not measured — which is
 the only claim this product has ever actually made.
 
+
+# PHASE 51 — P51-OVERVIEW-FINISH: FILL IT, CUT IT, RE-HOME THE REST (2026-09-07)
+
+P50 built the right instrument and left it at the top of the wrong page. The
+screen is 4,110 px tall because the new composition was *prepended* to the old
+Overview instead of replacing it, and the instrument is blank on first run
+because everything on it reads a sampler that only another screen starts.
+
+**Measured before anything changed**, `tools/layout-sweep.mjs` at 1280:
+
+| state | en | ar |
+|---|---|---|
+| populated (`layout-fixture.html`) | **4,110 px** | **4,082 px** |
+| no service (`index.html`) | **3,533 px** | **3,498 px** |
+
+## 51.0 PROGRESS TABLE (authoritative — resume from here)
+
+Rows move in the same commit as the work they describe.
+
+| item | status | evidence |
+|---|---|---|
+| 0 the measuring instrument | **DONE** | `layout-sweep.mjs` reports `height` — the number this session is judged on was not observable by any gate before |
+| 1 make the Overview fill itself | **DONE** | §51.1 — the facts, the measured cost, the decision, and the two behaviours it corrected |
+| 2 cut the six-tile grid | | |
+| 3 re-home the rest | | |
+| gates | | |
+| screenshots | | |
+| ledger delta + report | | |
+
+## 51.1 ITEM 1 — THE OVERVIEW FILLS ITSELF
+
+### The facts, established before anything was changed
+
+**What starts the sampler, end to end.** `startPerfSampling()` at
+`apps/ui/src/features/performance/controller.ts:18`, reachable from exactly one
+place: the ▶ button in the Performance screen's header. It does three things in
+order — `setPage('performance')`, `get_performance_snapshot`, then
+`start_perf_sampling { intervalMs: 1000 }`. That last call goes:
+
+    controller.ts  →  #[command] start_perf_sampling      apps/desktop/src/main.rs:1754
+                   →  request::Payload::StartPerfSampling  (operations.proto:83)
+                   →  router.rs:1054  →  PerformanceEngine::start_sampling
+                   →  PerformanceRing::start                crates/performance-telemetry/src/lib.rs:617
+                   →  thread::Builder::new().name("aether-perf-sampler").spawn(…)
+
+**And the finding that decided this item: the sampler publishes nothing.**
+That thread calls `platform.sample()`, pushes into an in-process ring, and
+sleeps. `grep -rn "EventKind::PerformanceSnapshot" crates services apps` returns
+**one** hit — `router.rs:1084`, inside the `GetPerformanceSnapshot` handler. So
+the only producer of a `performanceSnapshot` kernel event in this product is a
+*read*, and `get_performance_snapshot` is called from exactly one place in the
+UI: `startPerfSampling`, once.
+
+The consequence is larger than this screen. **The Performance screen's own live
+readings are one sample and never a second one** — its four sparklines
+accumulate from `$: if (performance.capturedUnixMs > 0)`, which fires once per
+snapshot event, and only one ever arrives per press of ▶. §50.1's line
+"`performance.*` … pushed by the `performanceSnapshot` kernel event while the
+perf sampler is running" is **wrong**, and is corrected here.
+
+So option (a) as the brief writes it — "Overview starts the sampler when it
+opens" — would have cost a background thread and left the instrument blank.
+
+**What it costs while running.** Measured on this machine, not read off the
+crate docs: ten `default_platform().sample(1000ms)` ticks after a warm-up,
+`cargo test --release`, macOS native provider.
+
+    P51 sample() over 10 ticks: min=129857us mean=230837us max=624198us
+    P51 ring at cap: samples=300 sizeof(PerfSnapshot)=336B fixed_total=100800B
+
+- **CPU.** 129.9 ms min / **230.8 ms mean** / 624.2 ms max per sample. ~120 ms of
+  that is deliberate: `macos_impl.rs:167` sleeps `min(120ms, interval)` between
+  two `host_statistics64` observations because a rate counter needs two, exactly
+  as the Windows PDH collector does. The rest — ~110 ms mean — is real work,
+  dominated by `sample_process_top` and `sample_storage`.
+- **Memory.** The ring is bounded at `MAX_RING_SAMPLES = 300`; the fixed part is
+  336 B × 300 = **100,800 B ≈ 98 KB**, plus each sample's own bounded
+  collections (`MAX_STORAGE_DEVICES 32`, `MAX_PROCESS_TOP 16`, `MAX_GPU_ENGINES
+  16`, `MAX_CPU_COUNT 256`, `MAX_COLLECTOR_FAULTS 16`).
+- **IPC traffic: zero.** The background sampler sends nothing over the wire. All
+  IPC on this path is one request/response per read.
+- **Observer effect, stated rather than assumed.** ~110 ms of work per tick is
+  ~11% of one core at 1 s cadence — and it lands *inside* the 120 ms window the
+  same call uses to compute CPU busy. `MIN_INTERVAL_MS = 250` exists for exactly
+  this reason ("sub-250 ms would risk observer effects"). A sampler that runs
+  faster than the thing it measures is measuring itself.
+
+**Whether it is safe without an explicit user action — with the reasoning, not
+the assumption.** Yes, and the reason is structural, not a judgement call. The
+read path is `PerfPlatform::sample` → counters. It touches no
+`MutationSupervisor`, opens no `CommitFence`, writes no journal entry and takes
+no restore point; every one of those lives on the `OptimizationGovernor` side of
+`PerformanceEngine`, which nothing here calls. This product's consent model asks
+permission **to change the machine** — the plan digest, the risk tier, the
+authorization window on the Overview's own state-engine panel are all about
+mutation. Reading a performance counter is what a task manager does when you
+open it. The one real cost is the CPU above, and that is a cadence decision,
+which is answered by the cadence rather than by a consent dialog.
+
+### The decision: **(a), in the form the measurement supports — the Overview reads, and does not start a sampler**
+
+`src/features/overview/controller.ts`. On mount the Overview calls
+`get_performance_snapshot`, then repeats every **5 s** until the component is
+destroyed. It starts no background thread anywhere.
+
+The argument, against the three the brief offered:
+
+- **Not (a) as written.** Starting `aether-perf-sampler` would have paid ~11% of
+  a core for as long as the app is open — on every screen, not just this one —
+  and, per the finding above, delivered no reading to the UI at all. It would
+  have been a cost with no effect.
+- **Not (b).** The empty state already had a control before this session; it
+  navigated to Performance, where the user then had to find and press ▶. Two
+  actions on two screens to make the first screen work is not an answer to "the
+  instrument is empty on first run", and the brief is explicit that the resting
+  state must not be the most prominent one.
+- **Not (c).** Sampling with the service pays the same ~11% of a core forever,
+  including for a user who never opens the app window, and it still would not
+  fill the UI without a read. The largest change, for the least effect.
+- **Why 5 s and not 1 s.** Cadence is a decision with a price (§42, §45). Each
+  read costs one 230 ms mean sample in the service; at 5 s that is **under 5% of
+  one core while this screen is open, and exactly zero when it is not** — the
+  loop is created in `onMount` and disposed in `onDestroy`. 1 s is the right
+  cadence for the Performance screen, which is a screen you sit and watch. The
+  Overview is a summary, and a summary does not need per-second resolution.
+- **Why a read is never stale.** The `GetPerformanceSnapshot` handler calls
+  `ensure_sample`, which re-samples when the newest reading is older than the
+  requested interval — the DBT-P42-008 fix. A read at 5 s always returns a
+  reading taken within the last second.
+
+**Verified by measurement, not by reading the code.** Transport calls counted in
+the fixture, `get_performance_snapshot`:
+
+    11 s on the Overview            3 reads   (t=0, 5, 10)
+    11 s after navigating away      3 reads   (no further reads)
+
+### Two things this corrected, one of them on a second screen
+
+The brief says to say explicitly if the Performance screen's behaviour changed
+beyond what this required. **It did, in one line, and it had to.**
+
+`stream-state.ts` set `next.perfSampling = true` inside the `performanceSnapshot`
+case. `perfSampling` is what the Performance screen's header button reads to
+decide between ▶ Start and ■ Stop. Once the Overview reads on its own, that
+inference makes the Performance screen offer to **stop a thread that was never
+started**. The line is removed; `perfSampling` is now set only by
+`startPerfSampling` / `stopPerfSampling`, which are the two calls that actually
+decide it. Measured in the fixture after the change: the Performance header
+reads `▶ Start monitoring` with Analyze disabled, which is the truth. Before it
+read `■ Stop`. Nothing else on that screen was touched.
+
+The second is the empty state's copy and control. `overview.openPerformance`
+("Open live telemetry", → Performance) is replaced by `overview.readNow` ("Take
+a reading now"), which performs the same read the loop does, and
+`overview.orbEmptyBody` now says what the screen actually does:
+
+> This screen reads the performance counters itself, every 5 seconds while it is
+> open. No reading has come back yet — it comes from the maintenance service,
+> and nothing here is estimated without one.
+
+### Two boundary rules this needed
+
+- **A response with no capture time is not a reading.** The fixture transport
+  answers `{}` to any command it does not model; patching that into
+  `performance` would have wiped the populated instrument while the sweep
+  reported it as populated. `isReading()` rejects any snapshot without
+  `capturedUnixMs > 0`, and the fixture now answers `get_performance_snapshot`
+  with the same snapshot its stream replays.
+- **The loop is not `runBusy`.** A refresh the user did not ask for must not
+  disable the screen's buttons or clear the error banner from an operation they
+  did. A failed read logs, stops the loop, and leaves the channels at em dash —
+  the empty state's own control is how the user asks again.
+
+**EXPECTED: on a first run with no prior state, the Overview either shows live
+channels, or shows an empty state that names the action that fills it.
+OBSERVED: both.** With a service: `51% HEADROOM`, four rails reading. Without
+one: `— NO BASELINE`, and one control reading `Take a reading now`.

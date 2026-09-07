@@ -17,8 +17,10 @@
    * four, in the order they were in: the protected operation, driver servicing,
    * the module row, system care and about. Nothing was deleted to fit a layout.
    */
+  import { onDestroy, onMount } from 'svelte';
   import { fluidPress } from '../../design/motion';
   import { shellState, setPage } from '../../app/shell-state';
+  import { OVERVIEW_READ_INTERVAL_MS, readTelemetryNow, startOverviewTelemetry } from './controller';
   import { streamState } from '../../platform/stream-state';
   import { authorizeDriverPlan, startDriverInstall, startDriverScan as startScan } from '../drivers/controller';
   import { shortDigest } from '../shared';
@@ -47,6 +49,26 @@
   $: gate = citedOnly<ActionItem>(actionItems($streamState, locale), (item) => item.evidence);
   $: tiles = telemetryTiles(performance, snapshot, locale);
   $: sampled = performance.capturedUnixMs > 0;
+
+  /**
+   * The instrument fills itself. The four channels, the orb and three of the
+   * four tiles read `performance`, which arrives from `get_performance_snapshot`
+   * and from nowhere else — so a screen that never asked was a screen that was
+   * correct, honest and permanently blank. It asks now, on open and every
+   * `OVERVIEW_READ_INTERVAL_MS` while it is the page in front of the user; the
+   * loop is disposed with the component, so nothing samples for a screen nobody
+   * is looking at. The argument and the measured cost are in `controller.ts`.
+   */
+  let stopTelemetry: (() => void) | undefined;
+  onMount(() => { stopTelemetry = startOverviewTelemetry(); });
+  onDestroy(() => stopTelemetry?.());
+
+  /** The empty state's one control: ask again, now. */
+  let reading = false;
+  async function readNow(): Promise<void> {
+    reading = true;
+    try { await readTelemetryNow(); } finally { reading = false; }
+  }
 
   const modules = [
     { page:'repair', label:'nav.repair', copy:'overview.moduleRepairCopy' },
@@ -103,8 +125,8 @@
           </div>
         {/each}
         {#if index === undefined}
-          <p class="channel-note">{t('overview.orbEmptyBody',locale)}</p>
-          <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={() => setPage('performance')}>{t('overview.openPerformance',locale)}</button>
+          <p class="channel-note">{t('overview.orbEmptyBody',locale,{seconds:OVERVIEW_READ_INTERVAL_MS/1000})}</p>
+          <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={readNow} disabled={reading}>{reading ? t('overview.reading',locale) : t('overview.readNow',locale)}</button>
         {/if}
       </div>
     </div>

@@ -333,7 +333,12 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
       break;
     case 'performanceSnapshot':
       next.performance = event.payload;
-      next.perfSampling = true;
+      // `perfSampling` is whether the SERVICE's background sampler is running,
+      // and only `start_perf_sampling` / `stop_perf_sampling` decide that. A
+      // snapshot event arrives from every `get_performance_snapshot` — including
+      // the Overview's own read loop, which starts no sampler — so inferring it
+      // here made the Performance screen offer "Stop" for a thread that does not
+      // exist. See §51.1.
       break;
     case 'bottleneckReport':
       next.bottleneckReport = event.payload;
