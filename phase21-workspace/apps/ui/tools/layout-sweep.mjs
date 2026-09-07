@@ -202,6 +202,9 @@ const MEASURE = `(() => {
     emptyStates: document.querySelectorAll('.empty-state').length,
     // A meter at rest must read em dash, never a zero nobody measured.
     emDashes: (document.querySelector('main')?.textContent.match(/—/g) ?? []).length,
+    // How tall the routed screen actually is. A screen the user must scroll
+    // through twice is a layout finding no overflow or overlap check can see.
+    pageHeight: Math.round(document.querySelector('main')?.scrollHeight ?? 0),
   };
 })()`;
 
@@ -266,7 +269,8 @@ async function main() {
               + `clipped=${measured.clippedCount} overlaps=${measured.overlapCount} `
               + `dir=${measured.dir} band=${measured.policyBandVisible} `
               + `denied=${measured.deniedChips} evidence=${measured.evidenceChips} `
-              + `empty=${measured.emptyStates} emdash=${measured.emDashes}`,
+              + `empty=${measured.emptyStates} emdash=${measured.emDashes} `
+              + `height=${measured.pageHeight}`,
             );
             for (const entry of measured.clipped) console.log(`        clipped ${entry.axis} by ${entry.by}px: ${entry.tag}.${entry.cls}`);
             for (const entry of measured.overlaps) console.log(`        overlap ${entry.area}px²: "${entry.control}" over "${entry.text}"`);
