@@ -1720,7 +1720,7 @@ export const enCatalog = {
   'overview.tileJournal': 'Journal events',
   'overview.unitMs': 'ms',
   'overview.unitPerSecond': '/s',
-  'overview.noteSampling': 'sampled every {interval} ms',
+  'overview.noteSampling': '{interval} ms observation window',
   'overview.serviceLog': 'Core service log',
   'overview.serviceLogEmptyBody': 'Every line here is an event the service pushed, with its own sequence number and emission time. None has arrived yet.',
 } as const;

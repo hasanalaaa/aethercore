@@ -1720,7 +1720,7 @@ export const arCatalog = {
   'overview.tileJournal': 'أحداث السجل',
   'overview.unitMs': 'م.ث',
   'overview.unitPerSecond': '/ث',
-  'overview.noteSampling': 'عيّنة كل {interval} م.ث',
+  'overview.noteSampling': 'نافذة رصد {interval} م.ث',
   'overview.serviceLog': 'سجل الخدمة',
   'overview.serviceLogEmptyBody': 'كل سطر هنا حدث دفعته الخدمة، بترقيمه التسلسلي ووقت إصداره. لم يصل أي حدث بعد.',
 } satisfies Record<MessageKey, string>;

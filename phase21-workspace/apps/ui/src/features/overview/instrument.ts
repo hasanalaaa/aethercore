@@ -355,6 +355,13 @@ export type TelemetryTile = {
 
 export function telemetryTiles(perf: PerfSnapshot, snapshot: Snapshot, locale: Locale): TelemetryTile[] {
   const device = busiestDevice(perf);
+  /**
+   * `PerfSnapshot.intervalMs` is the window the counters were observed over —
+   * what `platform.sample(interval)` was given — not a repeat rate. It read
+   * "sampled every 1000 ms", which asserted a cadence: true of the Performance
+   * screen's sampler, and false of this screen, which reads every 5 s (§51.1).
+   * The window is what the field actually is, so that is what it now says.
+   */
   const sampled = t('overview.noteSampling', locale, { interval: count(perf.intervalMs, locale) });
   return [
     {

@@ -13,9 +13,23 @@
    * them is either a measurement or an em dash. See §50.1 of the ledger for the
    * element-by-element mapping and the thirteen elements deliberately dropped.
    *
-   * The app's own sections that the shell has no slot for are kept below the
-   * four, in the order they were in: the protected operation, driver servicing,
-   * the module row, system care and about. Nothing was deleted to fit a layout.
+   * P51 finished it. The screen was 4,110px because the new composition was
+   * prepended to the old one rather than replacing it, so it read as an
+   * instrument and ended as a feature list. Nine sections were decided one at a
+   * time (§51.3): the protected operation BELONGS and stays below; the driver
+   * panel and the six module cards DROPPED as proven duplicates — the cards had
+   * zero interactive descendants and could not even navigate; updates, the
+   * support bundle, the build identity and the capability matrix MOVED to a new
+   * Settings screen; care, insights and recovery live on Activity, where two of
+   * them were already being rendered a second time.
+   *
+   * The screen fills itself now. Everything on it reads `performance`, which
+   * arrives from `get_performance_snapshot` and nowhere else — the background
+   * sampler publishes nothing — so this file reads on a 5s loop while it is open
+   * and stops when it is not. See `controller.ts` for the measured cost.
+   *
+   * 1280 populated: 4,110px → 1,715px, with nothing deleted that was not first
+   * proven to exist somewhere else.
    */
   import { onDestroy, onMount } from 'svelte';
   import { fluidPress } from '../../design/motion';
