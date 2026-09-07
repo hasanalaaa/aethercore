@@ -13192,9 +13192,9 @@ Rows move in the same commit as the work they describe.
 | 1 make the Overview fill itself | **DONE** | §51.1 — the facts, the measured cost, the decision, and the two behaviours it corrected |
 | 2 cut the six-tile grid | **DONE** | §51.2 — all six tiles measured at **0 interactive descendants**; all six pages reached from the rail. −338 px en / −354 px ar |
 | 3 re-home the rest | **DONE** | §51.3 — 9 verdicts: 1 BELONGS · 3 DROPS · 4 SETTINGS (`DBT-P50-003` closed) · 1 MOVES. §51.4 — the last 281 px, found in the arrangement rather than in a section |
-| gates | | |
-| screenshots | | |
-| ledger delta + report | | |
+| gates | **DONE** | §51.6 — numbers: 27 score-shaped, the Overview's 4 all traced, Settings adds none; arabic 7/7 on three screens, 0 system fallback; tokens 437/437 resolve over 12 pages; sweep 12/12 populated **and** 12/12 with no service, plus 8/8 on both destinations; contrast in §51.6; build clean; svelte-check 0 errors / 16 warnings, baseline held |
+| screenshots 1280 × 2 languages × 2 themes × populated/empty, **plus every destination** | **DONE** | 16 committed under `design/p51-overview-screenshots/` |
+| ledger delta + report | **DONE** | §51.8 — 3 P50 ids closed, 3 new (`DBT-P51-001`…`-003`), `DBT-P50-005` not started by instruction. §51.9 — the report |
 
 ## 51.1 ITEM 1 — THE OVERVIEW FILLS ITSELF
 
@@ -13472,6 +13472,15 @@ palette picked it up with no change at all — it reads `NAVIGATION`.
     engine source         "Native platform provider"
     capability chips       16, all Native, 0 raw untranslated keys
 
+**The destination reached the way the other eleven are.** Dispatched from a real
+element target, not asserted from the source:
+
+    Ctrl+Shift+S            → app-shell[data-page] = "settings"
+    Ctrl+Shift+0 (control)  → "activity"        — the existing shortcuts unmoved
+    Ctrl+K → palette        → 12 options, including
+                              "Settings · Updates, support bundle and this build
+                               · Ctrl ⇧ S"      — the palette needed no change
+
 **A fixture gap this exposed, and closed.** The About panel's entire content
 comes from `get_platform_capabilities` and `get_engine_source`, and the fixture
 answered `{}` to both — so in every layout sweep this project has ever run, that
@@ -13641,3 +13650,279 @@ implementation. It was not begun. What approval would be approving:
   UI receives a `performanceSnapshot` event only per `get_performance_snapshot`
   call, so even the Performance screen's own four sparklines have never held
   more than one point. A window accessor would fix both screens, not one.
+
+## 51.5b TWO THINGS THE REVIEW PASS FOUND, BOTH ON THIS SCREEN
+
+Neither was in the brief. Both were found reading the session's own diff back,
+and both are the class of defect this whole phase exists to remove.
+
+**The telemetry note asserted a cadence it no longer had.**
+`overview.noteSampling` read *"sampled every 1000 ms"*, built from
+`PerfSnapshot.intervalMs`. That field is the window the counters were observed
+over — what `platform.sample(interval)` was handed — **not a repeat rate**. The
+sentence was true of the Performance screen's 1 s sampler and false of this
+screen the moment item 1 made it read every 5 s. It now says what the field is:
+*"1,000 ms observation window"* / *"نافذة رصد ١٬٠٠٠ م.ث"*.
+
+**The same number was formatted two ways on one screen.** The section header
+passed `performance.intervalMs` raw; the tiles passed it through `formatNumber`.
+In English that is `1000` against `1,000`; **in Arabic it is `1000` against
+`١٬٠٠٠`, two inches apart**. One exported `samplingNote()` now formats it once,
+in the locale, for both. Verified rendered: header and tile both read
+`نافذة رصد ١٬٠٠٠ م.ث`.
+
+## 51.6 GATES — RAW OUTPUT, COUNTS NOT ADJECTIVES
+
+Every command run against the committed tree, on the fixture server
+(`npm run fixture`), headless Chrome, 2026-09-07.
+
+### `node tools/verify-numbers.mjs` — EXPECTED: zero untraceable numbers
+
+    === raw counts, from the rendered DOM of 12 pages x 2 languages ===
+      "denied" word occurrences        24
+      denied ELEMENTS rendered         98
+      "evidence" word occurrences      68
+      evidence CHIPS rendered          22
+
+      en overview     51%        span.orb-value       "51%"
+      en overview     41%        span.channel-value   "41%"
+      en overview     34%        span.channel-value   "34%"
+      en overview     0.94       strong               "0.94"
+      …
+    27 distinct score-shaped number(s) rendered.
+
+**Four numbers on the Overview, the same four P50 traced, all still traced:**
+`51%` = `100 − mean(41.3, 22.9, 34.4)`, with the arithmetic printed in its own
+evidence chip; `41%` = `cpu.totalBusyBp / 100`; `34%` = the busiest
+`storage[].activeTimeBp / 100`; `0.94` = `storage[].avgTransferLatencyUs / 1000`.
+**The new Settings screen adds no score-shaped number at all** — the count is 27,
+unchanged, over one more page than P50 measured.
+
+### `node tools/verify-arabic.mjs` — EXPECTED: 7/7, zero system-font fallback
+
+    overview   7/7 checks pass
+    settings   7/7 checks pass
+    activity   7/7 checks pass
+
+    OBSERVED  76 Arabic nodes, 1196 glyphs; bundled = [["JetBrains Mono",196],
+              ["IBM Plex Sans Arabic",679],["IBM Plex Sans Arabic SmBld",129],
+              ["IBM Plex Sans Arabic Medm",175],["Inter",17]];
+              system fallback = 0 glyph(s) []
+
+### `node tools/verify-tokens.mjs` — EXPECTED: every var() resolves
+
+    === 12 pages x 2 languages, read from the live CSSOM ===
+      style rules walked                 975
+      declarations referencing var()     437
+      unresolved on a matched element    0 (property, selector) pair(s), 0 distinct
+
+    PASS — every var() reference in 437 declarations resolves on every element
+           the rule matches.
+
+### `tools/layout-sweep.mjs` — EXPECTED: clean at 1280/1024/960, both languages, both themes, populated AND with no service
+
+**Populated (`layout-fixture.html`) — 12/12 pass:**
+
+    PASS  overview-1280-en-dark   overflowX=0 clipped=0 overlaps=0 band=true denied=3 evidence=7 empty=0 emdash=0  height=1715
+    PASS  overview-1024-en-dark   …  height=2517
+    PASS  overview-960-en-dark    …  height=2515
+    PASS  overview-1280-ar-dark   …  height=1681
+    PASS  overview-1024-ar-dark   …  height=2595
+    PASS  overview-960-ar-dark    …  height=2593
+    (light theme identical to dark at every width, both languages)
+
+**No service (`index.html`) — 12/12 pass:**
+
+    PASS  overview-1280-en-dark   overflowX=0 clipped=0 overlaps=0 band=true denied=3 evidence=0 empty=3 emdash=13  height=1677
+    PASS  overview-1024-en-dark   …  height=1857
+    PASS  overview-960-en-dark    …  height=1855
+    PASS  overview-1280-ar-dark   …  height=1638
+    PASS  overview-1024-ar-dark   …  height=1858
+    PASS  overview-960-ar-dark    …  height=1856
+
+**Both destinations, 1280, 8/8 pass:** `settings` 1,389 px (en) / 1,408 px (ar);
+`activity` 1,958 px (en) / 1,988 px (ar).
+
+At 1024 and below the container query collapses the grid to one column, so the
+screen is taller by design — the brief's target is 1280 and it is met there in
+every combination.
+
+### the contrast instrument — EXPECTED: nothing below 4.5:1, either theme
+
+`node tools/contrast-sweep.mjs` — 12 pages × 2 themes, English:
+
+    PASS  overview/en/dark    nodes= 174 below=0 exempt=0 worst=5.23:1
+    PASS  settings/en/dark    nodes= 107 below=0 exempt=0 worst=5.30:1
+    PASS  activity/en/dark    nodes= 105 below=0 exempt=0 worst=5.24:1
+    PASS  overview/en/light   nodes= 174 below=0 exempt=0 worst=4.67:1
+    PASS  settings/en/light   nodes= 107 below=0 exempt=0 worst=4.67:1
+    PASS  activity/en/light   nodes= 105 below=0 exempt=0 worst=4.67:1
+    …
+    measured 3202 text node(s); 0 below threshold, 0 distinct;
+    2 exempt as inactive controls (WCAG 1.4.3 Incidental)
+      theme=dark      0 below, 0 distinct
+      theme=light     0 below, 0 distinct
+
+    PASS — every rendered text node meets WCAG AA in every theme measured.
+
+`--locales ar` — the same 12 pages × 2 themes in Arabic:
+
+    PASS  overview/ar/dark    nodes= 174 below=0 exempt=0 worst=5.23:1
+    PASS  settings/ar/dark    nodes= 107 below=0 exempt=0 worst=5.30:1
+    PASS  activity/ar/dark    nodes= 105 below=0 exempt=0 worst=5.24:1
+    PASS  overview/ar/light   nodes= 174 below=0 exempt=0 worst=4.67:1
+    PASS  settings/ar/light   nodes= 107 below=0 exempt=0 worst=4.67:1
+    PASS  activity/ar/light   nodes= 105 below=0 exempt=0 worst=4.67:1
+    …
+    measured 3186 text node(s); 0 below threshold, 0 distinct;
+    2 exempt as inactive controls (WCAG 1.4.3 Incidental)
+      theme=dark      0 below, 0 distinct
+      theme=light     0 below, 0 distinct
+
+    PASS — every rendered text node meets WCAG AA in every theme measured.
+
+**6,388 text nodes across 12 pages × 2 themes × 2 languages, 0 below 4.5:1.**
+The two exemptions in each language are the same disabled
+`button.install-button` on the Startup screen, one per theme, which WCAG 1.4.3
+exempts as an inactive control. Neither is on a screen this session touched.
+
+### `npm run build`
+
+    ✓ built in 503ms
+    (!) Some chunks are larger than 500 kB after minification.  [pre-existing]
+
+### `npm run check` — svelte-check, 16-warning baseline
+
+    227 FILES 0 ERRORS 16 WARNINGS 3 FILES_WITH_PROBLEMS
+
+**Baseline held.** 227 files rather than 226 — the new `SettingsPage.svelte`.
+The same 16 warnings as before this session (one a11y in `FluidDialog`, fifteen
+unused-selector in `FindingCard` and `DeepScanPage`); none is in a file this
+session touched.
+
+## 51.7 THE HEADLINE NUMBER
+
+**Overview height at 1280, before and after, both languages, both data states:**
+
+| state | before | after | delta |
+|---|---|---|---|
+| **populated, en** | **4,110 px** | **1,715 px** | **−2,395 px (−58%)** |
+| **populated, ar** | **4,082 px** | **1,681 px** | **−2,401 px (−59%)** |
+| **no service, en** | **3,533 px** | **1,677 px** | **−1,856 px (−53%)** |
+| **no service, ar** | **3,498 px** | **1,638 px** | **−1,860 px (−53%)** |
+
+**EXPECTED: under 2,000 px at 1280 wide, populated, in both languages.
+OBSERVED: 1,715 and 1,681.** And under it empty as well, which the brief did not
+require.
+
+At a 900 px window the Overview is now **1.9 screens** instead of 4.6.
+**Nothing was deleted to get there that was not proven to be a duplicate:** six
+non-clickable cards, one panel whose reading and whose action both existed
+elsewhere, and two components that were already rendering on Activity. Four
+sections were moved to a screen built for them, one was moved to the screen it is
+named after, and the rest of the distance came from arranging the instrument so
+its own column was not empty.
+
+## 51.8 THE LEDGER DELTA — two P50 ids closed, two new, one untouched by instruction
+
+Recorded here rather than in `DEBT_REGISTER.json`, which is the `QD-*` register
+under the p31 audit gate; every `DBT-P4x`/`DBT-P5x` id from P42 onward lives in
+this ledger.
+
+### Closed
+
+| id | what it was | how it closed |
+|---|---|---|
+| **`DBT-P50-003`** | Two settings-shaped panels on the Overview with nowhere to go; `NAVIGATION` had no Settings id | §51.3 — the destination was created, both panels moved unmodified, all four sections exercised there |
+| **`DBT-P50-004`** | `EmptyState` inherits `flex-wrap: wrap` on a flex column; 496 px for 396 px of content | §51.5 — P50's one declaration applied, reproduced first, verified on all eleven empty states across all seven screens: one 100 px shorter, ten identical |
+| **`DBT-P50-002`** | `Protocol v7`, a sourceless literal in the markup | §51.5 — already dropped by P50's own rebuild; verified 0 matches in the rendered DOM, the two orphaned catalog keys deleted. Closed as dropped, not wired |
+
+### Still open, unchanged
+
+| id | status |
+|---|---|
+| **`DBT-P50-001`** | No disk free/used space provider. Untouched — a service change |
+| **`DBT-P50-005`** | No wire accessor for the performance sample series. **Not started, by instruction.** §51.5 records exactly what approval would be approving |
+
+### New
+
+| id | what | why it is open, not fixed |
+|---|---|---|
+| **`DBT-P51-001`** | **The navigation rail overflows its own viewport.** Measured at 1280 × 900 on the fixture: `nav.scrollHeight = 774`, `clientHeight = 492` — **282 px below the fold**, and `settings` sits at `top = 867` against a rail bottom of `637`. Activity and Fleet were already below it before this session; Settings is the third, and it is last in the list | Pre-existing, and this session added 87 px to it (one group heading and one item). Fixing it means redesigning the rail's vertical budget — the brand block, the command trigger, the policy card and the two control buttons all take fixed height above and below a scrolling `nav`. That is a shell change touching every screen, and this brief is not it |
+| **`DBT-P51-002`** | **One-click care's only entry point is now the Activity screen.** `CarePanel` rendered on both Overview and Activity; §51.3 removed the duplicate, and the survivor lives on a screen the rail describes as "Durable operation journal and recovery" | The duplication was real and the deletion is right. Whether the product's one run-everything action belongs on the history screen is a placement question the brief did not put, and answering it means either a new destination or a decision about the Overview's header actions. Recorded for the owner rather than decided here |
+| **`DBT-P51-003`** | **Thirteen of sixteen `cap.reason.*` / `cap.note.*` keys the capability engine can emit have no translation.** `crates/platform-capabilities/src/lib.rs` defines 15 `cap.reason.*` constants plus `cap.note.windowsServerWsusPolicy`; the catalogs carry three (`windowsServerNoThermalPower`, `windowsServerNoGameMode`, `windowsServerNoRestorePoints`). `AboutPanel.noteLabel` deliberately renders the raw key when the catalog has none — so on macOS, Linux, Windows Server Core, or after any collector downgrade, the Settings screen prints `cap.reason.macosNoDriverStore` at the user | Found while building the Settings fixture, which is why the fixture models the shipping `windows_table()` (everything Native, no reason keys) rather than a state the product cannot yet render. Thirteen keys × two languages is a translation task, not a layout one, and it is not in any of this brief's items |
+
+## 51.9 P51 FINAL REPORT
+
+### What was asked, and what happened
+
+Fill the Overview, cut the six-tile grid, re-home the other nine sections, and
+get under 2,000 px without deleting a feature. All four were done. **Fourteen
+commits; 14 source files (+287 / −164) and 5 gate tools; and the screen went
+from 4,110 px to 1,715 px.**
+
+### The sampler decision, in one paragraph
+
+The brief offered three ways to start the perf sampler from the Overview.
+Tracing it first showed that none of them was the answer: `aether-perf-sampler`
+pushes into an in-process ring and **publishes nothing**, and the only producer
+of a `performanceSnapshot` event in the product is the `get_performance_snapshot`
+handler. Starting the sampler would have bought a background thread costing a
+**measured 230.8 ms mean per tick** — ~11% of one core at 1 s — and left the
+instrument exactly as blank as it was. So the Overview reads instead: one
+snapshot on mount, then one every 5 s, disposed with the component, verified in
+the fixture at 3 reads in 11 s on the screen and 0 after leaving it. Under 5% of
+one core while you are looking at it, nothing when you are not. Reading counters
+is not a mutation — no supervisor, no fence, no journal entry, no restore point —
+and the consent this product asks for is consent to change the machine.
+
+### What changed on a second screen, said out loud
+
+Two things, both required by item 1 and both stated where the brief asked for
+them. `stream-state.ts` inferred `perfSampling` from the arrival of a snapshot,
+which would have made the Performance screen offer to stop a thread nobody
+started; it is now set only by start/stop, and the Performance header was
+re-measured after the change (`▶ Start monitoring`, Analyze disabled — the
+truth). And `RecoveryPanel` was moved out of `AppShell`'s always-on slot into the
+Activity branch, which removes it from ten screens; that is the verdict, not a
+side effect.
+
+### What was dropped, and the proof for each
+
+- **Six module cards** — measured at **0 interactive descendants** each. Not a
+  duplicate of the navigation; less than it.
+- **The driver servicing panel** — its number is an action item carrying the
+  scan id; its button calls the same function the Drivers header is bound to,
+  exercised there in both hub states.
+- **`CarePanel` and `InsightsPanel` on the Overview** — the same components were
+  already rendered in the Activity branch of the same `{#if}`.
+- **Fourteen message keys and four CSS blocks** that had no remaining reader.
+
+Nothing else. Four sections were **moved** to a Settings screen that did not
+exist, one to the screen it is named after, and the last 537 px came from
+arranging the instrument so its own left column was not 679 px of nothing.
+
+### What was recorded rather than worked around
+
+`DBT-P51-001` (the rail overflows by 282 px and Settings is below the fold),
+`DBT-P51-002` (one-click care's only entry point is now Activity), `DBT-P51-003`
+(13 of 16 capability reason keys are untranslated and render raw). `DBT-P50-005`
+was not started, by instruction, and what its approval would cover is written
+down in §51.5.
+
+### One paragraph: what a first-time user now sees in the first screen of the app
+
+They see an instrument that is already reading. The orb shows a headroom
+percentage with the arithmetic behind it one click away in its own chip, four
+labelled channels with live values, four telemetry tiles naming their sources, a
+service log with real sequence numbers, and beside all of it a column of action
+items where every row carries the scan id, timestamp and counts it rests on.
+Nothing on the screen is a feature list, a marketing claim, or a number nobody
+measured — the six cards that named six modules are gone, and so is every panel
+that was configuration wearing status styling. If the service is not running they
+see the same instrument saying so twelve times in em dashes, and one button that
+says **Take a reading now** — which is the difference this session actually
+made: before, a new user opened the product, saw a correct and completely blank
+instrument, and was told nothing about what would fill it. The whole screen fits
+in under two window-heights, so the first thing they scroll to is the current
+protected operation rather than the fourth copy of the navigation.
