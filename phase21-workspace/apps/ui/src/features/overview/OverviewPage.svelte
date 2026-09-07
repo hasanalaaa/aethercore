@@ -22,7 +22,7 @@
   import { shellState, setPage } from '../../app/shell-state';
   import { OVERVIEW_READ_INTERVAL_MS, readTelemetryNow, startOverviewTelemetry } from './controller';
   import { streamState } from '../../platform/stream-state';
-  import { authorizeDriverPlan, startDriverInstall, startDriverScan as startScan } from '../drivers/controller';
+  import { authorizeDriverPlan, startDriverInstall } from '../drivers/controller';
   import { shortDigest } from '../shared';
   import { localizePlanKind, localizeRisk, localizeState, t, td, tp } from '../../lib/i18n';
   import SystemCarePanel from '../system-care/SystemCarePanel.svelte';
@@ -32,7 +32,6 @@
   import { actionItems, headroom, headroomEvidence, headroomLabel, healthChannels, telemetryTiles, type ActionItem } from './instrument';
 
   $: snapshot = $streamState.snapshot;
-  $: hub = $streamState.hub;
   $: performance = $streamState.performance;
   $: serviceLog = $streamState.serviceLog;
   $: busy = $shellState.busy;
@@ -207,7 +206,11 @@
   </section>
 </div>
 
-<section class="grid">
+<!-- BELONGS (§51.3). The one active protected operation, service-wide: what the
+     machine is currently having done to it, its risk tier, its plan digest and
+     the authorization window. Every other section on this page reports a
+     measurement; this one reports the state engine. -->
+<section class="state-engine">
   <article class="panel">
     <div class="panel-head"><div><p class="eyebrow">{t('overview.stateEngine',locale)}</p><h3>{t('overview.currentOperation',locale)}</h3></div>{#if snapshot.activePlan}<span class="risk">{localizeRisk(snapshot.activePlan.risk,locale)}</span>{/if}</div>
     {#if snapshot.activePlan}
@@ -228,13 +231,6 @@
     {:else}
       <EmptyState title={t('overview.noActive',locale)} body={t('overview.noActiveCopy',locale)} />
     {/if}
-  </article>
-
-  <article class="panel driver-preview">
-    <div class="panel-head"><div><p class="eyebrow">{t('overview.driverServicing',locale)}</p><h3>{t('overview.safeDriver',locale)}</h3></div><span class="live-badge">{t('common.live',locale)}</span></div>
-    {#if hub.state === 'Ready'}<div class="preview-number">{hub.summary.selectableUpdateCount}</div>{:else}<div class="preview-state"><strong>{t('common.notCollected',locale)}</strong></div>{/if}
-    <p>{hub.state === 'Ready' ? t('overview.driverReadyCopy',locale) : t('overview.driverIdleCopy',locale)}</p>
-    <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={() => { setPage('drivers'); if (hub.state === 'Idle') startScan(); }}>{t('overview.openDrivers',locale)}</button>
   </article>
 </section>
 
@@ -507,7 +503,7 @@
   .overview-header-side { display: flex; align-items: center; gap: var(--ac-space-3); flex-wrap: wrap; justify-content: flex-end; }
   .overview-header-side .primary { white-space: nowrap; }
 
-  /* Where a count would be. The ringed glyph went with the empty state it
-     belonged to; the reading itself is what matters here. */
-  .preview-state{display:flex;align-items:center;gap:.65rem;margin-block:.7rem 1rem;color:var(--ac-text-3);font-family:var(--ac-font-mono);font-size:var(--ac-type-technical);letter-spacing:.1em;text-transform:uppercase}
+  /* One panel, not a column of a two-column grid. `.grid` splits 1.25fr / .55fr
+     for a pair, and the driver panel that used to be the second one is gone. */
+  .state-engine { margin-block-start: var(--ac-space-5); }
 </style>

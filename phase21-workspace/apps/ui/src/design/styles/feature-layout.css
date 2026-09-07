@@ -1000,30 +1000,6 @@ header .sub {
 
 
 
-.driver-preview {
-  display:flex;
-  flex-direction:column
-}
-
-.preview-number {
-  font-size:56px;
-  font-weight:420;
-  letter-spacing:-3px;
-  margin-top:30px
-}
-
-.driver-preview>p {
-  font-size:0.8125rem;
-  color: var(--ac-text-3);
-  line-height:1.5;
-  margin:3px 0 22px
-}
-
-.driver-preview .secondary {
-  margin-top:auto;
-  align-self:flex-start
-}
-
 @keyframes scan {
   0% {
     transform:translateX(-120%)

@@ -160,7 +160,6 @@ export const enCatalog = {
   'announce.themeDark': 'Dark theme enabled',
   'announce.serviceUnavailable': 'The maintenance service is not connected.',
 
-  'common.live': 'Live',
   'common.foundationReady': 'Foundation ready',
   'common.pending': 'Pending',
   'common.waiting': 'Waiting',
@@ -289,10 +288,6 @@ export const enCatalog = {
   'overview.viewDriverExecution': 'View driver execution',
   'overview.noActive': 'No active protected operation',
   'overview.noActiveCopy': 'Start from Drivers, Repair, Deep Clean, or Startup Manager. AetherCore freezes the reviewed plan before requesting administrator consent.',
-  'overview.driverServicing': 'DRIVER SERVICING',
-  'overview.safeDriver': 'Safe Driver Installation',
-  'overview.driverReadyCopy': 'Protected Windows driver offers staged from the latest scan.',
-  'overview.driverIdleCopy': 'Run a live PnP + Windows Update discovery scan.',
 
   'drivers.eyebrow': 'SMART DRIVER HUB',
   'drivers.title': 'Drivers, with Windows as the authority.',

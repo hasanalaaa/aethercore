@@ -162,7 +162,6 @@ export const arCatalog = {
   'announce.themeDark': 'تم تفعيل السمة الداكنة',
   'announce.serviceUnavailable': 'خدمة الصيانة غير متصلة.',
 
-  'common.live': 'مباشر',
   'common.foundationReady': 'الأساس جاهز',
   'common.pending': 'قيد الانتظار',
   'common.waiting': 'بانتظار التنفيذ',
@@ -291,10 +290,6 @@ export const arCatalog = {
   'overview.viewDriverExecution': 'عرض تنفيذ التعريفات',
   'overview.noActive': 'لا توجد عملية محمية نشطة',
   'overview.noActiveCopy': 'ابدأ من التعريفات أو إصلاح النظام أو التنظيف العميق أو مدير بدء التشغيل. يثبّت AetherCore الخطة التي راجعتها قبل طلب موافقة المسؤول.',
-  'overview.driverServicing': 'خدمة التعريفات',
-  'overview.safeDriver': 'تثبيت آمن للتعريفات',
-  'overview.driverReadyCopy': 'عروض تعريفات Windows المحمية جاهزة من أحدث فحص.',
-  'overview.driverIdleCopy': 'شغّل فحصًا مباشرًا لـ PnP وتحديث Windows.',
 
   'drivers.eyebrow': 'مركز التعريفات الذكي',
   'drivers.title': 'التعريفات، مع Windows بوصفه المرجع.',

@@ -13191,7 +13191,7 @@ Rows move in the same commit as the work they describe.
 | 0 the measuring instrument | **DONE** | `layout-sweep.mjs` reports `height` — the number this session is judged on was not observable by any gate before |
 | 1 make the Overview fill itself | **DONE** | §51.1 — the facts, the measured cost, the decision, and the two behaviours it corrected |
 | 2 cut the six-tile grid | **DONE** | §51.2 — all six tiles measured at **0 interactive descendants**; all six pages reached from the rail. −338 px en / −354 px ar |
-| 3 re-home the rest | | |
+| 3 re-home the rest | **IN PROGRESS** | §51.3 — 1 BELONGS, 2 DROPS … |
 | gates | | |
 | screenshots | | |
 | ledger delta + report | | |
@@ -13384,3 +13384,54 @@ had no other user, `.module-live` from the shared materials selector list, and
 the nine message keys that only it used, from both catalogs.
 
 **1280, populated: 4,110 → 3,772 px (en) · 4,082 → 3,728 px (ar).**
+
+## 51.3 ITEM 3 — THE NINE SECTIONS, ONE VERDICT EACH
+
+Worked in the order the brief lists them.
+
+### 1. State Engine — current protected operation → **BELONGS**
+
+**What it summarises:** `snapshot.activePlan` — the service's state engine, of
+which there is exactly one across every domain at a time. Plan kind, lifecycle
+state, risk tier, the short digest, and the consent window
+(`consentReadyUntilUnixMs`) with the authorize / start actions that window
+governs.
+
+**Why the Overview is the right place:** every other section on this page reports
+a *measurement* of the machine. This one reports what is being *done* to it, and
+it is the only section on any screen that is not scoped to one feature — a
+Cleanup plan, a Startup plan, a SystemRepair plan and a DriverInstall plan all
+appear in the same slot because the service only ever runs one. A whole-system
+summary is exactly what it is. It stays, directly under the instrument.
+
+Unchanged except for its wrapper: it was the left column of a `.grid` splitting
+1.25fr / 0.55fr with the driver panel beside it, and is now one full-width panel.
+
+### 2. Driver Servicing — safe driver installation → **DROPS**
+
+Two halves, both duplicated, and the duplication was measured rather than argued.
+
+**The reading.** The panel printed `hub.summary.selectableUpdateCount` as a
+56 px numeral with no citation. The instrument above it already carries that
+number as an action item, with one — measured in the fixture:
+
+    "Driver updates AetherCore can install"   9 updates   scan-fixture-1 · 12 offers
+
+**The action.** Its button did `setPage('drivers')` and, when the hub was Idle,
+`startDriverScan()`. That is the same exported function the Drivers screen's own
+header button is bound to, and the Drivers screen is one press away on the rail.
+Exercised on the destination, both states:
+
+    hub Ready (fixture)      "↻ Scan again"    enabled
+    hub Idle  (index.html)   "↻ Scan drivers"  present, disabled — because there
+                             is no service, which is the same reason the Overview
+                             button would have called into a dead transport
+
+So the panel carried no action the sidebar lacks and no reading the instrument
+lacks. Deleted with its four message keys, `common.live` (its last user), and
+the `.driver-preview` / `.preview-number` / `.preview-state` rules.
+
+**Height: no change (3,772 px).** It was the second column of a two-column row
+whose height came from the taller panel beside it. Removing it removed a
+duplicate, not a scroll — recorded because the point of measuring is to notice
+when a deletion buys nothing.
