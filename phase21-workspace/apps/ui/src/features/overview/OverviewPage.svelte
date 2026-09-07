@@ -511,6 +511,11 @@
   .overview-header-side .primary { white-space: nowrap; }
 
   /* One panel, not a column of a two-column grid. `.grid` splits 1.25fr / .55fr
-     for a pair, and the driver panel that used to be the second one is gone. */
+     for a pair, and the driver panel that used to be the second one is gone.
+     `.panel { min-height: 310px }` is a floor for cards that sit BESIDE each
+     other, so a pair of them line up. A single full-width panel has nothing to
+     line up with, and this one renders 106px of content — measured — inside it.
+     Scoped here rather than on `.panel`, which nine other screens rely on. */
   .state-engine { margin-block-start: var(--ac-space-5); }
+  .state-engine .panel { min-block-size: auto; }
 </style>
