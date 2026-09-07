@@ -192,6 +192,8 @@
 
   --line: var(--ac-edge);
   --muted: var(--ac-text-3);
+  --edge-strong: var(--ac-edge-strong);
+  --text-primary: var(--ac-text-1);
 
   font-family: var(--ac-font-text);
 }
@@ -289,6 +291,8 @@
   --ac-layer-pressed: rgba(10, 14, 20, 0.09);
   --ac-scrim: rgba(20, 30, 50, 0.34);
   --ac-highlight: rgba(255, 255, 255, 0.9);
+  --edge-strong: var(--ac-edge-strong);
+  --text-primary: var(--ac-text-1);
 }
 
 /* The system-theme hook the shell state also writes. Kept in lockstep with

@@ -2,17 +2,15 @@
   display:flex; align-items:center; gap:.65rem; min-height:2.65rem; padding-inline:.45rem; margin-block-end:.45rem;
 }
 .brand-mark {
-  inline-size:2.25rem; block-size:2.25rem; flex:0 0 auto; display:grid; place-items:center;
-  border:1px solid rgba(125,220,255,.3); border-radius:.75rem;
-  background:linear-gradient(145deg,rgba(28,48,83,.95),rgba(8,16,36,.98));
-  box-shadow:inset 0 1px rgba(255,255,255,.08),0 8px 20px rgba(0,0,0,.2);
+  inline-size:1.85rem; block-size:1.85rem; flex:0 0 auto; display:grid; place-items:center;
+  border:1px solid var(--edge-strong); border-radius:.55rem;
+  background:var(--ac-void);
+  box-shadow:inset 0 1px rgba(255,255,255,.05);
 }
-.brand-mark svg { inline-size:1.7rem; block-size:1.7rem; overflow:visible; }
+.brand-mark svg { inline-size:1.25rem; block-size:1.25rem; overflow:visible; }
 .brand-mark path {
-  fill:none; stroke:url(#aethercore-mark); stroke-width:1.45;
-  stroke-linejoin:round;
-}
-.brand-mark .brand-spark { fill:var(--ac-warning); stroke:var(--ac-warning); stroke-width:.55;
+  fill:none; stroke:var(--role-interactive); stroke-width:7;
+  stroke-linecap:round; stroke-linejoin:round;
 }
 .brand-copy { min-inline-size:0; }
 .brand-copy strong { display:block; color:var(--ac-text-1); font-size:.9375rem; font-weight:650; letter-spacing:-.006em; }
@@ -90,7 +88,6 @@
 /* Evidence-first shell: the rail is a quiet instrument, not a card stack. */
 .app-sidebar { border-inline-end-color:color-mix(in srgb,var(--ac-accent) 28%,var(--ac-border-subtle)); }
 .app-sidebar::before { content:""; position:absolute; inset-block:1.3rem; inset-inline-start:-1px; inline-size:2px; background:var(--role-interactive); opacity:.72; }
-.brand-mark { border-radius:.55rem; background:var(--role-interactive); }
 .command-trigger { border-radius:.55rem; background:color-mix(in srgb,var(--ac-accent) 7%,transparent); }
 .app-nav-item { border-radius:.55rem; }
 .app-nav-item.active { border-inline-start:2px solid var(--ac-accent); padding-inline-start:calc(.45rem - 2px); background:color-mix(in srgb,var(--ac-accent) 12%,transparent); }
