@@ -13191,7 +13191,7 @@ Rows move in the same commit as the work they describe.
 | 0 the measuring instrument | **DONE** | `layout-sweep.mjs` reports `height` — the number this session is judged on was not observable by any gate before |
 | 1 make the Overview fill itself | **DONE** | §51.1 — the facts, the measured cost, the decision, and the two behaviours it corrected |
 | 2 cut the six-tile grid | **DONE** | §51.2 — all six tiles measured at **0 interactive descendants**; all six pages reached from the rail. −338 px en / −354 px ar |
-| 3 re-home the rest | **IN PROGRESS** | §51.3 — 1 BELONGS, 1 DROPS, 4 SETTINGS (`DBT-P50-003` closed) … |
+| 3 re-home the rest | **DONE** | §51.3 — 9 verdicts: 1 BELONGS · 3 DROPS · 4 SETTINGS (`DBT-P50-003` closed) · 1 MOVES. §51.4 — the last 281 px, found in the arrangement rather than in a section |
 | gates | | |
 | screenshots | | |
 | ledger delta + report | | |
@@ -13482,3 +13482,87 @@ exactly as shipped today") rather than invented names.
 
 **1280, populated: 3,772 → 3,099 px (en) · 3,728 → 3,088 px (ar).**
 Settings itself measures 1,569 px (en) / 1,593 px (ar), clean at 1280.
+
+### 7. One-click care → **DROPS**
+### 8. Insights — what your reports mean → **DROPS**
+
+The duplication is not an argument, it is four lines of `AppShell.svelte`.
+`<CarePanel />` and `<InsightsPanel />` were rendered in **both** branches of the
+same `{#if}` — once under `activity`, once under the Overview. The same
+components, the same stores, the same controllers. Only one of the two renders
+is redundant, and it is the Overview's: the Overview is where the machine is
+measured, and neither of these measures anything about the machine.
+
+**Exercised on the destination**, at 1280 on `activity`:
+
+    "Safe upkeep in one run"     → "Start Care" pressed → the consent dialog
+                                   opened: "Authorize One-Click Care for this
+                                   session · Care sequences plans that already
+                                   exist…"
+    "What your reports mean"     → Refresh · Explain this · Dismiss present,
+                                   one insight rendered with its evidence chip
+
+**Recorded rather than decided:** Activity is where both already lived, and it
+is now their only home. Whether a screen described as "Durable operation journal
+and recovery" is the right home for the product's one run-everything action is a
+question this brief did not put and this session did not answer. **New id
+`DBT-P51-002`.**
+
+### 9. Activity & Recovery — recent recovery events → **MOVES → Activity**
+
+`RecoveryPanel` was not an Overview section at all. It sat outside the `{#key}`
+block in `AppShell`, so it rendered under **every screen in the app** whenever
+`recoveryEntries` was non-empty. It is titled with `activity.eyebrow` and
+`recovery.title`, the rail describes Activity as "Durable operation journal and
+recovery", and the Activity page already renders an empty state for exactly the
+case where this panel has nothing — it was written around a panel that was
+somewhere else.
+
+Moved inside the `activity` branch. **This removes it from the other ten
+screens**, which is stated here rather than buried: it is a change beyond the
+Overview, and it is the point of the verdict.
+
+**Exercised on the destination:** on `activity`, "Recent maintenance recovery
+events" renders with its one fixture row, between the scheduler panel and the
+timeline.
+
+**1280, populated after items 7–9: 3,099 → 2,281 px (en) · 3,088 → 2,265 px
+(ar).** 281 px over the target, with every one of the nine sections decided.
+What was left is in §51.4.
+
+## 51.4 THE LAST 281 px — WHERE THE HEIGHT ACTUALLY WAS
+
+With all nine verdicts applied the Overview measured 2,281 px, and the brief
+forbids deleting a feature to reach 2,000. Measured, the remaining height was
+not in any section — it was in the **arrangement**:
+
+| element | height | width |
+|---|---|---|
+| system health orb | 270 px | 537 px |
+| action items | **949 px** | 379 px |
+| diagnostic telemetry | 276 px | 930 px |
+| core service log | 275 px | 930 px |
+| **the grid** | **1,528 px** | |
+
+The shell lays this screen out orb 7 / items 5 / telemetry 12 / log 12, and P50
+ported those spans literally. The consequence, measured: a 270 px orb beside a
+949 px list left **679 px of empty column** under the orb, and the two sections
+that could have filled it were stacked underneath instead. 1,528 px of grid for
+1,770 px of content, with a third of the grid empty.
+
+**The change: §C and §D join the orb in the left column, and the action list
+spans all three rows.** One instrument stack beside one list. No section is
+removed, none is smaller, nothing is hidden — the space that was empty is now
+the telemetry and the log.
+
+    grid   1,528 px → 991 px          dead space  679 px → 41 px
+    main   2,281 px → 1,744 px (en)   2,265 px → 1,702 px (ar)
+
+**This is the one place this session departs from the shell's own spans**, and
+it is recorded here rather than left for someone to discover in a diff. The
+alternative measured — telemetry in the left column, log left full width — came
+to 1,991 px, nine pixels under the target, which is not a margin.
+
+**EXPECTED: under 2,000 px at 1280 wide, populated, in both languages.
+OBSERVED: 1,744 px (en) and 1,702 px (ar).** Sweep clean 12/12 at
+1280 / 1024 / 960 × en/ar × dark/light.

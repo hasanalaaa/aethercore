@@ -159,7 +159,7 @@
   </section>
 
   <!-- §C — diagnostic telemetry. Four tiles, no sparklines: see §50.4. -->
-  <section class="instrument-section span-full" aria-label={t('overview.telemetry',locale)}>
+  <section class="instrument-section span-instrument" aria-label={t('overview.telemetry',locale)}>
     <div class="instrument-head">
       <span class="instrument-title">{t('overview.telemetry',locale)}</span>
       <span class="instrument-meta" class:reading={sampled}>{sampled ? t('overview.noteSampling',locale,{interval:performance.intervalMs}) : t('overview.telemetryMetaNone',locale)}</span>
@@ -181,7 +181,7 @@
   </section>
 
   <!-- §D — the core service log: the kernel's own event stream, not boot prose. -->
-  <section class="instrument-section span-full" aria-label={t('overview.serviceLog',locale)}>
+  <section class="instrument-section span-instrument" aria-label={t('overview.serviceLog',locale)}>
     <div class="instrument-head">
       <span class="instrument-title">{t('overview.serviceLog',locale)}</span>
       <span class="instrument-meta" class:reading={serviceLog.length > 0}>{tp('unit.event',locale,serviceLog.length)}</span>
@@ -233,10 +233,21 @@
 </section>
 
 <style>
-  /* ---- the ported composition -------------------------------------------
-     Twelve columns, exactly as the shell lays this screen out: orb 7, action
-     items 5, telemetry 12, log 12. Everything below derives from the token
-     layer; this block introduces no literal colour, radius or spacing. */
+  /* ---- the composition ---------------------------------------------------
+     Twelve columns. The shell lays this screen out orb 7 / items 5 / telemetry
+     12 / log 12, and P50 ported that literally. Measured, that arrangement put
+     a 270px orb beside a 949px action list and left **679px of empty column**
+     under the orb, then stacked two more full-width rows below it — 1,528px of
+     grid for 1,770px of content in the wrong places.
+
+     So §C and §D join the orb in the left column and the action list spans all
+     three rows: one instrument stack beside one list. Nothing is dropped and no
+     section is smaller; the grid is 991px instead of 1,528px because the space
+     that was empty is now the telemetry and the log. This is the one place this
+     session departs from the shell's own spans, and this is the reason.
+
+     Everything below derives from the token layer; this block introduces no
+     literal colour, radius or spacing. */
   .instrument-grid {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -247,14 +258,16 @@
     gap: var(--ac-space-4);
     margin-block-end: var(--ac-space-5);
   }
-  .span-orb { grid-column: span 7; }
-  .span-items { grid-column: span 5; }
-  .span-full { grid-column: span 12; }
+  .span-orb, .span-instrument { grid-column: span 7; }
+  /* Three rows: the orb, the telemetry and the log stack beside this one list. */
+  .span-items { grid-column: span 5; grid-row: span 3; }
 
   /* The rail collapses on its own breakpoints, so these answer to the space the
      content area actually has rather than to the window. */
   @container ac-main (max-width: 58rem) {
-    .span-orb, .span-items { grid-column: span 12; }
+    .span-orb, .span-items, .span-instrument { grid-column: span 12; }
+    /* One column: the row span would otherwise leave two empty rows. */
+    .span-items { grid-row: auto; }
   }
 
   /* `main :where(*) { flex-wrap: wrap }` in feature-layout.css is a deliberate
