@@ -36,6 +36,7 @@
   import { shellState, setPage } from '../../app/shell-state';
   import { OVERVIEW_READ_INTERVAL_MS, readTelemetryNow, startOverviewTelemetry } from './controller';
   import { streamState } from '../../platform/stream-state';
+  import { openCareConsent } from '../care/controller';
   import { authorizeDriverPlan, startDriverInstall } from '../drivers/controller';
   import { shortDigest } from '../shared';
   import { localizePlanKind, localizeRisk, localizeState, t, td, tp } from '../../lib/i18n';
@@ -93,6 +94,7 @@
   <div><p class="eyebrow">{t('overview.eyebrow',locale)}</p><h1>{t('overview.title',locale)}</h1><p class="sub">{t('overview.subtitle',locale)}</p></div>
   <div class="overview-header-side">
     <div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div>
+    <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={openCareConsent} disabled={!snapshot.connected || busy}>{t('care.start', locale)}</button>
     <button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={() => setPage('deepScan')}>{t('overview.scanMyPc',locale)}</button>
   </div>
 </header>
@@ -522,7 +524,8 @@
 
   /* ---- the header action row -------------------------------------------- */
   .overview-header-side { display: flex; align-items: center; gap: var(--ac-space-3); flex-wrap: wrap; justify-content: flex-end; }
-  .overview-header-side .primary { white-space: nowrap; }
+  .overview-header-side .primary,
+  .overview-header-side .secondary { white-space: nowrap; }
 
   /* One panel, not a column of a two-column grid. `.grid` splits 1.25fr / .55fr
      for a pair, and the driver panel that used to be the second one is gone.

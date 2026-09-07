@@ -22,17 +22,13 @@
   import type { CareStepReport } from '../../lib/contracts';
   import { EmptyState } from '../../design/signature';
   import {
-    authorizeAndStartCare,
     cancelCare,
-    careUi,
-    closeCareConsent,
     loadCareStatus,
     openCareConsent,
   } from './controller';
 
   $: locale = $shellState.locale;
   $: care = $streamState.careStatus;
-  $: dialogOpen = $careUi.consentDialogOpen;
 
   const AUTO_LEVEL = 0;
 
@@ -103,24 +99,6 @@
   {/if}
 </section>
 
-{#if dialogOpen}
-  <div class="consent-scrim" role="presentation">
-    <div class="consent-card" role="dialog" aria-modal="true" aria-labelledby="care-consent-title">
-      <h4 id="care-consent-title">{t('care.consentTitle', locale)}</h4>
-      <p class="consent-copy">{t('care.consentCopy', locale)}</p>
-      <ul class="consent-list">
-        <li>{t('care.consentBulletScope', locale)}</li>
-        <li>{t('care.consentBulletReview', locale)}</li>
-        <li>{t('care.consentBulletSession', locale)}</li>
-      </ul>
-      <div class="consent-actions">
-        <Pressable className="ghost-action" onclick={closeCareConsent}>{t('common.cancel', locale)}</Pressable>
-        <Pressable className="primary-action" onclick={authorizeAndStartCare}>{t('care.consentAuthorize', locale)}</Pressable>
-      </div>
-    </div>
-  </div>
-{/if}
-
 <style>
   .care-panel {
     margin-block-end: var(--ac-space-5);
@@ -169,41 +147,5 @@
   }
   .summary.verified {
     color: var(--ac-accent);
-  }
-  .consent-scrim {
-    position: fixed;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    background: rgb(0 0 0 / 35%);
-    z-index: 60;
-  }
-  .consent-card {
-    inline-size: min(30rem, calc(100vw - 3rem));
-    padding: var(--ac-space-5);
-    border-radius: var(--ac-radius-lg);
-    /* A modal over the scrim, so it takes the focused material every other
-       dialog in the product takes (FluidDialog's `.ac-material-focused`), not
-       the base card material. */
-    background: var(--ac-material-focused);
-    box-shadow: 0 12px 40px rgb(0 0 0 / 25%);
-  }
-  .consent-card h4 {
-    margin: 0 0 var(--ac-space-2);
-  }
-  .consent-copy {
-    color: var(--ac-text-3);
-    margin-block: 0 var(--ac-space-3);
-  }
-  .consent-list {
-    margin: 0 0 var(--ac-space-4);
-    padding-inline-start: var(--ac-space-5);
-    color: var(--ac-text-3);
-    font-size: var(--ac-type-caption);
-  }
-  .consent-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--ac-space-3);
   }
 </style>

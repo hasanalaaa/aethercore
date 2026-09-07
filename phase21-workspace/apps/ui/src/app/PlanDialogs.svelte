@@ -7,6 +7,7 @@
   import { authorizeAndInstall, closeDriverReview, driversUi } from '../features/drivers/controller';
   import { authorizeAndRepair, closeRepairReview, repairUi } from '../features/repair/controller';
   import { authorizeAndCleanup, cleanupUi, closeCleanupReview } from '../features/cleanup/controller';
+  import { authorizeAndStartCare, careUi, closeCareConsent } from '../features/care/controller';
   import {
     authorizeAndApplyStartup,
     authorizeAndRestoreStartup,
@@ -148,3 +149,18 @@
     </div>
   </FluidDialog>
 {/if}
+
+<FluidDialog open={$careUi.consentDialogOpen} labelledBy="care-consent-title" onClose={closeCareConsent} className="review-dialog">
+  <p class="eyebrow">{t('care.eyebrow', locale)}</p>
+  <h2 id="care-consent-title">{t('care.consentTitle', locale)}</h2>
+  <p class="review-copy">{t('care.consentCopy', locale)}</p>
+  <ul class="consent-list">
+    <li>{t('care.consentBulletScope', locale)}</li>
+    <li>{t('care.consentBulletReview', locale)}</li>
+    <li>{t('care.consentBulletSession', locale)}</li>
+  </ul>
+  <div class="review-actions">
+    <Pressable className="secondary" onclick={closeCareConsent} disabled={busy}>{t('common.cancel', locale)}</Pressable>
+    <Pressable className="primary" onclick={authorizeAndStartCare} disabled={busy}>{busy ? t('dialog.waitingConsent', locale) : t('care.consentAuthorize', locale)}</Pressable>
+  </div>
+</FluidDialog>

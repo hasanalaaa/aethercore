@@ -1417,6 +1417,18 @@ header .sub {
   margin-top:17px
 }
 
+.review-dialog .consent-list {
+  margin: var(--ac-space-3) 0 var(--ac-space-4);
+  padding-inline-start: var(--ac-space-5);
+  color: var(--ac-text-3);
+  font-size: var(--ac-type-caption);
+  line-height: 1.55;
+}
+
+.review-dialog .consent-list li + li {
+  margin-block-start: var(--ac-space-2);
+}
+
 .pending-install-card {
   border: 1px solid var(--ac-edge-strong);
   background:linear-gradient(145deg,var(--ac-material-elevated),var(--ac-material-base));
