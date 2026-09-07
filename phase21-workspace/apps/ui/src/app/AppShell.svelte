@@ -105,16 +105,20 @@
         {:else if $shellState.activePage === 'fleet'}<FleetPage />
         {:else if $shellState.activePage === 'settings'}<SettingsPage />
         {:else if $shellState.activePage === 'activity'}
+          <!-- §51.3. Care, Insights and Recovery all live here, and only here.
+               The first two were rendered twice — the same components, in both
+               branches of this block — and the Overview's copy was the
+               redundant one. Recovery rendered on every screen in the app; it
+               is named for this one, whose own empty state was already written
+               for it. -->
           <ActivityPage />
+          <RecoveryPanel />
           <TimelinePanel />
           <CarePanel />
           <InsightsPanel />
-        {:else}<OverviewPage />
-          <CarePanel />
-          <InsightsPanel />{/if}
+        {:else}<OverviewPage />{/if}
       </FluidPage>
     {/key}
-    <RecoveryPanel />
   </main>
 </div>
 
