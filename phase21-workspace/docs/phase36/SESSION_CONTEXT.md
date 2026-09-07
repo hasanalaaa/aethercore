@@ -14240,3 +14240,273 @@ dist/assets/index-uN8jI5iA.js                        659.76 kB │ gzip: 171.29 
 ✓ built in 473ms
 ```
 
+---
+
+# 53. PHASE 53: TELEMETRY WIRE CONTRACT, DISK CAPACITY & REAL SPARKLINES
+
+## 53.1 THE TWO DEFECTS EXECUTED & CLOSED
+
+### 1. `DBT-P50-005`: Wire Contract Extension for Performance Window & Real UI Sparklines
+- **Baseline Defect**: The backend performance ring buffer held up to 300 samples (`MAX_RING_SAMPLES = 300`), but the published wire contract (`operations.proto`, `performance.proto`) only had single-sample snapshot endpoints (`GetPerformanceSnapshotRequest`). The desktop bridge and UI could only read the latest point. Consequently, real sparklines could not be drawn without fabricating historical curves. The Overview rendered a static notice stating no sparklines could be drawn, and the Performance metric cards rendered static flat lines or mock values.
+- **Architectural Solution**:
+  - **Wire Contract (`crates/contracts/proto/`)**: Added message `PerformanceWindowResponse` containing `repeated PerfSnapshot samples = 1;` in `performance.proto`. Extended `Request` in `operations.proto` with additive field 91: `GetPerformanceWindowRequest get_performance_window = 91;`. Strictly backward-compatible and additive.
+  - **Backend Service (`services/maintenance-service/`)**: Added `PerformanceEngine::window(&self, max_samples: usize) -> Vec<PerfSnapshot>` querying the internal ring buffer in chronological order bounded by `max_samples`. Routed `GetPerformanceWindowRequest` in `router.rs` to return `PerformanceWindowResponse` with status `Ok`. Added unit test `performance::dbt_p50_005::window_returns_ordered_samples_bounded_by_max`.
+  - **Desktop Bridge (`apps/desktop/src/main.rs`)**: Added `extract_perf_window` helper and registered Tauri IPC command `get_performance_window` in `tauri::generate_handler!`.
+  - **Frontend UI (`apps/ui/`)**:
+    - Contract types: Added `PerformanceWindowResponse` in `contracts.ts`.
+    - Reactive state: Added `performanceWindow: PerfSnapshot[]` to `StreamState` in `stream-state.ts`, appending live events up to 300 samples, and exporting `applyPerformanceWindow`.
+    - Overview: Subscribed to `performanceWindow`. In `instrument.ts`, extracted channel history when `window.length >= 2`. In `OverviewPage.svelte`, wired SVG polyline sparklines for channels. When `history.length < 2`, rendered honest waiting indicator (`—` with `.channel-sparkline-empty`) rather than inventing curves.
+    - Performance Page: Subscribed to `performanceWindow`, fetched window on mount via `get_performance_window`, derived CPU/memory/storage/GPU histories, and rendered honest waiting states (`.sparkline-empty` with `—`) when sample count < 2.
+    - Dev fixtures: Updated `layout-fixture.ts` with 30 synthetic window samples and mocked `get_performance_window`.
+- **Measured Result**: Real measured time series render faithfully. 0 fabricated numbers or curves. Both empty and populated states pass all layout, token, and contrast audits.
+
+### 2. `DBT-P50-001`: Disk Free/Used Space Provider Across Native Platforms
+- **Baseline Defect**: Nothing in the IPC surface reported free or used bytes for storage volumes. `StorageTelemetry.sizeBytes` was drive capacity, while `StorageQueueSample.activeTimeBp` was active time. UI could not display volume capacity or remaining free space.
+- **Architectural Solution**:
+  - **Wire Contract (`performance.proto`)**: Added additive fields `uint64 total_space_bytes = 8;` and `uint64 free_space_bytes = 9;` to `StorageQueueSample`.
+  - **Native Platform Implementations (`crates/performance-telemetry/`)**:
+    - **Windows (`windows_impl.rs`)**: Added `query_disk_space(path: &str)` utilizing Win32 API `GetDiskFreeSpaceExW` via `windows::Win32::Storage::FileSystem`.
+    - **macOS (`macos_impl.rs`)**: Added `query_disk_space(path: &str)` utilizing POSIX `statfs` (`f_blocks * f_bsize` total, `f_bavail * f_bsize` free).
+    - **Linux (`linux_impl.rs`)**: Added `query_disk_space(path: &str)` utilizing POSIX `statvfs` (`f_blocks * f_frsize` total, `f_bavail * f_frsize` free).
+    - **Synthetic Platform (`lib.rs`)**: Populated deterministic total space (1 TB) and free space (620 GB) for fixture and audit determinism.
+  - **Backend Service (`services/maintenance-service/src/performance.rs`)**: Mapped `total_space_bytes` and `free_space_bytes` from native storage samples into proto `StorageQueueSample`.
+  - **UI Telemetry Tile Wiring (`apps/ui/`)**:
+    - Translated catalog keys: Added `overview.diskSpace`: `'{free} free of {total}'` (EN) and `'{free} حُرّ من أصل {total}'` (AR) with exact 1:1 catalog parity.
+    - Instrument tile note: In `instrument.ts`, formatted disk note to display `{friendlyName} · {free} free of {total}` when capacity data is present, gracefully falling back when zero.
+    - Fixtures: Added total (2 TB) and free (1.2 TB) space to `layout-fixture.ts`.
+- **Measured Result**: Unit tests in `native_providers.rs` verified non-zero total/free bytes on live platforms. Layout sweeps pass with 0 clipped nodes or overflow in EN and AR.
+
+---
+
+## 53.2 THE LEDGER DELTA
+
+| ID | Title | Status | Closure Details |
+|---|---|---|---|
+| **`DBT-P50-005`** | Wire contract extension for performance window & real UI sparklines | **CLOSED** | Added protobuf tag 91 `GetPerformanceWindowRequest` / `PerformanceWindowResponse`, service window accessor, desktop command `get_performance_window`, and real UI historical series with honest `—` empty state. |
+| **`DBT-P50-001`** | Disk free/used space provider | **CLOSED** | Added `total_space_bytes` & `free_space_bytes` to `StorageQueueSample`, implemented across Windows `GetDiskFreeSpaceExW`, macOS `statfs`, Linux `statvfs`, synthetic platform, and wired to UI Storage tile note in EN and AR. |
+
+---
+
+## 53.3 RAW VERIFICATION EVIDENCE VERBATIM
+
+### 1. `cargo check --workspace --locked`
+```text
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.36s
+```
+
+### 2. `cargo test -p aethercore-contracts -p aethercore-performance-telemetry -p aethercore-maintenance-service --locked`
+```text
+running 15 tests
+test performance::dbt_p42_008::a_future_dated_reading_is_stale ... ok
+test performance::dbt_p42_008::an_empty_ring_is_stale ... ok
+test performance::dbt_p42_008::a_reading_inside_the_requested_interval_is_reused ... ok
+test performance::dbt_p42_008::a_three_hour_old_reading_is_not_a_current_measurement ... ok
+test errors::tests::kernel_contention_and_ownership_failures_have_typed_semantics ... ok
+test errors::tests::deadline_and_cancellation_are_not_collapsed_into_invalid_request ... ok
+test errors::tests::domain_busy_and_state_conflict_remain_distinct ... ok
+test errors::tests::foreign_domain_snapshot_state_is_non_enumerable ... ok
+test intelligence::tests::dismissing_an_unknown_handle_is_reported_rather_than_swallowed ... ok
+test intelligence::tests::a_dismissal_by_list_index_removes_nothing ... ok
+test intelligence::tests::every_listed_insight_carries_the_handle_that_dismisses_it ... ok
+test intelligence::tests::handles_are_not_reused_when_the_set_is_replaced ... ok
+test care::dbt_p46_b33_tests::a_read_failure_can_no_longer_become_a_completed_run ... ok
+test performance::dbt_p50_005::window_returns_ordered_samples_bounded_by_max ... ok
+test care::dbt_p46_b33_tests::nothing_due_is_an_empty_plan_not_a_failure ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+running 9 tests
+test interval_clamping_enforces_observer_effect_floor ... ok
+test foreign_owner_reads_nothing ... ok
+test synthetic_platform_is_deterministic_per_tick ... ok
+test start_stop_lifecycle_rejects_double_start_and_allows_restart ... ok
+test aggregate_over_empty_ring_reports_insufficient_evidence ... ok
+test aggregate_is_deterministic_for_identical_windows ... ok
+test ring_is_bounded_and_drops_oldest ... ok
+test hostile_counter_values_are_clamped_into_contract_ranges ... ok
+test background_sampler_publishes_into_the_ring ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+running 4 tests
+test macos::hostile_tick_counters_clamp_without_panicking ... ok
+test macos::tick_delta_math_matches_injected_counters ... ok
+test macos::real_macos_sample_is_normalized_and_honestly_degraded ... ok
+test synthetic_platform_stays_deterministic_for_identical_windows ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
+```
+
+### 3. `node apps/ui/tools/verify-tokens.mjs`
+```text
+=== 12 pages x 2 languages, read from the live CSSOM ===
+  style rules walked                 975
+  declarations referencing var()     446
+  unresolved on a matched element    0 (property, selector) pair(s), 0 distinct custom propert(ies)
+
+PASS — every var() reference in 446 declarations resolves on every element the rule matches.
+```
+
+### 4. `node apps/ui/tools/verify-numbers.mjs`
+```text
+=== raw counts, from the rendered DOM of 12 pages x 2 languages ===
+  "denied" word occurrences        24
+  denied ELEMENTS rendered         98
+  "evidence" word occurrences      71
+  evidence CHIPS rendered          22
+
+=== every score-shaped number rendered, with its source element ===
+  en overview     51%        span.orb-value.svelte-79l50r       "51%"
+  en overview     41%        span.channel-value.svelte-79l50r   "41%"
+  en overview     34%        span.channel-value.svelte-79l50r   "34%"
+  en overview     0.94       strong.svelte-79l50r               "0.94"
+  en performance  41%        strong.technical-isolate           "41%"
+  en performance  3%         span.technical-isolate             "3%"
+  en performance  72%        strong.technical-isolate           "72%"
+  en performance  34%        strong.technical-isolate           "34%"
+  en performance  62%        strong.technical-isolate           "62%"
+  en hardware     72%        strong                             "72%"
+  en hardware     4%         strong                             "4%"
+  en hardware     100%       strong                             "100%"
+  en hardware     4%         span                               "PercentageUsed 4%"
+  en hardware     100%       span                               "AvailableSpare 100%"
+  en hardware     30%        p                                  "Available memory stayed under 30% for most of the observation window."
+  en hardware     15%        p                                  "Three of the last five sessions held available memory under 15%."
+  en hardware     72%        span                               "MemoryLoad 72%"
+  ar performance  41%        strong.technical-isolate           "41%"
+  ar performance  3%         span.technical-isolate             "3%"
+  ar performance  72%        strong.technical-isolate           "72%"
+  ar performance  34%        strong.technical-isolate           "34%"
+  ar performance  62%        strong.technical-isolate           "62%"
+  ar hardware     4%         span.technical-isolate             "PercentageUsed 4%"
+  ar hardware     100%       span.technical-isolate             "AvailableSpare 100%"
+  ar hardware     30%        span.technical-isolate             "Available memory stayed under 30% for most of the observation window."
+  ar hardware     15%        span.technical-isolate             "Three of the last five sessions held available memory under 15%."
+  ar hardware     72%        span.technical-isolate             "MemoryLoad 72%"
+
+27 distinct score-shaped number(s) rendered.
+Each must trace to a measurement. Percentages of a counted total and
+service-reported ratios are traceable; a bare confidence score is not.
+```
+
+### 5. `node apps/ui/tools/verify-arabic.mjs --page overview`
+```text
+PASS  root is RTL
+        EXPECTED  dir=rtl lang=ar direction=rtl
+        OBSERVED  dir=rtl lang=ar locale=ar direction=rtl
+PASS  layout is genuinely RTL, not mirrored LTR
+        EXPECTED  rail on the right half, main flush to the left edge, prose direction rtl
+        OBSERVED  rail 1022-1280 of 1280, main.left=0, railIsOnRight=true mainStartsAtLeftEdge=true prose direction=rtl text-align=start
+PASS  technical tokens stay LTR inside RTL prose
+        EXPECTED  every .technical-isolate resolves direction:ltr
+        OBSERVED  55 nodes, 13 inside an RTL parent, allLtr=true, e.g. ["NET-NO-EGRESS","RES-LOCAL-ONLY","DRV-SIGNED-ONLY"]
+PASS  embedded face is declared, loaded and first in the Arabic prose stack
+        EXPECTED  4 faces declared, at least one loaded, none in error, Arabic prose asks for "IBM Plex Sans Arabic" first
+        OBSERVED  declared=["400:loaded","500:loaded","600:loaded","700:loaded"] anyLoaded=true anyError=false proseStackHead="IBM Plex Sans Arabic"
+PASS  no Arabic glyph is drawn by a system fallback font
+        EXPECTED  0 glyphs from a non-bundled font across every Arabic-bearing node
+        OBSERVED  77 Arabic nodes, 1218 glyphs; bundled = [["JetBrains Mono",192],["IBM Plex Sans Arabic",705],["IBM Plex Sans Arabic SmBld",129],["IBM Plex Sans Arabic Medm",175],["Inter",17]]; system fallback = 0 glyph(s) []
+PASS  the subset face still shapes Arabic
+        EXPECTED  a joined word renders narrower than the same letters with joining blocked
+        OBSERVED  "التشخيص" joined=154px vs joining-blocked=217px
+PASS  headings are authored in Arabic
+        EXPECTED  no all-Latin heading left untranslated (product names excepted)
+        OBSERVED  4 headings, 0 all-Latin: []
+
+7/7 checks pass
+```
+
+### 6. `node apps/ui/tools/verify-arabic.mjs --page settings`
+```text
+PASS  root is RTL
+        EXPECTED  dir=rtl lang=ar direction=rtl
+        OBSERVED  dir=rtl lang=ar locale=ar direction=rtl
+PASS  layout is genuinely RTL, not mirrored LTR
+        EXPECTED  rail on the right half, main flush to the left edge, prose direction rtl
+        OBSERVED  rail 1022-1280 of 1280, main.left=0, railIsOnRight=true mainStartsAtLeftEdge=true prose direction=rtl text-align=start
+PASS  technical tokens stay LTR inside RTL prose
+        EXPECTED  every .technical-isolate resolves direction:ltr
+        OBSERVED  20 nodes, 20 inside an RTL parent, allLtr=true, e.g. ["NET-NO-EGRESS","RES-LOCAL-ONLY","DRV-SIGNED-ONLY"]
+PASS  embedded face is declared, loaded and first in the Arabic prose stack
+        EXPECTED  4 faces declared, at least one loaded, none in error, Arabic prose asks for "IBM Plex Sans Arabic" first
+        OBSERVED  declared=["400:loaded","500:loaded","600:loaded","700:loaded"] anyLoaded=true anyError=false proseStackHead="IBM Plex Sans Arabic"
+PASS  no Arabic glyph is drawn by a system fallback font
+        EXPECTED  0 glyphs from a non-bundled font across every Arabic-bearing node
+        OBSERVED  44 Arabic nodes, 759 glyphs; bundled = [["JetBrains Mono",4],["IBM Plex Sans Arabic",660],["Inter",31],["IBM Plex Sans Arabic SmBld",64]]; system fallback = 0 glyph(s) []
+PASS  the subset face still shapes Arabic
+        EXPECTED  a joined word renders narrower than the same letters with joining blocked
+        OBSERVED  "التشخيص" joined=154px vs joining-blocked=217px
+PASS  headings are authored in Arabic
+        EXPECTED  no all-Latin heading left untranslated (product names excepted)
+        OBSERVED  8 headings, 0 all-Latin: []
+
+7/7 checks pass
+```
+
+### 7. `node apps/ui/tools/layout-sweep.mjs` (Populated Fixture)
+```text
+PASS  overview-1280-en-dark        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=7 empty=0 emdash=0 height=1715 nav=523/523
+PASS  overview-1024-en-dark        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=7 empty=0 emdash=0 height=2517 nav=448/448
+PASS  overview-960-en-dark         overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=7 empty=0 emdash=0 height=2515 nav=448/448
+PASS  overview-1280-en-light       overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=7 empty=0 emdash=0 height=1715 nav=523/523
+PASS  overview-1024-en-light       overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=7 empty=0 emdash=0 height=2517 nav=448/448
+PASS  overview-960-en-light        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=7 empty=0 emdash=0 height=2515 nav=448/448
+PASS  overview-1280-ar-dark        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=7 empty=0 emdash=0 height=1681 nav=539/539
+PASS  overview-1024-ar-dark        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=7 empty=0 emdash=0 height=2595 nav=448/448
+PASS  overview-960-ar-dark         overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=7 empty=0 emdash=0 height=2593 nav=448/448
+PASS  overview-1280-ar-light       overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=7 empty=0 emdash=0 height=1681 nav=539/539
+PASS  overview-1024-ar-light       overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=7 empty=0 emdash=0 height=2595 nav=448/448
+PASS  overview-960-ar-light        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=7 empty=0 emdash=0 height=2593 nav=448/448
+
+12/12 pass
+```
+
+### 8. `node apps/ui/tools/layout-sweep.mjs --entry index.html` (Empty State Fixture)
+```text
+PASS  overview-1280-en-dark        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=3 emdash=13 height=1745 nav=548/548
+PASS  overview-1024-en-dark        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=3 emdash=13 height=1857 nav=448/448
+PASS  overview-960-en-dark         overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=3 emdash=13 height=1855 nav=448/448
+PASS  overview-1280-en-light       overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=3 emdash=13 height=1745 nav=548/548
+PASS  overview-1024-en-light       overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=3 emdash=13 height=1857 nav=448/448
+PASS  overview-960-en-light        overflowX=0 clipped=0 overlaps=0 dir=ltr band=true denied=3 evidence=0 empty=3 emdash=13 height=1855 nav=448/448
+PASS  overview-1280-ar-dark        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=3 emdash=13 height=1638 nav=563/563
+PASS  overview-1024-ar-dark        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=3 emdash=13 height=1858 nav=448/448
+PASS  overview-960-ar-dark         overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=3 emdash=13 height=1856 nav=448/448
+PASS  overview-1280-ar-light       overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=3 emdash=13 height=1638 nav=563/563
+PASS  overview-1024-ar-light       overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=3 emdash=13 height=1858 nav=448/448
+PASS  overview-960-ar-light        overflowX=0 clipped=0 overlaps=0 dir=rtl band=true denied=3 evidence=0 empty=3 emdash=13 height=1856 nav=448/448
+
+12/12 pass
+```
+
+### 9. `node apps/ui/tools/contrast-sweep.mjs` (Dark & Light)
+```text
+measured 3204 text node(s); 0 below threshold, 0 distinct; 2 exempt as inactive controls (WCAG 1.4.3 Incidental)
+  theme=dark      0 below, 0 distinct
+  theme=light     0 below, 0 distinct
+
+PASS — every rendered text node meets WCAG AA in every theme measured.
+```
+
+### 10. `npm run check`
+```text
+svelte-check found 0 errors and 16 warnings in 3 files
+```
+
+### 11. `npm run build`
+```text
+✓ 210 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                        0.59 kB │ gzip:   0.35 kB
+dist/assets/ibm-plex-sans-arabic-400-VpMMEIxQ.woff2   22.94 kB
+dist/assets/ibm-plex-sans-arabic-700-DMvJFlUX.woff2   23.01 kB
+dist/assets/ibm-plex-sans-arabic-500-DOggK_fN.woff2   24.65 kB
+dist/assets/ibm-plex-sans-arabic-600-CgB4pFoX.woff2   24.67 kB
+dist/assets/jetbrains-mono-latin-Db4Uuiha.woff2       31.34 kB
+dist/assets/inter-latin-8kRkwJBP.woff2                48.43 kB
+dist/assets/index-DlUwLMBW.css                       111.45 kB │ gzip:  19.32 kB
+dist/assets/index-uN8jI5iA.js                        660.12 kB │ gzip: 171.42 kB
+✓ built in 700ms
+```
+
