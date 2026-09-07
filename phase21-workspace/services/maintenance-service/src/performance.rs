@@ -359,6 +359,23 @@ impl PerformanceEngine {
         self.ring.latest(owner)
     }
 
+    /// Phase 53 (DBT-P50-005): ordered performance history window for UI sparklines.
+    pub fn window(&self, owner: &str, max_samples: u32) -> v1::PerformanceWindowResponse {
+        let max = if max_samples == 0 {
+            aethercore_performance_telemetry::MAX_RING_SAMPLES
+        } else {
+            (max_samples as usize).clamp(1, aethercore_performance_telemetry::MAX_RING_SAMPLES)
+        };
+        let mut samples = self.ring.window(owner);
+        if samples.len() > max {
+            let start = samples.len() - max;
+            samples = samples.split_off(start);
+        }
+        v1::PerformanceWindowResponse {
+            samples: samples.iter().map(perf_snapshot_proto).collect(),
+        }
+    }
+
     /// Ensures at least one sample exists so snapshot requests are meaningful even before the
     /// background sampler's first tick.
     /// Ensures the owner's ring holds a reading that is actually current.
@@ -503,3 +520,36 @@ mod dbt_p42_008 {
         assert!(sample_is_stale(Some(now + 60_000), now, 1_000));
     }
 }
+
+#[cfg(test)]
+mod dbt_p50_005 {
+    use super::*;
+    use aethercore_operation_kernel::MutationSupervisor;
+    use aethercore_performance_telemetry::SyntheticPerfPlatform;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[test]
+    fn window_returns_ordered_samples_bounded_by_max() {
+        let platform = Arc::new(SyntheticPerfPlatform::new());
+        let supervisor = MutationSupervisor::new();
+        let engine = PerformanceEngine::new(platform, supervisor);
+        let owner = "test-principal-p53";
+
+        for _ in 0..10 {
+            let snap = engine.platform.sample(Duration::from_millis(1000));
+            engine.ring.push(owner, snap).expect("push sample");
+        }
+
+        let resp_all = engine.window(owner, 0);
+        assert_eq!(resp_all.samples.len(), 10);
+
+        let resp_clamped = engine.window(owner, 4);
+        assert_eq!(resp_clamped.samples.len(), 4);
+
+        // Different owner principal isolates samples
+        let resp_other = engine.window("foreign-principal", 10);
+        assert_eq!(resp_other.samples.len(), 0);
+    }
+}
+

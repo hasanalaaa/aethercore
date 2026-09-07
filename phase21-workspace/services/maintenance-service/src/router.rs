@@ -1091,6 +1091,13 @@ pub fn handle_request(
                     },
                 )))
             }
+            // Phase 53 (DBT-P50-005): performance window series accessor
+            request::Payload::GetPerformanceWindow(v) => {
+                let interval = 1000u32;
+                ctx.performance.ensure_sample(&principal_key, interval);
+                let response = ctx.performance.window(&principal_key, v.max_samples);
+                Ok(Some(response::Payload::PerformanceWindow(response)))
+            }
             request::Payload::GetBottleneckReport(_) => {
                 let (report, _aggregate) =
                     ctx.performance.analyze(&principal_key).ok_or_else(|| {
