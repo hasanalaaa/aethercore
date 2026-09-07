@@ -70,14 +70,6 @@
     try { await readTelemetryNow(); } finally { reading = false; }
   }
 
-  const modules = [
-    { page:'repair', label:'nav.repair', copy:'overview.moduleRepairCopy' },
-    { page:'cleanup', label:'nav.cleanup', copy:'overview.moduleCleanupCopy' },
-    { page:'startup', label:'nav.startup', copy:'overview.moduleStartupCopy' },
-    { page:'hardware', label:'nav.hardware', copy:'overview.moduleHardwareCopy' },
-    { page:'crash', label:'nav.crash', copy:'overview.moduleCrashCopy' },
-  ] as const;
-
   /** Wall-clock, zero-padded, locale-independent — it sits inside LTR mono. */
   function logTime(unixMs: number): string {
     const at = new Date(unixMs);
@@ -247,13 +239,6 @@
 </section>
 
 <SystemCarePanel />
-
-<section class="module-row">
-  <article class="module-live"><span>{t('common.live',locale)}</span><h4>{t('overview.moduleDrivers',locale)}</h4><p>{t('overview.moduleDriversCopy',locale)}</p><div class="locked">{t('overview.protectedInstall',locale)}</div></article>
-  {#each modules as m}
-    <article><span>{t('common.live',locale)}</span><h4>{td(m.label,locale)}</h4><p>{td(m.copy,locale)}</p><div class="locked">{t('common.availableNow',locale)}</div></article>
-  {/each}
-</section>
 
 <AboutPanel />
 

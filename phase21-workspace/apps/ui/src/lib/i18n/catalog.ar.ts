@@ -163,7 +163,6 @@ export const arCatalog = {
   'announce.serviceUnavailable': 'خدمة الصيانة غير متصلة.',
 
   'common.live': 'مباشر',
-  'common.availableNow': 'متاح الآن',
   'common.foundationReady': 'الأساس جاهز',
   'common.pending': 'قيد الانتظار',
   'common.waiting': 'بانتظار التنفيذ',
@@ -296,14 +295,6 @@ export const arCatalog = {
   'overview.safeDriver': 'تثبيت آمن للتعريفات',
   'overview.driverReadyCopy': 'عروض تعريفات Windows المحمية جاهزة من أحدث فحص.',
   'overview.driverIdleCopy': 'شغّل فحصًا مباشرًا لـ PnP وتحديث Windows.',
-  'overview.moduleDrivers': 'التعريفات',
-  'overview.moduleDriversCopy': 'نقطة استعادة + نسخة احتياطية + WUA',
-  'overview.protectedInstall': 'تثبيت محمي',
-  'overview.moduleRepairCopy': 'مسار DISM + SFC',
-  'overview.moduleCleanupCopy': 'مزوّدون ضمن قائمة مسموحة',
-  'overview.moduleStartupCopy': 'سلبي افتراضيًا + قابل للعكس',
-  'overview.moduleHardwareCopy': 'SMART + WHEA',
-  'overview.moduleCrashCopy': 'فرز الأدلة',
 
   'drivers.eyebrow': 'مركز التعريفات الذكي',
   'drivers.title': 'التعريفات، مع Windows بوصفه المرجع.',

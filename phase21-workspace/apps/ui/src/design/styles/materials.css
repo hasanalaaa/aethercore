@@ -46,7 +46,7 @@ main .sub, main .footnote { max-inline-size:74ch; }
 .ac-material-focused { background:var(--ac-material-focused); backdrop-filter:blur(var(--ac-fluid-surface-blur,var(--ac-blur-focused))) saturate(var(--ac-saturation)); box-shadow:var(--ac-shadow-float); }
 
 .panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.pending-install-card,.install-progress-card,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,
-.storage-card,.startup-card,.cleanup-card,.repair-check,.module-live,.module-card,.warning-strip,.protection-card,.phase4-action-card,.recovery-panel {
+.storage-card,.startup-card,.cleanup-card,.repair-check,.module-card,.warning-strip,.protection-card,.phase4-action-card,.recovery-panel {
   border-color:var(--ac-edge);
   /* Flat glass, as the shell draws it. The vertical gradient here encoded
      nothing and fought the backdrop blur behind it. */

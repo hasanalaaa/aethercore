@@ -161,7 +161,6 @@ export const enCatalog = {
   'announce.serviceUnavailable': 'The maintenance service is not connected.',
 
   'common.live': 'Live',
-  'common.availableNow': 'Available now',
   'common.foundationReady': 'Foundation ready',
   'common.pending': 'Pending',
   'common.waiting': 'Waiting',
@@ -294,14 +293,6 @@ export const enCatalog = {
   'overview.safeDriver': 'Safe Driver Installation',
   'overview.driverReadyCopy': 'Protected Windows driver offers staged from the latest scan.',
   'overview.driverIdleCopy': 'Run a live PnP + Windows Update discovery scan.',
-  'overview.moduleDrivers': 'Drivers',
-  'overview.moduleDriversCopy': 'Restore + backup + WUA',
-  'overview.protectedInstall': 'Protected install',
-  'overview.moduleRepairCopy': 'DISM + SFC workflow',
-  'overview.moduleCleanupCopy': 'Allowlisted providers',
-  'overview.moduleStartupCopy': 'Passive + reversible',
-  'overview.moduleHardwareCopy': 'SMART + WHEA',
-  'overview.moduleCrashCopy': 'Evidence triage',
 
   'drivers.eyebrow': 'SMART DRIVER HUB',
   'drivers.title': 'Drivers, with Windows as the authority.',

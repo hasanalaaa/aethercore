@@ -13190,7 +13190,7 @@ Rows move in the same commit as the work they describe.
 |---|---|---|
 | 0 the measuring instrument | **DONE** | `layout-sweep.mjs` reports `height` — the number this session is judged on was not observable by any gate before |
 | 1 make the Overview fill itself | **DONE** | §51.1 — the facts, the measured cost, the decision, and the two behaviours it corrected |
-| 2 cut the six-tile grid | | |
+| 2 cut the six-tile grid | **DONE** | §51.2 — all six tiles measured at **0 interactive descendants**; all six pages reached from the rail. −338 px en / −354 px ar |
 | 3 re-home the rest | | |
 | gates | | |
 | screenshots | | |
@@ -13344,3 +13344,43 @@ a reading now"), which performs the same read the loop does, and
 channels, or shows an empty state that names the action that fills it.
 OBSERVED: both.** With a service: `51% HEADROOM`, four rails reading. Without
 one: `— NO BASELINE`, and one control reading `Take a reading now`.
+
+## 51.2 ITEM 2 — THE SIX-TILE GRID, CUT
+
+`Drivers · System Repair · Deep Clean · Startup Manager · Hardware Health ·
+Crash History`, six cards under the driver panel.
+
+**Verified by measurement, not by reading.** Counted in the fixture at 1280,
+`querySelectorAll('button, a, [role=button], input, [onclick], [tabindex]')`
+inside each tile, and the computed cursor on the card itself:
+
+| tile | interactive descendants | cursor |
+|---|---|---|
+| Drivers | **0** | `auto` |
+| System Repair | **0** | `auto` |
+| Deep Clean | **0** | `auto` |
+| Startup Manager | **0** | `auto` |
+| Hardware Health | **0** | `auto` |
+| Crash History | **0** | `auto` |
+
+The grid is not a duplicate of the navigation. It is **less** than the
+navigation: not one of the six cards is clickable, so the row cannot even do the
+one thing its shape promises. The brief's condition — "if any tile turns out to
+carry a real action the sidebar lacks, stop and keep that one" — is not met by
+any of the six.
+
+And each destination was reached the way a user reaches it, by pressing its rail
+button and reading the heading that came up:
+
+    drivers   → "Drivers, with Windows as the authority."
+    repair    → "Repair Windows integrity, without guesswork."
+    cleanup   → "Reclaim space from an explicit allowlist."
+    startup   → "Faster starts, without silent decisions."
+    hardware  → "Measurements, not a made-up health score."
+    crash     → "Crash evidence without guessing a culprit."
+
+Deleted: the markup, the `.module-row` / `.locked` / `.module-live` rules that
+had no other user, `.module-live` from the shared materials selector list, and
+the nine message keys that only it used, from both catalogs.
+
+**1280, populated: 4,110 → 3,772 px (en) · 4,082 → 3,728 px (ar).**

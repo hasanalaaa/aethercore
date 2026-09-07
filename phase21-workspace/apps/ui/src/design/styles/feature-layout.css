@@ -1024,48 +1024,6 @@ header .sub {
   align-self:flex-start
 }
 
-.module-row {
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));
-  gap:12px;
-  margin-top:18px
-}
-
-.module-row article {
-  border: 1px solid var(--ac-edge);
-  border-radius:14px;
-  background: var(--ac-material-base);
-  padding:17px;
-  min-height:130px
-}
-
-.module-row article>span {
-  font-size:0.8125rem;
-  color: var(--ac-text-4)}
-
-.module-row h4 {
-  margin:12px 0 5px;
-  font-size:0.9375rem
-}
-
-.module-row p {
-  margin:0;
-  color: var(--ac-text-3);
-  font-size:0.8125rem
-}
-
-.locked {
-  margin-top:18px;
-  padding-top:10px;
-  border-top: 1px solid var(--ac-edge);
-  color: var(--ac-text-3);
-  font-size:0.8125rem
-}
-
-.module-live {
-  border-color: var(--ac-edge-strong);
-  background: var(--ac-material-base)}
-
 @keyframes scan {
   0% {
     transform:translateX(-120%)
