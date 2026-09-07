@@ -768,6 +768,7 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
                     missing.join(", ")
                 ));
             }
+            let (total_space_bytes, free_space_bytes) = query_disk_space(&device.instance);
             Some(StorageQueueSample {
                 device_id: format!("physicaldisk:{}", device.instance),
                 active_time_bp,
@@ -776,6 +777,8 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
                 read_bytes_per_sec,
                 write_bytes_per_sec,
                 friendly_name: device.instance,
+                total_space_bytes,
+                free_space_bytes,
             })
         })
         .collect();
@@ -797,6 +800,49 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
              % Disk Time counter"
         ),
     })
+}
+
+fn query_disk_space(instance: &str) -> (u64, u64) {
+    // If instance contains a drive letter (e.g., "0 C:" or "C:"), construct "X:\"
+    let drive_path = instance.split_whitespace().find_map(|part| {
+        let part = part.trim();
+        if part.len() == 2 && part.ends_with(':') && part.chars().next().map_or(false, |c| c.is_ascii_alphabetic()) {
+            Some(format!("{}\\", part))
+        } else {
+            None
+        }
+    });
+
+    let mut free_bytes = 0u64;
+    let mut total_bytes = 0u64;
+    let mut total_free = 0u64;
+
+    let res = if let Some(path) = drive_path {
+        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+                windows::core::PCWSTR(wide.as_ptr()),
+                Some(&mut free_bytes),
+                Some(&mut total_bytes),
+                Some(&mut total_free),
+            )
+        }
+    } else {
+        unsafe {
+            windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+                windows::core::PCWSTR::null(),
+                Some(&mut free_bytes),
+                Some(&mut total_bytes),
+                Some(&mut total_free),
+            )
+        }
+    };
+
+    if res.is_ok() {
+        (total_bytes, free_bytes)
+    } else {
+        (0, 0)
+    }
 }
 
 fn sample_gpu() -> Reading<GpuSample> {

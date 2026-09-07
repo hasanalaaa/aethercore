@@ -103,6 +103,9 @@ message StorageQueueSample {
   uint64 avg_transfer_latency_us = 5;
   uint64 read_bytes_per_sec = 6;
   uint64 write_bytes_per_sec = 7;
+  // Volume capacity and free space in bytes (Phase 53 DBT-P50-001).
+  uint64 total_space_bytes = 8;
+  uint64 free_space_bytes = 9;
 }
 
 message GpuEngineSample {

@@ -416,6 +416,8 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
             avg_transfer_latency_us: 0,
             read_bytes_per_sec: 0,
             write_bytes_per_sec: 0,
+            total_space_bytes: total,
+            free_space_bytes: available,
         });
     }
     if !out.is_empty() {

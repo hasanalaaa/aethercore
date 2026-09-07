@@ -109,6 +109,8 @@ pub struct StorageQueueSample {
     pub avg_transfer_latency_us: u64,
     pub read_bytes_per_sec: u64,
     pub write_bytes_per_sec: u64,
+    pub total_space_bytes: u64,
+    pub free_space_bytes: u64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -518,6 +520,8 @@ impl PerfPlatform for SyntheticPerfPlatform {
                 avg_transfer_latency_us: 120 + tick % 40,
                 read_bytes_per_sec: 1_048_576,
                 write_bytes_per_sec: 262_144,
+                total_space_bytes: 2 * 1024 * 1024 * 1024 * 1024,
+                free_space_bytes: 1_200 * 1024 * 1024 * 1024,
             }],
             gpu: GpuSample {
                 adapter_id: "synthetic-gpu".into(),
@@ -587,6 +591,7 @@ static PUBLISHED_TOTAL: AtomicU64 = AtomicU64::new(0);
 pub struct PerformanceRing {
     state: Arc<Mutex<RingState>>,
     active: Arc<AtomicBool>,
+    #[allow(dead_code)]
     generation: Arc<AtomicU64>,
 }
 

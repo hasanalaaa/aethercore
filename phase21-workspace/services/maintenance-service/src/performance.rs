@@ -71,6 +71,8 @@ pub(crate) fn storage_proto(value: &[StorageQueueSample]) -> Vec<v1::StorageQueu
             avg_transfer_latency_us: device.avg_transfer_latency_us,
             read_bytes_per_sec: device.read_bytes_per_sec,
             write_bytes_per_sec: device.write_bytes_per_sec,
+            total_space_bytes: device.total_space_bytes,
+            free_space_bytes: device.free_space_bytes,
         })
         .collect()
 }

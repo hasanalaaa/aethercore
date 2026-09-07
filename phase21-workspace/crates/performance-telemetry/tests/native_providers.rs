@@ -97,6 +97,10 @@ mod macos {
             !snapshot.storage.is_empty(),
             "statfs must see at least one volume"
         );
+        for vol in &snapshot.storage {
+            assert!(vol.total_space_bytes > 0, "statfs total space must be nonzero");
+            assert!(vol.free_space_bytes <= vol.total_space_bytes, "statfs free space <= total space");
+        }
         // Honest degradation: GPU + thermal/power are declared Degraded, never simulated.
         let degraded: Vec<&str> = snapshot
             .collector_faults

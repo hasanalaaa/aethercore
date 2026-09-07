@@ -330,11 +330,18 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
             detail: "only virtual block devices visible under /proc/diskstats".into(),
         });
     }
+    let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
+    let (root_total, root_available) = if unsafe { libc::statvfs(c"/".as_ptr(), std::ptr::addr_of_mut!(vfs)) } == 0 {
+        let block = u64::from(vfs.f_frsize.max(1));
+        (u64::from(vfs.f_blocks).saturating_mul(block), u64::from(vfs.f_bavail).saturating_mul(block))
+    } else {
+        (0, 0)
+    };
     let devices: Vec<StorageQueueSample> = physical
         .into_iter()
         .take(super::MAX_STORAGE_DEVICES)
         .map(|(name, row)| {
-            // Capacity does not exist in diskstats; active_time_bp carries the honest
+            // Capacity queried via statvfs("/"); active_time_bp carries the honest
             // utilization proxy available here: io-tick share is unavailable without a
             // delta window inside one call, so publish the raw counters as zero and keep
             // the row identity + weighted queue depth (x100) which ARE instantaneous.
@@ -346,6 +353,8 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
                 avg_transfer_latency_us: 0,
                 read_bytes_per_sec: 0,
                 write_bytes_per_sec: 0,
+                total_space_bytes: root_total,
+                free_space_bytes: root_available,
             }
         })
         .collect();
