@@ -1656,6 +1656,8 @@ export const enCatalog = {
   'insight.engine.localModel': 'On-device model',
   'insight.engine.ruleFallback': 'Rule-based summary',
   'insight.explainThis': 'Explain this',
+  'insight.askLocal': 'Ask the local AI about this evidence…',
+  'insight.sendLocal': 'Ask locally',
   'insight.thinking': 'Thinking locally…',
   'insight.clearInsights': 'Clear insights',
   'insight.empty': 'No insights yet for the current evidence. Run a scan or a care step first, then ask again.',

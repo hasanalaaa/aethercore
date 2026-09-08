@@ -1656,6 +1656,8 @@ export const arCatalog = {
   'insight.engine.localModel': 'نموذج على الجهاز',
   'insight.engine.ruleFallback': 'ملخص قاعدي',
   'insight.explainThis': 'اشرح هذا',
+  'insight.askLocal': 'اسأل الذكاء المحلي عن هذه الأدلة…',
+  'insight.sendLocal': 'اسأل محلياً',
   'insight.thinking': 'يفكر محلياً…',
   'insight.clearInsights': 'مسح الاستشرافات',
   'insight.empty': 'لا استشرافات بعد للأدلة الحالية. شغّل فحصاً أو خطوة عناية أولاً ثم أعد المحاولة.',

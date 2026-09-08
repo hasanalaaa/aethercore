@@ -208,7 +208,10 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
         }
         ServiceJob::InsightsExplain { question_key } => {
             let payload = require_ok(client.call(request::Payload::RequestInsight(
-                aethercore_contracts::v1::RequestInsightRequest { question_key },
+                aethercore_contracts::v1::RequestInsightRequest {
+                    question_key,
+                    question: String::new(),
+                },
             ))?)?;
             insights_value(&payload).ok_or_else(|| CliError::ProtocolViolation {
                 detail: "expected InsightsResponse".to_string(),

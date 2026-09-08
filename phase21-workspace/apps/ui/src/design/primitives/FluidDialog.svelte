@@ -113,7 +113,7 @@
     style={`--ac-dialog-progress:${visualProgress};--ac-dialog-scrim-alpha:${scrimAlpha};--ac-dialog-blur:${backdropBlur}`}
     use:backdropDismiss
   >
-    <section
+    <div
       bind:this={dialog}
       class={`ac-fluid-dialog ac-material ac-material-focused ${className}`}
       role="dialog"
@@ -124,6 +124,6 @@
       style={`--ac-dialog-progress:${visualProgress};--ac-fluid-surface-blur:${surfaceBlur};opacity:${dialogOpacity};transform:translate3d(0,${dialogTranslate}px,0) scale(${dialogScale});transform-origin:${transformOrigin}`}
     >
       <slot />
-    </section>
+    </div>
   </div>
 {/if}

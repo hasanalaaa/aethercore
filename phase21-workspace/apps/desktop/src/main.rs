@@ -1213,7 +1213,9 @@ fn user_update_cache_dir() -> anyhow::Result<std::path::PathBuf> {
     let root = std::env::var_os("LOCALAPPDATA")
         .map(std::path::PathBuf::from)
         .ok_or_else(|| anyhow::anyhow!("update.error.internal"))?;
-    Ok(root.join(aethercore_product_identity::PRODUCT_NAME).join("UpdateCache"))
+    Ok(root
+        .join(aethercore_product_identity::PRODUCT_NAME)
+        .join("UpdateCache"))
 }
 
 struct LocalTempFile {
@@ -1797,7 +1799,9 @@ async fn get_performance_snapshot() -> Result<v1::PerfSnapshot, String> {
 }
 
 #[command]
-async fn get_performance_window(max_samples: Option<u32>) -> Result<v1::PerformanceWindowResponse, String> {
+async fn get_performance_window(
+    max_samples: Option<u32>,
+) -> Result<v1::PerformanceWindowResponse, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let resp = request(request::Payload::GetPerformanceWindow(
             v1::GetPerformanceWindowRequest {
@@ -1964,10 +1968,17 @@ async fn list_insights() -> Result<v1::InsightsResponse, String> {
 }
 
 #[command]
-async fn request_insight(question_key: String) -> Result<v1::InsightsResponse, String> {
+async fn request_insight(
+    question_key: String,
+    question: Option<String>,
+) -> Result<v1::InsightsResponse, String> {
+    let question = question.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         let resp = request(request::Payload::RequestInsight(
-            v1::RequestInsightRequest { question_key },
+            v1::RequestInsightRequest {
+                question_key,
+                question,
+            },
         ))
         .map_err(|e| e.to_string())?;
         extract_insights(resp)
@@ -3024,9 +3035,19 @@ mod dbt_p46_b31_tests {
         assert!(lock.is_poisoned());
 
         let old_behavior = lock.lock().map(|g| g.clone()).unwrap_or_default();
-        assert!(old_behavior.is_empty(), "documents the bug this fix removes");
+        assert!(
+            old_behavior.is_empty(),
+            "documents the bug this fix removes"
+        );
 
-        let recovered = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
-        assert_eq!(recovered, vec![7, 8, 9], "a poisoned lock must recover the last-written value");
+        let recovered = lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        assert_eq!(
+            recovered,
+            vec![7, 8, 9],
+            "a poisoned lock must recover the last-written value"
+        );
     }
 }

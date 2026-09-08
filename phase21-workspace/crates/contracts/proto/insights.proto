@@ -33,6 +33,8 @@ message ListInsightsRequest {}
 message RequestInsightRequest {
   // Advisory question key; evidence pack is composed service-side from public read APIs.
   string question_key = 1;
+  // Optional free-form local question. It remains advisory-only and is answered from the bounded evidence pack.
+  string question = 2;
 }
 
 message DismissInsightRequest {

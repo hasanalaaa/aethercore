@@ -152,6 +152,7 @@ impl IntelligenceCoordinator {
         &self,
         owner_principal_key: &str,
         mutation_or_care_active: bool,
+        question: &str,
     ) -> Result<v1::InsightsResponse, String> {
         let mut pack = TypedEvidencePack::default();
 
@@ -206,7 +207,7 @@ impl IntelligenceCoordinator {
 
         let insights = self
             .selector
-            .request_insights(&pack, "explain", mutation_or_care_active)
+            .request_insights(&pack, question, mutation_or_care_active)
             .map_err(|error| error.to_string())?;
 
         // Convert typed domain insights to wire structs (same vocabulary, I1).

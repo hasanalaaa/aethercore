@@ -1294,15 +1294,20 @@ pub fn handle_request(
                 );
                 Ok(Some(response::Payload::InsightsResponse(response)))
             }
-            request::Payload::RequestInsight(_) => {
+            request::Payload::RequestInsight(v) => {
                 request_context.checkpoint().map_err(err)?;
                 // Observer-effect guard: no inference while any mutation or care run holds
                 // the machine-wide lease. Kernel state is the single source of truth.
                 let mutation_active = ctx.kernel.mutations().is_active();
-                match ctx
-                    .intelligence_core
-                    .request(&principal_key, mutation_active)
-                {
+                match ctx.intelligence_core.request(
+                    &principal_key,
+                    mutation_active,
+                    if v.question.is_empty() {
+                        &v.question_key
+                    } else {
+                        &v.question
+                    },
+                ) {
                     Ok(response) => {
                         publish(
                             ctx,
@@ -1344,9 +1349,10 @@ pub fn handle_request(
             }
             // ---------------- Phase 26/27: honest platform + engine surface ----------
             request::Payload::GetPlatformCapabilities(_) => {
-                let capabilities = aethercore_platform_capabilities::matrix_for_current_platform_observed(
-                    crate::performance::observe_telemetry(),
-                )
+                let capabilities =
+                    aethercore_platform_capabilities::matrix_for_current_platform_observed(
+                        crate::performance::observe_telemetry(),
+                    )
                     .into_iter()
                     .map(|(name, availability)| {
                         let state = match &availability {
@@ -1378,7 +1384,8 @@ pub fn handle_request(
                     .collect();
                 Ok(Some(response::Payload::PlatformCapabilitiesResponse(
                     v1::PlatformCapabilitiesResponse {
-                        platform: aethercore_platform_capabilities::current_platform_name().to_string(),
+                        platform: aethercore_platform_capabilities::current_platform_name()
+                            .to_string(),
                         capabilities,
                     },
                 )))
@@ -1570,8 +1577,7 @@ pub fn handle_request(
                     }
                 };
                 let scope = aethercore_security_audit::OwnerScope::new(peer.owner_roots());
-                if let Err(denial) =
-                    aethercore_security_audit::authorize_targets(&targets, &scope)
+                if let Err(denial) = aethercore_security_audit::authorize_targets(&targets, &scope)
                 {
                     return Err(ServiceError::forbidden(
                         "security",
@@ -1746,11 +1752,13 @@ fn err<E: Into<ServiceError>>(error: E) -> ServiceError {
 /// what is due, which is a 500 the caller can distinguish from a refusal.
 fn care_err(error: aethercore_care_orchestrator::CareError) -> ServiceError {
     match error {
-        aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(_) => ServiceError::internal(
-            "care",
-            "care.error.planSourcesUnavailable",
-            error.to_string(),
-        ),
+        aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(_) => {
+            ServiceError::internal(
+                "care",
+                "care.error.planSourcesUnavailable",
+                error.to_string(),
+            )
+        }
         other => ServiceError::new(
             6,
             v1::ErrorCode::Conflict,

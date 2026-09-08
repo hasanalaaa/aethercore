@@ -76,6 +76,14 @@
   $: gate = citedOnly<Insight>(response?.insights ?? [], evidenceFor);
   $: insights = gate.cited;
   $: uncitable = gate.dropped;
+  let question = '';
+
+  async function askLocal(): Promise<void> {
+    const text = question.trim();
+    if (!text) return;
+    question = '';
+    await requestInsights('chat', text);
+  }
 
   /**
    * Clears the session's insights from this view. It is not a panel dismissal:
@@ -100,6 +108,11 @@
       </p>
     </div>
     <div class="insight-actions">
+      <form class="local-chat" onsubmit={(event) => { event.preventDefault(); askLocal(); }}>
+        <label class="sr-only" for="local-question">{t('insight.askLocal', locale)}</label>
+        <input id="local-question" bind:value={question} maxlength="500" autocomplete="off" placeholder={t('insight.askLocal', locale)} />
+        <Pressable className="primary" type="submit" disabled={loading || !question.trim()}>{t('insight.sendLocal', locale)}</Pressable>
+      </form>
       <Pressable className="ghost" onclick={refreshInsights}>{t('common.refresh', locale)}</Pressable>
       <Pressable className="primary" onclick={() => requestInsights('explain')} disabled={loading}>
         {loading ? t('insight.thinking', locale) : t('insight.explainThis', locale)}
@@ -153,6 +166,8 @@
   .insight-badge-dot.model { background: var(--role-healthy); }
 
   .insight-actions { display: flex; gap: var(--ac-space-2); align-items: center; flex-wrap: wrap; }
+  .local-chat { display: flex; gap: var(--ac-space-2); flex: 1 1 100%; }
+  .local-chat input { min-width: 0; flex: 1; border: 1px solid var(--ac-border); border-radius: var(--ac-radius-sm); background: var(--ac-surface-2); color: var(--ac-text-1); padding: var(--ac-space-2) var(--ac-space-3); }
 
   .insight-list {
     list-style: none;

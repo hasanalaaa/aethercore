@@ -14,10 +14,10 @@ export const insightsUi = writable({
  * Cancellation on dismiss is inherent: the response only lands if the panel is
  * still open, because the stream slice is overwritten on next open.
  */
-export async function requestInsights(questionKey = 'explain'): Promise<void> {
+export async function requestInsights(questionKey = 'explain', question = ''): Promise<void> {
   insightsUi.update((s) => ({ ...s, loading: true }));
   try {
-    const response = await serviceInvoke<InsightsResponse>('request_insight', { questionKey });
+    const response = await serviceInvoke<InsightsResponse>('request_insight', { questionKey, question });
     patchStreamState({ insights: response });
   } catch {
     // I3: the AI layer never surfaces an error to the UI; empty state renders.

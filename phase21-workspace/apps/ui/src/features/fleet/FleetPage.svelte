@@ -13,7 +13,7 @@
   import { shellState } from '../../app/shell-state';
   import { TechnicalText, Pressable } from '../../design/primitives';
   import { fluidPress } from '../../design/motion';
-  import { t, td } from '../../lib/i18n';
+  import { hasMessageKey, t, td } from '../../lib/i18n';
   import { EmptyState } from '../../design/signature';
 
   type FleetHostRow = {
@@ -241,7 +241,7 @@
 
   function resultLabel(outcome: string): string {
     const key = `fleet.result${outcome.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('')}`;
-    return td(key as any, locale);
+    return hasMessageKey(key) ? td(key, locale) : outcome;
   }
 
   function resultTone(outcome: string): StatusTone {
@@ -537,7 +537,7 @@
   .remote-result pre { margin: 0; max-height: 9rem; overflow: auto; white-space: pre-wrap; font-size: 0.7rem; }
   .fleet-schedules { display: grid; gap: 0.55rem; }
   .schedule-form { border-block-start: 1px dashed var(--ac-border-default); padding-top: 0.6rem; }
-  .schedule-enabled { display: flex !important; align-items: center; gap: 0.45rem !important; }
+  .schedule-enabled { display: flex; align-items: center; gap: 0.45rem; }
   .schedule-list { display: grid; gap: 0.45rem; }
   .schedule-row { display: grid; grid-template-columns: 1fr auto; gap: 0.35rem 0.75rem; padding: 0.55rem 0.7rem; border: 1px solid var(--ac-border-default); border-radius: 10px; }
   .schedule-row > div:first-child { display: grid; gap: 0.15rem; }

@@ -64,6 +64,14 @@ aetherctl keys generate --out ./export-signing.key
 cargo test --workspace --jobs 2          # full suite
 python3 scripts/phase30-adversarial-audit.py .   # adversarial audit (652 checks)
 python3 PHASE_30_BINARY_SAFE_PATCH/verify_phase30.py . --full-tree   # byte-level tree proof
+python3 scripts/phase16-ga-audit.py                 # Phase 16 release qualification source gate
+python3 scripts/zenith-adversarial-audit.py         # interaction/accessibility source gate
+
+**Phase 16 production qualification:** `scripts/verify-production.ps1` is the
+authoritative Windows release seal. The Windows installer is produced by `scripts/build-release.ps1` as
+`AetherCoreSetup-<version>-x64.exe`. A signed production setup requires the
+Windows qualification and signing steps in `docs/FINAL_PRODUCTION_QUALIFICATION.md`;
+macOS/Linux builds do not claim to produce a Windows installer.
 ```
 
 ## Platform capability matrix (honest)

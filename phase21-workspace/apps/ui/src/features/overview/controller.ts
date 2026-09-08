@@ -78,18 +78,24 @@ export async function readTelemetryNow(): Promise<boolean> {
  * is how the user asks again.
  */
 export function startOverviewTelemetry(): () => void {
-  let timer: ReturnType<typeof setInterval> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   // The first read is in flight when the user can already navigate away, so
   // disposal has to be recorded rather than inferred from `timer`.
   let disposed = false;
   const stop = (): void => {
     disposed = true;
-    if (timer !== undefined) clearInterval(timer);
+    if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
   };
   void readTelemetryNow().then((ok) => {
     if (disposed || !ok) return;
-    timer = setInterval(() => { void readTelemetryNow().then((again) => { if (!again) stop(); }); }, OVERVIEW_READ_INTERVAL_MS);
+    const schedule = (): void => {
+      if (disposed) return;
+      timer = setTimeout(() => {
+        void readTelemetryNow().then((again) => { if (again) schedule(); else stop(); });
+      }, OVERVIEW_READ_INTERVAL_MS);
+    };
+    schedule();
   });
   return stop;
 }

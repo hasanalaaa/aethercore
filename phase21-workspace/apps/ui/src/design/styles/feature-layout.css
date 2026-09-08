@@ -2899,7 +2899,7 @@ header .sub {
   border-radius: 12px;
   background: var(--ac-material-base);
   border: 1px solid var(--ac-border-default);
-  transition: transform 100ms ease-out;
+  transition: opacity 100ms ease-out;
 }
 .finding-card.root-cause {
   border-inline-start: 3px solid var(--ac-accent);
