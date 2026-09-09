@@ -34,6 +34,19 @@ jobs:
         shell: pwsh
         run: npm install --global pnpm@11.22.0
 
+      - name: Install Windows ADK Deployment Tools
+        shell: pwsh
+        run: |
+          $p = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\SDKs\DismApi\Lib\amd64\DismApi.lib'
+          if (-not (Test-Path $p)) {
+            $i = Join-Path $env:TEMP 'adksetup.exe'
+            Invoke-WebRequest 'https://download.microsoft.com/download/2/d/9/2d9c8902-3fcd-48a6-a22a-432b08bed61e/ADK/adksetup.exe' -OutFile $i
+            $s = Get-AuthenticodeSignature $i
+            if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { throw 'ADK signature verification failed.' }
+            $x = Start-Process $i -ArgumentList '/quiet','/norestart','/installpath','C:\ADK','/features','OptionId.DeploymentTools' -Wait -PassThru
+            if ($x.ExitCode -ne 0) { throw "ADK install failed: $($x.ExitCode)" }
+          }
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
@@ -63,7 +76,7 @@ jobs:
 
       - name: Build unsigned Windows Setup candidate
         shell: pwsh
-        run: ./scripts/build-release.ps1 -SkipOnlineSupplyChain
+        run: ./scripts/build-release.ps1 -UnsignedCandidate -SkipOnlineSupplyChain
 
       - name: Upload Setup candidate
         uses: actions/upload-artifact@v4

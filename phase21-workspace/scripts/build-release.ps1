@@ -2,6 +2,7 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [switch]$RequireSigning,
+    [switch]$UnsignedCandidate,
     [ValidateSet('CurrentUser','LocalMachine')][string]$CertificateStore = 'CurrentUser',
     [switch]$SkipOnlineSupplyChain,
     [string]$UpdateTrustPath
@@ -17,11 +18,19 @@ if (-not $Version) {
 } elseif ($Version -ne $__canonicalVersion) {
     throw "Requested version $Version disagrees with Cargo.toml $__canonicalVersion. The product version has ONE source: bump [workspace.package].version."
 }
-if (-not (Test-Path 'Cargo.lock') -or -not (Test-Path 'pnpm-lock.yaml') -or -not (Test-Path 'release\dependency-locks.sha256') -or -not (Test-Path 'release\dependency-manifests.sha256') -or -not (Test-Path 'release\dependency-freeze.json')) {
+if ($UnsignedCandidate -and $RequireSigning) { throw 'UnsignedCandidate cannot be used for a signed production release.' }
+if (-not (Test-Path 'Cargo.lock') -or -not (Test-Path 'pnpm-lock.yaml')) { throw 'Committed dependency lockfiles are required.' }
+if (-not $UnsignedCandidate) {
+if (-not (Test-Path 'release\dependency-locks.sha256') -or -not (Test-Path 'release\dependency-manifests.sha256') -or -not (Test-Path 'release\dependency-freeze.json')) {
     throw 'Release requires approved lockfiles plus release/dependency-locks.sha256, release/dependency-manifests.sha256, and release/dependency-freeze.json. Run freeze-dependencies.ps1 on the trusted freeze workstation first.'
 }
 & "$PSScriptRoot\freeze-dependencies.ps1" -VerifyOnly
 if ($LASTEXITCODE -ne 0) { throw 'Dependency lock baseline verification failed.' }
+}
+
+$dismLib = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\SDKs\DismApi\Lib\amd64'
+if (-not (Test-Path (Join-Path $dismLib 'DismApi.lib'))) { throw 'Install Windows ADK Deployment Tools (x64 DismApi SDK) before building.' }
+$env:LIB = "$dismLib;$env:LIB"
 
 if (-not $env:SOURCE_DATE_EPOCH) {
     try {
@@ -58,7 +67,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Native privileged component build failed.' }
 Push-Location (Join-Path $Root 'apps\desktop')
 try {
     $tauri = Join-Path $Root 'apps\ui\node_modules\.bin\tauri.cmd'
-    & $tauri build --no-bundle
+    & $tauri build --no-bundle --config (Join-Path $Root 'installer\tauri.no-before-build.json')
     if ($LASTEXITCODE -ne 0) { throw 'Desktop Tauri build failed.' }
 } finally { Pop-Location }
 
@@ -92,6 +101,12 @@ if ($LASTEXITCODE -ne 0) { throw 'Payload signing failed.' }
 $webview = Join-Path $Prereqs 'MicrosoftEdgeWebview2Setup.exe'
 & "$PSScriptRoot\fetch-webview2.ps1" -OutputPath ([IO.Path]::GetRelativePath($Root,$webview))
 if ($LASTEXITCODE -ne 0) { throw 'WebView2 prerequisite acquisition failed.' }
+$vcredist = Join-Path $Prereqs 'vc_redist.x64.exe'
+Invoke-WebRequest -Uri 'https://aka.ms/vc14/vc_redist.x64.exe' -OutFile $vcredist
+$vcSignature = Get-AuthenticodeSignature $vcredist
+if ($vcSignature.Status -ne 'Valid' -or -not $vcSignature.SignerCertificate -or $vcSignature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+    throw 'VC++ redistributable must have a valid Microsoft Authenticode signature.'
+}
 
 $msi = Join-Path $Artifacts "AetherCore-$Version-x64.msi"
 $bundle = Join-Path $Artifacts "AetherCoreSetup-$Version-x64.exe"
@@ -100,7 +115,7 @@ if ($LASTEXITCODE -ne 0) { throw 'MSI packaging failed.' }
 & "$PSScriptRoot\sign-artifacts.ps1" -Path $msi -CertificateStore $CertificateStore -RequireSigning:$RequireSigning
 if ($LASTEXITCODE -ne 0) { throw 'MSI signing failed.' }
 
-& "$PSScriptRoot\build-installer.ps1" -PayloadDir $Payload -Version $Version -MsiOut ([IO.Path]::GetRelativePath($Root,$msi)) -BundleOut ([IO.Path]::GetRelativePath($Root,$bundle)) -WebView2Bootstrapper ([IO.Path]::GetRelativePath($Root,$webview)) -BundleOnly
+& "$PSScriptRoot\build-installer.ps1" -PayloadDir $Payload -Version $Version -MsiOut ([IO.Path]::GetRelativePath($Root,$msi)) -BundleOut ([IO.Path]::GetRelativePath($Root,$bundle)) -WebView2Bootstrapper ([IO.Path]::GetRelativePath($Root,$webview)) -VcRedist $vcredist -BundleOnly
 if ($LASTEXITCODE -ne 0) { throw 'Burn bundle packaging failed.' }
 & "$PSScriptRoot\sign-burn-bundle.ps1" -BundlePath $bundle -CertificateStore $CertificateStore -RequireSigning:$RequireSigning
 if ($LASTEXITCODE -ne 0) { throw 'Burn engine/final bundle signing failed.' }
@@ -129,6 +144,8 @@ $metadata = [ordered]@{
     source_commit = $sourceCommit
     protocol_version = 7
     signing_required = [bool]$RequireSigning
+    dependency_baseline_approved = -not [bool]$UnsignedCandidate
+    online_supply_chain_audit_skipped = [bool]$SkipOnlineSupplyChain
     signer_subject = $signerSubject
     signer_thumbprint = $signerThumbprint
     wix = '6.0.2'
