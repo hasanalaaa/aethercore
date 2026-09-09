@@ -1,0 +1,76 @@
+name: Windows installer candidate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'installer-*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-unsigned-candidate:
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          rustup override set 1.97.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: pnpm
+          cache-dependency-path: phase21-workspace/pnpm-lock.yaml
+
+      - name: Install pinned pnpm
+        shell: pwsh
+        run: npm install --global pnpm@11.22.0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Fetch and verify embedded model
+        shell: pwsh
+        run: |
+          $manifest = Get-Content assets/models/models.manifest.json -Raw | ConvertFrom-Json
+          $entry = $manifest.artifacts[0]
+          $destination = Join-Path (Resolve-Path assets/models) $entry.fileName
+          if (-not (Test-Path $destination)) {
+            Invoke-WebRequest -Uri $entry.sourceUrl -OutFile $destination
+          }
+          $hash = (Get-FileHash $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+          $bytes = (Get-Item $destination).Length
+          if ($bytes -ne $entry.bytes -or $hash -ne $entry.sha256Hex) {
+            throw "Embedded model integrity check failed: $bytes bytes / $hash"
+          }
+
+      - name: Restore UI dependencies
+        shell: pwsh
+        run: pnpm --dir apps/ui install --frozen-lockfile
+
+      - name: Create candidate dependency evidence
+        shell: pwsh
+        run: ./scripts/freeze-dependencies.ps1 -Refresh
+
+      - name: Build unsigned Windows Setup candidate
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -SkipOnlineSupplyChain
+
+      - name: Upload Setup candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: AetherCoreSetup-windows-unsigned-${{ github.sha }}
+          path: phase21-workspace/out/release/**/*.exe
+          if-no-files-found: error
+          retention-days: 14
