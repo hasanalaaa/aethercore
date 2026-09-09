@@ -34,6 +34,7 @@
   $: locale = $shellState.locale;
   $: response = $streamState.insights;
   $: loading = $insightsUi.loading;
+  $: error = $insightsUi.error;
   $: engineLabel = response?.engineLabel ?? 'ruleFallback';
 
   function surfaceLabel(surface: string): string {
@@ -41,6 +42,7 @@
       case 'bottleneckReport': return td('insight.surface.bottleneckReport', locale);
       case 'repairDiagnosis': return td('insight.surface.repairDiagnosis', locale);
       case 'timelinePattern': return td('insight.surface.timelinePattern', locale);
+      case 'securityFinding': return td('insight.surface.securityFinding', locale);
       default: return td('insight.surface.maintenanceHistory', locale);
     }
   }
@@ -63,7 +65,7 @@
   function evidenceFor(insight: Insight): Evidence | null {
     if (!insight.citations.length) return null;
     const surfaces = [...new Set(insight.citations.map((c) => surfaceLabel(c.surface)))];
-    const engine = td(engineLabel === 'localModel' ? 'insight.engine.localModel' : 'insight.engine.ruleFallback', locale);
+    const engine = td(insight.engine === 'localModel' ? 'insight.engine.localModel' : 'insight.engine.ruleFallback', locale);
     return {
       cite: `${surfaces.join(' · ')} · ${insight.citations.length}`,
       raw: [
@@ -81,8 +83,7 @@
   async function askLocal(): Promise<void> {
     const text = question.trim();
     if (!text) return;
-    question = '';
-    await requestInsights('chat', text);
+    if (await requestInsights('chat', text)) question = '';
   }
 
   /**
@@ -123,6 +124,8 @@
 
   {#if loading}
     <div class="ac-progress" role="progressbar" aria-label={t('insight.thinking', locale)}><span></span></div>
+  {:else if error}
+    <EmptyState title={t('common.tryAgain', locale)} body={t('insight.empty', locale)} />
   {:else if insights.length === 0}
     <EmptyState title={t('common.notCollected', locale)} body={t('insight.empty', locale)} />
   {:else}

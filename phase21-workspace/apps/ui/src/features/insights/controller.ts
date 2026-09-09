@@ -1,12 +1,12 @@
 import { writable } from 'svelte/store';
 import type { InsightsResponse } from '../../lib/contracts';
-import { runBusy } from '../../app/shell-state';
 import { serviceInvoke } from '../../platform/service-client';
 import { patchStreamState } from '../../platform/stream-state';
 
 /** Panel-local state: loading flag for the shared progress primitive. */
 export const insightsUi = writable({
   loading: false,
+  error: false,
 });
 
 /**
@@ -14,14 +14,17 @@ export const insightsUi = writable({
  * Cancellation on dismiss is inherent: the response only lands if the panel is
  * still open, because the stream slice is overwritten on next open.
  */
-export async function requestInsights(questionKey = 'explain', question = ''): Promise<void> {
-  insightsUi.update((s) => ({ ...s, loading: true }));
+export async function requestInsights(questionKey = 'explain', question = ''): Promise<boolean> {
+  let alreadyLoading = false;
+  insightsUi.update((s) => { alreadyLoading = s.loading; return alreadyLoading ? s : { ...s, loading: true, error: false }; });
+  if (alreadyLoading) return false;
   try {
     const response = await serviceInvoke<InsightsResponse>('request_insight', { questionKey, question });
     patchStreamState({ insights: response });
+    return true;
   } catch {
-    // I3: the AI layer never surfaces an error to the UI; empty state renders.
-    patchStreamState({ insights: null });
+    insightsUi.update((s) => ({ ...s, error: true }));
+    return false;
   } finally {
     insightsUi.update((s) => ({ ...s, loading: false }));
   }
@@ -40,7 +43,8 @@ export async function refreshInsights(): Promise<void> {
 /** Dismisses one session insight (ephemeral; server drops it from the session). */
 export async function dismissInsight(insightId: string): Promise<void> {
   try {
-    await serviceInvoke<void>('dismiss_insight', { insightId });
+    const response = await serviceInvoke<InsightsResponse>('dismiss_insight', { insightId });
+    patchStreamState({ insights: response });
   } catch {
     /* offline: dismissal is session-only anyway */
   }

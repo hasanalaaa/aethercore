@@ -248,10 +248,12 @@ impl ReasonerSelector {
     }
 
     pub fn engine_label(&self) -> &'static str {
-        if self.model_reasoner.as_ref().is_some_and(|r| r.is_loaded()) {
-            "localModel"
-        } else {
-            "ruleFallback"
+        let health = self.health.lock().unwrap_or_else(|p| p.into_inner());
+        match health.last_mode {
+            Some(InsightEngineKind::LocalModel) => "localModel",
+            Some(InsightEngineKind::RuleFallback) => "ruleFallback",
+            None if self.model_reasoner.as_ref().is_some_and(|r| r.is_loaded()) => "localModel",
+            None => "ruleFallback",
         }
     }
 

@@ -1669,6 +1669,7 @@ export const arCatalog = {
   'insight.surface.repairDiagnosis': 'إصلاح',
   'insight.surface.timelinePattern': 'نمط زمني',
   'insight.surface.maintenanceHistory': 'سجل',
+  'insight.surface.securityFinding': 'أمن',
   'insight.summary.bottleneck': 'ملخص ملاحظات الأداء',
   'insight.summary.repairState': 'ملخص حالة الإصلاح',
   'insight.summary.recurrence': 'ملخص الأنماط المتكررة',

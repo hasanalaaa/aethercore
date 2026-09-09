@@ -141,7 +141,11 @@ impl TypedEvidencePack {
         }
         let mut item = item;
         if item.detail.len() > 256 {
-            item.detail.truncate(253);
+            let mut end = 253;
+            while end > 0 && !item.detail.is_char_boundary(end) {
+                end -= 1;
+            }
+            item.detail.truncate(end);
             item.detail.push_str("...");
         }
         self.items.push(item);
@@ -176,5 +180,24 @@ impl TypedEvidencePack {
             out.push(HEX[(b & 0x0f) as usize] as char);
             out
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncation_preserves_utf8_boundaries() {
+        let mut pack = TypedEvidencePack::default();
+        pack.push(EvidenceItem {
+            evidence_id: "arabic".into(),
+            surface: EvidenceSurface::MaintenanceHistory,
+            detail: "مشكلة أداء ".repeat(40),
+        });
+        let detail = &pack.items[0].detail;
+        assert!(detail.is_char_boundary(detail.len()));
+        assert!(detail.len() <= 256);
+        assert!(detail.ends_with("..."));
     }
 }

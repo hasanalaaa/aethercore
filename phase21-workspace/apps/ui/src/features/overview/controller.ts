@@ -53,7 +53,6 @@ export async function readTelemetryNow(): Promise<boolean> {
         const validSamples = windowResp.samples.filter(isReading);
         if (validSamples.length > 0) {
           applyPerformanceWindow(validSamples);
-          return true;
         }
       }
     } catch {
@@ -73,9 +72,8 @@ export async function readTelemetryNow(): Promise<boolean> {
 
 /**
  * Reads immediately, then every [`OVERVIEW_READ_INTERVAL_MS`] until disposed.
- * A failed read stops the loop rather than retrying into a dead service every
- * five seconds for as long as the window is open; the empty state's own control
- * is how the user asks again.
+ * A failed read keeps the loop alive so a transient service restart does not
+ * leave the Overview permanently stale; the next tick retries the read.
  */
 export function startOverviewTelemetry(): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -87,12 +85,12 @@ export function startOverviewTelemetry(): () => void {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
   };
-  void readTelemetryNow().then((ok) => {
-    if (disposed || !ok) return;
+  void readTelemetryNow().then(() => {
+    if (disposed) return;
     const schedule = (): void => {
       if (disposed) return;
       timer = setTimeout(() => {
-        void readTelemetryNow().then((again) => { if (again) schedule(); else stop(); });
+        void readTelemetryNow().then(() => { if (!disposed) schedule(); });
       }, OVERVIEW_READ_INTERVAL_MS);
     };
     schedule();

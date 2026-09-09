@@ -234,7 +234,7 @@ export type CareRunStatus = {
 };
 
 // Phase 23 — Local Intelligence (advisory-only)
-export type InsightCitation = { evidenceId:string; surface:'bottleneckReport'|'repairDiagnosis'|'timelinePattern'|'maintenanceHistory' };
+export type InsightCitation = { evidenceId:string; surface:'bottleneckReport'|'repairDiagnosis'|'timelinePattern'|'maintenanceHistory'|'securityFinding' };
 export type Insight = {
   /** Session handle assigned by the service; the only value `dismiss_insight` matches on. */
   id:string;

@@ -1284,7 +1284,7 @@ pub fn handle_request(
             // ---------------- Phase 23: Local Intelligence (advisory-only) ----------------
             request::Payload::ListInsights(_) => {
                 request_context.checkpoint().map_err(err)?;
-                let response = ctx.intelligence_core.list();
+                let response = ctx.intelligence_core.list(&principal_key);
                 publish(
                     ctx,
                     &principal_key,
@@ -1333,8 +1333,8 @@ pub fn handle_request(
                 // A handle that is already gone is not an error: the set is
                 // session-scoped and two windows can dismiss the same insight.
                 // The list below is what settles it either way.
-                let _ = ctx.intelligence_core.dismiss(&v.insight_id);
-                let response = ctx.intelligence_core.list();
+                let _ = ctx.intelligence_core.dismiss(&principal_key, &v.insight_id);
+                let response = ctx.intelligence_core.list(&principal_key);
                 publish(
                     ctx,
                     &principal_key,

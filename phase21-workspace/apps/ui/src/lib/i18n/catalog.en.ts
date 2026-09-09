@@ -1669,6 +1669,7 @@ export const enCatalog = {
   'insight.surface.repairDiagnosis': 'repair',
   'insight.surface.timelinePattern': 'timeline pattern',
   'insight.surface.maintenanceHistory': 'history',
+  'insight.surface.securityFinding': 'security',
   'insight.summary.bottleneck': 'Performance findings summary',
   'insight.summary.repairState': 'Repair state summary',
   'insight.summary.recurrence': 'Recurring patterns summary',
