@@ -29,8 +29,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.16.0
-          cache: pnpm
-          cache-dependency-path: phase21-workspace/pnpm-lock.yaml
 
       - name: Install pinned pnpm
         shell: pwsh
