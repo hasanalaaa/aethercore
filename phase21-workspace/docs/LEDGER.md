@@ -70,13 +70,21 @@ evidence names where).
 | P56-1.A | measure the density before solving it — words of prose, type sizes, elevations, text-to-data, per screen | **CLOSED** — `apps/ui/tools/measure-density.mjs`, `docs/phase56/DENSITY.md`, raw in `docs/phase56/measure/` |
 | P56-1.B | the design direction, written down | **CLOSED** — `docs/phase56/DIRECTION.md`, five principles with numeric targets |
 | P56-1.C | rebuild the Overview to it | **CLOSED** — `docs/phase56/DENSITY-AFTER.md`. 15 type sizes → 6 (all tokens), 6 neutral surface levels → 3, prose 63 → 0 populated and 167 → 24 empty, words-per-reading 5.22 → 0.75 empty. Every gate green |
-| P56-1.D | present it — screenshots, both languages, both themes, populated and empty. **Gate: no roll-out until the owner approves** | **AWAITING THE OWNER** — `docs/phase56/screens/{populated,empty}/overview-1280-{en,ar}-{dark,light}.png`, 8 images |
+| P56-1.D | present it — screenshots, both languages, both themes, populated and empty. **Gate: no roll-out until the owner approves** | **CLOSED — APPROVED.** `docs/phase56/screens/{populated,empty}/overview-1280-{en,ar}-{dark,light}.png`, 8 images. The approval is recorded in `docs/phase56/P57-DRAWER-AND-ROLLOUT.md`: "The owner has approved the direction" |
 | P56-2.A | the chat's interaction design | **CLOSED** — `DIRECTION.md` Part 2.A: an inline-end drawer, three named outcomes, the wire stated before implementation |
 | P56-2.B | the wire contract | **CLOSED** — `crates/contracts/proto/assistant.proto`; request tags 92/93, response 92, `EVENT_KIND_ASSISTANT_TURN` = 30, envelope payload 39. Shape stated in `DIRECTION.md` before implementation |
 | P56-2.C | the service side | **CLOSED** — `services/maintenance-service/src/assistant.rs`: worker thread, 120 ms stream throttle, per-principal cancel registry, boundary validation, and a fault path that never yields an empty answer. Router arms for both verbs; `AssistantCoordinator` in `ServiceContext` |
-| P56-2.D | the UI | OPEN |
+| P56-2.D | the UI | **CLOSED by P57 ITEM 1** — `apps/ui/src/features/assistant/`, the overlay drawer. See the P57 rows |
 | P56-2.E | the tests that would catch the failure that matters | **RED, committed first** — 14 green in `assistant.rs` (ungrounded answer refused, fault not empty string, cancellation), 2 RED in `tests/embedded_generation.rs` against the real artifact. 2.C turns them green |
-| P56-3 | roll the direction out to the remaining screens | BLOCKED on P56-1.D |
+| P56-3 | roll the direction out to the remaining screens | **UNBLOCKED** — carried into P57 ITEM 3 |
+
+### P57 items
+
+| item | what | status |
+|---|---|---|
+| P57-1 | the assistant drawer | **CLOSED** — `apps/ui/src/features/assistant/{controller.ts,AssistantDrawer.svelte}`. 26rem overlay on the inline-end edge, full-width sheet below 58rem, `Ctrl+/` opens and focuses, `Enter` sends, `Escape` cancels then closes, available on every screen. Measured across 2 widths x 2 languages x 2 themes x 7 turn states: **56/56 clean**, 0 overflow, 0 clipping, 3-4 type sizes all tokens, 0 denied chips. `verify-arabic --page assistant` 7/7, **0 glyphs from a system fallback**. Contrast with the drawer open: 756 nodes, 0 below 4.5:1 |
+| P57-2 | one numeral convention for technical readings | |
+| P57-3 | the direction rolled out to the remaining eleven screens | |
 
 ---
 

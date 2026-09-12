@@ -49,6 +49,11 @@ function parseArgs(argv) {
   const args = {
     pages: ALL_PAGES, locales: ['en'], themes: ['dark', 'light'], width: 1280,
     min: 4.5, base: 'http://127.0.0.1:1420', entry: 'layout-fixture.html', json: '',
+    // P57: the assistant drawer is a shell overlay, not a screen, so it is never
+    // routed to and was measured by nothing. `--drawer 1` opens it (and runs one
+    // turn) on every page before measuring, so its ink is held to the same
+    // 4.5:1 as everything else.
+    drawer: '',
   };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.replace(/^--/, '');
@@ -279,6 +284,27 @@ async function main() {
           })()`);
           if (!reached) throw new Error(`could not route to page "${page}"`);
           await settle(cdp);
+          if (args.drawer) {
+            const opened = await evaluate(cdp, `(async () => {
+              document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '/', ctrlKey: true, bubbles: true }));
+              const deadline = Date.now() + 5000;
+              while (!document.querySelector('#assistant-input') && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 25));
+              }
+              const input = document.querySelector('#assistant-input');
+              if (!input) return false;
+              const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+              setter.call(input, 'what has been happening on this machine');
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+              await new Promise((r) => setTimeout(r, 2200));
+              document.querySelector('.assistant-drawer [data-evidence-chip]')?.click();
+              await new Promise((r) => setTimeout(r, 200));
+              return Boolean(document.querySelector('.assistant-drawer'));
+            })()`);
+            if (!opened) throw new Error('could not open the assistant drawer');
+            await settle(cdp);
+          }
 
           const nodes = await evaluate(cdp, MEASURE);
           measured += nodes.length;

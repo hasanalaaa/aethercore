@@ -35,6 +35,8 @@
     <path d="M12 4 3.8 19h16.4L12 4Z"/><path d="M12 9v4M12 16.5v.1"/>
   {:else if name === 'settings'}
     <circle cx="12" cy="12" r="3"/><path d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6M18.4 18.4l-1.6-1.6M7.2 7.2 5.6 5.6"/>
+  {:else if name === 'assistant'}
+    <path d="M12 4a8 8 0 0 1 0 16h-1l-4 2.5V19a8 8 0 0 1 5-15Z"/><path d="M9 11h6M9 14h4"/>
   {:else if name === 'fleet'}
     <rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 10h3.6l2.4 3v4h-3"/><circle cx="7.5" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/>
   {:else}

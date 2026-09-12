@@ -1737,6 +1737,32 @@ export const enCatalog = {
   'overview.noteSampling': '{interval} ms observation window',
   'overview.serviceLog': 'Service log',
   'overview.serviceLogEmptyBody': 'No events yet.',
+
+  /* ---- P57: the assistant drawer ----------------------------------------
+     Every string here is a label or a reading. The one place words survive is a
+     refusal, where the words ARE the fact: which scan would produce the evidence
+     the question needed. */
+  'assistant.title': 'Assistant',
+  'assistant.open': 'Assistant',
+  'assistant.close': 'Close assistant',
+  'assistant.placeholder': 'Ask about this machine',
+  'assistant.send': 'Send',
+  'assistant.stop': 'Stop',
+  'assistant.asked': 'Asked',
+  'assistant.generating': 'Generating',
+  'assistant.answered': 'Answered',
+  'assistant.evidence': 'Evidence',
+  'assistant.engineDisabled': 'No local model',
+  'assistant.refusedNoEvidence': 'Nothing scanned yet.',
+  'assistant.refusedNotCovered': 'Not in collected evidence.',
+  'assistant.refusedMutationActive': 'Protected operation running.',
+  'assistant.refusedBusy': 'Another question is generating.',
+  'assistant.faulted': 'Fault',
+  'assistant.fault.modelUnavailable': 'Embedded model not loaded.',
+  'assistant.fault.deadlineExceeded': 'Deadline exceeded.',
+  'assistant.fault.generationFailed': 'Generation failed.',
+  'assistant.fault.transport': 'Service did not answer.',
+  'assistant.cancelled': 'Cancelled',
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;

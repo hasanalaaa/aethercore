@@ -9,9 +9,11 @@
   export let serviceVersion = '—';
   export let locale: Locale = 'en';
   export let paletteOpen = false;
+  export let assistantOpen = false;
   export let theme: 'dark' | 'light' = 'dark';
   export let onNavigate: (page: PageId) => void;
   export let onOpenPalette: () => void;
+  export let onOpenAssistant: () => void;
   export let onToggleLocale: () => void;
   export let onToggleTheme: () => void;
 
@@ -45,6 +47,13 @@
 
   <button use:fluidPress={{ pressedScale: 0.985 }} class="command-trigger" type="button" onclick={onOpenPalette} aria-label={t('app.command', locale)} aria-keyshortcuts="Control+K" aria-haspopup="dialog" aria-expanded={paletteOpen}>
     <AppIcon name="search" size={16}/><span>{t('app.command', locale)}</span><kbd>Ctrl K</kbd>
+  </button>
+
+  <!-- P57: the assistant, reachable without the keyboard. It sits beside the
+       command trigger because both are shell-wide overlays rather than places
+       to navigate to — the drawer is not a screen and must not read as one. -->
+  <button use:fluidPress={{ pressedScale: 0.985 }} class="command-trigger assistant-trigger" type="button" onclick={onOpenAssistant} aria-label={t('assistant.open', locale)} aria-keyshortcuts="Control+/" aria-haspopup="dialog" aria-expanded={assistantOpen}>
+    <AppIcon name="assistant" size={16}/><span>{t('assistant.open', locale)}</span><kbd>Ctrl /</kbd>
   </button>
 
   <nav aria-label={t('app.primaryNavigation', locale)}>

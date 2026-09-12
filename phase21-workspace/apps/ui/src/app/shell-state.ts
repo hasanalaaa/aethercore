@@ -8,6 +8,8 @@ export type ShellState = {
   busy: boolean;
   errorMessage: string;
   paletteOpen: boolean;
+  /** P57: the assistant drawer. Session state; it overlays and never reflows. */
+  assistantOpen: boolean;
   locale: Locale;
   liveAnnouncement: string;
   theme: 'dark' | 'light';
@@ -37,6 +39,7 @@ export const shellState = writable<ShellState>({
   busy: false,
   errorMessage: '',
   paletteOpen: false,
+  assistantOpen: false,
   locale: initialLocale,
   liveAnnouncement: '',
   theme: initialTheme,
@@ -64,6 +67,9 @@ export function setPage(activePage: PageId): void {
       ...state,
       activePage,
       paletteOpen: false,
+      // The drawer deliberately survives navigation: it is available on every
+      // screen, and a transcript that vanished when the user went to look at
+      // the evidence would defeat the reason it overlays rather than reflows.
       liveAnnouncement: t('announce.page', state.locale, { page: pageLabel }),
     };
   });
@@ -71,6 +77,16 @@ export function setPage(activePage: PageId): void {
 
 export function setPaletteOpen(paletteOpen: boolean): void {
   shellState.update((state) => ({ ...state, paletteOpen }));
+}
+
+/**
+ * The assistant drawer. Available on EVERY screen, so it is shell state rather
+ * than a page's — the question a user asks is about the screen they are looking
+ * at, and leaving that screen to ask it was the reason a dedicated screen was
+ * rejected in `docs/phase56/DIRECTION.md`.
+ */
+export function setAssistantOpen(assistantOpen: boolean): void {
+  shellState.update((state) => ({ ...state, assistantOpen }));
 }
 
 export function announce(liveAnnouncement: string): void {

@@ -239,7 +239,10 @@ impl TapDetail for v1::AssistantTurn {
     }
 }
 
-fn evidence_refs(pack: &TypedEvidencePack) -> Vec<v1::AssistantEvidenceRef> {
+/// The pack as wire refs. `pub(crate)` because the router answers
+/// `GetAssistantPack` with the same shape a turn carries — the drawer's empty
+/// state and a turn's `pack` field must never disagree about what is held.
+pub(crate) fn evidence_refs(pack: &TypedEvidencePack) -> Vec<v1::AssistantEvidenceRef> {
     pack.items
         .iter()
         .map(|item| v1::AssistantEvidenceRef {

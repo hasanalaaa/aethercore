@@ -1411,6 +1411,19 @@ pub fn handle_request(
                     },
                 )))
             }
+            // P57: the drawer's empty state reads the pack without starting a
+            // turn, so it can count the rows the assistant actually holds
+            // instead of listing what the feature could do in principle.
+            request::Payload::GetAssistantPack(_) => {
+                request_context.checkpoint().map_err(err)?;
+                let pack = ctx.assistant.evidence_pack(&principal_key);
+                Ok(Some(response::Payload::AssistantPack(
+                    v1::AssistantPackResponse {
+                        pack: crate::assistant::evidence_refs(&pack),
+                        engine_label: ctx.assistant.engine_label().into(),
+                    },
+                )))
+            }
             // ---------------- Phase 26/27: honest platform + engine surface ----------
             request::Payload::GetPlatformCapabilities(_) => {
                 let capabilities =

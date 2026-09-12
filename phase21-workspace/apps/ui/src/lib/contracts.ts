@@ -247,6 +247,20 @@ export type InsightsResponse = {
 };
 
 type KernelEvent<K extends string, P> = { sequence:number; emittedUnixMs:number; kind:K; planId:string; payload:P };
+/**
+ * Phase 56/57 — the grounded assistant. The wire shapes from `assistant.proto`,
+ * unchanged. `state` and `refusal` are prost enums and therefore arrive as
+ * NUMBERS; the names live in `features/assistant/controller.ts` so there is one
+ * place that maps the wire to words.
+ */
+export type AssistantEvidenceRef = { evidenceId:string; surface:string; detail:string };
+export type AssistantTurn = {
+    turnId:string; schemaVersion:number; state:number; answer:string;
+    citations:AssistantEvidenceRef[]; engineLabel:string; refusal:number;
+    faultKey:string; tokensEmitted:number; pack:AssistantEvidenceRef[]
+  };
+export type AssistantPackResponse = { pack:AssistantEvidenceRef[]; engineLabel:string };
+
 export type UiKernelEvent =
   | KernelEvent<'serviceSnapshot', Omit<Snapshot, 'connected'>>
   | KernelEvent<'plan', Plan>
@@ -275,6 +289,7 @@ export type UiKernelEvent =
   | KernelEvent<'timelinePage', TimelineResponse>
   | KernelEvent<'careStatus', CareRunStatus>
   | KernelEvent<'insights', InsightsResponse>
+  | KernelEvent<'assistantTurn', AssistantTurn>
   | KernelEvent<'unknown', null>;
 export type UiSessionState = { connected:boolean; sessionId:string; serviceVersion:string; currentSequence:number; replayFloorSequence:number; replayComplete:boolean };
 export type UiStreamReset = { reason:string; currentSequence:number; replayFloorSequence:number; messageKey:string };

@@ -29,6 +29,15 @@ const BASE = process.env.AETHERCORE_BASE ?? 'http://127.0.0.1:1420';
  * without this flag their Arabic stopped being checked by anything.
  */
 const PAGE = (process.argv.indexOf('--page') >= 0 ? process.argv[process.argv.indexOf('--page') + 1] : 'overview');
+/**
+ * `--page assistant` is not a screen. It is P57's assistant drawer, which lives
+ * OUTSIDE `main` — so every selector below would have walked straight past it,
+ * and its Arabic would have been checked by nothing. Same blindness as
+ * `layout-sweep`'s `pages: ['overview']` default, caught before it shipped
+ * rather than after.
+ */
+const DRAWER = PAGE === 'assistant';
+const REGION = DRAWER ? '.assistant-drawer' : 'main';
 const EMBEDDED_FACE = 'IBM Plex Sans Arabic';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -106,7 +115,29 @@ async function main() {
     await evaluate(`localStorage.setItem('aethercore.locale', 'ar')`);
     await cdp.send('Page.navigate', { url: `${BASE}/layout-fixture.html` });
     await settle();
-    if (PAGE !== 'overview') {
+    if (DRAWER) {
+      // Opened by its own shortcut, so the gate exercises the path the user has.
+      const opened = await evaluate(`(async () => {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '/', ctrlKey: true, bubbles: true }));
+        const deadline = Date.now() + 5000;
+        while (!document.querySelector('.assistant-drawer') && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        const input = document.querySelector('#assistant-input');
+        if (!input) return false;
+        // One answered turn, so the checks see a transcript rather than only
+        // the empty state: the answer, its markers and its evidence chips are
+        // where Arabic meets mono and LTR identifiers.
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+        setter.call(input, 'ماذا حدث على هذا الجهاز');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        await new Promise((r) => setTimeout(r, 2200));
+        return Boolean(document.querySelector('.assistant-drawer'));
+      })()`);
+      if (!opened) throw new Error('could not open the assistant drawer');
+      await settle();
+    } else if (PAGE !== 'overview') {
       const reached = await evaluate(`(async () => {
         const button = document.querySelector('button[data-nav-item][data-page=' + JSON.stringify(${JSON.stringify(PAGE)}) + ']');
         if (!button) return false;
@@ -135,7 +166,7 @@ async function main() {
     const layout = await evaluate(`(() => {
       const rail = document.querySelector('.app-sidebar').getBoundingClientRect();
       const main = document.querySelector('main').getBoundingClientRect();
-      const prose = document.querySelector('main p, main h1');
+      const prose = document.querySelector(${JSON.stringify(REGION)} + ' p, ' + ${JSON.stringify(REGION)} + ' h1, ' + ${JSON.stringify(REGION)} + ' h2');
       const vw = document.documentElement.clientWidth;
       return {
         railLeft: Math.round(rail.left), railRight: Math.round(rail.right),
@@ -175,7 +206,7 @@ async function main() {
     // demanding otherwise would be testing lazy loading rather than the font.
     const faces = await evaluate(`(() => {
       const loaded = [...document.fonts].filter((f) => f.family === ${JSON.stringify(EMBEDDED_FACE)});
-      const prose = [...document.querySelectorAll('main h1, main h2, main h3, main p')]
+      const prose = [...document.querySelectorAll(${JSON.stringify(REGION)} + ' h1, ' + ${JSON.stringify(REGION)} + ' h2, ' + ${JSON.stringify(REGION)} + ' h3, ' + ${JSON.stringify(REGION)} + ' p')]
         .find((el) => /[\u0600-\u06FF]/.test(el.textContent));
       return {
         declared: loaded.map((f) => f.weight + ':' + f.status),
@@ -202,7 +233,9 @@ async function main() {
     const { root: domRoot } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true });
     const { nodeIds } = await cdp.send('DOM.querySelectorAll', {
       nodeId: domRoot.nodeId,
-      selector: 'main h1, main h2, main h3, main h4, main p, main strong, main span, main small, main button',
+      selector: ['h1', 'h2', 'h3', 'h4', 'p', 'strong', 'span', 'small', 'button']
+        .map((tag) => `${REGION} ${tag}`)
+        .join(', '),
     });
 
     const systemDrawn = [];
@@ -256,7 +289,7 @@ async function main() {
     // are the only source, and a missing key is a compile error, so what is left
     // to check is that no visible Latin leaked into Arabic prose headings.
     const authored = await evaluate(`(() => {
-      const heads = [...document.querySelectorAll('main h1, main h2, main h3, .eyebrow')]
+      const heads = [...document.querySelectorAll(${JSON.stringify(REGION)} + ' h1, ' + ${JSON.stringify(REGION)} + ' h2, ' + ${JSON.stringify(REGION)} + ' h3, ' + ${JSON.stringify(REGION)} + ' .eyebrow')]
         .map((el) => el.textContent.trim()).filter(Boolean);
       const untranslated = heads.filter((s) => /^[\\x00-\\x7F]+$/.test(s) && /[a-zA-Z]{4,}/.test(s));
       return { total: heads.length, untranslated: untranslated.slice(0, 8), count: untranslated.length };

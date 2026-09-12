@@ -8,7 +8,7 @@
   import { initializeWindowUx, type WindowUxCleanup } from '../lib/window-ux';
   import { startKernelSession, type KernelSessionCleanup } from '../platform/kernel-session';
   import { streamState } from '../platform/stream-state';
-  import { shellState, setPage, setPaletteOpen, toggleLocale, toggleTheme } from './shell-state';
+  import { shellState, setAssistantOpen, setPage, setPaletteOpen, toggleLocale, toggleTheme } from './shell-state';
   import PolicyBand from '../design/signature/PolicyBand.svelte';
   import PlanDialogs from './PlanDialogs.svelte';
   import RecoveryPanel from '../features/RecoveryPanel.svelte';
@@ -26,6 +26,8 @@
   import CarePanel from '../features/care/CarePanel.svelte';
   import InsightsPanel from '../features/insights/InsightsPanel.svelte';
   import FleetPage from '../features/fleet/FleetPage.svelte';
+  import AssistantDrawer from '../features/assistant/AssistantDrawer.svelte';
+  import { bindAssistantStream } from '../features/assistant/controller';
   import SettingsPage from '../features/settings/SettingsPage.svelte';
 
   let windowCleanup: WindowUxCleanup | undefined;
@@ -46,11 +48,21 @@
       if (item) { event.preventDefault(); setPage(item.id); }
       return;
     }
+    // P57. `Ctrl+/` opens the drawer and focuses its input — one gesture, from
+    // any screen. It is checked before the editing guard on purpose: the point
+    // of the shortcut is to reach the assistant from wherever the caret is.
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === '/') {
+      event.preventDefault(); setAssistantOpen(!$shellState.assistantOpen); return;
+    }
     if (event.key === 'Escape' && $shellState.paletteOpen) setPaletteOpen(false);
   }
 
   onMount(() => {
     let disposed = false;
+    // The transcript follows the kernel stream. Bound once, in the shell,
+    // because the drawer is unmounted while closed and a turn must not be lost
+    // because nobody was looking at it.
+    bindAssistantStream();
     document.addEventListener('keydown', handleGlobalKeydown);
     initializeWindowUx().then((cleanup) => disposed ? cleanup() : windowCleanup = cleanup);
     startKernelSession().then((cleanup) => disposed ? cleanup() : kernelCleanup = cleanup);
@@ -64,7 +76,7 @@
 <div class="a11y-live" aria-live="polite" aria-atomic="true">{$shellState.liveAnnouncement}</div>
 
 <div class="app-shell" data-page={$shellState.activePage}>
-  <NavigationRail activePage={$shellState.activePage} connected={$streamState.snapshot.connected} serviceVersion={$streamState.snapshot.serviceVersion} locale={$shellState.locale} theme={$shellState.theme} paletteOpen={$shellState.paletteOpen} onNavigate={navigate} onOpenPalette={() => setPaletteOpen(true)} onToggleLocale={toggleLocale} onToggleTheme={toggleTheme}/>
+  <NavigationRail activePage={$shellState.activePage} connected={$streamState.snapshot.connected} serviceVersion={$streamState.snapshot.serviceVersion} locale={$shellState.locale} theme={$shellState.theme} paletteOpen={$shellState.paletteOpen} onNavigate={navigate} onOpenPalette={() => setPaletteOpen(true)} onOpenAssistant={() => setAssistantOpen(true)} assistantOpen={$shellState.assistantOpen} onToggleLocale={toggleLocale} onToggleTheme={toggleTheme}/>
   <main id="main-content" tabindex="-1" aria-busy={$shellState.busy}>
     <section class="shell-context" aria-label={t('app.shellContext', $shellState.locale)}>
       <div class="shell-context-copy">
@@ -123,4 +135,5 @@
 </div>
 
 <PlanDialogs />
+<AssistantDrawer open={$shellState.assistantOpen} locale={$shellState.locale} onClose={() => setAssistantOpen(false)} />
 <CommandPalette open={$shellState.paletteOpen} locale={$shellState.locale} connected={$streamState.snapshot.connected} onClose={() => setPaletteOpen(false)} onSelect={navigate} />

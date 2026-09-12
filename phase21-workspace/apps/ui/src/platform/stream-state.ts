@@ -18,6 +18,7 @@ import type {
   UpdateSnapshot,
   SupportBundleEvent,
   TimelineResponse,
+  AssistantTurn,
   CareRunStatus,
   InsightsResponse,
   RecoveryEntry,
@@ -73,6 +74,15 @@ export type StreamState = {
   timelinePage: TimelineResponse | null;
   careStatus: CareRunStatus | null;
   insights: InsightsResponse | null;
+  /**
+   * The most recent assistant turn envelope, streamed or terminal.
+   *
+   * One slot, not a transcript: the transcript is renderer session state owned
+   * by `features/assistant/controller.ts`, and the wire carries the ACCUMULATED
+   * answer on every frame, so the latest envelope is always the whole truth
+   * about the turn it names.
+   */
+  assistantTurn: AssistantTurn | null;
   session: UiSessionState;
   /** The last SERVICE_LOG_LIMIT kernel events, oldest first. */
   serviceLog: readonly UiKernelEvent[];
@@ -211,6 +221,7 @@ export function createInitialStreamState(): StreamState {
     timelinePage: null,
     careStatus: null,
     insights: null,
+    assistantTurn: null,
     session: {
       connected: false,
       sessionId: '',
@@ -360,6 +371,15 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
       break;
     case 'insights':
       next.insights = event.payload;
+      break;
+    case 'assistantTurn':
+      next.assistantTurn = event.payload;
+      // A streaming frame is not a state change. Generation publishes one every
+      // 120 ms carrying the accumulated answer, so letting them through would
+      // evict the whole SERVICE_LOG_LIMIT window on a single question and leave
+      // the Overview's log reading "assistantTurn" forty times. The terminal
+      // envelope — ANSWERED, REFUSED, FAULTED or CANCELLED — does land.
+      if (event.payload.state === 1) return next;
       break;
     case 'progressTelemetry':
       next = applyProgress(next, event.payload);

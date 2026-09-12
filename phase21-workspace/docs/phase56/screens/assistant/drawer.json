@@ -1,0 +1,2082 @@
+[
+  {
+    "name": "empty-1280-en-dark",
+    "width": 1280,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none"
+    ],
+    "proseWords": 0,
+    "proseRuns": 0,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [],
+    "text": "Assistant localModel maintenanceHistory 8 timelinePattern 12 Ask about this machine Send ↵"
+  },
+  {
+    "name": "streaming-1280-en-dark",
+    "width": 1280,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Generating"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine GENERATING A startup plan▊ Ask about this machine Stop Esc"
+  },
+  {
+    "name": "answered-1280-en-dark",
+    "width": 1280,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Answered"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 timelinePattern · a91f0c4d2e88… Ask about "
+  },
+  {
+    "name": "answered-evidence-1280-en-dark",
+    "width": 1280,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Answered"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "refused-1280-en-dark",
+    "width": 1280,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "faulted-1280-en-dark",
+    "width": 1280,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(201, 42, 42, 0.14) | none",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked",
+      "Asked",
+      "Fault"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "cancelled-1280-en-dark",
+    "width": 1280,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(201, 42, 42, 0.14) | none",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 15,
+    "proseRuns": 2,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked",
+      "Asked",
+      "Fault",
+      "Asked",
+      "Cancelled"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "escape-closes-1280-en-dark",
+    "closed": true
+  },
+  {
+    "name": "empty-1280-en-light",
+    "width": 1280,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px"
+    ],
+    "proseWords": 0,
+    "proseRuns": 0,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [],
+    "text": "Assistant localModel maintenanceHistory 8 timelinePattern 12 Ask about this machine Send ↵"
+  },
+  {
+    "name": "streaming-1280-en-light",
+    "width": 1280,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Generating"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine GENERATING A startup plan▊ Ask about this machine Stop Esc"
+  },
+  {
+    "name": "answered-1280-en-light",
+    "width": 1280,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Answered"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 timelinePattern · a91f0c4d2e88… Ask about "
+  },
+  {
+    "name": "answered-evidence-1280-en-light",
+    "width": 1280,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Answered"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "refused-1280-en-light",
+    "width": 1280,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "faulted-1280-en-light",
+    "width": 1280,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(201, 42, 42, 0.1) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked",
+      "Asked",
+      "Fault"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "cancelled-1280-en-light",
+    "width": 1280,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 864,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(201, 42, 42, 0.1) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 15,
+    "proseRuns": 2,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked",
+      "Asked",
+      "Fault",
+      "Asked",
+      "Cancelled"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "escape-closes-1280-en-light",
+    "closed": true
+  },
+  {
+    "name": "empty-1280-ar-dark",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none"
+    ],
+    "proseWords": 0,
+    "proseRuns": 0,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [],
+    "text": "المساعد localModel maintenanceHistory 8 timelinePattern 12 اسأل عن هذا الجهاز إرسال ↵"
+  },
+  {
+    "name": "streaming-1280-ar-dark",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "يولّد"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine يولّد A startup plan▊ اسأل عن هذا الجهاز إيقاف Esc"
+  },
+  {
+    "name": "answered-1280-ar-dark",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "أُجيب"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 timelinePattern · a91f0c4d2e88… اسأل عن هذا ال"
+  },
+  {
+    "name": "answered-evidence-1280-ar-dark",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "أُجيب"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "refused-1280-ar-dark",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "faulted-1280-ar-dark",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(201, 42, 42, 0.14) | none",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال",
+      "السؤال",
+      "عطل"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "cancelled-1280-ar-dark",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(201, 42, 42, 0.14) | none",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 15,
+    "proseRuns": 2,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال",
+      "السؤال",
+      "عطل",
+      "السؤال",
+      "أُلغي"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "escape-closes-1280-ar-dark",
+    "closed": true
+  },
+  {
+    "name": "empty-1280-ar-light",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px"
+    ],
+    "proseWords": 0,
+    "proseRuns": 0,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [],
+    "text": "المساعد localModel maintenanceHistory 8 timelinePattern 12 اسأل عن هذا الجهاز إرسال ↵"
+  },
+  {
+    "name": "streaming-1280-ar-light",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "يولّد"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine يولّد A startup plan▊ اسأل عن هذا الجهاز إيقاف Esc"
+  },
+  {
+    "name": "answered-1280-ar-light",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "أُجيب"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 timelinePattern · a91f0c4d2e88… اسأل عن هذا ال"
+  },
+  {
+    "name": "answered-evidence-1280-ar-light",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "أُجيب"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "refused-1280-ar-light",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "faulted-1280-ar-light",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(201, 42, 42, 0.1) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال",
+      "السؤال",
+      "عطل"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "cancelled-1280-ar-light",
+    "width": 1280,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 416,
+    "startsAt": 0,
+    "viewport": 1280,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(201, 42, 42, 0.1) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 15,
+    "proseRuns": 2,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال",
+      "السؤال",
+      "عطل",
+      "السؤال",
+      "أُلغي"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "escape-closes-1280-ar-light",
+    "closed": true
+  },
+  {
+    "name": "empty-880-en-dark",
+    "width": 880,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none"
+    ],
+    "proseWords": 0,
+    "proseRuns": 0,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [],
+    "text": "Assistant localModel maintenanceHistory 8 timelinePattern 12 Ask about this machine Send ↵"
+  },
+  {
+    "name": "streaming-880-en-dark",
+    "width": 880,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Generating"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine GENERATING A startup plan▊ Ask about this machine Stop Esc"
+  },
+  {
+    "name": "answered-880-en-dark",
+    "width": 880,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Answered"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 timelinePattern · a91f0c4d2e88… Ask about "
+  },
+  {
+    "name": "answered-evidence-880-en-dark",
+    "width": 880,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Answered"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "refused-880-en-dark",
+    "width": 880,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "faulted-880-en-dark",
+    "width": 880,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(201, 42, 42, 0.14) | none",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked",
+      "Asked",
+      "Fault"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "cancelled-880-en-dark",
+    "width": 880,
+    "locale": "en",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(201, 42, 42, 0.14) | none",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 15,
+    "proseRuns": 2,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked",
+      "Asked",
+      "Fault",
+      "Asked",
+      "Cancelled"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "escape-closes-880-en-dark",
+    "closed": true
+  },
+  {
+    "name": "empty-880-en-light",
+    "width": 880,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px"
+    ],
+    "proseWords": 0,
+    "proseRuns": 0,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [],
+    "text": "Assistant localModel maintenanceHistory 8 timelinePattern 12 Ask about this machine Send ↵"
+  },
+  {
+    "name": "streaming-880-en-light",
+    "width": 880,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Generating"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine GENERATING A startup plan▊ Ask about this machine Stop Esc"
+  },
+  {
+    "name": "answered-880-en-light",
+    "width": 880,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Answered"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 timelinePattern · a91f0c4d2e88… Ask about "
+  },
+  {
+    "name": "answered-evidence-880-en-light",
+    "width": 880,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "Asked",
+      "Answered"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "refused-880-en-light",
+    "width": 880,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "faulted-880-en-light",
+    "width": 880,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(201, 42, 42, 0.1) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked",
+      "Asked",
+      "Fault"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "cancelled-880-en-light",
+    "width": 880,
+    "locale": "en",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(201, 42, 42, 0.1) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 15,
+    "proseRuns": 2,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "Asked",
+      "Answered",
+      "Asked",
+      "Asked",
+      "Fault",
+      "Asked",
+      "Cancelled"
+    ],
+    "text": "Assistant localModel ASKED what has been happening on this machine ANSWERED A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage comple"
+  },
+  {
+    "name": "escape-closes-880-en-light",
+    "closed": true
+  },
+  {
+    "name": "empty-880-ar-dark",
+    "width": 880,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none"
+    ],
+    "proseWords": 0,
+    "proseRuns": 0,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [],
+    "text": "المساعد localModel maintenanceHistory 8 timelinePattern 12 اسأل عن هذا الجهاز إرسال ↵"
+  },
+  {
+    "name": "streaming-880-ar-dark",
+    "width": 880,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "يولّد"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine يولّد A startup plan▊ اسأل عن هذا الجهاز إيقاف Esc"
+  },
+  {
+    "name": "answered-880-ar-dark",
+    "width": 880,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "أُجيب"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 timelinePattern · a91f0c4d2e88… اسأل عن هذا ال"
+  },
+  {
+    "name": "answered-evidence-880-ar-dark",
+    "width": 880,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "أُجيب"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "refused-880-ar-dark",
+    "width": 880,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "faulted-880-ar-dark",
+    "width": 880,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(201, 42, 42, 0.14) | none",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال",
+      "السؤال",
+      "عطل"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "cancelled-880-ar-dark",
+    "width": 880,
+    "locale": "ar",
+    "theme": "dark",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+      "rgba(0, 0, 0, 0.22) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(0, 0, 0, 0.85) 0px 50px 110px -30px",
+      "rgba(201, 42, 42, 0.14) | none",
+      "rgba(255, 255, 255, 0.043) | none",
+      "rgba(255, 255, 255, 0.5) | none",
+      "rgba(92, 124, 250, 0.16) | none"
+    ],
+    "proseWords": 15,
+    "proseRuns": 2,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال",
+      "السؤال",
+      "عطل",
+      "السؤال",
+      "أُلغي"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "escape-closes-880-ar-dark",
+    "closed": true
+  },
+  {
+    "name": "empty-880-ar-light",
+    "width": 880,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px"
+    ],
+    "proseWords": 0,
+    "proseRuns": 0,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [],
+    "text": "المساعد localModel maintenanceHistory 8 timelinePattern 12 اسأل عن هذا الجهاز إرسال ↵"
+  },
+  {
+    "name": "streaming-880-ar-light",
+    "width": 880,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 0,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "يولّد"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine يولّد A startup plan▊ اسأل عن هذا الجهاز إيقاف Esc"
+  },
+  {
+    "name": "answered-880-ar-light",
+    "width": 880,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "أُجيب"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 timelinePattern · a91f0c4d2e88… اسأل عن هذا ال"
+  },
+  {
+    "name": "answered-evidence-880-ar-light",
+    "width": 880,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 0,
+    "kicker": [
+      "السؤال",
+      "أُجيب"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "refused-880-ar-light",
+    "width": 880,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "faulted-880-ar-light",
+    "width": 880,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(201, 42, 42, 0.1) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 7,
+    "proseRuns": 1,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال",
+      "السؤال",
+      "عطل"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "cancelled-880-ar-light",
+    "width": 880,
+    "locale": "ar",
+    "theme": "light",
+    "present": true,
+    "inlineSize": 880,
+    "startsAt": 0,
+    "viewport": 880,
+    "overflowX": 0,
+    "clippedCount": 0,
+    "clipped": [],
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "surfaces": [
+      "rgb(22, 58, 207) | rgba(76, 110, 245, 0.55) 0px 14px 30px -14px",
+      "rgba(10, 14, 20, 0.035) | none",
+      "rgba(10, 14, 20, 0.05) | none",
+      "rgba(201, 42, 42, 0.1) | none",
+      "rgba(255, 255, 255, 0.62) | rgba(20, 30, 50, 0.34) 0px 40px 90px -30px",
+      "rgba(66, 99, 235, 0.14) | none",
+      "rgba(8, 12, 18, 0.62) | none"
+    ],
+    "proseWords": 15,
+    "proseRuns": 2,
+    "evidenceChips": 2,
+    "deniedChips": 0,
+    "emptyStates": 1,
+    "kicker": [
+      "السؤال",
+      "أُجيب",
+      "السؤال",
+      "السؤال",
+      "عطل",
+      "السؤال",
+      "أُلغي"
+    ],
+    "text": "المساعد localModel السؤال what has been happening on this machine أُجيب A startup plan completed E1. A disk event recurred on this machine E9. maintenanceHistory · plan-0001 plan plan-0001 domain startup stage completed "
+  },
+  {
+    "name": "escape-closes-880-ar-light",
+    "closed": true
+  }
+]

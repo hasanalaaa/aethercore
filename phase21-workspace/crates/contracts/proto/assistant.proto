@@ -98,6 +98,28 @@ message AskAssistantRequest {
   string question = 2;
 }
 
+// What the assistant may currently draw on, read WITHOUT starting a turn.
+//
+// P57. `AssistantTurn.pack` carries the same list, but it only arrives once a
+// turn exists, and the drawer's empty state has to say what the assistant can
+// answer BEFORE the user has asked anything. The alternative was a capability
+// tour — a list of what the feature could do in principle — which is the exact
+// thing `DIRECTION.md` rules out: the empty state counts rows the product
+// actually holds, so it cannot promise an answer it has no evidence for.
+//
+// Read-only, owner-scoped, and composed by the SAME `compose_evidence_pack` the
+// insight and turn paths use. Two compositions would mean two answers to "what
+// has this product measured?".
+message GetAssistantPackRequest {}
+
+message AssistantPackResponse {
+  repeated AssistantEvidenceRef pack = 1;
+  // localModel | ruleFallback | disabled. Same rule as on a turn: it reports
+  // what the engine IS, so the drawer can declare a disabled engine before the
+  // user spends a question on it.
+  string engine_label = 2;
+}
+
 // Its own verb, not the session's CancelRequest. `AskAssistant` has already
 // returned by the time the user presses Escape, so cancelling the REQUEST would
 // cancel nothing.

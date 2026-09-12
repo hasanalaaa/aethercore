@@ -175,6 +175,12 @@ fn normalize_event(event: v1::EventEnvelope) -> UiKernelEvent {
         }
         Some(Payload::CareStatus(v)) => ("careStatus", serde_json::to_value(v).unwrap_or_default()),
         Some(Payload::Insights(v)) => ("insights", serde_json::to_value(v).unwrap_or_default()),
+        // Phase 56/57: one envelope per streamed assistant turn state. The
+        // renderer keys off `state`, never off whether `answer` is non-empty:
+        // streamed text is provisional until the terminal turn confirms it.
+        Some(Payload::AssistantTurn(v)) => {
+            ("assistantTurn", serde_json::to_value(v).unwrap_or_default())
+        }
         Some(Payload::PlatformCapabilities(v)) => (
             "platformCapabilities",
             serde_json::to_value(v).unwrap_or_default(),
@@ -1987,6 +1993,63 @@ async fn request_insight(
     .map_err(|e| e.to_string())?
 }
 
+// ---------------------------------------------------------------------------
+// Phase 56/57 — the grounded assistant. Three verbs and nothing else: ask,
+// cancel, and read the evidence pack for the drawer's empty state.
+// ---------------------------------------------------------------------------
+
+fn extract_assistant_turn(resp: v1::Response) -> Result<v1::AssistantTurn, String> {
+    match resp.payload {
+        Some(response::Payload::AssistantTurn(p)) => {
+            p.turn.ok_or_else(|| "assistant response carried no turn".to_string())
+        }
+        _ => Err("unexpected assistant response".into()),
+    }
+}
+
+#[command]
+async fn ask_assistant(turn_id: String, question: String) -> Result<v1::AssistantTurn, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::AskAssistant(v1::AskAssistantRequest {
+            turn_id,
+            question,
+        }))
+        .map_err(|e| e.to_string())?;
+        extract_assistant_turn(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn cancel_assistant_turn(turn_id: String) -> Result<v1::AssistantTurn, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::CancelAssistantTurn(
+            v1::CancelAssistantTurnRequest { turn_id },
+        ))
+        .map_err(|e| e.to_string())?;
+        extract_assistant_turn(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
+async fn get_assistant_pack() -> Result<v1::AssistantPackResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::GetAssistantPack(
+            v1::GetAssistantPackRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        match resp.payload {
+            Some(response::Payload::AssistantPack(p)) => Ok(p),
+            _ => Err("unexpected assistant pack response".to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[command]
 async fn dismiss_insight(insight_id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -2991,6 +3054,9 @@ fn main() {
             list_insights,
             request_insight,
             dismiss_insight,
+            ask_assistant,
+            cancel_assistant_turn,
+            get_assistant_pack,
             get_platform_capabilities,
             get_engine_source,
             fleet_snapshot,

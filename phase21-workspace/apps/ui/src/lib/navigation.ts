@@ -1,8 +1,8 @@
 import type { MessageKey } from './i18n';
 
 /** Stable semantic route identifiers. Display labels live exclusively in the message catalogs. */
-export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'fleet' | 'settings';
-export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'theme' | 'check' | 'warning' | 'service' | 'fleet' | 'settings';
+export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'fleet' | 'settings' | 'assistant';
+export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'theme' | 'check' | 'warning' | 'service' | 'fleet' | 'settings' | 'assistant';
 export type NavigationGroup = 'observe' | 'act' | 'history' | 'system';
 export type NavigationAvailability = 'available' | 'online';
 

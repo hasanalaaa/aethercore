@@ -35,6 +35,7 @@ import type {
   UiKernelEvent,
   UiSessionState,
 } from '../lib/contracts';
+import type { AssistantEvidenceRef, AssistantTurn } from '../lib/contracts';
 import type { UiTransportEvent } from '../platform/transport-contract';
 import { createInitialStreamState } from '../platform/stream-state';
 
@@ -401,6 +402,45 @@ const platformCapabilities = {
   ].map((name) => ({ name, availability: { state: 'native', key: '' } })),
 };
 
+/**
+ * P57 — the assistant, as the service actually answers it.
+ *
+ * The pack is the SAME two surfaces `compose_evidence_pack` composes, at the
+ * same bounds: eight maintenance-history rows and twelve timeline rows. The
+ * drawer's empty state counts these, so a fixture that invented its own
+ * surfaces would measure a screen the product does not have.
+ */
+const ASSISTANT_PACK: AssistantEvidenceRef[] = [
+  ...Array.from({ length: 8 }, (_unused, index) => ({
+    evidenceId: `plan-000${index + 1}`,
+    surface: 'maintenanceHistory',
+    detail: `plan plan-000${index + 1} domain ${['startup', 'cleanup', 'drivers', 'repair'][index % 4]} stage completed`,
+  })),
+  ...Array.from({ length: 12 }, (_unused, index) => ({
+    evidenceId: `a91f${index}c4d2e88b6`,
+    surface: 'timelinePattern',
+    detail: `event class ${['Disk', 'Power', 'Driver'][index % 3]} code ${['DSK-2', 'PWR-41', 'DRV-7'][index % 3]}`,
+  })),
+];
+
+/**
+ * The fixture's turn engine. It reproduces the wire's four terminal states so
+ * the drawer can be measured and screenshotted in each; WHICH one it reproduces
+ * is chosen by a token in the question, because a fixture has no model and no
+ * mutation lease to make the choice for real. Development only.
+ */
+const ASSISTANT_ANSWER =
+  'A startup plan completed [E1]. A disk event recurred on this machine [E9].';
+let assistantCancelled = new Set<string>();
+
+function assistantTurn(turnId: string, over: Partial<AssistantTurn>): AssistantTurn {
+  return {
+    turnId, schemaVersion: 1, state: 1, answer: '', citations: [],
+    engineLabel: 'localModel', refusal: 0, faultKey: '', tokensEmitted: 0,
+    pack: ASSISTANT_PACK, ...over,
+  };
+}
+
 let sequence = 0;
 const event = <K extends UiKernelEvent['kind']>(kind: K, payload: unknown): UiKernelEvent =>
   ({ sequence: ++sequence, emittedUnixMs: NOW, kind, planId: '', payload } as UiKernelEvent);
@@ -429,9 +469,12 @@ const session: UiSessionState = {
 
 type StreamHandler = (event: UiTransportEvent<unknown>) => void;
 const handlers = new Map<string, StreamHandler[]>();
+const emit = (kernelEvent: UiKernelEvent): void => {
+  for (const handler of handlers.get('aethercore://kernel-event') ?? []) handler({ payload: kernelEvent });
+};
 
 (globalThis as { __AETHERCORE_TEST_TRANSPORT__?: unknown }).__AETHERCORE_TEST_TRANSPORT__ = {
-  invoke: async (command: string) => {
+  invoke: async (command: string, args?: Record<string, unknown>) => {
     if (command === 'start_ipc_session') {
       queueMicrotask(() => {
         for (const kernelEvent of STREAM) {
@@ -452,6 +495,42 @@ const handlers = new Map<string, StreamHandler[]>();
     // blindness this fixture exists to remove.
     if (command === 'get_platform_capabilities') return platformCapabilities;
     if (command === 'get_engine_source') return { source: 'native', platform: 'windows' };
+    if (command === 'get_assistant_pack') return { pack: ASSISTANT_PACK, engineLabel: 'localModel' };
+    if (command === 'cancel_assistant_turn') {
+      const turnId = String(args?.turnId ?? '');
+      assistantCancelled.add(turnId);
+      return assistantTurn(turnId, { state: 1 });
+    }
+    if (command === 'ask_assistant') {
+      const turnId = String(args?.turnId ?? '');
+      const question = String(args?.question ?? '');
+      if (question.includes('refuse')) return assistantTurn(turnId, { state: 3, refusal: 2 });
+      if (question.includes('fault')) {
+        return assistantTurn(turnId, { state: 4, faultKey: 'assistant.fault.deadlineExceeded' });
+      }
+      // Streamed the way the service streams: the ACCUMULATED answer on every
+      // frame, throttled, then exactly one terminal envelope.
+      void (async () => {
+        const words = ASSISTANT_ANSWER.split(' ');
+        for (let taken = 1; taken <= words.length; taken += 2) {
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          if (assistantCancelled.has(turnId)) {
+            emit(event('assistantTurn', assistantTurn(turnId, { state: 5, tokensEmitted: taken })));
+            return;
+          }
+          emit(event('assistantTurn', assistantTurn(turnId, {
+            state: 1, answer: words.slice(0, taken).join(' '), tokensEmitted: taken,
+          })));
+        }
+        emit(event('assistantTurn', assistantTurn(turnId, {
+          state: 2,
+          answer: ASSISTANT_ANSWER,
+          tokensEmitted: words.length,
+          citations: [ASSISTANT_PACK[0], ASSISTANT_PACK[8]],
+        })));
+      })();
+      return assistantTurn(turnId, { state: 1 });
+    }
     return {};
   },
   listen: async (name: string, handler: StreamHandler) => {

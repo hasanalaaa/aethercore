@@ -113,6 +113,9 @@ message Request {
     // Phase 56: the grounded local assistant (additive; next free tags).
     AskAssistantRequest ask_assistant = 92;
     CancelAssistantTurnRequest cancel_assistant_turn = 93;
+    // Phase 57: the drawer's empty state — read the pack without a turn
+    // (additive; next free tag).
+    GetAssistantPackRequest get_assistant_pack = 94;
   }
 }
 message Response {
@@ -175,6 +178,8 @@ message Response {
     PerformanceWindowResponse performance_window = 91;
     // Phase 56: the grounded local assistant (additive; next free tag).
     AssistantTurnResponse assistant_turn = 92;
+    // Phase 57: the drawer's empty state (additive; next free tag).
+    AssistantPackResponse assistant_pack = 93;
   }
 }
 message RunSecurityAuditRequest {
