@@ -1,0 +1,153 @@
+# AetherCore — project status ledger
+
+**This file is the single authoritative status of the project.** It supersedes
+the `§NN PROGRESS TABLE` sections inside `docs/phase36/SESSION_CONTEXT.md`,
+which is 14,512 lines and can no longer be read by a cold session. The history
+stays where it is; nothing was rewritten.
+
+## How a cold session resumes
+
+1. Read this file. Nothing else is required first.
+2. Find the first row in **§1 Open work** whose status is not `CLOSED`.
+3. Continue from it. Each row names its evidence and which machine it needs.
+4. Move the row in the **same commit** as the work that moved it.
+
+If a row needs a machine or a person you do not have, skip it — §3 says which
+rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
+column names a commit or a measurement you can re-run.
+
+Last moved: P55 (2026-09-12).
+
+---
+
+## §1 Open work
+
+Status values: `OPEN` (something remains, the row says what) · `ACCEPTED`
+(measured, deliberately not fixed, escape routes disproved) · `CLOSED` (done,
+evidence names where).
+
+| id | what it is | status | evidence | machine |
+|---|---|---|---|---|
+| `DBT-P36-006` | Windows filesystem security findings rest on a POSIX mode-bit approximation, not ACL evidence | OPEN | verified P55: `crates/security-audit/src/filesystem.rs:36-44`, the comment still reads "Windows has no POSIX mode bits" | any Windows |
+| `DBT-P36-007` | its retirement condition (a seal) has not occurred | OPEN by design | not code-checkable; not actionable until the seal | — |
+| `DBT-P41-001` | the chain's VC++ redistributable **install** branch has never executed on any architecture — only the "already present" branch has | OPEN | P49 §49.7 measured detection and the x64 `Launch` condition; the install branch is still unrun | a Windows box **without** the VC++ redist |
+| `DBT-P42-012` | check 5 of 6: the `vcomp140.dll` pinned fallback is the ARM64 VM's layout | OPEN | verified P55: `scripts/build-installer.ps1:72` pins `C:\AetherCore-P36\...`; that directory does **not** exist on this machine | the ARM64 VM |
+| `DBT-P45-004` | ~2% of macOS CPU samples degrade honestly instead of reading | ACCEPTED | P45 §45.3, 1/50; the bounded retry was deliberate | macOS |
+| `DBT-P47-003` | `perProcessorBusyBp` is never populated on Windows | OPEN — product decision | verified P55: `crates/performance-telemetry/src/windows_impl.rs:423` → `per_processor_busy_bp: Vec::new()` | any Windows |
+| `DBT-P47-004` | GPU adapter identity and VRAM stay empty; no honest source wired | OPEN | verified P55: `windows_impl.rs:973` — "adapter_id, adapter_name and dedicated_total_bytes stay" empty | any Windows |
+| `DBT-P49-002` | the consumer installer's UI: "AetherCore Setup Setup", stock WiX logo, no version, no license, progress stuck on "Initializing..." | OPEN | P49 §49.5, by observation | this machine (P55 Item 4) |
+| `DBT-P49-003` | the bundle leaves `AetherCore_Setup_*.elevated.log` in `%TEMP%` after install and uninstall | OPEN | P49 §49.5, 926 B / 935 B | this machine (P55 Item 4.C) |
+| `DBT-P49-004` | `intervalMs` does not describe the window the numbers were measured over | OPEN | verified P55: `windows_impl.rs:349` `let _ = interval;`, `:369` `from_millis(120).min(from_millis(100))` (the `120` is dead), `:710` hardcoded 80 ms, `lib.rs:330` publishes the *requested* value | any Windows |
+| `DBT-P55-001` | `phase21-workspace/.github/workflows/{ci,fuzz,release}.yml` have **never been dispatched**. GitHub executes only workflows under the repository root `.github`; these sit one directory down | OPEN | verified P55: `git ls-files '*.github/workflows/*'` — only `.github/workflows/windows-installer.yml` is at the root. First recorded by P54 | — |
+| `DBT-P55-002` | `cargo fmt --all -- --check` fails on **1,247 files**. `ci.yml`'s formatting gate would have caught the first one — direct evidence that `DBT-P55-001` has held for the whole life of that file | OPEN | verified P55: 1,247 distinct files in the diff | any |
+| `DBT-P55-003` | `D:` cannot hold a second full system image beside the existing one: C: uses 571.6 GB, `D:` has 410.5 GB free | OPEN | verified P55 by enumeration, see §2 | this machine |
+| `DBT-P49-001` | `build-release.ps1` never set the ADK `DismApi\Lib\amd64` path into `LIB`, so a clean shell died `LNK1181` | **CLOSED** | `07445b4` — `crates/system-repair/build.rs` locates the library itself; the failure was reproduced first (exit 101, `LNK1181` ×3 with `LIB` unset), then measured at exit 0 | done |
+| `DBT-P42-011` | x64 numeric bias in performance readings | **RECLASSIFIED — does not reproduce** | P49 §49.6, nine rounds on the original silicon; residual means smaller than the host counter's own ±14-pt spread | done |
+
+### P55 items still in flight
+
+| item | what | status |
+|---|---|---|
+| P55-1 | CI: green run of `windows-installer.yml`, run id recorded | engineering committed in `07445b4`; run observation pending |
+| P55-2 | this ledger | CLOSED — this file |
+| P55-3 | recovery re-established | in progress, see §2 |
+| P55-4 | build + fix + install the consumer installer | not started |
+| P55-5 | Gate 4 prepared to the owner line | not started |
+
+---
+
+## §2 Recovery posture — measured 2026-09-12
+
+P49 recorded `Gate 0f` as regressed: "there is no `D:` and no
+`D:\WindowsImageBackup`". **That is no longer true.** Measured today:
+
+| artefact | state | evidence |
+|---|---|---|
+| external drive | **attached** — `HIKSEMI`, 953.9 GB, BusType `USB`, disk 1 | `Get-Disk` |
+| `D:` volume | **present** — NTFS, label `SD`, 953.7 GB, 410.5 GB free | `Get-Volume` |
+| `D:\WindowsImageBackup` | **present** — 19 files, 521.45 GB | `Get-ChildItem -Force -Recurse` |
+| system image | **present and listable** — version `09/02/2026-09:46`, "Can recover: … Bare Metal Recovery, System State" | `wbadmin get versions -backupTarget:D:` exit 0 |
+| image age | **10 days** (2026-09-02) — not today | as above |
+| recovery media | **never boot-tested** | P47; unchanged |
+
+**What is proven:** a listable, bare-metal-capable image exists, 10 days old.
+
+**What is not proven:** that the machine can actually be recovered from it. The
+recovery media has never been booted, so the path back has never been exercised
+end to end.
+
+**The constraint on re-imaging:** C: uses 571.6 GB; `D:` has 410.5 GB free. A
+second full image does not fit beside the existing one. Writing one therefore
+risks destroying the only verified image in order to attempt its replacement —
+and if that attempt fails partway, the machine is left with no image at all,
+which is strictly worse than today. This is `DBT-P55-003` and it is an owner
+decision, not a session one.
+
+---
+
+## §3 Owner-gated — what is blocked, and what each blocker unblocks
+
+Absence of these is **not** missing work. Each is something no session can
+supply.
+
+| # | what the owner does | what it unblocks | why a session cannot |
+|---|---|---|---|
+| 1 | **Boot-test the recovery media.** Boot from it once; confirm the recovery environment sees the system disk and `D:\WindowsImageBackup` | Gate 4 entirely. Until this passes there is no *proven* way back from an unbootable machine | requires a physical reboot into WinRE and a human at the console |
+| 2 | **Choose a Gate 4 candidate device** from `docs/phase55/GATE4-CANDIDATES.md` | Gate 4's driver install and rollback | a device choice is a risk acceptance, not a measurement |
+| 3 | **Decide `DBT-P55-003`**: accept the 10-day-old image, or free space on `D:` / attach a second target so a fresh image can be written without destroying the existing one | Item 3.B's "a version dated today" | destroying the only verified image is not a session's call |
+| 4 | Production Authenticode certificate | `QD-035-003`, and any signed release | it costs money and is an identity |
+
+---
+
+## §4 The `QD-*` register
+
+`DEBT_REGISTER.json` is a separate, append-only register under the p31 audit
+gate (`aethercore.debt-register.v1`, ≥27 ids required). It is **not** merged
+into §1 — the two use different id spaces and different closure rules.
+
+Counted 2026-09-12: **42 entries — 21 `OPEN`, 19 `CARRIED`, 2 `CLOSED`.**
+
+Verified against code this phase:
+
+| id | claim | verdict |
+|---|---|---|
+| `QD-031-001` | gtk3-rs / unic-* advisories ignored in `deny.toml` pending tauri's gtk4 move | **accurate** — `deny.toml:13-25`, ten `RUSTSEC-2024-04xx` ids still listed |
+| `QD-029-003` | SBOM is CycloneDX-*shaped*, honestly labeled not-certified | **accurate** — `SBOM.cdx.json`: `bomFormat CycloneDX`, `specVersion 1.5`, 600 components |
+| `QD-035-001` | "Windows MSI/Burn install, upgrade, repair and uninstall runtime qualification deferred" | **partly stale** — P49 §49.5 installed *and* uninstalled the bundle on x64. Install and uninstall are qualified; **upgrade and repair are not.** The row should be narrowed, not closed |
+
+The remaining 39 rows were **copied forward, not verified**. Most assert
+something about an environment rather than about code ("macOS Intel spread
+open", "no disposable SSH target on the proof host", "Postgres/MySQL lanes need
+real servers") and cannot be adjudicated by reading the repository. Narrowing
+them needs the machine each one names.
+
+**Verified: 3. Copied forward: 39.**
+
+---
+
+## §5 What this ledger replaced, and the count
+
+The `DBT-*` ledger was last reconciled in `SESSION_CONTEXT.md` §48.1, which
+recounted every id and found **seven** rows that read `open` while the code said
+otherwise. §49.9 then added four ids and moved five, and explicitly declined to
+recount — "81 is arithmetic on §48.1's figure rather than an independent
+recount". Phases 50–53 closed nine more ids across §51.8, §52.2 and §53.2.
+
+P55's brief predicted "24 items currently read as open". The measured figure is
+**15 rows** in §1: 10 carried `OPEN`, 1 `ACCEPTED`, 3 new this phase, plus 1
+closed and 1 reclassified shown for traceability. The difference is mostly
+phases 50–53 — all eight `DBT-P50-*`/`DBT-P51-*` ids and `DBT-P48-001` closed
+after §49.9 was written, and `DBT-P42-011` stopped reproducing.
+
+Spot-checked as genuinely closed, so the next session does not redo them:
+
+* `DBT-P50-001` — `total_space_bytes` / `free_space_bytes` present at
+  `windows_impl.rs:771-781`
+* `DBT-P50-005` — `PerformanceWindowResponse` present at
+  `services/maintenance-service/src/performance.rs:365`
+* `DBT-P51-003` — 15 `cap.reason.*` constants defined, 15 present in the UI
+  catalogs: parity
+
+Of the 15 rows in §1, **10 were verified against code or by measurement this
+phase** (their evidence column says "verified P55"); the rest are machine-gated
+and carry their prior evidence.

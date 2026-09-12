@@ -1,4 +1,8 @@
-# Phase 36 — SESSION CONTEXT (read this file first)
+# Phase 36 — SESSION CONTEXT (history; start at ../LEDGER.md)
+
+> **A cold session starts at [`../LEDGER.md`](../LEDGER.md), not here.** That file is the
+> single authoritative status of the project; this one is 14,512 lines of phase
+> history kept for its evidence, and its progress tables stop at §53.
 
 Purpose: this is the project brain for Phase 36 VM qualification. Any new
 session reads this file before touching anything else. The progress table at
