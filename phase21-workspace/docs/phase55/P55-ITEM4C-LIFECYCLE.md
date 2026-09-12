@@ -192,3 +192,56 @@ own accelerator, which is the correct way to select it.
 Worth noting as a usability finding in its own right: on a maintenance
 invocation the destructive-sounding chooser defaults to Repair, and `/uninstall`
 on the command line did not bypass it. Recorded as `DBT-P55-009`.
+
+---
+
+# Final install — restoring the machine, reported separately
+
+**Not part of 4.C's measurement.** 4.C's numbers above were committed
+(`5b3a1c4`) before this ran, so it cannot contaminate them.
+
+Owner instruction, 2026-09-12: end with the machine carrying the fixed build
+rather than nothing. The reasoning is recorded because it changes what "done"
+means here — the build this machine started the day with predates `ba9973b`, so
+it was running a version where ephemeral insight state crosses authenticated
+principals. Leaving that installed was not an option; leaving nothing installed
+is a worse end state than leaving the fixed build.
+
+## It is a fresh install, not an upgrade
+
+Confirmed by enumeration immediately before launching, because the distinction
+is the whole point:
+
+```
+install dir: False   (EXPECTED False)
+ARP entries: 0       (EXPECTED 0)
+service:     False   (EXPECTED False)
+```
+
+The sweep left zero installed state, so this landed on a clean machine.
+**Upgrade-in-place was not exercised.** `QD-035-001` keeps upgrade and repair
+unqualified; if either is worth qualifying it gets its own item, its own restore
+point and its own EXPECTED values, rather than happening as a side effect.
+
+## Result
+
+`AetherCoreSetup-0.1.11-x64.exe /quiet /norestart` → **exit 0**.
+
+| check | observed | expected |
+|---|---|---|
+| ARP entries visible to a user | **1** | 1 |
+| ARP entries total | 2 (the MSI hidden by `SystemComponent=1`) | 2 |
+| install dir files | **16** | 16 |
+| service | `AetherCoreMaintenance` Running, Auto, LocalSystem | Running |
+| reboot pending | **False** | False |
+
+The installed binaries are the CI-built ones, not a local rebuild — their
+hashes equal the payload in run `34683812129`'s artefact:
+
+```
+aethercore-maintenance-service.exe  3434f0510ffc52f62b35d1dcf91c0ebb69fe627885de1ff7b7a424dacce53a9a
+aethercore-desktop.exe              67b7ecc8cd6da6c1353201c64689e70f2d230424dd91222e3a102fe9847aa76b
+```
+
+**End state: AetherCore 0.1.11 installed, from the green CI build, including
+`ba9973b`.**
