@@ -52,7 +52,7 @@ evidence names where).
 |---|---|---|
 | P55-1 | CI: green run of `windows-installer.yml`, run id recorded | `07445b4` + `f621ffc`; run `34680665151` — the ADK step that failed all three previous times now passes |
 | P55-2 | this ledger | CLOSED — this file |
-| P55-3 | recovery re-established | measured, see §2. Blocked on `DBT-P55-003` and `DBT-P55-004` |
+| P55-3 | recovery re-established | 3.A done (see §2). **3.B NOT DONE — owner decision 2026-09-12: do not re-image.** The existing image does not fit beside a new one, so writing one would destroy the only verified copy. `DBT-P55-003`, `DBT-P55-004` open |
 | P55-4 | build + fix + install the consumer installer | not started |
 | P55-5 | Gate 4 prepared to the owner line | CLOSED — `docs/phase55/GATE4-CANDIDATES.md`, `scripts/gate4-driver-runbook.ps1`, `scripts/gate4-preconditions.ps1`. Preconditions measured: **2 of 6 hold** |
 
@@ -82,8 +82,18 @@ end to end.
 second full image does not fit beside the existing one. Writing one therefore
 risks destroying the only verified image in order to attempt its replacement —
 and if that attempt fails partway, the machine is left with no image at all,
-which is strictly worse than today. This is `DBT-P55-003` and it is an owner
-decision, not a session one.
+which is strictly worse than today. This is `DBT-P55-003`.
+
+**Item 3.B was not executed. Owner decision, 2026-09-12: do not re-image.** The
+10-day-old image is kept rather than gambled. No `wbadmin start backup` was run
+and `D:` was not written to. The gap this leaves — no image dated today — is
+recorded rather than worked around, and it is the smaller of the two gaps: an
+image ten days old still restores this machine, whereas the recovery media is
+not attached at all (`DBT-P55-004`), so the path back has never been exercised
+and currently could not be. **Fixing the media is what actually improves the
+posture; re-imaging would not have.**
+
+Nothing here clears Gate 4. Recovery remains **unproven**.
 
 ---
 
