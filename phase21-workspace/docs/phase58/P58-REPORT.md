@@ -5,11 +5,18 @@ Ledger rows moved in `docs/LEDGER.md`; every figure below is reproducible by the
 command printed beside it.
 
 The short version: the three workflows were never workflows, and making them
-real made them fail. That is the point. One of the three is green, one queues
-because the machine it wants does not exist, and one fails at its first step on
-a release blocker that has been committed since Phase 19 and whose stated reason
-is still true. Nothing was removed, skipped, or marked `continue-on-error` to
-change any of that.
+real made them fail. That is the point.
+
+**fuzz is green — run `34709222717`, 5/5 legs — after two defects that had each
+made it meaningless on its own.** **release queues indefinitely**, because the
+self-hosted signing runner it names does not exist. **ci's `deny-check` is
+green and its `windows` job fails at step 1 of 16** on a release blocker that
+has been committed since Phase 19 and whose stated reason is still true.
+Nothing was removed, skipped, or marked `continue-on-error` to change any of
+that — `ci.yml` contains zero of both.
+
+The move also broke ten gate scripts, eight of them silently. That has its own
+section, because the way they broke is the more useful finding.
 
 ---
 
@@ -112,9 +119,16 @@ The 85 are pre-existing macOS dead-code warnings on platform-gated code.
 
 ### 2.C — making them run, and what running them found
 
-**All three dispatch.** Two of the three do not pass, and both reasons are real.
+**All three dispatch.** One is green, two do not pass, and both reasons are
+real.
 
-#### fuzz — green, after a defect that had made it meaningless twice over
+| workflow | id | run | result |
+|---|---|---|---|
+| fuzz | `356644541` | **`34709222717`** | **success**, 5/5 legs, on `a8946bb` |
+| ci | `356644539` | `34709219509` | `deny-check` **success**; `windows` **failure** at step 1 of 16, on `a8946bb` |
+| release | `356644542` | `34707902097` | **queued indefinitely** — nothing can run it |
+
+#### fuzz — green, after two defects that had made it meaningless
 
 The first real dispatch failed all five matrix legs with one error, reproduced
 locally at exit 101 before it was touched:
@@ -159,6 +173,12 @@ the file. Set on the step, so the `cargo build` cargo-fuzz spawns inherits it.
 This was only ever reachable once `DBT-P58-002` was fixed — cargo refused the
 manifest before the compiler was invoked at all. `DBT-P58-006`, `a8946bb`.
 
+**Run `34709222717`, conclusion `success`, all five matrix legs.** Green because
+it ran, not because it was allowed to skip: the logs carry `INFO: Running`,
+`#200` and `Done 200 runs` for each target. `continue-on-error` is gone, and the
+only `if: always()` left in the file is on the crash-artifact upload — which is
+where it belongs, since artifacts are wanted precisely when the run fails.
+
 A related finding, recorded and not fixed: **seven of the twelve sources in
 `fuzz/fuzz_targets/` have no `[[bin]]` entry** — `ipc_frame`,
 `operation_state`, `pii_redaction`, `scheduler_eligibility`, `support_archive`,
@@ -169,12 +189,14 @@ never built once; that is its own phase. `DBT-P58-004`.
 
 #### ci — `deny-check` green, `windows` fails at step 1 of 16
 
-Run `34707875531`, commit `8888d31`:
+Run `34707875531` on `8888d31`, and again as run `34709219509` on `a8946bb`
+after the gate-path repair — identical both times, which is the evidence that
+the repair introduced nothing:
 
 | job | conclusion |
 |---|---|
 | `deny-check` | **success** |
-| `windows` | **failure**, at step 1 of 16 |
+| `windows` | **failure**, at step 1 of 16, `Verify approved dependency freeze` |
 
 ```
 Exception: phase21-workspace\scripts\freeze-dependencies.ps1:44
@@ -203,7 +225,8 @@ goes green because it runs `-Refresh`, not `-VerifyOnly` — **no workflow in th
 repository has ever passed `-VerifyOnly`.**
 
 The blocker was not removed, the step was not skipped, and nothing was marked
-`continue-on-error`. Its own closure text requires `-Refresh` on "the trusted
+`continue-on-error` — `grep -c 'continue-on-error\|if: always()' ci.yml` returns
+**0**. Its own closure text requires `-Refresh` on "the trusted
 dependency-freeze workstation" followed by a review of the resulting graph.
 That is an approval of the current dependency graph — a risk acceptance, not a
 measurement — and `DBT-P55-007` already records that a developer machine cannot
