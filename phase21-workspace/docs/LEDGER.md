@@ -31,7 +31,7 @@ evidence names where).
 | `DBT-P36-006` | Windows filesystem security findings rest on a POSIX mode-bit approximation, not ACL evidence | OPEN | verified P55: `crates/security-audit/src/filesystem.rs:36-44`, the comment still reads "Windows has no POSIX mode bits" | any Windows |
 | `DBT-P36-007` | its retirement condition (a seal) has not occurred | OPEN by design | not code-checkable; not actionable until the seal | — |
 | `DBT-P41-001` | the chain's VC++ redistributable **install** branch has never executed on any architecture — only the "already present" branch has | OPEN | P49 §49.7 measured detection and the x64 `Launch` condition; the install branch is still unrun | a Windows box **without** the VC++ redist |
-| `DBT-P42-012` | check 5 of 6: the `vcomp140.dll` pinned fallback is the ARM64 VM's layout | OPEN | verified P55: `scripts/build-installer.ps1:72` pins `C:\AetherCore-P36\...`; that directory does **not** exist on this machine | the ARM64 VM |
+| `DBT-P42-012` | check 5 of 6: the `vcomp140.dll` pinned fallback is the ARM64 VM's layout, so every other machine fell through to a throw even with a good copy installed | **CLOSED** | `f54cc50` — reproduced by CI run `34680665151` on a third machine (`VCToolsRedistDir` not set, pinned path absent), then fixed by a `vswhere` probe. Discovery widened; the 193,152 B / `55aba23c…` hash check **unchanged and still strict**. Measured locally: found at toolset 14.44.35112, hash equal | done |
 | `DBT-P45-004` | ~2% of macOS CPU samples degrade honestly instead of reading | ACCEPTED | P45 §45.3, 1/50; the bounded retry was deliberate | macOS |
 | `DBT-P47-003` | `perProcessorBusyBp` is never populated on Windows | OPEN — product decision | verified P55: `crates/performance-telemetry/src/windows_impl.rs:423` → `per_processor_busy_bp: Vec::new()` | any Windows |
 | `DBT-P47-004` | GPU adapter identity and VRAM stay empty; no honest source wired | OPEN | verified P55: `windows_impl.rs:973` — "adapter_id, adapter_name and dedicated_total_bytes stay" empty | any Windows |
@@ -51,7 +51,7 @@ evidence names where).
 
 | item | what | status |
 |---|---|---|
-| P55-1 | CI: green run of `windows-installer.yml`, run id recorded | `07445b4` + `f621ffc`; run `34680665151` — the ADK step that failed all three previous times now passes |
+| P55-1 | CI: green run of `windows-installer.yml`, run id recorded | in progress. `07445b4`+`f621ffc` fixed the ADK step — run `34680665151` is the first run in this workflow's history to get past it. That run then failed 38 min later at `DBT-P42-012` check 5, fixed in `f54cc50`. **The CI has never been green, so each fix uncovers the next failure; every one so far was an already-known ledger row, found on a third machine** |
 | P55-2 | this ledger | CLOSED — this file |
 | P55-3 | recovery re-established | 3.A done (see §2). **3.B NOT DONE — owner decision 2026-09-12: do not re-image.** The existing image does not fit beside a new one, so writing one would destroy the only verified copy. `DBT-P55-003`, `DBT-P55-004` open |
 | P55-4 | build + fix + install the consumer installer | not started |
