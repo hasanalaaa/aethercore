@@ -5,7 +5,7 @@
 //! parsing — no journald, no elevation.
 
 use crate::model::{
-    sort_and_clamp, Confidence, EvidenceRef, SecFinding, Severity, MAX_PARSE_BYTES,
+    Confidence, EvidenceRef, MAX_PARSE_BYTES, SecFinding, Severity, sort_and_clamp,
 };
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -59,7 +59,8 @@ fn extract_source(line: &str) -> String {
             .split_whitespace()
             .next()
             .unwrap_or("unknown")
-            .trim_end_matches(':').trim_end_matches(',')
+            .trim_end_matches(':')
+            .trim_end_matches(',')
             .to_string(),
         None => "unknown".to_string(),
     }

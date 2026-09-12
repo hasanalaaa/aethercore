@@ -134,19 +134,13 @@ pub(crate) fn read_response<R: std::io::Read>(reader: &mut R) -> Result<Response
 // (length-prefix + protobuf over any reader/writer; decode_* byte equivalents were already
 // public). The pub visibility serves the raw-wire diagnostic probes used by Windows
 // qualification; production call sites are unchanged.
-pub fn write_client_frame<W: std::io::Write>(
-    writer: &mut W,
-    frame: &ClientFrame,
-) -> Result<()> {
+pub fn write_client_frame<W: std::io::Write>(writer: &mut W, frame: &ClientFrame) -> Result<()> {
     write_message_with_limit(writer, frame, MAX_CLIENT_SESSION_FRAME_BYTES)
 }
 pub fn read_client_frame<R: std::io::Read>(reader: &mut R) -> Result<ClientFrame> {
     read_message_with_limit(reader, MAX_CLIENT_SESSION_FRAME_BYTES)
 }
-pub fn write_server_frame<W: std::io::Write>(
-    writer: &mut W,
-    frame: &ServerFrame,
-) -> Result<()> {
+pub fn write_server_frame<W: std::io::Write>(writer: &mut W, frame: &ServerFrame) -> Result<()> {
     write_message_with_limit(writer, frame, MAX_SERVER_SESSION_FRAME_BYTES)
 }
 pub fn read_server_frame<R: std::io::Read>(reader: &mut R) -> Result<ServerFrame> {
@@ -172,7 +166,6 @@ pub fn decode_client_frame_bytes(frame: &[u8]) -> Result<ClientFrame> {
     }
     Ok(message)
 }
-
 
 // ---------------------------------------------------------------------------
 // Phase 26 — Transport abstraction (additive; Windows behavior byte-unchanged)

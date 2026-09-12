@@ -126,7 +126,11 @@ impl QueryHandle {
     fn open() -> Option<Self> {
         let mut handle = 0isize;
         unsafe {
-            if pdh_ok(pdh::PdhOpenQueryW(windows::core::PCWSTR::null(), 0, &mut handle)) {
+            if pdh_ok(pdh::PdhOpenQueryW(
+                windows::core::PCWSTR::null(),
+                0,
+                &mut handle,
+            )) {
                 Some(Self(handle))
             } else {
                 None
@@ -394,13 +398,10 @@ fn sample_cpu(partial: &mut Vec<CollectorFault>, interval: Duration) -> Reading<
         degraded.push("% Interrupt Time");
         0
     });
-    let context_switches_per_sec = ctx
-        .as_ref()
-        .and_then(|c| c.read_u64())
-        .unwrap_or_else(|| {
-            degraded.push("Context Switches/sec");
-            0
-        });
+    let context_switches_per_sec = ctx.as_ref().and_then(|c| c.read_u64()).unwrap_or_else(|| {
+        degraded.push("Context Switches/sec");
+        0
+    });
     let processor_queue_length_x100 = queue
         .as_ref()
         .and_then(|c| c.read_u64())
@@ -680,21 +681,17 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
         }
         let instance = instance.to_string();
         pending.push(Pending {
-            active: query.add_english_counter(&format!(
-                r"\PhysicalDisk({instance})\% Disk Time"
-            )),
+            active: query.add_english_counter(&format!(r"\PhysicalDisk({instance})\% Disk Time")),
             queue: query.add_english_counter(&format!(
                 r"\PhysicalDisk({instance})\Current Disk Queue Length"
             )),
             latency: query.add_english_counter(&format!(
                 r"\PhysicalDisk({instance})\Avg. Disk sec/Transfer"
             )),
-            read: query.add_english_counter(&format!(
-                r"\PhysicalDisk({instance})\Disk Read Bytes/sec"
-            )),
-            write: query.add_english_counter(&format!(
-                r"\PhysicalDisk({instance})\Disk Write Bytes/sec"
-            )),
+            read: query
+                .add_english_counter(&format!(r"\PhysicalDisk({instance})\Disk Read Bytes/sec")),
+            write: query
+                .add_english_counter(&format!(r"\PhysicalDisk({instance})\Disk Write Bytes/sec")),
             instance,
         });
     }
@@ -806,7 +803,13 @@ fn query_disk_space(instance: &str) -> (u64, u64) {
     // If instance contains a drive letter (e.g., "0 C:" or "C:"), construct "X:\"
     let drive_path = instance.split_whitespace().find_map(|part| {
         let part = part.trim();
-        if part.len() == 2 && part.ends_with(':') && part.chars().next().map_or(false, |c| c.is_ascii_alphabetic()) {
+        if part.len() == 2
+            && part.ends_with(':')
+            && part
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_ascii_alphabetic())
+        {
             Some(format!("{}\\", part))
         } else {
             None
@@ -879,7 +882,9 @@ fn sample_gpu() -> Reading<GpuSample> {
             let name = instance_from_counter_path(path)
                 .map(str::to_string)
                 .unwrap_or_else(|| "3D".to_string());
-            query.add_english_counter(path).map(|counter| (name, counter))
+            query
+                .add_english_counter(path)
+                .map(|counter| (name, counter))
         })
         .collect();
     if pending.is_empty() {
@@ -934,34 +939,41 @@ fn sample_gpu() -> Reading<GpuSample> {
     let engines: Vec<GpuEngineSample> = pending
         .into_iter()
         .filter_map(|(engine_name, counter)| {
-            counter.read_percent_bp().map(|utilization_bp| GpuEngineSample {
-                engine_name,
-                utilization_bp,
-            })
+            counter
+                .read_percent_bp()
+                .map(|utilization_bp| GpuEngineSample {
+                    engine_name,
+                    utilization_bp,
+                })
         })
         .collect();
-    Reading::from_collection(
-        engines,
-        || CollectorFault {
-            collector: "gpu".into(),
-            kind: "Unavailable".into(),
-            detail: format!(
-                "{expanded_count} GPU Engine path(s) expanded but none produced a readable \
+    Reading::from_collection(engines, || CollectorFault {
+        collector: "gpu".into(),
+        kind: "Unavailable".into(),
+        detail: format!(
+            "{expanded_count} GPU Engine path(s) expanded but none produced a readable \
                  utilization counter"
-            ),
-        },
-    )
+        ),
+    })
     .into_gpu_sample(dedicated_used_bytes, shared_used_bytes)
 }
 
 /// Wraps the engine list back into the wire payload without losing the reading's
 /// measured-or-not decision.
 trait IntoGpuSample {
-    fn into_gpu_sample(self, dedicated_used_bytes: u64, shared_used_bytes: u64) -> Reading<GpuSample>;
+    fn into_gpu_sample(
+        self,
+        dedicated_used_bytes: u64,
+        shared_used_bytes: u64,
+    ) -> Reading<GpuSample>;
 }
 
 impl IntoGpuSample for Reading<Vec<GpuEngineSample>> {
-    fn into_gpu_sample(self, dedicated_used_bytes: u64, shared_used_bytes: u64) -> Reading<GpuSample> {
+    fn into_gpu_sample(
+        self,
+        dedicated_used_bytes: u64,
+        shared_used_bytes: u64,
+    ) -> Reading<GpuSample> {
         let (engines, fault) = self.into_parts(Vec::new);
         match fault {
             Some(fault) => Reading::unavailable(fault),

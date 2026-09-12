@@ -10,23 +10,24 @@ use std::{
 };
 
 use windows::{
-    core::PCWSTR,
     Win32::{
-        Foundation::{HANDLE, FILETIME},
+        Foundation::{FILETIME, HANDLE},
         Storage::FileSystem::{
-            CreateFileW, FileDispositionInfo, FileIdInfo, GetFileInformationByHandle,
-            GetFileInformationByHandleEx, GetFinalPathNameByHandleW, SetFileInformationByHandle,
-            BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
-            FILE_DISPOSITION_INFO, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_BACKUP_SEMANTICS,
-            FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_INFO, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
-            FILE_SHARE_READ, FILE_SHARE_WRITE, GETFINALPATHNAMEBYHANDLE_FLAGS, OPEN_EXISTING,
+            BY_HANDLE_FILE_INFORMATION, CreateFileW, FILE_ATTRIBUTE_NORMAL,
+            FILE_ATTRIBUTE_REPARSE_POINT, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
+            FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAGS_AND_ATTRIBUTES, FILE_ID_INFO,
+            FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+            FileDispositionInfo, FileIdInfo, GETFINALPATHNAMEBYHANDLE_FLAGS,
+            GetFileInformationByHandle, GetFileInformationByHandleEx, GetFinalPathNameByHandleW,
+            OPEN_EXISTING, SetFileInformationByHandle,
         },
     },
+    core::PCWSTR,
 };
 
 use super::{
-    candidate, cap_files, evidence, older_than, CleanerError, CleanupCandidate, CleanupPlatform,
-    Result,
+    CleanerError, CleanupCandidate, CleanupPlatform, Result, candidate, cap_files, evidence,
+    older_than,
 };
 use aethercore_operation_engine::{CleanupDeleteAction, CleanupFileEvidence};
 use aethercore_windows_foundation::{MachineMutationGuard, OwnedHandle};
@@ -45,7 +46,9 @@ pub(crate) fn acquire_mutation_guard() -> Result<CleanupMutationGuard> {
 }
 
 impl CleanupPlatform for WindowsCleanupPlatform {
-    fn scan(&self) -> Result<Vec<CleanupCandidate>> { scan_impl(true) }
+    fn scan(&self) -> Result<Vec<CleanupCandidate>> {
+        scan_impl(true)
+    }
 
     fn scan_passive(&self) -> Result<Vec<CleanupCandidate>> {
         let mut output = scan_impl(false)?;
@@ -62,37 +65,41 @@ impl CleanupPlatform for WindowsCleanupPlatform {
                 Err(_) => skipped = skipped.saturating_add(file.size_bytes),
             }
         }
-        Ok((deleted, skipped, format!("{} provider completed", action.provider)))
+        Ok((
+            deleted,
+            skipped,
+            format!("{} provider completed", action.provider),
+        ))
     }
 }
 
 fn scan_impl(include_profile_roots: bool) -> Result<Vec<CleanupCandidate>> {
-        let mut output = Vec::new();
-        let system_root = PathBuf::from(
-            std::env::var_os("SystemRoot")
-                .unwrap_or_else(|| OsStr::new(r"C:\Windows").to_os_string()),
-        );
-        let program_data = PathBuf::from(
-            std::env::var_os("ProgramData")
-                .unwrap_or_else(|| OsStr::new(r"C:\ProgramData").to_os_string()),
-        );
+    let mut output = Vec::new();
+    let system_root = PathBuf::from(
+        std::env::var_os("SystemRoot").unwrap_or_else(|| OsStr::new(r"C:\Windows").to_os_string()),
+    );
+    let program_data = PathBuf::from(
+        std::env::var_os("ProgramData")
+            .unwrap_or_else(|| OsStr::new(r"C:\ProgramData").to_os_string()),
+    );
 
-        push_root(
-            &mut output,
-            "WindowsTemp",
-            "Windows temporary files",
-            "Temporary files older than 48 hours under the Windows temp root.",
-            &system_root.join("Temp"),
-            Duration::from_secs(48 * 3600),
-            true,
-            false,
-        )?;
+    push_root(
+        &mut output,
+        "WindowsTemp",
+        "Windows temporary files",
+        "Temporary files older than 48 hours under the Windows temp root.",
+        &system_root.join("Temp"),
+        Duration::from_secs(48 * 3600),
+        true,
+        false,
+    )?;
 
-        let users = system_root
-            .parent()
-            .unwrap_or(Path::new(r"C:\"))
-            .join("Users");
-        if include_profile_roots { if let Ok(entries) = std::fs::read_dir(&users) {
+    let users = system_root
+        .parent()
+        .unwrap_or(Path::new(r"C:\"))
+        .join("Users");
+    if include_profile_roots {
+        if let Ok(entries) = std::fs::read_dir(&users) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if matches!(
@@ -123,57 +130,58 @@ fn scan_impl(include_profile_roots: bool) -> Result<Vec<CleanupCandidate>> {
                     true,
                 )?;
             }
-        }}
-
-        if include_profile_roots {
-            push_root(
-                &mut output,
-                "WER",
-                "Windows Error Reporting archives",
-                "Archived Windows Error Reporting files. Keep these when diagnosing crashes.",
-                &program_data.join(r"Microsoft\Windows\WER\ReportArchive"),
-                Duration::ZERO,
-                false,
-                true,
-            )?;
-            push_root(
-                &mut output,
-                "WER",
-                "Windows Error Reporting queue",
-                "Queued Windows Error Reporting files. Keep these when diagnosing crashes.",
-                &program_data.join(r"Microsoft\Windows\WER\ReportQueue"),
-                Duration::ZERO,
-                false,
-                true,
-            )?;
-            push_root(
-                &mut output,
-                "CrashDumps",
-                "Windows minidumps",
-                "Windows crash minidumps. Keep these when diagnosing BSODs.",
-                &system_root.join("Minidump"),
-                Duration::ZERO,
-                false,
-                true,
-            )?;
-
-            if let Some(memory_dump) = single_file(&system_root.join("MEMORY.DMP"), &system_root) {
-                let (files, truncated) = cap_files(vec![memory_dump]);
-                output.push(candidate(
-                    "CrashDumps",
-                    "Windows memory dump",
-                    "Full kernel memory dump. Keep it when diagnosing crashes.",
-                    files,
-                    false,
-                    true,
-                    "Files",
-                    truncated,
-                ));
-            }
         }
+    }
 
-        output.retain(|candidate| candidate.reclaimable_bytes > 0);
-        Ok(output)
+    if include_profile_roots {
+        push_root(
+            &mut output,
+            "WER",
+            "Windows Error Reporting archives",
+            "Archived Windows Error Reporting files. Keep these when diagnosing crashes.",
+            &program_data.join(r"Microsoft\Windows\WER\ReportArchive"),
+            Duration::ZERO,
+            false,
+            true,
+        )?;
+        push_root(
+            &mut output,
+            "WER",
+            "Windows Error Reporting queue",
+            "Queued Windows Error Reporting files. Keep these when diagnosing crashes.",
+            &program_data.join(r"Microsoft\Windows\WER\ReportQueue"),
+            Duration::ZERO,
+            false,
+            true,
+        )?;
+        push_root(
+            &mut output,
+            "CrashDumps",
+            "Windows minidumps",
+            "Windows crash minidumps. Keep these when diagnosing BSODs.",
+            &system_root.join("Minidump"),
+            Duration::ZERO,
+            false,
+            true,
+        )?;
+
+        if let Some(memory_dump) = single_file(&system_root.join("MEMORY.DMP"), &system_root) {
+            let (files, truncated) = cap_files(vec![memory_dump]);
+            output.push(candidate(
+                "CrashDumps",
+                "Windows memory dump",
+                "Full kernel memory dump. Keep it when diagnosing crashes.",
+                files,
+                false,
+                true,
+                "Files",
+                truncated,
+            ));
+        }
+    }
+
+    output.retain(|candidate| candidate.reclaimable_bytes > 0);
+    Ok(output)
 }
 
 fn push_root(
@@ -304,7 +312,11 @@ struct HandleEvidence {
     attributes: u32,
 }
 
-fn evidence_from_handle(path: &Path, root: &Path, root_final_path: &Path) -> Result<CleanupFileEvidence> {
+fn evidence_from_handle(
+    path: &Path,
+    root: &Path,
+    root_final_path: &Path,
+) -> Result<CleanupFileEvidence> {
     let wide_path = wide(path.as_os_str());
     let handle = unsafe {
         CreateFileW(
@@ -321,11 +333,15 @@ fn evidence_from_handle(path: &Path, root: &Path, root_final_path: &Path) -> Res
     let _guard = OwnedHandle::new(handle);
     let final_target = strip_device_prefix(&final_path(handle)?);
     if !final_target.starts_with(root_final_path) {
-        return Err(CleanerError::Safety("scan target escaped approved cleanup root".into()));
+        return Err(CleanerError::Safety(
+            "scan target escaped approved cleanup root".into(),
+        ));
     }
     let current = query_handle_evidence(handle)?;
     if current.attributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
-        return Err(CleanerError::Safety("scan target is a reparse point".into()));
+        return Err(CleanerError::Safety(
+            "scan target is a reparse point".into(),
+        ));
     }
     Ok(evidence(
         path,
@@ -367,7 +383,9 @@ fn filetime_to_unix_ms(value: FILETIME) -> Result<i64> {
     const WINDOWS_TO_UNIX_100NS: u64 = 116_444_736_000_000_000;
     let ticks = ((value.dwHighDateTime as u64) << 32) | value.dwLowDateTime as u64;
     if ticks < WINDOWS_TO_UNIX_100NS {
-        return Err(CleanerError::Safety("invalid handle modification time".into()));
+        return Err(CleanerError::Safety(
+            "invalid handle modification time".into(),
+        ));
     }
     Ok(((ticks - WINDOWS_TO_UNIX_100NS) / 10_000) as i64)
 }
@@ -424,15 +442,21 @@ fn delete_evidence(file: &CleanupFileEvidence) -> Result<u64> {
 
     let current = query_handle_evidence(handle)?;
     if current.attributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
-        return Err(CleanerError::Safety("cleanup target became a reparse point".into()));
+        return Err(CleanerError::Safety(
+            "cleanup target became a reparse point".into(),
+        ));
     }
     if current.size_bytes != file.size_bytes || current.modified_unix_ms != file.modified_unix_ms {
-        return Err(CleanerError::Safety("file size or timestamp changed since cleanup scan".into()));
+        return Err(CleanerError::Safety(
+            "file size or timestamp changed since cleanup scan".into(),
+        ));
     }
     if current.volume_serial_number != file.volume_serial_number
         || current.file_id_128 != file.file_id_128
     {
-        return Err(CleanerError::Safety("file identity changed since cleanup scan".into()));
+        return Err(CleanerError::Safety(
+            "file identity changed since cleanup scan".into(),
+        ));
     }
 
     let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
@@ -521,15 +545,24 @@ mod phase9_tests {
 
         std::fs::remove_file(&path).expect("replace original");
         std::fs::write(&path, b"BBBB").expect("write replacement");
-        let replacement = evidence_from_handle(&path, &root, &root_final).expect("replacement evidence");
-        assert_ne!(original_file_id, replacement.file_id_128, "fixture must allocate a new file object");
+        let replacement =
+            evidence_from_handle(&path, &root, &root_final).expect("replacement evidence");
+        assert_ne!(
+            original_file_id, replacement.file_id_128,
+            "fixture must allocate a new file object"
+        );
 
         // Normalize the mutable metadata to the replacement so this assertion specifically proves
         // that the volume/file-ID barrier, not size or timestamp drift, stops the deletion.
         approved.size_bytes = replacement.size_bytes;
         approved.modified_unix_ms = replacement.modified_unix_ms;
-        assert!(matches!(delete_evidence(&approved), Err(CleanerError::Safety(message)) if message.contains("file identity changed")));
-        assert!(path.exists(), "replacement file must survive identity mismatch");
+        assert!(
+            matches!(delete_evidence(&approved), Err(CleanerError::Safety(message)) if message.contains("file identity changed"))
+        );
+        assert!(
+            path.exists(),
+            "replacement file must survive identity mismatch"
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }

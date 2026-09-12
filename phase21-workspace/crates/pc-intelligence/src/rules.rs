@@ -1,9 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{
-    lifecycle::default_resolution_authority,
-    model::*,
-};
+use crate::{lifecycle::default_resolution_authority, model::*};
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 const DRIVER_CORRELATION_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
@@ -19,78 +16,307 @@ pub struct RuleDescriptor {
 }
 
 pub const RULES: &[RuleDescriptor] = &[
-    RuleDescriptor { id: "P17-DRV-001", version: 2, domain: Domain::Drivers, description: "Missing driver with authority-aware remediation semantics" },
-    RuleDescriptor { id: "P17-DRV-002", version: 2, domain: Domain::Drivers, description: "PnP device problem with trusted-source coverage semantics" },
-    RuleDescriptor { id: "P17-DRV-003", version: 2, domain: Domain::Drivers, description: "Authority-ranked official driver recommendation or guided official path" },
-    RuleDescriptor { id: "P17-WIN-001", version: 1, domain: Domain::Windows, description: "Windows integrity assessment requires attention" },
-    RuleDescriptor { id: "P17-STO-001", version: 1, domain: Domain::Storage, description: "Storage reports explicit reliability evidence" },
-    RuleDescriptor { id: "P17-MEM-001", version: 1, domain: Domain::Memory, description: "Current memory pressure is sustained at a high threshold" },
-    RuleDescriptor { id: "P17-HW-001", version: 2, domain: Domain::Hardware, description: "WHEA or hardware-error evidence exists with corrected/fatal semantics kept distinct" },
-    RuleDescriptor { id: "P17-CRASH-001", version: 1, domain: Domain::Diagnostics, description: "Recent bugcheck/crash evidence exists" },
-    RuleDescriptor { id: "P17-START-001", version: 1, domain: Domain::Startup, description: "Multiple high-impact startup entries are present" },
-    RuleDescriptor { id: "P17-CLEAN-001", version: 1, domain: Domain::Cleanup, description: "Material reclaimable data is available" },
-    RuleDescriptor { id: "P17-UPD-001", version: 1, domain: Domain::Updates, description: "AetherCore application update is available" },
-    RuleDescriptor { id: "P17-CORR-001", version: 2, domain: Domain::Drivers, description: "Recent driver change is closely followed by crash evidence without claiming root cause" },
-    RuleDescriptor { id: "P17-CORR-003", version: 2, domain: Domain::Hardware, description: "WHEA and crash evidence correlate only when proximity/recurrence supports a meaningful relationship" },
+    RuleDescriptor {
+        id: "P17-DRV-001",
+        version: 2,
+        domain: Domain::Drivers,
+        description: "Missing driver with authority-aware remediation semantics",
+    },
+    RuleDescriptor {
+        id: "P17-DRV-002",
+        version: 2,
+        domain: Domain::Drivers,
+        description: "PnP device problem with trusted-source coverage semantics",
+    },
+    RuleDescriptor {
+        id: "P17-DRV-003",
+        version: 2,
+        domain: Domain::Drivers,
+        description: "Authority-ranked official driver recommendation or guided official path",
+    },
+    RuleDescriptor {
+        id: "P17-WIN-001",
+        version: 1,
+        domain: Domain::Windows,
+        description: "Windows integrity assessment requires attention",
+    },
+    RuleDescriptor {
+        id: "P17-STO-001",
+        version: 1,
+        domain: Domain::Storage,
+        description: "Storage reports explicit reliability evidence",
+    },
+    RuleDescriptor {
+        id: "P17-MEM-001",
+        version: 1,
+        domain: Domain::Memory,
+        description: "Current memory pressure is sustained at a high threshold",
+    },
+    RuleDescriptor {
+        id: "P17-HW-001",
+        version: 2,
+        domain: Domain::Hardware,
+        description: "WHEA or hardware-error evidence exists with corrected/fatal semantics kept distinct",
+    },
+    RuleDescriptor {
+        id: "P17-CRASH-001",
+        version: 1,
+        domain: Domain::Diagnostics,
+        description: "Recent bugcheck/crash evidence exists",
+    },
+    RuleDescriptor {
+        id: "P17-START-001",
+        version: 1,
+        domain: Domain::Startup,
+        description: "Multiple high-impact startup entries are present",
+    },
+    RuleDescriptor {
+        id: "P17-CLEAN-001",
+        version: 1,
+        domain: Domain::Cleanup,
+        description: "Material reclaimable data is available",
+    },
+    RuleDescriptor {
+        id: "P17-UPD-001",
+        version: 1,
+        domain: Domain::Updates,
+        description: "AetherCore application update is available",
+    },
+    RuleDescriptor {
+        id: "P17-CORR-001",
+        version: 2,
+        domain: Domain::Drivers,
+        description: "Recent driver change is closely followed by crash evidence without claiming root cause",
+    },
+    RuleDescriptor {
+        id: "P17-CORR-003",
+        version: 2,
+        domain: Domain::Hardware,
+        description: "WHEA and crash evidence correlate only when proximity/recurrence supports a meaningful relationship",
+    },
 ];
 
 pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
     let mut findings = Vec::new();
     for fact in facts {
         match &fact.payload {
-            FactPayload::DeviceHealth { missing_driver: true, has_problem, problem_code, update_status, .. } => {
-                let trusted_candidate = matches!(update_status.as_str(), "MissingDriverCandidateAvailable" | "RecommendedUpdateAvailable");
+            FactPayload::DeviceHealth {
+                missing_driver: true,
+                has_problem,
+                problem_code,
+                update_status,
+                ..
+            } => {
+                let trusted_candidate = matches!(
+                    update_status.as_str(),
+                    "MissingDriverCandidateAvailable" | "RecommendedUpdateAvailable"
+                );
                 let (code, title, summary, technical, safety, action) = if trusted_candidate {
-                    ("DRIVER_MISSING", "finding.driverMissing.title", "finding.driverMissing.summary", "finding.driverMissing.technical", Some(RemediationSafety::Manual), ActionType::ManualVendorAction)
+                    (
+                        "DRIVER_MISSING",
+                        "finding.driverMissing.title",
+                        "finding.driverMissing.summary",
+                        "finding.driverMissing.technical",
+                        Some(RemediationSafety::Manual),
+                        ActionType::ManualVendorAction,
+                    )
                 } else {
-                    ("NO_TRUSTED_CANDIDATE", "finding.noTrustedDriver.title", "finding.noTrustedDriver.summary", "finding.noTrustedDriver.technical", Some(RemediationSafety::Manual), ActionType::ManualVendorAction)
+                    (
+                        "NO_TRUSTED_CANDIDATE",
+                        "finding.noTrustedDriver.title",
+                        "finding.noTrustedDriver.summary",
+                        "finding.noTrustedDriver.technical",
+                        Some(RemediationSafety::Manual),
+                        ActionType::ManualVendorAction,
+                    )
                 };
-                let severity = if *has_problem { Severity::High } else { Severity::Moderate };
-                findings.push(finding(fact, code, Domain::Drivers, severity, Confidence::Confirmed, title, summary, technical, "P17-DRV-001", 2, safety, action));
+                let severity = if *has_problem {
+                    Severity::High
+                } else {
+                    Severity::Moderate
+                };
+                findings.push(finding(
+                    fact,
+                    code,
+                    Domain::Drivers,
+                    severity,
+                    Confidence::Confirmed,
+                    title,
+                    summary,
+                    technical,
+                    "P17-DRV-001",
+                    2,
+                    safety,
+                    action,
+                ));
                 let _ = problem_code;
             }
-            FactPayload::DeviceHealth { missing_driver: false, has_problem: true, update_status, .. } => {
+            FactPayload::DeviceHealth {
+                missing_driver: false,
+                has_problem: true,
+                update_status,
+                ..
+            } => {
                 let no_trusted = update_status.contains("NoTrustedCandidate");
                 findings.push(finding(
                     fact,
-                    if no_trusted { "NO_TRUSTED_CANDIDATE" } else { "DEVICE_PROBLEM" },
+                    if no_trusted {
+                        "NO_TRUSTED_CANDIDATE"
+                    } else {
+                        "DEVICE_PROBLEM"
+                    },
                     Domain::Drivers,
                     Severity::Moderate,
                     Confidence::Confirmed,
-                    if no_trusted { "finding.noTrustedDriver.title" } else { "finding.deviceProblem.title" },
-                    if no_trusted { "finding.noTrustedDriver.summary" } else { "finding.deviceProblem.summary" },
-                    if no_trusted { "finding.noTrustedDriver.technical" } else { "finding.deviceProblem.technical" },
-                    "P17-DRV-002", 2, Some(RemediationSafety::Manual), ActionType::ManualVendorAction,
+                    if no_trusted {
+                        "finding.noTrustedDriver.title"
+                    } else {
+                        "finding.deviceProblem.title"
+                    },
+                    if no_trusted {
+                        "finding.noTrustedDriver.summary"
+                    } else {
+                        "finding.deviceProblem.summary"
+                    },
+                    if no_trusted {
+                        "finding.noTrustedDriver.technical"
+                    } else {
+                        "finding.deviceProblem.technical"
+                    },
+                    "P17-DRV-002",
+                    2,
+                    Some(RemediationSafety::Manual),
+                    ActionType::ManualVendorAction,
                 ));
             }
-            FactPayload::DeviceHealth { missing_driver: false, has_problem: false, update_status, authority_coverage, management_authorities, .. } => {
+            FactPayload::DeviceHealth {
+                missing_driver: false,
+                has_problem: false,
+                update_status,
+                authority_coverage,
+                management_authorities,
+                ..
+            } => {
                 if !management_authorities.is_empty() {
-                    findings.push(finding(fact, "DRIVER_MANAGEMENT_AUTHORITY_AVAILABLE", Domain::Drivers, Severity::Informational, Confidence::Confirmed, "finding.driverManagement.title", "finding.driverManagement.summary", "finding.driverManagement.technical", "P18.1-DRV-001", 1, Some(RemediationSafety::Manual), ActionType::ManualVendorAction));
+                    findings.push(finding(
+                        fact,
+                        "DRIVER_MANAGEMENT_AUTHORITY_AVAILABLE",
+                        Domain::Drivers,
+                        Severity::Informational,
+                        Confidence::Confirmed,
+                        "finding.driverManagement.title",
+                        "finding.driverManagement.summary",
+                        "finding.driverManagement.technical",
+                        "P18.1-DRV-001",
+                        1,
+                        Some(RemediationSafety::Manual),
+                        ActionType::ManualVendorAction,
+                    ));
                 }
                 if authority_coverage != "CompleteForRequiredAuthorities" {
-                    findings.push(finding(fact, "DRIVER_AUTHORITY_COVERAGE_INCOMPLETE", Domain::Drivers, Severity::Informational, Confidence::Confirmed, "finding.driverCoverage.title", "finding.driverCoverage.summary", "finding.driverCoverage.technical", "P18.1-DRV-002", 1, None, ActionType::ManualVendorAction));
+                    findings.push(finding(
+                        fact,
+                        "DRIVER_AUTHORITY_COVERAGE_INCOMPLETE",
+                        Domain::Drivers,
+                        Severity::Informational,
+                        Confidence::Confirmed,
+                        "finding.driverCoverage.title",
+                        "finding.driverCoverage.summary",
+                        "finding.driverCoverage.technical",
+                        "P18.1-DRV-002",
+                        1,
+                        None,
+                        ActionType::ManualVendorAction,
+                    ));
                 }
-                if matches!(update_status.as_str(), "UpdateStatusUnknown" | "UpdateStatusUnknownOffline" | "ProviderUnavailable") {
-                    findings.push(finding(fact, "DRIVER_UPDATE_STATUS_UNKNOWN", Domain::Drivers, Severity::Informational, Confidence::Confirmed, "finding.driverStatusUnknown.title", "finding.driverStatusUnknown.summary", "finding.driverStatusUnknown.technical", "P18.1-DRV-003", 1, None, ActionType::ManualVendorAction));
+                if matches!(
+                    update_status.as_str(),
+                    "UpdateStatusUnknown" | "UpdateStatusUnknownOffline" | "ProviderUnavailable"
+                ) {
+                    findings.push(finding(
+                        fact,
+                        "DRIVER_UPDATE_STATUS_UNKNOWN",
+                        Domain::Drivers,
+                        Severity::Informational,
+                        Confidence::Confirmed,
+                        "finding.driverStatusUnknown.title",
+                        "finding.driverStatusUnknown.summary",
+                        "finding.driverStatusUnknown.technical",
+                        "P18.1-DRV-003",
+                        1,
+                        None,
+                        ActionType::ManualVendorAction,
+                    ));
                 }
             }
-            FactPayload::DriverUpdate { recommendation_state, installation_mode, trust_state, selectable, .. } => {
+            FactPayload::DriverUpdate {
+                recommendation_state,
+                installation_mode,
+                trust_state,
+                selectable,
+                ..
+            } => {
                 let executable = *selectable
                     && matches!(recommendation_state.as_str(), "Recommended" | "Optional")
-                    && matches!(installation_mode.as_str(), "WindowsManaged" | "DirectTrusted")
-                    && matches!(trust_state.as_str(), "WindowsManaged" | "TrustedSignature" | "TrustedSignatureAndDigest");
+                    && matches!(
+                        installation_mode.as_str(),
+                        "WindowsManaged" | "DirectTrusted"
+                    )
+                    && matches!(
+                        trust_state.as_str(),
+                        "WindowsManaged" | "TrustedSignature" | "TrustedSignatureAndDigest"
+                    );
                 let firmware = recommendation_state == "FirmwareProtected";
                 let (code, severity, safety, action, title, summary, technical) = if firmware {
-                    ("FIRMWARE_REVIEW_REQUIRED", Severity::Informational, Some(RemediationSafety::Manual), ActionType::ManualVendorAction, "finding.firmwareDriver.title", "finding.firmwareDriver.summary", "finding.firmwareDriver.technical")
+                    (
+                        "FIRMWARE_REVIEW_REQUIRED",
+                        Severity::Informational,
+                        Some(RemediationSafety::Manual),
+                        ActionType::ManualVendorAction,
+                        "finding.firmwareDriver.title",
+                        "finding.firmwareDriver.summary",
+                        "finding.firmwareDriver.technical",
+                    )
                 } else if executable {
-                    ("DRIVER_UPDATE_AVAILABLE", Severity::Low, Some(RemediationSafety::SafeReview), ActionType::InstallDriver, "finding.driverUpdate.title", "finding.driverUpdate.summary", "finding.driverUpdate.technical")
+                    (
+                        "DRIVER_UPDATE_AVAILABLE",
+                        Severity::Low,
+                        Some(RemediationSafety::SafeReview),
+                        ActionType::InstallDriver,
+                        "finding.driverUpdate.title",
+                        "finding.driverUpdate.summary",
+                        "finding.driverUpdate.technical",
+                    )
                 } else {
-                    ("DRIVER_UPDATE_AVAILABLE", Severity::Informational, None, ActionType::ManualVendorAction, "finding.driverUpdate.title", "finding.driverUpdate.summary", "finding.driverUpdate.technical")
+                    (
+                        "DRIVER_UPDATE_AVAILABLE",
+                        Severity::Informational,
+                        None,
+                        ActionType::ManualVendorAction,
+                        "finding.driverUpdate.title",
+                        "finding.driverUpdate.summary",
+                        "finding.driverUpdate.technical",
+                    )
                 };
-                findings.push(finding(fact, code, Domain::Drivers, severity, Confidence::High, title, summary, technical, "P18.1-DRV-004", 1, safety, action));
+                findings.push(finding(
+                    fact,
+                    code,
+                    Domain::Drivers,
+                    severity,
+                    Confidence::High,
+                    title,
+                    summary,
+                    technical,
+                    "P18.1-DRV-004",
+                    1,
+                    safety,
+                    action,
+                ));
             }
             FactPayload::WindowsIntegrity { result_code, .. }
-                if is_actionable_integrity_attention(result_code) => findings.push(finding(
+                if is_actionable_integrity_attention(result_code) =>
+            {
+                findings.push(finding(
                     fact,
                     "WINDOWS_INTEGRITY_ATTENTION",
                     Domain::Windows,
@@ -103,7 +329,8 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                     1,
                     Some(RemediationSafety::Sensitive),
                     ActionType::RepairWindows,
-                )),
+                ))
+            }
             FactPayload::StorageHealth {
                 health_status,
                 source_severity,
@@ -156,7 +383,10 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                     ));
                 }
             }
-            FactPayload::MemoryPressure { memory_load_percent, .. } if *memory_load_percent >= 95 => findings.push(finding(
+            FactPayload::MemoryPressure {
+                memory_load_percent,
+                ..
+            } if *memory_load_percent >= 95 => findings.push(finding(
                 fact,
                 "HIGH_MEMORY_PRESSURE",
                 Domain::Memory,
@@ -170,7 +400,9 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                 None,
                 ActionType::ManualVendorAction,
             )),
-            FactPayload::HardwareEvent { provider, event_id, .. } => {
+            FactPayload::HardwareEvent {
+                provider, event_id, ..
+            } => {
                 let (severity, confidence) = match whea_disposition(provider, *event_id) {
                     WheaDisposition::Fatal => (Severity::High, Confidence::Confirmed),
                     WheaDisposition::Corrected => (Severity::Moderate, Confidence::High),
@@ -192,21 +424,27 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                     ActionType::ReviewHardwareError,
                 ));
             }
-            FactPayload::Crash { .. } if observed_within(fact.observed_unix_ms, now_ms, 30 * DAY_MS) => findings.push(finding(
-                fact,
-                "RECENT_CRASH_EVIDENCE",
-                Domain::Diagnostics,
-                Severity::Moderate,
-                Confidence::Confirmed,
-                "finding.recentCrash.title",
-                "finding.recentCrash.summary",
-                "finding.recentCrash.technical",
-                "P17-CRASH-001",
-                1,
-                Some(RemediationSafety::SafeReview),
-                ActionType::ReviewCrashEvidence,
-            )),
-            FactPayload::StartupFootprint { high_impact_count, .. } if *high_impact_count >= 3 => findings.push(finding(
+            FactPayload::Crash { .. }
+                if observed_within(fact.observed_unix_ms, now_ms, 30 * DAY_MS) =>
+            {
+                findings.push(finding(
+                    fact,
+                    "RECENT_CRASH_EVIDENCE",
+                    Domain::Diagnostics,
+                    Severity::Moderate,
+                    Confidence::Confirmed,
+                    "finding.recentCrash.title",
+                    "finding.recentCrash.summary",
+                    "finding.recentCrash.technical",
+                    "P17-CRASH-001",
+                    1,
+                    Some(RemediationSafety::SafeReview),
+                    ActionType::ReviewCrashEvidence,
+                ))
+            }
+            FactPayload::StartupFootprint {
+                high_impact_count, ..
+            } if *high_impact_count >= 3 => findings.push(finding(
                 fact,
                 "HIGH_STARTUP_FOOTPRINT",
                 Domain::Startup,
@@ -220,7 +458,9 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                 Some(RemediationSafety::SafeReview),
                 ActionType::DisableStartupItem,
             )),
-            FactPayload::CleanupOpportunity { reclaimable_bytes, .. } if *reclaimable_bytes >= 512 * 1024 * 1024 => findings.push(finding(
+            FactPayload::CleanupOpportunity {
+                reclaimable_bytes, ..
+            } if *reclaimable_bytes >= 512 * 1024 * 1024 => findings.push(finding(
                 fact,
                 "CLEANUP_OPPORTUNITY",
                 Domain::Cleanup,
@@ -234,7 +474,10 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                 Some(RemediationSafety::SafeReview),
                 ActionType::CleanupData,
             )),
-            FactPayload::UpdateState { update_available: true, .. } => findings.push(finding(
+            FactPayload::UpdateState {
+                update_available: true,
+                ..
+            } => findings.push(finding(
                 fact,
                 "APP_UPDATE_AVAILABLE",
                 Domain::Updates,
@@ -282,7 +525,9 @@ fn correlate_driver_change(facts: &[SystemFact], now_ms: i64, findings: &mut Vec
                     && observed_within(crash.observed_unix_ms, now_ms, 7 * DAY_MS)
                     && crash.observed_unix_ms >= change.observed_unix_ms
             })
-            .filter(|crash| crash.observed_unix_ms - change.observed_unix_ms <= DRIVER_CORRELATION_WINDOW_MS)
+            .filter(|crash| {
+                crash.observed_unix_ms - change.observed_unix_ms <= DRIVER_CORRELATION_WINDOW_MS
+            })
             .min_by_key(|crash| crash.observed_unix_ms - change.observed_unix_ms)
         else {
             continue;
@@ -303,7 +548,10 @@ fn correlate_driver_change(facts: &[SystemFact], now_ms: i64, findings: &mut Vec
             ActionType::InstallDriver,
         );
         correlated.evidence.extend(crash.evidence.clone());
-        correlated.message_args.insert("timeDistanceSeconds".into(), (distance_ms / 1000).to_string());
+        correlated.message_args.insert(
+            "timeDistanceSeconds".into(),
+            (distance_ms / 1000).to_string(),
+        );
         correlated.correlation = Some(CorrelationExplanation {
             strength: CorrelationStrength::Moderate,
             time_distance_ms: distance_ms,
@@ -330,7 +578,12 @@ fn correlate_hardware_crash(facts: &[SystemFact], now_ms: i64, findings: &mut Ve
 
     let mut pairs = Vec::new();
     for hw in &hardware {
-        let FactPayload::HardwareEvent { provider, event_id, category } = &hw.payload else {
+        let FactPayload::HardwareEvent {
+            provider,
+            event_id,
+            category,
+        } = &hw.payload
+        else {
             continue;
         };
         if !provider.eq_ignore_ascii_case("Microsoft-Windows-WHEA-Logger") {
@@ -374,7 +627,8 @@ fn correlate_hardware_crash(facts: &[SystemFact], now_ms: i64, findings: &mut Ve
         .len();
 
     let (hw, crash, distance_ms, signed_delta, disposition, category) = &pairs[0];
-    let repeated_tight_relationship = causal_tight_pairs.len() >= 2 && distinct_hw >= 2 && distinct_crashes >= 2;
+    let repeated_tight_relationship =
+        causal_tight_pairs.len() >= 2 && distinct_hw >= 2 && distinct_crashes >= 2;
     let strength = if repeated_tight_relationship
         || (*disposition == WheaDisposition::Fatal
             && *signed_delta >= 0
@@ -418,8 +672,13 @@ fn correlate_hardware_crash(facts: &[SystemFact], now_ms: i64, findings: &mut Ve
             correlated.evidence.extend(extra_crash.evidence.clone());
         }
     }
-    correlated.message_args.insert("timeDistanceSeconds".into(), (distance_ms / 1000).to_string());
-    correlated.message_args.insert("hardwareCategory".into(), category.clone());
+    correlated.message_args.insert(
+        "timeDistanceSeconds".into(),
+        (distance_ms / 1000).to_string(),
+    );
+    correlated
+        .message_args
+        .insert("hardwareCategory".into(), category.clone());
     let mut conflicts = Vec::new();
     if *disposition == WheaDisposition::Corrected {
         conflicts.push("finding.correlation.correctedHardwareEvidence".into());
@@ -470,24 +729,56 @@ fn observed_within(observed: i64, now: i64, window: i64) -> bool {
 }
 
 fn is_healthy_integrity(result_code: &str, exit_code: i32) -> bool {
-    exit_code == 0 && matches!(result_code,
-        "ExitCode0" | "NoErrors" | "ComponentStoreHealthy" | "SystemFilesHealthy" | "ServicingAvailable" | "UpdateHealthy" | "NetworkHealthy" | "DnsHealthy" | "ProxyHealthy" | "WinReAvailable" | "RestoreAvailable"
-    )
+    exit_code == 0
+        && matches!(
+            result_code,
+            "ExitCode0"
+                | "NoErrors"
+                | "ComponentStoreHealthy"
+                | "SystemFilesHealthy"
+                | "ServicingAvailable"
+                | "UpdateHealthy"
+                | "NetworkHealthy"
+                | "DnsHealthy"
+                | "ProxyHealthy"
+                | "WinReAvailable"
+                | "RestoreAvailable"
+        )
 }
 
 fn is_actionable_integrity_attention(result_code: &str) -> bool {
-    matches!(result_code,
-        "ComponentStoreRepairable" | "ComponentStoreCorruptionDetected" | "ComponentStoreNonRepairable" |
-        "SystemFilesCorrupt" | "SystemFilesRepairable" | "SystemFilesRepairFailed" |
-        "ServicingBusy" | "RebootPending" | "UpdateFailure" | "ServiceStopped" | "ServiceDisabled" |
-        "DnsFailure" | "ProxyUnexpected" | "WinReUnavailable" | "RestoreUnavailable"
+    matches!(
+        result_code,
+        "ComponentStoreRepairable"
+            | "ComponentStoreCorruptionDetected"
+            | "ComponentStoreNonRepairable"
+            | "SystemFilesCorrupt"
+            | "SystemFilesRepairable"
+            | "SystemFilesRepairFailed"
+            | "ServicingBusy"
+            | "RebootPending"
+            | "UpdateFailure"
+            | "ServiceStopped"
+            | "ServiceDisabled"
+            | "DnsFailure"
+            | "ProxyUnexpected"
+            | "WinReUnavailable"
+            | "RestoreUnavailable"
     ) || result_code.starts_with("ChkdskExit")
 }
 
 pub fn explicitly_healthy(fact: &SystemFact) -> bool {
     match &fact.payload {
-        FactPayload::DeviceHealth { missing_driver, has_problem, .. } => !*missing_driver && !*has_problem,
-        FactPayload::WindowsIntegrity { result_code, exit_code, .. } => is_healthy_integrity(result_code, *exit_code),
+        FactPayload::DeviceHealth {
+            missing_driver,
+            has_problem,
+            ..
+        } => !*missing_driver && !*has_problem,
+        FactPayload::WindowsIntegrity {
+            result_code,
+            exit_code,
+            ..
+        } => is_healthy_integrity(result_code, *exit_code),
         FactPayload::StorageHealth {
             health_status,
             source_severity,
@@ -511,11 +802,18 @@ pub fn explicitly_healthy(fact: &SystemFact) -> bool {
                 && !wear_percent.is_some_and(|value| value >= 100)
                 && !matches!((temperature_c, temperature_max_c), (Some(current), Some(maximum)) if *maximum > 0 && *current >= *maximum)
         }
-        FactPayload::MemoryPressure { memory_load_percent, pressure_label } => {
-            *memory_load_percent < 95 && !pressure_label.eq_ignore_ascii_case("Critical")
-        }
-        FactPayload::StartupFootprint { high_impact_count, .. } => *high_impact_count < 3,
-        FactPayload::UpdateState { update_available, failed, .. } => !*update_available && !*failed,
+        FactPayload::MemoryPressure {
+            memory_load_percent,
+            pressure_label,
+        } => *memory_load_percent < 95 && !pressure_label.eq_ignore_ascii_case("Critical"),
+        FactPayload::StartupFootprint {
+            high_impact_count, ..
+        } => *high_impact_count < 3,
+        FactPayload::UpdateState {
+            update_available,
+            failed,
+            ..
+        } => !*update_available && !*failed,
         _ => false,
     }
 }
@@ -602,7 +900,9 @@ fn remediation_traits(
             Reversibility::Limited,
             false,
         ),
-        ActionType::ReviewStorage | ActionType::ReviewHardwareError | ActionType::ReviewCrashEvidence => (
+        ActionType::ReviewStorage
+        | ActionType::ReviewHardwareError
+        | ActionType::ReviewCrashEvidence => (
             PrivilegeRequirement::None,
             RebootRequirement::None,
             Reversibility::NotSoftwareReversible,
@@ -655,12 +955,21 @@ pub fn remediation_candidates(findings: &[Finding]) -> Vec<RemediationCandidate>
         };
         let action_type = match finding.code.as_str() {
             "POSSIBLE_DRIVER_REGRESSION" => ActionType::InstallDriver,
-            "DRIVER_UPDATE_AVAILABLE" if safety == RemediationSafety::Manual => ActionType::ManualVendorAction,
+            "DRIVER_UPDATE_AVAILABLE" if safety == RemediationSafety::Manual => {
+                ActionType::ManualVendorAction
+            }
             "DRIVER_UPDATE_AVAILABLE" => ActionType::InstallDriver,
-            "DRIVER_MISSING" | "DEVICE_PROBLEM" | "NO_TRUSTED_CANDIDATE" | "VENDOR_UTILITY_REQUIRED" | "FIRMWARE_REVIEW_REQUIRED" | "DRIVER_MANAGEMENT_AUTHORITY_AVAILABLE" => ActionType::ManualVendorAction,
+            "DRIVER_MISSING"
+            | "DEVICE_PROBLEM"
+            | "NO_TRUSTED_CANDIDATE"
+            | "VENDOR_UTILITY_REQUIRED"
+            | "FIRMWARE_REVIEW_REQUIRED"
+            | "DRIVER_MANAGEMENT_AUTHORITY_AVAILABLE" => ActionType::ManualVendorAction,
             "WINDOWS_INTEGRITY_ATTENTION" => ActionType::RepairWindows,
             "STORAGE_RELIABILITY_CONCERN" | "STORAGE_ATTENTION" => ActionType::ReviewStorage,
-            "HARDWARE_ERROR_EVIDENCE" | "CRASH_WITH_HARDWARE_EVIDENCE" => ActionType::ReviewHardwareError,
+            "HARDWARE_ERROR_EVIDENCE" | "CRASH_WITH_HARDWARE_EVIDENCE" => {
+                ActionType::ReviewHardwareError
+            }
             "RECENT_CRASH_EVIDENCE" => ActionType::ReviewCrashEvidence,
             "HIGH_STARTUP_FOOTPRINT" => ActionType::DisableStartupItem,
             "CLEANUP_OPPORTUNITY" => ActionType::CleanupData,
@@ -746,69 +1055,129 @@ mod correlation_tests {
 
     #[test]
     fn fatal_whea_immediately_before_crash_is_strong_not_causal_claim() {
-        let findings = evaluate(&[
-            whea("whea", NOW - 42_000, 18, "ProcessorHardwareEvidence"),
-            crash("crash", NOW),
-        ], NOW);
-        let correlated = findings.iter().find(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE").unwrap();
-        assert_eq!(correlated.correlation.as_ref().unwrap().strength, CorrelationStrength::Strong);
+        let findings = evaluate(
+            &[
+                whea("whea", NOW - 42_000, 18, "ProcessorHardwareEvidence"),
+                crash("crash", NOW),
+            ],
+            NOW,
+        );
+        let correlated = findings
+            .iter()
+            .find(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE")
+            .unwrap();
+        assert_eq!(
+            correlated.correlation.as_ref().unwrap().strength,
+            CorrelationStrength::Strong
+        );
         assert_eq!(correlated.severity, Severity::High);
         assert_ne!(correlated.confidence, Confidence::Confirmed);
     }
 
     #[test]
     fn corrected_whea_days_before_unrelated_crash_never_creates_critical_correlation() {
-        let findings = evaluate(&[
-            whea("whea", NOW - 4 * DAY_MS, 17, "PcieHardwareEvidence"),
-            crash("crash", NOW),
-        ], NOW);
-        assert!(!findings.iter().any(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE"));
+        let findings = evaluate(
+            &[
+                whea("whea", NOW - 4 * DAY_MS, 17, "PcieHardwareEvidence"),
+                crash("crash", NOW),
+            ],
+            NOW,
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE")
+        );
     }
 
     #[test]
     fn repeated_tight_whea_and_crashes_raise_strength() {
-        let findings = evaluate(&[
-            whea("whea-1", NOW - 120_000, 17, "ProcessorHardwareEvidence"),
-            crash("crash-1", NOW - 100_000),
-            whea("whea-2", NOW - 60_000, 17, "ProcessorHardwareEvidence"),
-            crash("crash-2", NOW - 30_000),
-        ], NOW);
-        let correlated = findings.iter().find(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE").unwrap();
-        assert_eq!(correlated.correlation.as_ref().unwrap().strength, CorrelationStrength::Strong);
+        let findings = evaluate(
+            &[
+                whea("whea-1", NOW - 120_000, 17, "ProcessorHardwareEvidence"),
+                crash("crash-1", NOW - 100_000),
+                whea("whea-2", NOW - 60_000, 17, "ProcessorHardwareEvidence"),
+                crash("crash-2", NOW - 30_000),
+            ],
+            NOW,
+        );
+        let correlated = findings
+            .iter()
+            .find(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE")
+            .unwrap();
+        assert_eq!(
+            correlated.correlation.as_ref().unwrap().strength,
+            CorrelationStrength::Strong
+        );
     }
 
     #[test]
     fn crash_without_whea_has_no_hardware_correlation() {
         let findings = evaluate(&[crash("crash", NOW)], NOW);
-        assert!(!findings.iter().any(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE"));
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE")
+        );
     }
 
     #[test]
     fn whea_without_crash_remains_independent_hardware_evidence() {
         let findings = evaluate(&[whea("whea", NOW, 17, "PcieHardwareEvidence")], NOW);
-        assert!(findings.iter().any(|finding| finding.code == "HARDWARE_ERROR_EVIDENCE"));
-        assert!(!findings.iter().any(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE"));
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == "HARDWARE_ERROR_EVIDENCE")
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE")
+        );
     }
 
     #[test]
     fn corrected_or_after_crash_evidence_exposes_conflict() {
-        let findings = evaluate(&[
-            crash("crash", NOW - 5 * 60 * 1000),
-            whea("whea", NOW, 17, "ProcessorHardwareEvidence"),
-        ], NOW);
-        let correlated = findings.iter().find(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE").unwrap();
+        let findings = evaluate(
+            &[
+                crash("crash", NOW - 5 * 60 * 1000),
+                whea("whea", NOW, 17, "ProcessorHardwareEvidence"),
+            ],
+            NOW,
+        );
+        let correlated = findings
+            .iter()
+            .find(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE")
+            .unwrap();
         let explanation = correlated.correlation.as_ref().unwrap();
-        assert!(explanation.conflicting_evidence_keys.iter().any(|key| key.contains("corrected")));
-        assert!(explanation.conflicting_evidence_keys.iter().any(|key| key.contains("AfterCrash")));
+        assert!(
+            explanation
+                .conflicting_evidence_keys
+                .iter()
+                .any(|key| key.contains("corrected"))
+        );
+        assert!(
+            explanation
+                .conflicting_evidence_keys
+                .iter()
+                .any(|key| key.contains("AfterCrash"))
+        );
         assert_eq!(explanation.strength, CorrelationStrength::Moderate);
     }
 
     #[test]
     fn stale_evidence_does_not_dominate_current_scan() {
-        let findings = evaluate(&[
-            whea("whea", NOW - 31 * DAY_MS, 18, "ProcessorHardwareEvidence"),
-            crash("crash", NOW - 31 * DAY_MS + 1_000),
-        ], NOW);
-        assert!(!findings.iter().any(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE"));
+        let findings = evaluate(
+            &[
+                whea("whea", NOW - 31 * DAY_MS, 18, "ProcessorHardwareEvidence"),
+                crash("crash", NOW - 31 * DAY_MS + 1_000),
+            ],
+            NOW,
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == "CRASH_WITH_HARDWARE_EVIDENCE")
+        );
     }
 }

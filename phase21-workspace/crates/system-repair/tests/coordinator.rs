@@ -5,21 +5,34 @@ use std::{
 };
 
 use aethercore_operation_engine::{OperationEngine, PlanState, SystemRepairAction};
-use aethercore_operation_kernel::{MutationSupervisor, MutationWorkload, ReadBudgetManager, ReadWorkload};
+use aethercore_operation_kernel::{
+    MutationSupervisor, MutationWorkload, ReadBudgetManager, ReadWorkload,
+};
 use aethercore_persistence::Database;
 use aethercore_system_repair::{
     RepairAssessmentState, RepairCheck, RepairCoordinator, RepairError, RepairPlatform,
 };
 
-fn start_repair(coordinator: &RepairCoordinator, owner: &str, plan_id: &str) -> aethercore_system_repair::Result<aethercore_system_repair::RepairExecutionStatus> {
+fn start_repair(
+    coordinator: &RepairCoordinator,
+    owner: &str,
+    plan_id: &str,
+) -> aethercore_system_repair::Result<aethercore_system_repair::RepairExecutionStatus> {
     let supervisor = MutationSupervisor::new();
-    let lease = supervisor.try_acquire(MutationWorkload::SystemRepair, plan_id, owner).expect("mutation lease");
+    let lease = supervisor
+        .try_acquire(MutationWorkload::SystemRepair, plan_id, owner)
+        .expect("mutation lease");
     coordinator.start_with_lease(owner, plan_id, lease)
 }
 
-fn start_assessment(coordinator: &RepairCoordinator, owner: &str) -> aethercore_system_repair::Result<aethercore_system_repair::RepairAssessment> {
+fn start_assessment(
+    coordinator: &RepairCoordinator,
+    owner: &str,
+) -> aethercore_system_repair::Result<aethercore_system_repair::RepairAssessment> {
     let budget = ReadBudgetManager::new(4);
-    let lease = budget.try_acquire(ReadWorkload::RepairAssessment).expect("read budget lease");
+    let lease = budget
+        .try_acquire(ReadWorkload::RepairAssessment)
+        .expect("read budget lease");
     coordinator.start_assessment_with_lease(owner, lease)
 }
 
@@ -130,7 +143,9 @@ fn temp_root(label: &str) -> std::path::PathBuf {
 fn wait_assessment(coordinator: &RepairCoordinator) -> String {
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        let assessment = coordinator.assessment_for_owner(OWNER).expect("owned assessment");
+        let assessment = coordinator
+            .assessment_for_owner(OWNER)
+            .expect("owned assessment");
         if assessment.state == RepairAssessmentState::Ready {
             return assessment.assessment_id;
         }
@@ -143,8 +158,12 @@ fn wait_assessment(coordinator: &RepairCoordinator) -> String {
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 fn authorize(engine: &OperationEngine, plan_id: &str, digest: &str) {
-    let intent = engine.begin_consent_intent(plan_id, OWNER).expect("consent intent");
-    engine.approve_consent_intent(&intent.intent_id, OWNER, 4242).expect("consent approval");
+    let intent = engine
+        .begin_consent_intent(plan_id, OWNER)
+        .expect("consent intent");
+    engine
+        .approve_consent_intent(&intent.intent_id, OWNER, 4242)
+        .expect("consent approval");
 }
 
 #[test]
@@ -158,7 +177,8 @@ fn repair_plan_is_authorized_and_mutation_barrier_is_durable() {
         fail_after_mutation: false,
         events: Mutex::new(Vec::new()),
     });
-    let coordinator = RepairCoordinator::with_platform(engine.clone(), db.clone(), platform.clone());
+    let coordinator =
+        RepairCoordinator::with_platform(engine.clone(), db.clone(), platform.clone());
 
     start_assessment(&coordinator, OWNER).expect("start assessment");
     let assessment_id = wait_assessment(&coordinator);
@@ -191,8 +211,14 @@ fn repair_plan_is_authorized_and_mutation_barrier_is_durable() {
     }
 
     let events = platform.events.lock().expect("events").clone();
-    let preflight = events.iter().position(|event| *event == "preflight").unwrap();
-    let mutation = events.iter().position(|event| *event == "mutation").unwrap();
+    let preflight = events
+        .iter()
+        .position(|event| *event == "preflight")
+        .unwrap();
+    let mutation = events
+        .iter()
+        .position(|event| *event == "mutation")
+        .unwrap();
     assert!(preflight < mutation);
     let _ = std::fs::remove_dir_all(root);
 }
@@ -215,7 +241,9 @@ fn servicing_failure_before_barrier_does_not_require_recovery() {
 
     start_assessment(&coordinator, OWNER).expect("start assessment");
     let assessment_id = wait_assessment(&coordinator);
-    let plan = coordinator.create_plan(OWNER, &assessment_id, false).expect("plan");
+    let plan = coordinator
+        .create_plan(OWNER, &assessment_id, false)
+        .expect("plan");
     authorize(&engine, &plan.id, &plan.digest);
     start_repair(&coordinator, OWNER, &plan.id).expect("start");
 
@@ -252,7 +280,9 @@ fn failure_after_barrier_requires_recovery_review() {
 
     start_assessment(&coordinator, OWNER).expect("start assessment");
     let assessment_id = wait_assessment(&coordinator);
-    let plan = coordinator.create_plan(OWNER, &assessment_id, false).expect("plan");
+    let plan = coordinator
+        .create_plan(OWNER, &assessment_id, false)
+        .expect("plan");
     authorize(&engine, &plan.id, &plan.digest);
     start_repair(&coordinator, OWNER, &plan.id).expect("start");
 
@@ -270,19 +300,27 @@ fn failure_after_barrier_requires_recovery_review() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-
 #[test]
 fn repair_assessment_is_principal_bound() {
     let root = temp_root("ownership");
     std::fs::create_dir_all(&root).expect("temp root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
     let engine = Arc::new(OperationEngine::new(db.clone()));
-    let coordinator = RepairCoordinator::with_platform(engine, db, Arc::new(FakeRepairPlatform {
-        fail_before_mutation: false, fail_after_mutation: false, events: Mutex::new(Vec::new()),
-    }));
+    let coordinator = RepairCoordinator::with_platform(
+        engine,
+        db,
+        Arc::new(FakeRepairPlatform {
+            fail_before_mutation: false,
+            fail_after_mutation: false,
+            events: Mutex::new(Vec::new()),
+        }),
+    );
     start_assessment(&coordinator, OWNER).expect("start assessment");
     let _ = wait_assessment(&coordinator);
     let other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    assert!(matches!(coordinator.assessment_for_owner(other), Err(RepairError::OwnershipMismatch)));
+    assert!(matches!(
+        coordinator.assessment_for_owner(other),
+        Err(RepairError::OwnershipMismatch)
+    ));
     let _ = std::fs::remove_dir_all(root);
 }

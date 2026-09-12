@@ -8,8 +8,8 @@
 //! - Observer-effect guard (I4): inference is refused while a mutation or care run
 //!   is active; on-demand only, never periodic.
 
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use aethercore_contracts::v1;
@@ -53,19 +53,29 @@ impl EphemeralInsights {
     }
 
     fn list(&self, owner: &str) -> Vec<v1::Insight> {
-        self.items.lock().unwrap_or_else(|p| p.into_inner()).get(owner).cloned().unwrap_or_default()
+        self.items
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(owner)
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn dismiss(&self, owner: &str, insight_id: &str) -> bool {
         let mut all = self.items.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(store) = all.get_mut(owner) else { return false; };
+        let Some(store) = all.get_mut(owner) else {
+            return false;
+        };
         let before = store.len();
         store.retain(|insight| insight.id != insight_id);
         store.len() != before
     }
 
     fn clear(&self, owner: &str) {
-        self.items.lock().unwrap_or_else(|p| p.into_inner()).remove(owner);
+        self.items
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(owner);
     }
 }
 
@@ -87,8 +97,16 @@ pub fn compose_evidence_pack(db: &Database, owner_principal_key: &str) -> TypedE
                 detail: format!(
                     "plan {} domain {} stage {}",
                     row.plan_id,
-                    if row.domain.is_empty() { "n/a" } else { &row.domain },
-                    if row.stage.is_empty() { "n/a" } else { &row.stage }
+                    if row.domain.is_empty() {
+                        "n/a"
+                    } else {
+                        &row.domain
+                    },
+                    if row.stage.is_empty() {
+                        "n/a"
+                    } else {
+                        &row.stage
+                    }
                 ),
             });
         }
@@ -309,7 +327,8 @@ mod tests {
     #[test]
     fn every_listed_insight_carries_the_handle_that_dismisses_it() {
         let registry = EphemeralInsights::default();
-        let listed = registry.replace_all("owner-a", vec![insight("a"), insight("b"), insight("c")]);
+        let listed =
+            registry.replace_all("owner-a", vec![insight("a"), insight("b"), insight("c")]);
         assert_eq!(listed.len(), 3);
         assert!(listed.iter().all(|i| !i.id.is_empty()), "{listed:?}");
 

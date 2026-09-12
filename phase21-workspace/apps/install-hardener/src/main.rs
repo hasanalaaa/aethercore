@@ -8,7 +8,7 @@ use std::{
 
 // DBT-P46-D1: the third independent declaration of the service name, and the
 // second full re-typing of its account, both now derived from one decider.
-use aethercore_product_identity::{service_principal, PRODUCT_NAME, SERVICE_NAME};
+use aethercore_product_identity::{PRODUCT_NAME, SERVICE_NAME, service_principal};
 const SERVICE_SDDL: &str = "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)";
 const MACHINE_MUTATION_LOCK_RELATIVE_PATH: &str = r"state\machine-mutation.lock";
 #[cfg(windows)]
@@ -110,7 +110,17 @@ fn apply() -> anyhow::Result<()> {
     // These are fixed, non-user-controlled SCM operations. The helper is intentionally not a
     // general command runner and accepts no paths or service names on its command line.
     run_checked(&sc, ["sidtype", SERVICE_NAME, "unrestricted"])?;
-    run_checked(&sc, ["config", SERVICE_NAME, "start=", "delayed-auto", "obj=", "LocalSystem"])?;
+    run_checked(
+        &sc,
+        [
+            "config",
+            SERVICE_NAME,
+            "start=",
+            "delayed-auto",
+            "obj=",
+            "LocalSystem",
+        ],
+    )?;
     run_checked(&sc, ["sdset", SERVICE_NAME, SERVICE_SDDL])?;
 
     // Normalize each tree back to its parent ACL first, then replace inheritance with the fixed
@@ -122,7 +132,7 @@ fn apply() -> anyhow::Result<()> {
         &icacls,
         &bin_dir,
         &[
-            "*S-1-5-18:(OI)(CI)F",       // LocalSystem
+            "*S-1-5-18:(OI)(CI)F",      // LocalSystem
             "*S-1-5-32-544:(OI)(CI)F",  // Administrators
             "*S-1-5-32-545:(OI)(CI)RX", // Users: read/execute only
             &format!("{principal}:(OI)(CI)RX"),
@@ -142,29 +152,36 @@ fn apply() -> anyhow::Result<()> {
     run_icacls(
         &icacls,
         &mutation_lock,
-        &[
-            "*S-1-5-18:F",
-            "*S-1-5-32-544:F",
-            &format!("{principal}:F"),
-        ],
+        &["*S-1-5-18:F", "*S-1-5-32-544:F", &format!("{principal}:F")],
     )?;
 
     Ok(())
 }
 
-
 #[cfg(windows)]
 fn ensure_mutation_lock_file(data_dir: &Path) -> anyhow::Result<PathBuf> {
     let path = data_dir.join(MACHINE_MUTATION_LOCK_RELATIVE_PATH);
     validate_absolute_no_parent(&path)?;
-    let parent = path.parent().ok_or_else(|| anyhow::anyhow!("mutation lock has no parent"))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("mutation lock has no parent"))?;
     if !parent.is_dir() {
-        anyhow::bail!("installer-created state directory is missing: {}", parent.display());
+        anyhow::bail!(
+            "installer-created state directory is missing: {}",
+            parent.display()
+        );
     }
-    let _ = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&path)?;
+    let _ = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(&path)?;
     let metadata = std::fs::symlink_metadata(&path)?;
     if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        anyhow::bail!("mutation authority path is not a regular file: {}", path.display());
+        anyhow::bail!(
+            "mutation authority path is not a regular file: {}",
+            path.display()
+        );
     }
     Ok(path)
 }
@@ -194,9 +211,15 @@ fn validate_absolute_no_parent(path: &Path) -> anyhow::Result<()> {
     match path.components().next() {
         Some(Component::Prefix(prefix)) => match prefix.kind() {
             Prefix::Disk(_) | Prefix::VerbatimDisk(_) => {}
-            _ => anyhow::bail!("installer path must be on a local drive: {}", path.display()),
+            _ => anyhow::bail!(
+                "installer path must be on a local drive: {}",
+                path.display()
+            ),
         },
-        _ => anyhow::bail!("installer path has no local drive prefix: {}", path.display()),
+        _ => anyhow::bail!(
+            "installer path has no local drive prefix: {}",
+            path.display()
+        ),
     }
     Ok(())
 }
@@ -206,7 +229,10 @@ fn reject_reparse_tree(root: &Path) -> anyhow::Result<()> {
     fn visit(path: &Path) -> anyhow::Result<()> {
         let metadata = std::fs::symlink_metadata(path)?;
         if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            anyhow::bail!("reparse point refused in installer-owned tree: {}", path.display());
+            anyhow::bail!(
+                "reparse point refused in installer-owned tree: {}",
+                path.display()
+            );
         }
         if metadata.is_dir() {
             for entry in std::fs::read_dir(path)? {
@@ -244,7 +270,6 @@ where
     }
     Ok(output)
 }
-
 
 #[cfg(windows)]
 fn reset_acl_tree(exe: &Path, root: &Path) -> anyhow::Result<()> {

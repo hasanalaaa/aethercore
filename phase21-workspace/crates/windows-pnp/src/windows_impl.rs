@@ -4,8 +4,7 @@ use windows::{
     Win32::{
         Devices::DeviceAndDriverInstallation::{
             CM_Get_DevNode_Status, CR_SUCCESS, DICS_FLAG_GLOBAL, DIGCF_ALLCLASSES, DIGCF_PRESENT,
-            DN_HAS_PROBLEM,
-            DIREG_DRV, HDEVINFO, SP_DEVINFO_DATA, SPDRP_CLASS, SPDRP_CLASSGUID,
+            DIREG_DRV, DN_HAS_PROBLEM, HDEVINFO, SP_DEVINFO_DATA, SPDRP_CLASS, SPDRP_CLASSGUID,
             SPDRP_COMPATIBLEIDS, SPDRP_DEVICEDESC, SPDRP_ENUMERATOR_NAME, SPDRP_FRIENDLYNAME,
             SPDRP_HARDWAREID, SPDRP_LOCATION_INFORMATION, SPDRP_MFG, SetupDiDestroyDeviceInfoList,
             SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceInstanceIdW,
@@ -18,8 +17,8 @@ use windows::{
 };
 
 use crate::{
-    DeviceRecord, DeviceStatus, DeviceVerification, InstalledDriver, PnpError, Result, is_missing_driver_problem,
-    parse_multi_sz_utf16,
+    DeviceRecord, DeviceStatus, DeviceVerification, InstalledDriver, PnpError, Result,
+    is_missing_driver_problem, parse_multi_sz_utf16,
 };
 
 struct DeviceInfoSet(HDEVINFO);
@@ -44,14 +43,9 @@ impl Drop for RegistryKey {
 
 pub fn scan_present_devices() -> Result<Vec<DeviceRecord>> {
     let set = unsafe {
-        SetupDiGetClassDevsW(
-            None,
-            PCWSTR::null(),
-            None,
-            DIGCF_PRESENT | DIGCF_ALLCLASSES,
-        )
-        .map(DeviceInfoSet)
-        .map_err(win_err)?
+        SetupDiGetClassDevsW(None, PCWSTR::null(), None, DIGCF_PRESENT | DIGCF_ALLCLASSES)
+            .map(DeviceInfoSet)
+            .map_err(win_err)?
     };
 
     let mut devices = Vec::new();
@@ -79,18 +73,25 @@ pub fn scan_present_devices() -> Result<Vec<DeviceRecord>> {
                 info.DevInst
             ))
         })?;
-        let enumerator = read_string_property(set.0, &info, SPDRP_ENUMERATOR_NAME).unwrap_or_default();
+        let enumerator =
+            read_string_property(set.0, &info, SPDRP_ENUMERATOR_NAME).unwrap_or_default();
 
         // SWD is Windows' software-device enumerator. Phase 2 intentionally inventories
         // present hardware/PnP devices rather than virtual software-only endpoints.
-        if enumerator.eq_ignore_ascii_case("SWD") || instance_id.to_ascii_uppercase().starts_with("SWD\\") {
+        if enumerator.eq_ignore_ascii_case("SWD")
+            || instance_id.to_ascii_uppercase().starts_with("SWD\\")
+        {
             continue;
         }
 
         let friendly = read_string_property(set.0, &info, SPDRP_FRIENDLYNAME).unwrap_or_default();
         let description = read_string_property(set.0, &info, SPDRP_DEVICEDESC).unwrap_or_default();
         let display_name = if friendly.trim().is_empty() {
-            if description.trim().is_empty() { instance_id.clone() } else { description.clone() }
+            if description.trim().is_empty() {
+                instance_id.clone()
+            } else {
+                description.clone()
+            }
         } else {
             friendly
         };
@@ -100,7 +101,11 @@ pub fn scan_present_devices() -> Result<Vec<DeviceRecord>> {
         // DN_HAS_PROBLEM is present in the devnode status flags. Do not infer a
         // problem merely because a stale/non-zero output value was observed.
         let has_problem = (raw_status & DN_HAS_PROBLEM.0) != 0;
-        let problem_code = if has_problem { reported_problem_code } else { 0 };
+        let problem_code = if has_problem {
+            reported_problem_code
+        } else {
+            0
+        };
         let driver = read_driver_metadata(set.0, &info);
 
         devices.push(DeviceRecord {
@@ -111,9 +116,12 @@ pub fn scan_present_devices() -> Result<Vec<DeviceRecord>> {
             class_guid: read_string_property(set.0, &info, SPDRP_CLASSGUID).unwrap_or_default(),
             manufacturer: read_string_property(set.0, &info, SPDRP_MFG).unwrap_or_default(),
             enumerator,
-            location: read_string_property(set.0, &info, SPDRP_LOCATION_INFORMATION).unwrap_or_default(),
-            hardware_ids: read_multi_sz_property(set.0, &info, SPDRP_HARDWAREID).unwrap_or_default(),
-            compatible_ids: read_multi_sz_property(set.0, &info, SPDRP_COMPATIBLEIDS).unwrap_or_default(),
+            location: read_string_property(set.0, &info, SPDRP_LOCATION_INFORMATION)
+                .unwrap_or_default(),
+            hardware_ids: read_multi_sz_property(set.0, &info, SPDRP_HARDWAREID)
+                .unwrap_or_default(),
+            compatible_ids: read_multi_sz_property(set.0, &info, SPDRP_COMPATIBLEIDS)
+                .unwrap_or_default(),
             status: DeviceStatus {
                 raw_status,
                 problem_code,
@@ -227,16 +235,9 @@ fn read_property_bytes(
 
 fn read_driver_metadata(set: HDEVINFO, info: &SP_DEVINFO_DATA) -> Option<InstalledDriver> {
     let key = unsafe {
-        SetupDiOpenDevRegKey(
-            set,
-            info,
-            DICS_FLAG_GLOBAL.0,
-            0,
-            DIREG_DRV,
-            KEY_READ.0,
-        )
-        .ok()
-        .map(RegistryKey)?
+        SetupDiOpenDevRegKey(set, info, DICS_FLAG_GLOBAL.0, 0, DIREG_DRV, KEY_READ.0)
+            .ok()
+            .map(RegistryKey)?
     };
 
     let provider = read_reg_string(key.0, "ProviderName").unwrap_or_default();
@@ -304,7 +305,6 @@ fn bytes_to_u16(bytes: &[u8]) -> Vec<u16> {
 fn win_err(error: windows::core::Error) -> PnpError {
     PnpError::Windows(error.to_string())
 }
-
 
 pub fn verify_device_instances(instance_ids: &[String]) -> Result<Vec<DeviceVerification>> {
     use std::collections::HashMap;

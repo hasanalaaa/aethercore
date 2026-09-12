@@ -1,11 +1,13 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
     thread,
 };
 
 use aethercore_collector_runtime::CancellationToken;
-use aethercore_persistence::{Database, IntelligenceFindingRecord, IntelligenceOverrideRecord, IntelligenceScanRecord};
+use aethercore_persistence::{
+    Database, IntelligenceFindingRecord, IntelligenceOverrideRecord, IntelligenceScanRecord,
+};
 use chrono::Utc;
 use thiserror::Error;
 use uuid::Uuid;
@@ -14,8 +16,7 @@ use crate::{
     fingerprint::machine_state_fingerprint,
     lifecycle,
     model::*,
-    normalize,
-    rules,
+    normalize, rules,
     run_ownership::{RunIdentity, RunOwnership},
     sources::{DeepScanBackend, SourceError},
 };
@@ -111,8 +112,16 @@ impl DeepScanCoordinator {
         let identity;
         {
             let mut current_owner = self.inner.owner.lock().unwrap_or_else(|p| p.into_inner());
-            let mut ownership = self.inner.run_ownership.lock().unwrap_or_else(|p| p.into_inner());
-            let mut snapshot = self.inner.snapshot.lock().unwrap_or_else(|p| p.into_inner());
+            let mut ownership = self
+                .inner
+                .run_ownership
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            let mut snapshot = self
+                .inner
+                .snapshot
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
             if snapshot.state == ScanState::Scanning {
                 return Err(IntelligenceError::Busy);
             }
@@ -146,11 +155,17 @@ impl DeepScanCoordinator {
             .spawn(move || run(inner, worker_owner, token, worker_identity))
         {
             if owns_run(&self.inner, &identity) {
-                let mut snapshot = self.inner.snapshot.lock().unwrap_or_else(|p| p.into_inner());
+                let mut snapshot = self
+                    .inner
+                    .snapshot
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
                 if snapshot.scan_id == identity.scan_id {
                     snapshot.state = ScanState::Failed;
                     snapshot.completed_unix_ms = Utc::now().timestamp_millis();
-                    snapshot.warnings.push(format!("deep scan worker unavailable: {error}"));
+                    snapshot
+                        .warnings
+                        .push(format!("deep scan worker unavailable: {error}"));
                 }
             }
             clear_run_if_owner(&self.inner, &identity);
@@ -184,18 +199,23 @@ impl DeepScanCoordinator {
         let now = Utc::now().timestamp_millis();
         let override_id = stable_id("override", &format!("finding|{finding_id}"));
         if ignored {
-            self.inner.db.upsert_intelligence_override(&IntelligenceOverrideRecord {
-                owner_principal_key: owner.into(),
-                override_id,
-                scope_kind: "finding".into(),
-                scope_value_hash: private_id(finding_id),
-                behavior: "Ignore".into(),
-                expires_unix_ms: None,
-                created_unix_ms: now,
-                updated_unix_ms: now,
-            }).map_err(|e| IntelligenceError::Persistence(e.to_string()))
+            self.inner
+                .db
+                .upsert_intelligence_override(&IntelligenceOverrideRecord {
+                    owner_principal_key: owner.into(),
+                    override_id,
+                    scope_kind: "finding".into(),
+                    scope_value_hash: private_id(finding_id),
+                    behavior: "Ignore".into(),
+                    expires_unix_ms: None,
+                    created_unix_ms: now,
+                    updated_unix_ms: now,
+                })
+                .map_err(|e| IntelligenceError::Persistence(e.to_string()))
         } else {
-            self.inner.db.delete_intelligence_override(owner, &override_id)
+            self.inner
+                .db
+                .delete_intelligence_override(owner, &override_id)
                 .map_err(|e| IntelligenceError::Persistence(e.to_string()))
         }
     }
@@ -205,11 +225,16 @@ impl DeepScanCoordinator {
         if current_owner.as_str() != owner {
             return Err(IntelligenceError::Ownership);
         }
-        let mut snapshot = self.inner.snapshot.lock().unwrap_or_else(|p| p.into_inner());
+        let mut snapshot = self
+            .inner
+            .snapshot
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         if snapshot.scan_id != scan_id {
             return Err(IntelligenceError::UnknownScan);
         }
-        snapshot.metrics.streamed_event_count = snapshot.metrics.streamed_event_count.saturating_add(1);
+        snapshot.metrics.streamed_event_count =
+            snapshot.metrics.streamed_event_count.saturating_add(1);
         Ok(())
     }
 
@@ -236,7 +261,8 @@ impl DeepScanCoordinator {
                                     .collectors
                                     .iter()
                                     .filter(|collector| is_unavailable(collector.state))
-                                    .count() as u32,
+                                    .count()
+                                    as u32,
                                 machine_state_fingerprint: snapshot.machine_state_fingerprint,
                             })
                     })
@@ -262,7 +288,9 @@ impl DeepScanCoordinator {
 
         let selected: BTreeSet<&String> = selected_action_ids.iter().collect();
         if selected.len() != selected_action_ids.len() {
-            return Err(IntelligenceError::Internal("remediation selection contains duplicate action IDs".into()));
+            return Err(IntelligenceError::Internal(
+                "remediation selection contains duplicate action IDs".into(),
+            ));
         }
         let actions: Vec<_> = snapshot
             .remediation_candidates
@@ -270,7 +298,9 @@ impl DeepScanCoordinator {
             .filter(|action| selected.contains(&action.action_id))
             .collect();
         if actions.len() != selected.len() {
-            return Err(IntelligenceError::Internal("remediation selection contains an unknown or stale action ID".into()));
+            return Err(IntelligenceError::Internal(
+                "remediation selection contains an unknown or stale action ID".into(),
+            ));
         }
         let plan = RemediationPlan::seal(scan_id, Utc::now().timestamp_millis(), actions);
         let plan_json = serde_json::to_string(&plan)
@@ -336,14 +366,19 @@ fn run(inner: Arc<Inner>, owner: String, token: CancellationToken, identity: Run
     if !token.is_cancelled() && owns_run(&inner, &identity) {
         let now = Utc::now().timestamp_millis();
         let since = now.saturating_sub(30_i64 * 24 * 60 * 60 * 1000);
-        match inner.db.recent_verified_driver_install_items_for_owner(&owner, since, 100) {
+        match inner
+            .db
+            .recent_verified_driver_install_items_for_owner(&owner, since, 100)
+        {
             Ok(items) => {
                 facts.extend(items.iter().map(normalize::driver_change));
                 supplemental_scopes.insert("driver-history".into(), CollectorState::Completed);
             }
             Err(error) => {
                 supplemental_scopes.insert("driver-history".into(), CollectorState::Unavailable);
-                warnings.push(format!("persistence driver-change history unavailable: {error}"));
+                warnings.push(format!(
+                    "persistence driver-change history unavailable: {error}"
+                ));
             }
         }
     }
@@ -548,14 +583,7 @@ fn run(inner: Arc<Inner>, owner: String, token: CancellationToken, identity: Run
     }
 
     let completed = Utc::now().timestamp_millis();
-    let metrics = final_metrics(
-        &inner,
-        &identity,
-        completed,
-        &statuses,
-        &facts,
-        &findings,
-    );
+    let metrics = final_metrics(&inner, &identity, completed, &statuses, &facts, &findings);
     let snapshot = DeepScanSnapshot {
         scan_id: identity.scan_id.clone(),
         state,
@@ -569,7 +597,10 @@ fn run(inner: Arc<Inner>, owner: String, token: CancellationToken, identity: Run
             total_tasks: TOTAL_COLLECTOR_TASKS,
             active_tasks: 0,
             skipped_tasks: TOTAL_COLLECTOR_TASKS.saturating_sub(statuses.len() as u32),
-            failed_tasks: statuses.iter().filter(|status| is_failed(status.state)).count() as u32,
+            failed_tasks: statuses
+                .iter()
+                .filter(|status| is_failed(status.state))
+                .count() as u32,
             unavailable_tasks: statuses
                 .iter()
                 .filter(|status| is_unavailable(status.state))
@@ -612,7 +643,15 @@ fn execute_batch(
         .and_then(|(_, stages)| stages.first())
         .copied()
         .unwrap_or(ScanStage::SystemIdentity);
-    publish_active(inner, identity, first_stage, tasks.len() as u32, facts, statuses, warnings);
+    publish_active(
+        inner,
+        identity,
+        first_stage,
+        tasks.len() as u32,
+        facts,
+        statuses,
+        warnings,
+    );
 
     let (tx, rx) = mpsc::channel();
     for (id, stages) in tasks {
@@ -634,7 +673,9 @@ fn execute_batch(
                 let result = match id {
                     "drivers" => backend.driver(&owner, &child).map(Collected::Driver),
                     "windows" => backend.repair(&owner, &child).map(Collected::Repair),
-                    "diagnostics" => backend.diagnostics(&owner, &child).map(Collected::Diagnostics),
+                    "diagnostics" => backend
+                        .diagnostics(&owner, &child)
+                        .map(Collected::Diagnostics),
                     "startup" => backend.startup(&owner, &child).map(Collected::Startup),
                     "cleanup" => backend.cleanup(&owner, &child).map(Collected::Cleanup),
                     _ => Err(SourceError::Unavailable("unknown collector".into())),
@@ -651,7 +692,9 @@ fn execute_batch(
             let _ = tx.send(TaskResult {
                 id,
                 stages: failure_stages,
-                result: Err(SourceError::Unavailable(format!("collector worker unavailable: {error}"))),
+                result: Err(SourceError::Unavailable(format!(
+                    "collector worker unavailable: {error}"
+                ))),
                 started_unix_ms: spawn_started_unix_ms,
                 completed_unix_ms: Utc::now().timestamp_millis(),
             });
@@ -689,9 +732,10 @@ fn consume_task(
             CollectorState::TimedOut,
             "collector deadline exceeded".into(),
         ),
-        Err(SourceError::Unavailable(value)) => {
-            (CollectorState::Unavailable, bounded_text(value.clone(), 1024))
-        }
+        Err(SourceError::Unavailable(value)) => (
+            CollectorState::Unavailable,
+            bounded_text(value.clone(), 1024),
+        ),
     };
 
     statuses.push(CollectorStatus {
@@ -708,7 +752,9 @@ fn consume_task(
     });
 
     match task.result {
-        Ok(Collected::Driver(value)) => facts.extend(normalize::driver(&value, task.completed_unix_ms)),
+        Ok(Collected::Driver(value)) => {
+            facts.extend(normalize::driver(&value, task.completed_unix_ms))
+        }
         Ok(Collected::Repair(value)) => facts.extend(normalize::repair(&value)),
         Ok(Collected::Diagnostics(value)) => facts.extend(normalize::diagnostics(&value)),
         Ok(Collected::Startup(value)) => facts.extend(normalize::startup(&value)),
@@ -916,7 +962,9 @@ fn complete(
     let mut warnings = warnings;
     warnings.extend(lifecycle.warnings);
     let state = if state == ScanState::Completed
-        && warnings.iter().any(|warning| warning.starts_with("persistence "))
+        && warnings
+            .iter()
+            .any(|warning| warning.starts_with("persistence "))
     {
         ScanState::Partial
     } else {
@@ -936,7 +984,10 @@ fn complete(
             total_tasks: TOTAL_COLLECTOR_TASKS,
             active_tasks: 0,
             skipped_tasks: TOTAL_COLLECTOR_TASKS.saturating_sub(statuses.len() as u32),
-            failed_tasks: statuses.iter().filter(|status| is_failed(status.state)).count() as u32,
+            failed_tasks: statuses
+                .iter()
+                .filter(|status| is_failed(status.state))
+                .count() as u32,
             unavailable_tasks: statuses
                 .iter()
                 .filter(|status| is_unavailable(status.state))
@@ -979,10 +1030,7 @@ fn progress(
         active_tasks,
         skipped_tasks: 0,
         failed_tasks: statuses.iter().filter(|s| is_failed(s.state)).count() as u32,
-        unavailable_tasks: statuses
-            .iter()
-            .filter(|s| is_unavailable(s.state))
-            .count() as u32,
+        unavailable_tasks: statuses.iter().filter(|s| is_unavailable(s.state)).count() as u32,
         current_stage_key: stage.message_key().into(),
     }
 }
@@ -1092,7 +1140,12 @@ fn final_metrics(
     };
     let collector_duration_ms = statuses
         .iter()
-        .map(|status| status.completed_unix_ms.saturating_sub(status.started_unix_ms).max(0))
+        .map(|status| {
+            status
+                .completed_unix_ms
+                .saturating_sub(status.started_unix_ms)
+                .max(0)
+        })
         .sum();
     let normalized_payload_bytes_estimate = serde_json::to_vec(&(facts, findings))
         .map(|bytes| bytes.len() as u64)
@@ -1145,8 +1198,8 @@ fn summarize(findings: &[Finding], facts: &[SystemFact]) -> FindingSummary {
                 finding.remediation_safety,
                 Some(RemediationSafety::SafeAuto | RemediationSafety::SafeReview)
             );
-            let optional = low_risk
-                && matches!(finding.severity, Severity::Low | Severity::Informational);
+            let optional =
+                low_risk && matches!(finding.severity, Severity::Low | Severity::Informational);
             if optional {
                 summary.optional_optimizations += 1;
             } else if !matches!(finding.severity, Severity::Critical | Severity::High) {
@@ -1161,7 +1214,12 @@ fn summarize(findings: &[Finding], facts: &[SystemFact]) -> FindingSummary {
     summary
 }
 
-fn persist(db: &Database, owner: &str, mut snapshot: DeepScanSnapshot, findings: &[Finding]) -> DeepScanSnapshot {
+fn persist(
+    db: &Database,
+    owner: &str,
+    mut snapshot: DeepScanSnapshot,
+    findings: &[Finding],
+) -> DeepScanSnapshot {
     let mut writes = 0_u32;
     let mut persistence_errors = Vec::new();
     for finding in findings {
@@ -1184,10 +1242,14 @@ fn persist(db: &Database, owner: &str, mut snapshot: DeepScanSnapshot, findings:
                 };
                 match db.upsert_intelligence_finding(&record) {
                     Ok(()) => writes = writes.saturating_add(1),
-                    Err(error) => persistence_errors.push(format!("finding persistence unavailable: {error}")),
+                    Err(error) => {
+                        persistence_errors.push(format!("finding persistence unavailable: {error}"))
+                    }
                 }
             }
-            Err(error) => persistence_errors.push(format!("finding serialization unavailable: {error}")),
+            Err(error) => {
+                persistence_errors.push(format!("finding serialization unavailable: {error}"))
+            }
         }
     }
 
@@ -1195,7 +1257,9 @@ fn persist(db: &Database, owner: &str, mut snapshot: DeepScanSnapshot, findings:
         if snapshot.state == ScanState::Completed {
             snapshot.state = ScanState::Partial;
         }
-        snapshot.warnings.push("persistence continuity is partially unavailable".into());
+        snapshot
+            .warnings
+            .push("persistence continuity is partially unavailable".into());
     }
 
     snapshot.metrics.persistence_write_count = writes.saturating_add(1);
@@ -1225,7 +1289,9 @@ fn persist(db: &Database, owner: &str, mut snapshot: DeepScanSnapshot, findings:
                     if snapshot.state == ScanState::Completed {
                         snapshot.state = ScanState::Partial;
                     }
-                    snapshot.warnings.push(format!("scan history persistence unavailable: {error}"));
+                    snapshot
+                        .warnings
+                        .push(format!("scan history persistence unavailable: {error}"));
                 }
             }
         }
@@ -1233,7 +1299,9 @@ fn persist(db: &Database, owner: &str, mut snapshot: DeepScanSnapshot, findings:
             if snapshot.state == ScanState::Completed {
                 snapshot.state = ScanState::Partial;
             }
-            snapshot.warnings.push(format!("scan history serialization unavailable: {error}"));
+            snapshot
+                .warnings
+                .push(format!("scan history serialization unavailable: {error}"));
         }
     }
     snapshot.metrics.persistence_write_count = writes;

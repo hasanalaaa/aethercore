@@ -122,9 +122,15 @@ fn capability_names_are_unique() {
 
 #[test]
 fn windows_sku_classification_distinguishes_server_core() {
-    assert_eq!(classify_windows_sku(1, Some("Client")), WindowsSku::Workstation);
+    assert_eq!(
+        classify_windows_sku(1, Some("Client")),
+        WindowsSku::Workstation
+    );
     assert_eq!(classify_windows_sku(3, Some("Server")), WindowsSku::Server);
-    assert_eq!(classify_windows_sku(3, Some("Server Core")), WindowsSku::ServerCore);
+    assert_eq!(
+        classify_windows_sku(3, Some("Server Core")),
+        WindowsSku::ServerCore
+    );
     assert_eq!(classify_windows_sku(99, Some("")), WindowsSku::Unknown);
 }
 
@@ -194,9 +200,7 @@ fn server_matrix_reports_client_only_surfaces_honestly() {
 /// the pure function rather than the registry.
 #[test]
 fn product_type_code_maps_the_documented_registry_strings() {
-    use aethercore_platform_capabilities::{
-        classify_windows_sku, product_type_code, WindowsSku,
-    };
+    use aethercore_platform_capabilities::{WindowsSku, classify_windows_sku, product_type_code};
 
     // The documented ProductOptions\ProductType values, and their VER_NT_* codes.
     assert_eq!(product_type_code("WinNT"), 1, "workstation");
@@ -211,7 +215,10 @@ fn product_type_code_maps_the_documented_registry_strings() {
     // Fail closed: anything unrecognised must NOT be claimed as a workstation.
     assert_eq!(product_type_code(""), 0);
     assert_eq!(product_type_code("Whatever"), 0);
-    assert_eq!(classify_windows_sku(product_type_code(""), Some("")), WindowsSku::Unknown);
+    assert_eq!(
+        classify_windows_sku(product_type_code(""), Some("")),
+        WindowsSku::Unknown
+    );
 
     // End to end, the combination this box actually reports:
     // ProductOptions\ProductType = "WinNT", CurrentVersion\InstallationType = "Client".

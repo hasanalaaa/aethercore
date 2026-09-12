@@ -6,19 +6,22 @@ use std::{
 };
 
 use aethercore_collector_runtime::{
-    CancellationToken, CollectorControl, CollectorFault, CollectorFaultRecord, FaultKind, IsolationGate, DEFAULT_COLLECTOR_TIMEOUT,
-    EVENTLOG_NEXT_SLICE, run_isolated_gated_with_token,
+    CancellationToken, CollectorControl, CollectorFault, CollectorFaultRecord,
+    DEFAULT_COLLECTOR_TIMEOUT, EVENTLOG_NEXT_SLICE, FaultKind, IsolationGate,
+    run_isolated_gated_with_token,
 };
 use chrono::{DateTime, Utc};
 use windows::{
     Win32::{
-        Foundation::{E_ACCESSDENIED, ERROR_INSUFFICIENT_BUFFER, ERROR_NO_MORE_ITEMS, ERROR_TIMEOUT},
+        Foundation::{
+            E_ACCESSDENIED, ERROR_INSUFFICIENT_BUFFER, ERROR_NO_MORE_ITEMS, ERROR_TIMEOUT,
+        },
         System::{
             Diagnostics::Debug::{DUMP_HEADER32, DUMP_HEADER64},
             EventLog::{
-                EvtClose, EvtCreateRenderContext, EvtNext, EvtQuery, EvtQueryChannelPath,
-                EvtQueryReverseDirection, EvtRender, EvtRenderContextSystem,
-                EvtRenderContextUser, EvtRenderEventValues, EVT_HANDLE, EVT_VARIANT,
+                EVT_HANDLE, EVT_VARIANT, EvtClose, EvtCreateRenderContext, EvtNext, EvtQuery,
+                EvtQueryChannelPath, EvtQueryReverseDirection, EvtRender, EvtRenderContextSystem,
+                EvtRenderContextUser, EvtRenderEventValues,
             },
         },
     },
@@ -26,8 +29,8 @@ use windows::{
 };
 
 use crate::{
-    classify_event, CrashDiagnosticsSnapshot, CrashError, CrashRecord, EventEvidence, Result,
-    DEFAULT_EVENT_WINDOW_DAYS,
+    CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EventEvidence,
+    Result, classify_event,
 };
 
 const MAX_EVENTS: usize = 128;
@@ -41,12 +44,18 @@ const FILETIME_UNIX_EPOCH_TICKS: u64 = 116_444_736_000_000_000;
 
 static EVENTLOG_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static MINIDUMP_GATE: OnceLock<IsolationGate> = OnceLock::new();
-fn eventlog_gate() -> &'static IsolationGate { EVENTLOG_GATE.get_or_init(IsolationGate::default) }
-fn minidump_gate() -> &'static IsolationGate { MINIDUMP_GATE.get_or_init(IsolationGate::default) }
+fn eventlog_gate() -> &'static IsolationGate {
+    EVENTLOG_GATE.get_or_init(IsolationGate::default)
+}
+fn minidump_gate() -> &'static IsolationGate {
+    MINIDUMP_GATE.get_or_init(IsolationGate::default)
+}
 
 struct EventHandle(EVT_HANDLE);
 impl Drop for EventHandle {
-    fn drop(&mut self) { let _ = unsafe { EvtClose(self.0) }; }
+    fn drop(&mut self) {
+        let _ = unsafe { EvtClose(self.0) };
+    }
 }
 
 #[derive(Debug)]
@@ -67,7 +76,9 @@ impl RenderBuffer {
         let bytes = self
             .property_count
             .checked_mul(size_of::<EVT_VARIANT>())
-            .ok_or_else(|| CrashError::MalformedResponse("EvtRender property-count overflow".into()))?;
+            .ok_or_else(|| {
+                CrashError::MalformedResponse("EvtRender property-count overflow".into())
+            })?;
         if bytes > self.used || self.property_count > MAX_EVENT_PROPERTIES {
             return Err(CrashError::MalformedResponse(
                 "EvtRender returned an invalid property count for its buffer".into(),
@@ -158,7 +169,9 @@ fn collector_fault(operation: &'static str, error: CrashError) -> CollectorFault
         CrashError::Unavailable(_) => FaultKind::Unavailable,
         CrashError::PermissionDenied(_) => FaultKind::PermissionDenied,
         CrashError::MalformedResponse(_) => FaultKind::MalformedResponse,
-        CrashError::Io(error) if error.kind() == std::io::ErrorKind::PermissionDenied => FaultKind::PermissionDenied,
+        CrashError::Io(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            FaultKind::PermissionDenied
+        }
         CrashError::Io(_) => FaultKind::Io,
         CrashError::Windows(_) => FaultKind::ProviderFailure,
     };
@@ -175,7 +188,9 @@ fn checkpoint(control: &CollectorControl, operation: &'static str) -> Result<()>
         })
 }
 
-fn collect_events(control: &CollectorControl) -> Result<(Vec<EventEvidence>, Vec<String>, Vec<CollectorFaultRecord>)> {
+fn collect_events(
+    control: &CollectorControl,
+) -> Result<(Vec<EventEvidence>, Vec<String>, Vec<CollectorFaultRecord>)> {
     checkpoint(control, "eventlog.begin")?;
     let channel = w("System");
     let query = w(&format!(
@@ -211,8 +226,9 @@ fn collect_events(control: &CollectorControl) -> Result<(Vec<EventEvidence>, Vec
             Err(error) if error.code() == ERROR_NO_MORE_ITEMS.to_hresult() => break,
             Err(error) => return Err(win(error)),
         }
-        let returned = usize::try_from(returned)
-            .map_err(|_| CrashError::MalformedResponse("EvtNext handle count did not fit usize".into()))?;
+        let returned = usize::try_from(returned).map_err(|_| {
+            CrashError::MalformedResponse("EvtNext handle count did not fit usize".into())
+        })?;
 
         // Take ownership of every non-null handle returned in the fixed output array before any
         // cancellable/rendering work. If the provider reports an inconsistent count, the owned
@@ -227,7 +243,12 @@ fn collect_events(control: &CollectorControl) -> Result<(Vec<EventEvidence>, Vec
                 "EvtNext reported more event handles than the bounded output array".into(),
             ));
         }
-        if owned.len() != returned || owned.iter().enumerate().any(|(expected, (actual, _))| *actual != expected) {
+        if owned.len() != returned
+            || owned
+                .iter()
+                .enumerate()
+                .any(|(expected, (actual, _))| *actual != expected)
+        {
             return Err(CrashError::MalformedResponse(
                 "EvtNext returned null, sparse, or trailing handles inconsistent with its reported count".into(),
             ));
@@ -259,7 +280,9 @@ fn collect_events(control: &CollectorControl) -> Result<(Vec<EventEvidence>, Vec
                 }
                 Err(_) => malformed_events = malformed_events.saturating_add(1),
             }
-            if out.len() >= MAX_EVENTS { break; }
+            if out.len() >= MAX_EVENTS {
+                break;
+            }
         }
     }
 
@@ -292,10 +315,12 @@ fn render_system(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<RenderedEvent
     }
     let provider = variant_unicode_string(&variants[0], &buffer)?
         .ok_or_else(|| CrashError::MalformedResponse("event provider name was absent".into()))?;
-    let event_id = variant_u32_lossless(&variants[2])
-        .ok_or_else(|| CrashError::MalformedResponse("event ID had an unexpected EVT_VARIANT type".into()))?;
-    let filetime = variant_filetime(&variants[8])
-        .ok_or_else(|| CrashError::MalformedResponse("event timestamp had an unexpected EVT_VARIANT type".into()))?;
+    let event_id = variant_u32_lossless(&variants[2]).ok_or_else(|| {
+        CrashError::MalformedResponse("event ID had an unexpected EVT_VARIANT type".into())
+    })?;
+    let filetime = variant_filetime(&variants[8]).ok_or_else(|| {
+        CrashError::MalformedResponse("event timestamp had an unexpected EVT_VARIANT type".into())
+    })?;
     Ok(RenderedEventSystem {
         provider,
         event_id,
@@ -309,15 +334,18 @@ fn render_user_values(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<Vec<Stri
     let mut values = Vec::new();
     for variant in variants.iter().take(MAX_EVENT_PROPERTIES) {
         if let Some(value) = variant_to_bounded_text(variant, &buffer)? {
-            if !value.is_empty() { values.push(value); }
+            if !value.is_empty() {
+                values.push(value);
+            }
         }
     }
     Ok(values)
 }
 
 fn checked_render_property_count(properties: u32) -> Result<usize> {
-    let count = usize::try_from(properties)
-        .map_err(|_| CrashError::MalformedResponse("EvtRender property count did not fit usize".into()))?;
+    let count = usize::try_from(properties).map_err(|_| {
+        CrashError::MalformedResponse("EvtRender property count did not fit usize".into())
+    })?;
     if count > MAX_EVENT_PROPERTIES {
         return Err(CrashError::MalformedResponse(format!(
             "EvtRender reported {count} properties, exceeding the {MAX_EVENT_PROPERTIES}-property safety cap"
@@ -349,7 +377,11 @@ fn render_values(context: EVT_HANDLE, event: EVT_HANDLE, max_bytes: usize) -> Re
     // the render buffer; the byte cap alone does not express this semantic invariant.
     let property_count = checked_render_property_count(properties)?;
     if used == 0 {
-        return Ok(RenderBuffer { words: Vec::new(), used: 0, property_count });
+        return Ok(RenderBuffer {
+            words: Vec::new(),
+            used: 0,
+            property_count,
+        });
     }
     let used_usize = usize::try_from(used)
         .map_err(|_| CrashError::MalformedResponse("EvtRender size did not fit usize".into()))?;
@@ -358,10 +390,9 @@ fn render_values(context: EVT_HANDLE, event: EVT_HANDLE, max_bytes: usize) -> Re
             "EvtRender requested {used_usize} bytes, exceeding the {max_bytes}-byte safety cap"
         )));
     }
-    let word_count = used_usize
-        .checked_add(7)
-        .ok_or_else(|| CrashError::MalformedResponse("EvtRender allocation size overflow".into()))?
-        / 8;
+    let word_count = used_usize.checked_add(7).ok_or_else(|| {
+        CrashError::MalformedResponse("EvtRender allocation size overflow".into())
+    })? / 8;
     let mut words = vec![0u64; word_count];
     let capacity_bytes = words.len() * size_of::<u64>();
     let mut actual_used = used;
@@ -378,8 +409,9 @@ fn render_values(context: EVT_HANDLE, event: EVT_HANDLE, max_bytes: usize) -> Re
         )
     }
     .map_err(win)?;
-    let actual_used = usize::try_from(actual_used)
-        .map_err(|_| CrashError::MalformedResponse("EvtRender returned size did not fit usize".into()))?;
+    let actual_used = usize::try_from(actual_used).map_err(|_| {
+        CrashError::MalformedResponse("EvtRender returned size did not fit usize".into())
+    })?;
     if actual_used > capacity_bytes || actual_used > max_bytes {
         return Err(CrashError::MalformedResponse(
             "EvtRender returned more bytes than the validated output buffer".into(),
@@ -393,8 +425,12 @@ fn render_values(context: EVT_HANDLE, event: EVT_HANDLE, max_bytes: usize) -> Re
     })
 }
 
-fn variant_base_type(variant: &EVT_VARIANT) -> u32 { variant.Type & 0x7f }
-fn variant_is_array(variant: &EVT_VARIANT) -> bool { (variant.Type & 0x80) != 0 }
+fn variant_base_type(variant: &EVT_VARIANT) -> u32 {
+    variant.Type & 0x7f
+}
+fn variant_is_array(variant: &EVT_VARIANT) -> bool {
+    (variant.Type & 0x80) != 0
+}
 
 fn variant_unicode_string(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Result<Option<String>> {
     if variant_is_array(variant) || !matches!(variant_base_type(variant), 1 | 35) {
@@ -407,7 +443,9 @@ fn variant_unicode_string(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Resul
             variant.Anonymous.StringVal.0
         }
     };
-    if ptr.is_null() { return Ok(None); }
+    if ptr.is_null() {
+        return Ok(None);
+    }
     let (start, end) = buffer.byte_range();
     let address = ptr.cast::<u8>();
     if address < start || address >= end {
@@ -432,7 +470,9 @@ fn variant_unicode_string(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Resul
 }
 
 fn variant_u32_lossless(variant: &EVT_VARIANT) -> Option<u32> {
-    if variant_is_array(variant) { return None; }
+    if variant_is_array(variant) {
+        return None;
+    }
     unsafe {
         match variant_base_type(variant) {
             4 => Some(u32::from(variant.Anonymous.ByteVal)),
@@ -445,13 +485,19 @@ fn variant_u32_lossless(variant: &EVT_VARIANT) -> Option<u32> {
 }
 
 fn variant_filetime(variant: &EVT_VARIANT) -> Option<u64> {
-    if variant_is_array(variant) || variant_base_type(variant) != 17 { return None; }
+    if variant_is_array(variant) || variant_base_type(variant) != 17 {
+        return None;
+    }
     Some(unsafe { variant.Anonymous.FileTimeVal })
 }
 
 fn variant_to_bounded_text(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Result<Option<String>> {
-    if variant_is_array(variant) { return Ok(None); }
-    if let Some(value) = variant_unicode_string(variant, buffer)? { return Ok(Some(value)); }
+    if variant_is_array(variant) {
+        return Ok(None);
+    }
+    if let Some(value) = variant_unicode_string(variant, buffer)? {
+        return Ok(Some(value));
+    }
     let value = unsafe {
         match variant_base_type(variant) {
             0 => return Ok(None),
@@ -475,13 +521,19 @@ fn variant_to_bounded_text(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Resu
 }
 
 fn filetime_to_unix_ms(filetime: u64) -> i64 {
-    if filetime <= FILETIME_UNIX_EPOCH_TICKS { return 0; }
+    if filetime <= FILETIME_UNIX_EPOCH_TICKS {
+        return 0;
+    }
     let millis = (filetime - FILETIME_UNIX_EPOCH_TICKS) / 10_000;
     i64::try_from(millis).unwrap_or(i64::MAX)
 }
 
 fn io_fault_kind(error: &std::io::Error) -> FaultKind {
-    if error.kind() == std::io::ErrorKind::PermissionDenied { FaultKind::PermissionDenied } else { FaultKind::Io }
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
+        FaultKind::PermissionDenied
+    } else {
+        FaultKind::Io
+    }
 }
 
 fn collect_minidumps(
@@ -492,7 +544,9 @@ fn collect_minidumps(
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
     let dir = root.join("Minidump");
-    if !dir.exists() { return Ok((Vec::new(), Vec::new(), Vec::new())); }
+    if !dir.exists() {
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
+    }
 
     const MAX_MINIDUMP_FAULTS: usize = 16;
     let mut faults = Vec::new();
@@ -503,7 +557,9 @@ fn collect_minidumps(
         match entry {
             Ok(entry) => {
                 let path = entry.path();
-                if !path.extension().is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("dmp")) {
+                if !path.extension().is_some_and(|extension| {
+                    extension.to_string_lossy().eq_ignore_ascii_case("dmp")
+                }) {
                     continue;
                 }
                 match entry.metadata() {
@@ -535,7 +591,10 @@ fn collect_minidumps(
         match parse_dump(&path) {
             Ok(record) => out.push(record),
             Err(error) => {
-                let name = path.file_name().map(|v| v.to_string_lossy().into_owned()).unwrap_or_else(|| "<unknown>.dmp".into());
+                let name = path
+                    .file_name()
+                    .map(|v| v.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "<unknown>.dmp".into());
                 let kind = match &error {
                     CrashError::MalformedResponse(_) => FaultKind::MalformedResponse,
                     CrashError::Io(error) => io_fault_kind(error),
@@ -572,7 +631,9 @@ fn push_minidump_fault(
     detail: String,
     max: usize,
 ) {
-    if faults.len() >= max { return; }
+    if faults.len() >= max {
+        return;
+    }
     faults.push(CollectorFaultRecord::new(
         "crash-diagnostics",
         operation,
@@ -587,7 +648,8 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
     let file = fs::File::open(path)?;
     let header_bytes = size_of::<DUMP_HEADER64>().max(size_of::<DUMP_HEADER32>());
     let mut header_data = Vec::with_capacity(header_bytes);
-    file.take(header_bytes as u64).read_to_end(&mut header_data)?;
+    file.take(header_bytes as u64)
+        .read_to_end(&mut header_data)?;
     // DBT-P46-B6: no .unwrap_or(0) — a failed mtime read stays None rather than
     // becoming a 1970 timestamp the UI would render as a real crash date.
     let recorded = meta
@@ -603,7 +665,8 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
         && &header_data[4..8] == b"DU64"
         && header_data.len() >= size_of::<DUMP_HEADER64>()
     {
-        let header = unsafe { std::ptr::read_unaligned(header_data.as_ptr().cast::<DUMP_HEADER64>()) };
+        let header =
+            unsafe { std::ptr::read_unaligned(header_data.as_ptr().cast::<DUMP_HEADER64>()) };
         code = Some(header.BugCheckCode);
         parameters = [
             header.BugCheckParameter1,
@@ -620,7 +683,8 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
         && &header_data[4..8] == b"DUMP"
         && header_data.len() >= size_of::<DUMP_HEADER32>()
     {
-        let header = unsafe { std::ptr::read_unaligned(header_data.as_ptr().cast::<DUMP_HEADER32>()) };
+        let header =
+            unsafe { std::ptr::read_unaligned(header_data.as_ptr().cast::<DUMP_HEADER32>()) };
         code = Some(header.BugCheckCode);
         parameters = [
             header.BugCheckParameter1,
@@ -633,7 +697,9 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
         .collect();
         source = "DUMP_HEADER32 bugcheck metadata".into();
     }
-    let bugcheck_hex = code.map(|value| format!("0x{value:08X}")).unwrap_or_default();
+    let bugcheck_hex = code
+        .map(|value| format!("0x{value:08X}"))
+        .unwrap_or_default();
     let name = path
         .file_name()
         .map(|value| value.to_string_lossy().into_owned())
@@ -654,7 +720,11 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
         dump_file: name,
         dump_size_bytes: meta.len(),
         source,
-        confidence: if code.is_some() { "HeaderEvidence".into() } else { "MetadataOnly".into() },
+        confidence: if code.is_some() {
+            "HeaderEvidence".into()
+        } else {
+            "MetadataOnly".into()
+        },
         summary: if code.is_some() {
             "A Windows kernel dump is present with bugcheck header metadata. Full driver/module attribution requires symbol-assisted dump analysis.".into()
         } else {
@@ -663,10 +733,15 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
     })
 }
 
-fn w(value: &str) -> Vec<u16> { value.encode_utf16().chain(std::iter::once(0)).collect() }
+fn w(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
 fn win(error: windows::core::Error) -> CrashError {
-    if error.code() == E_ACCESSDENIED { CrashError::PermissionDenied(error.to_string()) }
-    else { CrashError::Windows(error.to_string()) }
+    if error.code() == E_ACCESSDENIED {
+        CrashError::PermissionDenied(error.to_string())
+    } else {
+        CrashError::Windows(error.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -688,7 +763,10 @@ mod tests {
 
     #[test]
     fn render_property_count_is_rejected_before_allocation_when_pathological() {
-        assert_eq!(checked_render_property_count(MAX_EVENT_PROPERTIES as u32).unwrap(), MAX_EVENT_PROPERTIES);
+        assert_eq!(
+            checked_render_property_count(MAX_EVENT_PROPERTIES as u32).unwrap(),
+            MAX_EVENT_PROPERTIES
+        );
         let error = checked_render_property_count((MAX_EVENT_PROPERTIES + 1) as u32).unwrap_err();
         assert!(matches!(error, CrashError::MalformedResponse(_)));
     }

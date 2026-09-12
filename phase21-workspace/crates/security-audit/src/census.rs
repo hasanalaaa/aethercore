@@ -226,7 +226,10 @@ fn scan_dpkg_status(status_path: &Path) -> CensusLane {
             && !n.is_empty()
             && !v.is_empty()
         {
-            out.push(InstalledPackage { name: n, version: v });
+            out.push(InstalledPackage {
+                name: n,
+                version: v,
+            });
         }
     };
     let mut name: Option<String> = None;

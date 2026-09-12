@@ -191,7 +191,10 @@ fn cf2_secret_shaped_input_is_rejected() {
     assert!(db.upsert_fleet_host(&raw, 0).is_err());
     // Private-key-body-shaped identity path is invalid per domain validation.
     let raw2 = r#"{"schema":"aethercore.fleet.host.v1","host_id":"host-secret","display_name":"X","hostname":"s.example.internal","port":22,"username":"ops","auth":{"key_file":{"path":"-----BEGIN OPENSSH PRIVATE KEY-----"}},"enabled":true}"#;
-    assert!(db.upsert_fleet_host(raw2, 0).is_err(), "private-key body is an invalid identity path");
+    assert!(
+        db.upsert_fleet_host(raw2, 0).is_err(),
+        "private-key body is an invalid identity path"
+    );
     // A trust block with a malformed fingerprint is rejected on re-validation.
     let raw3 = r#"{"schema":"aethercore.fleet.host.v1","host_id":"host-secret","display_name":"X","hostname":"s.example.internal","port":22,"username":"ops","auth":"agent","enabled":true,"trust":{"host_key_sha256":"not-a-fingerprint","key_type":"ssh-ed25519","trusted_unix_ms":1}}"#;
     assert!(db.upsert_fleet_host(raw3, 0).is_err());

@@ -6,8 +6,8 @@
 //! contract (tested in GD-2 and enforced by the audit gate).
 
 use crate::model::{
-    sort_and_clamp, Confidence, EvidenceRef, SecFinding, Severity, MAX_EVIDENCE_REFS,
-    MAX_FILES_PER_SCAN, MAX_PARSE_BYTES, MAX_SCAN_MILLIS,
+    Confidence, EvidenceRef, MAX_EVIDENCE_REFS, MAX_FILES_PER_SCAN, MAX_PARSE_BYTES,
+    MAX_SCAN_MILLIS, SecFinding, Severity, sort_and_clamp,
 };
 use regex::Regex;
 use std::path::{Path, PathBuf};
@@ -174,9 +174,9 @@ fn scan_line(kind: Kind, line: &str, line_no: usize, hits: &mut Vec<Hit>) {
                         //     correcthorsebatterystaple);
                         //  b) Shannon entropy >= 4.0 AND length >= 24.
                         let has_upper = v.chars().any(|c| c.is_ascii_uppercase());
-                        let has_lower_or_digit =
-                            v.chars()
-                                .any(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+                        let has_lower_or_digit = v
+                            .chars()
+                            .any(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
                         if has_upper
                             && has_lower_or_digit
                             && v.chars().count() >= 24
@@ -327,8 +327,9 @@ pub fn scan_secrets(dir_str: &str) -> Result<Vec<SecFinding>, String> {
             None,
             "sec.secrets.scanTruncated",
             Confidence::Inferred,
-        ) {
-            findings.push(ft);
+        )
+    {
+        findings.push(ft);
     }
     Ok(sort_and_clamp(findings))
 }

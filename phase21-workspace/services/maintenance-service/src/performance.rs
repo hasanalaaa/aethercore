@@ -11,8 +11,8 @@ use aethercore_performance_optimization::{
     ActionKind, ExecutionItem, ExecutionStatus, Plan, Reversibility,
 };
 use aethercore_performance_telemetry::{
-    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform, PerfSnapshot,
-    PowerSample, ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
+    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform,
+    PerfSnapshot, PowerSample, ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
 };
 
 pub(crate) fn thermal_reason_proto(value: ThermalThrottleReason) -> v1::ThermalThrottleReason {
@@ -554,4 +554,3 @@ mod dbt_p50_005 {
         assert_eq!(resp_other.samples.len(), 0);
     }
 }
-

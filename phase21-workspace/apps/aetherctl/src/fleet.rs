@@ -76,7 +76,8 @@ fn dirs_state() -> Option<PathBuf> {
 /// non-admin now gets a typed local-I/O refusal instead of silently writing to a
 /// private store nobody else can see.
 fn dirs_state() -> Option<PathBuf> {
-    std::env::var_os("ProgramData").map(|dir| PathBuf::from(dir).join(aethercore_product_identity::PRODUCT_NAME))
+    std::env::var_os("ProgramData")
+        .map(|dir| PathBuf::from(dir).join(aethercore_product_identity::PRODUCT_NAME))
 }
 
 fn load_inventory() -> Result<FleetInventory, CliError> {
@@ -445,10 +446,12 @@ fn execute(_config: &Config, job: FleetJob) -> Result<serde_json::Value, CliErro
             // never caught it because they construct FleetSchedule directly and never
             // go through this writer. Round-tripping the typed value makes the writer
             // and the reader incapable of drifting again.
-            schedules.push(serde_json::to_value(&sched).map_err(|error| CliError::LocalIo {
-                message_key: "fleet.schedulesInvalid".to_string(),
-                detail: Some(error.to_string()),
-            })?);
+            schedules.push(
+                serde_json::to_value(&sched).map_err(|error| CliError::LocalIo {
+                    message_key: "fleet.schedulesInvalid".to_string(),
+                    detail: Some(error.to_string()),
+                })?,
+            );
             std::fs::create_dir_all(path.parent().unwrap()).map_err(|error| CliError::LocalIo {
                 message_key: "local.io.write".to_string(),
                 detail: Some(error.to_string()),

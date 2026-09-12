@@ -13,7 +13,9 @@ pub enum RestorePointError {
     Unavailable(String),
     #[error("SRSetRestorePointW failed with status {0}")]
     RestoreStatus(u32),
-    #[error("Windows returned a restore point sequence but no fresh AetherCore restore point could be verified")]
+    #[error(
+        "Windows returned a restore point sequence but no fresh AetherCore restore point could be verified"
+    )]
     NotFresh,
     #[error("WMI restore point verification failed: {0}")]
     Verification(String),
@@ -32,19 +34,34 @@ pub struct RestorePointEvidence {
 #[cfg(windows)]
 mod windows_impl;
 #[cfg(windows)]
-pub use windows_impl::{begin_driver_install, cancel_driver_install, end_driver_install, initialize_process_com_security};
+pub use windows_impl::{
+    begin_driver_install, cancel_driver_install, end_driver_install,
+    initialize_process_com_security,
+};
 
 #[cfg(not(windows))]
-pub fn initialize_process_com_security() -> Result<()> { Err(RestorePointError::UnsupportedPlatform) }
+pub fn initialize_process_com_security() -> Result<()> {
+    Err(RestorePointError::UnsupportedPlatform)
+}
 #[cfg(not(windows))]
-pub fn begin_driver_install(_: &str) -> Result<RestorePointEvidence> { Err(RestorePointError::UnsupportedPlatform) }
+pub fn begin_driver_install(_: &str) -> Result<RestorePointEvidence> {
+    Err(RestorePointError::UnsupportedPlatform)
+}
 #[cfg(not(windows))]
-pub fn end_driver_install(_: i64, _: &str) -> Result<()> { Err(RestorePointError::UnsupportedPlatform) }
+pub fn end_driver_install(_: i64, _: &str) -> Result<()> {
+    Err(RestorePointError::UnsupportedPlatform)
+}
 #[cfg(not(windows))]
-pub fn cancel_driver_install(_: i64, _: &str) -> Result<()> { Err(RestorePointError::UnsupportedPlatform) }
+pub fn cancel_driver_install(_: i64, _: &str) -> Result<()> {
+    Err(RestorePointError::UnsupportedPlatform)
+}
 
 pub fn description_for_plan(plan_id: &str) -> String {
-    let safe = plan_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(36).collect::<String>();
+    let safe = plan_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(36)
+        .collect::<String>();
     format!("Installed AetherCore Drivers {safe}")
 }
 

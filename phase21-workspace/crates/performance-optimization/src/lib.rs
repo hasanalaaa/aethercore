@@ -239,12 +239,18 @@ impl NoopPlatform {
     }
 
     pub fn operations(&self) -> Vec<String> {
-        self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+        self.log
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 }
 
 fn record(platform_log: &Mutex<Vec<String>>, operation: String) -> std::io::Result<ApplyOutcome> {
-    platform_log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(operation);
+    platform_log
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .push(operation);
     Ok(ApplyOutcome::Applied)
 }
 
@@ -254,11 +260,17 @@ impl OptimizationPlatform for NoopPlatform {
     }
 
     fn apply_background_priority(&self, key: &ProcessKey) -> std::io::Result<ApplyOutcome> {
-        record(&self.log, format!("backgroundPriority:{}/{}", key.pid, key.image_key))
+        record(
+            &self.log,
+            format!("backgroundPriority:{}/{}", key.pid, key.image_key),
+        )
     }
 
     fn apply_cooperative_trim(&self, key: &ProcessKey) -> std::io::Result<ApplyOutcome> {
-        record(&self.log, format!("cooperativeTrim:{}/{}", key.pid, key.image_key))
+        record(
+            &self.log,
+            format!("cooperativeTrim:{}/{}", key.pid, key.image_key),
+        )
     }
 
     fn set_game_mode(&self, enabled: bool) -> std::io::Result<ApplyOutcome> {
@@ -266,7 +278,10 @@ impl OptimizationPlatform for NoopPlatform {
     }
 
     fn restore(&self, change: &ChangeRecord) -> std::io::Result<ApplyOutcome> {
-        record(&self.log, format!("restore:{}/{}", change.change_id, change.candidate_id))
+        record(
+            &self.log,
+            format!("restore:{}/{}", change.change_id, change.candidate_id),
+        )
     }
 }
 
@@ -311,7 +326,9 @@ impl OptimizationGovernor {
         }
         let mut candidates: Vec<Candidate> = Vec::new();
         for finding in &report.findings {
-            if !selected_finding_ids.contains(&finding.id) || finding.applicable_action_kinds.is_empty() {
+            if !selected_finding_ids.contains(&finding.id)
+                || finding.applicable_action_kinds.is_empty()
+            {
                 continue;
             }
             let offenders = offender_keys
@@ -319,17 +336,25 @@ impl OptimizationGovernor {
                 .cloned()
                 .unwrap_or_default();
             for kind in &finding.applicable_action_kinds {
-                let Some(action_kind) = ActionKind::parse(kind) else { continue };
+                let Some(action_kind) = ActionKind::parse(kind) else {
+                    continue;
+                };
                 // Consent policy: session-only hints may be reviewed once; anything persistent
                 // demands explicit consent every time.
                 let (reversibility, consent) = match action_kind {
-                    ActionKind::EcoQos | ActionKind::BackgroundPriority => (Reversibility::SessionOnly, false),
+                    ActionKind::EcoQos | ActionKind::BackgroundPriority => {
+                        (Reversibility::SessionOnly, false)
+                    }
                     ActionKind::CooperativeTrimRequest => (Reversibility::AutomaticRestore, true),
                     ActionKind::GameModeProfile => (Reversibility::AutomaticRestore, true),
                     ActionKind::Unspecified => continue,
                 };
                 candidates.push(Candidate {
-                    candidate_id: format!("{}-{}", finding.id.trim_start_matches("finding:"), action_kind.as_str()),
+                    candidate_id: format!(
+                        "{}-{}",
+                        finding.id.trim_start_matches("finding:"),
+                        action_kind.as_str()
+                    ),
                     kind: action_kind,
                     finding_ids: vec![finding.id.clone()],
                     title_key: title_key_for(action_kind).to_string(),
@@ -456,11 +481,7 @@ impl OptimizationGovernor {
         Ok(status)
     }
 
-    fn apply_candidate(
-        &self,
-        candidate: &Candidate,
-        plan: &Plan,
-    ) -> std::io::Result<ApplyOutcome> {
+    fn apply_candidate(&self, candidate: &Candidate, plan: &Plan) -> std::io::Result<ApplyOutcome> {
         match candidate.kind {
             ActionKind::EcoQos => {
                 for key in &candidate.target_process_keys {
@@ -632,5 +653,7 @@ fn serde_json_default_state(candidate: &Candidate) -> String {
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }

@@ -506,7 +506,6 @@ mod tests {
     use std::path::Path;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-
     /// An exit-0 program that stands in for `ssh`.
     ///
     /// Closes DBT-P36-003. `/usr/bin/true` does not exist on Windows, and the
@@ -524,8 +523,7 @@ mod tests {
         if !cfg!(windows) {
             return std::path::PathBuf::from("/usr/bin/true");
         }
-        let dir = std::env::temp_dir()
-            .join(format!("aethercore-ssh-stub-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("aethercore-ssh-stub-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let stub = dir.join("ssh-true.cmd");
         if !stub.exists() {

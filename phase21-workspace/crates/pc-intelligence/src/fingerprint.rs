@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::model::{hex_sha256, FactPayload, SystemFact};
+use crate::model::{FactPayload, SystemFact, hex_sha256};
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
@@ -17,10 +17,7 @@ struct CanonicalStateEntry {
 /// machine state. Observation timestamps, display names, evidence text, scan
 /// identifiers and collector timing are intentionally excluded.
 pub fn machine_state_fingerprint(facts: &[SystemFact]) -> String {
-    let mut entries = facts
-        .iter()
-        .filter_map(canonical_entry)
-        .collect::<Vec<_>>();
+    let mut entries = facts.iter().filter_map(canonical_entry).collect::<Vec<_>>();
     entries.sort();
     let bytes = serde_json::to_vec(&entries).unwrap_or_default();
     hex_sha256(&bytes)
@@ -141,7 +138,7 @@ fn canonical_payload_state(payload: &FactPayload) -> Option<String> {
                 wear_percent,
                 thermal_attention,
             ))
-        },
+        }
         FactPayload::MemoryPressure {
             memory_load_percent,
             pressure_label,
@@ -173,7 +170,13 @@ fn canonical_payload_state(payload: &FactPayload) -> Option<String> {
             available_release_id,
             update_available,
             failed,
-        } => serde_json::to_string(&(state, current_version, available_release_id, update_available, failed)),
+        } => serde_json::to_string(&(
+            state,
+            current_version,
+            available_release_id,
+            update_available,
+            failed,
+        )),
         FactPayload::RecoveryReadiness {
             active_recovery_records,
         } => serde_json::to_string(&(active_recovery_records,)),
@@ -214,7 +217,7 @@ mod tests {
                 device_state: "Started".into(),
                 update_status: "UpToDate".into(),
                 authority_coverage: "CompleteForRequiredAuthorities".into(),
-            management_authorities: vec![],
+                management_authorities: vec![],
             },
         );
         let mut b = a.clone();
@@ -222,7 +225,10 @@ mod tests {
         b.evidence[0].observed_unix_ms = 9_999;
         b.evidence[0].technical_value = "different collection metadata".into();
         b.resource.display_name = "Different display name".into();
-        assert_eq!(machine_state_fingerprint(&[a.clone(), b.clone()]), machine_state_fingerprint(&[b, a]));
+        assert_eq!(
+            machine_state_fingerprint(&[a.clone(), b.clone()]),
+            machine_state_fingerprint(&[b, a])
+        );
     }
 
     #[test]
@@ -238,10 +244,17 @@ mod tests {
             },
         );
         let mut b = a.clone();
-        if let FactPayload::HardwareDevice { installed_driver_version, .. } = &mut b.payload {
+        if let FactPayload::HardwareDevice {
+            installed_driver_version,
+            ..
+        } = &mut b.payload
+        {
             *installed_driver_version = "2.0".into();
         }
-        assert_ne!(machine_state_fingerprint(&[a]), machine_state_fingerprint(&[b]));
+        assert_ne!(
+            machine_state_fingerprint(&[a]),
+            machine_state_fingerprint(&[b])
+        );
     }
 
     #[test]
@@ -364,7 +377,7 @@ mod tests {
                 device_state: "Started".into(),
                 update_status: "UpToDate".into(),
                 authority_coverage: "CompleteForRequiredAuthorities".into(),
-            management_authorities: vec![],
+                management_authorities: vec![],
             },
         );
         let limitation = SystemFact::new(
@@ -382,6 +395,9 @@ mod tests {
             EvidenceKind::CollectorLimitation,
             "C:\\Users\\Alice\\private",
         );
-        assert_eq!(machine_state_fingerprint(&[state.clone()]), machine_state_fingerprint(&[state, limitation]));
+        assert_eq!(
+            machine_state_fingerprint(&[state.clone()]),
+            machine_state_fingerprint(&[state, limitation])
+        );
     }
 }

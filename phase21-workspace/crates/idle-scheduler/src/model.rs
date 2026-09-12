@@ -38,13 +38,33 @@ impl AutonomousWorkload {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ThermalPressure { Normal, Elevated, Critical, Unknown }
+pub enum ThermalPressure {
+    Normal,
+    Elevated,
+    Critical,
+    Unknown,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NetworkCost { Unmetered, Metered, Unknown }
+pub enum NetworkCost {
+    Unmetered,
+    Metered,
+    Unknown,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PresentationState { Clear, Busy, FullScreen, Presentation, LockedOrAbsent, Unknown }
+pub enum PresentationState {
+    Clear,
+    Busy,
+    FullScreen,
+    Presentation,
+    LockedOrAbsent,
+    Unknown,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ServicingState { Idle, Busy, Unknown }
+pub enum ServicingState {
+    Idle,
+    Busy,
+    Unknown,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SystemState {
@@ -64,7 +84,9 @@ pub struct SystemState {
 
 impl SystemState {
     pub fn has_interactive_owner(&self) -> bool {
-        !self.owner_principal_key.is_empty() && !self.user_sid.is_empty() && self.session_id != u32::MAX
+        !self.owner_principal_key.is_empty()
+            && !self.user_sid.is_empty()
+            && self.session_id != u32::MAX
     }
 }
 
@@ -141,7 +163,13 @@ impl BlockReason {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RunOutcome { Started, Completed, Preempted, Skipped, Failed }
+pub enum RunOutcome {
+    Started,
+    Completed,
+    Preempted,
+    Skipped,
+    Failed,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PassiveWorkReport {

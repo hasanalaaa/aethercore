@@ -1,15 +1,18 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
-    sync::{atomic::{AtomicBool, Ordering}, Arc},
+    collections::{HashMap, hash_map::Entry},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::{Duration, Instant},
 };
 
 use aethercore_collector_runtime::{
-    run_isolated_gated_with_token, CancellationToken, CollectorFault, CommitFence, FaultKind,
-    IsolationGate,
+    CancellationToken, CollectorFault, CommitFence, FaultKind, IsolationGate,
+    run_isolated_gated_with_token,
 };
-use aethercore_contracts::v1::{self, event_envelope, EventKind, SchedulerRunState};
+use aethercore_contracts::v1::{self, EventKind, SchedulerRunState, event_envelope};
 use aethercore_operation_kernel::{OperationKernel, ReadWorkload};
 use chrono::Utc;
 use rand::Rng;
@@ -23,7 +26,9 @@ pub trait SystemStateProbe: Send + Sync + 'static {
 
     /// Fast preemption sample. Implementations should avoid slow COM/WMI/network work and return
     /// cached slow signals. The default keeps test/mock probes source-compatible.
-    fn sample_fast(&self) -> Result<SystemState, String> { self.sample() }
+    fn sample_fast(&self) -> Result<SystemState, String> {
+        self.sample()
+    }
 
     /// Requests a refresh of slow eligibility signals without blocking the preemption path.
     /// Platform implementations must single-flight this work; the default is a no-op for tests.
@@ -54,7 +59,9 @@ pub struct SchedulerHandle {
 
 #[derive(Debug, thiserror::Error)]
 #[error("{detail}")]
-pub struct SchedulerStartError { detail: String }
+pub struct SchedulerStartError {
+    detail: String,
+}
 
 #[derive(Clone, Copy)]
 struct RunState {
@@ -78,11 +85,18 @@ impl IdleScheduler {
         let worker = thread::Builder::new()
             .name("aether-idle-scheduler".into())
             .spawn(move || run_loop(worker_scheduler, kernel, probe, executor, config))
-            .map_err(|error| SchedulerStartError { detail: format!("failed to spawn idle scheduler: {error}") })?;
-        Ok(SchedulerHandle { scheduler, worker: Some(worker) })
+            .map_err(|error| SchedulerStartError {
+                detail: format!("failed to spawn idle scheduler: {error}"),
+            })?;
+        Ok(SchedulerHandle {
+            scheduler,
+            worker: Some(worker),
+        })
     }
 
-    pub fn notify_state_change(&self) { self.wake.store(true, Ordering::Release); }
+    pub fn notify_state_change(&self) {
+        self.wake.store(true, Ordering::Release);
+    }
 
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Release);
@@ -91,19 +105,25 @@ impl IdleScheduler {
 }
 
 impl SchedulerHandle {
-    pub fn scheduler(&self) -> IdleScheduler { self.scheduler.clone() }
+    pub fn scheduler(&self) -> IdleScheduler {
+        self.scheduler.clone()
+    }
 }
 
 impl Drop for SchedulerHandle {
     fn drop(&mut self) {
         self.scheduler.stop();
-        if let Some(worker) = self.worker.take() { let _ = worker.join(); }
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 }
 
 fn map_read(workload: AutonomousWorkload) -> ReadWorkload {
     match workload {
-        AutonomousWorkload::HardwareTelemetry | AutonomousWorkload::EventLogTriage => ReadWorkload::Diagnostics,
+        AutonomousWorkload::HardwareTelemetry | AutonomousWorkload::EventLogTriage => {
+            ReadWorkload::Diagnostics
+        }
         AutonomousWorkload::DriverDiscovery => ReadWorkload::DriverDiscovery,
         AutonomousWorkload::CleanupInventory => ReadWorkload::CleanupDiscovery,
         AutonomousWorkload::StartupInventory => ReadWorkload::StartupDiscovery,
@@ -128,7 +148,9 @@ fn publish(
     reason: &str,
     report: PassiveWorkReport,
 ) {
-    if owner.is_empty() { return; }
+    if owner.is_empty() {
+        return;
+    }
     kernel.events().publish(
         owner,
         EventKind::Scheduler,
@@ -144,7 +166,6 @@ fn publish(
     );
 }
 
-
 fn preemption_required(
     eligibility: &EligibilityEngine,
     workload: AutonomousWorkload,
@@ -155,7 +176,9 @@ fn preemption_required(
 ) -> bool {
     state.owner_principal_key != expected_owner
         || state.session_id != expected_session
-        || !eligibility.evaluate(workload, state, mutation_active).is_empty()
+        || !eligibility
+            .evaluate(workload, state, mutation_active)
+            .is_empty()
 }
 
 fn classify_run_outcome(
@@ -168,7 +191,10 @@ fn classify_run_outcome(
         RunOutcome::Completed
     } else if stopping
         || !fence_valid
-        || result.as_ref().err().is_some_and(|error| matches!(error.kind, FaultKind::Cancelled))
+        || result
+            .as_ref()
+            .err()
+            .is_some_and(|error| matches!(error.kind, FaultKind::Cancelled))
     {
         RunOutcome::Preempted
     } else {
@@ -218,7 +244,9 @@ fn run_loop(
 
         for workload in AutonomousWorkload::ALL {
             if let Entry::Vacant(entry) = runs.entry(workload) {
-                let initial = match kernel.scheduler_cadence(&state.owner_principal_key, workload.as_str()) {
+                let initial = match kernel
+                    .scheduler_cadence(&state.owner_principal_key, workload.as_str())
+                {
                     Ok(Some(saved)) => RunState {
                         failures: saved.failure_count,
                         next_eligible_ms: saved.next_eligible_unix_ms,
@@ -239,19 +267,28 @@ fn run_loop(
                 entry.insert(initial);
             }
             let Some(run) = runs.get_mut(&workload) else {
-                warn!(workload=workload.as_str(), "idle scheduler run state disappeared before admission; autonomous work fails closed");
+                warn!(
+                    workload = workload.as_str(),
+                    "idle scheduler run state disappeared before admission; autonomous work fails closed"
+                );
                 return;
             };
-            if now < run.next_eligible_ms { continue; }
+            if now < run.next_eligible_ms {
+                continue;
+            }
 
             let policy = eligibility.policy(workload);
             let blocked = eligibility.evaluate(workload, &state, mutation_active);
-            if !blocked.is_empty() { continue; }
+            if !blocked.is_empty() {
+                continue;
+            }
 
             let read = match kernel.reads().try_acquire(map_read(workload)) {
                 Ok(value) => value,
                 Err(_) => {
-                    run.next_eligible_ms = now.saturating_add(config.resource_cooldown.as_millis().min(i64::MAX as u128) as i64);
+                    run.next_eligible_ms = now.saturating_add(
+                        config.resource_cooldown.as_millis().min(i64::MAX as u128) as i64,
+                    );
                     publish(
                         &kernel,
                         &state.owner_principal_key,
@@ -282,14 +319,18 @@ fn run_loop(
                 .spawn(move || {
                     let mut last_full = Instant::now();
                     loop {
-                        if monitor_token.is_cancelled() { break; }
+                        if monitor_token.is_cancelled() {
+                            break;
+                        }
                         if monitor_scheduler.stop.load(Ordering::Acquire) {
                             monitor_fence.revoke();
                             monitor_token.cancel();
                             break;
                         }
                         thread::sleep(active_probe_interval);
-                        if monitor_token.is_cancelled() { break; }
+                        if monitor_token.is_cancelled() {
+                            break;
+                        }
 
                         if last_full.elapsed() >= full_recheck_interval {
                             last_full = Instant::now();
@@ -326,8 +367,15 @@ fn run_loop(
                     token.cancel();
                     drop(read);
                     run.failures = run.failures.saturating_add(1);
-                    run.next_eligible_ms = now.saturating_add(backoff_delay_ms(&config, run.failures));
-                    if let Err(persist_error) = persist_cadence(&kernel, &state.owner_principal_key, workload, *run, RunOutcome::Failed) {
+                    run.next_eligible_ms =
+                        now.saturating_add(backoff_delay_ms(&config, run.failures));
+                    if let Err(persist_error) = persist_cadence(
+                        &kernel,
+                        &state.owner_principal_key,
+                        workload,
+                        *run,
+                        RunOutcome::Failed,
+                    ) {
                         warn!(error=%persist_error, "idle scheduler cadence write failed; autonomous work disabled");
                         return;
                     }
@@ -366,13 +414,15 @@ fn run_loop(
                 policy.timeout,
                 work_token,
                 move |control| {
-                    crate::run_in_background_mode(|| exec.execute(
-                        workload,
-                        &owner_exec,
-                        control.cancellation(),
-                        work_fence,
-                        &governor_exec,
-                    ))
+                    crate::run_in_background_mode(|| {
+                        exec.execute(
+                            workload,
+                            &owner_exec,
+                            control.cancellation(),
+                            work_fence,
+                            &governor_exec,
+                        )
+                    })
                     .map_err(|error| {
                         let kind = if control.is_cancelled() {
                             FaultKind::Cancelled
@@ -398,20 +448,26 @@ fn run_loop(
                     run.failures = 0;
                     run.last_completed_ms = Some(finished);
                     run.next_eligible_ms = finished
-                        .saturating_add(policy.minimum_interval.as_millis().min(i64::MAX as u128) as i64)
+                        .saturating_add(
+                            policy.minimum_interval.as_millis().min(i64::MAX as u128) as i64
+                        )
                         .saturating_add(random_jitter_ms(config.max_jitter));
                 }
                 RunOutcome::Preempted => {
-                    run.next_eligible_ms = finished
-                        .saturating_add(config.resource_cooldown.as_millis().min(i64::MAX as u128) as i64);
+                    run.next_eligible_ms = finished.saturating_add(
+                        config.resource_cooldown.as_millis().min(i64::MAX as u128) as i64,
+                    );
                 }
                 RunOutcome::Failed => {
                     run.failures = run.failures.saturating_add(1);
-                    run.next_eligible_ms = finished.saturating_add(backoff_delay_ms(&config, run.failures));
+                    run.next_eligible_ms =
+                        finished.saturating_add(backoff_delay_ms(&config, run.failures));
                 }
                 RunOutcome::Started | RunOutcome::Skipped => {}
             }
-            if let Err(error) = persist_cadence(&kernel, &state.owner_principal_key, workload, *run, outcome) {
+            if let Err(error) =
+                persist_cadence(&kernel, &state.owner_principal_key, workload, *run, outcome)
+            {
                 warn!(%error, "idle scheduler cadence write failed; autonomous work disabled");
                 return;
             }
@@ -428,19 +484,29 @@ fn run_loop(
                     RunOutcome::Started => "started".into(),
                     RunOutcome::Skipped => "skipped".into(),
                 });
-            publish(&kernel, &state.owner_principal_key, workload, outcome, &reason, report);
+            publish(
+                &kernel,
+                &state.owner_principal_key,
+                workload,
+                outcome,
+                &reason,
+                report,
+            );
             ran = true;
             break;
         }
 
         sleep_interruptible(
             &scheduler,
-            if ran { config.resource_cooldown } else { config.idle_probe_interval },
+            if ran {
+                config.resource_cooldown
+            } else {
+                config.idle_probe_interval
+            },
         );
     }
     info!("idle scheduler stopped");
 }
-
 
 fn persist_cadence(
     kernel: &OperationKernel,
@@ -496,7 +562,9 @@ fn random_jitter_ms(max: Duration) -> i64 {
 fn sleep_interruptible(scheduler: &IdleScheduler, duration: Duration) {
     let start = Instant::now();
     while start.elapsed() < duration && !scheduler.stop.load(Ordering::Acquire) {
-        if scheduler.wake.swap(false, Ordering::AcqRel) { break; }
+        if scheduler.wake.swap(false, Ordering::AcqRel) {
+            break;
+        }
         thread::sleep(Duration::from_millis(100).min(duration.saturating_sub(start.elapsed())));
     }
 }
@@ -552,29 +620,79 @@ mod tests {
     fn preemption_is_fail_closed_for_activity_owner_session_and_mutation_changes() {
         let eligibility = EligibilityEngine::new(SchedulerConfig::default());
         let mut state = eligible_state();
-        assert!(!preemption_required(&eligibility, AutonomousWorkload::StartupInventory, "owner", 7, &state, false));
+        assert!(!preemption_required(
+            &eligibility,
+            AutonomousWorkload::StartupInventory,
+            "owner",
+            7,
+            &state,
+            false
+        ));
         state.idle_for = Duration::from_secs(1);
-        assert!(preemption_required(&eligibility, AutonomousWorkload::StartupInventory, "owner", 7, &state, false));
-        state = eligible_state(); state.owner_principal_key = "other".into();
-        assert!(preemption_required(&eligibility, AutonomousWorkload::StartupInventory, "owner", 7, &state, false));
-        state = eligible_state(); state.session_id = 8;
-        assert!(preemption_required(&eligibility, AutonomousWorkload::StartupInventory, "owner", 7, &state, false));
+        assert!(preemption_required(
+            &eligibility,
+            AutonomousWorkload::StartupInventory,
+            "owner",
+            7,
+            &state,
+            false
+        ));
         state = eligible_state();
-        assert!(preemption_required(&eligibility, AutonomousWorkload::StartupInventory, "owner", 7, &state, true));
+        state.owner_principal_key = "other".into();
+        assert!(preemption_required(
+            &eligibility,
+            AutonomousWorkload::StartupInventory,
+            "owner",
+            7,
+            &state,
+            false
+        ));
+        state = eligible_state();
+        state.session_id = 8;
+        assert!(preemption_required(
+            &eligibility,
+            AutonomousWorkload::StartupInventory,
+            "owner",
+            7,
+            &state,
+            false
+        ));
+        state = eligible_state();
+        assert!(preemption_required(
+            &eligibility,
+            AutonomousWorkload::StartupInventory,
+            "owner",
+            7,
+            &state,
+            true
+        ));
     }
 
     #[test]
     fn watchdog_timeout_is_failure_not_user_preemption() {
-        let result: Result<PassiveWorkReport, CollectorFault> = Err(CollectorFault::timeout("idle-scheduler", "test"));
-        assert_eq!(classify_run_outcome(false, true, false, &result), RunOutcome::Failed);
+        let result: Result<PassiveWorkReport, CollectorFault> =
+            Err(CollectorFault::timeout("idle-scheduler", "test"));
+        assert_eq!(
+            classify_run_outcome(false, true, false, &result),
+            RunOutcome::Failed
+        );
     }
 
     #[test]
     fn revoked_fence_is_preemption_and_uncommitted_success_is_never_completed() {
         let success = Ok(PassiveWorkReport::default());
-        assert_eq!(classify_run_outcome(false, false, false, &success), RunOutcome::Preempted);
-        assert_eq!(classify_run_outcome(false, true, false, &success), RunOutcome::Failed);
-        assert_eq!(classify_run_outcome(true, true, false, &success), RunOutcome::Completed);
+        assert_eq!(
+            classify_run_outcome(false, false, false, &success),
+            RunOutcome::Preempted
+        );
+        assert_eq!(
+            classify_run_outcome(false, true, false, &success),
+            RunOutcome::Failed
+        );
+        assert_eq!(
+            classify_run_outcome(true, true, false, &success),
+            RunOutcome::Completed
+        );
     }
 
     #[test]
@@ -585,5 +703,4 @@ mod tests {
             assert!((0..=25).contains(&value));
         }
     }
-
 }

@@ -23,7 +23,8 @@ const MIGRATION_0013: &str = include_str!("../migrations/0013_phase19_windows_re
 const MIGRATION_0014: &str = include_str!("../migrations/0014_phase22_care_orchestration.sql");
 /// Phase 34 — fleet & secure remote operations (additive tables only).
 const MIGRATION_0015: &str = include_str!("../migrations/0015_phase34_fleet.sql");
-const MIGRATION_0016: &str = include_str!("../migrations/0016_p46_byte_progress_determinedness.sql");
+const MIGRATION_0016: &str =
+    include_str!("../migrations/0016_p46_byte_progress_determinedness.sql");
 
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "0001_init", MIGRATION_0001),
@@ -2147,8 +2148,14 @@ fn row_to_execution(row: &rusqlite::Row<'_>) -> rusqlite::Result<ExecutionRecord
         // stored figure was ever determined; a pre-0016 row reads as not
         // determined, which is the honest answer for data written before the
         // distinction existed.
-        bytes_downloaded: row.get::<_, i64>(18)?.ne(&0).then(|| i64_to_u64(row.get::<_, i64>(5).unwrap_or(0))),
-        bytes_total: row.get::<_, i64>(19)?.ne(&0).then(|| i64_to_u64(row.get::<_, i64>(6).unwrap_or(0))),
+        bytes_downloaded: row
+            .get::<_, i64>(18)?
+            .ne(&0)
+            .then(|| i64_to_u64(row.get::<_, i64>(5).unwrap_or(0))),
+        bytes_total: row
+            .get::<_, i64>(19)?
+            .ne(&0)
+            .then(|| i64_to_u64(row.get::<_, i64>(6).unwrap_or(0))),
         detail: row.get(7)?,
         reboot_required: row.get::<_, i32>(8)? != 0,
         reboot_boot_marker_ms: row.get(9)?,

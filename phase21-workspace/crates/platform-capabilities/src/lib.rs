@@ -158,10 +158,10 @@ pub fn current_windows_sku() -> WindowsSku {
     {
         use std::ffi::c_void;
         use windows::{
-            core::PCWSTR,
             Win32::System::Registry::{
-                RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+                HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
             },
+            core::PCWSTR,
         };
 
         fn wide(value: &str) -> Vec<u16> {
@@ -200,20 +200,26 @@ pub fn current_windows_sku() -> WindowsSku {
             if status.is_err() {
                 return None;
             }
-            let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
+            let end = buffer
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(buffer.len());
             Some(String::from_utf16_lossy(&buffer[..end]))
         }
 
         // The numeric wProductType lives in ProductOptions as a REG_SZ, not as a
         // DWORD under CurrentVersion. See product_type_code() for why.
-        let Some(product_type_sz) =
-            read_sz(r"SYSTEM\CurrentControlSet\Control\ProductOptions", "ProductType")
-        else {
+        let Some(product_type_sz) = read_sz(
+            r"SYSTEM\CurrentControlSet\Control\ProductOptions",
+            "ProductType",
+        ) else {
             return WindowsSku::Unknown;
         };
         let product_type = product_type_code(&product_type_sz);
-        let installation_type =
-            read_sz(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallationType");
+        let installation_type = read_sz(
+            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion",
+            "InstallationType",
+        );
         classify_windows_sku(product_type, installation_type.as_deref())
     }
     #[cfg(not(windows))]
@@ -345,7 +351,11 @@ fn windows_server_table(core: bool) -> Vec<(PlatformCapability, Availability)> {
         (C::LocalIntelligence, n()),
         (
             C::CareOrchestration,
-            if core { d(k::WINDOWS_SERVER_CORE_NO_CONSOLE) } else { n() },
+            if core {
+                d(k::WINDOWS_SERVER_CORE_NO_CONSOLE)
+            } else {
+                n()
+            },
         ),
     ]
 }
@@ -367,7 +377,9 @@ pub fn available_on_windows_sku(sku: WindowsSku, capability: PlatformCapability)
         .into_iter()
         .find(|(candidate, _)| *candidate == capability)
         .map(|(_, availability)| availability)
-        .unwrap_or(Availability::NotAvailable { reason_key: keys::WINDOWS_ONLY_API })
+        .unwrap_or(Availability::NotAvailable {
+            reason_key: keys::WINDOWS_ONLY_API,
+        })
 }
 
 /// macOS table — Phase 27 reality: telemetryCpu/Memory are Native via the libc-backed

@@ -5,8 +5,8 @@
 //! ALL=(ALL) lines with typed severity rationale in evidence.
 
 use crate::model::{
-    sort_and_clamp, Confidence, EvidenceRef, SecFinding, Severity, MAX_FILES_PER_SCAN,
-    MAX_PARSE_BYTES,
+    Confidence, EvidenceRef, MAX_FILES_PER_SCAN, MAX_PARSE_BYTES, SecFinding, Severity,
+    sort_and_clamp,
 };
 use std::path::Path;
 
@@ -134,8 +134,9 @@ fn scan_one_file(
                 None,
                 "sec.sudo.wildcardAll",
                 Confidence::Inferred,
-            ) {
-                findings.push(f);
+            )
+        {
+            findings.push(f);
         }
     }
     Ok(())
@@ -174,17 +175,10 @@ mod tests {
         std::fs::write(elsewhere.join("local"), grant).expect("fixture");
 
         let allowed = owned.join("sudoers-allowed");
-        std::fs::write(
-            &allowed,
-            format!("#includedir {}\n", beside.display()),
-        )
-        .expect("fixture");
+        std::fs::write(&allowed, format!("#includedir {}\n", beside.display())).expect("fixture");
         let refused = owned.join("sudoers-refused");
-        std::fs::write(
-            &refused,
-            format!("#includedir {}\n", elsewhere.display()),
-        )
-        .expect("fixture");
+        std::fs::write(&refused, format!("#includedir {}\n", elsewhere.display()))
+            .expect("fixture");
 
         let found = audit_sudoers(allowed.to_string_lossy().as_ref()).expect("scan");
         assert!(

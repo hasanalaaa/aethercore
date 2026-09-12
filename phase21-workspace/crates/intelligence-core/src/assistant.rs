@@ -497,7 +497,9 @@ mod tests {
     /// began "indicates that…".
     #[test]
     fn an_answer_whose_markers_resolve_keeps_them_for_the_renderer() {
-        let engine = engine(answered("A cleanup plan ran [E1] and a disk event recurred [E2]."));
+        let engine = engine(answered(
+            "A cleanup plan ran [E1] and a disk event recurred [E2].",
+        ));
         let outcome = engine.ask(
             &pack_of(&["fact-a", "fact-b"]),
             "what ran?",
@@ -509,7 +511,10 @@ mod tests {
             TurnOutcome::Answered {
                 answer, citations, ..
             } => {
-                assert_eq!(answer, "A cleanup plan ran [E1] and a disk event recurred [E2].");
+                assert_eq!(
+                    answer,
+                    "A cleanup plan ran [E1] and a disk event recurred [E2]."
+                );
                 assert_eq!(citations.len(), 2);
                 assert_eq!(citations[0].evidence_id, "fact-a");
                 assert_eq!(citations[1].evidence_id, "fact-b");
@@ -715,7 +720,10 @@ mod tests {
 
         match outcome {
             TurnOutcome::Cancelled { tokens } => {
-                assert_eq!(tokens, 5, "generation must stop at the token the flag was raised on");
+                assert_eq!(
+                    tokens, 5,
+                    "generation must stop at the token the flag was raised on"
+                );
                 assert!(tokens < MAX_ANSWER_TOKENS);
             }
             other => panic!("expected a cancelled turn, got {other:?}"),

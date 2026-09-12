@@ -48,7 +48,6 @@ pub struct DeviceRecord {
     pub driver: Option<InstalledDriver>,
 }
 
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceVerification {
@@ -132,7 +131,10 @@ mod tests {
 
     #[test]
     fn normalization_is_case_insensitive_and_trimmed() {
-        assert_eq!(normalize_pnp_id("  pci\\ven_10de&dev_2684 "), "PCI\\VEN_10DE&DEV_2684");
+        assert_eq!(
+            normalize_pnp_id("  pci\\ven_10de&dev_2684 "),
+            "PCI\\VEN_10DE&DEV_2684"
+        );
     }
 
     #[test]

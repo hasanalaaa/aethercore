@@ -180,13 +180,7 @@ impl AssistantCoordinator {
                     publish(
                         &events,
                         &owner_key,
-                        streaming(
-                            &turn,
-                            label,
-                            accumulated.to_owned(),
-                            0,
-                            &pack_for_worker,
-                        ),
+                        streaming(&turn, label, accumulated.to_owned(), 0, &pack_for_worker),
                     );
                 };
 

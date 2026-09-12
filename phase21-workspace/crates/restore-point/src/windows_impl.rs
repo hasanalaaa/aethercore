@@ -6,19 +6,19 @@ use windows::{
         Foundation::FreeLibrary,
         System::{
             Com::{
-                CLSCTX_INPROC_SERVER, CoCreateInstance,
-                CoInitializeSecurity, CoSetProxyBlanket, EOAC_NONE, RPC_C_AUTHN_LEVEL_CALL,
-                RPC_C_AUTHN_LEVEL_DEFAULT,
+                CLSCTX_INPROC_SERVER, CoCreateInstance, CoInitializeSecurity, CoSetProxyBlanket,
+                EOAC_NONE, RPC_C_AUTHN_LEVEL_CALL, RPC_C_AUTHN_LEVEL_DEFAULT,
                 RPC_C_IMP_LEVEL_IMPERSONATE,
             },
             LibraryLoader::{GetProcAddress, LoadLibraryW},
             Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
             Wmi::{
-                IWbemLocator, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY, WBEM_S_FALSE, WBEM_S_TIMEDOUT, WbemLocator,
+                IWbemLocator, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY, WBEM_S_FALSE,
+                WBEM_S_TIMEDOUT, WbemLocator,
             },
         },
     },
-    core::{BSTR, BOOL, PCWSTR},
+    core::{BOOL, BSTR, PCWSTR},
 };
 
 use crate::{RestorePointError, RestorePointEvidence, Result, description_for_plan};
@@ -44,14 +44,18 @@ struct StateManagerStatus {
     sequence_number: i64,
 }
 
-type SrSetRestorePointW = unsafe extern "system" fn(*mut RestorePointInfoW, *mut StateManagerStatus) -> BOOL;
+type SrSetRestorePointW =
+    unsafe extern "system" fn(*mut RestorePointInfoW, *mut StateManagerStatus) -> BOOL;
 
 static COM_SECURITY: OnceLock<std::result::Result<(), String>> = OnceLock::new();
 
 fn initialize_current_thread_com() -> Result<ComApartment> {
-    ComApartment::mta().map_err(|hr| RestorePointError::ComSecurity(format!(
-        "CoInitializeEx failed on restore-point worker thread: 0x{:08X}", hr.0 as u32
-    )))
+    ComApartment::mta().map_err(|hr| {
+        RestorePointError::ComSecurity(format!(
+            "CoInitializeEx failed on restore-point worker thread: 0x{:08X}",
+            hr.0 as u32
+        ))
+    })
 }
 
 /// Must be called by the maintenance service before any worker creates WUA/WMI COM objects.
@@ -60,9 +64,12 @@ fn initialize_current_thread_com() -> Result<ComApartment> {
 /// releases the startup thread's COM apartment. Worker threads initialize their own apartment.
 pub fn initialize_process_com_security() -> Result<()> {
     let value = COM_SECURITY.get_or_init(|| {
-        let _com = ComApartment::mta().map_err(|hr| format!(
-            "CoInitializeEx failed during process security initialization: 0x{:08X}", hr.0 as u32
-        ))?;
+        let _com = ComApartment::mta().map_err(|hr| {
+            format!(
+                "CoInitializeEx failed during process security initialization: 0x{:08X}",
+                hr.0 as u32
+            )
+        })?;
         unsafe {
             CoInitializeSecurity(
                 None,
@@ -87,7 +94,9 @@ pub fn begin_driver_install(plan_id: &str) -> Result<RestorePointEvidence> {
     let description = description_for_plan(plan_id);
     let sequence = call_restore(BEGIN_SYSTEM_CHANGE, DEVICE_DRIVER_INSTALL, 0, &description)?;
     if sequence <= 0 {
-        return Err(RestorePointError::Unavailable("System Restore returned an invalid sequence number".into()));
+        return Err(RestorePointError::Unavailable(
+            "System Restore returned an invalid sequence number".into(),
+        ));
     }
 
     // Windows 8+ may legally return TRUE and the sequence of a restore point created earlier
@@ -95,13 +104,27 @@ pub fn begin_driver_install(plan_id: &str) -> Result<RestorePointEvidence> {
     // service-generated description. If verification cannot prove freshness, pair the BEGIN with
     // CANCELLED_OPERATION before refusing the installation.
     match verify_restore_point(sequence, &description) {
-        Ok(true) => Ok(RestorePointEvidence { sequence_number: sequence, description, verified_fresh: true }),
+        Ok(true) => Ok(RestorePointEvidence {
+            sequence_number: sequence,
+            description,
+            verified_fresh: true,
+        }),
         Ok(false) => {
-            let _ = call_restore(END_SYSTEM_CHANGE, CANCELLED_OPERATION, sequence, &description);
+            let _ = call_restore(
+                END_SYSTEM_CHANGE,
+                CANCELLED_OPERATION,
+                sequence,
+                &description,
+            );
             Err(RestorePointError::NotFresh)
         }
         Err(error) => {
-            let _ = call_restore(END_SYSTEM_CHANGE, CANCELLED_OPERATION, sequence, &description);
+            let _ = call_restore(
+                END_SYSTEM_CHANGE,
+                CANCELLED_OPERATION,
+                sequence,
+                &description,
+            );
             Err(error)
         }
     }
@@ -110,25 +133,44 @@ pub fn begin_driver_install(plan_id: &str) -> Result<RestorePointEvidence> {
 pub fn end_driver_install(sequence: i64, description: &str) -> Result<()> {
     initialize_process_com_security()?;
     let _com = initialize_current_thread_com()?;
-    let _ = call_restore(END_SYSTEM_CHANGE, DEVICE_DRIVER_INSTALL, sequence, description)?;
+    let _ = call_restore(
+        END_SYSTEM_CHANGE,
+        DEVICE_DRIVER_INSTALL,
+        sequence,
+        description,
+    )?;
     Ok(())
 }
 
 pub fn cancel_driver_install(sequence: i64, description: &str) -> Result<()> {
     initialize_process_com_security()?;
     let _com = initialize_current_thread_com()?;
-    let _ = call_restore(END_SYSTEM_CHANGE, CANCELLED_OPERATION, sequence, description)?;
+    let _ = call_restore(
+        END_SYSTEM_CHANGE,
+        CANCELLED_OPERATION,
+        sequence,
+        description,
+    )?;
     Ok(())
 }
 
-fn call_restore(event_type: u32, restore_type: u32, sequence: i64, description: &str) -> Result<i64> {
+fn call_restore(
+    event_type: u32,
+    restore_type: u32,
+    sequence: i64,
+    description: &str,
+) -> Result<i64> {
     let mut info = RestorePointInfoW {
         event_type,
         restore_point_type: restore_type,
         sequence_number: sequence,
         description: [0; MAX_DESC_W],
     };
-    for (dst, src) in info.description.iter_mut().zip(description.encode_utf16().take(MAX_DESC_W - 1)) {
+    for (dst, src) in info
+        .description
+        .iter_mut()
+        .zip(description.encode_utf16().take(MAX_DESC_W - 1))
+    {
         *dst = src;
     }
     let mut status = StateManagerStatus::default();
@@ -139,7 +181,9 @@ fn call_restore(event_type: u32, restore_type: u32, sequence: i64, description: 
         let proc = GetProcAddress(library, windows::core::s!("SRSetRestorePointW"));
         let Some(proc) = proc else {
             let _ = FreeLibrary(library);
-            return Err(RestorePointError::Unavailable("SRSetRestorePointW export not found".into()));
+            return Err(RestorePointError::Unavailable(
+                "SRSetRestorePointW export not found".into(),
+            ));
         };
         let function: SrSetRestorePointW = std::mem::transmute(proc);
         let ok = function(&mut info, &mut status);
@@ -164,7 +208,12 @@ fn verify_restore_point(sequence: i64, description: &str) -> Result<bool> {
         let services = locator
             .ConnectServer(
                 &BSTR::from("ROOT\\DEFAULT"),
-                &BSTR::new(), &BSTR::new(), &BSTR::new(), 0, &BSTR::new(), None,
+                &BSTR::new(),
+                &BSTR::new(),
+                &BSTR::new(),
+                0,
+                &BSTR::new(),
+                None,
             )
             .map_err(|e| RestorePointError::Verification(e.to_string()))?;
         CoSetProxyBlanket(
@@ -192,11 +241,14 @@ fn verify_restore_point(sequence: i64, description: &str) -> Result<bool> {
             ));
         }
         if hr.is_err() {
-            return Err(RestorePointError::Verification(format!("IEnumWbemClassObject::Next failed: {hr:?}")));
+            return Err(RestorePointError::Verification(format!(
+                "IEnumWbemClassObject::Next failed: {hr:?}"
+            )));
         }
         if returned > 1 {
             return Err(RestorePointError::Verification(
-                "restore-point WMI enumerator reported more objects than the supplied output slice".into(),
+                "restore-point WMI enumerator reported more objects than the supplied output slice"
+                    .into(),
             ));
         }
         if hr.0 == WBEM_S_FALSE.0 {

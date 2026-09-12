@@ -5,35 +5,65 @@ use serde::{Deserialize, Serialize};
 use super::{AuthorityError, DeviceIdentity, MachineKind, MachineProfile, Result};
 
 pub const PROVIDER_COVERAGE_SCHEMA: &str = "aethercore.driver-provider-coverage.v1";
-pub const BUILTIN_PROVIDER_COVERAGE_JSON: &str = include_str!("../../../DRIVER_PROVIDER_COVERAGE.json");
+pub const BUILTIN_PROVIDER_COVERAGE_JSON: &str =
+    include_str!("../../../DRIVER_PROVIDER_COVERAGE.json");
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "PascalCase")]
-pub enum ProviderAuthorityClass { WindowsUpdate, Oem, ComponentVendor, VendorUtility, ManualOfficial }
+pub enum ProviderAuthorityClass {
+    WindowsUpdate,
+    Oem,
+    ComponentVendor,
+    VendorUtility,
+    ManualOfficial,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "PascalCase")]
-pub enum ProviderDiscoveryCapability { MachineReadable, OfficialUtility, ManualOfficial }
+pub enum ProviderDiscoveryCapability {
+    MachineReadable,
+    OfficialUtility,
+    ManualOfficial,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "PascalCase")]
-pub enum ProviderUpdateAvailabilityCapability { MachineReadable, ManualOfficialUtilityCheck, ManualOfficial }
+pub enum ProviderUpdateAvailabilityCapability {
+    MachineReadable,
+    ManualOfficialUtilityCheck,
+    ManualOfficial,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "PascalCase")]
-pub enum ProviderAcquisitionCapability { WindowsManaged, UnsupportedAutomation }
+pub enum ProviderAcquisitionCapability {
+    WindowsManaged,
+    UnsupportedAutomation,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "PascalCase")]
-pub enum ProviderInstallCapability { WindowsManaged, OfficialUtility, ManualOfficial }
+pub enum ProviderInstallCapability {
+    WindowsManaged,
+    OfficialUtility,
+    ManualOfficial,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "PascalCase")]
-pub enum ProviderImplementationStatus { Implemented, OfficialUtility, ManualOfficial, UnsupportedAutomation }
+pub enum ProviderImplementationStatus {
+    Implemented,
+    OfficialUtility,
+    ManualOfficial,
+    UnsupportedAutomation,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "PascalCase")]
-pub enum ProviderQualificationStatus { SourceCompleteNativePending, NativePending }
+pub enum ProviderQualificationStatus {
+    SourceCompleteNativePending,
+    NativePending,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -61,7 +91,11 @@ impl ProviderCoverageEntry {
 
     pub fn requires_manual_check(&self) -> bool {
         !self.automatically_evaluates_update_availability()
-            && matches!(self.implementation_status, ProviderImplementationStatus::OfficialUtility | ProviderImplementationStatus::ManualOfficial)
+            && matches!(
+                self.implementation_status,
+                ProviderImplementationStatus::OfficialUtility
+                    | ProviderImplementationStatus::ManualOfficial
+            )
     }
 }
 
@@ -83,21 +117,37 @@ impl ProviderRegistry {
 
     pub fn validate(&self) -> Result<()> {
         if self.schema != PROVIDER_COVERAGE_SCHEMA {
-            return Err(AuthorityError::ProviderRegistryInvalid(format!("unexpected schema {}", self.schema)));
+            return Err(AuthorityError::ProviderRegistryInvalid(format!(
+                "unexpected schema {}",
+                self.schema
+            )));
         }
         if self.policy_version.trim().is_empty() || self.providers.is_empty() {
-            return Err(AuthorityError::ProviderRegistryInvalid("missing policy version or providers".into()));
+            return Err(AuthorityError::ProviderRegistryInvalid(
+                "missing policy version or providers".into(),
+            ));
         }
         let mut ids = BTreeSet::new();
         for p in &self.providers {
-            if p.provider_id.trim().is_empty() || p.provider_family.trim().is_empty() || p.official_authority.trim().is_empty() {
-                return Err(AuthorityError::ProviderRegistryInvalid("provider identity/authority is empty".into()));
+            if p.provider_id.trim().is_empty()
+                || p.provider_family.trim().is_empty()
+                || p.official_authority.trim().is_empty()
+            {
+                return Err(AuthorityError::ProviderRegistryInvalid(
+                    "provider identity/authority is empty".into(),
+                ));
             }
             if !ids.insert(p.provider_id.as_str()) {
-                return Err(AuthorityError::ProviderRegistryInvalid(format!("duplicate provider id {}", p.provider_id)));
+                return Err(AuthorityError::ProviderRegistryInvalid(format!(
+                    "duplicate provider id {}",
+                    p.provider_id
+                )));
             }
             if p.supported_vendors.is_empty() || p.supported_classes.is_empty() {
-                return Err(AuthorityError::ProviderRegistryInvalid(format!("provider {} has empty applicability metadata", p.provider_id)));
+                return Err(AuthorityError::ProviderRegistryInvalid(format!(
+                    "provider {} has empty applicability metadata",
+                    p.provider_id
+                )));
             }
         }
         Ok(())
@@ -107,22 +157,39 @@ impl ProviderRegistry {
         self.providers.iter().find(|p| p.provider_id == id)
     }
 
-    pub fn windows_update(&self) -> Option<&ProviderCoverageEntry> { self.by_id("microsoft.windows-update") }
+    pub fn windows_update(&self) -> Option<&ProviderCoverageEntry> {
+        self.by_id("microsoft.windows-update")
+    }
 
-    pub fn oem_provider_for_machine(&self, machine: &MachineProfile) -> Option<&ProviderCoverageEntry> {
-        if machine.machine_kind != MachineKind::Oem { return None; }
+    pub fn oem_provider_for_machine(
+        &self,
+        machine: &MachineProfile,
+    ) -> Option<&ProviderCoverageEntry> {
+        if machine.machine_kind != MachineKind::Oem {
+            return None;
+        }
         self.providers.iter().find(|p| {
             p.authority_class == ProviderAuthorityClass::Oem
-                && p.supported_vendors.iter().any(|vendor| text_matches(&machine.manufacturer, vendor))
+                && p.supported_vendors
+                    .iter()
+                    .any(|vendor| text_matches(&machine.manufacturer, vendor))
         })
     }
 
-    pub fn component_providers_for_device(&self, device: &DeviceIdentity) -> Vec<&ProviderCoverageEntry> {
-        self.providers.iter().filter(|p| {
-            p.authority_class == ProviderAuthorityClass::ComponentVendor
-                && class_matches(&device.class_name, &p.supported_classes)
-                && p.supported_vendors.iter().any(|vendor| vendor_matches(device, vendor))
-        }).collect()
+    pub fn component_providers_for_device(
+        &self,
+        device: &DeviceIdentity,
+    ) -> Vec<&ProviderCoverageEntry> {
+        self.providers
+            .iter()
+            .filter(|p| {
+                p.authority_class == ProviderAuthorityClass::ComponentVendor
+                    && class_matches(&device.class_name, &p.supported_classes)
+                    && p.supported_vendors
+                        .iter()
+                        .any(|vendor| vendor_matches(device, vendor))
+            })
+            .collect()
     }
 }
 
@@ -131,15 +198,23 @@ pub fn builtin_provider_registry() -> Result<ProviderRegistry> {
 }
 
 fn class_matches(class_name: &str, classes: &[String]) -> bool {
-    classes.iter().any(|c| c.eq_ignore_ascii_case("Any") || c.eq_ignore_ascii_case(class_name))
+    classes
+        .iter()
+        .any(|c| c.eq_ignore_ascii_case("Any") || c.eq_ignore_ascii_case(class_name))
 }
 
 fn vendor_matches(device: &DeviceIdentity, vendor: &str) -> bool {
-    if vendor.eq_ignore_ascii_case("Any") { return true; }
+    if vendor.eq_ignore_ascii_case("Any") {
+        return true;
+    }
     let normalized = vendor.trim().to_ascii_uppercase();
     if let Some(id) = normalized.strip_prefix("VEN_") {
         return device.vendor_id.eq_ignore_ascii_case(id)
-            || device.hardware_ids.iter().chain(device.compatible_ids.iter()).any(|v| v.to_ascii_uppercase().contains(&normalized));
+            || device
+                .hardware_ids
+                .iter()
+                .chain(device.compatible_ids.iter())
+                .any(|v| v.to_ascii_uppercase().contains(&normalized));
     }
     text_matches(&device.manufacturer, vendor) || text_matches(&device.current_provider, vendor)
 }
@@ -158,12 +233,20 @@ mod tests {
     fn builtin_registry_is_machine_readable_and_unique() {
         let registry = builtin_provider_registry().expect("valid built-in registry");
         assert!(registry.providers.len() >= 15);
-        assert!(registry.windows_update().unwrap().automatically_evaluates_update_availability());
+        assert!(
+            registry
+                .windows_update()
+                .unwrap()
+                .automatically_evaluates_update_availability()
+        );
     }
 
     #[test]
     fn malformed_provider_registry_fails_closed() {
         let malformed = r#"{"schema":"wrong","policyVersion":"x","providers":[]}"#;
-        assert!(matches!(ProviderRegistry::parse(malformed), Err(AuthorityError::ProviderRegistryInvalid(_))));
+        assert!(matches!(
+            ProviderRegistry::parse(malformed),
+            Err(AuthorityError::ProviderRegistryInvalid(_))
+        ));
     }
 }

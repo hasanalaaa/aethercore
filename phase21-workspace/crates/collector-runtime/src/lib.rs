@@ -1,10 +1,11 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    panic::{catch_unwind, AssertUnwindSafe},
+    panic::{AssertUnwindSafe, catch_unwind},
     sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc,
+        mpsc,
     },
     thread,
     time::{Duration, Instant},
@@ -83,15 +84,24 @@ impl CollectorFaultRecord {
 
 impl From<&CollectorFault> for CollectorFaultRecord {
     fn from(fault: &CollectorFault) -> Self {
-        Self::new(fault.provider, fault.operation, fault.kind, fault.detail.clone())
+        Self::new(
+            fault.provider,
+            fault.operation,
+            fault.kind,
+            fault.detail.clone(),
+        )
     }
 }
 
 fn bounded_detail(mut detail: String) -> String {
-    if detail.len() <= MAX_FAULT_DETAIL_BYTES { return detail; }
+    if detail.len() <= MAX_FAULT_DETAIL_BYTES {
+        return detail;
+    }
     const SUFFIX: &str = "…[truncated]";
     let mut end = MAX_FAULT_DETAIL_BYTES.saturating_sub(SUFFIX.len());
-    while end > 0 && !detail.is_char_boundary(end) { end -= 1; }
+    while end > 0 && !detail.is_char_boundary(end) {
+        end -= 1;
+    }
     detail.truncate(end);
     detail.push_str(SUFFIX);
     debug_assert!(detail.len() <= MAX_FAULT_DETAIL_BYTES);
@@ -105,18 +115,32 @@ impl CollectorFault {
         kind: FaultKind,
         detail: impl Into<String>,
     ) -> Self {
-        Self { provider, operation, kind, detail: bounded_detail(detail.into()) }
+        Self {
+            provider,
+            operation,
+            kind,
+            detail: bounded_detail(detail.into()),
+        }
     }
 
     pub fn timeout(provider: &'static str, operation: &'static str) -> Self {
-        Self::new(provider, operation, FaultKind::Timeout, "collector deadline exceeded")
+        Self::new(
+            provider,
+            operation,
+            FaultKind::Timeout,
+            "collector deadline exceeded",
+        )
     }
 
     pub fn cancelled(provider: &'static str, operation: &'static str) -> Self {
-        Self::new(provider, operation, FaultKind::Cancelled, "collector cancelled")
+        Self::new(
+            provider,
+            operation,
+            FaultKind::Cancelled,
+            "collector cancelled",
+        )
     }
 }
-
 
 #[derive(Clone, Default)]
 pub struct IsolationGate {
@@ -128,7 +152,9 @@ struct IsolationLease {
 }
 
 impl Drop for IsolationLease {
-    fn drop(&mut self) { self.active.store(false, Ordering::Release); }
+    fn drop(&mut self) {
+        self.active.store(false, Ordering::Release);
+    }
 }
 
 impl IsolationGate {
@@ -139,16 +165,22 @@ impl IsolationGate {
     ) -> Result<IsolationLease, CollectorFault> {
         self.active
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| CollectorFault::new(
-                provider,
-                operation,
-                FaultKind::Unavailable,
-                "previous collector invocation is still active after a watchdog timeout",
-            ))?;
-        Ok(IsolationLease { active: self.active.clone() })
+            .map_err(|_| {
+                CollectorFault::new(
+                    provider,
+                    operation,
+                    FaultKind::Unavailable,
+                    "previous collector invocation is still active after a watchdog timeout",
+                )
+            })?;
+        Ok(IsolationLease {
+            active: self.active.clone(),
+        })
     }
 
-    pub fn is_active(&self) -> bool { self.active.load(Ordering::Acquire) }
+    pub fn is_active(&self) -> bool {
+        self.active.load(Ordering::Acquire)
+    }
 }
 
 #[derive(Clone)]
@@ -163,10 +195,14 @@ struct CancellationNode {
 
 impl Default for CancellationToken {
     fn default() -> Self {
-        Self { node: Arc::new(CancellationNode { cancelled: AtomicBool::new(false), parent: None }) }
+        Self {
+            node: Arc::new(CancellationNode {
+                cancelled: AtomicBool::new(false),
+                parent: None,
+            }),
+        }
     }
 }
-
 
 #[derive(Clone)]
 pub struct CommitFence {
@@ -174,21 +210,33 @@ pub struct CommitFence {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CommitFenceState { Active, Committed, Revoked }
+enum CommitFenceState {
+    Active,
+    Committed,
+    Revoked,
+}
 
 impl Default for CommitFence {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CommitFence {
-    pub fn new() -> Self { Self { state: Arc::new(std::sync::Mutex::new(CommitFenceState::Active)) } }
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(std::sync::Mutex::new(CommitFenceState::Active)),
+        }
+    }
 
     /// Revokes future publication only while the fence is still Active. A commit that already
     /// linearized is immutable: later user activity may cancel remaining work, but cannot relabel
     /// an already-published snapshot as stale.
     pub fn revoke(&self) {
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        if *state == CommitFenceState::Active { *state = CommitFenceState::Revoked; }
+        if *state == CommitFenceState::Active {
+            *state = CommitFenceState::Revoked;
+        }
     }
 
     pub fn is_valid(&self) -> bool {
@@ -202,7 +250,9 @@ impl CommitFence {
     /// Unconditional publication boundary. The closure runs only if no revocation linearized first.
     pub fn try_commit<T>(&self, commit: impl FnOnce() -> T) -> Option<T> {
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        if *state != CommitFenceState::Active { return None; }
+        if *state != CommitFenceState::Active {
+            return None;
+        }
         let value = commit();
         *state = CommitFenceState::Committed;
         Some(value)
@@ -213,7 +263,9 @@ impl CommitFence {
     /// `Some` marks the fence Committed; `None` leaves it Active for the caller to cancel/revoke.
     pub fn try_commit_checked<T>(&self, commit: impl FnOnce() -> Option<T>) -> Option<T> {
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        if *state != CommitFenceState::Active { return None; }
+        if *state != CommitFenceState::Active {
+            return None;
+        }
         let value = commit()?;
         *state = CommitFenceState::Committed;
         Some(value)
@@ -221,7 +273,9 @@ impl CommitFence {
 }
 
 impl CancellationToken {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Creates an independently cancellable child that also observes cancellation of every
     /// ancestor. A child timeout therefore does not poison sibling collectors, while a parent
@@ -235,12 +289,16 @@ impl CancellationToken {
         }
     }
 
-    pub fn cancel(&self) { self.node.cancelled.store(true, Ordering::Release); }
+    pub fn cancel(&self) {
+        self.node.cancelled.store(true, Ordering::Release);
+    }
 
     pub fn is_cancelled(&self) -> bool {
         let mut current = Some(self.node.as_ref());
         while let Some(node) = current {
-            if node.cancelled.load(Ordering::Acquire) { return true; }
+            if node.cancelled.load(Ordering::Acquire) {
+                return true;
+            }
             current = node.parent.as_deref();
         }
         false
@@ -255,17 +313,31 @@ pub struct CollectorControl {
 
 impl CollectorControl {
     pub fn with_timeout(timeout: Duration) -> Self {
-        Self { token: CancellationToken::new(), deadline: Instant::now() + timeout }
+        Self {
+            token: CancellationToken::new(),
+            deadline: Instant::now() + timeout,
+        }
     }
 
     pub fn with_token(timeout: Duration, token: CancellationToken) -> Self {
-        Self { token, deadline: Instant::now() + timeout }
+        Self {
+            token,
+            deadline: Instant::now() + timeout,
+        }
     }
 
-    pub fn cancellation(&self) -> CancellationToken { self.token.clone() }
-    pub fn cancel(&self) { self.token.cancel(); }
-    pub fn is_cancelled(&self) -> bool { self.token.is_cancelled() }
-    pub fn expired(&self) -> bool { Instant::now() >= self.deadline }
+    pub fn cancellation(&self) -> CancellationToken {
+        self.token.clone()
+    }
+    pub fn cancel(&self) {
+        self.token.cancel();
+    }
+    pub fn is_cancelled(&self) -> bool {
+        self.token.is_cancelled()
+    }
+    pub fn expired(&self) -> bool {
+        Instant::now() >= self.deadline
+    }
 
     pub fn checkpoint(
         &self,
@@ -332,7 +404,14 @@ where
     T: Send + 'static,
     F: FnOnce(CollectorControl) -> Result<T, CollectorFault> + Send + 'static,
 {
-    run_isolated_gated_with_token(gate, provider, operation, timeout, CancellationToken::new(), work)
+    run_isolated_gated_with_token(
+        gate,
+        provider,
+        operation,
+        timeout,
+        CancellationToken::new(),
+        work,
+    )
 }
 
 pub fn run_isolated_gated_with_token<T, F>(
@@ -376,25 +455,28 @@ where
             // Keep the isolation lease in the worker. If the watchdog times out, the provider stays
             // quarantined until this worker really exits instead of allowing unbounded stuck threads.
             let lease = lease;
-            let result = catch_unwind(AssertUnwindSafe(|| work(worker_control))).unwrap_or_else(|_| {
-                Err(CollectorFault::new(
-                    provider,
-                    operation,
-                    FaultKind::Internal,
-                    "collector panicked inside isolation boundary",
-                ))
-            });
+            let result =
+                catch_unwind(AssertUnwindSafe(|| work(worker_control))).unwrap_or_else(|_| {
+                    Err(CollectorFault::new(
+                        provider,
+                        operation,
+                        FaultKind::Internal,
+                        "collector panicked inside isolation boundary",
+                    ))
+                });
             // Completion becomes externally visible only after the isolation lease is released.
             // This prevents an immediate retry from observing a stale active gate after success.
             drop(lease);
             let _ = tx.send(result);
         })
-        .map_err(|error| CollectorFault::new(
-            provider,
-            operation,
-            FaultKind::Internal,
-            format!("failed to spawn isolated collector worker: {error}"),
-        ))?;
+        .map_err(|error| {
+            CollectorFault::new(
+                provider,
+                operation,
+                FaultKind::Internal,
+                format!("failed to spawn isolated collector worker: {error}"),
+            )
+        })?;
     // Dropping JoinHandle intentionally detaches the worker. On watchdog timeout the worker may
     // still be inside a platform call; its gate remains held until it really exits.
     drop(handle);
@@ -414,12 +496,14 @@ where
         match rx.recv_timeout(remaining.min(SUPERVISOR_SLICE)) {
             Ok(result) => return result,
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => return Err(CollectorFault::new(
-                provider,
-                operation,
-                FaultKind::Internal,
-                "collector worker disconnected before returning a result",
-            )),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(CollectorFault::new(
+                    provider,
+                    operation,
+                    FaultKind::Internal,
+                    "collector worker disconnected before returning a result",
+                ));
+            }
         }
     }
 }
@@ -431,11 +515,13 @@ mod tests {
     #[test]
     fn fault_detail_is_utf8_bounded_before_crossing_process_boundaries() {
         let detail = "عطل".repeat(4_000);
-        let fault = CollectorFault::new("test", "detail", FaultKind::ProviderFailure, detail.clone());
+        let fault =
+            CollectorFault::new("test", "detail", FaultKind::ProviderFailure, detail.clone());
         assert!(fault.detail.len() <= MAX_FAULT_DETAIL_BYTES);
         assert!(fault.detail.is_char_boundary(fault.detail.len()));
         assert!(fault.detail.ends_with("…[truncated]"));
-        let record = CollectorFaultRecord::new("test", "detail", FaultKind::ProviderFailure, detail);
+        let record =
+            CollectorFaultRecord::new("test", "detail", FaultKind::ProviderFailure, detail);
         assert!(record.detail.len() <= MAX_FAULT_DETAIL_BYTES);
         assert!(record.detail.ends_with("…[truncated]"));
     }
@@ -447,7 +533,10 @@ mod tests {
         thread::sleep(Duration::from_millis(15));
         assert!(matches!(
             control.checkpoint("test", "deadline"),
-            Err(CollectorFault { kind: FaultKind::Timeout, .. })
+            Err(CollectorFault {
+                kind: FaultKind::Timeout,
+                ..
+            })
         ));
     }
 
@@ -455,10 +544,18 @@ mod tests {
     fn watchdog_cancels_and_returns_timeout() {
         let started = Instant::now();
         let result = run_isolated("test", "hang", Duration::from_millis(20), |control| {
-            while !control.is_cancelled() { thread::sleep(Duration::from_millis(2)); }
+            while !control.is_cancelled() {
+                thread::sleep(Duration::from_millis(2));
+            }
             Err::<(), _>(CollectorFault::cancelled("test", "hang"))
         });
-        assert!(matches!(result, Err(CollectorFault { kind: FaultKind::Timeout, .. })));
+        assert!(matches!(
+            result,
+            Err(CollectorFault {
+                kind: FaultKind::Timeout,
+                ..
+            })
+        ));
         assert!(started.elapsed() < Duration::from_millis(250));
     }
 
@@ -466,15 +563,41 @@ mod tests {
     fn timed_out_provider_remains_quarantined_until_worker_exits() {
         let gate = IsolationGate::default();
         let worker_gate = gate.clone();
-        let first = run_isolated_gated(&gate, "test", "gate", Duration::from_millis(15), |control| {
-            while !control.is_cancelled() { thread::sleep(Duration::from_millis(2)); }
-            thread::sleep(Duration::from_millis(40));
-            Ok::<_, CollectorFault>(())
-        });
-        assert!(matches!(first, Err(CollectorFault { kind: FaultKind::Timeout, .. })));
+        let first = run_isolated_gated(
+            &gate,
+            "test",
+            "gate",
+            Duration::from_millis(15),
+            |control| {
+                while !control.is_cancelled() {
+                    thread::sleep(Duration::from_millis(2));
+                }
+                thread::sleep(Duration::from_millis(40));
+                Ok::<_, CollectorFault>(())
+            },
+        );
+        assert!(matches!(
+            first,
+            Err(CollectorFault {
+                kind: FaultKind::Timeout,
+                ..
+            })
+        ));
         assert!(worker_gate.is_active());
-        let second = run_isolated_gated(&gate, "test", "gate", Duration::from_millis(15), |_control| Ok::<_, CollectorFault>(()));
-        assert!(matches!(second, Err(CollectorFault { kind: FaultKind::Unavailable, .. })));
+        let second = run_isolated_gated(
+            &gate,
+            "test",
+            "gate",
+            Duration::from_millis(15),
+            |_control| Ok::<_, CollectorFault>(()),
+        );
+        assert!(matches!(
+            second,
+            Err(CollectorFault {
+                kind: FaultKind::Unavailable,
+                ..
+            })
+        ));
         // P36 (Hermes): wait until the worker really exits instead of assuming a fixed
         // 60 ms suffices — on a loaded ARM64 VM thread-scheduling jitter can exceed it
         // without changing the quarantined-until-exit contract being proven here.
@@ -490,30 +613,52 @@ mod tests {
                 thread::sleep(Duration::from_millis(10));
             }
         };
-        assert!(!worker_gate.is_active(), "worker gate never released within 5s");
+        assert!(
+            !worker_gate.is_active(),
+            "worker gate never released within 5s"
+        );
         assert!(released);
     }
 
     #[test]
     fn successful_gated_provider_releases_before_result_is_visible() {
         let gate = IsolationGate::default();
-        let result = run_isolated_gated(&gate, "test", "release-order", Duration::from_secs(1), |_control| {
-            Ok::<_, CollectorFault>(42u32)
-        });
+        let result = run_isolated_gated(
+            &gate,
+            "test",
+            "release-order",
+            Duration::from_secs(1),
+            |_control| Ok::<_, CollectorFault>(42u32),
+        );
         assert_eq!(result.unwrap(), 42);
         assert!(!gate.is_active());
-        let retry = run_isolated_gated(&gate, "test", "release-order", Duration::from_secs(1), |_control| {
-            Ok::<_, CollectorFault>(43u32)
-        });
+        let retry = run_isolated_gated(
+            &gate,
+            "test",
+            "release-order",
+            Duration::from_secs(1),
+            |_control| Ok::<_, CollectorFault>(43u32),
+        );
         assert_eq!(retry.unwrap(), 43);
     }
 
     #[test]
     fn panic_is_contained_as_internal_fault() {
-        let result = run_isolated("test", "panic", Duration::from_secs(1), |_control| -> Result<(), CollectorFault> {
-            panic!("fault injection");
-        });
-        assert!(matches!(result, Err(CollectorFault { kind: FaultKind::Internal, .. })));
+        let result = run_isolated(
+            "test",
+            "panic",
+            Duration::from_secs(1),
+            |_control| -> Result<(), CollectorFault> {
+                panic!("fault injection");
+            },
+        );
+        assert!(matches!(
+            result,
+            Err(CollectorFault {
+                kind: FaultKind::Internal,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -533,10 +678,14 @@ mod tests {
     fn poisoned_commit_fence_mutex_recovers_with_single_publication_boundary() {
         let fence = CommitFence::new();
         let poison = fence.clone();
-        assert!(thread::spawn(move || {
-            let _guard = poison.state.lock().unwrap();
-            panic!("intentional mutex poison for deterministic recovery test");
-        }).join().is_err());
+        assert!(
+            thread::spawn(move || {
+                let _guard = poison.state.lock().unwrap();
+                panic!("intentional mutex poison for deterministic recovery test");
+            })
+            .join()
+            .is_err()
+        );
         assert_eq!(fence.try_commit(|| 11u32), Some(11));
         assert!(fence.is_committed());
         fence.revoke();
@@ -548,7 +697,13 @@ mod tests {
         let fence = CommitFence::new();
         fence.revoke();
         let mut published = false;
-        assert!(fence.try_commit(|| { published = true; }).is_none());
+        assert!(
+            fence
+                .try_commit(|| {
+                    published = true;
+                })
+                .is_none()
+        );
         assert!(!published);
     }
 
@@ -582,11 +737,25 @@ mod tests {
             cancel.cancel();
         });
         let started = Instant::now();
-        let result = run_isolated_with_token("test", "external-cancel", Duration::from_secs(2), token, |control| {
-            while !control.is_cancelled() { thread::sleep(Duration::from_millis(2)); }
-            Err::<(), _>(CollectorFault::cancelled("test", "external-cancel"))
-        });
-        assert!(matches!(result, Err(CollectorFault { kind: FaultKind::Cancelled, .. })));
+        let result = run_isolated_with_token(
+            "test",
+            "external-cancel",
+            Duration::from_secs(2),
+            token,
+            |control| {
+                while !control.is_cancelled() {
+                    thread::sleep(Duration::from_millis(2));
+                }
+                Err::<(), _>(CollectorFault::cancelled("test", "external-cancel"))
+            },
+        );
+        assert!(matches!(
+            result,
+            Err(CollectorFault {
+                kind: FaultKind::Cancelled,
+                ..
+            })
+        ));
         assert!(started.elapsed() < Duration::from_millis(500));
     }
 }

@@ -107,7 +107,10 @@ fn the_embedded_model_generates_tokens_over_an_evidence_pack() {
             pair[1]
         );
     }
-    assert_eq!(streamed.last().map(String::as_str), Some(generated.text.as_str()));
+    assert_eq!(
+        streamed.last().map(String::as_str),
+        Some(generated.text.as_str())
+    );
 }
 
 /// Cancellation must stop the REAL loop, not merely be a flag the loop could

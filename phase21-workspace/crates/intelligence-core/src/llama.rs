@@ -381,9 +381,7 @@ impl LlamaCppReasoner {
                 break;
             }
             if budget.expired() {
-                return Err(format!(
-                    "deadline exceeded after {emitted} token(s)"
-                ));
+                return Err(format!("deadline exceeded after {emitted} token(s)"));
             }
 
             let token = sampler.sample(&ctx, batch.n_tokens() - 1);
@@ -403,12 +401,7 @@ impl LlamaCppReasoner {
             let piece = match model.token_to_piece_bytes(token, 8, false, None) {
                 Ok(piece) => piece,
                 Err(llama_cpp_2::TokenToStringError::InsufficientBufferSpace(needed)) => model
-                    .token_to_piece_bytes(
-                        token,
-                        needed.unsigned_abs() as usize,
-                        false,
-                        None,
-                    )
+                    .token_to_piece_bytes(token, needed.unsigned_abs() as usize, false, None)
                     .map_err(|error| format!("detokenize failed after resize: {error}"))?,
                 Err(error) => return Err(format!("detokenize failed: {error}")),
             };

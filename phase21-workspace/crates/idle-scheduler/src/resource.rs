@@ -23,7 +23,9 @@ struct State {
 }
 
 impl Default for ResourceGovernor {
-    fn default() -> Self { Self::new(Duration::from_millis(50), 4 * 1024 * 1024) }
+    fn default() -> Self {
+        Self::new(Duration::from_millis(50), 4 * 1024 * 1024)
+    }
 }
 
 impl ResourceGovernor {
@@ -52,9 +54,15 @@ impl ResourceGovernor {
         let _ = self.account_cpu_cancellable(&token, amount);
     }
 
-    pub fn account_cpu_cancellable(&self, token: &CancellationToken, amount: Duration) -> Result<(), ()> {
+    pub fn account_cpu_cancellable(
+        &self,
+        token: &CancellationToken,
+        amount: Duration,
+    ) -> Result<(), ()> {
         loop {
-            if token.is_cancelled() { return Err(()); }
+            if token.is_cancelled() {
+                return Err(());
+            }
             let sleep_for = {
                 let mut state = self.inner.lock().unwrap_or_else(|p| p.into_inner());
                 Self::roll(&mut state);
@@ -66,7 +74,9 @@ impl ResourceGovernor {
                 }
             };
             match sleep_for {
-                Some(value) if !value.is_zero() => sleep_cancellable(token, value.min(Duration::from_millis(50)))?,
+                Some(value) if !value.is_zero() => {
+                    sleep_cancellable(token, value.min(Duration::from_millis(50)))?
+                }
                 Some(_) => thread::yield_now(),
                 None => return Ok(()),
             }
@@ -81,7 +91,9 @@ impl ResourceGovernor {
     pub fn account_io_cancellable(&self, token: &CancellationToken, bytes: u64) -> Result<(), ()> {
         let mut remaining = bytes;
         while remaining > 0 {
-            if token.is_cancelled() { return Err(()); }
+            if token.is_cancelled() {
+                return Err(());
+            }
             let sleep_for = {
                 let mut state = self.inner.lock().unwrap_or_else(|p| p.into_inner());
                 Self::roll(&mut state);
@@ -102,14 +114,20 @@ impl ResourceGovernor {
         Ok(())
     }
 
-    pub const fn cpu_budget_per_second(&self) -> Duration { self.cpu_budget_per_second }
-    pub const fn io_budget_per_second(&self) -> u64 { self.io_budget_per_second }
+    pub const fn cpu_budget_per_second(&self) -> Duration {
+        self.cpu_budget_per_second
+    }
+    pub const fn io_budget_per_second(&self) -> u64 {
+        self.io_budget_per_second
+    }
 }
 
 fn sleep_cancellable(token: &CancellationToken, duration: Duration) -> Result<(), ()> {
     let start = Instant::now();
     while start.elapsed() < duration {
-        if token.is_cancelled() { return Err(()); }
+        if token.is_cancelled() {
+            return Err(());
+        }
         thread::sleep(Duration::from_millis(10).min(duration.saturating_sub(start.elapsed())));
     }
     Ok(())
@@ -124,7 +142,11 @@ mod tests {
         let governor = ResourceGovernor::new(Duration::ZERO, 1);
         let token = CancellationToken::new();
         token.cancel();
-        assert!(governor.account_cpu_cancellable(&token, Duration::from_millis(1)).is_err());
+        assert!(
+            governor
+                .account_cpu_cancellable(&token, Duration::from_millis(1))
+                .is_err()
+        );
         assert!(governor.account_io_cancellable(&token, 2).is_err());
     }
 

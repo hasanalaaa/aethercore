@@ -10,9 +10,12 @@ use std::{
 
 use aethercore_collector_runtime::{CancellationToken, CommitFence};
 use aethercore_operation_engine::{
-    now_ms, CleanupDeleteAction, CleanupFileEvidence, OperationEngine, PlanState, PlanView,
+    CleanupDeleteAction, CleanupFileEvidence, OperationEngine, PlanState, PlanView, now_ms,
 };
-use aethercore_operation_kernel::{MutationLease, MutationWorkload, ProgressTelemetry, ProgressTelemetryStore, ReadBudgetLease, ReadWorkload};
+use aethercore_operation_kernel::{
+    MutationLease, MutationWorkload, ProgressTelemetry, ProgressTelemetryStore, ReadBudgetLease,
+    ReadWorkload,
+};
 use aethercore_persistence::{
     Database, MaintenanceExecutionRecord, MaintenanceItemRecord, RecoveryRecord,
 };
@@ -167,7 +170,12 @@ pub trait CleanupPlatform: Send + Sync + 'static {
     /// Conservative inventory used only by the autonomous scheduler. Implementations may narrow
     /// scope further than the interactive scan to avoid reading profile-specific data.
     fn scan_passive(&self) -> Result<Vec<CleanupCandidate>> {
-        self.scan().map(|items| items.into_iter().filter(|item| !item.requires_explicit_confirmation).collect())
+        self.scan().map(|items| {
+            items
+                .into_iter()
+                .filter(|item| !item.requires_explicit_confirmation)
+                .collect()
+        })
     }
     fn delete_action(&self, action: &CleanupDeleteAction) -> Result<(u64, u64, String)>;
 }
@@ -229,12 +237,7 @@ impl CleanupEngine {
         db: Arc<Database>,
         platform: Arc<dyn CleanupPlatform>,
     ) -> Self {
-        Self::with_platform_and_telemetry(
-            engine,
-            db,
-            platform,
-            ProgressTelemetryStore::new(),
-        )
+        Self::with_platform_and_telemetry(engine, db, platform, ProgressTelemetryStore::new())
     }
 
     pub fn with_telemetry(
@@ -262,25 +265,70 @@ impl CleanupEngine {
         }
     }
 
-    pub fn passive_scan(&self, owner_principal_key:&str, token:CancellationToken)->Result<CleanupSnapshot>{
+    pub fn passive_scan(
+        &self,
+        owner_principal_key: &str,
+        token: CancellationToken,
+    ) -> Result<CleanupSnapshot> {
         self.passive_scan_with_fence(owner_principal_key, token, CommitFence::new())
     }
 
-    pub fn passive_scan_with_fence(&self, owner_principal_key:&str, token:CancellationToken, commit_fence:CommitFence)->Result<CleanupSnapshot>{
-        if owner_principal_key.trim().is_empty() || token.is_cancelled(){return Err(CleanerError::Cancelled)}
-        let started=now_ms(); let scan_id=Uuid::new_v4().to_string();
-        let epoch = { let current=self.snapshot.read().map_err(|_|CleanerError::Busy)?; if current.state==CleanupScanState::Scanning{return Err(CleanerError::Busy)} current.inventory_epoch.saturating_add(1).max(started.max(0) as u64) };
-        let candidates=self.platform.scan_passive()?; if token.is_cancelled(){return Err(CleanerError::Cancelled)}
-        let total_reclaimable_bytes=candidates.iter().map(|c|c.reclaimable_bytes).sum();
-        let total_file_count=candidates.iter().map(|c|c.file_count).sum();
-        let ready=CleanupSnapshot{scan_id,state:CleanupScanState::Ready,inventory_epoch:epoch,started_unix_ms:started,completed_unix_ms:now_ms(),error_message:String::new(),total_reclaimable_bytes,total_file_count,candidates,warnings:Vec::new()};
-        let committed=commit_fence.try_commit_checked(||{
-            let Ok(mut owner)=self.snapshot_owner.write() else{return None};
-            let Ok(mut current)=self.snapshot.write() else{return None};
-            if current.state==CleanupScanState::Scanning||token.is_cancelled(){return None}
-            *owner=owner_principal_key.to_owned();*current=ready.clone();Some(())
+    pub fn passive_scan_with_fence(
+        &self,
+        owner_principal_key: &str,
+        token: CancellationToken,
+        commit_fence: CommitFence,
+    ) -> Result<CleanupSnapshot> {
+        if owner_principal_key.trim().is_empty() || token.is_cancelled() {
+            return Err(CleanerError::Cancelled);
+        }
+        let started = now_ms();
+        let scan_id = Uuid::new_v4().to_string();
+        let epoch = {
+            let current = self.snapshot.read().map_err(|_| CleanerError::Busy)?;
+            if current.state == CleanupScanState::Scanning {
+                return Err(CleanerError::Busy);
+            }
+            current
+                .inventory_epoch
+                .saturating_add(1)
+                .max(started.max(0) as u64)
+        };
+        let candidates = self.platform.scan_passive()?;
+        if token.is_cancelled() {
+            return Err(CleanerError::Cancelled);
+        }
+        let total_reclaimable_bytes = candidates.iter().map(|c| c.reclaimable_bytes).sum();
+        let total_file_count = candidates.iter().map(|c| c.file_count).sum();
+        let ready = CleanupSnapshot {
+            scan_id,
+            state: CleanupScanState::Ready,
+            inventory_epoch: epoch,
+            started_unix_ms: started,
+            completed_unix_ms: now_ms(),
+            error_message: String::new(),
+            total_reclaimable_bytes,
+            total_file_count,
+            candidates,
+            warnings: Vec::new(),
+        };
+        let committed = commit_fence.try_commit_checked(|| {
+            let Ok(mut owner) = self.snapshot_owner.write() else {
+                return None;
+            };
+            let Ok(mut current) = self.snapshot.write() else {
+                return None;
+            };
+            if current.state == CleanupScanState::Scanning || token.is_cancelled() {
+                return None;
+            }
+            *owner = owner_principal_key.to_owned();
+            *current = ready.clone();
+            Some(())
         });
-        if committed!=Some(()){return Err(CleanerError::Cancelled)}
+        if committed != Some(()) {
+            return Err(CleanerError::Cancelled);
+        }
         Ok(ready)
     }
 
@@ -290,7 +338,9 @@ impl CleanupEngine {
         lease: ReadBudgetLease,
     ) -> Result<CleanupSnapshot> {
         if !lease.matches(ReadWorkload::CleanupDiscovery) {
-            return Err(CleanerError::Safety("read budget lease identity mismatch".into()));
+            return Err(CleanerError::Safety(
+                "read budget lease identity mismatch".into(),
+            ));
         }
         self.start_scan_inner(owner_principal_key, lease)
     }
@@ -303,12 +353,28 @@ impl CleanupEngine {
         let scan_id = Uuid::new_v4().to_string();
         let started = now_ms();
         let initial = {
-            let mut owner = self.snapshot_owner.write().map_err(|_| CleanerError::Busy)?;
+            let mut owner = self
+                .snapshot_owner
+                .write()
+                .map_err(|_| CleanerError::Busy)?;
             let mut current = self.snapshot.write().map_err(|_| CleanerError::Busy)?;
-            if current.state == CleanupScanState::Scanning { return Err(CleanerError::Busy); }
-            let epoch = current.inventory_epoch.saturating_add(1).max(started.max(0) as u64);
-            let initial = CleanupSnapshot { scan_id:scan_id.clone(), state:CleanupScanState::Scanning, inventory_epoch:epoch, started_unix_ms:started, ..Default::default() };
-            *owner = owner_principal_key.to_owned(); *current = initial.clone(); initial
+            if current.state == CleanupScanState::Scanning {
+                return Err(CleanerError::Busy);
+            }
+            let epoch = current
+                .inventory_epoch
+                .saturating_add(1)
+                .max(started.max(0) as u64);
+            let initial = CleanupSnapshot {
+                scan_id: scan_id.clone(),
+                state: CleanupScanState::Scanning,
+                inventory_epoch: epoch,
+                started_unix_ms: started,
+                ..Default::default()
+            };
+            *owner = owner_principal_key.to_owned();
+            *current = initial.clone();
+            initial
         };
         let epoch = initial.inventory_epoch;
 
@@ -321,10 +387,14 @@ impl CleanupEngine {
                 let completed = now_ms();
                 let next = match platform.scan() {
                     Ok(candidates) => {
-                        let total_reclaimable_bytes =
-                            candidates.iter().map(|candidate| candidate.reclaimable_bytes).sum();
-                        let total_file_count =
-                            candidates.iter().map(|candidate| candidate.file_count).sum();
+                        let total_reclaimable_bytes = candidates
+                            .iter()
+                            .map(|candidate| candidate.reclaimable_bytes)
+                            .sum();
+                        let total_file_count = candidates
+                            .iter()
+                            .map(|candidate| candidate.file_count)
+                            .sum();
                         CleanupSnapshot {
                             scan_id,
                             state: CleanupScanState::Ready,
@@ -442,7 +512,9 @@ impl CleanupEngine {
         lease: MutationLease,
     ) -> Result<CleanupExecutionStatus> {
         if !lease.matches(MutationWorkload::Cleanup, plan_id, owner_principal_key) {
-            return Err(CleanerError::Safety("mutation lease identity mismatch".into()));
+            return Err(CleanerError::Safety(
+                "mutation lease identity mismatch".into(),
+            ));
         }
         self.start_inner(owner_principal_key, plan_id, lease)
     }
@@ -453,12 +525,17 @@ impl CleanupEngine {
         plan_id: &str,
         mutation_lease: MutationLease,
     ) -> Result<CleanupExecutionStatus> {
-        let plan = self.engine.get_plan_for_owner(plan_id, owner_principal_key)?;
+        let plan = self
+            .engine
+            .get_plan_for_owner(plan_id, owner_principal_key)?;
         if plan.state != PlanState::AwaitingAuthorization {
             return Err(CleanerError::AuthorizationRequired);
         }
 
-        let mut running = self.running.lock().map_err(|_| CleanerError::AlreadyRunning)?;
+        let mut running = self
+            .running
+            .lock()
+            .map_err(|_| CleanerError::AlreadyRunning)?;
         if running.is_some() {
             return Err(CleanerError::AlreadyRunning);
         }
@@ -466,14 +543,19 @@ impl CleanupEngine {
         drop(running);
 
         if let Err(error) = self.engine.consume_authorization_and_begin(
-            plan_id, owner_principal_key, "one-shot consent consumed; cleanup entered preflight",
+            plan_id,
+            owner_principal_key,
+            "one-shot consent consumed; cleanup entered preflight",
         ) {
-            if let Ok(mut running) = self.running.lock() { *running = None; }
+            if let Ok(mut running) = self.running.lock() {
+                *running = None;
+            }
             return Err(error.into());
         }
 
         let now = now_ms();
-        if let Err(error) = self.db
+        if let Err(error) = self
+            .db
             .upsert_maintenance_execution(&MaintenanceExecutionRecord {
                 plan_id: plan_id.into(),
                 domain: "Cleanup".into(),
@@ -490,7 +572,9 @@ impl CleanupEngine {
                 PlanState::Failed,
                 "cleanup execution journal initialization failed after consent",
             );
-            if let Ok(mut running) = self.running.lock() { *running = None; }
+            if let Ok(mut running) = self.running.lock() {
+                *running = None;
+            }
             return Err(error.into());
         }
 
@@ -505,7 +589,9 @@ impl CleanupEngine {
             .name("aether-cleanup-worker".into())
             .spawn(move || {
                 let _mutation_lease = mutation_lease;
-                if let Err(error) = run_cleanup(&engine, &db, platform.as_ref(), &owner, &telemetry, &id) {
+                if let Err(error) =
+                    run_cleanup(&engine, &db, platform.as_ref(), &owner, &telemetry, &id)
+                {
                     let _ = fail_cleanup(&engine, &db, &id, error);
                 }
                 telemetry.clear_for_owner(&owner, &id);
@@ -515,9 +601,16 @@ impl CleanupEngine {
             });
         if let Err(error) = spawn {
             let detail = format!("cleanup worker creation failed: {error}");
-            let _ = fail_cleanup(&self.engine, &self.db, plan_id, CleanerError::Safety(detail.clone()));
+            let _ = fail_cleanup(
+                &self.engine,
+                &self.db,
+                plan_id,
+                CleanerError::Safety(detail.clone()),
+            );
             self.telemetry.clear_for_owner(owner_principal_key, plan_id);
-            if let Ok(mut running) = self.running.lock() { *running = None; }
+            if let Ok(mut running) = self.running.lock() {
+                *running = None;
+            }
             return Err(CleanerError::Safety(detail));
         }
 
@@ -525,19 +618,27 @@ impl CleanupEngine {
             .ok_or_else(|| CleanerError::Safety("cleanup status missing".into()))
     }
 
-    pub fn status(&self, owner_principal_key: &str, plan_id: Option<&str>) -> Result<Option<CleanupExecutionStatus>> {
+    pub fn status(
+        &self,
+        owner_principal_key: &str,
+        plan_id: Option<&str>,
+    ) -> Result<Option<CleanupExecutionStatus>> {
         let record = match plan_id {
             Some(id) => {
                 self.engine.get_plan_for_owner(id, owner_principal_key)?;
                 self.db.get_maintenance_execution(id)?
             }
-            None => self.db.latest_maintenance_execution_for_owner("Cleanup", owner_principal_key)?,
+            None => self
+                .db
+                .latest_maintenance_execution_for_owner("Cleanup", owner_principal_key)?,
         };
         let Some(record) = record else {
             return Ok(None);
         };
 
-        let plan = self.engine.get_plan_for_owner(&record.plan_id, owner_principal_key)?;
+        let plan = self
+            .engine
+            .get_plan_for_owner(&record.plan_id, owner_principal_key)?;
         let actions = self.engine.cleanup_actions(&record.plan_id)?;
         let expected: HashMap<&str, u64> = actions
             .iter()
@@ -568,22 +669,43 @@ impl CleanupEngine {
         let live = self
             .telemetry
             .get_for_owner(owner_principal_key, &record.plan_id)
-            .filter(|value| value.owner_principal_key == owner_principal_key && value.emitted_unix_ms >= record.updated_unix_ms);
+            .filter(|value| {
+                value.owner_principal_key == owner_principal_key
+                    && value.emitted_unix_ms >= record.updated_unix_ms
+            });
         Ok(Some(CleanupExecutionStatus {
             plan_id: record.plan_id,
             plan_state: plan.state.as_str().into(),
-            stage: live.as_ref().map(|value| value.stage.clone()).unwrap_or(record.stage),
-            progress_known: live.as_ref().map(|value| value.progress_known).unwrap_or(record.progress_known),
-            overall_percent: live.as_ref().map(|value| value.overall_percent).unwrap_or(record.overall_percent),
-            current_candidate_id: live.as_ref().map(|value| value.current_item_id.clone()).unwrap_or(record.current_item_id),
-            detail: live.as_ref().map(|value| value.detail.clone()).unwrap_or(record.detail),
+            stage: live
+                .as_ref()
+                .map(|value| value.stage.clone())
+                .unwrap_or(record.stage),
+            progress_known: live
+                .as_ref()
+                .map(|value| value.progress_known)
+                .unwrap_or(record.progress_known),
+            overall_percent: live
+                .as_ref()
+                .map(|value| value.overall_percent)
+                .unwrap_or(record.overall_percent),
+            current_candidate_id: live
+                .as_ref()
+                .map(|value| value.current_item_id.clone())
+                .unwrap_or(record.current_item_id),
+            detail: live
+                .as_ref()
+                .map(|value| value.detail.clone())
+                .unwrap_or(record.detail),
             mutation_started: record.mutation_started,
             recovery_required: record.recovery_required,
             failure_message: record.failure_message,
             reclaimed_bytes,
             skipped_bytes,
             started_unix_ms: record.started_unix_ms,
-            updated_unix_ms: live.as_ref().map(|value| value.emitted_unix_ms).unwrap_or(record.updated_unix_ms),
+            updated_unix_ms: live
+                .as_ref()
+                .map(|value| value.emitted_unix_ms)
+                .unwrap_or(record.updated_unix_ms),
             completed_unix_ms: record.completed_unix_ms,
             items,
         }))
@@ -670,7 +792,15 @@ fn run_cleanup(
     plan_id: &str,
 ) -> Result<()> {
     let actions = engine.cleanup_actions(plan_id)?;
-    publish_progress(telemetry, owner_principal_key, plan_id, "Preflight", 5, "", "Revalidating allowlisted cleanup targets");
+    publish_progress(
+        telemetry,
+        owner_principal_key,
+        plan_id,
+        "Preflight",
+        5,
+        "",
+        "Revalidating allowlisted cleanup targets",
+    );
     update(
         db,
         plan_id,
@@ -698,7 +828,15 @@ fn run_cleanup(
         PlanState::Executing,
         "begin reviewed cleanup deletion",
     )?;
-    publish_progress(telemetry, owner_principal_key, plan_id, "Executing", 10, "", "Deleting reviewed candidates with final-path validation");
+    publish_progress(
+        telemetry,
+        owner_principal_key,
+        plan_id,
+        "Executing",
+        10,
+        "",
+        "Deleting reviewed candidates with final-path validation",
+    );
     update(
         db,
         plan_id,
@@ -712,7 +850,15 @@ fn run_cleanup(
     let count = actions.len().max(1);
     for (index, action) in actions.iter().enumerate() {
         let percent = 10 + (((index as f32 / count as f32) * 80.0) as u32);
-        publish_progress(telemetry, owner_principal_key, plan_id, "Executing", percent, &action.candidate_id, &action.title);
+        publish_progress(
+            telemetry,
+            owner_principal_key,
+            plan_id,
+            "Executing",
+            percent,
+            &action.candidate_id,
+            &action.title,
+        );
         update_current(db, plan_id, &action.candidate_id, percent, &action.title)?;
         match platform.delete_action(action) {
             Ok((deleted, skipped, detail)) => {
@@ -728,7 +874,15 @@ fn run_cleanup(
         PlanState::Verifying,
         "cleanup deletion completed; verify selected targets",
     )?;
-    publish_progress(telemetry, owner_principal_key, plan_id, "Verifying", 95, "", "Verifying cleanup journal and reclaimed totals");
+    publish_progress(
+        telemetry,
+        owner_principal_key,
+        plan_id,
+        "Verifying",
+        95,
+        "",
+        "Verifying cleanup journal and reclaimed totals",
+    );
     update(
         db,
         plan_id,
@@ -745,7 +899,15 @@ fn run_cleanup(
         "allowlisted cleanup completed",
     )?;
     let now = now_ms();
-    publish_progress(telemetry, owner_principal_key, plan_id, "Completed", 100, "", "Reviewed cleanup completed. Locked or changed files were left untouched.");
+    publish_progress(
+        telemetry,
+        owner_principal_key,
+        plan_id,
+        "Completed",
+        100,
+        "",
+        "Reviewed cleanup completed. Locked or changed files were left untouched.",
+    );
     update(
         db,
         plan_id,
@@ -824,14 +986,14 @@ fn update(
     completed: Option<i64>,
 ) -> Result<()> {
     let now = now_ms();
-    let mut record = db
-        .get_maintenance_execution(plan_id)?
-        .unwrap_or_else(|| MaintenanceExecutionRecord {
-            plan_id: plan_id.into(),
-            domain: "Cleanup".into(),
-            started_unix_ms: now,
-            ..Default::default()
-        });
+    let mut record =
+        db.get_maintenance_execution(plan_id)?
+            .unwrap_or_else(|| MaintenanceExecutionRecord {
+                plan_id: plan_id.into(),
+                domain: "Cleanup".into(),
+                started_unix_ms: now,
+                ..Default::default()
+            });
     record.stage = stage.into();
     record.progress_known = true;
     record.overall_percent = percent;
@@ -916,9 +1078,7 @@ pub(crate) fn candidate(
     }
 }
 
-pub(crate) fn cap_files(
-    mut files: Vec<CleanupFileEvidence>,
-) -> (Vec<CleanupFileEvidence>, bool) {
+pub(crate) fn cap_files(mut files: Vec<CleanupFileEvidence>) -> (Vec<CleanupFileEvidence>, bool) {
     if files.len() > MAX_FILES_PER_CANDIDATE {
         files.sort_by_key(|file| file.modified_unix_ms);
         files.truncate(MAX_FILES_PER_CANDIDATE);
@@ -952,9 +1112,18 @@ mod dbt_p46_b18_tests {
         assert!(lock.is_poisoned());
 
         let old_behavior = lock.read().map(|s| s.clone()).unwrap_or_default();
-        assert_eq!(old_behavior.scan_id, "", "documents the bug this fix removes");
+        assert_eq!(
+            old_behavior.scan_id, "",
+            "documents the bug this fix removes"
+        );
 
-        let recovered = lock.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
-        assert_eq!(recovered.scan_id, "real-scan", "a poisoned lock must recover the last-written value");
+        let recovered = lock
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        assert_eq!(
+            recovered.scan_id, "real-scan",
+            "a poisoned lock must recover the last-written value"
+        );
     }
 }

@@ -79,9 +79,10 @@ mod macos {
             let platform = MacosPerfPlatform::new();
             for trial in 0..trials {
                 let snapshot = platform.sample(Duration::from_millis(1_000));
-                let tie_fault = snapshot.collector_faults.iter().find(|fault| {
-                    fault.collector == "cpu" && fault.detail.contains("tick delta")
-                });
+                let tie_fault = snapshot
+                    .collector_faults
+                    .iter()
+                    .find(|fault| fault.collector == "cpu" && fault.detail.contains("tick delta"));
                 match (snapshot.cpu.total_busy_bp, tie_fault) {
                     // A tie, honestly reported. This is the behaviour §45.2 landed.
                     (_, Some(fault)) => {

@@ -56,7 +56,10 @@ fn offender(pid: u32) -> BTreeMap<String, Vec<ProcessKey>> {
     let mut map = BTreeMap::new();
     map.insert(
         "CPU_SATURATION".to_string(),
-        vec![ProcessKey { pid, image_key: "abc123def456".into() }],
+        vec![ProcessKey {
+            pid,
+            image_key: "abc123def456".into(),
+        }],
     );
     map
 }
@@ -70,8 +73,12 @@ fn plan_is_deterministic_and_immutable() {
         &["ecoQos", "backgroundPriority"],
     )]);
     let selected = vec!["finding:cpu_saturation".to_string()];
-    let plan_a = governor.create_plan(&report, &selected, &offender(4242)).unwrap();
-    let plan_b = governor.create_plan(&report, &selected, &offender(4242)).unwrap();
+    let plan_a = governor
+        .create_plan(&report, &selected, &offender(4242))
+        .unwrap();
+    let plan_b = governor
+        .create_plan(&report, &selected, &offender(4242))
+        .unwrap();
     // Digest covers candidates; plan ids differ so digests differ per plan instance — but the
     // candidate sets and their order must be identical.
     assert_eq!(plan_a.candidates, plan_b.candidates);
@@ -83,7 +90,9 @@ fn plan_is_deterministic_and_immutable() {
 fn empty_selection_is_rejected() {
     let (governor, _) = governor();
     let report = report_with(vec![finding("f1", "CPU_SATURATION", &["ecoQos"])]);
-    let error = governor.create_plan(&report, &[], &BTreeMap::new()).unwrap_err();
+    let error = governor
+        .create_plan(&report, &[], &BTreeMap::new())
+        .unwrap_err();
     assert!(matches!(error, OptimizationError::EmptyPlan));
 }
 
@@ -109,7 +118,11 @@ fn session_only_hints_do_not_require_consent_but_persistent_changes_do() {
     let plan = governor
         .create_plan(&report, &["finding:cpu".to_string()], &offender(99))
         .unwrap();
-    let eco = plan.candidates.iter().find(|candidate| candidate.kind == ActionKind::EcoQos).unwrap();
+    let eco = plan
+        .candidates
+        .iter()
+        .find(|candidate| candidate.kind == ActionKind::EcoQos)
+        .unwrap();
     let trim = plan
         .candidates
         .iter()
@@ -118,24 +131,28 @@ fn session_only_hints_do_not_require_consent_but_persistent_changes_do() {
     assert_eq!(eco.reversibility, Reversibility::SessionOnly);
     assert!(!eco.requires_explicit_consent);
     assert_eq!(trim.reversibility, Reversibility::AutomaticRestore);
-    assert!(trim.requires_explicit_consent, "memory changes must always demand explicit consent");
+    assert!(
+        trim.requires_explicit_consent,
+        "memory changes must always demand explicit consent"
+    );
 }
 
 #[test]
 fn execution_records_operations_and_journals_restorable_changes() {
     let (governor, platform) = governor();
-    let report = report_with(vec![finding(
-        "finding:cpu",
-        "CPU_SATURATION",
-        &["ecoQos"],
-    )]);
+    let report = report_with(vec![finding("finding:cpu", "CPU_SATURATION", &["ecoQos"])]);
     let plan = governor
         .create_plan(&report, &["finding:cpu".to_string()], &offender(4242))
         .unwrap();
     let status = governor.start(OWNER_A, &plan, Default::default()).unwrap();
     assert_eq!(status.plan_state, "Completed");
     assert!(status.mutation_started);
-    assert!(status.items.iter().all(|item| item.result_code == "Applied"));
+    assert!(
+        status
+            .items
+            .iter()
+            .all(|item| item.result_code == "Applied")
+    );
     let ops = platform.operations();
     assert_eq!(ops, vec!["ecoQos:4242/abc123def456".to_string()]);
     assert_eq!(governor.history_len(), 1);
@@ -151,7 +168,12 @@ fn restore_path_marks_history_and_invokes_platform_restore() {
     governor.start(OWNER_A, &plan, Default::default()).unwrap();
     let restored = governor.restore_plan_changes(&plan.plan_id).unwrap();
     assert_eq!(restored, 1);
-    assert!(platform.operations().iter().any(|op| op.starts_with("restore:")));
+    assert!(
+        platform
+            .operations()
+            .iter()
+            .any(|op| op.starts_with("restore:"))
+    );
     // Second restore is idempotent — nothing left to undo.
     assert_eq!(governor.restore_plan_changes(&plan.plan_id).unwrap(), 0);
 }
@@ -178,7 +200,10 @@ fn concurrent_execution_on_one_governor_is_single_flight() {
             governor.start(OWNER_A, &plan, Default::default())
         }));
     }
-    let outcomes: Vec<_> = handles.into_iter().map(|handle| handle.join().unwrap()).collect();
+    let outcomes: Vec<_> = handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .collect();
     let ok = outcomes.iter().filter(|result| result.is_ok()).count();
     assert_eq!(ok, 1, "exactly one execution may win the machine lease");
     assert!(outcomes.iter().all(|result| match result {
@@ -191,7 +216,10 @@ fn concurrent_execution_on_one_governor_is_single_flight() {
 #[test]
 fn noop_platform_can_never_emit_out_of_contract_operations() {
     let platform = NoopPlatform::new();
-    let key = ProcessKey { pid: 5, image_key: "deadbeef".into() };
+    let key = ProcessKey {
+        pid: 5,
+        image_key: "deadbeef".into(),
+    };
     let _ = platform.apply_eco_qos(&key);
     let _ = platform.apply_background_priority(&key);
     let _ = platform.apply_cooperative_trim(&key);
@@ -205,7 +233,8 @@ fn noop_platform_can_never_emit_out_of_contract_operations() {
             || op.starts_with("restore:")
     }));
     assert!(
-        !ops.iter().any(|op| op.contains("delete") || op.contains("clean") || op.contains("purge")),
+        !ops.iter()
+            .any(|op| op.contains("delete") || op.contains("clean") || op.contains("purge")),
         "no destructive verb may ever appear in the operation log"
     );
 }
@@ -246,8 +275,16 @@ fn platform_failures_degrade_to_item_errors_not_poisoned_state() {
         .unwrap();
     let status = governor.start(OWNER_A, &plan, Default::default()).unwrap();
     assert_eq!(status.plan_state, "Completed");
-    assert!(status.items.iter().all(|item| item.result_code == "ApplyError" && !item.verified));
-    assert!(!status.mutation_started, "no successful mutation may be claimed");
+    assert!(
+        status
+            .items
+            .iter()
+            .all(|item| item.result_code == "ApplyError" && !item.verified)
+    );
+    assert!(
+        !status.mutation_started,
+        "no successful mutation may be claimed"
+    );
     // The supervisor must be free again after the failed run.
     assert!(governor.status(&plan.plan_id).is_some());
 }

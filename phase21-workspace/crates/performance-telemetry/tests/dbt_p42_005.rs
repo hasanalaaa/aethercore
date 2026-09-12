@@ -293,8 +293,9 @@ mod linux {
         // with literally zero fault ever pushed for it — the exact §20.1.1
         // site 7 shape Windows deleted.
         if snapshot.process_top.is_empty() && faults_for(&snapshot, "processTop").is_empty() {
-            unaccounted.push("processTop: [] with no fault (unconditional, linux_impl.rs:512-514)"
-                .to_string());
+            unaccounted.push(
+                "processTop: [] with no fault (unconditional, linux_impl.rs:512-514)".to_string(),
+            );
         }
 
         assert!(
@@ -328,7 +329,8 @@ mod linux {
             return;
         }
         let snapshot = real_snapshot_under_load();
-        let power_has_no_reading = !snapshot.power.has_temperature && snapshot.power.temperature_c == 0;
+        let power_has_no_reading =
+            !snapshot.power.has_temperature && snapshot.power.temperature_c == 0;
         let power_faulted = !faults_for(&snapshot, "thermalPower").is_empty()
             || !faults_for(&snapshot, "power").is_empty();
         assert!(

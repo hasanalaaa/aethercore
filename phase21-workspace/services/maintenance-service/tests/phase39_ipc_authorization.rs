@@ -322,8 +322,14 @@ fn run_security_audit_refuses_out_of_scope_paths_in_every_target_variant() {
     let victim_file = fixture.victim_dir.join("credentials");
     let victim = serde_json::to_string(&victim_file.to_string_lossy()).expect("json string");
     let cases = [
-        ("sshdConfig", format!(r#"[{{"kind":"sshdConfig","path":{victim}}}]"#)),
-        ("sudoers", format!(r#"[{{"kind":"sudoers","path":{victim}}}]"#)),
+        (
+            "sshdConfig",
+            format!(r#"[{{"kind":"sshdConfig","path":{victim}}}]"#),
+        ),
+        (
+            "sudoers",
+            format!(r#"[{{"kind":"sudoers","path":{victim}}}]"#),
+        ),
         (
             "passwordPolicy",
             format!(r#"[{{"kind":"passwordPolicy","path":{victim}}}]"#),

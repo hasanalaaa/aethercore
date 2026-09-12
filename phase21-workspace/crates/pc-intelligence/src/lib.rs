@@ -12,5 +12,5 @@ mod sources;
 pub use coordinator::{DeepScanCoordinator, IntelligenceError};
 pub use fingerprint::machine_state_fingerprint;
 pub use model::*;
-pub use rules::{evaluate as evaluate_rules, remediation_candidates, RuleDescriptor, RULES};
+pub use rules::{RULES, RuleDescriptor, evaluate as evaluate_rules, remediation_candidates};
 pub use sources::{DeepScanBackend, ExistingSubsystemBackend, SourceError};

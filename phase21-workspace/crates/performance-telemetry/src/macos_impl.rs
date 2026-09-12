@@ -516,8 +516,7 @@ fn sample_process_top() -> Reading<Vec<ProcessCpuTopEntry>> {
         ));
     }
     entries.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    let ranked: Vec<ProcessCpuTopEntry> =
-        entries.into_iter().map(|(_, _, entry)| entry).collect();
+    let ranked: Vec<ProcessCpuTopEntry> = entries.into_iter().map(|(_, _, entry)| entry).collect();
     // §44 1.A: the process list was enumerated (`written > 0`), but every pid
     // between listing and `proc_pidinfo` can vanish or refuse the query
     // (`:388-391` below, unchanged — that skip is still not itself a fault).

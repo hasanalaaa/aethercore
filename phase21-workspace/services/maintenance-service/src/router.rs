@@ -1398,8 +1398,7 @@ pub fn handle_request(
                     v1::AssistantTurnResponse {
                         turn: Some(v1::AssistantTurn {
                             turn_id: v.turn_id,
-                            schema_version:
-                                aethercore_intelligence_core::ASSISTANT_SCHEMA_V1,
+                            schema_version: aethercore_intelligence_core::ASSISTANT_SCHEMA_V1,
                             state: if in_flight {
                                 v1::AssistantTurnState::Streaming as i32
                             } else {

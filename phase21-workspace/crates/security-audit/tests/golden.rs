@@ -152,7 +152,7 @@ fn gd2_clean_dir_zero_false_positives() {
 #[test]
 fn gd3_cve_join_exact_match_set() {
     use sec::vulndb::VulnEntry;
-    use sec::vulnjoin::{compare_versions, join, InstalledPackage};
+    use sec::vulnjoin::{InstalledPackage, compare_versions, join};
     let db = vec![
         VulnEntry {
             cve_id: "CVE-2026-0001".into(),
@@ -208,7 +208,7 @@ fn gd3_cve_join_exact_match_set() {
 
 #[test]
 fn gd5_tampered_db_refused_fail_closed() {
-    use sec::vulndb::{load_verified, VulnDbError};
+    use sec::vulndb::{VulnDbError, load_verified};
     use sha2::{Digest as _, Sha256};
     let dir_guard = tempdir("gd5");
     let dir = dir_guard.path().to_path_buf();

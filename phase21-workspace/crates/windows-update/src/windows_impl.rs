@@ -6,8 +6,7 @@ use windows::{
             Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
             UpdateAgent::{
                 IUpdateSession, IWindowsDriverUpdate, IWindowsDriverUpdate4,
-                IWindowsDriverUpdateEntry, UpdateSession, orcSucceeded,
-                orcSucceededWithErrors,
+                IWindowsDriverUpdateEntry, UpdateSession, orcSucceeded, orcSucceededWithErrors,
             },
         },
     },
@@ -34,27 +33,53 @@ struct CommonOfferMetadata {
 pub fn probe_update_health() -> UpdateHealthProbe {
     let guard = match ComApartment::mta() {
         Ok(value) => value,
-        Err(hr) => return UpdateHealthProbe { result_code:"UpdateUnknown".into(), hresult:hr.0, pending_update_count:0, detail:format!("CoInitializeEx failed: 0x{:08X}", hr.0 as u32) },
+        Err(hr) => {
+            return UpdateHealthProbe {
+                result_code: "UpdateUnknown".into(),
+                hresult: hr.0,
+                pending_update_count: 0,
+                detail: format!("CoInitializeEx failed: 0x{:08X}", hr.0 as u32),
+            };
+        }
     };
     let _guard = guard;
-    let session: IUpdateSession = match unsafe { CoCreateInstance(&UpdateSession, None, CLSCTX_INPROC_SERVER) } {
+    let session: IUpdateSession =
+        match unsafe { CoCreateInstance(&UpdateSession, None, CLSCTX_INPROC_SERVER) } {
+            Ok(value) => value,
+            Err(error) => return update_probe_error(error),
+        };
+    let app_id = BSTR::from("AetherCore Windows Health");
+    if let Err(error) = unsafe { session.SetClientApplicationID(&app_id) } {
+        return update_probe_error(error);
+    }
+    let searcher = match unsafe { session.CreateUpdateSearcher() } {
         Ok(value) => value,
         Err(error) => return update_probe_error(error),
     };
-    let app_id = BSTR::from("AetherCore Windows Health");
-    if let Err(error) = unsafe { session.SetClientApplicationID(&app_id) } { return update_probe_error(error); }
-    let searcher = match unsafe { session.CreateUpdateSearcher() } { Ok(value)=>value, Err(error)=>return update_probe_error(error) };
-    if let Err(error) = unsafe { searcher.SetOnline(VARIANT_BOOL(-1)) } { return update_probe_error(error); }
+    if let Err(error) = unsafe { searcher.SetOnline(VARIANT_BOOL(-1)) } {
+        return update_probe_error(error);
+    }
     let criteria = BSTR::from("IsInstalled=0 and IsHidden=0");
-    let result = match unsafe { searcher.Search(&criteria) } { Ok(value)=>value, Err(error)=>return update_probe_error(error) };
-    let result_code = match unsafe { result.ResultCode() } { Ok(value)=>value, Err(error)=>return update_probe_error(error) };
-    let updates = match unsafe { result.Updates() } { Ok(value)=>value, Err(error)=>return update_probe_error(error) };
+    let result = match unsafe { searcher.Search(&criteria) } {
+        Ok(value) => value,
+        Err(error) => return update_probe_error(error),
+    };
+    let result_code = match unsafe { result.ResultCode() } {
+        Ok(value) => value,
+        Err(error) => return update_probe_error(error),
+    };
+    let updates = match unsafe { result.Updates() } {
+        Ok(value) => value,
+        Err(error) => return update_probe_error(error),
+    };
     // DBT-P46-B15: a failed Count() after a SUCCESSFUL search used to report
     // "0 pending updates" as if measured. pending_update_count is not on the
     // wire (verified: no .proto, protocol.rs or aetherctl reference), so per
     // Hasan's instruction this carries the distinction in the existing detail
     // string rather than adding a field nothing consumes.
-    let counted = unsafe { updates.Count() }.ok().map(|value| value.max(0) as u32);
+    let counted = unsafe { updates.Count() }
+        .ok()
+        .map(|value| value.max(0) as u32);
     let count = counted.unwrap_or(0);
     if result_code == orcSucceeded {
         match counted {
@@ -62,25 +87,45 @@ pub fn probe_update_health() -> UpdateHealthProbe {
             None => UpdateHealthProbe { result_code:"UpdateHealthy".into(), hresult:0, pending_update_count:0, detail:"Windows Update Agent discovery completed successfully, but the pending-update count could not be read; the reported 0 is not a measurement.".into() },
         }
     } else if result_code == orcSucceededWithErrors {
-        UpdateHealthProbe { result_code:"UpdateFailure".into(), hresult:0, pending_update_count:count, detail:"Windows Update Agent discovery completed with errors; results may be incomplete.".into() }
+        UpdateHealthProbe {
+            result_code: "UpdateFailure".into(),
+            hresult: 0,
+            pending_update_count: count,
+            detail:
+                "Windows Update Agent discovery completed with errors; results may be incomplete."
+                    .into(),
+        }
     } else {
-        UpdateHealthProbe { result_code:"UpdateFailure".into(), hresult:0, pending_update_count:count, detail:format!("Windows Update Agent discovery returned {result_code:?}.") }
+        UpdateHealthProbe {
+            result_code: "UpdateFailure".into(),
+            hresult: 0,
+            pending_update_count: count,
+            detail: format!("Windows Update Agent discovery returned {result_code:?}."),
+        }
     }
 }
 
 fn update_probe_error(error: windows::core::Error) -> UpdateHealthProbe {
-    let hr=error.code().0;
-    let code=hr as u32;
+    let hr = error.code().0;
+    let code = hr as u32;
     // Only WU_E_NO_CONNECTION is classified as offline here. Proxy/DNS-specific codes remain
     // update failures until corroborating evidence exists; this avoids inventing a root cause.
-    let result=if code==0x8024_001F { "UpdateOffline" } else { "UpdateFailure" };
-    UpdateHealthProbe { result_code:result.into(), hresult:hr, pending_update_count:0, detail:format!("Windows Update Agent HRESULT 0x{code:08X}: {error}") }
+    let result = if code == 0x8024_001F {
+        "UpdateOffline"
+    } else {
+        "UpdateFailure"
+    };
+    UpdateHealthProbe {
+        result_code: result.into(),
+        hresult: hr,
+        pending_update_count: 0,
+        detail: format!("Windows Update Agent HRESULT 0x{code:08X}: {error}"),
+    }
 }
 
 pub fn discover_driver_offers() -> Result<DiscoveryResult> {
-    let _guard = ComApartment::mta().map_err(|hr| UpdateError::Wua(format!(
-        "CoInitializeEx failed: 0x{:08X}", hr.0 as u32
-    )))?;
+    let _guard = ComApartment::mta()
+        .map_err(|hr| UpdateError::Wua(format!("CoInitializeEx failed: 0x{:08X}", hr.0 as u32)))?;
 
     let session: IUpdateSession =
         unsafe { CoCreateInstance(&UpdateSession, None, CLSCTX_INPROC_SERVER).map_err(wua_err)? };
@@ -91,9 +136,7 @@ pub fn discover_driver_offers() -> Result<DiscoveryResult> {
     // Force an online applicability scan while retaining the machine's configured update source
     // (Microsoft Update/Windows Update or an enterprise WSUS policy selected by WUA).
     unsafe {
-        searcher
-            .SetOnline(VARIANT_BOOL(-1))
-            .map_err(wua_err)?;
+        searcher.SetOnline(VARIANT_BOOL(-1)).map_err(wua_err)?;
     }
 
     // WUA evaluates applicability. AetherCore never ranks packages by version number.
@@ -138,7 +181,9 @@ pub fn discover_driver_offers() -> Result<DiscoveryResult> {
         let common = match read_common_metadata(&driver) {
             Ok(value) => value,
             Err(error) => {
-                warnings.push(format!("WUA driver item {index} metadata was rejected: {error}"));
+                warnings.push(format!(
+                    "WUA driver item {index} metadata was rejected: {error}"
+                ));
                 continue;
             }
         };
@@ -216,9 +261,15 @@ pub fn discover_driver_offers() -> Result<DiscoveryResult> {
 
 fn read_common_metadata(driver: &IWindowsDriverUpdate) -> Result<CommonOfferMetadata> {
     let identity = unsafe { driver.Identity().map_err(wua_err)? };
-    let update_id = bounded(unsafe { identity.UpdateID().map_err(wua_err)?.to_string() }, 128);
+    let update_id = bounded(
+        unsafe { identity.UpdateID().map_err(wua_err)?.to_string() },
+        128,
+    );
     let revision = unsafe { identity.RevisionNumber().map_err(wua_err)? };
-    let title = bounded(unsafe { driver.Title().map_err(wua_err)?.to_string() }, 1024);
+    let title = bounded(
+        unsafe { driver.Title().map_err(wua_err)?.to_string() },
+        1024,
+    );
     let target_version = extract_version_from_update_title(&title).unwrap_or_default();
     let target_version_source = if target_version.is_empty() {
         VersionSource::Unavailable
@@ -226,8 +277,10 @@ fn read_common_metadata(driver: &IWindowsDriverUpdate) -> Result<CommonOfferMeta
         VersionSource::TitleHeuristic
     };
 
-    let min_download_bytes = unsafe { decimal_to_u64(&driver.MinDownloadSize().map_err(wua_err)?)? };
-    let max_download_bytes = unsafe { decimal_to_u64(&driver.MaxDownloadSize().map_err(wua_err)?)? };
+    let min_download_bytes =
+        unsafe { decimal_to_u64(&driver.MinDownloadSize().map_err(wua_err)?)? };
+    let max_download_bytes =
+        unsafe { decimal_to_u64(&driver.MaxDownloadSize().map_err(wua_err)?)? };
     if max_download_bytes < min_download_bytes {
         return Err(UpdateError::InvalidSize);
     }
@@ -243,7 +296,12 @@ fn read_common_metadata(driver: &IWindowsDriverUpdate) -> Result<CommonOfferMeta
         // Informational metadata only. The desktop never opens this arbitrary value; GPU actions
         // use a fixed allowlist of official vendor URLs.
         support_url: bounded(
-            unsafe { driver.SupportUrl().map(|value| value.to_string()).unwrap_or_default() },
+            unsafe {
+                driver
+                    .SupportUrl()
+                    .map(|value| value.to_string())
+                    .unwrap_or_default()
+            },
             2048,
         ),
     })
@@ -257,11 +315,26 @@ fn offer_from_entry(
         update_id: common.update_id.clone(),
         revision: common.revision,
         title: common.title.clone(),
-        hardware_id: bounded(unsafe { entry.DriverHardwareID().map_err(wua_err)?.to_string() }, 4096),
-        driver_class: bounded(unsafe { entry.DriverClass().map_err(wua_err)?.to_string() }, 512),
-        manufacturer: bounded(unsafe { entry.DriverManufacturer().map_err(wua_err)?.to_string() }, 512),
-        model: bounded(unsafe { entry.DriverModel().map_err(wua_err)?.to_string() }, 512),
-        provider: bounded(unsafe { entry.DriverProvider().map_err(wua_err)?.to_string() }, 512),
+        hardware_id: bounded(
+            unsafe { entry.DriverHardwareID().map_err(wua_err)?.to_string() },
+            4096,
+        ),
+        driver_class: bounded(
+            unsafe { entry.DriverClass().map_err(wua_err)?.to_string() },
+            512,
+        ),
+        manufacturer: bounded(
+            unsafe { entry.DriverManufacturer().map_err(wua_err)?.to_string() },
+            512,
+        ),
+        model: bounded(
+            unsafe { entry.DriverModel().map_err(wua_err)?.to_string() },
+            512,
+        ),
+        provider: bounded(
+            unsafe { entry.DriverProvider().map_err(wua_err)?.to_string() },
+            512,
+        ),
         driver_date_iso: unsafe {
             ole_automation_date_to_iso(entry.DriverVerDate().map_err(wua_err)?).unwrap_or_default()
         },
@@ -283,11 +356,26 @@ fn offer_from_base(
         update_id: common.update_id.clone(),
         revision: common.revision,
         title: common.title.clone(),
-        hardware_id: bounded(unsafe { driver.DriverHardwareID().map_err(wua_err)?.to_string() }, 4096),
-        driver_class: bounded(unsafe { driver.DriverClass().map_err(wua_err)?.to_string() }, 512),
-        manufacturer: bounded(unsafe { driver.DriverManufacturer().map_err(wua_err)?.to_string() }, 512),
-        model: bounded(unsafe { driver.DriverModel().map_err(wua_err)?.to_string() }, 512),
-        provider: bounded(unsafe { driver.DriverProvider().map_err(wua_err)?.to_string() }, 512),
+        hardware_id: bounded(
+            unsafe { driver.DriverHardwareID().map_err(wua_err)?.to_string() },
+            4096,
+        ),
+        driver_class: bounded(
+            unsafe { driver.DriverClass().map_err(wua_err)?.to_string() },
+            512,
+        ),
+        manufacturer: bounded(
+            unsafe { driver.DriverManufacturer().map_err(wua_err)?.to_string() },
+            512,
+        ),
+        model: bounded(
+            unsafe { driver.DriverModel().map_err(wua_err)?.to_string() },
+            512,
+        ),
+        provider: bounded(
+            unsafe { driver.DriverProvider().map_err(wua_err)?.to_string() },
+            512,
+        ),
         driver_date_iso: unsafe {
             ole_automation_date_to_iso(driver.DriverVerDate().map_err(wua_err)?).unwrap_or_default()
         },
@@ -326,6 +414,9 @@ unsafe fn decimal_to_u64(value: &DECIMAL) -> Result<u64> {
 fn wua_err(error: windows::core::Error) -> UpdateError {
     // WU_E_NO_CONNECTION (0x8024001F): operation could not complete because the
     // network connection was unavailable. Preserve it as truth-bearing provider state.
-    if error.code().0 as u32 == 0x8024_001F { UpdateError::Offline(error.to_string()) }
-    else { UpdateError::Wua(error.to_string()) }
+    if error.code().0 as u32 == 0x8024_001F {
+        UpdateError::Offline(error.to_string())
+    } else {
+        UpdateError::Wua(error.to_string())
+    }
 }

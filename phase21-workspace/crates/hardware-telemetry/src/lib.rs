@@ -39,7 +39,10 @@ const ATA_SMART_ATTRIBUTE_BYTES: usize = 12;
 
 pub(crate) fn parse_ata_smart_sector(data: &[u8]) -> Result<Vec<AtaSmartAttribute>> {
     if data.len() < ATA_SMART_SECTOR_BYTES {
-        return Err(TelemetryError::MalformedResponse(format!("ATA SMART sector was {} bytes; expected at least {ATA_SMART_SECTOR_BYTES}", data.len())));
+        return Err(TelemetryError::MalformedResponse(format!(
+            "ATA SMART sector was {} bytes; expected at least {ATA_SMART_SECTOR_BYTES}",
+            data.len()
+        )));
     }
     let mut attrs = Vec::new();
     for i in 0..ATA_SMART_ATTRIBUTE_COUNT {
@@ -85,17 +88,17 @@ pub(crate) fn parse_ata_driver_response(
     }
     let required_end = data_offset
         .checked_add(ATA_SMART_SECTOR_BYTES)
-        .ok_or_else(|| TelemetryError::MalformedResponse("ATA SMART response offset overflowed".into()))?;
+        .ok_or_else(|| {
+            TelemetryError::MalformedResponse("ATA SMART response offset overflowed".into())
+        })?;
     if required_end > returned {
         return Err(TelemetryError::MalformedResponse(
             "ATA SMART response did not contain the 512-byte attribute sector".into(),
         ));
     }
-    let declared = u32::from_le_bytes(
-        output[0..4]
-            .try_into()
-            .map_err(|_| TelemetryError::MalformedResponse("ATA SMART response header was malformed".into()))?,
-    ) as usize;
+    let declared = u32::from_le_bytes(output[0..4].try_into().map_err(|_| {
+        TelemetryError::MalformedResponse("ATA SMART response header was malformed".into())
+    })?) as usize;
     let available = returned.saturating_sub(data_offset);
     if declared < ATA_SMART_SECTOR_BYTES || declared > available {
         return Err(TelemetryError::MalformedResponse(
@@ -119,7 +122,10 @@ pub(crate) struct NvmeHealthValues {
 pub(crate) fn parse_nvme_health_log(data: &[u8]) -> Result<NvmeHealthValues> {
     const REQUIRED: usize = 192;
     if data.len() < REQUIRED {
-        return Err(TelemetryError::MalformedResponse(format!("NVMe SMART log was {} bytes; expected at least {REQUIRED}", data.len())));
+        return Err(TelemetryError::MalformedResponse(format!(
+            "NVMe SMART log was {} bytes; expected at least {REQUIRED}",
+            data.len()
+        )));
     }
     let temperature_kelvin = u16::from_le_bytes([data[1], data[2]]);
     let read_u128 = |offset: usize| -> u128 {
@@ -146,22 +152,40 @@ pub(crate) fn checked_protocol_window(
     minimum_data_offset: usize,
     required: usize,
 ) -> Result<std::ops::Range<usize>> {
-    let data_offset = usize::try_from(data_offset).map_err(|_| TelemetryError::MalformedResponse("protocol data offset did not fit usize".into()))?;
-    let data_length = usize::try_from(data_length).map_err(|_| TelemetryError::MalformedResponse("protocol data length did not fit usize".into()))?;
+    let data_offset = usize::try_from(data_offset).map_err(|_| {
+        TelemetryError::MalformedResponse("protocol data offset did not fit usize".into())
+    })?;
+    let data_length = usize::try_from(data_length).map_err(|_| {
+        TelemetryError::MalformedResponse("protocol data length did not fit usize".into())
+    })?;
     if data_offset < minimum_data_offset {
-        return Err(TelemetryError::MalformedResponse("protocol payload overlapped the protocol-specific metadata header".into()));
+        return Err(TelemetryError::MalformedResponse(
+            "protocol payload overlapped the protocol-specific metadata header".into(),
+        ));
     }
     if data_length < required {
-        return Err(TelemetryError::MalformedResponse(format!("protocol payload was {data_length} bytes; required at least {required}")));
+        return Err(TelemetryError::MalformedResponse(format!(
+            "protocol payload was {data_length} bytes; required at least {required}"
+        )));
     }
-    let start = protocol_offset.checked_add(data_offset).ok_or_else(|| TelemetryError::MalformedResponse("protocol payload offset overflowed".into()))?;
-    let end = start.checked_add(data_length).ok_or_else(|| TelemetryError::MalformedResponse("protocol payload length overflowed".into()))?;
+    let start = protocol_offset.checked_add(data_offset).ok_or_else(|| {
+        TelemetryError::MalformedResponse("protocol payload offset overflowed".into())
+    })?;
+    let end = start.checked_add(data_length).ok_or_else(|| {
+        TelemetryError::MalformedResponse("protocol payload length overflowed".into())
+    })?;
     if start > returned || end > returned {
-        return Err(TelemetryError::MalformedResponse("protocol payload escaped the bytes returned by the driver".into()));
+        return Err(TelemetryError::MalformedResponse(
+            "protocol payload escaped the bytes returned by the driver".into(),
+        ));
     }
-    let required_end = start.checked_add(required).ok_or_else(|| TelemetryError::MalformedResponse("required payload length overflowed".into()))?;
+    let required_end = start.checked_add(required).ok_or_else(|| {
+        TelemetryError::MalformedResponse("required payload length overflowed".into())
+    })?;
     if required_end > end {
-        return Err(TelemetryError::MalformedResponse("protocol payload did not contain the required health-log prefix".into()));
+        return Err(TelemetryError::MalformedResponse(
+            "protocol payload did not contain the required health-log prefix".into(),
+        ));
     }
     Ok(start..required_end)
 }
@@ -243,10 +267,14 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
     // independent verdict, read regardless of whether these counters exist.
     let mut unavailable = Vec::new();
 
-    if device.windows_health_status.eq_ignore_ascii_case("Unhealthy") {
+    if device
+        .windows_health_status
+        .eq_ignore_ascii_case("Unhealthy")
+    {
         action.push("Windows reports the physical disk as unhealthy.".to_string());
     } else if device.windows_health_status.eq_ignore_ascii_case("Warning") {
-        attention.push("Windows reports a warning health state for this physical disk.".to_string());
+        attention
+            .push("Windows reports a warning health state for this physical disk.".to_string());
     }
     match r.read_errors_uncorrected {
         Some(n) if n > 0 => action.push(format!("{n} uncorrected read error(s) were reported.")),
@@ -259,27 +287,40 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
         None => unavailable.push("uncorrected write error count"),
     }
     match r.nvme_critical_warning {
-        Some(n) if n != 0 => action.push(format!("NVMe SMART critical-warning flags are set (0x{n:02X}).")),
+        Some(n) if n != 0 => action.push(format!(
+            "NVMe SMART critical-warning flags are set (0x{n:02X})."
+        )),
         Some(_) => {}
         None => unavailable.push("NVMe critical-warning flags"),
     }
     match r.nvme_media_errors.as_deref() {
         Some(v) => {
             if parse_nonzero_counter(Some(v)) {
-                action.push("NVMe SMART reports one or more media/data-integrity errors.".to_string());
+                action.push(
+                    "NVMe SMART reports one or more media/data-integrity errors.".to_string(),
+                );
             }
         }
         None => unavailable.push("NVMe media/data-integrity error count"),
     }
-    if r.wear_percent_used.is_some_and(|v| v >= 100) || r.nvme_percentage_used.is_some_and(|v| v >= 100) {
-        attention.push("The device-reported wear estimate has reached or exceeded its estimated wear limit.".to_string());
+    if r.wear_percent_used.is_some_and(|v| v >= 100)
+        || r.nvme_percentage_used.is_some_and(|v| v >= 100)
+    {
+        attention.push(
+            "The device-reported wear estimate has reached or exceeded its estimated wear limit."
+                .to_string(),
+        );
     }
     if let (Some(t), Some(max)) = (r.temperature_c, r.temperature_max_c) {
         if max > 0 && t >= max {
             attention.push(format!("Current temperature ({t} °C) is at or above the device/Windows-reported maximum ({max} °C)."));
         }
     }
-    for (label, latency) in [("read", r.read_latency_max_ms), ("write", r.write_latency_max_ms), ("flush", r.flush_latency_max_ms)] {
+    for (label, latency) in [
+        ("read", r.read_latency_max_ms),
+        ("write", r.write_latency_max_ms),
+        ("flush", r.flush_latency_max_ms),
+    ] {
         if latency.is_some_and(|v| v > 10_000) {
             attention.push(format!("Windows reports a maximum {label} latency above 10 seconds in the storage reliability counters."));
         }
@@ -291,7 +332,8 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
         device.reasons = action.into_iter().chain(attention).collect();
     } else if !attention.is_empty() {
         device.severity = "Attention".into();
-        device.summary = "One or more reported storage reliability indicators deserve review.".into();
+        device.summary =
+            "One or more reported storage reliability indicators deserve review.".into();
         device.reasons = attention;
     } else if device.windows_health_status.eq_ignore_ascii_case("Healthy") {
         device.severity = "Normal".into();
@@ -302,7 +344,10 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
                 "Windows reports this disk healthy; {} SMART/reliability counter(s) were not reported and could not be independently checked.",
                 unavailable.len()
             );
-            device.reasons = unavailable.iter().map(|name| format!("{name}: not reported")).collect();
+            device.reasons = unavailable
+                .iter()
+                .map(|name| format!("{name}: not reported"))
+                .collect();
         }
     } else {
         device.severity = "Unknown".into();
@@ -311,7 +356,8 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
 }
 
 fn parse_nonzero_counter(v: Option<&str>) -> bool {
-    v.and_then(|s| s.parse::<u128>().ok()).is_some_and(|n| n > 0)
+    v.and_then(|s| s.parse::<u128>().ok())
+        .is_some_and(|n| n > 0)
 }
 
 pub fn classify_memory_pressure(load_percent: u32) -> (String, String) {
@@ -322,7 +368,9 @@ pub fn classify_memory_pressure(load_percent: u32) -> (String, String) {
     };
     (
         label.into(),
-        format!("Windows currently reports {load_percent}% physical-memory load. This is resource pressure, not a RAM hardware-health verdict."),
+        format!(
+            "Windows currently reports {load_percent}% physical-memory load. This is resource pressure, not a RAM hardware-health verdict."
+        ),
     )
 }
 
@@ -334,11 +382,15 @@ pub use windows_impl::{collect, collect_with_cancellation};
 
 #[cfg(not(windows))]
 pub fn collect() -> Result<HardwareTelemetrySnapshot> {
-    Err(TelemetryError::Unavailable("hardware telemetry is available on Windows only".into()))
+    Err(TelemetryError::Unavailable(
+        "hardware telemetry is available on Windows only".into(),
+    ))
 }
 
 #[cfg(not(windows))]
-pub fn collect_with_cancellation(_token: aethercore_collector_runtime::CancellationToken) -> Result<HardwareTelemetrySnapshot> {
+pub fn collect_with_cancellation(
+    _token: aethercore_collector_runtime::CancellationToken,
+) -> Result<HardwareTelemetrySnapshot> {
     collect()
 }
 
@@ -348,7 +400,10 @@ mod tests {
 
     #[test]
     fn storage_classifier_never_creates_a_score_and_escalates_uncorrected_errors() {
-        let mut d = StorageDeviceTelemetry { windows_health_status: "Healthy".into(), ..Default::default() };
+        let mut d = StorageDeviceTelemetry {
+            windows_health_status: "Healthy".into(),
+            ..Default::default()
+        };
         d.reliability.read_errors_uncorrected = Some(1);
         classify_storage(&mut d);
         assert_eq!(d.severity, "ActionRequired");
@@ -378,18 +433,30 @@ mod tests {
         assert_eq!(attrs[0].current, 99);
         assert_eq!(attrs[0].worst, 98);
         assert_eq!(attrs[0].raw_value_hex, "0x060504030201");
-        assert_eq!(attrs[0].raw_value_decimal, u64::from_le_bytes([1,2,3,4,5,6,0,0]).to_string());
+        assert_eq!(
+            attrs[0].raw_value_decimal,
+            u64::from_le_bytes([1, 2, 3, 4, 5, 6, 0, 0]).to_string()
+        );
     }
 
     #[test]
     fn ata_smart_sector_parser_rejects_short_buffers() {
-        assert!(matches!(parse_ata_smart_sector(&[0u8; 511]), Err(TelemetryError::MalformedResponse(_))));
+        assert!(matches!(
+            parse_ata_smart_sector(&[0u8; 511]),
+            Err(TelemetryError::MalformedResponse(_))
+        ));
     }
 
     #[test]
     fn ata_smart_raw_values_are_not_converted_into_vendor_specific_health_claims() {
         let mut d = StorageDeviceTelemetry::default();
-        d.ata_smart_attributes.push(AtaSmartAttribute { id: 5, current: 100, worst: 100, raw_value_decimal: "1".into(), raw_value_hex: "0x000000000001".into() });
+        d.ata_smart_attributes.push(AtaSmartAttribute {
+            id: 5,
+            current: 100,
+            worst: 100,
+            raw_value_decimal: "1".into(),
+            raw_value_hex: "0x000000000001".into(),
+        });
         classify_storage(&mut d);
         assert_eq!(d.severity, "Unknown");
         assert!(d.reasons.is_empty());
@@ -397,7 +464,10 @@ mod tests {
 
     #[test]
     fn standardized_extreme_latency_is_attention_not_a_failure_verdict() {
-        let mut d = StorageDeviceTelemetry { windows_health_status: "Healthy".into(), ..Default::default() };
+        let mut d = StorageDeviceTelemetry {
+            windows_health_status: "Healthy".into(),
+            ..Default::default()
+        };
         d.reliability.read_latency_max_ms = Some(10_001);
         classify_storage(&mut d);
         assert_eq!(d.severity, "Attention");
@@ -412,13 +482,19 @@ mod tests {
     // apart.
     #[test]
     fn healthy_status_with_unreported_smart_counters_is_distinguishable_from_confirmed_clean() {
-        let mut checked_clean = StorageDeviceTelemetry { windows_health_status: "Healthy".into(), ..Default::default() };
+        let mut checked_clean = StorageDeviceTelemetry {
+            windows_health_status: "Healthy".into(),
+            ..Default::default()
+        };
         checked_clean.reliability.read_errors_uncorrected = Some(0);
         checked_clean.reliability.write_errors_uncorrected = Some(0);
         checked_clean.reliability.nvme_critical_warning = Some(0);
         classify_storage(&mut checked_clean);
 
-        let mut uncheckable = StorageDeviceTelemetry { windows_health_status: "Healthy".into(), ..Default::default() };
+        let mut uncheckable = StorageDeviceTelemetry {
+            windows_health_status: "Healthy".into(),
+            ..Default::default()
+        };
         // read_errors_uncorrected / write_errors_uncorrected / nvme_critical_warning
         // all stay None — never reported, not confirmed zero.
         classify_storage(&mut uncheckable);
@@ -446,16 +522,30 @@ mod tests {
     #[cfg(windows)]
     #[test]
     #[ignore = "read-only live Windows storage/memory telemetry"]
-    fn live_storage_and_memory_collection_is_read_only() { let snapshot=collect().expect("collect hardware telemetry"); assert!(snapshot.memory.as_ref().is_some_and(|memory| memory.total_physical_bytes > 0)); }
+    fn live_storage_and_memory_collection_is_read_only() {
+        let snapshot = collect().expect("collect hardware telemetry");
+        assert!(
+            snapshot
+                .memory
+                .as_ref()
+                .is_some_and(|memory| memory.total_physical_bytes > 0)
+        );
+    }
 
     #[test]
     fn ata_parser_rejects_truncated_driver_response() {
-        assert!(matches!(parse_ata_smart_sector(&[0u8; 511]), Err(TelemetryError::MalformedResponse(_))));
+        assert!(matches!(
+            parse_ata_smart_sector(&[0u8; 511]),
+            Err(TelemetryError::MalformedResponse(_))
+        ));
     }
 
     #[test]
     fn nvme_parser_rejects_truncated_vendor_response() {
-        assert!(matches!(parse_nvme_health_log(&[0u8; 191]), Err(TelemetryError::MalformedResponse(_))));
+        assert!(matches!(
+            parse_nvme_health_log(&[0u8; 191]),
+            Err(TelemetryError::MalformedResponse(_))
+        ));
     }
 
     #[test]
@@ -514,5 +604,4 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].id, 9);
     }
-
 }

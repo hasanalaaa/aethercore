@@ -348,21 +348,26 @@ mod tests {
 
         // The tag is what run_audit stamps into the report, and what
         // apps/aetherctl/src/sec.rs turns into host_fingerprint.
-        assert_eq!(run_audit(&[model::AuditTarget::FirewallState]).platform, tag);
+        assert_eq!(
+            run_audit(&[model::AuditTarget::FirewallState]).platform,
+            tag
+        );
     }
 
     #[test]
     fn try_new_refuses_empty_evidence() {
-        assert!(SecFinding::try_new(
-            "X",
-            "code",
-            Severity::Low,
-            vec![],
-            None,
-            "k",
-            Confidence::Exact
-        )
-        .is_none());
+        assert!(
+            SecFinding::try_new(
+                "X",
+                "code",
+                Severity::Low,
+                vec![],
+                None,
+                "k",
+                Confidence::Exact
+            )
+            .is_none()
+        );
     }
 
     #[test]

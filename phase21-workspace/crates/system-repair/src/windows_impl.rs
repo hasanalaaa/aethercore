@@ -8,12 +8,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{dism_api::check_online_image_health, RepairCheck, RepairError, RepairPlatform, Result};
+use super::{
+    RepairCheck, RepairError, RepairPlatform, Result, dism_api::check_online_image_health,
+};
 use aethercore_operation_engine::SystemRepairAction;
 use aethercore_windows_foundation::{MachineMutationGuard, OwnedServiceHandle};
 use windows::{
+    Win32::System::Services::{
+        OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, SC_MANAGER_CONNECT,
+        SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START,
+        SERVICE_STATUS_PROCESS, StartServiceW,
+    },
     core::PCWSTR,
-    Win32::System::Services::{OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START, SERVICE_STATUS_PROCESS},
 };
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -43,18 +49,35 @@ impl RepairPlatform for WindowsRepairPlatform {
             "sfc-verify",
             "Protected system files",
             "%WINDIR%\\Logs\\CBS\\CBS.log",
-            || run_sfc(&system32.join("sfc.exe"), &["/verifyonly"], "sfc-verify", "Protected system files", &root),
+            || {
+                run_sfc(
+                    &system32.join("sfc.exe"),
+                    &["/verifyonly"],
+                    "sfc-verify",
+                    "Protected system files",
+                    &root,
+                )
+            },
         ));
         checks.push(servicing_state_check());
         let update = update_health_check();
         let update_failed = update.result_code == "UpdateFailure";
         checks.push(update);
-        if update_failed { checks.push(required_update_service_check()); }
+        if update_failed {
+            checks.push(required_update_service_check());
+        }
         checks.push(probe_or_unknown(
             "disk-scan",
             "System volume online scan",
             "Event Viewer → Application → Chkdsk",
-            || run_chkdsk_scan(&system32.join("chkdsk.exe"), &volume, "disk-scan", "System volume online scan"),
+            || {
+                run_chkdsk_scan(
+                    &system32.join("chkdsk.exe"),
+                    &volume,
+                    "disk-scan",
+                    "System volume online scan",
+                )
+            },
         ));
         checks.push(winre_presence_check(&system32));
         checks.push(restore_readiness_check(&root));
@@ -72,9 +95,17 @@ impl RepairPlatform for WindowsRepairPlatform {
         if action.run_component_store || action.run_system_files {
             match aethercore_windows_update::ensure_servicing_available() {
                 Ok(()) => emit(servicing_available_check()),
-                Err(aethercore_windows_update::UpdateError::Busy) => return Err(RepairError::ServicingBusy),
-                Err(aethercore_windows_update::UpdateError::RebootPending) => return Err(RepairError::RebootPending),
-                Err(error) => return Err(RepairError::Command(format!("Windows Update servicing preflight failed: {error}"))),
+                Err(aethercore_windows_update::UpdateError::Busy) => {
+                    return Err(RepairError::ServicingBusy);
+                }
+                Err(aethercore_windows_update::UpdateError::RebootPending) => {
+                    return Err(RepairError::RebootPending);
+                }
+                Err(error) => {
+                    return Err(RepairError::Command(format!(
+                        "Windows Update servicing preflight failed: {error}"
+                    )));
+                }
             }
         }
 
@@ -84,7 +115,8 @@ impl RepairPlatform for WindowsRepairPlatform {
         // Revalidate the component-store state using the DISM API immediately before mutation.
         // A now-healthy image invalidates the old repair assumption rather than replaying RestoreHealth.
         if action.run_component_store {
-            let check = check_online_image_health(false, "dism-preflight", "Component store preflight")?;
+            let check =
+                check_online_image_health(false, "dism-preflight", "Component store preflight")?;
             match check.result_code.as_str() {
                 "ComponentStoreRepairable" => emit(check),
                 "ComponentStoreHealthy" => return Err(RepairError::StaleAssessment),
@@ -93,12 +125,17 @@ impl RepairPlatform for WindowsRepairPlatform {
             }
         }
 
-        let start_required_service = action.repair_action_ids.iter().any(|id| id == "start-required-service");
+        let start_required_service = action
+            .repair_action_ids
+            .iter()
+            .any(|id| id == "start-required-service");
         if action.run_component_store || action.run_system_files || start_required_service {
             begin_mutation()?;
         }
 
-        if start_required_service { emit(start_update_service()?); }
+        if start_required_service {
+            emit(start_update_service()?);
+        }
         if action.run_component_store {
             emit(run_dism_restore(&system32.join("dism.exe"))?);
         }
@@ -123,15 +160,15 @@ impl RepairPlatform for WindowsRepairPlatform {
         Ok(())
     }
 
-    fn verify(
-        &self,
-        action: &SystemRepairAction,
-        emit: &mut dyn FnMut(RepairCheck),
-    ) -> Result<()> {
+    fn verify(&self, action: &SystemRepairAction, emit: &mut dyn FnMut(RepairCheck)) -> Result<()> {
         let root = system_root()?;
         let system32 = root.join("System32");
         if action.run_component_store {
-            emit(check_online_image_health(true, "verify-dism", "Verify component store")?);
+            emit(check_online_image_health(
+                true,
+                "verify-dism",
+                "Verify component store",
+            )?);
         }
         if action.run_system_files {
             emit(run_sfc(
@@ -151,7 +188,11 @@ impl RepairPlatform for WindowsRepairPlatform {
                 "Verify system volume",
             )?);
         }
-        if action.repair_action_ids.iter().any(|id| id == "start-required-service") {
+        if action
+            .repair_action_ids
+            .iter()
+            .any(|id| id == "start-required-service")
+        {
             let mut check = required_update_service_check();
             check.id = "verify-required-service".into();
             check.title = "Verify required Windows Update service".into();
@@ -175,20 +216,50 @@ fn acquire_servicing_guard() -> Result<ServicingGuard> {
 fn update_health_check() -> RepairCheck {
     let probe = aethercore_windows_update::probe_update_health();
     RepairCheck {
-        id: "windows-update".into(), title: "Windows Update".into(),
-        stage: if probe.result_code == "UpdateHealthy" { "Completed" } else if probe.result_code == "UpdateOffline" { "Unknown" } else { "Attention" }.into(),
-        result_code: probe.result_code, exit_code: probe.hresult, detail: probe.detail, log_hint: "Windows Update Agent".into(),
+        id: "windows-update".into(),
+        title: "Windows Update".into(),
+        stage: if probe.result_code == "UpdateHealthy" {
+            "Completed"
+        } else if probe.result_code == "UpdateOffline" {
+            "Unknown"
+        } else {
+            "Attention"
+        }
+        .into(),
+        result_code: probe.result_code,
+        exit_code: probe.hresult,
+        detail: probe.detail,
+        log_hint: "Windows Update Agent".into(),
     }
 }
 
 fn service_running(name: &str) -> Result<bool> {
     unsafe {
-        let scm = OwnedServiceHandle::new(OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT).map_err(|e| RepairError::Command(format!("OpenSCManagerW: {e}")))?);
-        let wide = name.encode_utf16().chain(std::iter::once(0)).collect::<Vec<_>>();
-        let service = OwnedServiceHandle::new(OpenServiceW(scm.get(), PCWSTR(wide.as_ptr()), SERVICE_QUERY_STATUS).map_err(|e| RepairError::Command(format!("OpenServiceW({name}): {e}")))?);
-        let mut status = SERVICE_STATUS_PROCESS::default(); let mut needed = 0u32;
-        let bytes = std::slice::from_raw_parts_mut((&mut status as *mut SERVICE_STATUS_PROCESS).cast::<u8>(), std::mem::size_of::<SERVICE_STATUS_PROCESS>());
-        QueryServiceStatusEx(service.get(), SC_STATUS_PROCESS_INFO, Some(bytes), &mut needed).map_err(|e| RepairError::Command(format!("QueryServiceStatusEx({name}): {e}")))?;
+        let scm = OwnedServiceHandle::new(
+            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)
+                .map_err(|e| RepairError::Command(format!("OpenSCManagerW: {e}")))?,
+        );
+        let wide = name
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let service = OwnedServiceHandle::new(
+            OpenServiceW(scm.get(), PCWSTR(wide.as_ptr()), SERVICE_QUERY_STATUS)
+                .map_err(|e| RepairError::Command(format!("OpenServiceW({name}): {e}")))?,
+        );
+        let mut status = SERVICE_STATUS_PROCESS::default();
+        let mut needed = 0u32;
+        let bytes = std::slice::from_raw_parts_mut(
+            (&mut status as *mut SERVICE_STATUS_PROCESS).cast::<u8>(),
+            std::mem::size_of::<SERVICE_STATUS_PROCESS>(),
+        );
+        QueryServiceStatusEx(
+            service.get(),
+            SC_STATUS_PROCESS_INFO,
+            Some(bytes),
+            &mut needed,
+        )
+        .map_err(|e| RepairError::Command(format!("QueryServiceStatusEx({name}): {e}")))?;
         Ok(status.dwCurrentState == SERVICE_RUNNING)
     }
 }
@@ -203,11 +274,25 @@ fn required_update_service_check() -> RepairCheck {
 
 fn start_update_service() -> Result<RepairCheck> {
     unsafe {
-        let scm = OwnedServiceHandle::new(OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT).map_err(|e| RepairError::Command(format!("OpenSCManagerW: {e}")))?);
-        let wide = "wuauserv".encode_utf16().chain(std::iter::once(0)).collect::<Vec<_>>();
-        let service = OwnedServiceHandle::new(OpenServiceW(scm.get(), PCWSTR(wide.as_ptr()), SERVICE_START | SERVICE_QUERY_STATUS).map_err(|e| RepairError::Command(format!("OpenServiceW(wuauserv): {e}")))?);
+        let scm = OwnedServiceHandle::new(
+            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)
+                .map_err(|e| RepairError::Command(format!("OpenSCManagerW: {e}")))?,
+        );
+        let wide = "wuauserv"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let service = OwnedServiceHandle::new(
+            OpenServiceW(
+                scm.get(),
+                PCWSTR(wide.as_ptr()),
+                SERVICE_START | SERVICE_QUERY_STATUS,
+            )
+            .map_err(|e| RepairError::Command(format!("OpenServiceW(wuauserv): {e}")))?,
+        );
         if !service_running("wuauserv")? {
-            StartServiceW(service.get(), None).map_err(|e| RepairError::Command(format!("StartServiceW(wuauserv): {e}")))?;
+            StartServiceW(service.get(), None)
+                .map_err(|e| RepairError::Command(format!("StartServiceW(wuauserv): {e}")))?;
         }
     }
     Ok(RepairCheck { id:"start-required-service".into(), title:"Start required Windows Update service".into(), stage:"Completed".into(), result_code:"MutationSucceeded".into(), exit_code:0, detail:"AetherCore requested the fixed diagnosis-scoped wuauserv service to start. Verification will query the service state separately.".into(), log_hint:"wuauserv".into() })
@@ -238,9 +323,15 @@ fn servicing_state_check() -> RepairCheck {
 
 fn servicing_available_check() -> RepairCheck {
     RepairCheck {
-        id: "servicing-state".into(), title: "Windows servicing state".into(), stage: "Completed".into(),
-        result_code: "ServicingAvailable".into(), exit_code: 0,
-        detail: "Windows servicing is not reporting an active installer or required pre-install reboot.".into(), log_hint: String::new(),
+        id: "servicing-state".into(),
+        title: "Windows servicing state".into(),
+        stage: "Completed".into(),
+        result_code: "ServicingAvailable".into(),
+        exit_code: 0,
+        detail:
+            "Windows servicing is not reporting an active installer or required pre-install reboot."
+                .into(),
+        log_hint: String::new(),
     }
 }
 
@@ -251,8 +342,13 @@ where
     match probe() {
         Ok(value) => value,
         Err(error) => RepairCheck {
-            id: id.into(), title: title.into(), stage: "Unknown".into(), result_code: "ProbeUnavailable".into(), exit_code: -1,
-            detail: sanitize(&format!("This check could not be completed: {error}")), log_hint: log_hint.into(),
+            id: id.into(),
+            title: title.into(),
+            stage: "Unknown".into(),
+            result_code: "ProbeUnavailable".into(),
+            exit_code: -1,
+            detail: sanitize(&format!("This check could not be completed: {error}")),
+            log_hint: log_hint.into(),
         },
     }
 }
@@ -335,7 +431,12 @@ fn run_sfc(exe: &Path, args: &[&str], id: &str, title: &str, root: &Path) -> Res
         }
         CbsIntegrityEvidence::Unknown => {
             check.stage = "Unknown".into();
-            check.result_code = if repair_mode { "SystemFilesRepairUnverified" } else { "SystemFilesUnknown" }.into();
+            check.result_code = if repair_mode {
+                "SystemFilesRepairUnverified"
+            } else {
+                "SystemFilesUnknown"
+            }
+            .into();
             check.detail = "SFC completed, but stable machine-readable evidence was insufficient to prove protected-file health. Console-language parsing is intentionally not used.".into();
         }
     }
@@ -343,21 +444,39 @@ fn run_sfc(exe: &Path, args: &[&str], id: &str, title: &str, root: &Path) -> Res
 }
 
 #[derive(Clone, Copy)]
-enum CbsIntegrityEvidence { NoViolation, ViolationRepaired, ViolationUnresolved, Unknown }
+enum CbsIntegrityEvidence {
+    NoViolation,
+    ViolationRepaired,
+    ViolationUnresolved,
+    Unknown,
+}
 
 fn parse_recent_cbs_sr(path: &Path) -> CbsIntegrityEvidence {
-    let Ok(metadata) = fs::metadata(path) else { return CbsIntegrityEvidence::Unknown; };
-    let Ok(mut file) = fs::File::open(path) else { return CbsIntegrityEvidence::Unknown; };
+    let Ok(metadata) = fs::metadata(path) else {
+        return CbsIntegrityEvidence::Unknown;
+    };
+    let Ok(mut file) = fs::File::open(path) else {
+        return CbsIntegrityEvidence::Unknown;
+    };
     let start = metadata.len().saturating_sub(CBS_TAIL_LIMIT);
     if start > 0 {
         use std::io::{Seek, SeekFrom};
-        if file.seek(SeekFrom::Start(start)).is_err() { return CbsIntegrityEvidence::Unknown; }
+        if file.seek(SeekFrom::Start(start)).is_err() {
+            return CbsIntegrityEvidence::Unknown;
+        }
     }
     let mut bytes = Vec::new();
-    if file.take(CBS_TAIL_LIMIT).read_to_end(&mut bytes).is_err() { return CbsIntegrityEvidence::Unknown; }
+    if file.take(CBS_TAIL_LIMIT).read_to_end(&mut bytes).is_err() {
+        return CbsIntegrityEvidence::Unknown;
+    }
     let text = String::from_utf8_lossy(&bytes);
-    let sr = text.lines().filter(|line| line.contains("[SR]")).collect::<Vec<_>>();
-    if sr.is_empty() { return CbsIntegrityEvidence::Unknown; }
+    let sr = text
+        .lines()
+        .filter(|line| line.contains("[SR]"))
+        .collect::<Vec<_>>();
+    if sr.is_empty() {
+        return CbsIntegrityEvidence::Unknown;
+    }
 
     // These tokens are component identifiers emitted by CBS rather than localized SFC console prose.
     // The parser is deliberately conservative: anything ambiguous remains Unknown.
@@ -365,12 +484,18 @@ fn parse_recent_cbs_sr(path: &Path) -> CbsIntegrityEvidence {
         let lower = line.to_ascii_lowercase();
         lower.contains("cannot repair") || lower.contains("repair failed")
     });
-    if unresolved { return CbsIntegrityEvidence::ViolationUnresolved; }
+    if unresolved {
+        return CbsIntegrityEvidence::ViolationUnresolved;
+    }
     let repaired = sr.iter().any(|line| {
         let lower = line.to_ascii_lowercase();
-        lower.contains("repairing") || lower.contains("repaired file") || lower.contains("repair complete")
+        lower.contains("repairing")
+            || lower.contains("repaired file")
+            || lower.contains("repair complete")
     });
-    if repaired { return CbsIntegrityEvidence::ViolationRepaired; }
+    if repaired {
+        return CbsIntegrityEvidence::ViolationRepaired;
+    }
     CbsIntegrityEvidence::NoViolation
 }
 
@@ -452,26 +577,47 @@ fn run_with_accepted_codes(
         .map_err(|error| RepairError::Command(error.to_string()))?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    let stdout_thread = match thread::Builder::new().name("aether-repair-stdout".into()).spawn(move || read_tail(stdout, 32_768)) {
+    let stdout_thread = match thread::Builder::new()
+        .name("aether-repair-stdout".into())
+        .spawn(move || read_tail(stdout, 32_768))
+    {
         Ok(worker) => worker,
         Err(error) => {
-            let _ = child.kill(); let _ = child.wait();
-            return Err(RepairError::Command(format!("failed to create repair stdout reader: {error}")));
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(RepairError::Command(format!(
+                "failed to create repair stdout reader: {error}"
+            )));
         }
     };
-    let stderr_thread = match thread::Builder::new().name("aether-repair-stderr".into()).spawn(move || read_tail(stderr, 16_384)) {
+    let stderr_thread = match thread::Builder::new()
+        .name("aether-repair-stderr".into())
+        .spawn(move || read_tail(stderr, 16_384))
+    {
         Ok(worker) => worker,
         Err(error) => {
-            let _ = child.kill(); let _ = child.wait(); let _ = stdout_thread.join();
-            return Err(RepairError::Command(format!("failed to create repair stderr reader: {error}")));
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_thread.join();
+            return Err(RepairError::Command(format!(
+                "failed to create repair stderr reader: {error}"
+            )));
         }
     };
     let deadline = Instant::now() + COMMAND_TIMEOUT;
 
     let status = loop {
-        if let Some(status) = child.try_wait().map_err(|error| RepairError::Command(error.to_string()))? { break status; }
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| RepairError::Command(error.to_string()))?
+        {
+            break status;
+        }
         if Instant::now() >= deadline {
-            let _ = child.kill(); let _ = child.wait(); let _ = stdout_thread.join(); let _ = stderr_thread.join();
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
             return Err(RepairError::Command(format!("{title} timed out")));
         }
         thread::sleep(Duration::from_millis(500));
@@ -480,30 +626,59 @@ fn run_with_accepted_codes(
     let mut notes = Vec::new();
     let mut detail = super::joined_stream(stdout_thread.join(), "stdout", &mut notes);
     let error_output = super::joined_stream(stderr_thread.join(), "stderr", &mut notes);
-    if !error_output.trim().is_empty() { if !detail.is_empty() { detail.push('\n'); } detail.push_str(&error_output); }
+    if !error_output.trim().is_empty() {
+        if !detail.is_empty() {
+            detail.push('\n');
+        }
+        detail.push_str(&error_output);
+    }
     super::trim_to_tail(&mut detail, 48_000);
     // After truncation, so a lost stream is never itself truncated away.
-    for note in notes { if !detail.is_empty() { detail.push('\n'); } detail.push_str(&note); }
+    for note in notes {
+        if !detail.is_empty() {
+            detail.push('\n');
+        }
+        detail.push_str(&note);
+    }
 
     let code = status.code().unwrap_or(-1);
     if !accepted_codes.contains(&code) {
-        return Err(RepairError::Command(format!("{title} exited with code {code}; see {log_hint}")));
+        return Err(RepairError::Command(format!(
+            "{title} exited with code {code}; see {log_hint}"
+        )));
     }
 
     Ok(RepairCheck {
-        id: id.into(), title: title.into(), stage: "Completed".into(), result_code: format!("ExitCode{code}"), exit_code: code,
-        detail: sanitize(&detail), log_hint: log_hint.into(),
+        id: id.into(),
+        title: title.into(),
+        stage: "Completed".into(),
+        result_code: format!("ExitCode{code}"),
+        exit_code: code,
+        detail: sanitize(&detail),
+        log_hint: log_hint.into(),
     })
 }
 
 fn read_tail<R: Read>(reader: Option<R>, limit: usize) -> String {
-    let Some(mut reader) = reader else { return String::new(); };
+    let Some(mut reader) = reader else {
+        return String::new();
+    };
     let mut buffer = Vec::new();
     let _ = reader.read_to_end(&mut buffer);
-    if buffer.len() > limit { buffer.drain(..buffer.len() - limit); }
+    if buffer.len() > limit {
+        buffer.drain(..buffer.len() - limit);
+    }
     String::from_utf8_lossy(&buffer).into_owned()
 }
 
 fn sanitize(value: &str) -> String {
-    value.chars().filter(|character| *character == '\n' || *character == '\r' || *character == '\t' || !character.is_control()).collect()
+    value
+        .chars()
+        .filter(|character| {
+            *character == '\n'
+                || *character == '\r'
+                || *character == '\t'
+                || !character.is_control()
+        })
+        .collect()
 }

@@ -44,11 +44,21 @@ pub enum FactState {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
-pub enum DiagnosisRole { RootCause, ContributingCondition, Symptom }
+pub enum DiagnosisRole {
+    RootCause,
+    ContributingCondition,
+    Symptom,
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "camelCase")]
-pub enum DiagnosisConfidence { Unknown, Low, Medium, High, Confirmed }
+pub enum DiagnosisConfidence {
+    Unknown,
+    Low,
+    Medium,
+    High,
+    Confirmed,
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "camelCase")]

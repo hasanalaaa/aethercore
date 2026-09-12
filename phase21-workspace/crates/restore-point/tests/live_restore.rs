@@ -16,6 +16,9 @@ fn creates_verifies_and_cancels_a_fresh_restore_point() {
         .expect("Windows must create and WMI must verify a fresh AetherCore restore point");
     assert!(evidence.verified_fresh);
     assert!(evidence.sequence_number > 0);
-    aethercore_restore_point::cancel_driver_install(evidence.sequence_number, &evidence.description)
-        .expect("probe restore point must be cancelled cleanly");
+    aethercore_restore_point::cancel_driver_install(
+        evidence.sequence_number,
+        &evidence.description,
+    )
+    .expect("probe restore point must be cancelled cleanly");
 }

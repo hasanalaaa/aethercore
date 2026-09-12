@@ -379,8 +379,8 @@ pub fn verify_maintenance_service_token(service_name: &str) -> Result<(), Securi
         Win32::{
             Foundation::{ERROR_INSUFFICIENT_BUFFER, HANDLE},
             Security::{
-                CheckTokenMembership, GetTokenInformation, IsValidSid, LookupAccountNameW,
-                PSID, SID_NAME_USE, TOKEN_QUERY, TokenRestrictedSids,
+                CheckTokenMembership, GetTokenInformation, IsValidSid, LookupAccountNameW, PSID,
+                SID_NAME_USE, TOKEN_QUERY, TokenRestrictedSids,
             },
             System::Threading::{GetCurrentProcess, OpenProcessToken},
         },
@@ -665,7 +665,10 @@ mod tests {
     fn sid_text_matches_the_canonical_string_form() {
         // S-1-5-18 (LocalSystem): revision 1, one sub-authority, authority 5.
         let local_system = [1u8, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0];
-        assert_eq!(sid_text_from_bytes(&local_system).as_deref(), Some("S-1-5-18"));
+        assert_eq!(
+            sid_text_from_bytes(&local_system).as_deref(),
+            Some("S-1-5-18")
+        );
 
         // A real machine account SID, the shape the audit allowlist actually keys on:
         // S-1-5-21-3596463104-2050256853-579393690-1003.
@@ -680,7 +683,10 @@ mod tests {
 
         // Malformed input is refused rather than guessed at: wrong revision, truncated
         // sub-authority array, and an impossible sub-authority count.
-        assert_eq!(sid_text_from_bytes(&[2u8, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0]), None);
+        assert_eq!(
+            sid_text_from_bytes(&[2u8, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0]),
+            None
+        );
         assert_eq!(sid_text_from_bytes(&[1u8, 1, 0, 0, 0, 0, 0, 5, 18]), None);
         assert_eq!(sid_text_from_bytes(&[1u8, 99, 0, 0, 0, 0, 0, 5]), None);
         assert_eq!(sid_text_from_bytes(&[]), None);

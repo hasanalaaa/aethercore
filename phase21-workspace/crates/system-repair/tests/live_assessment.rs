@@ -2,12 +2,16 @@
 
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-use std::{sync::Arc, thread, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use aethercore_operation_engine::OperationEngine;
+use aethercore_operation_kernel::{ReadBudgetManager, ReadWorkload};
 use aethercore_persistence::Database;
 use aethercore_system_repair::{RepairAssessmentState, RepairCoordinator};
-use aethercore_operation_kernel::{ReadBudgetManager, ReadWorkload};
 use uuid::Uuid;
 
 #[test]
@@ -18,19 +22,27 @@ fn live_windows_repair_assessment_is_read_only_and_completes() {
     let engine = Arc::new(OperationEngine::new(db.clone()));
     let coordinator = RepairCoordinator::new(engine, db);
     let budget = ReadBudgetManager::new(4);
-    let lease = budget.try_acquire(ReadWorkload::RepairAssessment).expect("read budget lease");
-    coordinator.start_assessment_with_lease(OWNER, lease).expect("start assessment");
+    let lease = budget
+        .try_acquire(ReadWorkload::RepairAssessment)
+        .expect("read budget lease");
+    coordinator
+        .start_assessment_with_lease(OWNER, lease)
+        .expect("start assessment");
 
     let deadline = Instant::now() + Duration::from_secs(60 * 30);
     loop {
-        let assessment = coordinator.assessment_for_owner(OWNER).expect("owned assessment");
+        let assessment = coordinator
+            .assessment_for_owner(OWNER)
+            .expect("owned assessment");
         match assessment.state {
             RepairAssessmentState::Ready => {
                 assert!(!assessment.assessment_id.is_empty());
                 assert!(!assessment.checks.is_empty());
                 break;
             }
-            RepairAssessmentState::Failed => panic!("assessment failed: {}", assessment.error_message),
+            RepairAssessmentState::Failed => {
+                panic!("assessment failed: {}", assessment.error_message)
+            }
             _ => {}
         }
         assert!(Instant::now() < deadline, "live assessment timed out");

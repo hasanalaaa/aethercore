@@ -2000,9 +2000,9 @@ async fn request_insight(
 
 fn extract_assistant_turn(resp: v1::Response) -> Result<v1::AssistantTurn, String> {
     match resp.payload {
-        Some(response::Payload::AssistantTurn(p)) => {
-            p.turn.ok_or_else(|| "assistant response carried no turn".to_string())
-        }
+        Some(response::Payload::AssistantTurn(p)) => p
+            .turn
+            .ok_or_else(|| "assistant response carried no turn".to_string()),
         _ => Err("unexpected assistant response".into()),
     }
 }

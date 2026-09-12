@@ -247,13 +247,11 @@ mod tests {
         rotate_if_needed(&path, 6).unwrap();
         assert!(!path.exists());
         assert!(path.with_extension("previous.jsonl").exists());
-
     }
 
     #[test]
     fn rotated_generations_are_deterministic_keep_last_n() {
-        let guard =
-            tempfile::tempdir().expect("temp dir");
+        let guard = tempfile::tempdir().expect("temp dir");
         let root = guard.path().to_path_buf();
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("service.jsonl");
@@ -286,14 +284,12 @@ mod tests {
             b"current"
         );
         assert!(!root.join("service.jsonl.3").exists());
-
     }
 
     #[test]
     fn rotating_writer_rolls_at_runtime_cap() {
         use std::io::Write as _;
-        let guard =
-            tempfile::tempdir().expect("temp dir");
+        let guard = tempfile::tempdir().expect("temp dir");
         let root = guard.path().to_path_buf();
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("service.jsonl");
@@ -322,6 +318,5 @@ mod tests {
             std::fs::read(root.join("service.jsonl.1")).unwrap(),
             b"aaaaaaaaaaaaaaaa"
         );
-
     }
 }

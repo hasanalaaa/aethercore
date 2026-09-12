@@ -52,10 +52,10 @@ impl ProgressTelemetryStore {
         if value.emitted_unix_ms == 0 {
             value.emitted_unix_ms = Utc::now().timestamp_millis();
         }
-        self.inner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .insert((value.owner_principal_key.clone(), value.plan_id.clone()), value.clone());
+        self.inner.lock().unwrap_or_else(|p| p.into_inner()).insert(
+            (value.owner_principal_key.clone(), value.plan_id.clone()),
+            value.clone(),
+        );
         if let Some(observer) = self.observer.as_ref() {
             observer(value);
         }
@@ -100,7 +100,10 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(
-            store.get_for_owner("owner-a", "plan-a").unwrap().overall_percent,
+            store
+                .get_for_owner("owner-a", "plan-a")
+                .unwrap()
+                .overall_percent,
             37
         );
         assert_eq!(observed.lock().unwrap().len(), 1);
@@ -121,10 +124,19 @@ mod tests {
             detail: "b".into(),
             ..Default::default()
         });
-        assert_eq!(store.get_for_owner("owner-a", "same-plan").unwrap().detail, "a");
-        assert_eq!(store.get_for_owner("owner-b", "same-plan").unwrap().detail, "b");
+        assert_eq!(
+            store.get_for_owner("owner-a", "same-plan").unwrap().detail,
+            "a"
+        );
+        assert_eq!(
+            store.get_for_owner("owner-b", "same-plan").unwrap().detail,
+            "b"
+        );
         store.clear_for_owner("owner-a", "same-plan");
         assert!(store.get_for_owner("owner-a", "same-plan").is_none());
-        assert_eq!(store.get_for_owner("owner-b", "same-plan").unwrap().detail, "b");
+        assert_eq!(
+            store.get_for_owner("owner-b", "same-plan").unwrap().detail,
+            "b"
+        );
     }
 }

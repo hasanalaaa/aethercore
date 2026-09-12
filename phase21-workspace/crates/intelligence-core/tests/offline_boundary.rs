@@ -18,9 +18,27 @@ use std::process::Command;
 /// Crates that can open a socket. Transitive presence of ANY of these marks a
 /// workspace crate network-capable.
 const NETWORK_CAPABLE: &[&str] = &[
-    "reqwest", "hyper", "hyper-util", "h2", "ureq", "curl", "isahc", "surf", "attohttpc",
-    "tungstenite", "tokio-tungstenite", "quinn", "tonic", "axum", "warp", "actix-web",
-    "native-tls", "openssl", "rustls", "trust-dns-resolver", "hickory-resolver",
+    "reqwest",
+    "hyper",
+    "hyper-util",
+    "h2",
+    "ureq",
+    "curl",
+    "isahc",
+    "surf",
+    "attohttpc",
+    "tungstenite",
+    "tokio-tungstenite",
+    "quinn",
+    "tonic",
+    "axum",
+    "warp",
+    "actix-web",
+    "native-tls",
+    "openssl",
+    "rustls",
+    "trust-dns-resolver",
+    "hickory-resolver",
 ];
 
 /// The ONLY workspace crates allowed a network stack. Adding a name here is a

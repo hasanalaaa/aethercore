@@ -12,7 +12,7 @@ mod work_budget;
 use std::sync::Arc;
 
 use aethercore_contracts::v1::{
-    self, event_envelope, EventKind, MutationLeaseState, MutationWorkloadKind,
+    self, EventKind, MutationLeaseState, MutationWorkloadKind, event_envelope,
 };
 use aethercore_operation_engine::OperationEngine;
 use aethercore_persistence::Database;
@@ -20,11 +20,11 @@ use chrono::Utc;
 
 pub use authorization::AuthorizationManager;
 pub use cancellation::{
-    CancellationError, CancellationRegistry, CancellationToken, RequestContext,
-    RequestContextError,
+    CancellationError, CancellationRegistry, CancellationToken, RequestContext, RequestContextError,
 };
 pub use event_bus::{
-    EventBus, EventBusMetrics, EventSubscription, OwnerEventBusMetrics, PublishedEvent, ReplayBatch, SubscriptionItem,
+    EventBus, EventBusMetrics, EventSubscription, OwnerEventBusMetrics, PublishedEvent,
+    ReplayBatch, SubscriptionItem,
 };
 pub use mutation::{
     MutationError, MutationLease, MutationLeaseChange, MutationLeaseSnapshot, MutationSupervisor,
@@ -34,7 +34,6 @@ pub use recovery::{RecoveryError, RecoverySupervisor};
 pub use state_machine::StateMachine;
 pub use telemetry::{ProgressTelemetry, ProgressTelemetryStore};
 pub use work_budget::{ReadBudgetError, ReadBudgetLease, ReadBudgetManager, ReadWorkload};
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SchedulerCadenceState {
@@ -68,12 +67,8 @@ impl OperationKernel {
         let mutation_events = events.clone();
         let mutations = MutationSupervisor::with_observer(Arc::new(move |change| {
             let (snapshot, state) = match change {
-                MutationLeaseChange::Acquired(snapshot) => {
-                    (snapshot, MutationLeaseState::Acquired)
-                }
-                MutationLeaseChange::Released(snapshot) => {
-                    (snapshot, MutationLeaseState::Released)
-                }
+                MutationLeaseChange::Acquired(snapshot) => (snapshot, MutationLeaseState::Acquired),
+                MutationLeaseChange::Released(snapshot) => (snapshot, MutationLeaseState::Released),
             };
             let workload = match snapshot.workload {
                 MutationWorkload::DriverInstall => MutationWorkloadKind::DriverInstall,
@@ -177,14 +172,20 @@ impl OperationKernel {
     pub fn telemetry(&self) -> &ProgressTelemetryStore {
         &self.telemetry
     }
-    pub fn scheduler_cadence(&self, owner_principal_key: &str, workload: &str) -> Result<Option<SchedulerCadenceState>, String> {
+    pub fn scheduler_cadence(
+        &self,
+        owner_principal_key: &str,
+        workload: &str,
+    ) -> Result<Option<SchedulerCadenceState>, String> {
         self.database
             .scheduler_run(owner_principal_key, workload)
-            .map(|value| value.map(|record| SchedulerCadenceState {
-                failure_count: record.failure_count,
-                next_eligible_unix_ms: record.next_eligible_unix_ms,
-                last_completed_unix_ms: record.last_completed_unix_ms,
-            }))
+            .map(|value| {
+                value.map(|record| SchedulerCadenceState {
+                    failure_count: record.failure_count,
+                    next_eligible_unix_ms: record.next_eligible_unix_ms,
+                    last_completed_unix_ms: record.last_completed_unix_ms,
+                })
+            })
             .map_err(|error| error.to_string())
     }
 
@@ -209,7 +210,8 @@ impl OperationKernel {
             last_completed_unix_ms,
             updated_unix_ms: Utc::now().timestamp_millis(),
         };
-        self.database.upsert_scheduler_run(&record).map_err(|error| error.to_string())
+        self.database
+            .upsert_scheduler_run(&record)
+            .map_err(|error| error.to_string())
     }
-
 }

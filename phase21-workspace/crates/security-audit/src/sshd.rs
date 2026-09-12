@@ -5,7 +5,7 @@
 //! marks confidence=Inferred. No process is spawned, nothing is written.
 
 use crate::model::{
-    sort_and_clamp, AuditTarget, Confidence, EvidenceRef, SecFinding, Severity, MAX_PARSE_BYTES,
+    AuditTarget, Confidence, EvidenceRef, MAX_PARSE_BYTES, SecFinding, Severity, sort_and_clamp,
 };
 use std::path::Path;
 
@@ -145,7 +145,9 @@ pub fn audit_sshd_config(path_str: &str) -> Result<Vec<SecFinding>, String> {
                 let violates = if rule.code == "ssh.max_auth_tries" {
                     tok.parse::<u32>().map(|n| n > 4).unwrap_or(true)
                 } else if rule.code == "ssh.client_alive" {
-                    tok.parse::<u64>().map(|n| !(1..=900).contains(&n)).unwrap_or(true)
+                    tok.parse::<u64>()
+                        .map(|n| !(1..=900).contains(&n))
+                        .unwrap_or(true)
                 } else {
                     rule.bad_values.contains(&tok.as_str())
                 };
@@ -163,8 +165,9 @@ pub fn audit_sshd_config(path_str: &str) -> Result<Vec<SecFinding>, String> {
                         rule.cis,
                         rule.summary_key,
                         Confidence::Exact,
-                    ) {
-                        findings.push(f);
+                    )
+                {
+                    findings.push(f);
                 }
             }
             None => {
@@ -186,8 +189,9 @@ pub fn audit_sshd_config(path_str: &str) -> Result<Vec<SecFinding>, String> {
                         rule.cis,
                         rule.summary_key,
                         Confidence::Inferred,
-                    ) {
-                        findings.push(f);
+                    )
+                {
+                    findings.push(f);
                 }
                 // All other rules' documented defaults are compliant ⇒ an absent
                 // directive is honest silence (no violation claim).
@@ -241,8 +245,7 @@ mod tests {
     #[test]
     fn a_non_numeric_max_auth_tries_value_is_flagged_not_silently_compliant() {
         let cfg = TempConfig::write("bad-max-auth-tries", "MaxAuthTries abc\n");
-        let findings =
-            audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
+        let findings = audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
         assert!(
             codes(&findings).contains(&"ssh.max_auth_tries"),
             "a non-numeric MaxAuthTries must be flagged, got: {findings:?}"
@@ -255,8 +258,7 @@ mod tests {
     #[test]
     fn a_non_numeric_client_alive_interval_value_is_flagged() {
         let cfg = TempConfig::write("bad-client-alive", "ClientAliveInterval abc\n");
-        let findings =
-            audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
+        let findings = audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
         assert!(
             codes(&findings).contains(&"ssh.client_alive"),
             "a non-numeric ClientAliveInterval must be flagged, got: {findings:?}"
@@ -266,8 +268,7 @@ mod tests {
     #[test]
     fn a_compliant_numeric_max_auth_tries_value_is_not_flagged() {
         let cfg = TempConfig::write("ok-max-auth-tries", "MaxAuthTries 3\n");
-        let findings =
-            audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
+        let findings = audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
         assert!(
             !codes(&findings).contains(&"ssh.max_auth_tries"),
             "a compliant value must not be flagged, got: {findings:?}"
@@ -277,8 +278,7 @@ mod tests {
     #[test]
     fn an_out_of_range_numeric_max_auth_tries_value_is_still_flagged() {
         let cfg = TempConfig::write("high-max-auth-tries", "MaxAuthTries 999999999999\n");
-        let findings =
-            audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
+        let findings = audit_sshd_config(cfg.path.to_str().unwrap()).expect("parse succeeds");
         assert!(
             codes(&findings).contains(&"ssh.max_auth_tries"),
             "an out-of-u32-range value overflows parse and must fail closed too, got: {findings:?}"

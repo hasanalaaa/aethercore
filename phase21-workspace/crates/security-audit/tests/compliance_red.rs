@@ -300,7 +300,10 @@ fn digest_sorts_semantically_and_excludes_timestamp() {
     );
     assert_eq!(compliance::render_html(&a), compliance::render_html(&b));
     b.generated_unix_ms = a.generated_unix_ms;
-    assert_eq!(serde_json::to_vec(&a).unwrap(), serde_json::to_vec(&b).unwrap());
+    assert_eq!(
+        serde_json::to_vec(&a).unwrap(),
+        serde_json::to_vec(&b).unwrap()
+    );
     println!("GD-2 digest identical: {}", a.digest);
     println!("GD-2 JSON identical after timestamp allowlist normalization: true");
     println!("GD-2 HTML identical: true");

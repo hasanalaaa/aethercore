@@ -55,9 +55,6 @@ mod tests {
     #[test]
     fn the_principal_is_derived_from_the_service_name() {
         assert!(service_principal().ends_with(SERVICE_NAME));
-        assert_eq!(
-            service_principal(),
-            format!(r"NT SERVICE\{}", SERVICE_NAME)
-        );
+        assert_eq!(service_principal(), format!(r"NT SERVICE\{}", SERVICE_NAME));
     }
 }

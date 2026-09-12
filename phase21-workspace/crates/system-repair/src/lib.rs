@@ -6,16 +6,20 @@ use std::{
 };
 
 use aethercore_operation_engine::{
-    now_ms, OperationEngine, PlanState, PlanView, SystemRepairAction,
+    OperationEngine, PlanState, PlanView, SystemRepairAction, now_ms,
 };
-use aethercore_operation_kernel::{MutationLease, MutationWorkload, ProgressTelemetry, ProgressTelemetryStore, ReadBudgetLease, ReadWorkload};
+use aethercore_operation_kernel::{
+    MutationLease, MutationWorkload, ProgressTelemetry, ProgressTelemetryStore, ReadBudgetLease,
+    ReadWorkload,
+};
 use aethercore_persistence::{
-    Database, MaintenanceExecutionRecord, MaintenanceItemRecord, RecoveryRecord, RepairRebootResumeRecord, RepairTimelineEventRecord,
+    Database, MaintenanceExecutionRecord, MaintenanceItemRecord, RecoveryRecord,
+    RepairRebootResumeRecord, RepairTimelineEventRecord,
 };
 use aethercore_windows_repair_intelligence::{
-    analyze as analyze_windows_repair, canonical_machine_state_fingerprint, reboot_resume_token, DiagnosisConfidence,
-    FactState, RecoveryReadiness, RepairActionKind, RepairDomain, RepairFact,
+    DiagnosisConfidence, FactState, RecoveryReadiness, RepairActionKind, RepairDomain, RepairFact,
     RepairIntelligenceSnapshot, RepairObservationSet, RepairOutcome, RepairSafetyTier,
+    analyze as analyze_windows_repair, canonical_machine_state_fingerprint, reboot_resume_token,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -160,11 +164,7 @@ pub trait RepairPlatform: Send + Sync + 'static {
         begin_mutation: &mut dyn FnMut() -> Result<()>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()>;
-    fn verify(
-        &self,
-        action: &SystemRepairAction,
-        emit: &mut dyn FnMut(RepairCheck),
-    ) -> Result<()>;
+    fn verify(&self, action: &SystemRepairAction, emit: &mut dyn FnMut(RepairCheck)) -> Result<()>;
 }
 
 /// Takes one output-reader thread's join result, recording a note instead of an
@@ -268,12 +268,7 @@ impl RepairCoordinator {
         db: Arc<Database>,
         platform: Arc<dyn RepairPlatform>,
     ) -> Self {
-        Self::with_platform_and_telemetry(
-            engine,
-            db,
-            platform,
-            ProgressTelemetryStore::new(),
-        )
+        Self::with_platform_and_telemetry(engine, db, platform, ProgressTelemetryStore::new())
     }
 
     pub fn with_telemetry(
@@ -307,7 +302,9 @@ impl RepairCoordinator {
         lease: ReadBudgetLease,
     ) -> Result<RepairAssessment> {
         if !lease.matches(ReadWorkload::RepairAssessment) {
-            return Err(RepairError::Command("read budget lease identity mismatch".into()));
+            return Err(RepairError::Command(
+                "read budget lease identity mismatch".into(),
+            ));
         }
         self.start_assessment_inner(owner_principal_key, lease)
     }
@@ -326,7 +323,10 @@ impl RepairCoordinator {
             ..RepairAssessment::default()
         };
         {
-            let mut owner = self.assessment_owner.write().map_err(|_| RepairError::Busy)?;
+            let mut owner = self
+                .assessment_owner
+                .write()
+                .map_err(|_| RepairError::Busy)?;
             let mut current = self.assessment.write().map_err(|_| RepairError::Busy)?;
             if current.state == RepairAssessmentState::Scanning {
                 return Err(RepairError::Busy);
@@ -350,18 +350,35 @@ impl RepairCoordinator {
                         // Reboot resume is deliberately a workflow marker, not mutation authority.
                         // Any prior marker is consumed by this fresh assessment; nothing continues
                         // from pre-reboot assumptions without rebuilding and revalidating the graph.
-                        if let Ok(Some(previous)) = db.latest_pending_repair_reboot_resume(&owner_for_worker) {
+                        if let Ok(Some(previous)) =
+                            db.latest_pending_repair_reboot_resume(&owner_for_worker)
+                        {
                             if previous.assessment_id != assessment_id {
-                                let _ = db.consume_repair_reboot_resume(&previous.token_sha256, "FreshAssessmentPerformed", completed);
+                                let _ = db.consume_repair_reboot_resume(
+                                    &previous.token_sha256,
+                                    "FreshAssessmentPerformed",
+                                    completed,
+                                );
                             }
                         }
-                        if intelligence.graph.nodes.iter().any(|node| node.action == RepairActionKind::Reboot) {
-                            let token = reboot_resume_token(&assessment_id, &intelligence.machine_state_fingerprint, &intelligence.graph.digest_sha256);
+                        if intelligence
+                            .graph
+                            .nodes
+                            .iter()
+                            .any(|node| node.action == RepairActionKind::Reboot)
+                        {
+                            let token = reboot_resume_token(
+                                &assessment_id,
+                                &intelligence.machine_state_fingerprint,
+                                &intelligence.graph.digest_sha256,
+                            );
                             let _ = db.upsert_repair_reboot_resume(&RepairRebootResumeRecord {
                                 token_sha256: token,
                                 owner_principal_key: owner_for_worker.clone(),
                                 assessment_id: assessment_id.clone(),
-                                machine_state_fingerprint: intelligence.machine_state_fingerprint.clone(),
+                                machine_state_fingerprint: intelligence
+                                    .machine_state_fingerprint
+                                    .clone(),
                                 repair_graph_digest: intelligence.graph.digest_sha256.clone(),
                                 resume_policy: "FreshAssessmentRequiredAfterReboot".into(),
                                 state: "AwaitingRebootReassessment".into(),
@@ -379,7 +396,7 @@ impl RepairCoordinator {
                             checks,
                             intelligence: Some(intelligence),
                         }
-                    },
+                    }
                     Err(error) => RepairAssessment {
                         assessment_id,
                         state: RepairAssessmentState::Failed,
@@ -418,14 +435,22 @@ impl RepairCoordinator {
     }
 
     pub fn assessment_for_owner(&self, owner_principal_key: &str) -> Result<RepairAssessment> {
-        let owner = self.assessment_owner.read().map_err(|_| RepairError::Busy)?;
+        let owner = self
+            .assessment_owner
+            .read()
+            .map_err(|_| RepairError::Busy)?;
         if owner.as_str() != owner_principal_key {
             return Err(RepairError::OwnershipMismatch);
         }
         Ok(self.assessment())
     }
 
-    pub fn create_plan(&self, owner_principal_key: &str, assessment_id: &str, run_disk_scan: bool) -> Result<PlanView> {
+    pub fn create_plan(
+        &self,
+        owner_principal_key: &str,
+        assessment_id: &str,
+        run_disk_scan: bool,
+    ) -> Result<PlanView> {
         let current = self.assessment_for_owner(owner_principal_key)?;
         if current.state != RepairAssessmentState::Ready {
             return Err(RepairError::AssessmentNotReady);
@@ -433,44 +458,100 @@ impl RepairCoordinator {
         if current.assessment_id != assessment_id {
             return Err(RepairError::StaleAssessment);
         }
-        let intelligence = current.intelligence.as_ref().ok_or(RepairError::AssessmentNotReady)?;
-        intelligence.graph.validate_for_execution(&intelligence.recovery).map_err(|e| RepairError::InvalidRepairGraph(e.to_string()))?;
-        if intelligence.graph.nodes.iter().any(|n| n.action == RepairActionKind::Reboot) {
+        let intelligence = current
+            .intelligence
+            .as_ref()
+            .ok_or(RepairError::AssessmentNotReady)?;
+        intelligence
+            .graph
+            .validate_for_execution(&intelligence.recovery)
+            .map_err(|e| RepairError::InvalidRepairGraph(e.to_string()))?;
+        if intelligence
+            .graph
+            .nodes
+            .iter()
+            .any(|n| n.action == RepairActionKind::Reboot)
+        {
             return Err(RepairError::RebootBoundary);
         }
-        let executable_actions = intelligence.graph.nodes.iter()
-            .filter(|n| n.executable_automatically && matches!(n.action,
-                RepairActionKind::RepairComponentStore |
-                RepairActionKind::RepairSystemFiles |
-                RepairActionKind::StartRequiredService
-            ))
+        let executable_actions = intelligence
+            .graph
+            .nodes
+            .iter()
+            .filter(|n| {
+                n.executable_automatically
+                    && matches!(
+                        n.action,
+                        RepairActionKind::RepairComponentStore
+                            | RepairActionKind::RepairSystemFiles
+                            | RepairActionKind::StartRequiredService
+                    )
+            })
             .map(|n| n.action.canonical_id().to_owned())
             .collect::<Vec<_>>();
-        let run_component_store = executable_actions.iter().any(|id| id == "repair-component-store");
-        let run_system_files = executable_actions.iter().any(|id| id == "repair-system-files");
+        let run_component_store = executable_actions
+            .iter()
+            .any(|id| id == "repair-component-store");
+        let run_system_files = executable_actions
+            .iter()
+            .any(|id| id == "repair-system-files");
         if executable_actions.is_empty() {
             return Err(RepairError::NoRepairRecommended);
         }
-        let graph_json = serde_json::to_string(&intelligence.graph).map_err(|e| RepairError::Command(e.to_string()))?;
-        let reboot_boundary_count = intelligence.graph.nodes.iter().filter(|n| n.reboot_boundary_after).count() as u32;
-        let safety_tier = intelligence.graph.nodes.iter()
-            .filter(|n| n.executable_automatically && executable_actions.iter().any(|id| id == n.action.canonical_id()))
+        let graph_json = serde_json::to_string(&intelligence.graph)
+            .map_err(|e| RepairError::Command(e.to_string()))?;
+        let reboot_boundary_count = intelligence
+            .graph
+            .nodes
+            .iter()
+            .filter(|n| n.reboot_boundary_after)
+            .count() as u32;
+        let safety_tier = intelligence
+            .graph
+            .nodes
+            .iter()
+            .filter(|n| {
+                n.executable_automatically
+                    && executable_actions
+                        .iter()
+                        .any(|id| id == n.action.canonical_id())
+            })
             .map(|n| n.safety)
             .max()
             .unwrap_or(RepairSafetyTier::Level2SensitiveRepair);
-        let plan = self.engine.create_system_repair_plan(owner_principal_key, SystemRepairAction {
-            assessment_id: assessment_id.into(),
-            run_component_store,
-            run_system_files,
-            run_disk_scan: run_disk_scan && current.checks.iter().any(|c| c.id == "disk-scan" && c.result_code != "NoErrors"),
-            repair_action_ids: executable_actions,
-            machine_state_fingerprint: intelligence.machine_state_fingerprint.clone(),
-            repair_graph_digest: intelligence.graph.digest_sha256.clone(),
-            repair_graph_json: graph_json,
-            safety_tier: format!("{safety_tier:?}"),
-            reboot_boundary_count,
-        })?;
-        timeline_event(&self.db, owner_principal_key, &plan.id, assessment_id, "PlanSealed", "repair-graph", "AwaitingAuthorization", &format!("graphDigest={};safety={safety_tier:?}", intelligence.graph.digest_sha256), &intelligence.machine_state_fingerprint);
+        let plan = self.engine.create_system_repair_plan(
+            owner_principal_key,
+            SystemRepairAction {
+                assessment_id: assessment_id.into(),
+                run_component_store,
+                run_system_files,
+                run_disk_scan: run_disk_scan
+                    && current
+                        .checks
+                        .iter()
+                        .any(|c| c.id == "disk-scan" && c.result_code != "NoErrors"),
+                repair_action_ids: executable_actions,
+                machine_state_fingerprint: intelligence.machine_state_fingerprint.clone(),
+                repair_graph_digest: intelligence.graph.digest_sha256.clone(),
+                repair_graph_json: graph_json,
+                safety_tier: format!("{safety_tier:?}"),
+                reboot_boundary_count,
+            },
+        )?;
+        timeline_event(
+            &self.db,
+            owner_principal_key,
+            &plan.id,
+            assessment_id,
+            "PlanSealed",
+            "repair-graph",
+            "AwaitingAuthorization",
+            &format!(
+                "graphDigest={};safety={safety_tier:?}",
+                intelligence.graph.digest_sha256
+            ),
+            &intelligence.machine_state_fingerprint,
+        );
         Ok(plan)
     }
 
@@ -481,7 +562,9 @@ impl RepairCoordinator {
         lease: MutationLease,
     ) -> Result<RepairExecutionStatus> {
         if !lease.matches(MutationWorkload::SystemRepair, plan_id, owner_principal_key) {
-            return Err(RepairError::Command("mutation lease identity mismatch".into()));
+            return Err(RepairError::Command(
+                "mutation lease identity mismatch".into(),
+            ));
         }
         self.start_inner(owner_principal_key, plan_id, lease)
     }
@@ -492,23 +575,35 @@ impl RepairCoordinator {
         plan_id: &str,
         mutation_lease: MutationLease,
     ) -> Result<RepairExecutionStatus> {
-        let plan = self.engine.get_plan_for_owner(plan_id, owner_principal_key)?;
+        let plan = self
+            .engine
+            .get_plan_for_owner(plan_id, owner_principal_key)?;
         if plan.state != PlanState::AwaitingAuthorization {
             return Err(RepairError::AuthorizationRequired);
         }
         let sealed_action = self.engine.system_repair_action(plan_id)?;
         let current = self.assessment_for_owner(owner_principal_key)?;
-        let current_intelligence = current.intelligence.as_ref().ok_or(RepairError::StaleAssessment)?;
+        let current_intelligence = current
+            .intelligence
+            .as_ref()
+            .ok_or(RepairError::StaleAssessment)?;
         if current.assessment_id != sealed_action.assessment_id
-            || current_intelligence.machine_state_fingerprint != sealed_action.machine_state_fingerprint
+            || current_intelligence.machine_state_fingerprint
+                != sealed_action.machine_state_fingerprint
             || current_intelligence.graph.digest_sha256 != sealed_action.repair_graph_digest
         {
             return Err(RepairError::StaleAssessment);
         }
-        current_intelligence.graph.validate_for_execution(&current_intelligence.recovery).map_err(|e| RepairError::InvalidRepairGraph(e.to_string()))?;
+        current_intelligence
+            .graph
+            .validate_for_execution(&current_intelligence.recovery)
+            .map_err(|e| RepairError::InvalidRepairGraph(e.to_string()))?;
 
         {
-            let mut running = self.running.lock().map_err(|_| RepairError::AlreadyRunning)?;
+            let mut running = self
+                .running
+                .lock()
+                .map_err(|_| RepairError::AlreadyRunning)?;
             if running.is_some() {
                 return Err(RepairError::AlreadyRunning);
             }
@@ -516,19 +611,27 @@ impl RepairCoordinator {
         }
 
         if let Err(error) = self.engine.consume_authorization_and_begin(
-            plan_id, owner_principal_key, "one-shot consent consumed; system repair entered preflight",
+            plan_id,
+            owner_principal_key,
+            "one-shot consent consumed; system repair entered preflight",
         ) {
-            if let Ok(mut running) = self.running.lock() { *running = None; }
+            if let Ok(mut running) = self.running.lock() {
+                *running = None;
+            }
             // A missing/expired one-shot consent must surface as the typed authorization error
             // instead of a generic engine wrapper, so callers can react to it specifically.
-            if matches!(error, aethercore_operation_engine::EngineError::AuthorizationRequired) {
+            if matches!(
+                error,
+                aethercore_operation_engine::EngineError::AuthorizationRequired
+            ) {
                 return Err(RepairError::AuthorizationRequired);
             }
             return Err(error.into());
         }
 
         let now = now_ms();
-        if let Err(error) = self.db
+        if let Err(error) = self
+            .db
             .upsert_maintenance_execution(&MaintenanceExecutionRecord {
                 plan_id: plan_id.into(),
                 domain: "SystemRepair".into(),
@@ -550,11 +653,23 @@ impl RepairCoordinator {
                 PlanState::Failed,
                 "repair execution journal initialization failed after consent",
             );
-            if let Ok(mut running) = self.running.lock() { *running = None; }
+            if let Ok(mut running) = self.running.lock() {
+                *running = None;
+            }
             return Err(error.into());
         }
 
-        timeline_event(&self.db, owner_principal_key, plan_id, &sealed_action.assessment_id, "AuthorizationConsumed", "repair-plan", "Queued", "One-shot consent consumed; immutable plan queued.", &sealed_action.machine_state_fingerprint);
+        timeline_event(
+            &self.db,
+            owner_principal_key,
+            plan_id,
+            &sealed_action.assessment_id,
+            "AuthorizationConsumed",
+            "repair-plan",
+            "Queued",
+            "One-shot consent consumed; immutable plan queued.",
+            &sealed_action.machine_state_fingerprint,
+        );
 
         let engine = self.engine.clone();
         let db = self.db.clone();
@@ -567,7 +682,9 @@ impl RepairCoordinator {
             .name("aether-system-repair-worker".into())
             .spawn(move || {
                 let _mutation_lease = mutation_lease;
-                if let Err(error) = run_worker(&engine, &db, platform.as_ref(), &owner, &telemetry, &id) {
+                if let Err(error) =
+                    run_worker(&engine, &db, platform.as_ref(), &owner, &telemetry, &id)
+                {
                     let _ = fail_repair(&engine, &db, &id, error);
                 }
                 telemetry.clear_for_owner(&owner, &id);
@@ -577,9 +694,16 @@ impl RepairCoordinator {
             });
         if let Err(error) = spawn {
             let detail = format!("repair worker creation failed: {error}");
-            let _ = fail_repair(&self.engine, &self.db, plan_id, RepairError::Command(detail.clone()));
+            let _ = fail_repair(
+                &self.engine,
+                &self.db,
+                plan_id,
+                RepairError::Command(detail.clone()),
+            );
             self.telemetry.clear_for_owner(owner_principal_key, plan_id);
-            if let Ok(mut running) = self.running.lock() { *running = None; }
+            if let Ok(mut running) = self.running.lock() {
+                *running = None;
+            }
             return Err(RepairError::Command(detail));
         }
 
@@ -587,19 +711,27 @@ impl RepairCoordinator {
             .ok_or_else(|| RepairError::Command("repair status missing".into()))
     }
 
-    pub fn status(&self, owner_principal_key: &str, plan_id: Option<&str>) -> Result<Option<RepairExecutionStatus>> {
+    pub fn status(
+        &self,
+        owner_principal_key: &str,
+        plan_id: Option<&str>,
+    ) -> Result<Option<RepairExecutionStatus>> {
         let record = match plan_id {
             Some(id) => {
                 self.engine.get_plan_for_owner(id, owner_principal_key)?;
                 self.db.get_maintenance_execution(id)?
             }
-            None => self.db.latest_maintenance_execution_for_owner("SystemRepair", owner_principal_key)?,
+            None => self
+                .db
+                .latest_maintenance_execution_for_owner("SystemRepair", owner_principal_key)?,
         };
         let Some(record) = record else {
             return Ok(None);
         };
 
-        let plan = self.engine.get_plan_for_owner(&record.plan_id, owner_principal_key)?;
+        let plan = self
+            .engine
+            .get_plan_for_owner(&record.plan_id, owner_principal_key)?;
         let steps = self
             .db
             .maintenance_items(&record.plan_id)?
@@ -618,26 +750,51 @@ impl RepairCoordinator {
         let live = self
             .telemetry
             .get_for_owner(owner_principal_key, &record.plan_id)
-            .filter(|value| value.owner_principal_key == owner_principal_key && value.emitted_unix_ms >= record.updated_unix_ms);
+            .filter(|value| {
+                value.owner_principal_key == owner_principal_key
+                    && value.emitted_unix_ms >= record.updated_unix_ms
+            });
         Ok(Some(RepairExecutionStatus {
             plan_id: record.plan_id,
             plan_state: plan.state.as_str().into(),
-            stage: live.as_ref().map(|value| value.stage.clone()).unwrap_or(record.stage),
-            progress_known: live.as_ref().map(|value| value.progress_known).unwrap_or(record.progress_known),
-            overall_percent: live.as_ref().map(|value| value.overall_percent).unwrap_or(record.overall_percent),
-            current_step_id: live.as_ref().map(|value| value.current_item_id.clone()).unwrap_or(record.current_item_id),
-            detail: live.as_ref().map(|value| value.detail.clone()).unwrap_or(record.detail),
+            stage: live
+                .as_ref()
+                .map(|value| value.stage.clone())
+                .unwrap_or(record.stage),
+            progress_known: live
+                .as_ref()
+                .map(|value| value.progress_known)
+                .unwrap_or(record.progress_known),
+            overall_percent: live
+                .as_ref()
+                .map(|value| value.overall_percent)
+                .unwrap_or(record.overall_percent),
+            current_step_id: live
+                .as_ref()
+                .map(|value| value.current_item_id.clone())
+                .unwrap_or(record.current_item_id),
+            detail: live
+                .as_ref()
+                .map(|value| value.detail.clone())
+                .unwrap_or(record.detail),
             mutation_started: record.mutation_started,
             recovery_required: record.recovery_required,
             failure_message: record.failure_message,
             outcome: record.outcome,
             repair_graph_digest: record.repair_graph_digest,
             machine_state_fingerprint: record.machine_state_fingerprint,
-            safety_tier: self.engine.system_repair_action(&plan.id).map(|a| a.safety_tier).unwrap_or_default(),
+            safety_tier: self
+                .engine
+                .system_repair_action(&plan.id)
+                .map(|a| a.safety_tier)
+                .unwrap_or_default(),
             reboot_required: record.reboot_required,
             verification_state: record.verification_state,
             started_unix_ms: record.started_unix_ms,
-            updated_unix_ms: live.as_ref().map(|value| value.emitted_unix_ms).unwrap_or(record.updated_unix_ms),
+            updated_unix_ms: live
+                .as_ref()
+                .map(|value| value.emitted_unix_ms)
+                .unwrap_or(record.updated_unix_ms),
             completed_unix_ms: record.completed_unix_ms,
             steps,
         }))
@@ -720,7 +877,6 @@ fn publish_progress(
     });
 }
 
-
 fn build_intelligence(assessment_id: &str, checks: &[RepairCheck]) -> RepairIntelligenceSnapshot {
     let facts = checks.iter().filter_map(check_to_fact).collect::<Vec<_>>();
     let recovery = recovery_from_checks(checks);
@@ -738,13 +894,19 @@ fn check_to_fact(check: &RepairCheck) -> Option<RepairFact> {
         id if id.starts_with("dism") || id == "verify-dism" => {
             let state = match check.result_code.as_str() {
                 "ComponentStoreHealthy" => FactState::Healthy,
-                "ComponentStoreRepairable" | "ComponentStoreCorruptionDetected" => FactState::CorruptionDetected,
+                "ComponentStoreRepairable" | "ComponentStoreCorruptionDetected" => {
+                    FactState::CorruptionDetected
+                }
                 "ComponentStoreNonRepairable" => FactState::RepairFailed,
                 "SourceRequired" => FactState::SourceRequired,
                 "RepairFailed" => FactState::RepairFailed,
                 _ => FactState::Unknown,
             };
-            let confidence = if state == FactState::Unknown { DiagnosisConfidence::Low } else { DiagnosisConfidence::Confirmed };
+            let confidence = if state == FactState::Unknown {
+                DiagnosisConfidence::Low
+            } else {
+                DiagnosisConfidence::Confirmed
+            };
             (RepairDomain::ComponentStore, state, confidence)
         }
         id if id.starts_with("sfc") || id == "verify-sfc" => {
@@ -754,68 +916,207 @@ fn check_to_fact(check: &RepairCheck) -> Option<RepairFact> {
                 "SystemFilesRepairFailed" => FactState::RepairFailed,
                 _ => FactState::Unknown,
             };
-            let confidence = if state == FactState::Unknown { DiagnosisConfidence::Low } else { DiagnosisConfidence::Confirmed };
+            let confidence = if state == FactState::Unknown {
+                DiagnosisConfidence::Low
+            } else {
+                DiagnosisConfidence::Confirmed
+            };
             (RepairDomain::SystemFiles, state, confidence)
         }
         "disk-scan" | "verify-disk" => {
-            let state = if check.result_code == "NoErrors" { FactState::Healthy } else if check.result_code.starts_with("ChkdskExit") { FactState::Repairable } else { FactState::Unknown };
-            let confidence = if state == FactState::Unknown { DiagnosisConfidence::Low } else { DiagnosisConfidence::High };
+            let state = if check.result_code == "NoErrors" {
+                FactState::Healthy
+            } else if check.result_code.starts_with("ChkdskExit") {
+                FactState::Repairable
+            } else {
+                FactState::Unknown
+            };
+            let confidence = if state == FactState::Unknown {
+                DiagnosisConfidence::Low
+            } else {
+                DiagnosisConfidence::High
+            };
             (RepairDomain::Filesystem, state, confidence)
         }
         "servicing-state" => {
-            let state = match check.result_code.as_str() { "ServicingBusy" => FactState::Active, "RebootPending" => FactState::RebootRequired, "ServicingAvailable" => FactState::Healthy, _ => FactState::Unknown };
-            let domain = if state == FactState::RebootRequired { RepairDomain::Reboot } else { RepairDomain::Servicing };
+            let state = match check.result_code.as_str() {
+                "ServicingBusy" => FactState::Active,
+                "RebootPending" => FactState::RebootRequired,
+                "ServicingAvailable" => FactState::Healthy,
+                _ => FactState::Unknown,
+            };
+            let domain = if state == FactState::RebootRequired {
+                RepairDomain::Reboot
+            } else {
+                RepairDomain::Servicing
+            };
             (domain, state, DiagnosisConfidence::High)
         }
         "windows-update" => {
-            let state = match check.result_code.as_str() { "UpdateHealthy" => FactState::Healthy, "UpdateOffline" => FactState::Offline, "UpdateFailure" => FactState::Failure, _ => FactState::Unknown };
-            (RepairDomain::WindowsUpdate, state, DiagnosisConfidence::High)
+            let state = match check.result_code.as_str() {
+                "UpdateHealthy" => FactState::Healthy,
+                "UpdateOffline" => FactState::Offline,
+                "UpdateFailure" => FactState::Failure,
+                _ => FactState::Unknown,
+            };
+            (
+                RepairDomain::WindowsUpdate,
+                state,
+                DiagnosisConfidence::High,
+            )
         }
         "required-service" => {
-            let state = match check.result_code.as_str() { "ServiceRunning" => FactState::Healthy, "ServiceStopped" => FactState::Stopped, "ServiceDisabled" => FactState::Disabled, _ => FactState::Unknown };
+            let state = match check.result_code.as_str() {
+                "ServiceRunning" => FactState::Healthy,
+                "ServiceStopped" => FactState::Stopped,
+                "ServiceDisabled" => FactState::Disabled,
+                _ => FactState::Unknown,
+            };
             (RepairDomain::Services, state, DiagnosisConfidence::High)
         }
-        "network-connectivity" => (RepairDomain::Network, if check.result_code=="NetworkHealthy" {FactState::Healthy} else if check.result_code=="NetworkOffline" {FactState::Offline} else {FactState::Unknown}, DiagnosisConfidence::High),
-        "dns-resolution" => (RepairDomain::Dns, if check.result_code=="DnsHealthy" {FactState::Healthy} else if check.result_code=="DnsFailure" {FactState::Failure} else {FactState::Unknown}, DiagnosisConfidence::High),
-        "proxy-state" => (RepairDomain::Proxy, if check.result_code=="ProxyHealthy" {FactState::Healthy} else if check.result_code=="ProxyUnexpected" {FactState::UnexpectedConfiguration} else {FactState::Unknown}, DiagnosisConfidence::Medium),
-        "winre-state" => (RepairDomain::Recovery, if check.result_code=="WinReAvailable" {FactState::Available} else if check.result_code=="WinReUnavailable" {FactState::Unavailable} else {FactState::Unknown}, DiagnosisConfidence::High),
+        "network-connectivity" => (
+            RepairDomain::Network,
+            if check.result_code == "NetworkHealthy" {
+                FactState::Healthy
+            } else if check.result_code == "NetworkOffline" {
+                FactState::Offline
+            } else {
+                FactState::Unknown
+            },
+            DiagnosisConfidence::High,
+        ),
+        "dns-resolution" => (
+            RepairDomain::Dns,
+            if check.result_code == "DnsHealthy" {
+                FactState::Healthy
+            } else if check.result_code == "DnsFailure" {
+                FactState::Failure
+            } else {
+                FactState::Unknown
+            },
+            DiagnosisConfidence::High,
+        ),
+        "proxy-state" => (
+            RepairDomain::Proxy,
+            if check.result_code == "ProxyHealthy" {
+                FactState::Healthy
+            } else if check.result_code == "ProxyUnexpected" {
+                FactState::UnexpectedConfiguration
+            } else {
+                FactState::Unknown
+            },
+            DiagnosisConfidence::Medium,
+        ),
+        "winre-state" => (
+            RepairDomain::Recovery,
+            if check.result_code == "WinReAvailable" {
+                FactState::Available
+            } else if check.result_code == "WinReUnavailable" {
+                FactState::Unavailable
+            } else {
+                FactState::Unknown
+            },
+            DiagnosisConfidence::High,
+        ),
         _ => return None,
     };
     Some(RepairFact {
-        id: format!("fact:{}", check.id), domain, state, resource: check.id.clone(),
-        evidence_code: check.result_code.clone(), technical_code: if check.exit_code != 0 { format!("exit:{}", check.exit_code) } else { String::new() },
-        detail: check.detail.clone(), observed_unix_ms: now_ms(), confidence,
+        id: format!("fact:{}", check.id),
+        domain,
+        state,
+        resource: check.id.clone(),
+        evidence_code: check.result_code.clone(),
+        technical_code: if check.exit_code != 0 {
+            format!("exit:{}", check.exit_code)
+        } else {
+            String::new()
+        },
+        detail: check.detail.clone(),
+        observed_unix_ms: now_ms(),
+        confidence,
     })
 }
 
 fn recovery_from_checks(checks: &[RepairCheck]) -> RecoveryReadiness {
     let mut recovery = RecoveryReadiness::default();
     if let Some(check) = checks.iter().find(|c| c.id == "winre-state") {
-        recovery.win_re = match check.result_code.as_str() { "WinReAvailable" => FactState::Available, "WinReUnavailable" => FactState::Unavailable, _ => FactState::Unknown };
+        recovery.win_re = match check.result_code.as_str() {
+            "WinReAvailable" => FactState::Available,
+            "WinReUnavailable" => FactState::Unavailable,
+            _ => FactState::Unknown,
+        };
     }
     if let Some(check) = checks.iter().find(|c| c.id == "restore-state") {
-        recovery.system_restore = match check.result_code.as_str() { "RestoreAvailable" => FactState::Available, "RestoreUnavailable" => FactState::Unavailable, _ => FactState::Unknown };
+        recovery.system_restore = match check.result_code.as_str() {
+            "RestoreAvailable" => FactState::Available,
+            "RestoreUnavailable" => FactState::Unavailable,
+            _ => FactState::Unknown,
+        };
         recovery.restore_point_creation = recovery.system_restore;
     }
     recovery
 }
 
-fn verification_proves_success(action: &SystemRepairAction, steps: &[MaintenanceItemRecord]) -> bool {
-    let result = |id: &str| steps.iter().find(|s| s.item_id == id).map(|s| s.result_code.as_str());
-    let component_ok = !action.run_component_store || matches!(result("verify-dism"), Some("ComponentStoreHealthy") | Some("VerifiedHealthy"));
-    let system_ok = !action.run_system_files || matches!(result("verify-sfc"), Some("SystemFilesHealthy") | Some("VerifiedHealthy"));
-    let disk_ok = !action.run_disk_scan || matches!(result("verify-disk"), Some("NoErrors") | Some("VerifiedHealthy"));
-    let service_selected = action.repair_action_ids.iter().any(|id| id == "start-required-service");
-    let service_ok = !service_selected || matches!(result("verify-required-service"), Some("ServiceRunning"));
-    let update_ok = !service_selected || matches!(result("verify-windows-update"), Some("UpdateHealthy"));
+fn verification_proves_success(
+    action: &SystemRepairAction,
+    steps: &[MaintenanceItemRecord],
+) -> bool {
+    let result = |id: &str| {
+        steps
+            .iter()
+            .find(|s| s.item_id == id)
+            .map(|s| s.result_code.as_str())
+    };
+    let component_ok = !action.run_component_store
+        || matches!(
+            result("verify-dism"),
+            Some("ComponentStoreHealthy") | Some("VerifiedHealthy")
+        );
+    let system_ok = !action.run_system_files
+        || matches!(
+            result("verify-sfc"),
+            Some("SystemFilesHealthy") | Some("VerifiedHealthy")
+        );
+    let disk_ok = !action.run_disk_scan
+        || matches!(
+            result("verify-disk"),
+            Some("NoErrors") | Some("VerifiedHealthy")
+        );
+    let service_selected = action
+        .repair_action_ids
+        .iter()
+        .any(|id| id == "start-required-service");
+    let service_ok =
+        !service_selected || matches!(result("verify-required-service"), Some("ServiceRunning"));
+    let update_ok =
+        !service_selected || matches!(result("verify-windows-update"), Some("UpdateHealthy"));
     component_ok && system_ok && disk_ok && service_ok && update_ok
 }
 
-fn timeline_event(db: &Database, owner: &str, plan_id: &str, assessment_id: &str, kind: &str, action_id: &str, outcome: &str, detail: &str, fingerprint: &str) {
+fn timeline_event(
+    db: &Database,
+    owner: &str,
+    plan_id: &str,
+    assessment_id: &str,
+    kind: &str,
+    action_id: &str,
+    outcome: &str,
+    detail: &str,
+    fingerprint: &str,
+) {
     let _ = db.insert_repair_timeline_event(&RepairTimelineEventRecord {
-        event_id: Uuid::new_v4().to_string(), plan_id: plan_id.into(), assessment_id: assessment_id.into(), owner_principal_key: owner.into(),
-        event_kind: kind.into(), domain: "WindowsRepair".into(), action_id: action_id.into(), diagnosis_code: String::new(), outcome: outcome.into(),
-        detail: detail.into(), machine_state_fingerprint: fingerprint.into(), created_unix_ms: now_ms(),
+        event_id: Uuid::new_v4().to_string(),
+        plan_id: plan_id.into(),
+        assessment_id: assessment_id.into(),
+        owner_principal_key: owner.into(),
+        event_kind: kind.into(),
+        domain: "WindowsRepair".into(),
+        action_id: action_id.into(),
+        diagnosis_code: String::new(),
+        outcome: outcome.into(),
+        detail: detail.into(),
+        machine_state_fingerprint: fingerprint.into(),
+        created_unix_ms: now_ms(),
     });
 }
 
@@ -828,8 +1129,26 @@ fn run_worker(
     plan_id: &str,
 ) -> Result<()> {
     let action = engine.system_repair_action(plan_id)?;
-    timeline_event(db, owner_principal_key, plan_id, &action.assessment_id, "ExecutionStarted", "repair-plan", "Preflight", "Execution began from the sealed repair graph.", &action.machine_state_fingerprint);
-    publish_progress(telemetry, owner_principal_key, plan_id, "Preflight", 5, "", "Checking servicing safety");
+    timeline_event(
+        db,
+        owner_principal_key,
+        plan_id,
+        &action.assessment_id,
+        "ExecutionStarted",
+        "repair-plan",
+        "Preflight",
+        "Execution began from the sealed repair graph.",
+        &action.machine_state_fingerprint,
+    );
+    publish_progress(
+        telemetry,
+        owner_principal_key,
+        plan_id,
+        "Preflight",
+        5,
+        "",
+        "Checking servicing safety",
+    );
     update_exec(
         db,
         plan_id,
@@ -845,7 +1164,15 @@ fn run_worker(
         PlanState::Protected,
         "fixed executable/argument allowlist committed",
     )?;
-    publish_progress(telemetry, owner_principal_key, plan_id, "Protected", 8, "", "Repair workflow is frozen; waiting for the servicing mutation barrier");
+    publish_progress(
+        telemetry,
+        owner_principal_key,
+        plan_id,
+        "Protected",
+        8,
+        "",
+        "Repair workflow is frozen; waiting for the servicing mutation barrier",
+    );
     update_exec(
         db,
         plan_id,
@@ -867,7 +1194,15 @@ fn run_worker(
             PlanState::Executing,
             "servicing lock acquired; begin Windows integrity repair",
         )?;
-        publish_progress(telemetry, owner_principal_key, plan_id, "Executing", 10, "", "Running supported Windows repair tools");
+        publish_progress(
+            telemetry,
+            owner_principal_key,
+            plan_id,
+            "Executing",
+            10,
+            "",
+            "Running supported Windows repair tools",
+        );
         update_exec(
             db,
             plan_id,
@@ -877,7 +1212,17 @@ fn run_worker(
             true,
             None,
         )?;
-        timeline_event(db, owner_principal_key, plan_id, &action.assessment_id, "MutationStarted", "repair-plan", "Executing", "Durable mutation boundary crossed.", &action.machine_state_fingerprint);
+        timeline_event(
+            db,
+            owner_principal_key,
+            plan_id,
+            &action.assessment_id,
+            "MutationStarted",
+            "repair-plan",
+            "Executing",
+            "Durable mutation boundary crossed.",
+            &action.machine_state_fingerprint,
+        );
         Ok(())
     };
 
@@ -894,16 +1239,44 @@ fn run_worker(
             updated_unix_ms: now_ms(),
             ..Default::default()
         });
-        timeline_event(db, owner_principal_key, plan_id, &action.assessment_id, "StepRecorded", &step.id, &step.result_code, &step.title, &action.machine_state_fingerprint);
+        timeline_event(
+            db,
+            owner_principal_key,
+            plan_id,
+            &action.assessment_id,
+            "StepRecorded",
+            &step.id,
+            &step.result_code,
+            &step.title,
+            &action.machine_state_fingerprint,
+        );
         let percent = (10 + index * 12).min(75);
         let mutated = mutation_started.get();
         let stage = if mutated { "Executing" } else { "Protected" };
-        publish_progress(telemetry, owner_principal_key, plan_id, stage, percent, &step.id, &step.title);
+        publish_progress(
+            telemetry,
+            owner_principal_key,
+            plan_id,
+            stage,
+            percent,
+            &step.id,
+            &step.title,
+        );
         let _ = update_exec(db, plan_id, stage, percent, &step.title, mutated, None);
     };
 
     if let Err(error) = platform.repair(&action, &mut begin_mutation, &mut emit) {
-        timeline_event(db, owner_principal_key, plan_id, &action.assessment_id, "ExecutionError", "repair-plan", "Failed", &error.to_string(), &action.machine_state_fingerprint);
+        timeline_event(
+            db,
+            owner_principal_key,
+            plan_id,
+            &action.assessment_id,
+            "ExecutionError",
+            "repair-plan",
+            "Failed",
+            &error.to_string(),
+            &action.machine_state_fingerprint,
+        );
         return fail_repair(engine, db, plan_id, error);
     }
     if !mutation_started.get() {
@@ -921,7 +1294,15 @@ fn run_worker(
         PlanState::Verifying,
         "repair commands completed; begin verification",
     )?;
-    publish_progress(telemetry, owner_principal_key, plan_id, "Verifying", 80, "", "Verifying component store and protected files");
+    publish_progress(
+        telemetry,
+        owner_principal_key,
+        plan_id,
+        "Verifying",
+        80,
+        "",
+        "Verifying component store and protected files",
+    );
     update_exec(
         db,
         plan_id,
@@ -932,7 +1313,17 @@ fn run_worker(
         None,
     )?;
     if let Err(error) = platform.verify(&action, &mut emit) {
-        timeline_event(db, owner_principal_key, plan_id, &action.assessment_id, "VerificationError", "repair-plan", "VerificationFailed", &error.to_string(), &action.machine_state_fingerprint);
+        timeline_event(
+            db,
+            owner_principal_key,
+            plan_id,
+            &action.assessment_id,
+            "VerificationError",
+            "repair-plan",
+            "VerificationFailed",
+            &error.to_string(),
+            &action.machine_state_fingerprint,
+        );
         return fail_repair(engine, db, plan_id, error);
     }
     let verification_steps = db.maintenance_items(plan_id)?;
@@ -944,7 +1335,17 @@ fn run_worker(
         record.failure_message = RepairError::VerificationFailed.to_string();
         record.updated_unix_ms = now_ms();
         db.upsert_maintenance_execution(&record)?;
-        timeline_event(db, owner_principal_key, plan_id, &action.assessment_id, "VerificationFailed", "repair-plan", &record.outcome, "Mutation completed but evidence-specific verification did not prove resolution.", &action.machine_state_fingerprint);
+        timeline_event(
+            db,
+            owner_principal_key,
+            plan_id,
+            &action.assessment_id,
+            "VerificationFailed",
+            "repair-plan",
+            &record.outcome,
+            "Mutation completed but evidence-specific verification did not prove resolution.",
+            &action.machine_state_fingerprint,
+        );
         return fail_repair(engine, db, plan_id, RepairError::VerificationFailed);
     }
 
@@ -960,14 +1361,33 @@ fn run_worker(
     record.progress_known = true;
     record.overall_percent = 100;
     record.detail =
-        "Repair workflow completed and evidence-specific verification proved the intended state.".into();
+        "Repair workflow completed and evidence-specific verification proved the intended state."
+            .into();
     record.outcome = format!("{:?}", RepairOutcome::SucceededVerified);
     record.verification_state = "Verified".into();
     record.updated_unix_ms = now;
     record.completed_unix_ms = Some(now);
     db.upsert_maintenance_execution(&record)?;
-    timeline_event(db, owner_principal_key, plan_id, &action.assessment_id, "VerificationSucceeded", "repair-plan", &record.outcome, "Evidence-specific post-repair verification proved the intended state.", &action.machine_state_fingerprint);
-    publish_progress(telemetry, owner_principal_key, plan_id, "Completed", 100, "", &record.detail);
+    timeline_event(
+        db,
+        owner_principal_key,
+        plan_id,
+        &action.assessment_id,
+        "VerificationSucceeded",
+        "repair-plan",
+        &record.outcome,
+        "Evidence-specific post-repair verification proved the intended state.",
+        &action.machine_state_fingerprint,
+    );
+    publish_progress(
+        telemetry,
+        owner_principal_key,
+        plan_id,
+        "Completed",
+        100,
+        "",
+        &record.detail,
+    );
     Ok(())
 }
 
@@ -996,9 +1416,18 @@ fn fail_repair(
     record.detail = "Repair stopped. No command will be replayed automatically.".into();
     record.recovery_required = record.mutation_started;
     if record.outcome.is_empty() || record.outcome == "Pending" {
-        record.outcome = format!("{:?}", if record.mutation_started { RepairOutcome::FailedAfterMutation } else { RepairOutcome::FailedBeforeMutation });
+        record.outcome = format!(
+            "{:?}",
+            if record.mutation_started {
+                RepairOutcome::FailedAfterMutation
+            } else {
+                RepairOutcome::FailedBeforeMutation
+            }
+        );
     }
-    if record.verification_state.is_empty() { record.verification_state = "NotVerified".into(); }
+    if record.verification_state.is_empty() {
+        record.verification_state = "NotVerified".into();
+    }
     record.updated_unix_ms = now;
     record.completed_unix_ms = Some(now);
     db.upsert_maintenance_execution(&record)?;
@@ -1015,14 +1444,14 @@ fn update_exec(
     completed: Option<i64>,
 ) -> Result<()> {
     let now = now_ms();
-    let mut record = db
-        .get_maintenance_execution(plan_id)?
-        .unwrap_or_else(|| MaintenanceExecutionRecord {
-            plan_id: plan_id.into(),
-            domain: "SystemRepair".into(),
-            started_unix_ms: now,
-            ..Default::default()
-        });
+    let mut record =
+        db.get_maintenance_execution(plan_id)?
+            .unwrap_or_else(|| MaintenanceExecutionRecord {
+                plan_id: plan_id.into(),
+                domain: "SystemRepair".into(),
+                started_unix_ms: now,
+                ..Default::default()
+            });
     record.stage = stage.into();
     record.progress_known = percent >= 100;
     record.overall_percent = if percent >= 100 { 100 } else { 0 };
@@ -1057,7 +1486,10 @@ mod dbt_p46_b8_tests {
             let _guard = lock.write().unwrap();
             panic!("simulated panic while holding the write lock");
         }));
-        assert!(poison_result.is_err(), "the panic must have actually happened");
+        assert!(
+            poison_result.is_err(),
+            "the panic must have actually happened"
+        );
         assert!(lock.is_poisoned(), "the lock must now be poisoned");
 
         // Old behavior: .read().map(|a| a.clone()).unwrap_or_default()
@@ -1068,7 +1500,10 @@ mod dbt_p46_b8_tests {
         );
 
         // New behavior, as applied in `assessment()`.
-        let recovered = lock.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        let recovered = lock
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         assert_eq!(
             recovered.assessment_id, "real-assessment",
             "a poisoned lock must recover the last-written value, not silently default"
@@ -1089,7 +1524,10 @@ mod dbt_p46_b9_tests {
             panic!("simulated panic inside the output reader");
         });
         let joined = handle.join();
-        assert!(joined.is_err(), "the reader thread must have actually panicked");
+        assert!(
+            joined.is_err(),
+            "the reader thread must have actually panicked"
+        );
 
         // Old behavior: join().unwrap_or_default() — a crash became "no output".
         let mut notes = Vec::new();
@@ -1107,7 +1545,10 @@ mod dbt_p46_b9_tests {
     fn a_healthy_reader_thread_adds_no_note() {
         let handle = std::thread::spawn(|| "command output".to_string());
         let mut notes = Vec::new();
-        assert_eq!(joined_stream(handle.join(), "stdout", &mut notes), "command output");
+        assert_eq!(
+            joined_stream(handle.join(), "stdout", &mut notes),
+            "command output"
+        );
         assert!(notes.is_empty());
     }
 

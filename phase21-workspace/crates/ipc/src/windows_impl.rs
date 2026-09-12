@@ -127,7 +127,7 @@ const CLIENT_OUTBOUND_BYTE_BUDGET: usize = 4 * 1024 * 1024;
 // DBT-P46-D1: one decider for the identity this peer check authenticates
 // against. The name and the account it derives from used to be two independent
 // literals here, and two more in apps/install-hardener.
-use aethercore_product_identity::{service_principal, SERVICE_NAME as TRUSTED_SERVICE_NAME};
+use aethercore_product_identity::{SERVICE_NAME as TRUSTED_SERVICE_NAME, service_principal};
 const MAX_ACCOUNT_SID_BYTES: u32 = 4 * 1024;
 const MAX_ACCOUNT_DOMAIN_CHARS: u32 = 32 * 1024;
 static TRUSTED_SERVICE_SID: OnceLock<String> = OnceLock::new();

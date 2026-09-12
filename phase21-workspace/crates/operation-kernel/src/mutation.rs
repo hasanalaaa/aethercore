@@ -196,9 +196,7 @@ impl Drop for MutationLease {
                 None
             }
         };
-        if let (Some(observer), Some(snapshot)) =
-            (self.supervisor.observer.as_ref(), released)
-        {
+        if let (Some(observer), Some(snapshot)) = (self.supervisor.observer.as_ref(), released) {
             observer(MutationLeaseChange::Released(snapshot));
         }
     }
@@ -225,11 +223,17 @@ mod tests {
     fn poisoned_mutex_recovers_without_weakening_mutation_exclusion() {
         let supervisor = MutationSupervisor::new();
         let poison = supervisor.clone();
-        assert!(std::thread::spawn(move || {
-            let _guard = poison.active.lock().unwrap();
-            panic!("intentional mutex poison for deterministic recovery test");
-        }).join().is_err());
-        let lease = supervisor.try_acquire(MutationWorkload::Cleanup, "p1", "owner-a").unwrap();
+        assert!(
+            std::thread::spawn(move || {
+                let _guard = poison.active.lock().unwrap();
+                panic!("intentional mutex poison for deterministic recovery test");
+            })
+            .join()
+            .is_err()
+        );
+        let lease = supervisor
+            .try_acquire(MutationWorkload::Cleanup, "p1", "owner-a")
+            .unwrap();
         assert!(supervisor.is_active());
         assert!(matches!(
             supervisor.try_acquire(MutationWorkload::DriverInstall, "p2", "owner-b"),
@@ -262,9 +266,11 @@ mod tests {
             Err(MutationError::BusyOtherPrincipal)
         ));
         drop(lease);
-        assert!(supervisor
-            .try_acquire(MutationWorkload::DriverInstall, "p2", "u2")
-            .is_ok());
+        assert!(
+            supervisor
+                .try_acquire(MutationWorkload::DriverInstall, "p2", "u2")
+                .is_ok()
+        );
     }
 
     #[test]
@@ -273,12 +279,11 @@ mod tests {
         let _lease = supervisor
             .try_acquire(MutationWorkload::Cleanup, "private-plan-a", "owner-a")
             .unwrap();
-        let error = match supervisor
-            .try_acquire(MutationWorkload::DriverInstall, "plan-b", "owner-b")
-        {
-            Err(error) => error,
-            Ok(_) => panic!("cross-principal mutation unexpectedly acquired the machine lease"),
-        };
+        let error =
+            match supervisor.try_acquire(MutationWorkload::DriverInstall, "plan-b", "owner-b") {
+                Err(error) => error,
+                Ok(_) => panic!("cross-principal mutation unexpectedly acquired the machine lease"),
+            };
         assert!(matches!(error, MutationError::BusyOtherPrincipal));
         let display = error.to_string();
         assert!(!display.contains("private-plan-a"));
@@ -293,7 +298,9 @@ mod tests {
             .try_acquire(MutationWorkload::Cleanup, "plan-a", "owner-a")
             .unwrap();
         assert_eq!(
-            supervisor.snapshot_for_owner("owner-a").map(|value| value.plan_id),
+            supervisor
+                .snapshot_for_owner("owner-a")
+                .map(|value| value.plan_id),
             Some("plan-a".into())
         );
         assert!(supervisor.snapshot_for_owner("owner-b").is_none());
@@ -386,7 +393,13 @@ mod tests {
             .unwrap();
         drop(lease);
         let values = changes.lock().unwrap();
-        assert!(matches!(values.first(), Some(MutationLeaseChange::Acquired(_))));
-        assert!(matches!(values.get(1), Some(MutationLeaseChange::Released(_))));
+        assert!(matches!(
+            values.first(),
+            Some(MutationLeaseChange::Acquired(_))
+        ));
+        assert!(matches!(
+            values.get(1),
+            Some(MutationLeaseChange::Released(_))
+        ));
     }
 }

@@ -5,21 +5,34 @@ use std::{
 };
 
 use aethercore_cleaner::{
-    CleanupCandidate, CleanupEngine, CleanupPlatform, CleanupScanState, CleanerError,
+    CleanerError, CleanupCandidate, CleanupEngine, CleanupPlatform, CleanupScanState,
 };
 use aethercore_operation_engine::{CleanupDeleteAction, CleanupFileEvidence, OperationEngine};
-use aethercore_operation_kernel::{MutationSupervisor, MutationWorkload, ReadBudgetManager, ReadWorkload};
+use aethercore_operation_kernel::{
+    MutationSupervisor, MutationWorkload, ReadBudgetManager, ReadWorkload,
+};
 use aethercore_persistence::Database;
 
-fn start_cleanup(cleaner: &CleanupEngine, owner: &str, plan_id: &str) -> aethercore_cleaner::Result<aethercore_cleaner::CleanupExecutionStatus> {
+fn start_cleanup(
+    cleaner: &CleanupEngine,
+    owner: &str,
+    plan_id: &str,
+) -> aethercore_cleaner::Result<aethercore_cleaner::CleanupExecutionStatus> {
     let supervisor = MutationSupervisor::new();
-    let lease = supervisor.try_acquire(MutationWorkload::Cleanup, plan_id, owner).expect("mutation lease");
+    let lease = supervisor
+        .try_acquire(MutationWorkload::Cleanup, plan_id, owner)
+        .expect("mutation lease");
     cleaner.start_with_lease(owner, plan_id, lease)
 }
 
-fn start_cleanup_scan(cleaner: &CleanupEngine, owner: &str) -> aethercore_cleaner::Result<aethercore_cleaner::CleanupSnapshot> {
+fn start_cleanup_scan(
+    cleaner: &CleanupEngine,
+    owner: &str,
+) -> aethercore_cleaner::Result<aethercore_cleaner::CleanupSnapshot> {
     let budget = ReadBudgetManager::new(4);
-    let lease = budget.try_acquire(ReadWorkload::CleanupDiscovery).expect("read budget lease");
+    let lease = budget
+        .try_acquire(ReadWorkload::CleanupDiscovery)
+        .expect("read budget lease");
     cleaner.start_scan_with_lease(owner, lease)
 }
 
@@ -90,7 +103,9 @@ fn temp_root(label: &str) -> std::path::PathBuf {
 fn wait_scan(cleaner: &CleanupEngine) -> aethercore_cleaner::CleanupSnapshot {
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        let snapshot = cleaner.snapshot_for_owner(OWNER).expect("owned cleanup snapshot");
+        let snapshot = cleaner
+            .snapshot_for_owner(OWNER)
+            .expect("owned cleanup snapshot");
         if snapshot.state == CleanupScanState::Ready {
             return snapshot;
         }
@@ -110,13 +125,19 @@ const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 static CLEANUP_EXECUTION_SERIALIZER: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn authorize(engine: &OperationEngine, plan_id: &str, digest: &str) {
-    let intent = engine.begin_consent_intent(plan_id, OWNER).expect("consent intent");
-    engine.approve_consent_intent(&intent.intent_id, OWNER, 4242).expect("consent approval");
+    let intent = engine
+        .begin_consent_intent(plan_id, OWNER)
+        .expect("consent intent");
+    engine
+        .approve_consent_intent(&intent.intent_id, OWNER, 4242)
+        .expect("consent approval");
 }
 
 #[test]
 fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
-    let _serialized = CLEANUP_EXECUTION_SERIALIZER.lock().unwrap_or_else(|p| p.into_inner());
+    let _serialized = CLEANUP_EXECUTION_SERIALIZER
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let root = temp_root("partial");
     std::fs::create_dir_all(&root).expect("root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
@@ -131,14 +152,24 @@ fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
     let snapshot = wait_scan(&cleaner);
     let id = snapshot.candidates[0].candidate_id.clone();
     let plan = cleaner
-        .create_plan(OWNER, &snapshot.scan_id, snapshot.inventory_epoch, &[id.clone()])
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[id.clone()],
+        )
         .expect("plan");
     let actions = engine.cleanup_actions(&plan.id).expect("actions");
     assert_eq!(actions[0].files.len(), 2);
     assert_eq!(actions[0].files[0].root_final_path, r"C:\fixture");
     assert_eq!(actions[0].expected_bytes, 100);
     assert!(matches!(
-        cleaner.create_plan(OWNER, &snapshot.scan_id, snapshot.inventory_epoch, &[id.clone(), id]),
+        cleaner.create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[id.clone(), id]
+        ),
         Err(CleanerError::CandidateInvalid(_))
     ));
 
@@ -163,7 +194,9 @@ fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
 
 #[test]
 fn cleanup_failure_after_deletion_barrier_requires_recovery_review() {
-    let _serialized = CLEANUP_EXECUTION_SERIALIZER.lock().unwrap_or_else(|p| p.into_inner());
+    let _serialized = CLEANUP_EXECUTION_SERIALIZER
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let root = temp_root("failure");
     std::fs::create_dir_all(&root).expect("root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
@@ -201,17 +234,23 @@ fn cleanup_failure_after_deletion_barrier_requires_recovery_review() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-
 #[test]
 fn cleanup_snapshot_is_principal_bound() {
     let root = temp_root("ownership");
     std::fs::create_dir_all(&root).expect("root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
     let engine = Arc::new(OperationEngine::new(db.clone()));
-    let cleaner = CleanupEngine::with_platform(engine, db, Arc::new(FakeCleanupPlatform { fail_delete: false }));
+    let cleaner = CleanupEngine::with_platform(
+        engine,
+        db,
+        Arc::new(FakeCleanupPlatform { fail_delete: false }),
+    );
     start_cleanup_scan(&cleaner, OWNER).expect("scan");
     let _ = wait_scan(&cleaner);
     let other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    assert!(matches!(cleaner.snapshot_for_owner(other), Err(CleanerError::OwnershipMismatch)));
+    assert!(matches!(
+        cleaner.snapshot_for_owner(other),
+        Err(CleanerError::OwnershipMismatch)
+    ));
     let _ = std::fs::remove_dir_all(root);
 }

@@ -80,7 +80,11 @@ pub struct UpdateIdentity {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum ExecutionStage { Revalidating, Downloading, Installing }
+pub enum ExecutionStage {
+    Revalidating,
+    Downloading,
+    Installing,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -134,9 +138,7 @@ pub fn extract_version_from_update_title(title: &str) -> Option<String> {
     let token = title
         .split_whitespace()
         .last()?
-        .trim_matches(|c: char| {
-            !c.is_ascii_alphanumeric() && c != '.' && c != '_' && c != '-'
-        })
+        .trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '_' && c != '-')
         .trim_start_matches(['v', 'V']);
 
     if token.len() < 5 || token.len() > 64 {
@@ -167,17 +169,24 @@ pub fn ole_automation_date_to_iso(value: f64) -> Option<String> {
 }
 
 #[cfg(windows)]
-mod windows_impl;
-#[cfg(windows)]
 mod execution_windows;
-
 #[cfg(windows)]
-pub use windows_impl::{discover_driver_offers, probe_update_health};
+mod windows_impl;
+
 #[cfg(windows)]
 pub use execution_windows::{ensure_servicing_available, execute_driver_updates};
+#[cfg(windows)]
+pub use windows_impl::{discover_driver_offers, probe_update_health};
 
 #[cfg(not(windows))]
-pub fn probe_update_health() -> UpdateHealthProbe { UpdateHealthProbe { result_code:"UpdateUnknown".into(), hresult:0, pending_update_count:0, detail:"Windows Update Agent is only available on Windows".into() } }
+pub fn probe_update_health() -> UpdateHealthProbe {
+    UpdateHealthProbe {
+        result_code: "UpdateUnknown".into(),
+        hresult: 0,
+        pending_update_count: 0,
+        detail: "Windows Update Agent is only available on Windows".into(),
+    }
+}
 
 #[cfg(not(windows))]
 pub fn discover_driver_offers() -> Result<DiscoveryResult> {
@@ -233,6 +242,9 @@ mod tests {
 
     #[test]
     fn converts_modern_ole_dates_to_iso() {
-        assert_eq!(ole_automation_date_to_iso(2.0).as_deref(), Some("1900-01-01"));
+        assert_eq!(
+            ole_automation_date_to_iso(2.0).as_deref(),
+            Some("1900-01-01")
+        );
     }
 }

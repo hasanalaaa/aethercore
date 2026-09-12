@@ -1,6 +1,6 @@
 use aethercore_pc_intelligence::{
-    evaluate_rules, remediation_candidates, Confidence, CorrelationStrength, Domain, EvidenceKind, FactPayload,
-    Freshness, RemediationPlan, RemediationSafety, ResourceRef, Severity, SystemFact,
+    Confidence, CorrelationStrength, Domain, EvidenceKind, FactPayload, Freshness, RemediationPlan,
+    RemediationSafety, ResourceRef, Severity, SystemFact, evaluate_rules, remediation_candidates,
 };
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -88,7 +88,10 @@ fn missing_driver_is_explicit_and_confirmed() {
         )],
         NOW,
     );
-    let finding = findings.iter().find(|f| f.code == "DRIVER_MISSING").unwrap();
+    let finding = findings
+        .iter()
+        .find(|f| f.code == "DRIVER_MISSING")
+        .unwrap();
     assert_eq!(finding.severity, Severity::High);
     assert_eq!(finding.confidence, Confidence::Confirmed);
     assert_eq!(finding.remediation_safety, Some(RemediationSafety::Manual));
@@ -115,7 +118,10 @@ fn driver_update_without_authority_is_informational_and_not_executable() {
         },
     )];
     let findings = evaluate_rules(&facts, NOW);
-    let finding = findings.iter().find(|finding| finding.code == "DRIVER_UPDATE_AVAILABLE").unwrap();
+    let finding = findings
+        .iter()
+        .find(|finding| finding.code == "DRIVER_UPDATE_AVAILABLE")
+        .unwrap();
     assert_eq!(finding.severity, Severity::Informational);
     assert!(!finding.remediation_available);
     assert!(aethercore_pc_intelligence::remediation_candidates(&findings).is_empty());
@@ -142,14 +148,26 @@ fn vendor_managed_driver_update_stays_manual() {
         },
     )];
     let findings = evaluate_rules(&facts, NOW);
-    let update_finding = findings.iter().find(|f| f.code == "DRIVER_UPDATE_AVAILABLE").unwrap();
+    let update_finding = findings
+        .iter()
+        .find(|f| f.code == "DRIVER_UPDATE_AVAILABLE")
+        .unwrap();
     assert_eq!(update_finding.severity, Severity::Informational);
-    assert_ne!(update_finding.remediation_safety, Some(RemediationSafety::SafeReview));
-    assert_ne!(update_finding.remediation_safety, Some(RemediationSafety::SafeAuto));
+    assert_ne!(
+        update_finding.remediation_safety,
+        Some(RemediationSafety::SafeReview)
+    );
+    assert_ne!(
+        update_finding.remediation_safety,
+        Some(RemediationSafety::SafeAuto)
+    );
     let candidates = aethercore_pc_intelligence::remediation_candidates(&findings);
     for candidate in &candidates {
         assert_ne!(candidate.safety, RemediationSafety::SafeAuto);
-        assert_ne!(candidate.action_type, aethercore_pc_intelligence::ActionType::InstallDriver);
+        assert_ne!(
+            candidate.action_type,
+            aethercore_pc_intelligence::ActionType::InstallDriver
+        );
     }
 }
 
@@ -180,7 +198,10 @@ fn storage_explicit_errors_are_critical_without_fake_percentage() {
         .unwrap();
     assert_eq!(finding.severity, Severity::Critical);
     assert_eq!(finding.confidence, Confidence::Confirmed);
-    assert_eq!(finding.remediation_safety, Some(RemediationSafety::HardwareService));
+    assert_eq!(
+        finding.remediation_safety,
+        Some(RemediationSafety::HardwareService)
+    );
 }
 
 #[test]
@@ -221,7 +242,10 @@ fn recent_driver_change_plus_later_crash_correlates_but_does_not_claim_root_caus
     assert_eq!(finding.confidence, Confidence::Medium);
     assert_eq!(finding.rule_id, "P17-CORR-001");
     assert_eq!(finding.rule_version, 2);
-    let correlation = finding.correlation.as_ref().expect("correlation explanation");
+    let correlation = finding
+        .correlation
+        .as_ref()
+        .expect("correlation explanation");
     assert_eq!(correlation.strength, CorrelationStrength::Moderate);
     assert_eq!(correlation.time_distance_ms, 60 * 60 * 1000);
     assert!(finding.evidence.len() >= 2);

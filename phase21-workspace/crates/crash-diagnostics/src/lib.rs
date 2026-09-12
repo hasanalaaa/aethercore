@@ -26,7 +26,7 @@ pub type Result<T> = std::result::Result<T, CrashError>;
 pub const DEFAULT_EVENT_WINDOW_DAYS: u32 = 30;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all="camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct EventEvidence {
     pub event_id: u32,
     pub provider: String,
@@ -39,7 +39,7 @@ pub struct EventEvidence {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all="camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct CrashRecord {
     pub crash_id: String,
     /// DBT-P46-B6: None when the dump file's mtime could not be read. Was
@@ -57,7 +57,7 @@ pub struct CrashRecord {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all="camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct CrashDiagnosticsSnapshot {
     #[serde(default)]
     pub event_window_days: u32,
@@ -68,19 +68,48 @@ pub struct CrashDiagnosticsSnapshot {
     pub warnings: Vec<String>,
 }
 
-pub fn classify_event(provider: &str, event_id: u32, payload_values: &[String], recorded_unix_ms: i64) -> EventEvidence {
+pub fn classify_event(
+    provider: &str,
+    event_id: u32,
+    payload_values: &[String],
+    recorded_unix_ms: i64,
+) -> EventEvidence {
     let lower = payload_values.join(" ").to_ascii_lowercase();
     if provider.eq_ignore_ascii_case("Microsoft-Windows-WHEA-Logger") {
         let (category, detail) = if lower.contains("memory") || lower.contains("memhierarchy") {
-            ("MemoryHardwareEvidence", "WHEA logged a memory-related hardware error. This is hardware evidence, but it does not identify a specific DIMM without deeper decoding/testing.")
-        } else if lower.contains("cache") || lower.contains("processor") || lower.contains("machine check") {
-            ("ProcessorHardwareEvidence", "WHEA logged a processor/cache-related hardware error. Treat this as evidence, not a complete root-cause attribution.")
+            (
+                "MemoryHardwareEvidence",
+                "WHEA logged a memory-related hardware error. This is hardware evidence, but it does not identify a specific DIMM without deeper decoding/testing.",
+            )
+        } else if lower.contains("cache")
+            || lower.contains("processor")
+            || lower.contains("machine check")
+        {
+            (
+                "ProcessorHardwareEvidence",
+                "WHEA logged a processor/cache-related hardware error. Treat this as evidence, not a complete root-cause attribution.",
+            )
         } else if lower.contains("pci") || lower.contains("pcie") {
-            ("PcieHardwareEvidence", "WHEA logged PCI/PCIe-related hardware-error evidence.")
+            (
+                "PcieHardwareEvidence",
+                "WHEA logged PCI/PCIe-related hardware-error evidence.",
+            )
         } else {
-            ("HardwareError", "WHEA logged a hardware error; the summarized event data is not sufficient to name a failed component with confidence.")
+            (
+                "HardwareError",
+                "WHEA logged a hardware error; the summarized event data is not sufficient to name a failed component with confidence.",
+            )
         };
-        return EventEvidence { event_id, provider:provider.into(), recorded_unix_ms, category:category.into(), severity:"Attention".into(), confidence:"HighEvidence/RootCauseUnknown".into(), summary:"Windows Hardware Error Architecture recorded a hardware error.".into(), detail:detail.into() };
+        return EventEvidence {
+            event_id,
+            provider: provider.into(),
+            recorded_unix_ms,
+            category: category.into(),
+            severity: "Attention".into(),
+            confidence: "HighEvidence/RootCauseUnknown".into(),
+            summary: "Windows Hardware Error Architecture recorded a hardware error.".into(),
+            detail: detail.into(),
+        };
     }
     if provider.eq_ignore_ascii_case("Microsoft-Windows-Kernel-Power") && event_id == 41 {
         return EventEvidence { event_id, provider:provider.into(), recorded_unix_ms, category:"UnexpectedShutdown".into(), severity:"Attention".into(), confidence:"EventHigh/CauseLow".into(), summary:"Windows recorded an unexpected shutdown or restart.".into(), detail:"Kernel-Power Event 41 confirms an unclean shutdown; by itself it does not identify why power was lost or the system crashed.".into() };
@@ -88,29 +117,53 @@ pub fn classify_event(provider: &str, event_id: u32, payload_values: &[String], 
     if provider.eq_ignore_ascii_case("Microsoft-Windows-WER-SystemErrorReporting") {
         return EventEvidence { event_id, provider:provider.into(), recorded_unix_ms, category:"BugcheckReport".into(), severity:"Attention".into(), confidence:"HighEvidence".into(), summary:"Windows Error Reporting recorded a system crash/bugcheck.".into(), detail:"The event is crash evidence. A precise driver/module attribution may require the matching dump plus symbols.".into() };
     }
-    EventEvidence { event_id, provider:provider.into(), recorded_unix_ms, category:"SystemEvent".into(), severity:"Info".into(), confidence:"EventOnly".into(), summary:"Relevant system diagnostic event.".into(), detail:"Event retained as supporting evidence.".into() }
+    EventEvidence {
+        event_id,
+        provider: provider.into(),
+        recorded_unix_ms,
+        category: "SystemEvent".into(),
+        severity: "Info".into(),
+        confidence: "EventOnly".into(),
+        summary: "Relevant system diagnostic event.".into(),
+        detail: "Event retained as supporting evidence.".into(),
+    }
 }
 
-#[cfg(windows)] mod windows_impl;
-#[cfg(windows)] pub use windows_impl::{collect, collect_with_cancellation};
+#[cfg(windows)]
+mod windows_impl;
+#[cfg(windows)]
+pub use windows_impl::{collect, collect_with_cancellation};
 #[cfg(not(windows))]
-pub fn collect() -> Result<CrashDiagnosticsSnapshot> { Err(CrashError::Unavailable("crash diagnostics are available on Windows only".into())) }
+pub fn collect() -> Result<CrashDiagnosticsSnapshot> {
+    Err(CrashError::Unavailable(
+        "crash diagnostics are available on Windows only".into(),
+    ))
+}
 #[cfg(not(windows))]
-pub fn collect_with_cancellation(_token: aethercore_collector_runtime::CancellationToken) -> Result<CrashDiagnosticsSnapshot> { collect() }
+pub fn collect_with_cancellation(
+    _token: aethercore_collector_runtime::CancellationToken,
+) -> Result<CrashDiagnosticsSnapshot> {
+    collect()
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn kernel_power_never_claims_root_cause() {
-        let e=classify_event("Microsoft-Windows-Kernel-Power",41,&[],1);
+        let e = classify_event("Microsoft-Windows-Kernel-Power", 41, &[], 1);
         assert!(e.detail.contains("does not identify why"));
-        assert_eq!(e.category,"UnexpectedShutdown");
+        assert_eq!(e.category, "UnexpectedShutdown");
     }
     #[test]
     fn whea_memory_is_evidence_not_dimm_diagnosis() {
-        let e=classify_event("Microsoft-Windows-WHEA-Logger",18,&["Memory hierarchy error".into()],1);
-        assert_eq!(e.category,"MemoryHardwareEvidence");
+        let e = classify_event(
+            "Microsoft-Windows-WHEA-Logger",
+            18,
+            &["Memory hierarchy error".into()],
+            1,
+        );
+        assert_eq!(e.category, "MemoryHardwareEvidence");
         assert!(e.detail.contains("does not identify a specific DIMM"));
     }
     #[test]
@@ -132,6 +185,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     #[ignore = "read-only live Windows Event Log/minidump collection"]
-    fn live_event_and_minidump_collection_is_read_only() { let _=collect().expect("collect crash diagnostics"); }
-
+    fn live_event_and_minidump_collection_is_read_only() {
+        let _ = collect().expect("collect crash diagnostics");
+    }
 }

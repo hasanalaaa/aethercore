@@ -6,8 +6,8 @@
 //! lane honestly instead of pretending completeness.
 
 use crate::model::{
-    sort_and_clamp, Confidence, EvidenceRef, SecFinding, Severity, MAX_FILES_PER_SCAN,
-    MAX_SCAN_MILLIS,
+    Confidence, EvidenceRef, MAX_FILES_PER_SCAN, MAX_SCAN_MILLIS, SecFinding, Severity,
+    sort_and_clamp,
 };
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -206,8 +206,9 @@ pub fn audit_filesystem(roots: &[String]) -> Result<Vec<SecFinding>, String> {
                 None,
                 "sec.fs.sshDirPerms",
                 Confidence::Exact,
-            ) {
-                findings.push(f);
+            )
+        {
+            findings.push(f);
         }
         if let Ok(entries) = std::fs::read_dir(&ssh_dir) {
             for e in entries.flatten() {
@@ -240,9 +241,10 @@ pub fn audit_filesystem(roots: &[String]) -> Result<Vec<SecFinding>, String> {
                         None,
                         "sec.fs.sshKeyPerms",
                         Confidence::Exact,
-                    ) {
-                        findings.push(fk);
-                    }
+                    )
+                {
+                    findings.push(fk);
+                }
             }
         }
     }

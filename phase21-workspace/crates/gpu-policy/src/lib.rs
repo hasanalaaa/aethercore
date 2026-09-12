@@ -44,12 +44,7 @@ pub fn policy(vendor: GpuVendor) -> GpuVendorPolicy {
         GpuVendor::Nvidia => GpuVendorPolicy {
             vendor,
             app_name: "NVIDIA App",
-            executable_parts: &[
-                "NVIDIA Corporation",
-                "NVIDIA App",
-                "CEF",
-                "NVIDIA App.exe",
-            ],
+            executable_parts: &["NVIDIA Corporation", "NVIDIA App", "CEF", "NVIDIA App.exe"],
             official_url: "https://www.nvidia.com/en-us/software/nvidia-app/",
         },
         GpuVendor::Amd => GpuVendorPolicy {
@@ -111,10 +106,12 @@ mod tests {
         for vendor in [GpuVendor::Nvidia, GpuVendor::Amd, GpuVendor::Intel] {
             let definition = policy(vendor);
             assert!(definition.official_url.starts_with("https://"));
-            assert!(definition
-                .executable_parts
-                .last()
-                .is_some_and(|name| name.to_ascii_lowercase().ends_with(".exe")));
+            assert!(
+                definition
+                    .executable_parts
+                    .last()
+                    .is_some_and(|name| name.to_ascii_lowercase().ends_with(".exe"))
+            );
         }
     }
 }

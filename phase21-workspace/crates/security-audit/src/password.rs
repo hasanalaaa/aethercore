@@ -6,7 +6,7 @@
 //! pretending a scan happened (QD-032-002).
 
 use crate::model::{
-    sort_and_clamp, Confidence, EvidenceRef, SecFinding, Severity, MAX_PARSE_BYTES,
+    Confidence, EvidenceRef, MAX_PARSE_BYTES, SecFinding, Severity, sort_and_clamp,
 };
 use std::path::Path;
 
@@ -96,26 +96,28 @@ pub fn audit_password_policy(path_str: &str) -> Result<Vec<SecFinding>, String> 
                 .map(|m| val > m)
                 .or_else(|| rule.min_violation.map(|m| val < m))
                 .unwrap_or(false);
-            if violates && let Some(f) = SecFinding::try_new(
-                        rule.id,
-                        rule.code,
-                        rule.severity,
-                        vec![EvidenceRef {
-                            fact: verbatim,
-                            observed: format!("{}={val}", rule.keyword),
-                            expected_or_threshold: rule.expected.to_string(),
-                            source_location: format!("{path_str}:{line_no}"),
-                        }],
-                        rule.cis,
-                        match rule.code {
-                            "pass.max_days" => "sec.pass.maxDays",
-                            "pass.min_days" => "sec.pass.minDays",
-                            _ => "sec.pass.minLen",
-                        },
-                        Confidence::Exact,
-                ) {
-                    findings.push(f);
-                }
+            if violates
+                && let Some(f) = SecFinding::try_new(
+                    rule.id,
+                    rule.code,
+                    rule.severity,
+                    vec![EvidenceRef {
+                        fact: verbatim,
+                        observed: format!("{}={val}", rule.keyword),
+                        expected_or_threshold: rule.expected.to_string(),
+                        source_location: format!("{path_str}:{line_no}"),
+                    }],
+                    rule.cis,
+                    match rule.code {
+                        "pass.max_days" => "sec.pass.maxDays",
+                        "pass.min_days" => "sec.pass.minDays",
+                        _ => "sec.pass.minLen",
+                    },
+                    Confidence::Exact,
+                )
+            {
+                findings.push(f);
+            }
         }
     }
     Ok(sort_and_clamp(findings))

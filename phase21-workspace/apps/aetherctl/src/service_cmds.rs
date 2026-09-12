@@ -13,9 +13,9 @@
 use crate::cli::{Config, ServiceJob};
 use crate::error::CliError;
 use crate::render;
-use crate::transport::{CallOutcome, ServiceClient};
 #[cfg(unix)]
 use crate::transport::{self, ServiceState};
+use crate::transport::{CallOutcome, ServiceClient};
 
 use aethercore_contracts::v1::{request, response};
 

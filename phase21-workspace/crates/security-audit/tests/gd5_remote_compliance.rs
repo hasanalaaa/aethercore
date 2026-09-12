@@ -11,11 +11,9 @@
 //! - unsigned report remains explicitly unsigned (never "authenticated").
 
 use aethercore_security_audit::compliance::{
-    parse_report_bytes, verify_integrity, ControlStatus, Profile,
+    ControlStatus, Profile, parse_report_bytes, verify_integrity,
 };
-use aethercore_security_audit::{
-    compliance, LaneReport, LaneStatus, SecurityAuditReport,
-};
+use aethercore_security_audit::{LaneReport, LaneStatus, SecurityAuditReport, compliance};
 use std::path::PathBuf;
 
 fn profile() -> Profile {
@@ -83,8 +81,7 @@ fn report_bytes(signed: bool) -> Vec<u8> {
     if signed {
         let seed = [7u8; 32]; // test-only deterministic seed
         let signing_key = aethercore_persistence::export::signing_key_from_seed(&seed);
-        let signature =
-            aethercore_persistence::export::sign_digest(&report.digest, &signing_key);
+        let signature = aethercore_persistence::export::sign_digest(&report.digest, &signing_key);
         report.signed = true;
         report.signature = Some(compliance::ReportSignature {
             public_key_hex: signature.public_key_hex,
@@ -133,7 +130,10 @@ fn gd5_content_tamper_rejected() {
     let controls = value.get_mut("controls").unwrap().as_array_mut().unwrap();
     let mut flipped = false;
     for control in controls.iter_mut() {
-        if let Some(evidence) = control.get_mut("evidence_refs").and_then(|e| e.as_array_mut()) {
+        if let Some(evidence) = control
+            .get_mut("evidence_refs")
+            .and_then(|e| e.as_array_mut())
+        {
             evidence.push(serde_json::json!("tampered-evidence-ref"));
             flipped = true;
             break;
@@ -144,23 +144,40 @@ fn gd5_content_tamper_rejected() {
     // exact error family: DigestMismatch (after ScoreMismatch is impossible
     // here because pass/fail swap preserves totals — the digest check fires)
     let error = verify_remote_collection(&tampered).unwrap_err();
-    assert!(error.contains("digest"), "typed digest rejection expected, got: {error}");
+    assert!(
+        error.contains("digest"),
+        "typed digest rejection expected, got: {error}"
+    );
 }
 
 #[test]
 fn gd5_signature_tamper_rejected() {
     let mut value: serde_json::Value = serde_json::from_slice(&report_bytes(true)).unwrap();
-    let signature_hex = value["signature"]["signature_hex"].as_str().unwrap().to_string();
+    let signature_hex = value["signature"]["signature_hex"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // flip one hex character of the signature
     let flipped: String = signature_hex
         .char_indices()
-        .map(|(i, c)| if i == 0 && c == 'a' { 'b' } else if i == 0 { 'a' } else { c })
+        .map(|(i, c)| {
+            if i == 0 && c == 'a' {
+                'b'
+            } else if i == 0 {
+                'a'
+            } else {
+                c
+            }
+        })
         .collect();
     assert_ne!(flipped, signature_hex);
     value["signature"]["signature_hex"] = serde_json::json!(flipped);
     let tampered = serde_json::to_vec(&value).unwrap();
     let error = verify_remote_collection(&tampered).unwrap_err();
-    assert!(error.contains("signature"), "typed signature rejection expected, got: {error}");
+    assert!(
+        error.contains("signature"),
+        "typed signature rejection expected, got: {error}"
+    );
 }
 
 #[test]
@@ -168,7 +185,9 @@ fn gd5_status_semantics_survive_transport() {
     // NotVerified is first-class on the remote side too — never averaged into pass.
     let report = verify_remote_collection(&report_bytes(false)).unwrap();
     let statuses: Vec<ControlStatus> = report.controls.iter().map(|c| c.status).collect();
-    assert!(statuses.contains(&ControlStatus::Pass) || statuses.contains(&ControlStatus::NotVerified));
+    assert!(
+        statuses.contains(&ControlStatus::Pass) || statuses.contains(&ControlStatus::NotVerified)
+    );
     // score total invariant intact
     assert_eq!(report.score.total(), report.controls.len());
 }

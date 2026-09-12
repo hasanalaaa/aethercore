@@ -205,7 +205,9 @@ pub enum OfflineJob {
         from: String,
         dest: String,
     },
-    ReleaseInspect { manifest: Option<String> },
+    ReleaseInspect {
+        manifest: Option<String>,
+    },
     ReleaseVerify {
         manifest: String,
         signature: String,
@@ -223,7 +225,9 @@ pub enum OfflineJob {
     UpdateStatus,
     UpdateCancel,
     UpdateRollback,
-    OfflineBundleVerify { bundle: String },
+    OfflineBundleVerify {
+        bundle: String,
+    },
     Help,
 }
 
@@ -745,24 +749,53 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
             Command::Offline(OfflineJob::VulndbUpdate { from, dest })
         }
         "release" => {
-            let sub = cursor.next().cloned().ok_or_else(|| usage("cli.usage.releaseSubcommandRequired", "release requires inspect|verify".into()))?;
+            let sub = cursor.next().cloned().ok_or_else(|| {
+                usage(
+                    "cli.usage.releaseSubcommandRequired",
+                    "release requires inspect|verify".into(),
+                )
+            })?;
             match sub.as_str() {
                 "inspect" => {
                     let mut manifest = None;
                     while let Some(flag) = cursor.next() {
-                        match flag.as_str() { "--manifest" => manifest = Some(cursor.value_after("--manifest")?), other => return Err(unknown_flag(other)) }
+                        match flag.as_str() {
+                            "--manifest" => manifest = Some(cursor.value_after("--manifest")?),
+                            other => return Err(unknown_flag(other)),
+                        }
                     }
                     Command::Offline(OfflineJob::ReleaseInspect { manifest })
                 }
                 "verify" => {
-                    let mut manifest = None; let mut signature = None; let mut keyring = None;
+                    let mut manifest = None;
+                    let mut signature = None;
+                    let mut keyring = None;
                     while let Some(flag) = cursor.next() {
-                        match flag.as_str() { "--manifest" => manifest = Some(cursor.value_after("--manifest")?), "--signature" => signature = Some(cursor.value_after("--signature")?), "--keyring" => keyring = Some(cursor.value_after("--keyring")?), other => return Err(unknown_flag(other)) }
+                        match flag.as_str() {
+                            "--manifest" => manifest = Some(cursor.value_after("--manifest")?),
+                            "--signature" => signature = Some(cursor.value_after("--signature")?),
+                            "--keyring" => keyring = Some(cursor.value_after("--keyring")?),
+                            other => return Err(unknown_flag(other)),
+                        }
                     }
-                    let missing = || usage("cli.usage.releaseVerifyRequiresInputs", "release verify requires --manifest --signature --keyring".into());
-                    Command::Offline(OfflineJob::ReleaseVerify { manifest: manifest.ok_or_else(missing)?, signature: signature.ok_or_else(missing)?, keyring: keyring.ok_or_else(missing)? })
+                    let missing = || {
+                        usage(
+                            "cli.usage.releaseVerifyRequiresInputs",
+                            "release verify requires --manifest --signature --keyring".into(),
+                        )
+                    };
+                    Command::Offline(OfflineJob::ReleaseVerify {
+                        manifest: manifest.ok_or_else(missing)?,
+                        signature: signature.ok_or_else(missing)?,
+                        keyring: keyring.ok_or_else(missing)?,
+                    })
                 }
-                other => return Err(usage("cli.usage.unknownSubcommand", format!("unknown release subcommand '{other}'"))),
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown release subcommand '{other}'"),
+                    ));
+                }
             }
         }
         "update" => {
@@ -776,19 +809,50 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                 "cancel" => Command::Offline(OfflineJob::UpdateCancel),
                 "rollback" => Command::Offline(OfflineJob::UpdateRollback),
                 "verify" => {
-                    let mut metadata = None; let mut signature = None; let mut keyring = None;
+                    let mut metadata = None;
+                    let mut signature = None;
+                    let mut keyring = None;
                     while let Some(flag) = cursor.next() {
-                        match flag.as_str() { "--metadata" => metadata = Some(cursor.value_after("--metadata")?), "--signature" => signature = Some(cursor.value_after("--signature")?), "--keyring" => keyring = Some(cursor.value_after("--keyring")?), other => return Err(unknown_flag(other)) }
+                        match flag.as_str() {
+                            "--metadata" => metadata = Some(cursor.value_after("--metadata")?),
+                            "--signature" => signature = Some(cursor.value_after("--signature")?),
+                            "--keyring" => keyring = Some(cursor.value_after("--keyring")?),
+                            other => return Err(unknown_flag(other)),
+                        }
                     }
-                    let missing = || usage("cli.usage.updateVerifyRequiresInputs", "update verify requires --metadata --signature --keyring".into());
-                    Command::Offline(OfflineJob::UpdateVerify { metadata: metadata.ok_or_else(missing)?, signature: signature.ok_or_else(missing)?, keyring: keyring.ok_or_else(missing)? })
+                    let missing = || {
+                        usage(
+                            "cli.usage.updateVerifyRequiresInputs",
+                            "update verify requires --metadata --signature --keyring".into(),
+                        )
+                    };
+                    Command::Offline(OfflineJob::UpdateVerify {
+                        metadata: metadata.ok_or_else(missing)?,
+                        signature: signature.ok_or_else(missing)?,
+                        keyring: keyring.ok_or_else(missing)?,
+                    })
                 }
                 "offline" => {
-                    if cursor.next().map(|v| v.as_str()) != Some("verify") { return Err(usage("cli.usage.updateOfflineVerifyRequiresBundle", "update offline requires verify <bundle.zip>".into())); }
-                    let bundle = cursor.next().cloned().ok_or_else(|| usage("cli.usage.updateOfflineVerifyRequiresBundle", "update offline verify requires a bundle path".into()))?;
+                    if cursor.next().map(|v| v.as_str()) != Some("verify") {
+                        return Err(usage(
+                            "cli.usage.updateOfflineVerifyRequiresBundle",
+                            "update offline requires verify <bundle.zip>".into(),
+                        ));
+                    }
+                    let bundle = cursor.next().cloned().ok_or_else(|| {
+                        usage(
+                            "cli.usage.updateOfflineVerifyRequiresBundle",
+                            "update offline verify requires a bundle path".into(),
+                        )
+                    })?;
                     Command::Offline(OfflineJob::OfflineBundleVerify { bundle })
                 }
-                other => return Err(usage("cli.usage.unknownSubcommand", format!("unknown update subcommand '{other}'"))),
+                other => {
+                    return Err(usage(
+                        "cli.usage.unknownSubcommand",
+                        format!("unknown update subcommand '{other}'"),
+                    ));
+                }
             }
         }
         // Phase 29 (T3): keys generate --out <path> | keys fingerprint --in <path>.
@@ -1528,9 +1592,31 @@ mod tests {
 
     #[test]
     fn phase35_release_and_offline_update_commands_are_typed() {
-        assert!(matches!(parse(&argv(&["release", "inspect"])).unwrap().command, Command::Offline(OfflineJob::ReleaseInspect { manifest: None })));
-        assert!(matches!(parse(&argv(&["release", "verify", "--manifest", "m", "--signature", "s", "--keyring", "k"])).unwrap().command, Command::Offline(OfflineJob::ReleaseVerify { .. })));
-        assert!(matches!(parse(&argv(&["update", "offline", "verify", "bundle.zip"])).unwrap().command, Command::Offline(OfflineJob::OfflineBundleVerify { .. })));
+        assert!(matches!(
+            parse(&argv(&["release", "inspect"])).unwrap().command,
+            Command::Offline(OfflineJob::ReleaseInspect { manifest: None })
+        ));
+        assert!(matches!(
+            parse(&argv(&[
+                "release",
+                "verify",
+                "--manifest",
+                "m",
+                "--signature",
+                "s",
+                "--keyring",
+                "k"
+            ]))
+            .unwrap()
+            .command,
+            Command::Offline(OfflineJob::ReleaseVerify { .. })
+        ));
+        assert!(matches!(
+            parse(&argv(&["update", "offline", "verify", "bundle.zip"]))
+                .unwrap()
+                .command,
+            Command::Offline(OfflineJob::OfflineBundleVerify { .. })
+        ));
     }
 
     #[test]

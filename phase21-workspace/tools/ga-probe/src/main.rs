@@ -28,10 +28,18 @@ mod windows_main {
 
     fn parse_usize(flag: &str, default: usize, min: usize, max: usize) -> Result<usize, String> {
         let args: Vec<String> = env::args().collect();
-        let Some(index) = args.iter().position(|value| value == flag) else { return Ok(default); };
-        let raw = args.get(index + 1).ok_or_else(|| format!("missing value after {flag}"))?;
-        let value = raw.parse::<usize>().map_err(|_| format!("invalid integer for {flag}: {raw}"))?;
-        if !(min..=max).contains(&value) { return Err(format!("{flag} must be between {min} and {max}")); }
+        let Some(index) = args.iter().position(|value| value == flag) else {
+            return Ok(default);
+        };
+        let raw = args
+            .get(index + 1)
+            .ok_or_else(|| format!("missing value after {flag}"))?;
+        let value = raw
+            .parse::<usize>()
+            .map_err(|_| format!("invalid integer for {flag}: {raw}"))?;
+        if !(min..=max).contains(&value) {
+            return Err(format!("{flag} must be between {min} and {max}"));
+        }
         Ok(value)
     }
 
@@ -51,12 +59,19 @@ mod windows_main {
             request::Payload::Ping(PingRequest {})
         };
         Request {
-            header: Some(RequestHeader { protocol_version: PROTOCOL_VERSION, request_id: id }),
+            header: Some(RequestHeader {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: id,
+            }),
             payload: Some(payload),
         }
     }
 
-    fn connect(replay_after: u64, failed: Arc<AtomicBool>, reset_count: Arc<AtomicU64>) -> Result<(Arc<SessionClient>, Arc<AtomicU64>), String> {
+    fn connect(
+        replay_after: u64,
+        failed: Arc<AtomicBool>,
+        reset_count: Arc<AtomicU64>,
+    ) -> Result<(Arc<SessionClient>, Arc<AtomicU64>), String> {
         let last_sequence = Arc::new(AtomicU64::new(replay_after));
         let sequence_for_event = last_sequence.clone();
         let failed_for_event = failed.clone();
@@ -99,23 +114,33 @@ mod windows_main {
             let request_failures = request_failures.clone();
             workers.push(thread::spawn(move || -> Result<(), String> {
                 let mut replay_after = 0u64;
-                let (mut client, mut last_sequence) = connect(replay_after, failed.clone(), stream_resets.clone())?;
+                let (mut client, mut last_sequence) =
+                    connect(replay_after, failed.clone(), stream_resets.clone())?;
                 for index in 0..cfg.requests_per_session {
                     if index > 0 && index % cfg.reconnect_every == 0 {
                         replay_after = last_sequence.load(Ordering::Acquire);
                         drop(client);
                         reconnects.fetch_add(1, Ordering::AcqRel);
-                        let connected = connect(replay_after, failed.clone(), stream_resets.clone())?;
+                        let connected =
+                            connect(replay_after, failed.clone(), stream_resets.clone())?;
                         client = connected.0;
                         last_sequence = connected.1;
                     }
-                    let id = format!("ga-{worker_id}-{index}-{}", total_requests.fetch_add(1, Ordering::AcqRel));
+                    let id = format!(
+                        "ga-{worker_id}-{index}-{}",
+                        total_requests.fetch_add(1, Ordering::AcqRel)
+                    );
                     let hydrate = index % 16 == 15;
-                    match client.request(request(id, hydrate), Duration::from_millis(cfg.timeout_ms)) {
+                    match client
+                        .request(request(id, hydrate), Duration::from_millis(cfg.timeout_ms))
+                    {
                         Ok(response) if response.status_code == 200 => {}
                         Ok(response) => {
                             request_failures.fetch_add(1, Ordering::AcqRel);
-                            return Err(format!("service returned status {}", response.status_code));
+                            return Err(format!(
+                                "service returned status {}",
+                                response.status_code
+                            ));
                         }
                         Err(error) => {
                             request_failures.fetch_add(1, Ordering::AcqRel);
@@ -156,7 +181,10 @@ fn main() {
     #[cfg(windows)]
     {
         if let Err(error) = windows_main::run() {
-            eprintln!("{{\"schema\":\"aethercore.ga-probe.v1\",\"ok\":false,\"error\":{:?}}}", error);
+            eprintln!(
+                "{{\"schema\":\"aethercore.ga-probe.v1\",\"ok\":false,\"error\":{:?}}}",
+                error
+            );
             std::process::exit(1);
         }
         return;

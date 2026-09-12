@@ -248,7 +248,10 @@ enum ReadingInner<T> {
 
 impl<T> Reading<T> {
     /// Measured if the collector produced a value, otherwise the supplied fault.
-    pub fn from_evidence(measured: Option<T>, no_evidence: impl FnOnce() -> CollectorFault) -> Self {
+    pub fn from_evidence(
+        measured: Option<T>,
+        no_evidence: impl FnOnce() -> CollectorFault,
+    ) -> Self {
         match measured {
             Some(value) => Self(ReadingInner::Measured(value)),
             None => Self(ReadingInner::Unavailable(no_evidence())),

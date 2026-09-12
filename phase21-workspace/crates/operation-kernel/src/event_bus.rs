@@ -1,8 +1,9 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
+        Arc, Mutex, Weak,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc, Arc, Mutex, Weak,
+        mpsc,
     },
     time::Duration,
 };
@@ -55,7 +56,10 @@ fn owner_stream_mut<'a>(state: &'a mut BusState, owner_principal_key: &str) -> &
     }
     state.activity_clock = state.activity_clock.saturating_add(1);
     let tick = state.activity_clock;
-    let stream = state.owners.entry(owner_principal_key.to_owned()).or_default();
+    let stream = state
+        .owners
+        .entry(owner_principal_key.to_owned())
+        .or_default();
     stream.last_activity_tick = tick;
     stream
 }
@@ -120,10 +124,14 @@ pub struct EventSubscription {
 
 impl Drop for EventSubscription {
     fn drop(&mut self) {
-        let Some(state) = self.state.upgrade() else { return };
+        let Some(state) = self.state.upgrade() else {
+            return;
+        };
         let mut state = state.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(stream) = state.owners.get_mut(&self.owner_principal_key) {
-            stream.subscribers.retain(|subscriber| subscriber.id != self.subscriber_id);
+            stream
+                .subscribers
+                .retain(|subscriber| subscriber.id != self.subscriber_id);
         }
     }
 }
@@ -204,20 +212,32 @@ impl EventBus {
             subscriber_lag_total: self.subscriber_lag_total.load(Ordering::Relaxed),
             subscriber_disconnect_total: self.subscriber_disconnect_total.load(Ordering::Relaxed),
             owner_streams: state.owners.len(),
-            subscribers: state.owners.values().map(|stream| stream.subscribers.len()).sum(),
-            replay_events: state.owners.values().map(|stream| stream.replay.len()).sum(),
+            subscribers: state
+                .owners
+                .values()
+                .map(|stream| stream.subscribers.len())
+                .sum(),
+            replay_events: state
+                .owners
+                .values()
+                .map(|stream| stream.replay.len())
+                .sum(),
         }
     }
 
     pub fn metrics_for_owner(&self, owner_principal_key: &str) -> OwnerEventBusMetrics {
         let state = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        state.owners.get(owner_principal_key).map(|stream| OwnerEventBusMetrics {
-            published_total: stream.sequence,
-            subscriber_lag_total: stream.subscriber_lag_total,
-            subscriber_disconnect_total: stream.subscriber_disconnect_total,
-            subscribers: stream.subscribers.len(),
-            replay_events: stream.replay.len(),
-        }).unwrap_or_default()
+        state
+            .owners
+            .get(owner_principal_key)
+            .map(|stream| OwnerEventBusMetrics {
+                published_total: stream.sequence,
+                subscriber_lag_total: stream.subscriber_lag_total,
+                subscriber_disconnect_total: stream.subscriber_disconnect_total,
+                subscribers: stream.subscribers.len(),
+                replay_events: stream.replay.len(),
+            })
+            .unwrap_or_default()
     }
 
     pub fn publish(
@@ -251,23 +271,29 @@ impl EventBus {
         // hydration image through this same ordered stream.
         let mut lag_transitions = 0u64;
         let mut disconnects = 0u64;
-        stream.subscribers.retain(|subscriber| match subscriber.tx.try_send(event.clone()) {
-            Ok(()) => true,
-            Err(mpsc::TrySendError::Full(_)) => {
-                if !subscriber.lagged.swap(true, Ordering::AcqRel) {
-                    lag_transitions = lag_transitions.saturating_add(1);
+        stream
+            .subscribers
+            .retain(|subscriber| match subscriber.tx.try_send(event.clone()) {
+                Ok(()) => true,
+                Err(mpsc::TrySendError::Full(_)) => {
+                    if !subscriber.lagged.swap(true, Ordering::AcqRel) {
+                        lag_transitions = lag_transitions.saturating_add(1);
+                    }
+                    true
                 }
-                true
-            }
-            Err(mpsc::TrySendError::Disconnected(_)) => {
-                disconnects = disconnects.saturating_add(1);
-                false
-            }
-        });
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    disconnects = disconnects.saturating_add(1);
+                    false
+                }
+            });
         stream.subscriber_lag_total = stream.subscriber_lag_total.saturating_add(lag_transitions);
-        stream.subscriber_disconnect_total = stream.subscriber_disconnect_total.saturating_add(disconnects);
-        self.subscriber_lag_total.fetch_add(lag_transitions, Ordering::Relaxed);
-        self.subscriber_disconnect_total.fetch_add(disconnects, Ordering::Relaxed);
+        stream.subscriber_disconnect_total = stream
+            .subscriber_disconnect_total
+            .saturating_add(disconnects);
+        self.subscriber_lag_total
+            .fetch_add(lag_transitions, Ordering::Relaxed);
+        self.subscriber_disconnect_total
+            .fetch_add(disconnects, Ordering::Relaxed);
         event
     }
 
@@ -310,13 +336,16 @@ impl EventBus {
             tx,
             lagged: lagged.clone(),
         });
-        (EventSubscription {
-            rx,
-            lagged,
-            state: Arc::downgrade(&self.state),
-            owner_principal_key: owner_principal_key.to_owned(),
-            subscriber_id,
-        }, batch)
+        (
+            EventSubscription {
+                rx,
+                lagged,
+                state: Arc::downgrade(&self.state),
+                owner_principal_key: owner_principal_key.to_owned(),
+                subscriber_id,
+            },
+            batch,
+        )
     }
 }
 
@@ -367,7 +396,11 @@ mod tests {
         let (subscription, replay) = bus.subscribe("owner-a", 0);
         assert_eq!(replay.events.len(), 1);
         bus.publish("owner-a", EventKind::PlanChanged, "p2", None);
-        match subscription.rx.recv_timeout(Duration::from_millis(50)).unwrap() {
+        match subscription
+            .rx
+            .recv_timeout(Duration::from_millis(50))
+            .unwrap()
+        {
             event => assert_eq!(event.sequence, 2),
         }
     }
@@ -383,7 +416,10 @@ mod tests {
     fn quiet_subscription_timeout_is_not_disconnect() {
         let bus = EventBus::new(8);
         let (subscription, _) = bus.subscribe("owner-a", 0);
-        assert!(matches!(subscription.recv_timeout(Duration::from_millis(1)), SubscriptionItem::Timeout));
+        assert!(matches!(
+            subscription.recv_timeout(Duration::from_millis(1)),
+            SubscriptionItem::Timeout
+        ));
     }
 
     #[test]
@@ -473,5 +509,4 @@ mod tests {
         assert_eq!(owner.replay_events, SUBSCRIBER_CAPACITY + 1);
         assert_eq!(bus.metrics_for_owner("owner-other").published_total, 1);
     }
-
 }

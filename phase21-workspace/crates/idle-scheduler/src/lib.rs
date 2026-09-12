@@ -10,14 +10,22 @@ mod windows_state;
 pub use model::*;
 pub use policy::{EligibilityEngine, WorkloadPolicy};
 pub use resource::ResourceGovernor;
-pub use runtime::{IdleScheduler, PassiveWorkExecutor, SchedulerHandle, SchedulerStartError, SystemStateProbe};
+pub use runtime::{
+    IdleScheduler, PassiveWorkExecutor, SchedulerHandle, SchedulerStartError, SystemStateProbe,
+};
 #[cfg(windows)]
 pub use windows_state::WindowsSystemStateProbe;
 
 #[cfg(windows)]
-pub(crate) fn run_in_background_mode<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+pub(crate) fn run_in_background_mode<T>(
+    f: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     windows_state::run_in_background_mode(f)
 }
 
 #[cfg(not(windows))]
-pub(crate) fn run_in_background_mode<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> { f() }
+pub(crate) fn run_in_background_mode<T>(
+    f: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    f()
+}

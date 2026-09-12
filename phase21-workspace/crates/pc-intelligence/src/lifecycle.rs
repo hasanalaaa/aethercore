@@ -4,8 +4,8 @@ use aethercore_persistence::{Database, IntelligenceOverrideRecord};
 
 use crate::{
     model::{
-        private_id, CollectorState, Finding, FindingLifecycle, FindingVerificationStatus,
-        ResolutionEvidence, SystemFact,
+        CollectorState, Finding, FindingLifecycle, FindingVerificationStatus, ResolutionEvidence,
+        SystemFact, private_id,
     },
     rules,
 };
@@ -24,13 +24,21 @@ enum ResolutionPolicy {
 
 pub(crate) fn default_resolution_authority(code: &str) -> Vec<String> {
     let scopes: &[&str] = match code {
-        "DRIVER_MISSING" | "DEVICE_PROBLEM" | "DRIVER_UPDATE_AVAILABLE"
-        | "NO_TRUSTED_CANDIDATE" | "VENDOR_UTILITY_REQUIRED"
-        | "FIRMWARE_REVIEW_REQUIRED" | "DRIVER_MANAGEMENT_AUTHORITY_AVAILABLE"
-        | "DRIVER_AUTHORITY_COVERAGE_INCOMPLETE" | "DRIVER_UPDATE_STATUS_UNKNOWN" => &["drivers"],
+        "DRIVER_MISSING"
+        | "DEVICE_PROBLEM"
+        | "DRIVER_UPDATE_AVAILABLE"
+        | "NO_TRUSTED_CANDIDATE"
+        | "VENDOR_UTILITY_REQUIRED"
+        | "FIRMWARE_REVIEW_REQUIRED"
+        | "DRIVER_MANAGEMENT_AUTHORITY_AVAILABLE"
+        | "DRIVER_AUTHORITY_COVERAGE_INCOMPLETE"
+        | "DRIVER_UPDATE_STATUS_UNKNOWN" => &["drivers"],
         "WINDOWS_INTEGRITY_ATTENTION" => &["windows"],
-        "STORAGE_RELIABILITY_CONCERN" | "STORAGE_ATTENTION" | "HIGH_MEMORY_PRESSURE"
-        | "HARDWARE_ERROR_EVIDENCE" | "RECENT_CRASH_EVIDENCE"
+        "STORAGE_RELIABILITY_CONCERN"
+        | "STORAGE_ATTENTION"
+        | "HIGH_MEMORY_PRESSURE"
+        | "HARDWARE_ERROR_EVIDENCE"
+        | "RECENT_CRASH_EVIDENCE"
         | "CRASH_WITH_HARDWARE_EVIDENCE" => &["diagnostics"],
         "HIGH_STARTUP_FOOTPRINT" => &["startup"],
         "CLEANUP_OPPORTUNITY" => &["cleanup"],
@@ -82,14 +90,20 @@ pub(crate) fn reconcile(
         .collect::<BTreeSet<_>>();
 
     for mut finding in current_findings.drain(..) {
-        let old = previous.iter().find(|record| record.finding_id == finding.id);
+        let old = previous
+            .iter()
+            .find(|record| record.finding_id == finding.id);
         initialize_current_finding(&mut finding, old, &overrides, now_ms);
         visible.push(finding.clone());
         persisted.push(finding);
     }
 
-    for record in previous.iter().filter(|record| !current_ids.contains(&record.finding_id)) {
-        let Some(mut old_finding) = serde_json::from_str::<Finding>(&record.finding_json).ok() else {
+    for record in previous
+        .iter()
+        .filter(|record| !current_ids.contains(&record.finding_id))
+    {
+        let Some(mut old_finding) = serde_json::from_str::<Finding>(&record.finding_json).ok()
+        else {
             warnings.push(format!(
                 "persistence lifecycle evidence unavailable for finding {}",
                 record.finding_id
@@ -102,7 +116,8 @@ pub(crate) fn reconcile(
         if old_finding.resolution_authority.is_empty() {
             old_finding.resolution_authority = default_resolution_authority(&old_finding.code);
         }
-        old_finding.ignored = is_ignored(&overrides, &old_finding.id) || record.lifecycle == "Ignored";
+        old_finding.ignored =
+            is_ignored(&overrides, &old_finding.id) || record.lifecycle == "Ignored";
 
         let authority = resolution_authority_state(
             &old_finding.resolution_authority,
@@ -161,7 +176,10 @@ pub(crate) fn reconcile(
         old_finding.automatic_eligible = false;
         if old_finding.ignored {
             old_finding.lifecycle = FindingLifecycle::Ignored;
-        } else if matches!(old_finding.lifecycle, FindingLifecycle::New | FindingLifecycle::Improved) {
+        } else if matches!(
+            old_finding.lifecycle,
+            FindingLifecycle::New | FindingLifecycle::Improved
+        ) {
             old_finding.lifecycle = FindingLifecycle::Active;
         }
         visible.push(old_finding.clone());
@@ -324,8 +342,7 @@ fn build_resolution_evidence(
 mod tests {
     use super::*;
     use crate::model::{
-        Confidence, Domain, EvidenceKind, FactPayload, Freshness, ResourceRef, Severity,
-        SystemFact,
+        Confidence, Domain, EvidenceKind, FactPayload, Freshness, ResourceRef, Severity, SystemFact,
     };
 
     fn collector(id: &str, state: CollectorState) -> crate::model::CollectorStatus {
@@ -354,16 +371,18 @@ mod tests {
                 device_state: "Started".into(),
                 update_status: "UpToDate".into(),
                 authority_coverage: "CompleteForRequiredAuthorities".into(),
-            management_authorities: vec![],
+                management_authorities: vec![],
             },
             EvidenceKind::DeviceState,
             "healthy",
         )
     }
 
-
     fn test_db() -> (Database, std::path::PathBuf) {
-        let path = std::env::temp_dir().join(format!("aethercore-p17-1-lifecycle-{}.db", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!(
+            "aethercore-p17-1-lifecycle-{}.db",
+            uuid::Uuid::new_v4()
+        ));
         (Database::open(&path).expect("database"), path)
     }
 
@@ -382,7 +401,8 @@ mod tests {
             resolution_scan_id: String::new(),
             resolution_reason_key: String::new(),
             finding_json: serde_json::to_string(finding).expect("serialize finding"),
-        }).expect("persist finding");
+        })
+        .expect("persist finding");
     }
 
     fn cleanup(path: &std::path::Path) {
@@ -407,7 +427,7 @@ mod tests {
                     device_state: "Problem".into(),
                     update_status: "NoTrustedCandidate".into(),
                     authority_coverage: "CompleteForRequiredAuthorities".into(),
-                management_authorities: vec![],
+                    management_authorities: vec![],
                 },
                 EvidenceKind::DeviceState,
                 "problem=28",
@@ -497,7 +517,9 @@ mod tests {
             &BTreeMap::new(),
         );
         assert!(state.all_completed);
-        assert!(rules::explicitly_healthy(&healthy_driver_fact(finding.affected_resource)));
+        assert!(rules::explicitly_healthy(&healthy_driver_fact(
+            finding.affected_resource
+        )));
     }
 
     #[test]
@@ -568,7 +590,10 @@ mod tests {
         assert!(result.visible_findings.is_empty());
         let resolved = &result.persisted_findings[0];
         assert_eq!(resolved.lifecycle, FindingLifecycle::Resolved);
-        assert_eq!(resolved.verification_status, FindingVerificationStatus::ResolutionConfirmed);
+        assert_eq!(
+            resolved.verification_status,
+            FindingVerificationStatus::ResolutionConfirmed
+        );
         assert_eq!(resolved.resolution_scan_id, "scan-2");
         assert!(!resolved.resolution_evidence.is_empty());
         drop(db);
@@ -601,7 +626,10 @@ mod tests {
             assert_eq!(result.visible_findings.len(), 1);
             let carried = &result.visible_findings[0];
             assert_ne!(carried.lifecycle, FindingLifecycle::Resolved);
-            assert_eq!(carried.verification_status, FindingVerificationStatus::VerificationUnavailable);
+            assert_eq!(
+                carried.verification_status,
+                FindingVerificationStatus::VerificationUnavailable
+            );
             assert!(!carried.remediation_available);
             drop(db);
             cleanup(&path);
@@ -626,7 +654,10 @@ mod tests {
         );
         let carried = &result.visible_findings[0];
         assert_ne!(carried.lifecycle, FindingLifecycle::Resolved);
-        assert_eq!(carried.verification_status, FindingVerificationStatus::NotRechecked);
+        assert_eq!(
+            carried.verification_status,
+            FindingVerificationStatus::NotRechecked
+        );
         drop(db);
         cleanup(&path);
     }
@@ -648,7 +679,10 @@ mod tests {
             &BTreeMap::new(),
             vec![current],
         );
-        assert_eq!(result.visible_findings[0].lifecycle, FindingLifecycle::Recurred);
+        assert_eq!(
+            result.visible_findings[0].lifecycle,
+            FindingLifecycle::Recurred
+        );
 
         let ignored = result.visible_findings[0].clone();
         persist_finding(&db, owner, &ignored, "Ignored");
@@ -663,7 +697,10 @@ mod tests {
             &BTreeMap::new(),
             vec![current],
         );
-        assert_eq!(result.visible_findings[0].lifecycle, FindingLifecycle::Ignored);
+        assert_eq!(
+            result.visible_findings[0].lifecycle,
+            FindingLifecycle::Ignored
+        );
         assert!(result.visible_findings[0].ignored);
         assert!(!result.visible_findings[0].remediation_available);
         drop(db);

@@ -331,12 +331,16 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
         });
     }
     let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
-    let (root_total, root_available) = if unsafe { libc::statvfs(c"/".as_ptr(), std::ptr::addr_of_mut!(vfs)) } == 0 {
-        let block = u64::from(vfs.f_frsize.max(1));
-        (u64::from(vfs.f_blocks).saturating_mul(block), u64::from(vfs.f_bavail).saturating_mul(block))
-    } else {
-        (0, 0)
-    };
+    let (root_total, root_available) =
+        if unsafe { libc::statvfs(c"/".as_ptr(), std::ptr::addr_of_mut!(vfs)) } == 0 {
+            let block = u64::from(vfs.f_frsize.max(1));
+            (
+                u64::from(vfs.f_blocks).saturating_mul(block),
+                u64::from(vfs.f_bavail).saturating_mul(block),
+            )
+        } else {
+            (0, 0)
+        };
     let devices: Vec<StorageQueueSample> = physical
         .into_iter()
         .take(super::MAX_STORAGE_DEVICES)

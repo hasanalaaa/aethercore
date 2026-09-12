@@ -132,10 +132,28 @@ fn execute(config: &Config, job: OfflineJob) -> Result<serde_json::Value, CliErr
         } => crate::sec::run_compliance_summary(&profile, &report_file, &map_file),
         OfflineJob::VulndbUpdate { from, dest } => crate::sec::vulndb_update_from(&from, &dest),
         OfflineJob::ReleaseInspect { manifest } => crate::release::inspect(manifest.as_deref()),
-        OfflineJob::ReleaseVerify { manifest, signature, keyring } => crate::release::verify_manifest(&manifest, &signature, &keyring),
-        OfflineJob::UpdateVerify { metadata, signature, keyring } => crate::release::verify_update(&metadata, &signature, &keyring),
-        OfflineJob::OfflineBundleVerify { bundle } => crate::release::verify_offline_bundle(&bundle),
-        OfflineJob::UpdateCheck | OfflineJob::UpdatePlan | OfflineJob::UpdateDownload | OfflineJob::UpdateStage | OfflineJob::UpdateStatus | OfflineJob::UpdateCancel | OfflineJob::UpdateRollback => Err(CliError::capability_unavailable("updateApplyRequiresWindowsQualification")),
+        OfflineJob::ReleaseVerify {
+            manifest,
+            signature,
+            keyring,
+        } => crate::release::verify_manifest(&manifest, &signature, &keyring),
+        OfflineJob::UpdateVerify {
+            metadata,
+            signature,
+            keyring,
+        } => crate::release::verify_update(&metadata, &signature, &keyring),
+        OfflineJob::OfflineBundleVerify { bundle } => {
+            crate::release::verify_offline_bundle(&bundle)
+        }
+        OfflineJob::UpdateCheck
+        | OfflineJob::UpdatePlan
+        | OfflineJob::UpdateDownload
+        | OfflineJob::UpdateStage
+        | OfflineJob::UpdateStatus
+        | OfflineJob::UpdateCancel
+        | OfflineJob::UpdateRollback => Err(CliError::capability_unavailable(
+            "updateApplyRequiresWindowsQualification",
+        )),
         OfflineJob::ServiceDetect => {
             let state = transport::detect_service(config);
             let pid = match &state {
@@ -174,9 +192,8 @@ pub fn offline_engine_source() -> &'static str {
 /// `telemetry-once` returned `"storage": []`. It now costs one passive sample
 /// (~250 ms, the same tick `telemetry-once` takes) and cannot contradict them.
 pub fn observe_telemetry() -> aethercore_platform_capabilities::TelemetryObservation {
-    let interval = std::time::Duration::from_millis(
-        aethercore_performance_telemetry::MIN_INTERVAL_MS as u64,
-    );
+    let interval =
+        std::time::Duration::from_millis(aethercore_performance_telemetry::MIN_INTERVAL_MS as u64);
     let measured = aethercore_performance_telemetry::default_platform()
         .sample(interval)
         .measured_subsystems();

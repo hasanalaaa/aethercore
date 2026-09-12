@@ -566,8 +566,8 @@ mod dbt_p46_b33_tests {
     use super::*;
 
     fn test_db() -> (Database, std::path::PathBuf) {
-        let path = std::env::temp_dir()
-            .join(format!("aethercore-p46-b33-{}.db", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("aethercore-p46-b33-{}.db", uuid::Uuid::new_v4()));
         (Database::open(&path).expect("database"), path)
     }
 

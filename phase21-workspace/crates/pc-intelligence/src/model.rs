@@ -620,7 +620,8 @@ impl RemediationPlan {
         mut actions: Vec<RemediationCandidate>,
     ) -> Self {
         actions.sort_by(|a, b| a.action_id.cmp(&b.action_id));
-        let canonical = serde_json::to_vec(&(scan_id, created_unix_ms, &actions)).unwrap_or_default();
+        let canonical =
+            serde_json::to_vec(&(scan_id, created_unix_ms, &actions)).unwrap_or_default();
         let digest = hex_sha256(&canonical);
         Self {
             plan_id: stable_id("remediation-plan", &format!("{scan_id}|{digest}")),

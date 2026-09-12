@@ -1,8 +1,8 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -127,10 +127,14 @@ mod tests {
     fn poisoned_registry_mutex_recovers_without_rebinding_or_leaking_tokens() {
         let registry = CancellationRegistry::default();
         let poison = registry.clone();
-        assert!(std::thread::spawn(move || {
-            let _guard = poison.inner.lock().unwrap();
-            panic!("intentional mutex poison for deterministic recovery test");
-        }).join().is_err());
+        assert!(
+            std::thread::spawn(move || {
+                let _guard = poison.inner.lock().unwrap();
+                panic!("intentional mutex poison for deterministic recovery test");
+            })
+            .join()
+            .is_err()
+        );
         let token = registry.try_register("s1:recover").unwrap();
         assert!(registry.cancel("s1:recover"));
         assert!(token.is_cancelled());
@@ -142,7 +146,10 @@ mod tests {
     fn duplicate_cancellation_ids_are_rejected_instead_of_rebinding_tokens() {
         let registry = CancellationRegistry::default();
         let token = registry.try_register("s1:c1").unwrap();
-        assert!(matches!(registry.try_register("s1:c1"), Err(CancellationError::AlreadyRegistered)));
+        assert!(matches!(
+            registry.try_register("s1:c1"),
+            Err(CancellationError::AlreadyRegistered)
+        ));
         assert!(!token.is_cancelled());
     }
 

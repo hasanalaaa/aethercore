@@ -186,8 +186,7 @@ fn no_collector_returns_an_empty_payload_without_a_fault() {
     }
 
     // gpu: the one collector that already checks itself.
-    let gpu_measured =
-        !snapshot.gpu.engines.is_empty() || !snapshot.gpu.adapter_id.is_empty();
+    let gpu_measured = !snapshot.gpu.engines.is_empty() || !snapshot.gpu.adapter_id.is_empty();
     if !gpu_measured && faults_for(&snapshot, "gpu").is_empty() {
         unaccounted.push("gpu: no engines, no adapter, no fault".to_string());
     }
@@ -239,7 +238,10 @@ fn capabilities_never_claim_native_for_a_subsystem_that_reported_nothing() {
         (
             "telemetryMemory",
             snapshot.memory.total_physical_bytes > 0,
-            format!("totalPhysicalBytes={}", snapshot.memory.total_physical_bytes),
+            format!(
+                "totalPhysicalBytes={}",
+                snapshot.memory.total_physical_bytes
+            ),
         ),
         (
             "telemetryStorage",
@@ -300,8 +302,14 @@ fn instance_is_parsed_out_of_an_expanded_counter_path() {
         ),
         Some("pid_10148_luid_0x00000000_0x00010F21_phys_0_eng_0_engtype_3D")
     );
-    assert_eq!(instance_from_counter_path(r"\System\Context Switches/sec"), None);
-    assert_eq!(instance_from_counter_path(r"\PhysicalDisk()\% Disk Time"), None);
+    assert_eq!(
+        instance_from_counter_path(r"\System\Context Switches/sec"),
+        None
+    );
+    assert_eq!(
+        instance_from_counter_path(r"\PhysicalDisk()\% Disk Time"),
+        None
+    );
 }
 
 /// A `%` counter's value is a percentage, not basis points. §41.15 measured
@@ -359,10 +367,9 @@ fn a_bad_status_is_not_decoded_as_a_double() {
 fn gpu_vram_usage_is_read_where_the_counters_exist() {
     use aethercore_performance_telemetry::__test::expand_wildcard_path;
 
-    let dedicated = expand_wildcard_path(r"\GPU Adapter Memory(*)\Dedicated Usage")
-        .unwrap_or_default();
-    let shared = expand_wildcard_path(r"\GPU Adapter Memory(*)\Shared Usage")
-        .unwrap_or_default();
+    let dedicated =
+        expand_wildcard_path(r"\GPU Adapter Memory(*)\Dedicated Usage").unwrap_or_default();
+    let shared = expand_wildcard_path(r"\GPU Adapter Memory(*)\Shared Usage").unwrap_or_default();
     if dedicated.is_empty() && shared.is_empty() {
         eprintln!("SKIPPED: this host exposes no GPU Adapter Memory counter instances");
         return;

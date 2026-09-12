@@ -15,20 +15,21 @@ pub struct MachineIdentity {
 mod windows_impl {
     use std::path::PathBuf;
     use windows::{
-        core::{HRESULT, PCWSTR},
         Win32::{
-            Foundation::{CloseHandle, ERROR_LOCK_VIOLATION, ERROR_SUCCESS, HANDLE, INVALID_HANDLE_VALUE},
+            Foundation::{
+                CloseHandle, ERROR_LOCK_VIOLATION, ERROR_SUCCESS, HANDLE, INVALID_HANDLE_VALUE,
+            },
             Security::{ImpersonateLoggedOnUser, RevertToSelf},
             Storage::FileSystem::{
-                CreateFileW, LockFileEx, UnlockFileEx, FILE_ATTRIBUTE_NORMAL,
-                FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-                LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, OPEN_EXISTING,
+                CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_OPEN_REPARSE_POINT,
+                FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, LOCKFILE_EXCLUSIVE_LOCK,
+                LOCKFILE_FAIL_IMMEDIATELY, LockFileEx, OPEN_EXISTING, UnlockFileEx,
             },
             System::{
-                Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED},
+                Com::{COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize},
                 IO::OVERLAPPED,
                 Pipes::ImpersonateNamedPipeClient,
-                Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ},
+                Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW},
                 Services::{CloseServiceHandle, SC_HANDLE},
                 Threading::{
                     GetCurrentThread, SetThreadPriority, THREAD_MODE_BACKGROUND_BEGIN,
@@ -37,6 +38,7 @@ mod windows_impl {
             },
             UI::Shell::{FOLDERID_ProgramData, KF_FLAG_DEFAULT, SHGetKnownFolderPath},
         },
+        core::{HRESULT, PCWSTR},
     };
 
     fn wide_text(value: &str) -> Vec<u16> {
@@ -58,7 +60,9 @@ mod windows_impl {
                 Some(&mut bytes),
             )
         };
-        if status != ERROR_SUCCESS || bytes < 2 || bytes > 64 * 1024 { return String::new(); }
+        if status != ERROR_SUCCESS || bytes < 2 || bytes > 64 * 1024 {
+            return String::new();
+        }
         let mut buffer = vec![0u16; ((bytes as usize) + 1) / 2];
         let status = unsafe {
             RegGetValueW(
@@ -71,8 +75,13 @@ mod windows_impl {
                 Some(&mut bytes),
             )
         };
-        if status != ERROR_SUCCESS { return String::new(); }
-        let len = buffer.iter().position(|ch| *ch == 0).unwrap_or(buffer.len());
+        if status != ERROR_SUCCESS {
+            return String::new();
+        }
+        let len = buffer
+            .iter()
+            .position(|ch| *ch == 0)
+            .unwrap_or(buffer.len());
         String::from_utf16_lossy(&buffer[..len]).trim().to_owned()
     }
 
@@ -126,7 +135,6 @@ mod windows_impl {
         }
     }
 
-
     const MACHINE_MUTATION_LOCK_RELATIVE_PATH: &str = r"AetherCore\state\machine-mutation.lock";
     const GENERIC_READ_ACCESS: u32 = 0x8000_0000;
     const GENERIC_WRITE_ACCESS: u32 = 0x4000_0000;
@@ -142,7 +150,10 @@ mod windows_impl {
 
     fn wide_path(path: &std::path::Path) -> Vec<u16> {
         use std::os::windows::ffi::OsStrExt;
-        path.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
+        path.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
     }
 
     /// Cross-process machine-mutation lease backed by an installer-provisioned file in the
@@ -314,7 +325,10 @@ mod windows_impl {
 }
 
 #[cfg(windows)]
-pub use windows_impl::{machine_identity, BackgroundThreadMode, ComApartment, MachineMutationGuard, OwnedHandle, OwnedServiceHandle, ThreadImpersonation};
+pub use windows_impl::{
+    BackgroundThreadMode, ComApartment, MachineMutationGuard, OwnedHandle, OwnedServiceHandle,
+    ThreadImpersonation, machine_identity,
+};
 
 #[cfg(not(windows))]
 pub fn machine_identity() -> Result<MachineIdentity, String> {

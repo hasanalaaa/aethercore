@@ -230,10 +230,7 @@ fn authorize_path(path: &str, scope: &OwnerScope) -> Result<(), TargetDenial> {
 /// THE allowlist the wire contract promises. Every path-bearing target is confined to
 /// the calling principal's own roots; `FirewallState` names no path (it reads fixed OS
 /// config locations for presence only) and so has nothing to authorize.
-pub fn authorize_targets(
-    targets: &[AuditTarget],
-    scope: &OwnerScope,
-) -> Result<(), TargetDenial> {
+pub fn authorize_targets(targets: &[AuditTarget], scope: &OwnerScope) -> Result<(), TargetDenial> {
     for target in targets {
         match target {
             AuditTarget::SshdConfig { path }
@@ -342,9 +339,8 @@ mod tests {
         let target = AuditTarget::SecretsDir {
             dir: "etc/ssh".to_string(),
         };
-        let denial =
-            authorize_targets(std::slice::from_ref(&target), &sandbox.scope())
-                .expect_err("must refuse");
+        let denial = authorize_targets(std::slice::from_ref(&target), &sandbox.scope())
+            .expect_err("must refuse");
         assert_eq!(denial.code(), "sec.targetOutsideOwnerScope");
     }
 
