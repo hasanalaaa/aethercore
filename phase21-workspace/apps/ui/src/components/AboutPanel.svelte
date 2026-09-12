@@ -112,14 +112,14 @@
 
 <style>
   .about-panel { display: grid; gap: 12px; padding: 20px 0; }
-  h2 { font-size: 1.1rem; font-weight: 600; margin: 0; color: var(--ac-text-1); }
-  h3 { font-size: 0.9rem; font-weight: 600; margin: 8px 0 0; color: var(--ac-text-2); }
+  h2 { font-size:var(--ac-type-title); font-weight: 600; margin: 0; color: var(--ac-text-1); }
+  h3 { font-size:var(--ac-type-body); font-weight: 600; margin: 8px 0 0; color: var(--ac-text-2); }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--ac-border-subtle); }
-  .label { color: var(--ac-text-2); font-size: 0.85rem; }
-  .source { color: var(--ac-text-1); font-size: 0.9rem; }
+  .label { color: var(--ac-text-2); font-size:var(--ac-type-body); }
+  .source { color: var(--ac-text-1); font-size:var(--ac-type-body); }
   .capabilities { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .capability { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; }
-  .chip { border-radius: 999px; padding: 2px 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; }
+  .capability { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size:var(--ac-type-body); }
+  .chip { border-radius: 999px; padding: 2px 10px; font-size:var(--ac-type-technical); font-weight: 600; letter-spacing: 0.02em; }
   /* Roles, not literals. These three fell back to hardcoded green/orange/grey
      because --ac-positive-bg and --ac-neutral-bg were never defined. */
   .chip.native { background: var(--role-healthy-wash); color: var(--role-healthy); }

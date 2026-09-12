@@ -73,7 +73,13 @@ const SCAN = `(() => {
     if (!text) continue;
     const el = node.parentElement;
     if (!el || !el.getClientRects().length) continue;
-    const percent = [...text.matchAll(/(\\d+(?:[.,]\\d+)?)\\s*%/g)].map((m) => m[0]);
+    // Bidi control marks count as separators here, not as text. CLDR wraps a
+    // percent in LRM under an RTL locale (\u200e51\u200e%), so a gate that only
+    // allowed whitespace between the number and the sign stopped seeing every
+    // Arabic percentage the moment P57 moved the product to Latin digits — a
+    // number nobody could trace, hidden from the instrument by an invisible
+    // character.
+    const percent = [...text.matchAll(/(\\d+(?:[.,]\\d+)?)[\\s\\u200e\\u200f\\u061c]*%/g)].map((m) => m[0]);
     const unitless = [...text.matchAll(/(?:^|[\\s(:=])(0[.,]\\d+)(?![.,\\d])/g)].map((m) => m[1]);
     for (const value of [...percent, ...unitless]) {
       out.push({

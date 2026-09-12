@@ -83,8 +83,8 @@ evidence names where).
 | item | what | status |
 |---|---|---|
 | P57-1 | the assistant drawer | **CLOSED** — `apps/ui/src/features/assistant/{controller.ts,AssistantDrawer.svelte}`. 26rem overlay on the inline-end edge, full-width sheet below 58rem, `Ctrl+/` opens and focuses, `Enter` sends, `Escape` cancels then closes, available on every screen. Measured across 2 widths x 2 languages x 2 themes x 7 turn states: **56/56 clean**, 0 overflow, 0 clipping, 3-4 type sizes all tokens, 0 denied chips. `verify-arabic --page assistant` 7/7, **0 glyphs from a system fallback**. Contrast with the drawer open: 756 nodes, 0 below 4.5:1 |
-| P57-2 | one numeral convention for technical readings | |
-| P57-3 | the direction rolled out to the remaining eleven screens | |
+| P57-2 | one numeral convention for technical readings | **CLOSED — Latin digits everywhere, both languages, the log included.** Reason and measurement in `DIRECTION.md` Part 3: JetBrains Mono has no Arabic-Indic digits, so `seq ١ ١٢:٣٠:٠٠` drew 7 glyphs monospaced and 7 from a proportional face inside one token. `formatNumber`/`formatDateTime` resolve to `ar-IQ-u-nu-latn`; units, date order and AM/PM stay Arabic. Side effect: `verify-numbers` now sees **34** score-shaped numbers, up from 27 — every Arabic percentage had been invisible to the gate, because `\\d` never matched `٥١` |
+| P57-3 | the direction rolled out to the remaining eleven screens | **IN PROGRESS.** Step 1 of the roll-out (the scale) is done: 232 font-size literals across 8 shared/feature files replaced with the five type tokens. Type sizes per screen, populated: deepScan 13→6, drivers 10→5, repair 10→6, cleanup 8→5, startup 8→5, performance 8→5, hardware 10→5, crash 9→5, activity 10→6, settings 10→6, sidebar 9→3. Every screen now at or under the target of 6, every one a token |
 
 ---
 

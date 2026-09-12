@@ -13,8 +13,8 @@
   stroke-linecap:round; stroke-linejoin:round;
 }
 .brand-copy { min-inline-size:0; }
-.brand-copy strong { display:block; color:var(--ac-text-1); font-size:.9375rem; font-weight:650; letter-spacing:-.006em; }
-.brand-copy small { display:block; margin-block-start:.12rem; color:var(--ac-text-4); font-size:.75rem; line-height:1.25; }
+.brand-copy strong { display:block; color:var(--ac-text-1); font-size:var(--ac-type-headline); font-weight:650; letter-spacing:-.006em; }
+.brand-copy small { display:block; margin-block-start:.12rem; color:var(--ac-text-4); font-size:var(--ac-type-technical); line-height:1.25; }
 
 .command-trigger,.locale-button,.app-nav-item {
   inline-size:100%; border:1px solid transparent; border-radius:.55rem;
@@ -30,12 +30,12 @@
 .command-trigger span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .command-trigger kbd {
   min-inline-size:2.85rem; padding:.18rem .34rem; border:1px solid var(--ac-border-subtle); border-radius:.34rem;
-  background:rgba(0,0,0,.18); color:var(--ac-text-4); font:500 .6875rem/1.2 var(--ac-font-text); text-align:center;
+  background:rgba(0,0,0,.18); color:var(--ac-text-4); font:500 var(--ac-type-technical)/1.2 var(--ac-font-text); text-align:center;
 }
 
 .app-sidebar nav { display:grid; gap:.4rem; min-block-size:0; overflow:auto; scrollbar-width:thin; }
 .nav-group { display:grid; gap:2px; }
-.nav-group h2 { margin:0 .45rem .12rem; color:var(--ac-text-4); font:650 .58rem/1.2 var(--ac-font-text); letter-spacing:.1em; text-transform:uppercase; }
+.nav-group h2 { margin:0 .45rem .12rem; color:var(--ac-text-4); font:650 var(--ac-type-technical)/1.2 var(--ac-font-text); letter-spacing:.1em; text-transform:uppercase; }
 .app-nav-item {
   min-block-size:2.15rem;
   display:grid; grid-template-columns:1.45rem minmax(0,1fr); align-items:center; gap:.45rem;
@@ -49,10 +49,10 @@
 }
 .nav-icon { inline-size:1.45rem; block-size:1.45rem; display:grid; place-items:center; border-radius:.4rem; color:var(--ac-text-4); }
 .app-nav-item.active .nav-icon { color:var(--ac-accent-strong); background:rgba(142,197,245,.08); }
-.nav-availability { align-self:start; color:var(--ac-warning); font-size:1.1rem; line-height:1; }
+.nav-availability { align-self:start; color:var(--ac-warning); font-size:var(--ac-type-title); line-height:1; }
 .nav-copy { min-inline-size:0; }
-.nav-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.78rem; font-weight:600; line-height:1.15; }
-.nav-copy small { display:block; margin-block-start:.02rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ac-text-4); font-size:.65rem; line-height:1.15; }
+.nav-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--ac-type-body); font-weight:600; line-height:1.15; }
+.nav-copy small { display:block; margin-block-start:.02rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ac-text-4); font-size:var(--ac-type-technical); line-height:1.15; }
 
 /* A policy boundary is a refusal, so it wears the denied identity — violet,
    dashed, 8px — not attention's amber. Attention means "drifting toward a
@@ -61,8 +61,8 @@
 .policy-mark { display:grid; place-items:center; inline-size:1.4rem; block-size:1.4rem; border:1.5px dashed var(--role-denied-dash); border-radius:var(--ac-radius-denied); color:var(--role-denied); }
 .policy-mark svg { stroke:currentColor; stroke-width:1.8; stroke-linecap:round; fill:none; }
 .policy-card strong,.policy-card small { display:block; }
-.policy-card strong { color:var(--ac-text-2); font-size:.72rem; font-weight:680; line-height:1.2; }
-.policy-card small { margin-block-start:.1rem; color:var(--ac-text-3); font-size:.65rem; line-height:1.25; }
+.policy-card strong { color:var(--ac-text-2); font-size:var(--ac-type-technical); font-weight:680; line-height:1.2; }
+.policy-card small { margin-block-start:.1rem; color:var(--ac-text-3); font-size:var(--ac-type-technical); line-height:1.25; }
 .sidebar-controls { display:flex; gap:8px; flex-direction:row; align-items:center; margin-block-start:auto; padding-block-start:.5rem; }
 .theme-button { margin-block-start:0; }
 .locale-button {
@@ -70,7 +70,7 @@
   display:flex; align-items:center; justify-content:center; gap:.35rem;
   padding:.35rem .45rem; text-align:center;
 }
-.locale-button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.75rem; }
+.locale-button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--ac-type-body); }
 .locale-button:hover { background:var(--ac-layer-hover); color:var(--ac-text-2); }
 
 .app-service {
@@ -81,9 +81,9 @@
 .status-dot.online { background:var(--ac-positive); box-shadow:0 0 .7rem rgba(131,213,178,.35); }
 .service-copy { min-inline-size:0; }
 .service-copy small,.service-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.service-copy small { color:var(--ac-text-4); font-size:.6875rem; }
-.service-copy strong { margin-block-start:.06rem; color:var(--ac-text-2); font-size:.73rem; font-weight:600; }
-.service-version { color:var(--ac-text-4); font-size:.6875rem; font-family:var(--ac-font-mono); direction:ltr; unicode-bidi:isolate; }
+.service-copy small { color:var(--ac-text-4); font-size:var(--ac-type-technical); }
+.service-copy strong { margin-block-start:.06rem; color:var(--ac-text-2); font-size:var(--ac-type-technical); font-weight:600; }
+.service-version { color:var(--ac-text-4); font-size:var(--ac-type-technical); font-family:var(--ac-font-mono); direction:ltr; unicode-bidi:isolate; }
 
 /* Evidence-first shell: the rail is a quiet instrument, not a card stack. */
 .app-sidebar { border-inline-end-color:color-mix(in srgb,var(--ac-accent) 28%,var(--ac-border-subtle)); }

@@ -58,12 +58,40 @@ export function tp(key: PluralMessageKey, locale: Locale, count: number): string
   return interpolate(template, { count });
 }
 
+/**
+ * ONE NUMERAL CONVENTION, product-wide: **Latin digits for every reading, in
+ * both languages.** P57 ITEM 2. The argument and the measurement are in
+ * `docs/phase56/DIRECTION.md` §"The numeral convention"; the short version is
+ * that it was measured rather than preferred.
+ *
+ * `ar-IQ` renders `12,480` as `١٢٬٤٨٠`, and this product's numbers live in
+ * monospace beside Latin identifiers, paths, digests and versions that cannot
+ * change. Measured on this machine, at 20px, through the app's own
+ * `--ac-font-mono` stack in the `ar` locale:
+ *
+ *   "12,480"            72.00px   JetBrains Mono: 6 glyphs
+ *   "١٢٬٤٨٠"            46.59px   IBM Plex Sans Arabic: 6 glyphs
+ *   "seq 1 12:30:00"   168.33px   JetBrains Mono: 14 glyphs
+ *   "seq ١ ١٢:٣٠:٠٠"   134.09px   JetBrains Mono: 7 + IBM Plex Sans Arabic: 7
+ *
+ * The last row is the defect: JetBrains Mono has no Arabic-Indic digits, so
+ * inside ONE technical token the identifier draws monospaced and the number
+ * beside it draws from a proportional face. The monospace grid — the whole
+ * reason a reading is set in mono — breaks mid-token.
+ *
+ * `-u-nu-latn` changes the DIGITS and nothing else: the locale keeps its own
+ * unit symbols (`84°م`), its date order and its AM/PM marker (`14/04/2026، 12:30 م`).
+ * This is not rendering Arabic as English; it is one numbering system for an
+ * instrument whose readings are scanned rather than read.
+ */
+const NUMBER_LOCALE = { en: 'en-US', ar: 'ar-IQ-u-nu-latn' } as const;
+
 export function formatNumber(value: number, locale: Locale, options?: Intl.NumberFormatOptions): string {
-  return new Intl.NumberFormat(locale === 'ar' ? 'ar-IQ' : 'en-US', options).format(value);
+  return new Intl.NumberFormat(NUMBER_LOCALE[locale], options).format(value);
 }
 
 export function formatDateTime(value: number, locale: Locale): string {
-  return value ? new Intl.DateTimeFormat(locale === 'ar' ? 'ar-IQ' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
+  return value ? new Intl.DateTimeFormat(NUMBER_LOCALE[locale], { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
 }
 
 export { type MessageKey, type PluralMessageKey };

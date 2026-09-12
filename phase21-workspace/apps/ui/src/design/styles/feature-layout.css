@@ -24,7 +24,7 @@ header {
 
 h1 {
   font-weight:540;
-  font-size:32px;
+  font-size:var(--ac-type-display);
   letter-spacing:-1.1px;
   margin:6px 0 7px
 }
@@ -32,13 +32,13 @@ h1 {
 header .sub {
   margin:0;
   color: var(--ac-text-3);
-  font-size:0.9375rem;
+  font-size:var(--ac-type-headline);
   line-height:1.55;
   max-width:760px
 }
 
 .eyebrow {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   letter-spacing:1.8px;
   color: var(--ac-text-3);
   margin:0;
@@ -54,7 +54,7 @@ header .sub {
   border-radius:999px;
   padding:8px 12px;
   color: var(--ac-text-2);
-  font-size:0.875rem;
+  font-size:var(--ac-type-body);
   white-space:nowrap
 }
 
@@ -72,7 +72,7 @@ header .sub {
   border-radius:11px;
   padding:9px 14px;
   cursor:pointer;
-  font-size:0.875rem;
+  font-size:var(--ac-type-body);
   display:flex;
   align-items:center;
   gap:8px
@@ -84,7 +84,7 @@ header .sub {
 }
 
 .scan-button span {
-  font-size:16px
+  font-size:var(--ac-type-headline)
 }
 
 .error-banner {
@@ -95,7 +95,7 @@ header .sub {
   margin-bottom:16px;
   display:flex;
   gap:12px;
-  font-size:0.875rem;
+  font-size:var(--ac-type-body);
   color:#dba7a7
 }
 
@@ -117,7 +117,7 @@ header .sub {
 }
 
 .driver-hero-copy h2 {
-  font-size:21px;
+  font-size:var(--ac-type-title);
   font-weight:530;
   margin:5px 0
 }
@@ -125,7 +125,7 @@ header .sub {
 .driver-hero-copy p:last-child {
   margin:0;
   color: var(--ac-text-3);
-  font-size:0.875rem
+  font-size:var(--ac-type-body)
 }
 
 .scan-orb {
@@ -137,7 +137,7 @@ header .sub {
   display:grid;
   place-items:center;
   color: var(--ac-text-2);
-  font-size:20px
+  font-size:var(--ac-type-title)
 }
 
 .scan-orb.scanning {
@@ -190,18 +190,18 @@ header .sub {
   background: var(--ac-material-elevated);
   display:grid;
   place-items:center;
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .scan-steps strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   font-weight:580
 }
 
 .scan-steps small {
   display:block;
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4);
   margin-top:2px
 }
@@ -242,20 +242,20 @@ header .sub {
 .driver-metrics article>span {
   display:block;
   color: var(--ac-text-3);
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   text-transform:uppercase;
   letter-spacing:.75px
 }
 
 .driver-metrics strong {
   display:block;
-  font-size:25px;
+  font-size:var(--ac-type-title);
   font-weight:510;
   margin:5px 0 1px
 }
 
 .driver-metrics small {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-4)}
 
 .driver-metrics article.attention {
@@ -281,12 +281,12 @@ header .sub {
 }
 
 .warning-strip strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .warning-strip p {
   margin:2px 0 0;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   line-height:1.45
 }
@@ -316,22 +316,22 @@ header .sub {
   color:#a6dec9;
   display:grid;
   place-items:center;
-  font-size:0.875rem
+  font-size:var(--ac-type-body)
 }
 
 .selection-tray strong {
   display:block;
-  font-size:0.875rem
+  font-size:var(--ac-type-body)
 }
 
 .selection-tray p {
   margin:2px 0 0;
   color: var(--ac-text-3);
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .phase-tag {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   text-transform:uppercase;
   letter-spacing:1px;
   color: var(--ac-text-3);
@@ -365,7 +365,7 @@ header .sub {
   color: var(--ac-text-3);
   border-radius:8px;
   padding:7px 10px;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   cursor:pointer
 }
 
@@ -392,7 +392,7 @@ header .sub {
   outline:0;
   background:transparent;
   color: var(--ac-text-1);
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .search-box input::placeholder {
@@ -404,7 +404,7 @@ header .sub {
   gap:15px;
   padding:11px 17px;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   text-transform:uppercase;
   letter-spacing:.8px;
   border-bottom: 1px solid var(--ac-edge)}
@@ -454,11 +454,11 @@ header .sub {
   display:grid;
   place-items:center;
   color: var(--ac-text-2);
-  font-size:1rem
+  font-size:var(--ac-type-headline)
 }
 
 .device-identity strong {
-  font-size:0.875rem;
+  font-size:var(--ac-type-body);
   font-weight:590;
   display:block;
   white-space:nowrap;
@@ -467,7 +467,7 @@ header .sub {
 }
 
 .device-identity p {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:3px 0 0;
   white-space:nowrap;
@@ -482,7 +482,7 @@ header .sub {
 .driver-current small,.driver-target small {
   display:block;
   color: var(--ac-text-3);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis
@@ -491,7 +491,7 @@ header .sub {
 .driver-current strong,.driver-target strong {
   display:block;
   margin:3px 0 1px;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   font-weight:580;
   white-space:nowrap;
   overflow:hidden;
@@ -501,7 +501,7 @@ header .sub {
 .driver-current span,.driver-target span {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis
@@ -514,7 +514,7 @@ header .sub {
   border-radius:999px;
   padding:5px 7px;
   color: var(--ac-text-3);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   white-space:nowrap
 }
 
@@ -600,12 +600,12 @@ header .sub {
 }
 
 .candidate-row>div strong {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   font-weight:560
 }
 
 .candidate-row>div p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-4);
   margin:2px 0 0;
   white-space:nowrap;
@@ -622,11 +622,11 @@ header .sub {
 }
 
 .candidate-meta small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .vendor-chip,.windows-chip {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   text-transform:uppercase;
   letter-spacing:.6px;
   border-radius:999px;
@@ -666,17 +666,17 @@ header .sub {
   place-items:center;
   color:#9fc3da;
   font-weight:650;
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .gpu-policy strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .gpu-policy p {
   margin:2px 0 0;
   color: var(--ac-text-3);
-  font-size:0.75rem
+  font-size:var(--ac-type-body)
 }
 
 .vendor-link {
@@ -685,7 +685,7 @@ header .sub {
   color:#a6c5d7;
   border-radius:8px;
   padding:7px 9px;
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   cursor:pointer
 }
 
@@ -708,7 +708,7 @@ header .sub {
 .device-details span {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   margin-bottom:3px
 }
 
@@ -716,7 +716,7 @@ header .sub {
   display:block;
   color: var(--ac-text-2);
   font-family:var(--ac-font-mono);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   overflow-wrap:anywhere;
   margin-bottom:2px
 }
@@ -740,16 +740,16 @@ header .sub {
   display:grid;
   place-items:center;
   color: var(--ac-text-2);
-  font-size:20px
+  font-size:var(--ac-type-title)
 }
 
 .driver-empty h3 {
-  font-size:0.9375rem;
+  font-size:var(--ac-type-headline);
   margin:13px 0 4px
 }
 
 .driver-empty p {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   max-width:500px;
   line-height:1.5;
@@ -763,13 +763,13 @@ header .sub {
 .filtered-empty {
   text-align:center;
   color: var(--ac-text-4);
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   padding:35px
 }
 
 .footnote {
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   line-height:1.5;
   margin:10px 3px
 }
@@ -824,11 +824,11 @@ header .sub {
   display:grid;
   place-items:center;
   color: var(--role-healthy);
-  font-size:20px
+  font-size:var(--ac-type-title)
 }
 
 .hero-copy h2 {
-  font-size:27px;
+  font-size:var(--ac-type-title);
   font-weight:520;
   margin:7px 0
 }
@@ -836,7 +836,7 @@ header .sub {
 .hero-copy p:last-child {
   margin:0;
   color: var(--ac-text-3);
-  font-size:0.9375rem;
+  font-size:var(--ac-type-headline);
   max-width:580px;
   line-height:1.6
 }
@@ -853,14 +853,14 @@ header .sub {
 .hero-metrics span {
   display:block;
   color: var(--ac-text-3);
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   text-transform:uppercase
 }
 
 .hero-metrics strong {
   display:block;
   margin-top:5px;
-  font-size:20px;
+  font-size:var(--ac-type-title);
   font-weight:500
 }
 
@@ -886,13 +886,13 @@ header .sub {
 }
 
 .panel-head h3 {
-  font-size:17px;
+  font-size:var(--ac-type-headline);
   margin:5px 0 0;
   font-weight:520
 }
 
 .risk,.live-badge {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   border-radius:999px;
   padding:5px 8px
 }
@@ -919,11 +919,11 @@ header .sub {
 }
 
 .plan-title strong {
-  font-size:0.9375rem
+  font-size:var(--ac-type-headline)
 }
 
 .plan-title span {
-  font-size:0.875rem;
+  font-size:var(--ac-type-body);
   color: var(--role-info)
 }
 
@@ -931,7 +931,7 @@ header .sub {
   display:flex;
   gap:22px;
   color: var(--ac-text-4);
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin-top:18px
 }
 
@@ -1062,7 +1062,7 @@ header .sub {
   font-weight:650;
   border-radius:10px;
   padding:9px 13px;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   cursor:pointer
 }
 
@@ -1091,7 +1091,7 @@ header .sub {
 }
 
 .install-progress-head h3 {
-  font-size:17px;
+  font-size:var(--ac-type-headline);
   font-weight:540;
   margin:5px 0 3px
 }
@@ -1099,7 +1099,7 @@ header .sub {
 .install-progress-head p:last-child {
   margin:0;
   color: var(--ac-text-3);
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .execution-state {
@@ -1108,7 +1108,7 @@ header .sub {
   color:#8fcbb6;
   border-radius:999px;
   padding:5px 8px;
-  font-size:0.75rem
+  font-size:var(--ac-type-technical)
 }
 
 .execution-state.warn {
@@ -1142,7 +1142,7 @@ header .sub {
   display:flex;
   justify-content:space-between;
   color: var(--ac-text-3);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   margin-top:6px
 }
 
@@ -1167,14 +1167,14 @@ header .sub {
 .protection-grid span {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   text-transform:uppercase;
   letter-spacing:.6px
 }
 
 .protection-grid strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin-top:3px;
   color: var(--ac-text-2)}
 
@@ -1209,12 +1209,12 @@ header .sub {
   background: var(--ac-material-base)}
 
 .reboot-banner strong,.install-failure strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .reboot-banner p,.install-failure p {
   margin:3px 0 0;
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   line-height:1.5;
   color: var(--ac-text-3)}
 
@@ -1249,14 +1249,14 @@ header .sub {
 
 .install-item>div:first-child strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis
 }
 
 .install-item p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-4);
   margin:2px 0 0;
   white-space:nowrap;
@@ -1266,13 +1266,13 @@ header .sub {
 
 .install-item span,.install-item>div:nth-child(3)>strong {
   display:block;
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-2)}
 
 .install-item small {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   margin-top:2px
 }
 
@@ -1285,7 +1285,7 @@ header .sub {
 }
 
 .recovery-panel h3 {
-  font-size:1rem;
+  font-size:var(--ac-type-headline);
   margin:4px 0 10px
 }
 
@@ -1312,18 +1312,18 @@ header .sub {
 }
 
 .recovery-row strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .recovery-row p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:2px 0;
   line-height:1.45
 }
 
 .recovery-row small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .review-backdrop {
@@ -1347,14 +1347,14 @@ header .sub {
 }
 
 .review-dialog h2 {
-  font-size:22px;
+  font-size:var(--ac-type-title);
   font-weight:540;
   margin:7px 0
 }
 
 .review-copy {
   color: var(--ac-text-3);
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   line-height:1.6;
   margin:0
 }
@@ -1376,7 +1376,7 @@ header .sub {
 .review-facts span {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   text-transform:uppercase;
   letter-spacing:.7px
 }
@@ -1385,7 +1385,7 @@ header .sub {
   display:block;
   margin-top:4px;
   color: var(--ac-text-1);
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .review-facts code {
@@ -1400,12 +1400,12 @@ header .sub {
 }
 
 .review-warning strong {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   color: var(--role-attention)
 }
 
 .review-warning p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:3px 0 0
 }
@@ -1442,12 +1442,12 @@ header .sub {
 }
 
 .pending-install-card h3 {
-  font-size:1rem;
+  font-size:var(--ac-type-headline);
   margin:4px 0
 }
 
 .pending-install-card p:last-child {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:0
 }
@@ -1465,7 +1465,7 @@ header .sub {
   color:#8fcbb6;
   border-radius:999px;
   padding:5px 8px;
-  font-size:0.75rem
+  font-size:var(--ac-type-technical)
 }
 
 /* No reserved height. The old empty block was a fixed 240px centred panel, so
@@ -1489,7 +1489,7 @@ header .sub {
 }
 
 .phase4-hero h2 {
-  font-size:20px;
+  font-size:var(--ac-type-title);
   font-weight:530;
   margin:5px 0
 }
@@ -1497,7 +1497,7 @@ header .sub {
 .phase4-hero p:last-child {
   margin:0;
   color: var(--ac-text-3);
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   line-height:1.5
 }
 
@@ -1539,7 +1539,7 @@ header .sub {
 }
 
 .repair-check-grid span {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-4);
   text-transform:uppercase;
   letter-spacing:.7px
@@ -1547,19 +1547,19 @@ header .sub {
 
 .repair-check-grid strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin:3px 0
 }
 
 .repair-check-grid p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   line-height:1.45;
   margin:0 0 5px
 }
 
 .repair-check-grid small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .phase4-action-card {
@@ -1575,12 +1575,12 @@ header .sub {
 }
 
 .phase4-action-card h3 {
-  font-size:0.9375rem;
+  font-size:var(--ac-type-headline);
   margin:4px 0
 }
 
 .phase4-action-card p:last-child {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   line-height:1.45;
   margin:0
@@ -1629,13 +1629,13 @@ header .sub {
 
 .safe-toggle strong {
   display:block;
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .safe-toggle small {
   display:block;
   color: var(--ac-text-3);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   margin-top:2px
 }
 
@@ -1656,14 +1656,14 @@ header .sub {
 .phase4-safety-row span,.cleanup-result-grid span {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   text-transform:uppercase;
   letter-spacing:.6px
 }
 
 .phase4-safety-row strong,.cleanup-result-grid strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin-top:3px;
   color: var(--ac-text-2)}
 
@@ -1699,17 +1699,17 @@ header .sub {
 }
 
 .phase4-step-list strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .phase4-step-list p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-4);
   margin:2px 0 0
 }
 
 .phase4-step-list em {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   font-style:normal;
   color: var(--ac-text-3)}
 
@@ -1728,11 +1728,11 @@ header .sub {
   color: var(--ac-text-2)}
 
 .safety-note strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .safety-note p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-3);
   line-height:1.5;
   margin:3px 0 0
@@ -1755,20 +1755,20 @@ header .sub {
 .cleanup-summary span {
   display:block;
   color: var(--ac-text-3);
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   text-transform:uppercase;
   letter-spacing:.7px
 }
 
 .cleanup-summary strong {
   display:block;
-  font-size:22px;
+  font-size:var(--ac-type-title);
   font-weight:510;
   margin:5px 0 1px
 }
 
 .cleanup-summary small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .cleanup-scan-progress {
@@ -1823,11 +1823,11 @@ header .sub {
 }
 
 .cleanup-copy strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .cleanup-copy em {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   font-style:normal;
   border: 1px solid var(--ac-edge-strong);
   color: var(--ac-text-2);
@@ -1841,14 +1841,14 @@ header .sub {
 }
 
 .cleanup-copy p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:3px 0;
   line-height:1.45
 }
 
 .cleanup-copy small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .cleanup-size {
@@ -1857,13 +1857,13 @@ header .sub {
 
 .cleanup-size strong {
   display:block;
-  font-size:0.875rem
+  font-size:var(--ac-type-body)
 }
 
 .cleanup-size small {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   margin-top:3px
 }
 
@@ -1924,14 +1924,14 @@ header .sub {
 }
 
 .startup-title strong {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis
 }
 
 .startup-title span,.startup-title em {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   font-style:normal;
   border: 1px solid var(--ac-edge-strong);
   border-radius:999px;
@@ -1945,7 +1945,7 @@ header .sub {
   color: var(--ac-text-2)}
 
 .startup-main>p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:4px 0;
   white-space:nowrap;
@@ -1954,13 +1954,13 @@ header .sub {
 }
 
 .startup-main>small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4);
   line-height:1.45
 }
 
 .startup-protection {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-2);
   margin-top:5px
 }
@@ -1973,19 +1973,19 @@ header .sub {
 .startup-evidence span {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   text-transform:uppercase;
   letter-spacing:.6px
 }
 
 .startup-evidence strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin:3px 0
 }
 
 .startup-evidence small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .decision-group {
@@ -2000,7 +2000,7 @@ header .sub {
   color: var(--ac-text-3);
   border-radius:8px;
   padding:7px 6px;
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   cursor:pointer
 }
 
@@ -2054,12 +2054,12 @@ header .sub {
 
 .service-confirm strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   color:#c4ad82
 }
 
 .service-confirm p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   line-height:1.45;
   margin:3px 0 0
@@ -2083,17 +2083,17 @@ header .sub {
 }
 
 .startup-history-row strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .startup-history-row p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:2px 0
 }
 
 .startup-history-row small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 
@@ -2133,20 +2133,20 @@ header .sub {
 .hardware-summary span {
   display:block;
   color: var(--ac-text-3);
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   text-transform:uppercase;
   letter-spacing:.7px
 }
 
 .hardware-summary strong {
   display:block;
-  font-size:22px;
+  font-size:var(--ac-type-title);
   font-weight:510;
   margin:5px 0 1px
 }
 
 .hardware-summary small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .storage-grid {
@@ -2177,12 +2177,12 @@ header .sub {
 }
 
 .storage-head h3 {
-  font-size:0.9375rem;
+  font-size:var(--ac-type-headline);
   margin:4px 0
 }
 
 .storage-head p:last-child {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   line-height:1.45;
   margin:0
@@ -2193,7 +2193,7 @@ header .sub {
   border: 1px solid var(--ac-edge-strong);
   border-radius:999px;
   padding:4px 7px;
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-2)}
 
 .metric-grid {
@@ -2213,12 +2213,12 @@ header .sub {
 .metric-grid span {
   display:block;
   color: var(--ac-text-4);
-  font-size:0.75rem
+  font-size:var(--ac-type-body)
 }
 
 .metric-grid strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin-top:3px;
   overflow-wrap:anywhere
 }
@@ -2227,12 +2227,12 @@ header .sub {
   margin:11px 0 0;
   padding-inline-start:17px;
   color: var(--ac-text-2);
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   line-height:1.5
 }
 
 .source-line {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4);
   margin-top:10px
 }
@@ -2246,12 +2246,12 @@ header .sub {
 }
 
 .memory-card h3 {
-  font-size:0.9375rem;
+  font-size:var(--ac-type-headline);
   margin:4px 0
 }
 
 .memory-card p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   line-height:1.45;
   margin:0
@@ -2284,12 +2284,12 @@ header .sub {
 }
 
 .memory-facts span {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-4)}
 
 .memory-facts strong {
   display:block;
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin-top:3px
 }
 
@@ -2321,30 +2321,30 @@ header .sub {
 }
 
 .triage-head span {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   text-transform:uppercase;
   letter-spacing:.7px
 }
 
 .triage-head h4 {
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin:3px 0
 }
 
 .triage-head em {
   font-style:normal;
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-3)}
 
 .triage-card>p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   line-height:1.45
 }
 
 .triage-card ul {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   line-height:1.5;
   padding-inline-start:17px
@@ -2357,7 +2357,7 @@ header .sub {
 }
 
 .guided-actions span {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-2)}
 
 .guided-action {
@@ -2389,17 +2389,17 @@ header .sub {
 }
 
 .crash-card strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .crash-card p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:3px 0
 }
 
 .crash-card small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .bugcheck {
@@ -2408,13 +2408,13 @@ header .sub {
 }
 
 .bugcheck span {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-4)}
 
 .bugcheck strong {
   display:block;
   font-family:var(--ac-font-mono);
-  font-size:0.8125rem;
+  font-size:var(--ac-type-body);
   margin:3px 0
 }
 
@@ -2444,22 +2444,22 @@ header .sub {
 }
 
 .event-row strong {
-  font-size:0.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .event-row p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-3);
   margin:2px 0;
   line-height:1.45
 }
 
 .event-row small {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .event-row em {
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   font-style:normal;
   color: var(--ac-text-3);
   white-space:nowrap
@@ -2491,13 +2491,13 @@ header .sub {
 }
 
 .diagnostic-history-row strong {
-  font-size:1rem
+  font-size:var(--ac-type-headline)
 }
 
 .diagnostic-history-row p,.diagnostic-history-row small {
   margin:4px 0 0;
   color:var(--muted);
-  font-size:0.875rem
+  font-size:var(--ac-type-body)
 }
 
 .diagnostic-history-row small {
@@ -2527,13 +2527,13 @@ header .sub {
 
 .ata-smart-block summary {
   cursor:pointer;
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-2);
   font-weight:600
 }
 
 .ata-smart-block>p {
-  font-size:0.75rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-4);
   line-height:1.45;
   margin:7px 0
@@ -2553,12 +2553,12 @@ header .sub {
 
 .ata-smart-grid span,.ata-smart-grid small {
   display:block;
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
 .ata-smart-grid strong {
   display:block;
-  font-size:0.75rem;
+  font-size:var(--ac-type-technical);
   margin:2px 0
 }
 
@@ -2579,12 +2579,12 @@ header .sub {
 }
 
 .provider-fault-copy h3 {
-  font-size:.875rem;
+  font-size:var(--ac-type-body);
   margin:4px 0
 }
 
 .provider-fault-copy>p:last-child {
-  font-size:.8125rem;
+  font-size:var(--ac-type-body);
   line-height:1.5;
   color: var(--ac-text-3);
   margin:0
@@ -2607,11 +2607,11 @@ header .sub {
 }
 
 .fault-kind {
-  font-size:.8125rem;
+  font-size:var(--ac-type-body);
   color: var(--ac-text-2)}
 
 .fault-technical {
-  font-size:.75rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-3);
   overflow-wrap:anywhere
 }
@@ -2630,7 +2630,7 @@ header .sub {
 .scheduler-activity .panel-head h3 {
   max-width:720px;
   color: var(--ac-text-3);
-  font-size:.875rem;
+  font-size:var(--ac-type-body);
   line-height:1.55;
   font-weight:430
 }
@@ -2651,17 +2651,17 @@ header .sub {
 }
 
 .scheduler-row strong {
-  font-size:.9375rem
+  font-size:var(--ac-type-headline)
 }
 
 .scheduler-row span {
   color: var(--role-info);
-  font-size:.8125rem
+  font-size:var(--ac-type-body)
 }
 
 .scheduler-row p,.scheduler-none {
   color: var(--ac-text-3);
-  font-size:.875rem;
+  font-size:var(--ac-type-body);
   line-height:1.6
 }
 
@@ -2780,13 +2780,13 @@ header .sub {
   backdrop-filter:blur(18px) saturate(135%);-webkit-backdrop-filter:blur(18px) saturate(135%);
 }
 .authority-coverage.warning { border-color:var(--role-attention-edge);background:var(--role-attention-wash) }
-.authority-coverage strong { font-size:.8125rem;font-weight:610 }
-.authority-coverage p { margin:2px 0 0;color: var(--ac-text-3);font-size:.75rem }
+.authority-coverage strong { font-size:var(--ac-type-body);font-weight:610 }
+.authority-coverage p { margin:2px 0 0;color: var(--ac-text-3);font-size:var(--ac-type-body) }
 .selection-tools { display:flex;gap:7px;flex-wrap:wrap }
 .selection-tools button { border: 1px solid var(--ac-edge-strong);background: var(--ac-material-elevated);color: var(--ac-text-2);border-radius:9px;padding:7px 10px;cursor:pointer }
 .candidate-row.recommended { background:linear-gradient(90deg,rgba(37,76,65,.10),transparent 58%) }
 .candidate-title-line { display:flex;align-items:center;gap:7px;min-width:0 }
-.recommend-chip,.alternative-chip,.source-chip { display:inline-flex;align-items:center;max-width:15rem;border-radius:999px;padding:3px 7px;font-size:.6875rem;font-weight:620;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.recommend-chip,.alternative-chip,.source-chip { display:inline-flex;align-items:center;max-width:15rem;border-radius:999px;padding:3px 7px;font-size:var(--ac-type-technical);font-weight:620;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
 .recommend-chip { border:1px solid #315b50;background: var(--ac-material-elevated);color:#9fd5c2 }
 .alternative-chip { border: 1px solid var(--ac-edge-strong);background: var(--ac-material-elevated);color:#92b4c6 }
 .source-chip { border: 1px solid var(--ac-edge-strong);background: var(--ac-material-elevated);color: var(--ac-text-2);text-transform:none;letter-spacing:0 }
@@ -2820,13 +2820,13 @@ header .sub {
 .repair-health-grid article.healthy .health-state-dot { background:var(--ac-positive); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-positive) 11%,transparent); }
 .repair-health-grid article.attention .health-state-dot { background:var(--ac-warning); box-shadow:0 0 0 .24rem color-mix(in srgb,var(--ac-warning) 11%,transparent); }
 .repair-health-grid small,.repair-health-grid strong { display:block; }
-.repair-health-grid code { font-size:.68rem; opacity:.72; }
+.repair-health-grid code { font-size:var(--ac-type-technical); opacity:.72; }
 .repair-diagnosis-panel,.recovery-readiness-card,.repair-evidence-disclosure { margin:1rem 0; padding:1.1rem; border:1px solid var(--ac-border-default); border-radius:var(--ac-radius-lg); background:color-mix(in srgb,var(--ac-material-base) 82%,transparent); backdrop-filter:blur(22px) saturate(145%); }
 .section-heading { display:flex; align-items:end; justify-content:space-between; gap:1rem; }
 .repair-diagnosis-list { display:grid; gap:.65rem; margin-top:.9rem; }
 .repair-diagnosis-list article { padding:.9rem 1rem; border:1px solid var(--ac-border-default); border-radius:var(--ac-radius-md); background:color-mix(in srgb,var(--ac-material-elevated) 82%,transparent); }
 .repair-diagnosis-list article>div { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
-.role-chip { font-size:.7rem; font-weight:700; padding:.18rem .45rem; border-radius:999px; background:var(--ac-material-base); }
+.role-chip { font-size:var(--ac-type-technical); font-weight:700; padding:.18rem .45rem; border-radius:999px; background:var(--ac-material-base); }
 .repair-diagnosis-list details { margin-top:.65rem; }
 .recovery-readiness-card { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:1.2rem; align-items:center; }
 .recovery-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(10rem,100%),1fr)); gap:.5rem; }
@@ -2857,7 +2857,7 @@ header .sub {
   overflow: hidden;
 }
 .metric-card strong {
-  font-size: 1.7rem;
+  font-size:var(--ac-type-title);
   font-weight: 650;
   letter-spacing: -0.02em;
 }
@@ -2912,7 +2912,7 @@ header .sub {
 }
 .finding-card em {
   font-style: normal;
-  font-size: 0.72rem;
+  font-size:var(--ac-type-technical);
   color: var(--ac-text-3);
   white-space: nowrap;
 }
@@ -2948,3 +2948,27 @@ main :is(button,.service-pill,.diagnostic-severity,.role-chip,.selection-count) 
   flex-shrink:0;
   max-inline-size:100%;
 }
+
+/* ---- boxes that clip their own line -------------------------------------
+   `overflow:hidden` + `text-overflow:ellipsis` makes the LINE BOX the clip
+   box, so any element in this list cuts its own ascenders and descenders the
+   moment its font grows or its face changes. P56 found exactly this on
+   `.shell-context-copy strong` — Arabic clipped by 2px on every screen in the
+   product — and fixed it with an explicit 1.45.
+
+   P57 moved every size literal onto the token scale, which moved 13px to 13.5,
+   and `.startup-title strong` started clipping by 2px on six of 144 sweep
+   combinations. The other ten rules here clip their own line the same way and
+   were one font tweak from the same defect, so the line height is stated once,
+   for all of them, rather than chased one regression at a time. */
+.device-identity strong,
+.device-identity p,
+.driver-current small, .driver-target small,
+.driver-current strong, .driver-target strong,
+.driver-current span, .driver-target span,
+.candidate-row > div p,
+.install-item > div:first-child strong,
+.install-item p,
+.startup-title strong,
+.startup-main > p,
+.recommend-chip, .alternative-chip, .source-chip { line-height: 1.45; }

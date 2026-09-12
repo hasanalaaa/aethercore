@@ -310,3 +310,65 @@ is loaded and `disabled` when it is not. It does **not** silently become
 reason. The rule engine summarises evidence; it cannot answer a question, and
 letting it answer one under the model's label is the silent fallback the brief
 forbids.
+
+---
+
+## Part 3 — the numeral convention (P57 ITEM 2)
+
+**Decided: Latin digits for every reading this product renders, in both
+languages, including the service log.** One convention, product-wide.
+
+The product was rendering two. In Arabic, `formatNumber` and `formatDateTime`
+resolved to `ar-IQ`, so a reading printed `٥١٪` and `١٢٬٤٨٠`, while the service
+log printed `seq 1` and `12:30:00` and the Timeline screen had already
+hard-coded `numberingSystem: 'latn'` in a formatter of its own. Three
+behaviours, one screen apart.
+
+### Why Latin, measured rather than preferred
+
+This is an instrument. Its numbers are scanned, not read, and most of them sit
+in monospace beside Latin identifiers, paths, digests and versions that cannot
+change: `NET-NO-EGRESS`, `oem214.inf`, `plan-0001`, `0.1.0`. So the test is
+whether a number and the identifier beside it can share a line.
+
+Measured on this machine, at 20px, through the app's own `--ac-font-mono` stack
+in the `ar` locale (`CSS.getPlatformFontsForNode`, which reports what the
+compositor actually drew — not what the stack asked for):
+
+| run | width | drawn by |
+|---|---:|---|
+| `12,480` | 72.00px | JetBrains Mono — 6 glyphs |
+| `١٢٬٤٨٠` | 46.59px | IBM Plex Sans Arabic — 6 glyphs |
+| `seq 1 12:30:00` | 168.33px | JetBrains Mono — 14 glyphs |
+| `seq ١ ١٢:٣٠:٠٠` | 134.09px | JetBrains Mono **7** + IBM Plex Sans Arabic **7** |
+
+The last row is the finding. **JetBrains Mono has no Arabic-Indic digits**, so
+inside a single technical token the identifier draws monospaced and the number
+beside it draws from a proportional face. The monospace grid — the entire reason
+a reading is set in mono — breaks mid-token. The same six characters are 35%
+narrower in one numbering system than the other, so columns of readings cannot
+align either.
+
+With a bare `"JetBrains Mono", monospace` stack the same string falls all the
+way through to **Courier New, a system font** — the exact class of defect
+`verify-arabic` exists to catch.
+
+### What this does NOT change
+
+`-u-nu-latn` changes the digits and nothing else. The locale keeps its own
+conventions:
+
+* unit symbols stay Arabic — `84°م`
+* date order and the AM/PM marker stay Arabic — `14/04/2026، 12:30 م`
+* plural agreement is unchanged; `Intl.PluralRules` selects from the value, not
+  from its spelling
+
+This is one numbering system for an instrument, not Arabic rendered as English.
+
+### One gate widened as a consequence
+
+CLDR wraps a percent in LRM under an RTL locale — `51‎%‎`. `verify-numbers`
+matched `\d+\s*%`, so every Arabic percentage would have become invisible to the
+gate the moment the digits turned Latin: a number nobody could trace, hidden
+from the instrument by a zero-width character. The matcher now treats bidi
+control marks as separators.

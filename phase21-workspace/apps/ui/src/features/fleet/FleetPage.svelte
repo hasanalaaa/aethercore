@@ -480,7 +480,7 @@
   .fleet-error { display: grid; gap: 0.35rem; }
   .fleet-notice {
     border: 1px solid var(--ac-border-default); border-radius: 10px; padding: 0.55rem 0.8rem;
-    font-size: 0.85rem; color: var(--ac-text-1); background: var(--ac-material-base);
+    font-size:var(--ac-type-body); color: var(--ac-text-1); background: var(--ac-material-base);
   }
   .fleet-notice.ok { border-inline-start: 3px solid var(--ac-accent); }
   .fleet-notice:not(.ok) { border-inline-start: 3px solid #c2791f; }
@@ -493,16 +493,16 @@
   }
   .fleet-card-main { display: grid; gap: 0.15rem; min-width: 0; }
   .fleet-card-main small { color: var(--ac-text-3); }
-  .fleet-fingerprint { font-size: 0.72rem; opacity: 0.85; }
+  .fleet-fingerprint { font-size:var(--ac-type-technical); opacity: 0.85; }
   .fleet-card-state { display: grid; gap: 0.15rem; justify-items: end; }
-  .fleet-card-state em { font-style: normal; font-size: 0.78rem; color: var(--ac-text-3); }
+  .fleet-card-state em { font-style: normal; font-size:var(--ac-type-body); color: var(--ac-text-3); }
   .fleet-card-state em.ok { color: var(--ac-accent); }
   .fleet-card-state em.warn { color: #c2791f; }
   .fleet-card-state em.muted { color: var(--ac-text-3); }
   .fleet-card-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .fleet-card-actions button {
     border: 1px solid var(--ac-border-default); background: transparent; color: var(--ac-text-1);
-    border-radius: 8px; padding: 0.25rem 0.6rem; font-size: 0.78rem; cursor: pointer;
+    border-radius: 8px; padding: 0.25rem 0.6rem; font-size:var(--ac-type-body); cursor: pointer;
   }
   .fleet-card-actions button.primary { border-color: var(--ac-accent); color: var(--ac-accent); }
   .fleet-card-actions button.danger { border-color: #c2791f; color: #c2791f; }
@@ -513,28 +513,28 @@
   }
   .fleet-form { border-block-start: none; padding-top: 0; }
   .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.5rem; }
-  .form-grid label, .trust-form label { display: grid; gap: 0.2rem; font-size: 0.78rem; color: var(--ac-text-3); }
+  .form-grid label, .trust-form label { display: grid; gap: 0.2rem; font-size:var(--ac-type-body); color: var(--ac-text-3); }
   .form-wide { grid-column: 1 / -1; }
   .form-grid input, .form-grid select, .trust-form input {
     border: 1px solid var(--ac-border-default); border-radius: 8px; padding: 0.35rem 0.55rem;
-    background: transparent; color: var(--ac-text-1); font-size: 0.85rem;
+    background: transparent; color: var(--ac-text-1); font-size:var(--ac-type-body);
   }
   .form-actions { display: flex; gap: 0.4rem; }
   .form-actions button {
     border: 1px solid var(--ac-border-default); background: transparent; color: var(--ac-text-1);
-    border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.8rem; cursor: pointer;
+    border-radius: 8px; padding: 0.3rem 0.7rem; font-size:var(--ac-type-body); cursor: pointer;
   }
   .form-actions button.primary { border-color: var(--ac-accent); color: var(--ac-accent); }
   .form-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .form-note { font-size: 0.72rem; color: var(--ac-text-3); }
+  .form-note { font-size:var(--ac-type-technical); color: var(--ac-text-3); }
   /* A fault, not a policy refusal: it carries the attention colour the
      rest of this page already uses for a real problem. */
   .form-note.schedule-unreadable { color: #c2791f; }
-  .fleet-hint { color: var(--ac-text-3); font-size: 0.82rem; }
-  .remote-result { grid-column: 1 / -1; display: grid; gap: 0.25rem; border-inline-start: 3px solid #c2791f; padding: 0.45rem 0.65rem; background: color-mix(in srgb, var(--ac-material-base) 92%, #c2791f); font-size: 0.78rem; }
+  .fleet-hint { color: var(--ac-text-3); font-size:var(--ac-type-body); }
+  .remote-result { grid-column: 1 / -1; display: grid; gap: 0.25rem; border-inline-start: 3px solid #c2791f; padding: 0.45rem 0.65rem; background: color-mix(in srgb, var(--ac-material-base) 92%, #c2791f); font-size:var(--ac-type-body); }
   .remote-result.ok { border-inline-start-color: var(--ac-accent); }
   .remote-result.error { border-inline-start-color: #b74646; }
-  .remote-result pre { margin: 0; max-height: 9rem; overflow: auto; white-space: pre-wrap; font-size: 0.7rem; }
+  .remote-result pre { margin: 0; max-height: 9rem; overflow: auto; white-space: pre-wrap; font-size:var(--ac-type-technical); }
   .fleet-schedules { display: grid; gap: 0.55rem; }
   .schedule-form { border-block-start: 1px dashed var(--ac-border-default); padding-top: 0.6rem; }
   .schedule-enabled { display: flex; align-items: center; gap: 0.45rem; }

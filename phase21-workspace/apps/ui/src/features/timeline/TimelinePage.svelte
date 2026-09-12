@@ -14,7 +14,7 @@
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { Pressable, TechnicalText } from '../../design/primitives';
-  import { t, td } from '../../lib/i18n';
+  import { formatDateTime, t, td } from '../../lib/i18n';
   import type { MessageKey } from '../../lib/i18n';
   import {
     loadRecurrencePatterns,
@@ -52,18 +52,12 @@
     }
   }
 
-  function formatTime(unixMs: number): string {
-    if (!unixMs) return '—';
-    try {
-      return new Intl.DateTimeFormat(locale === 'ar' ? 'ar' : 'en', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        numberingSystem: 'latn',
-      }).format(new Date(unixMs));
-    } catch {
-      return String(unixMs);
-    }
-  }
+  // P57 ITEM 2. This screen had its own formatter with `numberingSystem: 'latn'`
+  // hard-coded — one screen that had already picked Latin digits while the rest
+  // of the product rendered Arabic-Indic ones. That divergence IS the finding
+  // ITEM 2 settles, so the local copy is gone and the shared formatter, which
+  // now makes the same choice product-wide, is the only one.
+  const formatTime = (unixMs: number): string => formatDateTime(unixMs, locale);
 </script>
 
 <section class="panel timeline-panel" aria-live="polite">
