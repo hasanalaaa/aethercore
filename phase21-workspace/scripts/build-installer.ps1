@@ -163,9 +163,30 @@ if (-not $MsiOnly) {
                "DBT-P41-001: the bundle must chain it as a prerequisite.")
     }
     $vcredist = (Resolve-Path $VcRedist).Path
+
+    # DBT-P49-002: the bundle's welcome logo. Resolved and hash-checked here for
+    # the same reason the two files above are: it is the product's brand mark,
+    # and the failure mode of picking it up implicitly is shipping a placeholder
+    # to the first screen a user ever sees, which is exactly what happened. The
+    # expected hash is read from the icon pipeline's own provenance record rather
+    # than pinned a second time in this script.
+    $logo = Join-Path $Root 'apps\desktop\icons\64x64.png'
+    if (-not (Test-Path $logo)) {
+        throw ("Bundle logo not found: $logo. Regenerate the icon set with " +
+               "node tools/icon-pipeline/build-icons.mjs. DBT-P49-002.")
+    }
+    $iconSource = Get-Content (Join-Path $Root 'apps\desktop\icons\SOURCE.json') -Raw | ConvertFrom-Json
+    $expectedLogoHash = $iconSource.files.'64x64.png'
+    $actualLogoHash = (Get-FileHash $logo -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualLogoHash -ne $expectedLogoHash) {
+        throw ("Bundle logo $logo is not the file the icon pipeline generated. " +
+               "SOURCE.json records $expectedLogoHash, found $actualLogoHash. DBT-P49-002.")
+    }
+    $logo = (Resolve-Path $logo).Path
+
     & dotnet tool run wix build installer\wix\Bundle.wxs -arch x64 `
         -ext WixToolset.Util.wixext -ext WixToolset.BootstrapperApplications.wixext `
-        -o $bundle -d "ProductVersion=$Version" -d "MsiPath=$msi" -d "WebView2Bootstrapper=$webview" -d "VcRedist=$vcredist"
+        -o $bundle -d "ProductVersion=$Version" -d "MsiPath=$msi" -d "WebView2Bootstrapper=$webview" -d "VcRedist=$vcredist" -d "LogoFile=$logo"
     if ($LASTEXITCODE -ne 0) { throw 'AetherCore bootstrapper bundle build failed.' }
     Write-Host "Bundle built: $bundle" -ForegroundColor Green
 }
