@@ -28,9 +28,12 @@ if (-not (Test-Path 'release\dependency-locks.sha256') -or -not (Test-Path 'rele
 if ($LASTEXITCODE -ne 0) { throw 'Dependency lock baseline verification failed.' }
 }
 
-$dismLib = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\SDKs\DismApi\Lib\amd64'
-if (-not (Test-Path (Join-Path $dismLib 'DismApi.lib'))) { throw 'Install Windows ADK Deployment Tools (x64 DismApi SDK) before building.' }
-$env:LIB = "$dismLib;$env:LIB"
+# The ADK DismApi import library is located by crates/system-repair/build.rs,
+# which is the single decider for it. This script deliberately does not set LIB:
+# a second copy of that path here went wrong twice — it hard-coded the default
+# install root, so an ADK placed anywhere else failed the check while the build
+# itself would have succeeded, and it spelled the architecture directory by hand.
+# If the ADK is missing, the build script fails with the directories it probed.
 
 if (-not $env:SOURCE_DATE_EPOCH) {
     try {
