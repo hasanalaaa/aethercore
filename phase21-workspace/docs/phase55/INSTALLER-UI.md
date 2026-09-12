@@ -131,3 +131,77 @@ by `DBT-P41-001` and P47 §47.9 and are out of this item's scope.
   installer.
 * **Licence text** — owner action, above.
 * **`DBT-P55-005`** — the icon source SVG is missing from the tree.
+
+---
+
+# Item 4.A — the artefacts, built through CI
+
+Built by the green CI run, not locally, so the artefact is reproducible rather
+than a one-off from this machine's accumulated setup.
+
+| | |
+|---|---|
+| run | **`34683812129`**, conclusion `success`, 58m0s |
+| commit | `d39e490181947c7d7d09d9cfbd06dd123a8e1dc8` |
+| workflow | `.github/workflows/windows-installer.yml` |
+
+## The two artefacts
+
+| artefact | bytes | sha256 |
+|---|---|---|
+| `AetherCoreSetup-0.1.11-x64.exe` | 1,121,407,585 | `747bb6ee3265c4b141bfc58277c4fea71bc8155826b54503f3b7562556b6de3f` |
+| `AetherCore-0.1.11-x64.msi` | 1,100,300,288 | `c335e5f9055dc73e10bf450d2e8db5a4b0d2ef7e5036cd810574398e11abd946` |
+
+The MSI is **not** in the uploaded artifact — the workflow's upload path filter
+is `out/release/**/*.exe`. Its hash above was taken from the copy inside the
+bundle's own `WixAttachedContainer`, extracted with WiX, which is the byte the
+bundle will actually install. Worth fixing in the workflow so the MSI is
+uploaded too; recorded rather than changed in this pass.
+
+## The gates, from the run's own log
+
+```
+AUTHORED_FILES=17
+MSI_FILE_ROWS=16
+PAYLOAD_CHECK=PASS every MSI file is authored in Product.wxs; no developer artefacts
+MSI built:    ...\artifacts\AetherCore-0.1.11-x64.msi
+Bundle built: ...\artifacts\AetherCoreSetup-0.1.11-x64.exe
+```
+
+* `wix msi validate` — **output empty. 0 ICE lines in the entire run log**, and
+  the call is `dotnet tool run wix msi validate $msi` with no `-sval`, no
+  `-sice`, no suppression of any kind.
+* payload check — **PASS**, **16 file rows**, as EXPECTED.
+* `vcomp140.dll staged from C:\Program Files\Microsoft Visual Studio\18\
+  Enterprise\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.OpenMP\vcomp140.dll`
+  — found by the new `vswhere` probe, and it passed the unchanged strict hash
+  check, which is what closes `DBT-P42-012` check 5.
+
+## The Burn chain, read from its own manifest
+
+Extracted with `wix burn extract`, then read out of `manifest.xml` as XML — not
+a string scan of the binary.
+
+```
+1. ExePackage   Id=VCRedist
+2. ExePackage   Id=WebView2EvergreenBootstrapper
+3. MsiPackage   Id=AetherCoreMsi
+```
+
+**EXPECTED `VCRedist` → `WebView2` → `AetherCoreMsi`. Observed exactly that.**
+
+## `DBT-P49-002` verified in the built artefact
+
+These are read out of the shipped bundle, not out of the source that was meant
+to produce it.
+
+| finding | evidence from the artefact |
+|---|---|
+| "AetherCore Setup Setup" | `Registration/Arp/@DisplayName` = **`AetherCore`**. Caption becomes "AetherCore Setup", ARP entry reads "AetherCore" |
+| stock WiX logo | embedded `ba/logo.png` is **1,466 B**, sha256 `492020a6…ee28ca` — **byte-identical to `apps/desktop/icons/64x64.png`**, the Æ mark. WiX's placeholder is 852 B; it is not in this bundle. The theme places it via `<ImageControl X="11" Y="11" Width="64" Height="64" ImageFile="logo.png"/>` |
+| version absent | `Registration/@Version` = **`0.1.11`**, and `WixBundleProperties/@DisplayName` = `AetherCore`. Sourced from `Get-ProductVersion.ps1`, the single decider |
+| progress stuck on "Initializing..." | `WixPackageProperties` now carries a `DisplayName` for **all three** packages: `Microsoft Visual C++ 2015-2022 Redistributable`, `Microsoft Edge WebView2 Runtime`, and **`AetherCore`** — the last being the one that was missing and the only one that executes on a machine with the prerequisites already present |
+| licence absent | still absent, deliberately. See above |
+
+The first four are fixed in the artefact. Whether the version and the progress
+text *render* as intended is a claim about pixels, and pixels are Item 4.D.

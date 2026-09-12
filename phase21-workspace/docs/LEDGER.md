@@ -52,10 +52,10 @@ evidence names where).
 
 | item | what | status |
 |---|---|---|
-| P55-1 | CI: green run of `windows-installer.yml`, run id recorded | in progress. `07445b4`+`f621ffc` fixed the ADK step — run `34680665151` is the first run in this workflow's history to get past it. That run then failed 38 min later at `DBT-P42-012` check 5, fixed in `f54cc50`. **The CI has never been green, so each fix uncovers the next failure; every one so far was an already-known ledger row, found on a third machine** |
+| P55-1 | CI: green run of `windows-installer.yml`, run id recorded | **CLOSED — run `34683812129`, conclusion `success`, 58m0s, commit `d39e490`.** All 11 authored steps executed; **0 `continue-on-error`, 0 `if: always()`** in the workflow. Took four fixes: `07445b4` (ADK + DismApi), `f621ffc` (ADK log dir), `f54cc50` (vcomp140 via vswhere), `d39e490` (NuGet trusted signers) |
 | P55-2 | this ledger | CLOSED — this file |
 | P55-3 | recovery re-established | 3.A done (see §2). **3.B NOT DONE — owner decision 2026-09-12: do not re-image.** The existing image does not fit beside a new one, so writing one would destroy the only verified copy. `DBT-P55-003`, `DBT-P55-004` open |
-| P55-4 | build + fix + install the consumer installer | not started |
+| P55-4 | build + fix + install the consumer installer | 4.A + 4.B CLOSED — `docs/phase55/INSTALLER-UI.md`. Bundle sha256 `747bb6ee…6de3f` (1,121,407,585 B), MSI `c335e5f9…bd946` (1,100,300,288 B), both from CI. **4.C and 4.D outstanding** |
 | P55-5 | Gate 4 prepared to the owner line | CLOSED — `docs/phase55/GATE4-CANDIDATES.md`, `scripts/gate4-driver-runbook.ps1`, `scripts/gate4-preconditions.ps1`. Preconditions measured: **2 of 6 hold** |
 
 ---
