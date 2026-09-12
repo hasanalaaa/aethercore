@@ -100,7 +100,11 @@
     {#if !$streamState.snapshot.connected && !$shellState.errorMessage}
       <section class="disconnected-card" aria-labelledby="disconnected-title">
         <div class="disconnected-mark" aria-hidden="true">×</div>
-        <div><p class="eyebrow">{t('state.disconnected', $shellState.locale)}</p><h2 id="disconnected-title">{t('app.serviceUnavailable', $shellState.locale)}</h2><p>{t('app.serviceUnavailableCopy', $shellState.locale)}</p></div>
+        <!-- The body said, in 19 words, what the heading above it says in five
+             and the button beside it offers to fix. It was the largest single
+             block of prose left in the product's empty state, on every screen.
+             P56 left it standing because Part 3 had not reached the shell. -->
+        <div><p class="eyebrow">{t('state.disconnected', $shellState.locale)}</p><h2 id="disconnected-title">{t('app.serviceUnavailable', $shellState.locale)}</h2></div>
         <button class="secondary" type="button" onclick={() => location.reload()}>{t('app.retryConnection', $shellState.locale)}</button>
       </section>
     {/if}

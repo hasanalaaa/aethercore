@@ -17,8 +17,9 @@
 
 <section class="system-care-grid" aria-label={t('systemCare.title',locale)}>
   <article class="panel system-care-card">
-    <div class="panel-head"><div><p class="eyebrow">{t('update.eyebrow',locale)}</p><h3>{t('update.title',locale)}</h3></div><span class="live-badge">{t('update.channelLabel',locale)}</span></div>
-    <p>{t('update.copy',locale)}</p>
+    <!-- "Installation still requires administrator approval" is the policy
+         band's promise; the status line below states what the updater found. -->
+    <div class="panel-head"><div><h3>{t('update.title',locale)}</h3></div><span class="live-badge">{t('update.channelLabel',locale)}</span></div>
     <div class="segmented" role="group" aria-label={t('update.channelLabel',locale)}>
       <button use:fluidPress={{pressedScale:0.985}} class:active={$systemCareUi.channel===1} aria-pressed={$systemCareUi.channel===1} onclick={()=>setUpdateChannel(1)}>{t('update.channel.stable',locale)}</button>
       <button use:fluidPress={{pressedScale:0.985}} class:active={$systemCareUi.channel===2} aria-pressed={$systemCareUi.channel===2} onclick={()=>setUpdateChannel(2)}>{t('update.channel.beta',locale)}</button>
@@ -36,7 +37,10 @@
   </article>
 
   <article class="panel system-care-card">
-    <div class="panel-head"><div><p class="eyebrow">{t('support.eyebrow',locale)}</p><h3>{t('support.title',locale)}</h3></div><span class="live-badge">{t('support.privacyFirst',locale)}</span></div>
+    <!-- KEPT, cut to the fact. A person decides whether to export before a
+         preview exists, and what is NOT in the bundle is the part of that
+         decision the screen cannot otherwise show. -->
+    <div class="panel-head"><div><h3>{t('support.title',locale)}</h3></div><span class="live-badge">{t('support.privacyFirst',locale)}</span></div>
     <p>{t('support.copy',locale)}</p>
     {#if preview}
       <div class="support-preview" aria-live="polite">

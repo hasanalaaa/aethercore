@@ -77,7 +77,13 @@
             onkeydown={navKey}
           >
             <span class="nav-icon"><AppIcon name={item.icon} size={16}/></span>
-            <span class="nav-copy"><strong>{td(item.labelKey, locale)}</strong><small>{td(item.descriptionKey, locale)}</small></span>
+            <!-- The label, and only the label. Twelve descriptions under twelve
+                 nouns spent 47 words, on every screen, permanently, explaining
+                 "Overview" to someone already looking at it (DENSITY.md,
+                 finding 3). The description is still the button's `title` and
+                 part of its accessible name, so nothing is lost to a reader who
+                 asks for it — it simply stops being said unprompted. -->
+            <span class="nav-copy"><strong>{td(item.labelKey, locale)}</strong></span>
             {#if item.availability === 'online' && !connected}<span class="nav-availability" title={t('palette.unavailable', locale)} aria-label={t('palette.unavailable', locale)}>·</span>{/if}
           </button>
         {/each}

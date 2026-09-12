@@ -20,7 +20,10 @@
 </script>
 
 <header>
-  <div><p class="eyebrow">{t('settings.eyebrow',locale)}</p><h1>{t('settings.title',locale)}</h1><p class="sub">{t('settings.subtitle',locale)}</p></div>
+  <!-- Title only. "Nothing on this screen reports the state of your machine"
+       described the screen's job; the two panels on it are a channel choice and
+       a build identity, which show it. -->
+  <div><h1>{t('settings.title',locale)}</h1></div>
   <div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div>
 </header>
 
