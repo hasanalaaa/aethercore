@@ -59,6 +59,7 @@ jobs:
             # /ceip off is mandatory for an unattended install; adksetup prompts
             # for the CEIP choice without it and exits non-zero under /quiet.
             $logDir = Join-Path $env:RUNNER_TEMP 'adklogs'
+            New-Item -ItemType Directory -Force -Path $logDir | Out-Null
             $proc = Start-Process $installer -Wait -PassThru -ArgumentList @(
               '/quiet', '/norestart', '/ceip', 'off',
               '/features', 'OptionId.DeploymentTools',
