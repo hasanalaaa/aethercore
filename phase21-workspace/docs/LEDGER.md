@@ -41,6 +41,7 @@ evidence names where).
 | `DBT-P55-001` | `phase21-workspace/.github/workflows/{ci,fuzz,release}.yml` have **never been dispatched**. GitHub executes only workflows under the repository root `.github`; these sit one directory down | OPEN | verified P55: `git ls-files '*.github/workflows/*'` — only `.github/workflows/windows-installer.yml` is at the root. First recorded by P54 | — |
 | `DBT-P55-002` | `cargo fmt --all -- --check` fails on **1,247 files**. `ci.yml`'s formatting gate would have caught the first one — direct evidence that `DBT-P55-001` has held for the whole life of that file | OPEN | verified P55: 1,247 distinct files in the diff | any |
 | `DBT-P55-003` | `D:` cannot hold a second full system image beside the existing one: C: uses 571.6 GB, `D:` has 410.5 GB free | OPEN | verified P55 by enumeration, see §2 | this machine |
+| `DBT-P55-004` | the recovery media is **not attached** — zero removable volumes carry `\sources\boot.wim` or `\bootmgr`. It is not merely un-boot-tested; it is absent, so it cannot be tested until it is found | OPEN | verified P55: `scripts/gate4-preconditions.ps1`, condition 3 | this machine |
 | `DBT-P49-001` | `build-release.ps1` never set the ADK `DismApi\Lib\amd64` path into `LIB`, so a clean shell died `LNK1181` | **CLOSED** | `07445b4` — `crates/system-repair/build.rs` locates the library itself; the failure was reproduced first (exit 101, `LNK1181` ×3 with `LIB` unset), then measured at exit 0 | done |
 | `DBT-P42-011` | x64 numeric bias in performance readings | **RECLASSIFIED — does not reproduce** | P49 §49.6, nine rounds on the original silicon; residual means smaller than the host counter's own ±14-pt spread | done |
 
@@ -48,11 +49,11 @@ evidence names where).
 
 | item | what | status |
 |---|---|---|
-| P55-1 | CI: green run of `windows-installer.yml`, run id recorded | engineering committed in `07445b4`; run observation pending |
+| P55-1 | CI: green run of `windows-installer.yml`, run id recorded | `07445b4` + `f621ffc`; run `34680665151` — the ADK step that failed all three previous times now passes |
 | P55-2 | this ledger | CLOSED — this file |
-| P55-3 | recovery re-established | in progress, see §2 |
+| P55-3 | recovery re-established | measured, see §2. Blocked on `DBT-P55-003` and `DBT-P55-004` |
 | P55-4 | build + fix + install the consumer installer | not started |
-| P55-5 | Gate 4 prepared to the owner line | not started |
+| P55-5 | Gate 4 prepared to the owner line | CLOSED — `docs/phase55/GATE4-CANDIDATES.md`, `scripts/gate4-driver-runbook.ps1`, `scripts/gate4-preconditions.ps1`. Preconditions measured: **2 of 6 hold** |
 
 ---
 
@@ -92,8 +93,9 @@ supply.
 
 | # | what the owner does | what it unblocks | why a session cannot |
 |---|---|---|---|
-| 1 | **Boot-test the recovery media.** Boot from it once; confirm the recovery environment sees the system disk and `D:\WindowsImageBackup` | Gate 4 entirely. Until this passes there is no *proven* way back from an unbootable machine | requires a physical reboot into WinRE and a human at the console |
-| 2 | **Choose a Gate 4 candidate device** from `docs/phase55/GATE4-CANDIDATES.md` | Gate 4's driver install and rollback | a device choice is a risk acceptance, not a measurement |
+| 1a | **Find and attach the recovery media.** It is not attached — `DBT-P55-004`. Nothing can be boot-tested until it exists on this machine | prerequisite for 1b | the media is physically elsewhere |
+| 1b | **Boot-test the recovery media.** Boot from it once; confirm the recovery environment sees the system disk and `D:\WindowsImageBackup`. Then write `docs/phase55/RECOVERY-MEDIA-BOOT-TEST.md` — both gate scripts read that file as the record | Gate 4 entirely. Until this passes there is no *proven* way back from an unbootable machine | requires a physical reboot into WinRE and a human at the console |
+| 2 | **Choose a Gate 4 candidate device** from `docs/phase55/GATE4-CANDIDATES.md`, and write its instance id to `docs/phase55/GATE4-CHOSEN-DEVICE.txt`. Preferred: attach the Canon G3010 printer and use it | Gate 4's driver install and rollback | a device choice is a risk acceptance, not a measurement |
 | 3 | **Decide `DBT-P55-003`**: accept the 10-day-old image, or free space on `D:` / attach a second target so a fresh image can be written without destroying the existing one | Item 3.B's "a version dated today" | destroying the only verified image is not a session's call |
 | 4 | Production Authenticode certificate | `QD-035-003`, and any signed release | it costs money and is an identity |
 
