@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P55 (2026-09-12).
+Last moved: P56 (2026-09-12).
 
 ---
 
@@ -59,6 +59,22 @@ evidence names where).
 | P55-3 | recovery re-established | 3.A done (see §2). **3.B NOT DONE — owner decision 2026-09-12: do not re-image.** The existing image does not fit beside a new one, so writing one would destroy the only verified copy. `DBT-P55-003`, `DBT-P55-004` open |
 | P55-4 | build + fix + install the consumer installer | **CLOSED.** 4.A+4.B in `INSTALLER-UI.md`, 4.C+4.D in `P55-ITEM4C-LIFECYCLE.md`. Sweep: **13 of 14 pass; check 14 fails with 3 named survivors**, all `DBT-P49-003` . **Machine end state: AetherCore 0.1.11 installed from the CI build** (separate restoration install, exit 0, binaries hash-match the artefact) |
 | P55-5 | Gate 4 prepared to the owner line | CLOSED — `docs/phase55/GATE4-CANDIDATES.md`, `scripts/gate4-driver-runbook.ps1`, `scripts/gate4-preconditions.ps1`. Preconditions measured: **2 of 6 hold** |
+
+
+### P56 items
+
+| item | what | status |
+|---|---|---|
+| P56-1.A | measure the density before solving it — words of prose, type sizes, elevations, text-to-data, per screen | **CLOSED** — `apps/ui/tools/measure-density.mjs`, `docs/phase56/DENSITY.md`, raw in `docs/phase56/measure/` |
+| P56-1.B | the design direction, written down | OPEN |
+| P56-1.C | rebuild the Overview to it | OPEN |
+| P56-1.D | present it — screenshots, both languages, both themes, populated and empty. **Gate: no roll-out until the owner approves** | OPEN |
+| P56-2.A | the chat's interaction design | OPEN |
+| P56-2.B | the wire contract | OPEN |
+| P56-2.C | the service side | OPEN |
+| P56-2.D | the UI | OPEN |
+| P56-2.E | the tests that would catch the failure that matters | OPEN |
+| P56-3 | roll the direction out to the remaining screens | BLOCKED on P56-1.D |
 
 ---
 

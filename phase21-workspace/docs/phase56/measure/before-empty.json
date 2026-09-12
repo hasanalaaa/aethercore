@@ -1,0 +1,1861 @@
+{
+  "label": "before (P55 tree)",
+  "state": "empty",
+  "width": 1280,
+  "proseMinWords": 5,
+  "measuredAt": "2026-09-12T12:15:54.270Z",
+  "rows": [
+    {
+      "page": "overview",
+      "locale": "en",
+      "state": "empty",
+      "runs": 71,
+      "proseRuns": 9,
+      "proseWords": 167,
+      "dataReadings": 32,
+      "labelRuns": 30,
+      "labelWords": 61,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12.5,
+        13.12,
+        13.5,
+        14,
+        17,
+        19,
+        19.2,
+        22.4,
+        27,
+        34,
+        44
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(0, 0, 0, 0) | image | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | image | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 34,
+          "tag": "p",
+          "cls": "channel-note svelte-19uo4g3",
+          "text": "This screen reads the performance counters itself, every 5 seconds while it is open. No re"
+        },
+        {
+          "words": 29,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "Action items appear once a scan has reported. Each carries the observation it rests on, an"
+        },
+        {
+          "words": 21,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "Every line here is an event the service pushed, with its own sequence number and emission "
+        },
+        {
+          "words": 20,
+          "tag": "p",
+          "cls": "tile-footnote svelte-19uo4g3",
+          "text": "No sparklines: this build retains the latest sample, not a series. Drawing one would mean "
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "Start from Drivers, Repair, Deep Clean, or Startup Manager. AetherCore freezes the reviewe"
+        }
+      ],
+      "textToData": 5.22
+    },
+    {
+      "page": "deepScan",
+      "locale": "en",
+      "state": "empty",
+      "runs": 22,
+      "proseRuns": 5,
+      "proseWords": 55,
+      "dataReadings": 4,
+      "labelRuns": 13,
+      "labelWords": 25,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        13.12,
+        13.5,
+        14,
+        19.2,
+        21.6,
+        22.4,
+        32
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.08) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "sub svelte-1pegymb",
+          "text": "A read-only, evidence-first assessment across AetherCore’s diagnostic engines. Nothing is "
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "svelte-1pegymb",
+          "text": "Start a Deep Scan to collect, normalize and correlate current system evidence."
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "svelte-1pegymb",
+          "text": "Ready to assess this PC"
+        }
+      ],
+      "textToData": 13.75
+    },
+    {
+      "page": "drivers",
+      "locale": "en",
+      "state": "empty",
+      "runs": 56,
+      "proseRuns": 9,
+      "proseWords": 91,
+      "dataReadings": 13,
+      "labelRuns": 34,
+      "labelWords": 61,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        15,
+        16,
+        19.2,
+        20,
+        21,
+        22.4,
+        25,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 17,
+          "tag": "p",
+          "cls": "",
+          "text": "AetherCore does not maintain a private driver catalog. It reads this PC and asks Windows U"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "",
+          "text": "Run a live scan to enumerate present devices and applicable Windows Update driver offers."
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Live PnP inventory, Windows Update applicability, protected installation, verification and"
+        },
+        {
+          "words": 6,
+          "tag": "h1",
+          "cls": "",
+          "text": "Drivers, with Windows as the authority."
+        },
+        {
+          "words": 6,
+          "tag": "h2",
+          "cls": "",
+          "text": "Ready for your first hardware scan"
+        }
+      ],
+      "textToData": 7
+    },
+    {
+      "page": "repair",
+      "locale": "en",
+      "state": "empty",
+      "runs": 25,
+      "proseRuns": 6,
+      "proseWords": 110,
+      "dataReadings": 4,
+      "labelRuns": 15,
+      "labelWords": 27,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        19.2,
+        20,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 31,
+          "tag": "p",
+          "cls": "",
+          "text": "The renderer can select only trusted repair action IDs. It cannot provide executable paths"
+        },
+        {
+          "words": 28,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Evidence is normalized into Windows health facts, diagnoses, dependencies, recovery readin"
+        },
+        {
+          "words": 22,
+          "tag": "p",
+          "cls": "",
+          "text": "AetherCore collects independent Windows integrity, servicing, update, service, filesystem,"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        },
+        {
+          "words": 5,
+          "tag": "h1",
+          "cls": "",
+          "text": "Repair Windows integrity, without guesswork."
+        }
+      ],
+      "textToData": 27.5
+    },
+    {
+      "page": "cleanup",
+      "locale": "en",
+      "state": "empty",
+      "runs": 36,
+      "proseRuns": 8,
+      "proseWords": 104,
+      "dataReadings": 10,
+      "labelRuns": 18,
+      "labelWords": 32,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        19.2,
+        22,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "",
+          "text": "No WinSxS file deletion, Windows Installer cache removal, Driver Store deletion, Prefetch "
+        },
+        {
+          "words": 24,
+          "tag": "p",
+          "cls": "sub",
+          "text": "AetherCore inventories only known temporary, cache and diagnostic categories. Every cleanu"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 13,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "Run the allowlist scan to calculate reclaimable space. Scanning does not delete anything."
+        },
+        {
+          "words": 6,
+          "tag": "h1",
+          "cls": "",
+          "text": "Reclaim space from an explicit allowlist."
+        },
+        {
+          "words": 6,
+          "tag": "strong",
+          "cls": "",
+          "text": "What this cleaner will never do"
+        }
+      ],
+      "textToData": 10.4
+    },
+    {
+      "page": "startup",
+      "locale": "en",
+      "state": "empty",
+      "runs": 39,
+      "proseRuns": 7,
+      "proseWords": 107,
+      "dataReadings": 9,
+      "labelRuns": 23,
+      "labelWords": 46,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        19.2,
+        22,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 32,
+          "tag": "p",
+          "cls": "",
+          "text": "Scanning, closing the app, leaving an item Unreviewed, or choosing Keep Enabled causes no "
+        },
+        {
+          "words": 22,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Registry Run entries, Startup folders, boot/logon scheduled tasks and conservatively eligi"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "",
+          "text": "No startup mutations are recorded. Scans and Unreviewed decisions do not create change his"
+        },
+        {
+          "words": 10,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "Inspecting is read-only. AetherCore will not preselect anything for disable."
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 11.89
+    },
+    {
+      "page": "performance",
+      "locale": "en",
+      "state": "empty",
+      "runs": 41,
+      "proseRuns": 5,
+      "proseWords": 75,
+      "dataReadings": 16,
+      "labelRuns": 20,
+      "labelWords": 30,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        19.2,
+        22.4,
+        27.2,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 33,
+          "tag": "p",
+          "cls": "",
+          "text": "AetherCore never deletes files or registry values to \"clean up\" performance, never force-d"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 11,
+          "tag": "p",
+          "cls": "",
+          "text": "Let monitoring run for a few seconds, then run an analysis."
+        },
+        {
+          "words": 7,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Passive telemetry, honest bottleneck attribution, reversible tuning"
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 4.69
+    },
+    {
+      "page": "hardware",
+      "locale": "en",
+      "state": "empty",
+      "runs": 36,
+      "proseRuns": 6,
+      "proseWords": 100,
+      "dataReadings": 9,
+      "labelRuns": 21,
+      "labelWords": 45,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        19.2,
+        22,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 29,
+          "tag": "p",
+          "cls": "",
+          "text": "AetherCore never converts incomplete SMART data into a percentage health score. “Not repor"
+        },
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Storage reliability comes from Windows/device-reported counters plus read-only NVMe/ATA SM"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 15,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "Collection is read-only. Unsupported metrics remain “Not reported”; zero is never substitu"
+        },
+        {
+          "words": 6,
+          "tag": "h1",
+          "cls": "",
+          "text": "Measurements, not a made-up health score."
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 11.11
+    },
+    {
+      "page": "crash",
+      "locale": "en",
+      "state": "empty",
+      "runs": 44,
+      "proseRuns": 10,
+      "proseWords": 143,
+      "dataReadings": 9,
+      "labelRuns": 25,
+      "labelWords": 53,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        19.2,
+        22,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 37,
+          "tag": "p",
+          "cls": "",
+          "text": "A dump filename, a bugcheck code, or Kernel-Power Event 41 is not enough to name a defecti"
+        },
+        {
+          "words": 28,
+          "tag": "p",
+          "cls": "sub",
+          "text": "WHEA, Kernel-Power and Windows Error Reporting evidence from the last 30 days is correlate"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "Refresh evidence to inspect the bounded event window of 30 days and minidump metadata."
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "",
+          "text": "No matching events were returned in the bounded window of 30 days."
+        },
+        {
+          "words": 8,
+          "tag": "h3",
+          "cls": "",
+          "text": "WHEA / crash context · last 30 days"
+        }
+      ],
+      "textToData": 15.89
+    },
+    {
+      "page": "activity",
+      "locale": "en",
+      "state": "empty",
+      "runs": 45,
+      "proseRuns": 15,
+      "proseWords": 184,
+      "dataReadings": 7,
+      "labelRuns": 23,
+      "labelWords": 46,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12.5,
+        13.12,
+        13.5,
+        14,
+        17,
+        19.2,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Interrupted mutations are never replayed automatically. Restore-point sequence, driver bac"
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "No insights yet for the current evidence. Run a scan or a care step first, then ask again."
+        },
+        {
+          "words": 17,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "No eligible plans right now. Run a domain scan first and its safe plans will appear here."
+        },
+        {
+          "words": 16,
+          "tag": "h3",
+          "cls": "",
+          "text": "AetherCore observes the machine only while it is eligible and idle. Autonomous work never "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "Completed installations stay in the execution journal. This view surfaces only events that"
+        }
+      ],
+      "textToData": 26.29
+    },
+    {
+      "page": "fleet",
+      "locale": "en",
+      "state": "empty",
+      "runs": 20,
+      "proseRuns": 4,
+      "proseWords": 36,
+      "dataReadings": 5,
+      "labelRuns": 11,
+      "labelWords": 19,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        13.12,
+        13.5,
+        14,
+        19.2,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 6,
+          "tag": "p",
+          "cls": "sub svelte-c25qlr",
+          "text": "Locally-persisted remote host inventory (read-only view)"
+        },
+        {
+          "words": 6,
+          "tag": "strong",
+          "cls": "svelte-c25qlr",
+          "text": "Fleet inventory could not be loaded"
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 7.2
+    },
+    {
+      "page": "settings",
+      "locale": "en",
+      "state": "empty",
+      "runs": 39,
+      "proseRuns": 7,
+      "proseWords": 107,
+      "dataReadings": 7,
+      "labelRuns": 25,
+      "labelWords": 47,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        13.6,
+        14,
+        14.4,
+        17,
+        17.6,
+        19.2,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(255, 255, 255, 0.08) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 22,
+          "tag": "p",
+          "cls": "",
+          "text": "Creates an allowlisted, sanitized bundle with deterministic hashes and installation-local "
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "sub",
+          "text": "What you choose, and what this build is. Nothing on this screen reports the state of your "
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "The capability matrix is read from the local service. It appears here once the service has"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "Checks signed AetherCore release metadata and stages only verified WiX/Burn installers. In"
+        },
+        {
+          "words": 9,
+          "tag": "strong",
+          "cls": "",
+          "text": "In-app updates are disabled until release trust is configured."
+        }
+      ],
+      "textToData": 15.29
+    },
+    {
+      "page": "overview",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 71,
+      "proseRuns": 7,
+      "proseWords": 133,
+      "dataReadings": 32,
+      "labelRuns": 32,
+      "labelWords": 70,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12.5,
+        13.12,
+        13.5,
+        14,
+        17,
+        19,
+        19.2,
+        22.4,
+        27,
+        34,
+        44
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(0, 0, 0, 0) | image | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | image | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 25,
+          "tag": "p",
+          "cls": "channel-note svelte-19uo4g3",
+          "text": "تقرأ هذه الشاشة عدّادات الأداء بنفسها كل 5 ثوانٍ ما دامت مفتوحة. لم تصل قراءة بعد — مصدرها"
+        },
+        {
+          "words": 25,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "تظهر المهام بعد أن يُبلّغ فحص. كل مهمة تحمل الرصد الذي تستند إليه، والفحص الذي لم يُشغَّل "
+        },
+        {
+          "words": 22,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "ابدأ من التعريفات أو إصلاح النظام أو التنظيف العميق أو مدير بدء التشغيل. يثبّت AetherCore "
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "tile-footnote svelte-19uo4g3",
+          "text": "لا مخططات مصغّرة: هذه النسخة تحتفظ بآخر عيّنة لا بسلسلة. رسم مخطط يعني رسم شكل لم يقسه أحد"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 15,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "كل سطر هنا حدث دفعته الخدمة، بترقيمه التسلسلي ووقت إصداره. لم يصل أي حدث بعد."
+        }
+      ],
+      "textToData": 4.16
+    },
+    {
+      "page": "deepScan",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 22,
+      "proseRuns": 3,
+      "proseWords": 43,
+      "dataReadings": 4,
+      "labelRuns": 15,
+      "labelWords": 34,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        13.12,
+        13.5,
+        14,
+        19.2,
+        21.6,
+        22.4,
+        32
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.08) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "sub svelte-1pegymb",
+          "text": "تقييم للقراءة فقط قائم على الأدلة عبر محركات التشخيص في AetherCore. لا يتم تغيير أي شيء أث"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 9,
+          "tag": "p",
+          "cls": "svelte-1pegymb",
+          "text": "ابدأ فحصاً عميقاً لجمع أدلة النظام الحالية وتوحيدها وربطها."
+        }
+      ],
+      "textToData": 10.75
+    },
+    {
+      "page": "drivers",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 56,
+      "proseRuns": 9,
+      "proseWords": 83,
+      "dataReadings": 12,
+      "labelRuns": 35,
+      "labelWords": 69,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        15,
+        16,
+        19.2,
+        20,
+        21,
+        22.4,
+        25,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "",
+          "text": "لا يحتفظ AetherCore بكتالوج تعريفات خاص. يقرأ هذا الحاسوب مباشرة ويستعلم من تحديث Windows."
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "sub",
+          "text": "جرد PnP مباشر، وقابلية تطبيق تحديث Windows، وتثبيت محمي، وتحقق، واستعادة دائمة."
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "",
+          "text": "شغّل فحصًا مباشرًا لحصر الأجهزة الموجودة وعروض تعريفات تحديث Windows القابلة للتطبيق."
+        },
+        {
+          "words": 8,
+          "tag": "small",
+          "cls": "",
+          "text": "سلطات إدارة موثوقة وليست دليلاً على وجود تحديث"
+        },
+        {
+          "words": 6,
+          "tag": "small",
+          "cls": "",
+          "text": "تحديثات موثوقة اختارتها سياسة مصدر التعريف"
+        }
+      ],
+      "textToData": 6.92
+    },
+    {
+      "page": "repair",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 25,
+      "proseRuns": 5,
+      "proseWords": 106,
+      "dataReadings": 4,
+      "labelRuns": 16,
+      "labelWords": 33,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        19.2,
+        20,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 36,
+          "tag": "p",
+          "cls": "",
+          "text": "لا تستطيع الواجهة اختيار سوى معرّفات إصلاح موثوقة. ولا يمكنها تمرير مسارات تنفيذ أو نص she"
+        },
+        {
+          "words": 25,
+          "tag": "p",
+          "cls": "",
+          "text": "يجمع AetherCore بصورة مستقلة أدلة سلامة Windows والصيانة والتحديث والخدمات ونظام الملفات و"
+        },
+        {
+          "words": 24,
+          "tag": "p",
+          "cls": "sub",
+          "text": "تُطبّع الأدلة إلى حقائق عن صحة Windows وتشخيصات واعتماديات وجاهزية للاسترداد وRepairGraph "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 5,
+          "tag": "h1",
+          "cls": "",
+          "text": "إصلاح سلامة Windows بلا تخمين."
+        }
+      ],
+      "textToData": 26.5
+    },
+    {
+      "page": "cleanup",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 36,
+      "proseRuns": 8,
+      "proseWords": 111,
+      "dataReadings": 10,
+      "labelRuns": 18,
+      "labelWords": 35,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        19.2,
+        22,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 33,
+          "tag": "p",
+          "cls": "",
+          "text": "لا حذف لملفات WinSxS، ولا لذاكرة Windows Installer المؤقتة، ولا Driver Store، ولا Prefetch"
+        },
+        {
+          "words": 27,
+          "tag": "p",
+          "cls": "sub",
+          "text": "يحصر AetherCore فئات مؤقتة وذاكرة تخزين مؤقت وتشخيص معروفة فقط. تثبّت كل خطة تنظيف الأدلة "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "شغّل فحص القائمة المسموحة لحساب المساحة القابلة للاسترداد. الفحص لا يحذف شيئًا."
+        },
+        {
+          "words": 6,
+          "tag": "h1",
+          "cls": "",
+          "text": "استرد المساحة من قائمة مسموحة صريحة."
+        },
+        {
+          "words": 6,
+          "tag": "small",
+          "cls": "",
+          "text": "أدلة كل ملف مثبتة داخل الخدمة"
+        }
+      ],
+      "textToData": 11.1
+    },
+    {
+      "page": "startup",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 39,
+      "proseRuns": 7,
+      "proseWords": 111,
+      "dataReadings": 9,
+      "labelRuns": 23,
+      "labelWords": 58,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        19.2,
+        22,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 31,
+          "tag": "p",
+          "cls": "",
+          "text": "الفحص أو إغلاق التطبيق أو ترك العنصر غير مُراجع أو اختيار الإبقاء مفعّلًا لا يسبب أي تعديل"
+        },
+        {
+          "words": 30,
+          "tag": "p",
+          "cls": "sub",
+          "text": "إدخالات التشغيل في السجل ومجلدات بدء التشغيل والمهام المجدولة عند الإقلاع أو تسجيل الدخول "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "",
+          "text": "لا توجد تعديلات بدء تشغيل مسجلة. الفحوص والقرارات غير المراجعة لا تنشئ سجل تغييرات."
+        },
+        {
+          "words": 10,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "الفحص للقراءة فقط. لن يحدد AetherCore أي عنصر للتعطيل مسبقًا."
+        },
+        {
+          "words": 5,
+          "tag": "h1",
+          "cls": "",
+          "text": "بدء أسرع، بلا قرارات صامتة."
+        }
+      ],
+      "textToData": 12.33
+    },
+    {
+      "page": "performance",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 41,
+      "proseRuns": 4,
+      "proseWords": 60,
+      "dataReadings": 16,
+      "labelRuns": 21,
+      "labelWords": 36,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        19.2,
+        22.4,
+        27.2,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 28,
+          "tag": "p",
+          "cls": "",
+          "text": "لا يحذف AetherCore أبدًا ملفات أو قيم سجل لـ«تنظيف» الأداء، ولا يفرغ مجموعات العمل قسرًا، "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "sub",
+          "text": "قياس سلبي، تشخيص صادق للاختناقات، ضبط قابل للتراجع"
+        },
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "",
+          "text": "دع المراقبة تعمل لبضع ثوانٍ ثم شغّل التحليل."
+        }
+      ],
+      "textToData": 3.75
+    },
+    {
+      "page": "hardware",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 36,
+      "proseRuns": 6,
+      "proseWords": 92,
+      "dataReadings": 9,
+      "labelRuns": 21,
+      "labelWords": 48,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        19.2,
+        22,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "sub",
+          "text": "تأتي موثوقية التخزين من عدادات Windows/الجهاز إضافة إلى أدلة NVMe/ATA SMART للقراءة فقط عن"
+        },
+        {
+          "words": 25,
+          "tag": "p",
+          "cls": "",
+          "text": "لا يحوّل AetherCore بيانات SMART الناقصة إلى نسبة صحة. تبقى «غير مُبلّغ عنها» مجهولة، ولا "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 15,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "الجمع للقراءة فقط. تبقى القياسات غير المدعومة «غير مُبلّغ عنها»؛ ولا يُستبدل الصفر بالبيان"
+        },
+        {
+          "words": 5,
+          "tag": "h1",
+          "cls": "",
+          "text": "قياسات، لا درجة صحة مصطنعة."
+        },
+        {
+          "words": 5,
+          "tag": "small",
+          "cls": "",
+          "text": "قياس حالي من نظام التشغيل"
+        }
+      ],
+      "textToData": 10.22
+    },
+    {
+      "page": "crash",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 44,
+      "proseRuns": 9,
+      "proseWords": 126,
+      "dataReadings": 9,
+      "labelRuns": 26,
+      "labelWords": 61,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        19.2,
+        22,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 32,
+          "tag": "p",
+          "cls": "",
+          "text": "اسم ملف التفريغ أو رمز Bugcheck أو Kernel-Power Event 41 لا يكفي لتسمية تعريف أو مكوّن معي"
+        },
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "sub",
+          "text": "تُربط أدلة WHEA وKernel-Power وWindows Error Reporting من آخر 30 يومًا ببيانات رؤوس تفريغا"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "حدّث الأدلة لفحص نافذة الأحداث المحدودة البالغة 30 يومًا وبيانات التفريغات المصغرة."
+        },
+        {
+          "words": 11,
+          "tag": "p",
+          "cls": "",
+          "text": "لم تُرجع الاستعلامات أي أحداث مطابقة ضمن نافذة مقدارها 30 يومًا."
+        },
+        {
+          "words": 8,
+          "tag": "h3",
+          "cls": "",
+          "text": "سياق WHEA / الأعطال · آخر 30 يومًا"
+        }
+      ],
+      "textToData": 14
+    },
+    {
+      "page": "activity",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 45,
+      "proseRuns": 13,
+      "proseWords": 156,
+      "dataReadings": 7,
+      "labelRuns": 25,
+      "labelWords": 54,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12.5,
+        13.12,
+        13.5,
+        14,
+        17,
+        19.2,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "sub",
+          "text": "لا تُعاد تعديلات النظام المنقطعة تلقائيًا. وتبقى أرقام نقاط الاستعادة وجذور النسخ الاحتياط"
+        },
+        {
+          "words": 17,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "تبقى عمليات التثبيت المكتملة في سجل التنفيذ. يعرض هذا القسم فقط الأحداث التي تحتاج إلى انت"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "svelte-13b0hn7",
+          "text": "تربط الأنماط بين الأحداث المتكررة عبر الزمن. الارتباط لا يعني السببية؛ كل نمط يستشهد بأدلت"
+        },
+        {
+          "words": 15,
+          "tag": "h3",
+          "cls": "",
+          "text": "يراقب AetherCore حالة الجهاز فقط عندما يكون مؤهلًا وخاملًا. ولا يطبّق العمل التلقائي أي تغ"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "لا استشرافات بعد للأدلة الحالية. شغّل فحصاً أو خطوة عناية أولاً ثم أعد المحاولة."
+        }
+      ],
+      "textToData": 22.29
+    },
+    {
+      "page": "fleet",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 20,
+      "proseRuns": 2,
+      "proseWords": 24,
+      "dataReadings": 5,
+      "labelRuns": 13,
+      "labelWords": 28,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        13.12,
+        13.5,
+        14,
+        19.2,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "sub svelte-c25qlr",
+          "text": "جرد المضيفين البعيدين المحفوظ محلياً (عرض للقراءة فقط)"
+        }
+      ],
+      "textToData": 4.8
+    },
+    {
+      "page": "settings",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 39,
+      "proseRuns": 6,
+      "proseWords": 99,
+      "dataReadings": 7,
+      "labelRuns": 26,
+      "labelWords": 55,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        13.6,
+        14,
+        14.4,
+        17,
+        17.6,
+        19.2,
+        22.4,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(255, 255, 255, 0.08) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 25,
+          "tag": "p",
+          "cls": "",
+          "text": "ينشئ حزمة محصورة بقائمة سماح ومُنقحة، مع تجزئات حتمية ودليل عبث مرتبط بهذا التثبيت. لا تُص"
+        },
+        {
+          "words": 21,
+          "tag": "p",
+          "cls": "",
+          "text": "يتحقق من بيانات إصدار AetherCore الموقعة، ولا يجهز إلا مثبّت WiX/Burn الذي تم التحقق منه. "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        },
+        {
+          "words": 15,
+          "tag": "p",
+          "cls": "sub",
+          "text": "ما تختاره أنت، وما هي هذه النسخة. لا شيء في هذه الشاشة يصف حالة جهازك."
+        },
+        {
+          "words": 13,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "تُقرأ مصفوفة القدرات من الخدمة المحلية. تظهر هنا بعد أن تُبلّغ الخدمة عنها."
+        },
+        {
+          "words": 9,
+          "tag": "strong",
+          "cls": "",
+          "text": "التحديث داخل التطبيق معطل إلى أن تُضبط ثقة الإصدار."
+        }
+      ],
+      "textToData": 14.14
+    }
+  ],
+  "shell": {
+    "region": "sidebar",
+    "locale": "en",
+    "state": "empty",
+    "runs": 39,
+    "proseRuns": 8,
+    "proseWords": 47,
+    "dataReadings": 1,
+    "labelRuns": 30,
+    "labelWords": 58,
+    "typeSizes": [
+      9.28,
+      10.4,
+      11,
+      11.52,
+      11.68,
+      12,
+      12.48,
+      13.5,
+      15,
+      17.6
+    ],
+    "elevations": [
+      "color(srgb 0.360784 0.486274 0.980392 / 0.07) | none",
+      "color(srgb 0.360784 0.486275 0.980392 / 0.12) | rgba(255, 255, 255, 0.035) 0px 1px 0px 0px inset",
+      "rgb(255, 135, 135) | rgba(239, 154, 154, 0.18) 0px 0px 9.6px 0px",
+      "rgb(3, 5, 8) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+      "rgba(0, 0, 0, 0.18) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(255, 255, 255, 0.02) -1px 0px 0px 0px inset",
+      "rgba(142, 197, 245, 0.08) | none",
+      "rgba(173, 78, 188, 0.1) | none"
+    ],
+    "longest": [
+      {
+        "words": 10,
+        "tag": "small",
+        "cls": "",
+        "text": "Mutations stay off until you review and authorize a plan."
+      },
+      {
+        "words": 6,
+        "tag": "small",
+        "cls": "",
+        "text": "Remote AetherCore hosts — read-only audits"
+      },
+      {
+        "words": 6,
+        "tag": "small",
+        "cls": "",
+        "text": "Updates, support bundle and this build"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "System posture at a glance"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "SMART, NVMe and memory telemetry"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "WHEA, bugcheck and minidump evidence"
+      }
+    ],
+    "textToData": 47
+  }
+}

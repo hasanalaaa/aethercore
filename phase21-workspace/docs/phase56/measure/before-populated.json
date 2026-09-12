@@ -1,0 +1,1866 @@
+{
+  "label": "before (P55 tree)",
+  "state": "populated",
+  "width": 1280,
+  "proseMinWords": 5,
+  "measuredAt": "2026-09-12T12:15:40.972Z",
+  "rows": [
+    {
+      "page": "overview",
+      "locale": "en",
+      "state": "populated",
+      "runs": 131,
+      "proseRuns": 7,
+      "proseWords": 63,
+      "dataReadings": 90,
+      "labelRuns": 34,
+      "labelWords": 64,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        15,
+        17,
+        27,
+        34,
+        44
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(143, 166, 255) | none",
+        "rgb(255, 135, 135) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(0, 0, 0, 0) | image | none",
+        "rgba(0, 0, 0, 0.22) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(201, 42, 42, 0.14) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | image | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(43, 138, 62, 0.16) | none",
+        "rgba(92, 124, 250, 0.16) | none"
+      ],
+      "longest": [
+        {
+          "words": 20,
+          "tag": "p",
+          "cls": "tile-footnote svelte-19uo4g3",
+          "text": "No sparklines: this build retains the latest sample, not a series. Drawing one would mean "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "sub svelte-19uo4g3",
+          "text": "A unified workspace for safe maintenance, hardware evidence and recovery with durable auth"
+        },
+        {
+          "words": 7,
+          "tag": "span",
+          "cls": "item-title svelte-19uo4g3",
+          "text": "Hardware events in the last 30 days"
+        },
+        {
+          "words": 5,
+          "tag": "h1",
+          "cls": "svelte-19uo4g3",
+          "text": "Your PC, quietly under control."
+        },
+        {
+          "words": 5,
+          "tag": "span",
+          "cls": "item-title svelte-19uo4g3",
+          "text": "Deep scan findings need review"
+        },
+        {
+          "words": 5,
+          "tag": "span",
+          "cls": "item-title svelte-19uo4g3",
+          "text": "Devices reporting a driver problem"
+        }
+      ],
+      "textToData": 0.7
+    },
+    {
+      "page": "deepScan",
+      "locale": "en",
+      "state": "populated",
+      "runs": 89,
+      "proseRuns": 24,
+      "proseWords": 230,
+      "dataReadings": 14,
+      "labelRuns": 51,
+      "labelWords": 92,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.25,
+        11.84,
+        12.16,
+        12.48,
+        12.8,
+        13.12,
+        13.5,
+        13.76,
+        16,
+        19.2,
+        21.6,
+        24.8,
+        32
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(92, 124, 250) | none",
+        "rgba(14, 18, 23, 0.55) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(255, 255, 255, 0.08) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "svelte-f2yo6y",
+          "text": "The PnP device state contains an explicit problem code for Intel(R) Wi-Fi 6E AX211 160MHz "
+        },
+        {
+          "words": 17,
+          "tag": "p",
+          "cls": "svelte-f2yo6y",
+          "text": "Recent crash evidence overlaps with recent hardware-error evidence. Hardware review is war"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "svelte-f2yo6y",
+          "text": "Windows reports a device problem state for Intel(R) Wi-Fi 6E AX211 160MHz Wireless Network"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "sub svelte-1pegymb",
+          "text": "A read-only, evidence-first assessment across AetherCore’s diagnostic engines. Nothing is "
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "svelte-f2yo6y",
+          "text": "The rule correlated recent crash and hardware-event facts inside the same seven-day eviden"
+        },
+        {
+          "words": 13,
+          "tag": "span",
+          "cls": "svelte-f2yo6y",
+          "text": "Relevant hardware-error evidence occurred near the crash, without enough evidence to asser"
+        }
+      ],
+      "textToData": 16.43
+    },
+    {
+      "page": "drivers",
+      "locale": "en",
+      "state": "populated",
+      "runs": 150,
+      "proseRuns": 14,
+      "proseWords": 103,
+      "dataReadings": 62,
+      "labelRuns": 74,
+      "labelWords": 138,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        20,
+        21,
+        25,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(185, 217, 233) | rgb(22, 34, 42) 0px 0px 0px 4px inset",
+        "rgb(25, 48, 41) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(0, 0, 0, 0) | image | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgb(126, 86, 58) 2px 0px 0px 0px inset",
+        "rgba(255, 255, 255, 0.043) | rgb(67, 93, 112) 2px 0px 0px 0px inset",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Live PnP inventory, Windows Update applicability, protected installation, verification and"
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "",
+          "text": "1 unique Windows updates · 39.6 MB – 55.5 MB estimated download."
+        },
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "",
+          "text": "Inventory epoch 0 · 148 present hardware/PnP devices."
+        },
+        {
+          "words": 7,
+          "tag": "span",
+          "cls": "",
+          "text": "DriverPackageMetadata · 39.6 MB – 55.5 MB"
+        },
+        {
+          "words": 7,
+          "tag": "small",
+          "cls": "",
+          "text": "DriverPackageMetadata · 39.6 MB – 55.5 MB"
+        },
+        {
+          "words": 7,
+          "tag": "span",
+          "cls": "",
+          "text": "DriverPackageMetadata · 39.6 MB – 55.5 MB"
+        }
+      ],
+      "textToData": 1.66
+    },
+    {
+      "page": "repair",
+      "locale": "en",
+      "state": "populated",
+      "runs": 74,
+      "proseRuns": 13,
+      "proseWords": 166,
+      "dataReadings": 9,
+      "labelRuns": 52,
+      "labelWords": 82,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.25,
+        12,
+        13,
+        13.12,
+        13.5,
+        15,
+        16,
+        17,
+        20,
+        34
+      ],
+      "elevations": [
+        "color(srgb 1 1 1 / 0.0353725) | none",
+        "color(srgb 1 1 1 / 0.0362353) | none",
+        "color(srgb 1 1 1 / 0.0643137) | none",
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | color(srgb 1 0.752941 0.470588 / 0.28) 0px 0px 0px 1px, color(srgb 1 0.752941 0.470588 / 0.12) 0px 18px 48px 0px",
+        "rgba(255, 255, 255, 0.6) | color(srgb 1 1 1 / 0.06) 0px 0px 0px 3.84px"
+      ],
+      "longest": [
+        {
+          "words": 31,
+          "tag": "p",
+          "cls": "",
+          "text": "The renderer can select only trusted repair action IDs. It cannot provide executable paths"
+        },
+        {
+          "words": 28,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Evidence is normalized into Windows health facts, diagnoses, dependencies, recovery readin"
+        },
+        {
+          "words": 17,
+          "tag": "p",
+          "cls": "",
+          "text": "0 performed check(s) are explicitly healthy. AetherCore will not invent work to make the s"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "2 evidence-backed Windows condition(s) need review. AetherCore will recommend only repairs"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "",
+          "text": "AetherCore records what recovery protection is actually proven. Unknown is never displayed"
+        },
+        {
+          "words": 10,
+          "tag": "p",
+          "cls": "",
+          "text": "Windows Resource Protection found integrity violations in the component store."
+        }
+      ],
+      "textToData": 18.44
+    },
+    {
+      "page": "cleanup",
+      "locale": "en",
+      "state": "populated",
+      "runs": 62,
+      "proseRuns": 17,
+      "proseWords": 199,
+      "dataReadings": 20,
+      "labelRuns": 25,
+      "labelWords": 59,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        22,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(25, 48, 41) | none",
+        "rgb(27, 58, 49) | rgb(155, 212, 189) 0px 0px 0px 4px inset",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "",
+          "text": "No WinSxS file deletion, Windows Installer cache removal, Driver Store deletion, Prefetch "
+        },
+        {
+          "words": 24,
+          "tag": "p",
+          "cls": "sub",
+          "text": "AetherCore inventories only known temporary, cache and diagnostic categories. Every cleanu"
+        },
+        {
+          "words": 13,
+          "tag": "p",
+          "cls": "",
+          "text": "Files Windows can rebuild on demand. Removing them frees space without changing configurat"
+        },
+        {
+          "words": 13,
+          "tag": "p",
+          "cls": "",
+          "text": "Files Windows can rebuild on demand. Removing them frees space without changing configurat"
+        },
+        {
+          "words": 13,
+          "tag": "p",
+          "cls": "",
+          "text": "Files Windows can rebuild on demand. Removing them frees space without changing configurat"
+        },
+        {
+          "words": 13,
+          "tag": "p",
+          "cls": "",
+          "text": "Files Windows can rebuild on demand. Removing them frees space without changing configurat"
+        }
+      ],
+      "textToData": 9.95
+    },
+    {
+      "page": "startup",
+      "locale": "en",
+      "state": "populated",
+      "runs": 100,
+      "proseRuns": 12,
+      "proseWords": 145,
+      "dataReadings": 22,
+      "labelRuns": 66,
+      "labelWords": 101,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        22,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(25, 48, 41) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 32,
+          "tag": "p",
+          "cls": "",
+          "text": "Scanning, closing the app, leaving an item Unreviewed, or choosing Keep Enabled causes no "
+        },
+        {
+          "words": 22,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Registry Run entries, Startup folders, boot/logon scheduled tasks and conservatively eligi"
+        },
+        {
+          "words": 13,
+          "tag": "p",
+          "cls": "",
+          "text": "Unreviewed and Keep are omitted from the immutable plan and produce zero changes."
+        },
+        {
+          "words": 10,
+          "tag": "span",
+          "cls": "",
+          "text": "Observed adding 1.9 s to the last five sign-in traces."
+        },
+        {
+          "words": 10,
+          "tag": "span",
+          "cls": "",
+          "text": "Observed adding 1.9 s to the last five sign-in traces."
+        },
+        {
+          "words": 10,
+          "tag": "span",
+          "cls": "",
+          "text": "Observed adding 1.9 s to the last five sign-in traces."
+        }
+      ],
+      "textToData": 6.59
+    },
+    {
+      "page": "performance",
+      "locale": "en",
+      "state": "populated",
+      "runs": 40,
+      "proseRuns": 6,
+      "proseWords": 89,
+      "dataReadings": 13,
+      "labelRuns": 21,
+      "labelWords": 32,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        27.2,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 33,
+          "tag": "p",
+          "cls": "",
+          "text": "AetherCore never deletes files or registry values to \"clean up\" performance, never force-d"
+        },
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "",
+          "text": "The processor is being clamped by a power, thermal, or delivery limit right now. Speeds wi"
+        },
+        {
+          "words": 11,
+          "tag": "p",
+          "cls": "",
+          "text": "Let monitoring run for a few seconds, then run an analysis."
+        },
+        {
+          "words": 7,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Passive telemetry, honest bottleneck attribution, reversible tuning"
+        },
+        {
+          "words": 7,
+          "tag": "strong",
+          "cls": "",
+          "text": "Some counters are unavailable on this system"
+        },
+        {
+          "words": 5,
+          "tag": "strong",
+          "cls": "",
+          "text": "Power or thermal limit active"
+        }
+      ],
+      "textToData": 6.85
+    },
+    {
+      "page": "hardware",
+      "locale": "en",
+      "state": "populated",
+      "runs": 166,
+      "proseRuns": 16,
+      "proseWords": 219,
+      "dataReadings": 75,
+      "labelRuns": 75,
+      "labelWords": 161,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        15,
+        16,
+        17,
+        22,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(92, 124, 250) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.075) | none"
+      ],
+      "longest": [
+        {
+          "words": 29,
+          "tag": "p",
+          "cls": "",
+          "text": "AetherCore never converts incomplete SMART data into a percentage health score. “Not repor"
+        },
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Storage reliability comes from Windows/device-reported counters plus read-only NVMe/ATA SM"
+        },
+        {
+          "words": 21,
+          "tag": "p",
+          "cls": "",
+          "text": "One or more diagnostic providers were isolated after a timeout, malformed response, or pla"
+        },
+        {
+          "words": 20,
+          "tag": "p",
+          "cls": "truth-note",
+          "text": "No logged memory hardware errors ≠ RAM proven healthy. An offline memory test is still app"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "Raw ATA SMART meanings are vendor-defined. AetherCore preserves the device values without "
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "Raw ATA SMART meanings are vendor-defined. AetherCore preserves the device values without "
+        }
+      ],
+      "textToData": 2.92
+    },
+    {
+      "page": "crash",
+      "locale": "en",
+      "state": "populated",
+      "runs": 69,
+      "proseRuns": 14,
+      "proseWords": 169,
+      "dataReadings": 19,
+      "labelRuns": 36,
+      "labelWords": 71,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        22,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(97, 122, 112) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 37,
+          "tag": "p",
+          "cls": "",
+          "text": "A dump filename, a bugcheck code, or Kernel-Power Event 41 is not enough to name a defecti"
+        },
+        {
+          "words": 28,
+          "tag": "p",
+          "cls": "sub",
+          "text": "WHEA, Kernel-Power and Windows Error Reporting evidence from the last 30 days is correlate"
+        },
+        {
+          "words": 21,
+          "tag": "p",
+          "cls": "",
+          "text": "One or more diagnostic providers were isolated after a timeout, malformed response, or pla"
+        },
+        {
+          "words": 8,
+          "tag": "h3",
+          "cls": "",
+          "text": "WHEA / crash context · last 30 days"
+        },
+        {
+          "words": 8,
+          "tag": "strong",
+          "cls": "",
+          "text": "The system rebooted without cleanly shutting down first."
+        },
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "",
+          "text": "Kernel-Power 41 (63) — BugcheckCode 0, PowerButtonTimestamp 0."
+        }
+      ],
+      "textToData": 8.89
+    },
+    {
+      "page": "activity",
+      "locale": "en",
+      "state": "populated",
+      "runs": 58,
+      "proseRuns": 12,
+      "proseWords": 142,
+      "dataReadings": 16,
+      "labelRuns": 30,
+      "labelWords": 58,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 27,
+          "tag": "p",
+          "cls": "insight-explanation svelte-u6ime",
+          "text": "Storage latency rose on the same days the component store reported missing payloads. The t"
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "sub",
+          "text": "Interrupted mutations are never replayed automatically. Restore-point sequence, driver bac"
+        },
+        {
+          "words": 17,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "No eligible plans right now. Run a domain scan first and its safe plans will appear here."
+        },
+        {
+          "words": 16,
+          "tag": "h3",
+          "cls": "",
+          "text": "AetherCore observes the machine only while it is eligible and idle. Autonomous work never "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "svelte-13b0hn7",
+          "text": "Patterns correlate repeated events over time. Correlation is not causation; every pattern "
+        },
+        {
+          "words": 9,
+          "tag": "p",
+          "cls": "scheduler-none",
+          "text": "No autonomous observation has run in this session yet."
+        }
+      ],
+      "textToData": 8.88
+    },
+    {
+      "page": "fleet",
+      "locale": "en",
+      "state": "populated",
+      "runs": 14,
+      "proseRuns": 1,
+      "proseWords": 6,
+      "dataReadings": 4,
+      "labelRuns": 9,
+      "labelWords": 18,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        13.12,
+        13.5,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 6,
+          "tag": "p",
+          "cls": "sub svelte-c25qlr",
+          "text": "Locally-persisted remote host inventory (read-only view)"
+        }
+      ],
+      "textToData": 1.5
+    },
+    {
+      "page": "settings",
+      "locale": "en",
+      "state": "populated",
+      "runs": 64,
+      "proseRuns": 4,
+      "proseWords": 65,
+      "dataReadings": 21,
+      "labelRuns": 39,
+      "labelWords": 62,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        11.52,
+        13,
+        13.12,
+        13.5,
+        13.6,
+        14,
+        14.4,
+        17,
+        17.6,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(255, 255, 255, 0.08) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(43, 138, 62, 0.16) | none"
+      ],
+      "longest": [
+        {
+          "words": 22,
+          "tag": "p",
+          "cls": "",
+          "text": "Creates an allowlisted, sanitized bundle with deterministic hashes and installation-local "
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "sub",
+          "text": "What you choose, and what this build is. Nothing on this screen reports the state of your "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "Checks signed AetherCore release metadata and stages only verified WiX/Burn installers. In"
+        },
+        {
+          "words": 9,
+          "tag": "strong",
+          "cls": "",
+          "text": "In-app updates are disabled until release trust is configured."
+        }
+      ],
+      "textToData": 3.1
+    },
+    {
+      "page": "overview",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 131,
+      "proseRuns": 6,
+      "proseWords": 52,
+      "dataReadings": 89,
+      "labelRuns": 36,
+      "labelWords": 74,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        15,
+        17,
+        27,
+        34,
+        44
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(143, 166, 255) | none",
+        "rgb(255, 135, 135) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(0, 0, 0, 0) | image | none",
+        "rgba(0, 0, 0, 0.22) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(201, 42, 42, 0.14) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | image | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(43, 138, 62, 0.16) | none",
+        "rgba(92, 124, 250, 0.16) | none"
+      ],
+      "longest": [
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "tile-footnote svelte-19uo4g3",
+          "text": "لا مخططات مصغّرة: هذه النسخة تحتفظ بآخر عيّنة لا بسلسلة. رسم مخطط يعني رسم شكل لم يقسه أحد"
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "sub svelte-19uo4g3",
+          "text": "مساحة موحدة للصيانة الآمنة وأدلة العتاد والاستعادة ضمن حدود تفويض واستعادة دائمة."
+        },
+        {
+          "words": 6,
+          "tag": "span",
+          "cls": "item-title svelte-19uo4g3",
+          "text": "أجهزة تُبلّغ عن مشكلة في التعريف"
+        },
+        {
+          "words": 6,
+          "tag": "span",
+          "cls": "item-title svelte-19uo4g3",
+          "text": "أحداث عتاد خلال آخر 30 يومًا"
+        },
+        {
+          "words": 5,
+          "tag": "span",
+          "cls": "item-title svelte-19uo4g3",
+          "text": "نتائج الفحص العميق تحتاج مراجعة"
+        },
+        {
+          "words": 5,
+          "tag": "span",
+          "cls": "item-title svelte-19uo4g3",
+          "text": "تحديثات تعريفات يستطيع AetherCore تثبيتها"
+        }
+      ],
+      "textToData": 0.58
+    },
+    {
+      "page": "deepScan",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 89,
+      "proseRuns": 22,
+      "proseWords": 221,
+      "dataReadings": 14,
+      "labelRuns": 53,
+      "labelWords": 110,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.25,
+        11.84,
+        12.16,
+        12.48,
+        12.8,
+        13.12,
+        13.5,
+        13.76,
+        16,
+        19.2,
+        21.6,
+        24.8,
+        32
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(92, 124, 250) | none",
+        "rgba(14, 18, 23, 0.55) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(255, 255, 255, 0.08) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 20,
+          "tag": "p",
+          "cls": "svelte-f2yo6y",
+          "text": "يتداخل دليل عطل حديث مع دليل حديث على خطأ عتادي. تستحق الحالة مراجعة العتاد، لكن السبب الج"
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "sub svelte-1pegymb",
+          "text": "تقييم للقراءة فقط قائم على الأدلة عبر محركات التشخيص في AetherCore. لا يتم تغيير أي شيء أث"
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "svelte-f2yo6y",
+          "text": "تحتوي حالة جهاز PnP على رمز مشكلة صريح لـ Intel(R) Wi-Fi 6E AX211 160MHz Wireless Network "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "svelte-f2yo6y",
+          "text": "يبلغ Windows عن حالة مشكلة في الجهاز Intel(R) Wi-Fi 6E AX211 160MHz Wireless Network Adapt"
+        },
+        {
+          "words": 14,
+          "tag": "p",
+          "cls": "svelte-f2yo6y",
+          "text": "ربطت القاعدة بين حقائق عطل وحدث عتادي حديثين ضمن نافذة أدلة من سبعة أيام."
+        },
+        {
+          "words": 13,
+          "tag": "span",
+          "cls": "svelte-f2yo6y",
+          "text": "حدث دليل عتادي ذو صلة قرب التعطل من دون أدلة كافية للجزم بالسببية."
+        }
+      ],
+      "textToData": 15.79
+    },
+    {
+      "page": "drivers",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 150,
+      "proseRuns": 18,
+      "proseWords": 127,
+      "dataReadings": 61,
+      "labelRuns": 71,
+      "labelWords": 125,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        20,
+        21,
+        25,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(185, 217, 233) | rgb(22, 34, 42) 0px 0px 0px 4px inset",
+        "rgb(25, 48, 41) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(0, 0, 0, 0) | image | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgb(126, 86, 58) 2px 0px 0px 0px inset",
+        "rgba(255, 255, 255, 0.043) | rgb(67, 93, 112) 2px 0px 0px 0px inset",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "sub",
+          "text": "جرد PnP مباشر، وقابلية تطبيق تحديث Windows، وتثبيت محمي، وتحقق، واستعادة دائمة."
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "",
+          "text": "1 تحديثات Windows فريدة · تنزيل تقديري ٣٩٫٦ MB – ٥٥٫٥ MB."
+        },
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "",
+          "text": "حقبة الجرد 0 · 148 جهازًا/عقدة PnP موجودة."
+        },
+        {
+          "words": 8,
+          "tag": "small",
+          "cls": "",
+          "text": "سلطات إدارة موثوقة وليست دليلاً على وجود تحديث"
+        },
+        {
+          "words": 7,
+          "tag": "span",
+          "cls": "",
+          "text": "DriverPackageMetadata · ٣٩٫٦ MB – ٥٥٫٥ MB"
+        },
+        {
+          "words": 7,
+          "tag": "small",
+          "cls": "",
+          "text": "DriverPackageMetadata · ٣٩٫٦ MB – ٥٥٫٥ MB"
+        }
+      ],
+      "textToData": 2.08
+    },
+    {
+      "page": "repair",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 74,
+      "proseRuns": 11,
+      "proseWords": 137,
+      "dataReadings": 15,
+      "labelRuns": 48,
+      "labelWords": 89,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.25,
+        12,
+        13,
+        13.12,
+        13.5,
+        15,
+        16,
+        17,
+        20,
+        34
+      ],
+      "elevations": [
+        "color(srgb 1 1 1 / 0.0353725) | none",
+        "color(srgb 1 1 1 / 0.0362353) | none",
+        "color(srgb 1 1 1 / 0.0643137) | none",
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | color(srgb 1 0.752941 0.470588 / 0.28) 0px 0px 0px 1px, color(srgb 1 0.752941 0.470588 / 0.12) 0px 18px 48px 0px",
+        "rgba(255, 255, 255, 0.6) | color(srgb 1 1 1 / 0.06) 0px 0px 0px 3.84px"
+      ],
+      "longest": [
+        {
+          "words": 36,
+          "tag": "p",
+          "cls": "",
+          "text": "لا تستطيع الواجهة اختيار سوى معرّفات إصلاح موثوقة. ولا يمكنها تمرير مسارات تنفيذ أو نص she"
+        },
+        {
+          "words": 24,
+          "tag": "p",
+          "cls": "sub",
+          "text": "تُطبّع الأدلة إلى حقائق عن صحة Windows وتشخيصات واعتماديات وجاهزية للاسترداد وRepairGraph "
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "توجد 2 حالة مدعومة بالأدلة تحتاج إلى مراجعة. لن يوصي AetherCore إلا بإصلاحات يدعمها مخطط ا"
+        },
+        {
+          "words": 15,
+          "tag": "p",
+          "cls": "",
+          "text": "يسجل AetherCore حماية الاسترداد المثبتة فعليًا فقط. الحالة المجهولة لا تُعرض أبدًا على أنه"
+        },
+        {
+          "words": 15,
+          "tag": "p",
+          "cls": "",
+          "text": "هناك 0 فحصًا منفذًا سليمًا بصورة صريحة. لن يخترع AetherCore أعمالًا لمجرد إظهار الفحص مفيد"
+        },
+        {
+          "words": 6,
+          "tag": "h3",
+          "cls": "",
+          "text": "لا حاجة إلى إصلاح مدعوم بالأدلة"
+        }
+      ],
+      "textToData": 9.13
+    },
+    {
+      "page": "cleanup",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 62,
+      "proseRuns": 11,
+      "proseWords": 117,
+      "dataReadings": 30,
+      "labelRuns": 21,
+      "labelWords": 43,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        22,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(25, 48, 41) | none",
+        "rgb(27, 58, 49) | rgb(155, 212, 189) 0px 0px 0px 4px inset",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 33,
+          "tag": "p",
+          "cls": "",
+          "text": "لا حذف لملفات WinSxS، ولا لذاكرة Windows Installer المؤقتة، ولا Driver Store، ولا Prefetch"
+        },
+        {
+          "words": 27,
+          "tag": "p",
+          "cls": "sub",
+          "text": "يحصر AetherCore فئات مؤقتة وذاكرة تخزين مؤقت وتشخيص معروفة فقط. تثبّت كل خطة تنظيف الأدلة "
+        },
+        {
+          "words": 13,
+          "tag": "p",
+          "cls": "",
+          "text": "١٢٫٠ GB · ستحتوي الخطة على أدلة ملفات دقيقة لا محارف شاملة للمجلدات."
+        },
+        {
+          "words": 6,
+          "tag": "h1",
+          "cls": "",
+          "text": "استرد المساحة من قائمة مسموحة صريحة."
+        },
+        {
+          "words": 6,
+          "tag": "small",
+          "cls": "",
+          "text": "أدلة كل ملف مثبتة داخل الخدمة"
+        },
+        {
+          "words": 6,
+          "tag": "h3",
+          "cls": "",
+          "text": "التنظيف الذي تمت مراجعته بانتظار التنفيذ"
+        }
+      ],
+      "textToData": 3.9
+    },
+    {
+      "page": "startup",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 100,
+      "proseRuns": 7,
+      "proseWords": 97,
+      "dataReadings": 29,
+      "labelRuns": 64,
+      "labelWords": 112,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        22,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(25, 48, 41) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none"
+      ],
+      "longest": [
+        {
+          "words": 31,
+          "tag": "p",
+          "cls": "",
+          "text": "الفحص أو إغلاق التطبيق أو ترك العنصر غير مُراجع أو اختيار الإبقاء مفعّلًا لا يسبب أي تعديل"
+        },
+        {
+          "words": 30,
+          "tag": "p",
+          "cls": "sub",
+          "text": "إدخالات التشغيل في السجل ومجلدات بدء التشغيل والمهام المجدولة عند الإقلاع أو تسجيل الدخول "
+        },
+        {
+          "words": 15,
+          "tag": "p",
+          "cls": "",
+          "text": "العناصر غير المراجعة وخيار الإبقاء لا تدخل الخطة غير القابلة للتغيير ولا تُحدث أي تعديل."
+        },
+        {
+          "words": 6,
+          "tag": "small",
+          "cls": "",
+          "text": "١٤‏/٠٤‏/٢٠٢٦، ١٢:٣٠ م · التغيير ch-1"
+        },
+        {
+          "words": 5,
+          "tag": "h1",
+          "cls": "",
+          "text": "بدء أسرع، بلا قرارات صامتة."
+        },
+        {
+          "words": 5,
+          "tag": "small",
+          "cls": "",
+          "text": "أسطح بدء تشغيل تم فحصها"
+        }
+      ],
+      "textToData": 3.34
+    },
+    {
+      "page": "performance",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 40,
+      "proseRuns": 6,
+      "proseWords": 76,
+      "dataReadings": 13,
+      "labelRuns": 21,
+      "labelWords": 33,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        27.2,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 28,
+          "tag": "p",
+          "cls": "",
+          "text": "لا يحذف AetherCore أبدًا ملفات أو قيم سجل لـ«تنظيف» الأداء، ولا يفرغ مجموعات العمل قسرًا، "
+        },
+        {
+          "words": 20,
+          "tag": "p",
+          "cls": "",
+          "text": "يتم تقييد المعالج حاليًا بحد حراري أو استهلاك أو تغذية. ستتعافى السرعات عند زوال الحد؛ ولا"
+        },
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "sub",
+          "text": "قياس سلبي، تشخيص صادق للاختناقات، ضبط قابل للتراجع"
+        },
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "",
+          "text": "دع المراقبة تعمل لبضع ثوانٍ ثم شغّل التحليل."
+        },
+        {
+          "words": 7,
+          "tag": "strong",
+          "cls": "",
+          "text": "بعض العدادات غير متوفرة على هذا النظام"
+        },
+        {
+          "words": 5,
+          "tag": "strong",
+          "cls": "",
+          "text": "حد حراري أو استهلاك مفعّل"
+        }
+      ],
+      "textToData": 5.85
+    },
+    {
+      "page": "hardware",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 166,
+      "proseRuns": 10,
+      "proseWords": 160,
+      "dataReadings": 82,
+      "labelRuns": 74,
+      "labelWords": 196,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        15,
+        16,
+        17,
+        22,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(92, 124, 250) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.075) | none"
+      ],
+      "longest": [
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "sub",
+          "text": "تأتي موثوقية التخزين من عدادات Windows/الجهاز إضافة إلى أدلة NVMe/ATA SMART للقراءة فقط عن"
+        },
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "",
+          "text": "تم عزل موفّر تشخيصي واحد أو أكثر بعد انتهاء مهلة أو استجابة غير صالحة أو فشل في المنصة. جر"
+        },
+        {
+          "words": 25,
+          "tag": "p",
+          "cls": "",
+          "text": "لا يحوّل AetherCore بيانات SMART الناقصة إلى نسبة صحة. تبقى «غير مُبلّغ عنها» مجهولة، ولا "
+        },
+        {
+          "words": 22,
+          "tag": "p",
+          "cls": "truth-note",
+          "text": "عدم وجود أخطاء عتاد ذاكرة مسجلة لا يعني ثبوت سلامة RAM. يظل الاختبار خارج النظام مناسبًا ع"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "معاني ATA SMART الخام تحددها الشركات المصنّعة. يحافظ AetherCore على قيم الجهاز من دون تحوي"
+        },
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "معاني ATA SMART الخام تحددها الشركات المصنّعة. يحافظ AetherCore على قيم الجهاز من دون تحوي"
+        }
+      ],
+      "textToData": 1.95
+    },
+    {
+      "page": "crash",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 69,
+      "proseRuns": 9,
+      "proseWords": 123,
+      "dataReadings": 27,
+      "labelRuns": 33,
+      "labelWords": 72,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        12,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        22,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(97, 122, 112) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 32,
+          "tag": "p",
+          "cls": "",
+          "text": "اسم ملف التفريغ أو رمز Bugcheck أو Kernel-Power Event 41 لا يكفي لتسمية تعريف أو مكوّن معي"
+        },
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "sub",
+          "text": "تُربط أدلة WHEA وKernel-Power وWindows Error Reporting من آخر 30 يومًا ببيانات رؤوس تفريغا"
+        },
+        {
+          "words": 26,
+          "tag": "p",
+          "cls": "",
+          "text": "تم عزل موفّر تشخيصي واحد أو أكثر بعد انتهاء مهلة أو استجابة غير صالحة أو فشل في المنصة. جر"
+        },
+        {
+          "words": 8,
+          "tag": "h3",
+          "cls": "",
+          "text": "سياق WHEA / الأعطال · آخر 30 يومًا"
+        },
+        {
+          "words": 8,
+          "tag": "strong",
+          "cls": "",
+          "text": "لماذا قد يقول AetherCore «السبب الجذري غير معروف»"
+        },
+        {
+          "words": 6,
+          "tag": "h1",
+          "cls": "",
+          "text": "أدلة الأعطال من دون تخمين المسبب."
+        }
+      ],
+      "textToData": 4.56
+    },
+    {
+      "page": "activity",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 58,
+      "proseRuns": 10,
+      "proseWords": 121,
+      "dataReadings": 17,
+      "labelRuns": 31,
+      "labelWords": 60,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        12,
+        12.5,
+        13,
+        13.12,
+        13.5,
+        14,
+        16,
+        17,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 27,
+          "tag": "p",
+          "cls": "insight-explanation svelte-u6ime",
+          "text": "Storage latency rose on the same days the component store reported missing payloads. The t"
+        },
+        {
+          "words": 18,
+          "tag": "p",
+          "cls": "sub",
+          "text": "لا تُعاد تعديلات النظام المنقطعة تلقائيًا. وتبقى أرقام نقاط الاستعادة وجذور النسخ الاحتياط"
+        },
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "svelte-13b0hn7",
+          "text": "تربط الأنماط بين الأحداث المتكررة عبر الزمن. الارتباط لا يعني السببية؛ كل نمط يستشهد بأدلت"
+        },
+        {
+          "words": 15,
+          "tag": "h3",
+          "cls": "",
+          "text": "يراقب AetherCore حالة الجهاز فقط عندما يكون مؤهلًا وخاملًا. ولا يطبّق العمل التلقائي أي تغ"
+        },
+        {
+          "words": 12,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "لا خطط مؤهلة الآن. شغّل فحص نطاق أولاً وستظهر خططه الآمنة هنا."
+        },
+        {
+          "words": 10,
+          "tag": "p",
+          "cls": "scheduler-none",
+          "text": "لم تُنفّذ أي مراقبة تلقائية في هذه الجلسة حتى الآن."
+        }
+      ],
+      "textToData": 7.12
+    },
+    {
+      "page": "fleet",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 14,
+      "proseRuns": 1,
+      "proseWords": 8,
+      "dataReadings": 4,
+      "labelRuns": 9,
+      "labelWords": 19,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        13.12,
+        13.5,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "sub svelte-c25qlr",
+          "text": "جرد المضيفين البعيدين المحفوظ محلياً (عرض للقراءة فقط)"
+        }
+      ],
+      "textToData": 2
+    },
+    {
+      "page": "settings",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 64,
+      "proseRuns": 4,
+      "proseWords": 70,
+      "dataReadings": 21,
+      "labelRuns": 39,
+      "labelWords": 65,
+      "typeSizes": [
+        9.5,
+        10,
+        10.56,
+        11,
+        11.5,
+        11.52,
+        13,
+        13.12,
+        13.5,
+        13.6,
+        14,
+        14.4,
+        17,
+        17.6,
+        34
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(117, 215, 175) | rgba(117, 215, 175, 0.55) 0px 0px 12px 0px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.08) | none",
+        "rgba(255, 255, 255, 0.08) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(43, 138, 62, 0.16) | none"
+      ],
+      "longest": [
+        {
+          "words": 25,
+          "tag": "p",
+          "cls": "",
+          "text": "ينشئ حزمة محصورة بقائمة سماح ومُنقحة، مع تجزئات حتمية ودليل عبث مرتبط بهذا التثبيت. لا تُص"
+        },
+        {
+          "words": 21,
+          "tag": "p",
+          "cls": "",
+          "text": "يتحقق من بيانات إصدار AetherCore الموقعة، ولا يجهز إلا مثبّت WiX/Burn الذي تم التحقق منه. "
+        },
+        {
+          "words": 15,
+          "tag": "p",
+          "cls": "sub",
+          "text": "ما تختاره أنت، وما هي هذه النسخة. لا شيء في هذه الشاشة يصف حالة جهازك."
+        },
+        {
+          "words": 9,
+          "tag": "strong",
+          "cls": "",
+          "text": "التحديث داخل التطبيق معطل إلى أن تُضبط ثقة الإصدار."
+        }
+      ],
+      "textToData": 3.33
+    }
+  ],
+  "shell": {
+    "region": "sidebar",
+    "locale": "en",
+    "state": "populated",
+    "runs": 39,
+    "proseRuns": 8,
+    "proseWords": 47,
+    "dataReadings": 2,
+    "labelRuns": 29,
+    "labelWords": 57,
+    "typeSizes": [
+      9.28,
+      10.4,
+      11,
+      11.52,
+      11.68,
+      12,
+      12.48,
+      13.5,
+      15
+    ],
+    "elevations": [
+      "color(srgb 0.360784 0.486274 0.980392 / 0.07) | none",
+      "color(srgb 0.360784 0.486275 0.980392 / 0.12) | rgba(255, 255, 255, 0.035) 0px 1px 0px 0px inset",
+      "rgb(105, 219, 124) | rgba(131, 213, 178, 0.35) 0px 0px 11.2px 0px",
+      "rgb(3, 5, 8) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+      "rgba(0, 0, 0, 0.18) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(255, 255, 255, 0.02) -1px 0px 0px 0px inset",
+      "rgba(142, 197, 245, 0.08) | none",
+      "rgba(173, 78, 188, 0.1) | none"
+    ],
+    "longest": [
+      {
+        "words": 10,
+        "tag": "small",
+        "cls": "",
+        "text": "Mutations stay off until you review and authorize a plan."
+      },
+      {
+        "words": 6,
+        "tag": "small",
+        "cls": "",
+        "text": "Remote AetherCore hosts — read-only audits"
+      },
+      {
+        "words": 6,
+        "tag": "small",
+        "cls": "",
+        "text": "Updates, support bundle and this build"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "System posture at a glance"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "SMART, NVMe and memory telemetry"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "WHEA, bugcheck and minidump evidence"
+      }
+    ],
+    "textToData": 23.5
+  }
+}
