@@ -8,7 +8,12 @@ name: CI
 # is the direct evidence. `workflow_dispatch` is added so the gate can be run
 # deliberately rather than only as a side effect of a push.
 on:
+  # `push:` was unfiltered. Once this file became a real workflow that meant a
+  # ~1h Windows job twice per pull request - once for the branch push, once for
+  # the PR - which the four Dependabot PRs opened on 2026-09-12 demonstrated
+  # immediately. Branch pushes are covered by `pull_request`.
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
