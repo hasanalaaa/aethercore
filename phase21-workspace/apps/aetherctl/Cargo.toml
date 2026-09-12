@@ -23,7 +23,7 @@ serde_json.workspace = true
 # Phase 29 (T3, owner-review waiver): ed25519-dalek signs/verifies EXPORT_V1 digests and
 # derives key fingerprints locally. Neither performs network I/O. Key material is never
 # created implicitly — `keys generate` seeds from the OS CSPRNG as an explicit action.
-ed25519-dalek = { version = "2", default-features = false }
+ed25519-dalek = { version = "3", default-features = false }
 aethercore-persistence = { path = "../../crates/persistence" }
 # Phase 30 (T6): read-only SQLite diagnostics provider (rusqlite bundled, no new deps
 # beyond the workspace-pinned rusqlite; owner-review waiver on file in that crate).
