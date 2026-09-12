@@ -1,0 +1,162 @@
+{
+  "label": "after 1.C",
+  "state": "populated",
+  "width": 1280,
+  "proseMinWords": 5,
+  "measuredAt": "2026-09-12T12:57:01.543Z",
+  "rows": [
+    {
+      "page": "overview",
+      "locale": "en",
+      "state": "populated",
+      "runs": 127,
+      "proseRuns": 0,
+      "proseWords": 0,
+      "dataReadings": 90,
+      "labelRuns": 37,
+      "labelWords": 65,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34,
+        48
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(143, 166, 255) | none",
+        "rgb(255, 135, 135) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(0, 0, 0, 0.22) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(201, 42, 42, 0.14) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(43, 138, 62, 0.16) | none",
+        "rgba(92, 124, 250, 0.16) | image | none",
+        "rgba(92, 124, 250, 0.16) | none",
+        "rgba(92, 124, 250, 0.32) | none"
+      ],
+      "longest": [],
+      "textToData": 0
+    },
+    {
+      "page": "overview",
+      "locale": "ar",
+      "state": "populated",
+      "runs": 127,
+      "proseRuns": 0,
+      "proseWords": 0,
+      "dataReadings": 89,
+      "labelRuns": 38,
+      "labelWords": 73,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34,
+        48
+      ],
+      "elevations": [
+        "rgb(105, 219, 124) | none",
+        "rgb(143, 166, 255) | none",
+        "rgb(255, 135, 135) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(0, 0, 0, 0.22) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(201, 42, 42, 0.14) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(43, 138, 62, 0.16) | none",
+        "rgba(92, 124, 250, 0.16) | image | none",
+        "rgba(92, 124, 250, 0.16) | none",
+        "rgba(92, 124, 250, 0.32) | none"
+      ],
+      "longest": [],
+      "textToData": 0
+    }
+  ],
+  "shell": {
+    "region": "sidebar",
+    "locale": "en",
+    "state": "populated",
+    "runs": 39,
+    "proseRuns": 8,
+    "proseWords": 47,
+    "dataReadings": 2,
+    "labelRuns": 29,
+    "labelWords": 57,
+    "typeSizes": [
+      9.28,
+      10.4,
+      11,
+      11.52,
+      11.68,
+      12,
+      12.48,
+      13.5,
+      15
+    ],
+    "elevations": [
+      "color(srgb 0.360784 0.486274 0.980392 / 0.07) | none",
+      "color(srgb 0.360784 0.486275 0.980392 / 0.12) | rgba(255, 255, 255, 0.035) 0px 1px 0px 0px inset",
+      "rgb(105, 219, 124) | rgba(131, 213, 178, 0.35) 0px 0px 11.2px 0px",
+      "rgb(3, 5, 8) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+      "rgba(0, 0, 0, 0.18) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(255, 255, 255, 0.02) -1px 0px 0px 0px inset",
+      "rgba(142, 197, 245, 0.08) | none",
+      "rgba(173, 78, 188, 0.1) | none"
+    ],
+    "longest": [
+      {
+        "words": 10,
+        "tag": "small",
+        "cls": "",
+        "text": "Mutations stay off until you review and authorize a plan."
+      },
+      {
+        "words": 6,
+        "tag": "small",
+        "cls": "",
+        "text": "Remote AetherCore hosts — read-only audits"
+      },
+      {
+        "words": 6,
+        "tag": "small",
+        "cls": "",
+        "text": "Updates, support bundle and this build"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "System posture at a glance"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "SMART, NVMe and memory telemetry"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "WHEA, bugcheck and minidump evidence"
+      }
+    ],
+    "textToData": 23.5
+  }
+}

@@ -45,6 +45,11 @@
   --ac-font-mono: 'JetBrains Mono', 'Cascadia Mono', ui-monospace, Consolas, monospace;
   --ac-font-arabic: 'IBM Plex Sans Arabic', var(--ac-font-text);
 
+  /* P56: one hero figure per screen, >= 48px, in the same sans as everything
+     else. It exists so the single number a screen is ABOUT outranks its title
+     by size alone — the Overview's orb was 44px against a 34px heading and a
+     27px tile, three near-neighbours that ranked nothing. */
+  --ac-type-hero: 3rem;          /* 48px — the one hero figure on a screen */
   --ac-type-display: 2.125rem;   /* 34px — the screen title */
   --ac-type-title: 1.25rem;      /* 20px — dialog and section titles */
   --ac-type-headline: 0.9375rem; /* 15px */

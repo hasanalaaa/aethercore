@@ -320,8 +320,11 @@ export function actionItems(state: StreamState, locale: Locale): ActionItem[] {
   if (diagnostics.state === 'Ready' && diagnostics.scanId && diagnostics.events.length) {
     items.push({
       id: 'events',
-      title: t('overview.itemEvents', locale, { window: tp('unit.day', locale, diagnostics.eventWindowDays) }),
-      meta: diagnostics.events[0].provider,
+      title: t('overview.itemEvents', locale),
+      // The window used to live in the title, where it made a two-word label a
+      // five-word sentence. It is a fact, so it stays — as a token in the meta
+      // line beside the provider that reported the events.
+      meta: `${tp('unit.day', locale, diagnostics.eventWindowDays)} · ${diagnostics.events[0].provider}`,
       value: tp('unit.event', locale, diagnostics.events.length),
       tag: t('severity.Attention', locale),
       tone: 'attention',

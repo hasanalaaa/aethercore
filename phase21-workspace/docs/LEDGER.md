@@ -69,8 +69,8 @@ evidence names where).
 |---|---|---|
 | P56-1.A | measure the density before solving it — words of prose, type sizes, elevations, text-to-data, per screen | **CLOSED** — `apps/ui/tools/measure-density.mjs`, `docs/phase56/DENSITY.md`, raw in `docs/phase56/measure/` |
 | P56-1.B | the design direction, written down | **CLOSED** — `docs/phase56/DIRECTION.md`, five principles with numeric targets |
-| P56-1.C | rebuild the Overview to it | OPEN |
-| P56-1.D | present it — screenshots, both languages, both themes, populated and empty. **Gate: no roll-out until the owner approves** | OPEN |
+| P56-1.C | rebuild the Overview to it | **CLOSED** — `docs/phase56/DENSITY-AFTER.md`. 15 type sizes → 6 (all tokens), 6 neutral surface levels → 3, prose 63 → 0 populated and 167 → 24 empty, words-per-reading 5.22 → 0.75 empty. Every gate green |
+| P56-1.D | present it — screenshots, both languages, both themes, populated and empty. **Gate: no roll-out until the owner approves** | **AWAITING THE OWNER** — `docs/phase56/screens/{populated,empty}/overview-1280-{en,ar}-{dark,light}.png`, 8 images |
 | P56-2.A | the chat's interaction design | **CLOSED** — `DIRECTION.md` Part 2.A: an inline-end drawer, three named outcomes, the wire stated before implementation |
 | P56-2.B | the wire contract | OPEN |
 | P56-2.C | the service side | OPEN |

@@ -52,7 +52,7 @@
     flex-shrink: 0;
     white-space: nowrap;
     color: var(--role-denied);
-    font-size: 0.625rem;
+    font-size: var(--ac-type-kicker);
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;

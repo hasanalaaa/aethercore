@@ -70,7 +70,7 @@
   .policy-denied-chip :global(.technical-isolate) {
     color: var(--role-denied);
     font-family: var(--ac-font-mono);
-    font-size: 0.59375rem;
+    font-size: var(--ac-type-technical);
   }
 
   .policy-denied-row {
@@ -108,7 +108,7 @@
     padding: 0.3125rem 0.6875rem;
     flex-shrink: 0;
     color: var(--role-denied);
-    font-size: 0.65625rem;
+    font-size: var(--ac-type-technical);
     font-weight: 600;
     letter-spacing: var(--ac-tracking-tag);
     text-transform: uppercase;

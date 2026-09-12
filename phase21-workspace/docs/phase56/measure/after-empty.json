@@ -1,0 +1,167 @@
+{
+  "label": "after 1.C",
+  "state": "empty",
+  "width": 1280,
+  "proseMinWords": 5,
+  "measuredAt": "2026-09-12T12:57:03.903Z",
+  "rows": [
+    {
+      "page": "overview",
+      "locale": "en",
+      "state": "empty",
+      "runs": 66,
+      "proseRuns": 2,
+      "proseWords": 24,
+      "dataReadings": 32,
+      "labelRuns": 32,
+      "labelWords": 65,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34,
+        48
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none",
+        "rgba(92, 124, 250, 0.16) | image | none"
+      ],
+      "longest": [
+        {
+          "words": 19,
+          "tag": "p",
+          "cls": "",
+          "text": "The desktop service is stopped or this page is running outside AetherCore. Start the servi"
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 0.75
+    },
+    {
+      "page": "overview",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 66,
+      "proseRuns": 1,
+      "proseWords": 16,
+      "dataReadings": 32,
+      "labelRuns": 33,
+      "labelWords": 72,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34,
+        48
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none",
+        "rgba(92, 124, 250, 0.16) | image | none"
+      ],
+      "longest": [
+        {
+          "words": 16,
+          "tag": "p",
+          "cls": "",
+          "text": "الخدمة المكتبية متوقفة أو أن هذه الصفحة تعمل خارج AetherCore. شغّل الخدمة ثم أعد محاولة ال"
+        }
+      ],
+      "textToData": 0.5
+    }
+  ],
+  "shell": {
+    "region": "sidebar",
+    "locale": "en",
+    "state": "empty",
+    "runs": 39,
+    "proseRuns": 8,
+    "proseWords": 47,
+    "dataReadings": 1,
+    "labelRuns": 30,
+    "labelWords": 58,
+    "typeSizes": [
+      9.28,
+      10.4,
+      11,
+      11.52,
+      11.68,
+      12,
+      12.48,
+      13.5,
+      15,
+      17.6
+    ],
+    "elevations": [
+      "color(srgb 0.360784 0.486274 0.980392 / 0.07) | none",
+      "color(srgb 0.360784 0.486275 0.980392 / 0.12) | rgba(255, 255, 255, 0.035) 0px 1px 0px 0px inset",
+      "rgb(255, 135, 135) | rgba(239, 154, 154, 0.18) 0px 0px 9.6px 0px",
+      "rgb(3, 5, 8) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+      "rgba(0, 0, 0, 0.18) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(255, 255, 255, 0.02) -1px 0px 0px 0px inset",
+      "rgba(142, 197, 245, 0.08) | none",
+      "rgba(173, 78, 188, 0.1) | none"
+    ],
+    "longest": [
+      {
+        "words": 10,
+        "tag": "small",
+        "cls": "",
+        "text": "Mutations stay off until you review and authorize a plan."
+      },
+      {
+        "words": 6,
+        "tag": "small",
+        "cls": "",
+        "text": "Remote AetherCore hosts — read-only audits"
+      },
+      {
+        "words": 6,
+        "tag": "small",
+        "cls": "",
+        "text": "Updates, support bundle and this build"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "System posture at a glance"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "SMART, NVMe and memory telemetry"
+      },
+      {
+        "words": 5,
+        "tag": "small",
+        "cls": "",
+        "text": "WHEA, bugcheck and minidump evidence"
+      }
+    ],
+    "textToData": 47
+  }
+}

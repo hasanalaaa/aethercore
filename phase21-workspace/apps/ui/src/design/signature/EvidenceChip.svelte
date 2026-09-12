@@ -65,7 +65,10 @@
     padding: 0.25rem 0.5625rem;
     border-radius: var(--ac-radius-pill);
     border: 1px solid var(--ac-edge);
-    background: var(--ac-glass-3);
+    /* The control level, shared with `.secondary`. It was `--ac-glass-3`, half a
+       step lighter, which bought no distinction and cost the product a fourth
+       neutral surface on every screen a chip appears on. */
+    background: var(--ac-glass-2);
     color: var(--ac-text-3);
     cursor: pointer;
     transition: border-color var(--ac-feedback-fast) var(--ac-ease-state),
@@ -78,7 +81,7 @@
 
   .evidence-cite {
     font-family: var(--ac-font-mono);
-    font-size: 0.59375rem;
+    font-size: var(--ac-type-technical);
     letter-spacing: 0.02em;
     min-inline-size: 0;
     overflow: hidden;

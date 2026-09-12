@@ -146,6 +146,12 @@ const MEASURE = `(() => {
     // Text cut off by its own box: scroll extent beyond the padding box while
     // overflow is hidden or clipped.
     const style = getComputedStyle(el);
+    // A visually-hidden element is clipped ON PURPOSE — that is the whole
+    // mechanism of the sr-only pattern (1px box, overflow hidden, clip rect),
+    // and reporting it is a false positive, not a finding. Recognised by its
+    // shape rather than by class name so any spelling of the pattern is quiet.
+    const box = el.getBoundingClientRect();
+    if (box.width <= 1 || box.height <= 1) continue;
     const hiddenX = style.overflowX === 'hidden' || style.overflowX === 'clip';
     const hiddenY = style.overflowY === 'hidden' || style.overflowY === 'clip';
     const ellipsis = style.textOverflow === 'ellipsis';

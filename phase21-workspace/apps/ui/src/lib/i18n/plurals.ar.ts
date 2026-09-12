@@ -20,4 +20,5 @@ export const arPlurals = {
   'unit.event': { zero: 'لا أحداث', one: 'حدث واحد', two: 'حدثان', few: '{count} أحداث', many: '{count} حدثًا', other: '{count} حدث' },
   'unit.crashRecord': { zero: 'لا سجلات أعطال', one: 'سجل عطل واحد', two: 'سجلا عطل', few: '{count} سجلات أعطال', many: '{count} سجل عطل', other: '{count} سجل عطل' },
   'unit.device': { zero: 'لا أجهزة', one: 'جهاز واحد', two: 'جهازان', few: '{count} أجهزة', many: '{count} جهازًا', other: '{count} جهاز' },
+  'unit.sample': { zero: 'لا عيّنات', one: 'عيّنة واحدة', two: 'عيّنتان', few: '{count} عيّنات', many: '{count} عيّنة', other: '{count} عيّنة' },
 } satisfies Record<PluralMessageKey, ArabicPlural>;

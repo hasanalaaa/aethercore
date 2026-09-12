@@ -17,8 +17,13 @@ main .sub, main .footnote { max-inline-size:74ch; }
 
 .shell-context { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-block-end:1.25rem; padding-block-end:.9rem; border-block-end:1px solid var(--ac-border-subtle); }
 .shell-context-copy { display:flex; align-items:baseline; gap:.7rem; min-inline-size:0; }
-.shell-context-kicker { color:var(--ac-text-4); font:650 .66rem/1.2 var(--ac-font-mono); letter-spacing:.08em; text-transform:uppercase; }
-.shell-context-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:620 .82rem/1.2 var(--ac-font-text); color:var(--ac-text-2); }
+.shell-context-kicker { color:var(--ac-text-4); font:650 var(--ac-type-technical)/1.2 var(--ac-font-mono); letter-spacing:.08em; text-transform:uppercase; }
+.shell-context-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:620 var(--ac-type-body)/1.45 var(--ac-font-text); color:var(--ac-text-2); }
+/* 1.45, not 1.2. This box is `overflow:hidden` for its ellipsis, so the line box
+   IS the clip box, and at 1.2 the Arabic face's ascenders and descenders were cut
+   by 2px on every screen in the product. It read clean only because the layout
+   sweep defaulted to `pages: ['overview']` and had never swept the other eleven.
+   P56 widened that default; this is the first thing it found. */
 .shell-state-group { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.4rem; }
 .shell-state { display:inline-flex; align-items:center; gap:.38rem; min-block-size:1.8rem; padding:.28rem .58rem; border:1px solid var(--ac-border-subtle); border-radius:var(--ac-radius-pill); color:var(--ac-text-3); font-size:.69rem; white-space:nowrap; }
 .shell-state[data-state="loading"] { border-color:var(--role-interactive-edge); color:var(--role-interactive); }
@@ -35,9 +40,9 @@ main .sub, main .footnote { max-inline-size:74ch; }
   border:1px solid var(--role-attention-edge);
   border-radius:var(--ac-radius-xl); background:var(--role-attention-wash);
 }
-.disconnected-card h2 { margin:.2rem 0 .35rem; font-size:1.2rem; }
+.disconnected-card h2 { margin:.2rem 0 .35rem; font-size:var(--ac-type-title); }
 .disconnected-card p:last-child { margin:0; color:var(--ac-text-3); max-width:60ch; }
-.disconnected-mark { display:grid; place-items:center; inline-size:2.6rem; block-size:2.6rem; border:1px solid var(--role-attention-edge); border-radius:50%; color:var(--role-attention); font-size:1.4rem; }
+.disconnected-mark { display:grid; place-items:center; inline-size:2.6rem; block-size:2.6rem; border:1px solid var(--role-attention-edge); border-radius:50%; color:var(--role-attention); font-size:var(--ac-type-title); }
 
 .ac-material { border:1px solid var(--ac-border-subtle); }
 .ac-material-base { background:var(--ac-material-base); box-shadow:var(--ac-shadow-card); }

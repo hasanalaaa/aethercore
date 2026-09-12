@@ -93,7 +93,7 @@
   .empty-state-body {
     margin: 0;
     max-inline-size: 58ch;
-    font-size: var(--ac-type-callout);
+    font-size: var(--ac-type-body);
     line-height: 1.65;
     color: var(--ac-text-4);
     text-wrap: pretty;
@@ -137,7 +137,7 @@
   }
   .empty-state-channel-value {
     font-family: var(--ac-font-mono);
-    font-size: 1.1875rem;
+    font-size: var(--ac-type-title);
     letter-spacing: -0.02em;
     color: var(--ac-text-4);
   }

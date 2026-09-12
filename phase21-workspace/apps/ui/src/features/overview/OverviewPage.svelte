@@ -1,35 +1,47 @@
 <script lang="ts">
   /**
-   * The Overview, rebuilt on the approved shell's composition.
+   * The Overview, rebuilt to `docs/phase56/DIRECTION.md`.
    *
-   * The shell (`AetherCore.html` at the repo root) draws this screen as an
-   * instrument: a health orb with four channel rails beside action items, then
-   * four telemetry tiles, then a service log. P47 ported the design system and
-   * left the composition; this file is the composition.
+   * P50 ported the approved shell's composition; P51 fixed where things sit
+   * (4,110px → 1,715px). Neither pass touched what the screen SAYS or how it
+   * ranks what it shows, and that is what the owner was reacting to. Measured
+   * before this pass (`tools/measure-density.mjs`): **15 distinct type sizes and
+   * 20 distinct surface treatments — the most of any screen in the product** —
+   * against 63 words of prose, the second-fewest. The complaint was "too much
+   * text"; the defect was that nothing outranked anything.
    *
-   * Every reading below comes from `instrument.ts`, which names the IPC field it
-   * read or returns nothing. The shell's own numbers are a mockup's — `94`,
-   * `96`, `11.4 s`, `214 signals` — and none of them are here. What replaced
-   * them is either a measurement or an em dash. See §50.1 of the ledger for the
-   * element-by-element mapping and the thirteen elements deliberately dropped.
+   * So this pass is hierarchy and copy, not layout. Three things changed:
    *
-   * P51 finished it. The screen was 4,110px because the new composition was
-   * prepended to the old one rather than replacing it, so it read as an
-   * instrument and ended as a feature list. Nine sections were decided one at a
-   * time (§51.3): the protected operation BELONGS and stays below; the driver
-   * panel and the six module cards DROPPED as proven duplicates — the cards had
-   * zero interactive descendants and could not even navigate; updates, the
-   * support bundle, the build identity and the capability matrix MOVED to a new
-   * Settings screen; care, insights and recovery live on Activity, where two of
-   * them were already being rendered a second time.
+   * 1. **One hero.** The orb is now a real dial — an SVG ring gauge whose arc
+   *    length IS the headroom reading — with the figure at `--ac-type-hero`
+   *    (48px). It is the only thing on the screen at that size. The decorative
+   *    radial fill is gone: a gauge that draws the value does not need a glow to
+   *    look alive, and removing it also removed a surface level.
+   * 2. **Six type sizes, every one a token.** 48 hero · 34 display · 20 title ·
+   *    15 headline · 13.5 body · 11 technical. Nothing on this screen sets a
+   *    size literal any more.
+   * 3. **Three neutral surface levels.** card (`--ac-material-base`), well
+   *    (`--ac-sunken`, for the action rows and the log), control
+   *    (`--ac-glass-2`, for buttons and evidence chips). A card never sits
+   *    inside a card: the action rows and the telemetry tiles used to be cards
+   *    on cards, and are now a well and a bordered cell respectively.
    *
-   * The screen fills itself now. Everything on it reads `performance`, which
-   * arrives from `get_performance_snapshot` and nowhere else — the background
-   * sampler publishes nothing — so this file reads on a 5s loop while it is open
-   * and stops when it is not. See `controller.ts` for the measured cost.
+   * Copy cuts, each one deleting a sentence and keeping the fact it carried:
    *
-   * 1280 populated: 4,110px → 1,715px, with nothing deleted that was not first
-   * proven to exist somewhere else.
+   *   - the subtitle ("A unified workspace for safe maintenance…") — marketing;
+   *     it asserts nothing measurable. Gone, with the eyebrow that repeated the
+   *     title above it.
+   *   - "No sparklines: this build retains the latest sample, not a series" —
+   *     the fact is *how many samples there are*, and it is now the telemetry
+   *     section's own meta, as a number.
+   *   - the orb's empty body ("reads the counters itself, every 5 seconds…") —
+   *     the fact is the cadence, now the section meta.
+   *   - three empty-state bodies that explained how the screen works.
+   *   - the service pill: connection state was rendered three times on this
+   *     screen (rail, shell context bar, pill). One idea per region.
+   *
+   * Every reading still comes from `instrument.ts`, which names the IPC field it
+   * read or returns nothing, and `undefined` still renders `—`.
    */
   import { onDestroy, onMount } from 'svelte';
   import { fluidPress } from '../../design/motion';
@@ -104,27 +116,56 @@
       })
       .join(' ');
   }
+
+  /**
+   * The dial's arc. The ring is r=52 in a 120 viewBox, so one full turn is
+   * 2πr = 326.73 units; the arc is that length minus the share the reading did
+   * not claim. There is no threshold and no state hue — the arc reports the
+   * number, and the number is already traced by `headroomEvidence`.
+   */
+  const DIAL_CIRCUMFERENCE = 2 * Math.PI * 52;
+  function dialOffset(value: number | undefined): number {
+    if (value === undefined) return DIAL_CIRCUMFERENCE;
+    const clamped = Math.max(0, Math.min(100, value));
+    return DIAL_CIRCUMFERENCE * (1 - clamped / 100);
+  }
 </script>
 
 <header>
-  <div><p class="eyebrow">{t('overview.eyebrow',locale)}</p><h1>{t('overview.title',locale)}</h1><p class="sub">{t('overview.subtitle',locale)}</p></div>
+  <h1>{t('overview.title', locale)}</h1>
   <div class="overview-header-side">
-    <div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div>
     <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={openCareConsent} disabled={!snapshot.connected || busy}>{t('care.start', locale)}</button>
     <button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={() => setPage('deepScan')}>{t('overview.scanMyPc',locale)}</button>
   </div>
 </header>
 
 <div class="instrument-grid">
-  <!-- §A — the health orb and its four channel rails. -->
+  <!-- §A — the headroom dial and its four channel rails. -->
   <section class="instrument-section span-orb" aria-label={t('overview.orbSection',locale)}>
     <div class="instrument-head">
-      <span class="instrument-title">{t('overview.orbSection',locale)}</span>
-      <span class="instrument-meta" class:reading={index !== undefined}>{index === undefined ? t('overview.orbMetaAwaiting',locale) : t('overview.orbMetaLive',locale)}</span>
+      <h2 class="instrument-title">{t('overview.orbSection',locale)}</h2>
+      <!-- The cadence, as a token. It used to be a 34-word paragraph under the
+           channels explaining that this screen reads the counters itself. -->
+      <span class="instrument-meta" class:reading={index !== undefined}>
+        <TechnicalText value={index === undefined ? t('overview.orbMetaAwaiting',locale,{seconds:OVERVIEW_READ_INTERVAL_MS/1000}) : t('overview.orbMetaLive',locale,{seconds:OVERVIEW_READ_INTERVAL_MS/1000})} />
+      </span>
     </div>
 
     <div class="orb-row">
       <div class="orb-dial" class:reading={index !== undefined}>
+        <!-- LTR always: a gauge is a technical chart, and mirroring it under RTL
+             would reverse the direction the value grows in. -->
+        <svg class="orb-gauge" viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+          <circle class="orb-track" cx="60" cy="60" r="52" />
+          {#if index !== undefined}
+            <circle
+              class="orb-arc"
+              cx="60" cy="60" r="52"
+              stroke-dasharray={DIAL_CIRCUMFERENCE}
+              stroke-dashoffset={dialOffset(index)}
+            />
+          {/if}
+        </svg>
         <span class="orb-value">{headroomLabel(index, locale)}</span>
         <span class="orb-caption">{index === undefined ? t('overview.noBaseline',locale) : t('overview.headroomLabel',locale)}</span>
       </div>
@@ -135,8 +176,11 @@
           <div class="channel-group">
             <div class="channel">
               <span class="channel-label">{channel.label}</span>
-              <!-- An empty track is hatched, not flat: a bar at zero is a reading
-                   and must not look like a channel that has no scale at all. -->
+              <!-- A channel with no scale to normalize against is hatched, not
+                   flat: a bar at zero is a reading and must not look like a
+                   channel that has no scale at all. Both states are drawn from
+                   the interactive role, so the track is a lighter step of the
+                   fill's own ramp rather than a fourth neutral surface. -->
               <span class="channel-track" data-normalized={channel.pct !== undefined}>
                 {#if channel.pct !== undefined}<span class="channel-fill" style="inline-size:{Math.min(100, Math.max(0, channel.pct))}%"></span>{/if}
               </span>
@@ -153,7 +197,6 @@
           </div>
         {/each}
         {#if index === undefined}
-          <p class="channel-note">{t('overview.orbEmptyBody',locale,{seconds:OVERVIEW_READ_INTERVAL_MS/1000})}</p>
           <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={readNow} disabled={reading}>{reading ? t('overview.reading',locale) : t('overview.readNow',locale)}</button>
         {/if}
       </div>
@@ -163,8 +206,8 @@
   <!-- §B — action items, each one a scan that has actually reported. -->
   <section class="instrument-section span-items" aria-label={t('overview.actionItems',locale)}>
     <div class="instrument-head">
-      <span class="instrument-title">{t('overview.actionItems',locale)}</span>
-      <span class="instrument-meta">{gate.cited.length}</span>
+      <h2 class="instrument-title">{t('overview.actionItems',locale)}</h2>
+      <span class="instrument-meta"><TechnicalText value={String(gate.cited.length)} /></span>
     </div>
 
     {#if gate.cited.length}
@@ -197,11 +240,15 @@
     {/if}
   </section>
 
-  <!-- §C — diagnostic telemetry. Four tiles, no sparklines: see §50.4. -->
+  <!-- §C — diagnostic telemetry. -->
   <section class="instrument-section span-instrument" aria-label={t('overview.telemetry',locale)}>
     <div class="instrument-head">
-      <span class="instrument-title">{t('overview.telemetry',locale)}</span>
-      <span class="instrument-meta" class:reading={sampled}>{sampled ? samplingNote(performance, locale) : t('overview.telemetryMetaNone',locale)}</span>
+      <h2 class="instrument-title">{t('overview.telemetry',locale)}</h2>
+      <!-- How many samples this build is holding. Below two there is no series
+           to draw, which is the fact the deleted footnote spent 20 words on. -->
+      <span class="instrument-meta" class:reading={sampled}>
+        <TechnicalText value={sampled ? `${tp('unit.sample', locale, performanceWindow.length)} · ${samplingNote(performance, locale)}` : t('overview.telemetryMetaNone',locale)} />
+      </span>
     </div>
 
     <div class="tile-grid">
@@ -216,14 +263,13 @@
         </article>
       {/each}
     </div>
-    <p class="tile-footnote">{t('overview.telemetryNoHistory',locale)}</p>
   </section>
 
   <!-- §D — the core service log: the kernel's own event stream, not boot prose. -->
   <section class="instrument-section span-instrument" aria-label={t('overview.serviceLog',locale)}>
     <div class="instrument-head">
-      <span class="instrument-title">{t('overview.serviceLog',locale)}</span>
-      <span class="instrument-meta" class:reading={serviceLog.length > 0}>{tp('unit.event',locale,serviceLog.length)}</span>
+      <h2 class="instrument-title">{t('overview.serviceLog',locale)}</h2>
+      <span class="instrument-meta" class:reading={serviceLog.length > 0}><TechnicalText value={tp('unit.event',locale,serviceLog.length)} /></span>
     </div>
 
     {#if serviceLog.length}
@@ -249,7 +295,10 @@
      measurement; this one reports the state engine. -->
 <section class="state-engine">
   <article class="panel">
-    <div class="panel-head"><div><p class="eyebrow">{t('overview.stateEngine',locale)}</p><h3>{t('overview.currentOperation',locale)}</h3></div>{#if snapshot.activePlan}<span class="risk">{localizeRisk(snapshot.activePlan.risk,locale)}</span>{/if}</div>
+    <div class="panel-head">
+      <h3>{t('overview.currentOperation',locale)}</h3>
+      {#if snapshot.activePlan}<span class="risk">{localizeRisk(snapshot.activePlan.risk,locale)}</span>{/if}
+    </div>
     {#if snapshot.activePlan}
       <div class="plan-title"><strong>{localizePlanKind(snapshot.activePlan.kind,locale)}</strong><span>{localizeState(snapshot.activePlan.state,locale)}</span></div>
       <div class="meta"><span>{t('common.digest',locale)} <code>{shortDigest(snapshot.activePlan.digest)}</code></span><span>{t('overview.events',locale,{count:snapshot.journalEventCount})}</span></div>
@@ -273,20 +322,17 @@
 
 <style>
   /* ---- the composition ---------------------------------------------------
-     Twelve columns. The shell lays this screen out orb 7 / items 5 / telemetry
-     12 / log 12, and P50 ported that literally. Measured, that arrangement put
-     a 270px orb beside a 949px action list and left **679px of empty column**
-     under the orb, then stacked two more full-width rows below it — 1,528px of
-     grid for 1,770px of content in the wrong places.
-
-     So §C and §D join the orb in the left column and the action list spans all
-     three rows: one instrument stack beside one list. Nothing is dropped and no
-     section is smaller; the grid is 991px instead of 1,528px because the space
-     that was empty is now the telemetry and the log. This is the one place this
-     session departs from the shell's own spans, and this is the reason.
+     Twelve columns, unchanged from P51: the orb, the telemetry and the log
+     stack in the left column and the action list spans all three rows. What
+     changed is the RHYTHM. P51 used `--ac-space-4` between sections and
+     `--ac-space-5` inside them, so the gap separating two ideas was smaller
+     than the gap separating a heading from its own content, and nine regions
+     read as one undifferentiated field of boxes. Space now groups: `space-7`
+     between sections, `space-5` inside one. (DIRECTION.md, principle 3.)
 
      Everything below derives from the token layer; this block introduces no
-     literal colour, radius or spacing. */
+     literal colour, radius, spacing or TYPE SIZE. The last of those is new —
+     the previous version set 2.75rem on the orb and 1.6875rem on the tiles. */
   .instrument-grid {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -294,8 +340,8 @@
        leaves the orb sitting in 350px of nothing whenever more than three scans
        have reported into the column beside it. */
     align-items: start;
-    gap: var(--ac-space-4);
-    margin-block-end: var(--ac-space-5);
+    gap: var(--ac-space-7);
+    margin-block-end: var(--ac-space-7);
   }
   .span-orb, .span-instrument { grid-column: span 7; }
   /* Three rows: the orb, the telemetry and the log stack beside this one list. */
@@ -323,32 +369,43 @@
     padding: var(--ac-space-6) var(--ac-space-6) var(--ac-space-7);
     border: 1px solid var(--ac-edge);
     border-radius: var(--ac-radius-xl);
+    /* SURFACE LEVEL 2 of 3 — the card. Level 1 is the page; level 3 is the
+       well below. Nothing on this screen adds a fourth. */
     background: var(--ac-material-base);
     box-shadow: var(--ac-shadow-card);
   }
 
-  .instrument-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ac-space-4); }
+  .instrument-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ac-space-4); }
+  /* A real heading in real words, at a size the reader can rank. It was an 11px
+     uppercase kicker, which is decoration wearing a title's job. */
   .instrument-title {
-    font-size: var(--ac-type-kicker);
+    margin: 0;
+    font-size: var(--ac-type-headline);
     font-weight: 600;
-    letter-spacing: var(--ac-tracking-kicker);
-    text-transform: uppercase;
-    color: var(--ac-text-3);
+    color: var(--ac-text-1);
   }
   .instrument-meta {
     flex-shrink: 0;
-    font-family: var(--ac-font-mono);
-    font-size: var(--ac-type-technical);
     color: var(--ac-text-4);
   }
-  .instrument-meta.reading { color: var(--role-healthy); }
+  .instrument-meta :global(.technical-isolate) {
+    font-family: var(--ac-font-mono);
+    font-size: var(--ac-type-technical);
+    white-space: nowrap;
+  }
+  .instrument-meta.reading :global(.technical-isolate) { color: var(--role-healthy); }
 
-  /* ---- §A the orb ------------------------------------------------------- */
+  /* ---- §A the dial ------------------------------------------------------
+     The orb is the screen's one hero figure, and it now DRAWS the number it
+     reports: the arc's length is the reading. Before, the number sat inside a
+     decorative radial gradient that meant nothing and painted a fourth neutral
+     surface. A gauge that shows the value does not need a glow to look alive.
+
+     No state hue. A health threshold is not a measurement, and `snapshot.health`
+     is a free-form service string rather than an enum, so the dial reports only
+     the value and whether it has one at all. */
   .orb-row { display: flex; align-items: center; gap: var(--ac-space-7); flex-wrap: wrap; }
 
-  /* No state hue. A health threshold is not a measurement, and `snapshot.health`
-     is a free-form service string rather than an enum, so the dial reports only
-     whether it has a reading at all. */
   .orb-dial {
     position: relative;
     inline-size: 10rem;
@@ -358,22 +415,37 @@
     place-items: center;
     align-content: center;
     gap: var(--ac-space-1);
-    border-radius: var(--ac-radius-pill);
-    border: 1px solid var(--ac-edge-strong);
-    background:
-      radial-gradient(circle at 32% 28%, var(--ac-highlight), transparent 58%),
-      radial-gradient(circle at 70% 78%, var(--role-interactive-wash), transparent 70%),
-      var(--ac-material-base);
   }
-  .orb-dial.reading { border-color: var(--role-interactive-edge); }
+  .orb-gauge {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    /* A gauge is a technical chart. Mirrored under RTL the arc would grow the
+       wrong way, which is the same defect TechnicalText prevents for tokens. */
+    direction: ltr;
+    transform: rotate(-90deg);
+  }
+  .orb-track { fill: none; stroke: var(--role-interactive-wash); stroke-width: 6; }
+  .orb-arc {
+    fill: none;
+    stroke: var(--role-interactive);
+    stroke-width: 6;
+    stroke-linecap: round;
+    transition: stroke-dashoffset var(--ac-feedback-normal) var(--ac-ease-state);
+  }
+  @media (prefers-reduced-motion: reduce) { .orb-arc { transition: none; } }
+
   .orb-value {
-    font-size: 2.75rem;
+    z-index: 1;
+    font-size: var(--ac-type-hero);
     font-weight: 300;
     letter-spacing: var(--ac-tracking-display);
     line-height: 1;
     color: var(--ac-text-1);
   }
   .orb-caption {
+    z-index: 1;
     font-family: var(--ac-font-mono);
     font-size: var(--ac-type-technical);
     letter-spacing: 0.12em;
@@ -388,17 +460,27 @@
      because it belongs to that channel and must not compete for its width. */
   .channel-group { display: flex; flex-direction: column; flex-wrap: nowrap; gap: var(--ac-space-2); }
   .channel { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--ac-space-4); }
-  .channel-label { inline-size: 5.5rem; flex-shrink: 0; font-size: var(--ac-type-callout); color: var(--ac-text-3); }
+  .channel-label { inline-size: 5.5rem; flex-shrink: 0; font-size: var(--ac-type-body); color: var(--ac-text-3); }
+  /* A meter's unfilled track is a lighter step of the fill's OWN ramp, so the
+     reading is legible across the whole bar. It used to be `--ac-material-
+     elevated`, a neutral surface, which made it a fourth structural level and
+     broke the fill's relationship to its track. */
   .channel-track {
     flex: 1;
-    min-inline-size: 0;
+    min-inline-size: 4rem;
     block-size: 0.375rem;
     border-radius: var(--ac-radius-pill);
-    background: var(--ac-material-elevated);
+    /* `-edge` rather than `-wash`: the wash is 0.16 alpha and, on the card this
+       sits on, the unfilled part of the bar was invisible — so a 41% meter read
+       as a full one. Same ramp, one step up, which is what the track needs to
+       do its job. */
+    background: var(--role-interactive-edge);
     overflow: hidden;
   }
   .channel-track[data-normalized='false'] {
-    background: repeating-linear-gradient(135deg, var(--ac-edge-strong) 0 0.125rem, transparent 0.125rem 0.375rem);
+    background:
+      repeating-linear-gradient(135deg, var(--role-interactive) 0 0.125rem, transparent 0.125rem 0.375rem),
+      var(--role-interactive-wash);
   }
   .channel-fill { display: block; block-size: 100%; border-radius: var(--ac-radius-pill); background: var(--role-interactive); }
   /* The one colour on this section that a provider asserted rather than a
@@ -418,22 +500,26 @@
     flex-shrink: 0;
     text-align: end;
     font-family: var(--ac-font-mono);
-    font-size: var(--ac-type-caption);
+    font-size: var(--ac-type-body);
     color: var(--ac-text-1);
   }
+  /* The trend is CONTEXT beside the reading, so it wears the de-emphasis ink
+     rather than the accent. Painted in `--role-interactive` at 60px it was the
+     same width and the same hue as the meter track beside it, and the row read
+     as two bars competing to be the reading. One mark carries the value; the
+     other carries where it came from. */
   .channel-sparkline {
-    inline-size: 3.75rem;
+    inline-size: 3rem;
     block-size: 1rem;
     flex-shrink: 0;
     direction: ltr;
   }
   .channel-sparkline polyline {
     fill: none;
-    stroke: var(--role-interactive);
-    stroke-width: 1.5;
+    stroke: var(--ac-text-4);
+    stroke-width: 1.25;
     stroke-linecap: round;
     stroke-linejoin: round;
-    opacity: 0.85;
   }
   .channel-sparkline-empty {
     display: inline-flex;
@@ -441,15 +527,17 @@
     justify-content: center;
     color: var(--ac-text-4);
     font-family: var(--ac-font-mono);
-    font-size: var(--ac-type-caption);
+    font-size: var(--ac-type-technical);
   }
-  .channel-note { margin: 0; max-inline-size: 58ch; font-size: var(--ac-type-callout); line-height: 1.65; color: var(--ac-text-4); text-wrap: pretty; }
   .orb-channels .secondary { align-self: flex-start; }
 
   /* ---- §B action items -------------------------------------------------- */
   .item-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; flex-wrap: nowrap; gap: var(--ac-space-2); }
   .item-row { display: flex; flex-direction: column; flex-wrap: nowrap; gap: var(--ac-space-2); min-inline-size: 0; }
 
+  /* SURFACE LEVEL 3 of 3 — the well. A row inside a card is recessed, not
+     stacked: these used to carry `--ac-material-base`, the card fill, which put
+     a card inside a card five times over. */
   .item-open {
     display: flex;
     align-items: stretch;
@@ -459,7 +547,7 @@
     padding: var(--ac-space-4) var(--ac-space-4);
     border: 1px solid var(--ac-edge);
     border-radius: var(--ac-radius-lg);
-    background: var(--ac-material-base);
+    background: var(--ac-sunken);
     color: inherit;
     font: inherit;
     text-align: start;
@@ -478,7 +566,7 @@
   [data-tone='healthy'] .item-mark { background: var(--role-healthy); }
 
   .item-body { flex: 1; min-inline-size: 0; display: flex; flex-direction: column; flex-wrap: nowrap; gap: 0.25rem; }
-  .item-title { font-size: var(--ac-type-body); font-weight: 500; color: var(--ac-text-1); }
+  .item-title { font-size: var(--ac-type-headline); font-weight: 500; color: var(--ac-text-1); }
   .item-meta { min-inline-size: 0; overflow: hidden; }
   .item-meta :global(.technical-isolate) {
     display: block;
@@ -490,7 +578,7 @@
     white-space: nowrap;
   }
   .item-foot { display: flex; align-items: center; gap: var(--ac-space-2); flex-wrap: wrap; margin-block-start: 0.125rem; }
-  .item-value { flex-shrink: 0; font-family: var(--ac-font-mono); font-size: var(--ac-type-caption); color: var(--ac-text-1); }
+  .item-value { flex-shrink: 0; font-family: var(--ac-font-mono); font-size: var(--ac-type-body); color: var(--ac-text-1); }
   .item-tag {
     flex-shrink: 0;
     padding: 0.3125rem 0.6875rem;
@@ -508,7 +596,9 @@
   [data-tone='attention'] .item-tag { border-color: var(--role-attention-edge); background: var(--role-attention-wash); color: var(--role-attention); }
   [data-tone='healthy'] .item-tag { border-color: var(--role-healthy-edge); background: var(--role-healthy-wash); color: var(--role-healthy); }
 
-  /* ---- §C telemetry tiles ----------------------------------------------- */
+  /* ---- §C telemetry tiles -----------------------------------------------
+     A cell, not a card: a hairline and the space around it group these four
+     readings without adding a surface level inside the card that holds them. */
   .tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11.25rem, 1fr)); gap: var(--ac-space-3); }
   .tile {
     display: flex;
@@ -519,12 +609,15 @@
     padding: var(--ac-space-5);
     border: 1px solid var(--ac-edge);
     border-radius: var(--ac-radius-lg);
-    background: var(--ac-material-base);
+    background: transparent;
   }
-  .tile-label { font-size: var(--ac-type-caption); color: var(--ac-text-3); }
+  .tile-label { font-size: var(--ac-type-body); color: var(--ac-text-3); }
   .tile-reading { display: flex; flex-wrap: nowrap; align-items: baseline; gap: var(--ac-space-1); min-inline-size: 0; }
-  .tile-reading strong { font-size: 1.6875rem; font-weight: 500; letter-spacing: var(--ac-tracking-display); color: var(--ac-text-1); }
-  .tile-reading em { font-family: var(--ac-font-mono); font-size: var(--ac-type-caption); font-style: normal; color: var(--ac-text-3); }
+  /* Proportional figures, not tabular: these are standalone readings, and
+     `tabular-nums` gives every digit a zero's width, which reads loose at
+     display size. Tabular is for columns that must line up. */
+  .tile-reading strong { font-size: var(--ac-type-title); font-weight: 500; letter-spacing: var(--ac-tracking-display); color: var(--ac-text-1); }
+  .tile-reading em { font-family: var(--ac-font-mono); font-size: var(--ac-type-technical); font-style: normal; color: var(--ac-text-3); }
   .tile-note { min-inline-size: 0; overflow: hidden; }
   .tile-note :global(.technical-isolate) {
     display: block;
@@ -535,9 +628,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* The shell put a sparkline in every tile. This build has one sample, not a
-     series, so the absence is stated rather than drawn. */
-  .tile-footnote { margin: 0; max-inline-size: 72ch; font-size: var(--ac-type-callout); line-height: 1.65; color: var(--ac-text-4); text-wrap: pretty; }
 
   /* ---- §D the service log ----------------------------------------------- */
   .log-body {
@@ -578,6 +668,23 @@
      other, so a pair of them line up. A single full-width panel has nothing to
      line up with, and this one renders 106px of content — measured — inside it.
      Scoped here rather than on `.panel`, which nine other screens rely on. */
-  .state-engine { margin-block-start: var(--ac-space-5); }
+  .state-engine { margin-block-start: var(--ac-space-7); }
   .state-engine .panel { min-block-size: auto; }
+  /* feature-layout.css sets 17px on `.panel-head h3`, 13px on `.risk` and 13px
+     on the `.meta` row — three sizes that exist nowhere in the token scale.
+     Scoped here rather than changed globally: nine other screens use `.panel`,
+     and this pass is one screen. */
+  .state-engine .panel-head h3 { font-size: var(--ac-type-headline); font-weight: 600; }
+  /* Same rule for surfaces: `.risk` and `.plan-title` both carry
+     `--ac-material-elevated`, a fourth neutral level inside a card. The risk
+     chip already states its role in its text colour and border, so its fill
+     follows that role; the plan title is a readout inside the panel, so it
+     takes the well. */
+  .state-engine .risk { font-size: var(--ac-type-technical); background: var(--role-attention-wash); }
+  .state-engine .plan-title { background: var(--ac-sunken); }
+  .state-engine .plan-title strong { font-size: var(--ac-type-title); }
+  .state-engine .plan-title span,
+  .state-engine .meta,
+  .state-engine .meta span,
+  .state-engine .meta code { font-size: var(--ac-type-technical); }
 </style>
