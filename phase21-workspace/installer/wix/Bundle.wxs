@@ -28,13 +28,20 @@
          verified equal on disk before this reference was added.
 
          LicenseUrl="": deliberately still empty, and this is NOT an oversight.
-         The repository contains no license text. Cargo.toml declares
-         "Apache-2.0 OR MIT" but no LICENSE file exists anywhere in the tree, so
-         there is nothing truthful to display. An installer that shows invented
-         licence text is worse than one that shows none. With hyperlinkLicense
-         and an empty LicenseUrl the standard bootstrapper hides the link rather
-         than rendering a dead one. This stays empty until the owner supplies
-         the text; see docs/phase55/INSTALLER-UI.md. -->
+         The repository contains no PRODUCT license text. Cargo.toml declares
+         "Apache-2.0 OR MIT" but no LICENSE or EULA file exists at the repository
+         root or the workspace root. The only licence files in the tree are
+         assets/models/licenses/{Apache-2.0.txt,Qwen-GGUF-NOTICE.txt}, which are
+         the embedded Qwen model's licences, shipped as MSI payload because that
+         model is redistributed inside the product. Showing either of those as
+         the terms a user accepts before installing AetherCore would present an
+         unrelated document as this product's licence.
+
+         So there is nothing truthful to display, and an installer that shows
+         invented licence text is worse than one that shows none. With
+         hyperlinkLicense and an empty LicenseUrl the standard bootstrapper hides
+         the link rather than rendering a dead one. This stays empty until the
+         owner supplies the text; see docs/phase55/INSTALLER-UI.md. -->
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication
           Theme="hyperlinkLicense"

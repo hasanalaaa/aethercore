@@ -60,12 +60,28 @@ rather than asserted here.
 
 **License — deliberately still absent.** `LicenseUrl` stays `""`.
 
-**The repository contains no license text.** `Cargo.toml` declares
-`license = "Apache-2.0 OR MIT"`, but there is no `LICENSE`, `EULA`, or licence
-`.rtf`/`.txt` anywhere in the tree. There is therefore nothing truthful to
-display, and an installer that shows invented licence text is worse than one
-that shows none. With the `hyperlinkLicense` theme and an empty `LicenseUrl`,
-the standard bootstrapper hides the link rather than rendering a dead one.
+**The repository contains no product license text.** `Cargo.toml` declares
+`license = "Apache-2.0 OR MIT"`, but there is no `LICENSE` or `EULA` file at the
+repository root or the workspace root.
+
+The two licence files that *do* exist are not the product's and must not be
+used here:
+
+```
+assets/models/licenses/Apache-2.0.txt        11,358 B
+assets/models/licenses/Qwen-GGUF-NOTICE.txt  11,343 B
+```
+
+Those are the **embedded model's** licences — the Qwen GGUF weights — shipped as
+MSI payload because that model is redistributed inside the product. Displaying
+the Qwen notice, or a bare Apache-2.0 text, as the thing a user accepts before
+installing AetherCore would be presenting an unrelated document as this
+product's terms. That is precisely the invention this item must not commit.
+
+So there is nothing truthful to display, and an installer that shows invented
+licence text is worse than one that shows none. With the `hyperlinkLicense`
+theme and an empty `LicenseUrl`, the standard bootstrapper hides the link
+rather than rendering a dead one.
 
 This is **owner action**: supply the licence text, and `LicenseUrl` (or a
 `LicenseFile`) gets pointed at it. It was not invented here.
