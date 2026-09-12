@@ -21,8 +21,9 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use aethercore_intelligence_core::{
-    EMBEDDED_MODEL_RELATIVE_PATH, EvidenceItem, EvidenceSurface, GenerationBudget, LlamaCppReasoner,
-    LocalReasoner, StreamingReasoner, TypedEvidencePack, embedded_model_entry, verify_model_hash,
+    AssistantEngine, EMBEDDED_MODEL_RELATIVE_PATH, EvidenceItem, EvidenceSurface, GenerationBudget,
+    LlamaCppReasoner, LocalReasoner, RefusalReason, StreamingReasoner, TurnOutcome,
+    TypedEvidencePack, embedded_model_entry, verify_model_hash,
 };
 
 /// The workspace root, two levels above this crate.
@@ -143,4 +144,72 @@ fn cancelling_the_real_loop_stops_generation_early() {
         generated.tokens, 3,
         "generation must stop at the token the flag was raised on, not run to the ceiling"
     );
+}
+
+fn loaded_engine() -> AssistantEngine {
+    let path = product_root().join(EMBEDDED_MODEL_RELATIVE_PATH);
+    verify_model_hash(&path, &embedded_model_entry()).expect("pinned sha256 must match");
+    let mut reasoner = LlamaCppReasoner::new();
+    reasoner.load(&path).expect("the artifact must load");
+    AssistantEngine::new(Some(Box::new(reasoner)))
+}
+
+/// End to end, against the real model: the failure that matters, proven on the
+/// thing that would actually commit it.
+///
+/// A general chatbot answers "what is the capital of France?" instantly and
+/// correctly. This product must not, because nothing it has measured about this
+/// computer bears on the question — and an assistant that will answer THAT from
+/// training is one that will also answer "is my disk failing?" from training.
+#[test]
+fn the_real_model_refuses_a_question_its_evidence_cannot_answer() {
+    let engine = loaded_engine();
+    assert_eq!(engine.engine_label(), "localModel");
+    let outcome = engine.ask(
+        &pack(),
+        "what is the capital of France?",
+        false,
+        Arc::new(AtomicBool::new(false)),
+        &mut |_| {},
+    );
+    assert_eq!(
+        outcome,
+        TurnOutcome::Refused(RefusalReason::NotCovered),
+        "a question the evidence cannot answer must be refused, not answered"
+    );
+}
+
+/// And the other side of it: a question the evidence DOES answer comes back
+/// grounded, with every citation resolving against the pack it was given.
+#[test]
+fn the_real_model_answers_a_question_its_evidence_covers_and_cites_it() {
+    let engine = loaded_engine();
+    let pack = pack();
+    let outcome = engine.ask(
+        &pack,
+        "what maintenance has run on this machine?",
+        false,
+        Arc::new(AtomicBool::new(false)),
+        &mut |_| {},
+    );
+    match outcome {
+        TurnOutcome::Answered {
+            answer,
+            citations,
+            tokens,
+        } => {
+            assert!(tokens > 0);
+            assert!(!citations.is_empty(), "an answer must cite: {answer:?}");
+            for citation in &citations {
+                assert!(
+                    pack.resolves(citation),
+                    "citation {citation:?} does not resolve against the pack it came from"
+                );
+            }
+            // The marker survives into the text so the renderer can turn it into
+            // an inline chip beside the clause it belongs to.
+            assert!(answer.contains("[E"), "no inline marker in {answer:?}");
+        }
+        other => panic!("expected a grounded answer, got {other:?}"),
+    }
 }

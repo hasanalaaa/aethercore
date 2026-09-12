@@ -147,6 +147,30 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
     intelligence_core.activate_embedded_default(product_dir.as_path());
     let intelligence_core = Arc::new(intelligence_core);
 
+    // Phase 56: the grounded assistant. It answers from the SAME evidence pack
+    // the insight path composes, and it is the only consumer of token-level
+    // generation — `DBT-P56-002` records that the insight path's own model call
+    // has never produced a token and still degrades to the rule engine.
+    //
+    // A failure to load is NOT fatal and is NOT silent: the coordinator's engine
+    // label then reads `disabled`, and every turn terminates FAULTED with
+    // `assistant.fault.modelUnavailable` rather than with an empty answer.
+    let assistant_reasoner =
+        match aethercore_intelligence_core::load_streaming_reasoner(product_dir.as_path()) {
+            Ok(reasoner) => Some(reasoner),
+            Err(error) => {
+                eprintln!(
+                    "assistant: embedded reasoner unavailable ({error}); every turn will fault \
+                     with assistant.fault.modelUnavailable — defect"
+                );
+                None
+            }
+        };
+    let assistant = Arc::new(crate::assistant::AssistantCoordinator::new(
+        db.clone(),
+        assistant_reasoner,
+    ));
+
     // Recovery is centralized and deliberately observation-only. A failure aborts service startup;
     // no client can enter the operation kernel before every domain has reconciled its journal.
     kernel
@@ -183,6 +207,7 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
         timeline,
         care,
         intelligence_core,
+        assistant,
     })
 }
 

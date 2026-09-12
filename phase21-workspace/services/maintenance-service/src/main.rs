@@ -9,6 +9,7 @@ use std::{
 use anyhow::{Context, Result};
 use tracing::{error, warn};
 
+mod assistant;
 mod care;
 #[cfg(windows)]
 mod composition;

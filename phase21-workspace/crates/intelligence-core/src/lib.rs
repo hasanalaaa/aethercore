@@ -26,7 +26,7 @@ pub use engine::{
     MAX_MODEL_RAM_BUDGET_BYTES, ReasonerSelector,
 };
 pub use llama::{
-    activate_embedded_reasoner, embedded_model_entry, verify_model_hash, LlamaCppReasoner,
+    activate_embedded_reasoner, load_streaming_reasoner, embedded_model_entry, verify_model_hash, LlamaCppReasoner,
     ModelManifestEntry, EMBEDDED_MODEL_RELATIVE_PATH,
 };
 pub use model::{

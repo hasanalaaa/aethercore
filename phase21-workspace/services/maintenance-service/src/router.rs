@@ -68,6 +68,8 @@ pub struct ServiceContext {
     pub care: Arc<crate::care::CareCoordinator>,
     /// Phase 23: Embedded Local Intelligence — advisory-only, ephemeral session state.
     pub intelligence_core: Arc<crate::intelligence::IntelligenceCoordinator>,
+    /// Phase 56: the grounded assistant — answers only from collected evidence.
+    pub assistant: Arc<crate::assistant::AssistantCoordinator>,
 }
 
 impl ServiceContext {
@@ -1346,6 +1348,68 @@ pub fn handle_request(
                 // reads as "you have no insights" rather than "here is what is
                 // left". It now carries the same set the event does.
                 Ok(Some(response::Payload::InsightsResponse(response)))
+            }
+            // ---------------- Phase 56: the grounded assistant ----------------------
+            request::Payload::AskAssistant(v) => {
+                request_context.checkpoint().map_err(err)?;
+                // Validated at the boundary, trusted internally. A turn id is a
+                // handle the client will send back to cancel, so it is checked
+                // for shape before it is ever used as a map key.
+                if let Err(key) = crate::assistant::validate(&v.turn_id, &v.question) {
+                    return Err(ServiceError::invalid("assistant", key, key));
+                }
+                // Observer-effect guard: no inference while any mutation or care
+                // run holds the machine-wide lease. Kernel state is the single
+                // source of truth, exactly as the insight path reads it.
+                let mutation_active = ctx.kernel.mutations().is_active();
+                let turn = ctx.assistant.ask(
+                    &principal_key,
+                    &v.turn_id,
+                    &v.question,
+                    mutation_active,
+                    ctx.kernel.events().clone(),
+                );
+                publish(
+                    ctx,
+                    &principal_key,
+                    EventKind::AssistantTurn,
+                    "",
+                    Some(event_envelope::Payload::AssistantTurn(turn.clone())),
+                );
+                Ok(Some(response::Payload::AssistantTurn(
+                    v1::AssistantTurnResponse { turn: Some(turn) },
+                )))
+            }
+            request::Payload::CancelAssistantTurn(v) => {
+                request_context.checkpoint().map_err(err)?;
+                if v.turn_id.is_empty() {
+                    return Err(ServiceError::invalid(
+                        "assistant",
+                        "assistant.invalid.turnId",
+                        "assistant.invalid.turnId",
+                    ));
+                }
+                // A turn that already finished cannot be cancelled, and that is a
+                // STATE rather than a fault: two windows can press Escape on the
+                // same turn, and the terminal envelope on the stream settles it
+                // either way. The reply reports what was found.
+                let in_flight = ctx.assistant.cancel(&principal_key, &v.turn_id);
+                Ok(Some(response::Payload::AssistantTurn(
+                    v1::AssistantTurnResponse {
+                        turn: Some(v1::AssistantTurn {
+                            turn_id: v.turn_id,
+                            schema_version:
+                                aethercore_intelligence_core::ASSISTANT_SCHEMA_V1,
+                            state: if in_flight {
+                                v1::AssistantTurnState::Streaming as i32
+                            } else {
+                                v1::AssistantTurnState::Cancelled as i32
+                            },
+                            engine_label: ctx.assistant.engine_label().into(),
+                            ..Default::default()
+                        }),
+                    },
+                )))
             }
             // ---------------- Phase 26/27: honest platform + engine surface ----------
             request::Payload::GetPlatformCapabilities(_) => {

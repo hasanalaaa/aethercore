@@ -135,17 +135,31 @@ pub trait StreamingReasoner: Send + Sync {
     ) -> Result<Generated, String>;
 }
 
-/// Renders the prompt the model is given.
+/// The rules the model answers under. Kept separate from the evidence so a
+/// chat-template model can put it where its template expects a system turn.
+pub const SYSTEM_PROMPT: &str = "You are an offline diagnostic assistant for one computer. \
+Answer ONLY from the EVIDENCE block. Every sentence you write MUST end with the tag of the \
+evidence it rests on, in square brackets, exactly as the tag is written in the block. A sentence \
+without a tag is not allowed. Never invent a tag that is not in the block. Never use general \
+knowledge about computers. Answer in at most four sentences.\n\n\
+Example EVIDENCE:\n\
+[E1] surface=MaintenanceHistory id=plan-0007 :: plan plan-0007 domain startup stage completed\n\
+[E2] surface=TimelinePattern id=pattern-disk-2 :: event class Disk code DSK-2 recurred twice\n\
+Example QUESTION: what has been happening?\n\
+Example ANSWER: A startup plan completed [E1]. A disk event has recurred twice [E2].\n\n\
+If the EVIDENCE block does not answer the question, reply with exactly NO EVIDENCE and nothing \
+else.";
+
+/// The evidence block and the question — the user turn.
 ///
-/// The pack is numbered `[E1]…[En]` and the model is told to mark every claim
-/// with the tag it rests on. That is the whole grounding mechanism: tags are
-/// machine-checkable against the pack, where "does this sentence follow from the
-/// evidence?" is not. The model can still write an unsupported sentence — it
-/// just cannot make one survive [`ground`].
+/// The pack is numbered `[E1]…[En]`, and that numbering is the whole grounding
+/// mechanism: tags are machine-checkable against the pack, where "does this
+/// sentence follow from the evidence?" is not. The model can still write an
+/// unsupported sentence — it just cannot make one survive [`ground`].
 ///
 /// Pack details are pre-typed structured summaries, never raw host prose, so a
 /// hostile string cannot appear where an instruction would be read.
-pub fn render_prompt(pack: &TypedEvidencePack, question: &str) -> String {
+pub fn render_user_message(pack: &TypedEvidencePack, question: &str) -> String {
     let mut evidence = String::new();
     for (index, item) in pack.items.iter().enumerate() {
         evidence.push_str(&format!(
@@ -156,28 +170,39 @@ pub fn render_prompt(pack: &TypedEvidencePack, question: &str) -> String {
             item.detail
         ));
     }
+    format!("EVIDENCE:\n{evidence}\nQUESTION: {question}")
+}
+
+/// System rules plus the user turn, for a reasoner with no chat template of its
+/// own. The embedded model wraps the two halves in its own template instead.
+pub fn render_prompt(pack: &TypedEvidencePack, question: &str) -> String {
     format!(
-        "You are an offline diagnostic assistant for one computer. You may state ONLY what the \
-         evidence below supports. Mark every claim with the tag of the evidence it rests on, like \
-         [E1]. If the evidence does not answer the question, reply with exactly: NO EVIDENCE. \
-         Never guess, never use general knowledge about computers, never mention evidence tags \
-         that are not listed.\n\nEVIDENCE:\n{evidence}\nQUESTION: {question}\n\nANSWER:"
+        "{SYSTEM_PROMPT}\n\n{}\n\nANSWER:",
+        render_user_message(pack, question)
     )
 }
 
 /// The citation gate.
 ///
-/// Extracts `[En]` markers, resolves them against the pack, and returns the text
-/// with the markers stripped alongside the citations they resolved to. Returns
-/// `None` when nothing resolved or nothing is left once the markers are gone —
-/// both of which mean the model produced no grounded claim, so there is nothing
-/// this product is allowed to show.
+/// Extracts `[En]` markers and resolves them against the pack. A marker that
+/// resolves **stays in the text** — the renderer turns it into an inline
+/// evidence chip, so a reader can see which clause rests on which observation,
+/// and the sentence keeps its grammar (stripping a sentence-initial `[E1]` left
+/// answers starting "indicates that…"). A marker that does NOT resolve is
+/// removed, because a citation of evidence the product does not hold is worse
+/// than no citation at all.
+///
+/// Returns `None` when nothing resolved, when nothing is left, or when the model
+/// used its own refusal token — all three mean there is no grounded claim here,
+/// so there is nothing this product is allowed to show.
 pub fn ground(raw: &str, pack: &TypedEvidencePack) -> Option<(String, Vec<Citation>)> {
     let mut citations: Vec<Citation> = Vec::new();
     let mut text = String::with_capacity(raw.len());
+    // The same answer with EVERY marker removed, resolvable or not. Only used to
+    // decide whether the model's whole reply was its refusal token.
+    let mut prose = String::with_capacity(raw.len());
     let bytes = raw.as_bytes();
     let mut cursor = 0usize;
-    let mut saw_marker = false;
 
     while cursor < bytes.len() {
         if bytes[cursor] == b'[' {
@@ -190,41 +215,59 @@ pub fn ground(raw: &str, pack: &TypedEvidencePack) -> Option<(String, Vec<Citati
                     scan += 1;
                 }
                 if scan > digits_start && scan < bytes.len() && bytes[scan] == b']' {
-                    saw_marker = true;
                     let index: usize = raw[digits_start..scan].parse().unwrap_or(0);
-                    if index >= 1
-                        && let Some(item) = pack.items.get(index - 1)
-                    {
-                        let citation = Citation {
-                            evidence_id: item.evidence_id.clone(),
-                            surface: item.surface,
-                        };
-                        if !citations.contains(&citation) {
-                            citations.push(citation);
+                    match index.checked_sub(1).and_then(|i| pack.items.get(i)) {
+                        Some(item) => {
+                            let citation = Citation {
+                                evidence_id: item.evidence_id.clone(),
+                                surface: item.surface,
+                            };
+                            if !citations.contains(&citation) {
+                                citations.push(citation);
+                            }
+                            // Normalised spelling, so the renderer has one shape
+                            // to match rather than `[e1]` and `[E1]` both.
+                            text.push_str(&format!("[E{index}]"));
                         }
+                        // Unresolvable: dropped, silently, from the text.
+                        None => {}
                     }
                     cursor = scan + 1;
                     continue;
                 }
             }
         }
-        // Not a marker: copy the byte. Indexing is safe because markers are pure
-        // ASCII, so `cursor` only ever lands on a char boundary.
+        // Not a marker: copy the character. Markers are pure ASCII, so `cursor`
+        // only ever lands on a char boundary.
         let char_len = utf8_len(bytes[cursor]);
-        text.push_str(&raw[cursor..(cursor + char_len).min(raw.len())]);
-        cursor += char_len;
+        let end = (cursor + char_len).min(raw.len());
+        text.push_str(&raw[cursor..end]);
+        prose.push_str(&raw[cursor..end]);
+        cursor = end;
     }
 
-    let _ = saw_marker;
     let cleaned = collapse_whitespace(&text);
     if citations.is_empty() || cleaned.is_empty() {
         return None;
     }
-    // The model's own refusal token, honoured rather than reinterpreted.
-    if cleaned.to_ascii_uppercase().contains("NO EVIDENCE") {
+    // The model's own refusal, honoured rather than reinterpreted. Matched on
+    // the whole answer stripped of markers and punctuation — not `contains`,
+    // because a grounded answer may legitimately quote the phrase back while
+    // explaining what it could and could not find.
+    if is_refusal_token(&collapse_whitespace(&prose)) {
         return None;
     }
     Some((cleaned, citations))
+}
+
+/// True when the answer, with markers and surrounding punctuation removed, is
+/// the refusal token and nothing else.
+fn is_refusal_token(cleaned: &str) -> bool {
+    let core: String = cleaned
+        .chars()
+        .filter(|ch| ch.is_alphanumeric() || ch.is_whitespace())
+        .collect();
+    collapse_whitespace(&core).eq_ignore_ascii_case("no evidence")
 }
 
 fn utf8_len(first: u8) -> usize {
@@ -448,9 +491,13 @@ mod tests {
         assert_eq!(outcome, TurnOutcome::Refused(RefusalReason::NotCovered));
     }
 
+    /// A resolvable marker STAYS in the answer — the renderer turns it into an
+    /// inline evidence chip, and the sentence keeps its grammar. Stripping a
+    /// sentence-initial one is how the first cut of this produced answers that
+    /// began "indicates that…".
     #[test]
-    fn an_answer_whose_markers_resolve_is_admitted_without_them() {
-        let engine = engine(answered("Two cleanup plans ran this week [E1][E2]."));
+    fn an_answer_whose_markers_resolve_keeps_them_for_the_renderer() {
+        let engine = engine(answered("A cleanup plan ran [E1] and a disk event recurred [E2]."));
         let outcome = engine.ask(
             &pack_of(&["fact-a", "fact-b"]),
             "what ran?",
@@ -462,13 +509,25 @@ mod tests {
             TurnOutcome::Answered {
                 answer, citations, ..
             } => {
-                assert_eq!(answer, "Two cleanup plans ran this week .");
+                assert_eq!(answer, "A cleanup plan ran [E1] and a disk event recurred [E2].");
                 assert_eq!(citations.len(), 2);
                 assert_eq!(citations[0].evidence_id, "fact-a");
                 assert_eq!(citations[1].evidence_id, "fact-b");
             }
             other => panic!("expected an answer, got {other:?}"),
         }
+    }
+
+    /// A marker naming evidence the pack does not hold is removed from the text
+    /// as well as from the citations. A false citation on screen is worse than
+    /// no citation at all.
+    #[test]
+    fn an_unresolvable_marker_is_removed_from_the_answer_too() {
+        let pack = pack_of(&["fact-a"]);
+        let (text, citations) =
+            ground("The disk is fine [E1] and the fan failed [E9].", &pack).expect("grounded");
+        assert_eq!(text, "The disk is fine [E1] and the fan failed .");
+        assert_eq!(citations.len(), 1);
     }
 
     /// THE failure that matters, #2. A model failure is a declared fault with a
@@ -740,12 +799,24 @@ mod tests {
 
     #[test]
     fn the_prompt_numbers_every_pack_item_and_carries_the_question() {
-        let prompt = render_prompt(&pack_of(&["fact-a", "fact-b"]), "what happened?");
-        assert!(prompt.contains("[E1]"), "{prompt}");
-        assert!(prompt.contains("[E2]"), "{prompt}");
-        assert!(prompt.contains("id=fact-a"), "{prompt}");
-        assert!(prompt.contains("QUESTION: what happened?"), "{prompt}");
+        let message = render_user_message(&pack_of(&["fact-a", "fact-b"]), "what happened?");
+        assert!(message.contains("[E1] surface="), "{message}");
+        assert!(message.contains("[E2] surface="), "{message}");
+        assert!(message.contains("id=fact-a"), "{message}");
+        assert!(message.contains("QUESTION: what happened?"), "{message}");
+        let prompt = render_prompt(&pack_of(&["fact-a"]), "q");
+        assert!(prompt.contains(SYSTEM_PROMPT), "{prompt}");
         assert!(prompt.contains("NO EVIDENCE"), "{prompt}");
+    }
+
+    /// The one-shot example in the system prompt is not decoration: without it
+    /// the 1.5B model wrote fluent grounded-SOUNDING prose and emitted no tags
+    /// at all, so every real answer was discarded by the gate. Measured, three
+    /// questions, zero markers. With it, tags appear on every sentence.
+    #[test]
+    fn the_system_prompt_shows_the_tag_format_rather_than_only_describing_it() {
+        assert!(SYSTEM_PROMPT.contains("Example ANSWER:"), "{SYSTEM_PROMPT}");
+        assert!(SYSTEM_PROMPT.contains("[E1]. "), "{SYSTEM_PROMPT}");
     }
 
     #[test]
@@ -754,10 +825,10 @@ mod tests {
     }
 
     #[test]
-    fn grounding_keeps_arabic_intact_while_stripping_markers() {
+    fn grounding_leaves_arabic_intact() {
         let pack = pack_of(&["fact-a"]);
         let (text, citations) = ground("خطتان نُفّذتا هذا الأسبوع [E1].", &pack).expect("grounded");
-        assert_eq!(text, "خطتان نُفّذتا هذا الأسبوع .");
+        assert_eq!(text, "خطتان نُفّذتا هذا الأسبوع [E1].");
         assert_eq!(citations.len(), 1);
     }
 

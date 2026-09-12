@@ -75,6 +75,26 @@ pub fn activate_embedded_reasoner(product_root: &Path) -> Result<String, String>
     Ok(label)
 }
 
+/// Verifies and loads the embedded artifact as a STREAMING reasoner — the engine
+/// the assistant answers from.
+///
+/// Separate from [`activate_embedded_reasoner`], which returns the insight
+/// path's `LocalReasoner`. The two traits have different shapes (one streams
+/// under a cancellable budget, one returns a finished insight vector), so one
+/// object cannot satisfy both; this is the one the assistant needs.
+pub fn load_streaming_reasoner(
+    product_root: &Path,
+) -> Result<Box<dyn crate::assistant::StreamingReasoner>, String> {
+    let model_path = product_root.join(EMBEDDED_MODEL_RELATIVE_PATH);
+    verify_model_hash(&model_path, &embedded_model_entry())?;
+    let mut reasoner = LlamaCppReasoner::new();
+    LocalReasoner::load(&mut reasoner, &model_path)?;
+    if !LocalReasoner::is_loaded(&reasoner) {
+        return Err("loader returned success but model is not loaded".into());
+    }
+    Ok(Box::new(reasoner))
+}
+
 /// LlamaCpp-backed reasoner — the PERMANENT default engine when the artifact verifies.
 ///
 /// Bounded-context contract (unchanged): prompt ≤ [`Self::MAX_PROMPT_CHARS`] chars,
@@ -219,12 +239,18 @@ impl LlamaCppReasoner {
     }
 }
 
-/// Phase 56 — streaming generation.
+/// Phase 56 — real token-level generation.
 ///
-/// Committed first as the honest current state: `DBT-P56-002`. Everything below
-/// this line is replaced by the real loop in the next commit; it exists so
-/// `tests/embedded_generation.rs` fails on an ASSERTION with a readable reason
-/// rather than on a missing method, which would stop the whole crate compiling.
+/// `DBT-P56-002`: this did not exist. `infer_embedded` returned `Err`
+/// unconditionally, so the artifact verified its sha256, loaded, built a context
+/// at startup — and then every request in the product's life fell through to the
+/// deterministic rule engine while `engine_label` still read `localModel`.
+///
+/// The loop below is the whole of it: tokenize the grounded prompt, decode it,
+/// then greedily sample one token at a time, checking the three ceilings BETWEEN
+/// tokens — cancel, deadline, token count. Greedy rather than sampled because
+/// the same question over the same evidence must give the same answer; a
+/// diagnostic tool that says something different each time you ask is not one.
 impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
     fn is_loaded(&self) -> bool {
         self.loaded
@@ -232,12 +258,178 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
 
     fn generate(
         &self,
-        _pack: &crate::model::TypedEvidencePack,
-        _question: &str,
-        _budget: &crate::assistant::GenerationBudget,
-        _sink: &mut dyn FnMut(&str),
+        pack: &crate::model::TypedEvidencePack,
+        question: &str,
+        budget: &crate::assistant::GenerationBudget,
+        sink: &mut dyn FnMut(&str),
     ) -> Result<crate::assistant::Generated, String> {
-        Err("token-level generation is not wired (DBT-P56-002)".into())
+        // The shipped artifact is qwen2.5-1.5b-INSTRUCT, and an instruct model
+        // follows its rules far better inside its own chat template than in a
+        // flat prompt. Measured: flat, the model echoed the instruction text
+        // back into the answer ("Mark every claim with the tag of the evidence
+        // it rests on: NO EVIDENCE") and kept writing past its conclusion.
+        // `str_to_token` parses special tokens, so the control tokens below are
+        // real ones, not literal text; `<|im_end|>` is an EOG token, which is
+        // what ends the loop naturally instead of the 512-token ceiling.
+        let prompt = format!(
+            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+            crate::assistant::SYSTEM_PROMPT,
+            crate::assistant::render_user_message(pack, question),
+        );
+        if prompt.len() > Self::MAX_PROMPT_CHARS {
+            return Err(format!(
+                "prompt is {} chars, over the {} bounded-context contract",
+                prompt.len(),
+                Self::MAX_PROMPT_CHARS
+            ));
+        }
+        #[cfg(feature = "embedded-model")]
+        {
+            self.generate_embedded(&prompt, budget, sink)
+        }
+        #[cfg(not(feature = "embedded-model"))]
+        {
+            let _ = (budget, sink);
+            Err("embedded-model feature not compiled".into())
+        }
+    }
+}
+
+#[cfg(feature = "embedded-model")]
+impl LlamaCppReasoner {
+    /// Context window for one turn. The prompt is bounded at 8,192 CHARS, which
+    /// is well under 2,048 tokens for this tokenizer, and the answer is bounded
+    /// at 512 tokens — so 2,048 holds both with room, and keeps RAM far under
+    /// the declared budget for a 1.5B q4_k_m model.
+    const CONTEXT_TOKENS: u32 = 2_048;
+
+    /// Repetition penalty window and strength. See the sampler chain below.
+    const PENALTY_WINDOW_TOKENS: i32 = 256;
+    const PENALTY_REPEAT: f32 = 1.15;
+
+    fn generate_embedded(
+        &self,
+        prompt: &str,
+        budget: &crate::assistant::GenerationBudget,
+        sink: &mut dyn FnMut(&str),
+    ) -> Result<crate::assistant::Generated, String> {
+        use llama_cpp_2::llama_batch::LlamaBatch;
+        use llama_cpp_2::model::AddBos;
+        use llama_cpp_2::sampling::LlamaSampler;
+
+        let handle = self.backend.as_ref().ok_or("model not loaded")?;
+        let model = &handle._model;
+        let backend = backend_global();
+
+        // Never: the template supplies the structure, and Qwen2.5 declares
+        // `add_bos_token: false`. Forcing one shifts every position by a token.
+        let tokens = model
+            .str_to_token(prompt, AddBos::Never)
+            .map_err(|error| format!("tokenize failed: {error}"))?;
+        let room = Self::CONTEXT_TOKENS as usize;
+        if tokens.len() + budget.max_tokens as usize >= room {
+            return Err(format!(
+                "prompt is {} tokens; {} plus {} generated exceeds the {room}-token window",
+                tokens.len(),
+                tokens.len(),
+                budget.max_tokens
+            ));
+        }
+
+        let ctx_params = llama_cpp_2::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(Self::CONTEXT_TOKENS))
+            .with_n_batch(Self::CONTEXT_TOKENS);
+        let mut ctx = model
+            .new_context(backend, ctx_params)
+            .map_err(|error| format!("context init failed: {error}"))?;
+
+        let mut batch = LlamaBatch::new(tokens.len().max(1), 1);
+        batch
+            .add_sequence(&tokens, 0, false)
+            .map_err(|error| format!("batch fill failed: {error}"))?;
+        ctx.decode(&mut batch)
+            .map_err(|error| format!("prompt decode failed: {error}"))?;
+
+        // Temperature 0, with a repetition penalty in front of it.
+        //
+        // Greedy alone is deterministic — the same question over the same
+        // evidence gives the same answer, which a diagnostic tool owes its user
+        // — but a 1.5B model reading back a small evidence pack falls into a
+        // loop: measured here, every answer ran to the full 512-token ceiling
+        // repeating one clause ("is the only evidence that answers the question"
+        // x14). The penalty is applied to the logits BEFORE the argmax, so the
+        // result is still a deterministic function of the prompt.
+        //
+        // 1.15 over the last 256 tokens: enough to break a repeated clause,
+        // gentle enough that an evidence id can still be named twice in one
+        // answer, which a grounded answer routinely needs to do.
+        let mut sampler = LlamaSampler::chain_simple([
+            LlamaSampler::penalties(Self::PENALTY_WINDOW_TOKENS, Self::PENALTY_REPEAT, 0.0, 0.0),
+            LlamaSampler::greedy(),
+        ]);
+
+        let mut position = tokens.len() as i32;
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut emitted = 0u32;
+        let mut cancelled = false;
+
+        while emitted < budget.max_tokens {
+            // The three ceilings, checked between tokens. Cancel first: a user
+            // who pressed Escape should not pay for one more token.
+            if budget.cancelled() {
+                cancelled = true;
+                break;
+            }
+            if budget.expired() {
+                return Err(format!(
+                    "deadline exceeded after {emitted} token(s)"
+                ));
+            }
+
+            let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+            if model.is_eog_token(token) {
+                break;
+            }
+            sampler.accept(token);
+
+            // Accumulate BYTES, not strings: a multi-byte character can span two
+            // tokens, and decoding each piece on its own would emit replacement
+            // characters into Arabic mid-word.
+            //
+            // The 8-byte first guess is the binding's own default and it is not
+            // always enough — an Arabic token overran it and the run died
+            // "Insufficient Buffer Space -10". The error carries the size it
+            // needed as a negative, so the retry is exact rather than a guess.
+            let piece = match model.token_to_piece_bytes(token, 8, false, None) {
+                Ok(piece) => piece,
+                Err(llama_cpp_2::TokenToStringError::InsufficientBufferSpace(needed)) => model
+                    .token_to_piece_bytes(
+                        token,
+                        needed.unsigned_abs() as usize,
+                        false,
+                        None,
+                    )
+                    .map_err(|error| format!("detokenize failed after resize: {error}"))?,
+                Err(error) => return Err(format!("detokenize failed: {error}")),
+            };
+            bytes.extend_from_slice(&piece);
+            emitted += 1;
+            sink(&String::from_utf8_lossy(&bytes));
+
+            batch.clear();
+            batch
+                .add(token, position, &[0], true)
+                .map_err(|error| format!("batch append failed: {error}"))?;
+            position += 1;
+            ctx.decode(&mut batch)
+                .map_err(|error| format!("decode failed at token {emitted}: {error}"))?;
+        }
+
+        Ok(crate::assistant::Generated {
+            text: String::from_utf8_lossy(&bytes).into_owned(),
+            tokens: emitted,
+            cancelled,
+        })
     }
 }
 

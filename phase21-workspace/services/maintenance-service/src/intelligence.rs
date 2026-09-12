@@ -69,6 +69,47 @@ impl EphemeralInsights {
     }
 }
 
+/// The bounded evidence pack, composed from PUBLIC read APIs of existing domains
+/// and nothing else (I1/I4).
+///
+/// Extracted in P56 because the assistant answers from the SAME pack the insight
+/// path summarises. Two compositions would mean two answers to "what has this
+/// product measured?", and the whole grounding contract rests on there being one.
+pub fn compose_evidence_pack(db: &Database, owner_principal_key: &str) -> TypedEvidencePack {
+    let mut pack = TypedEvidencePack::default();
+
+    // Surface 1: latest maintenance history rows (existing executions/plans).
+    if let Ok(rows) = db.maintenance_executions_for_owner(owner_principal_key, 8) {
+        for row in rows.into_iter().take(8) {
+            pack.push(EvidenceItem {
+                evidence_id: row.plan_id.clone(),
+                surface: EvidenceSurface::MaintenanceHistory,
+                detail: format!(
+                    "plan {} domain {} stage {}",
+                    row.plan_id,
+                    if row.domain.is_empty() { "n/a" } else { &row.domain },
+                    if row.stage.is_empty() { "n/a" } else { &row.stage }
+                ),
+            });
+        }
+    }
+
+    // Surface 2: recent timeline events as history evidence (bounded read).
+    if let Ok(timeline) =
+        aethercore_timeline_intelligence::ingest::ingest_owner_history(db, owner_principal_key)
+    {
+        for event in timeline.into_iter().take(12) {
+            pack.push(EvidenceItem {
+                evidence_id: event.semantic_identity_sha256.clone(),
+                surface: EvidenceSurface::TimelinePattern,
+                detail: format!("event class {:?} code {}", event.class, event.code),
+            });
+        }
+    }
+
+    pack
+}
+
 pub struct IntelligenceCoordinator {
     db: Arc<Database>,
     selector: Arc<ReasonerSelector>,
@@ -151,48 +192,7 @@ impl IntelligenceCoordinator {
         mutation_or_care_active: bool,
         question: &str,
     ) -> Result<v1::InsightsResponse, String> {
-        let mut pack = TypedEvidencePack::default();
-
-        // Surface 1: latest maintenance history rows (existing executions/plans).
-        if let Ok(rows) = self
-            .db
-            .maintenance_executions_for_owner(owner_principal_key, 8)
-        {
-            for row in rows.into_iter().take(8) {
-                pack.push(EvidenceItem {
-                    evidence_id: row.plan_id.clone(),
-                    surface: EvidenceSurface::MaintenanceHistory,
-                    detail: format!(
-                        "plan {} domain {} stage {}",
-                        row.plan_id,
-                        if row.domain.is_empty() {
-                            "n/a"
-                        } else {
-                            &row.domain
-                        },
-                        if row.stage.is_empty() {
-                            "n/a"
-                        } else {
-                            &row.stage
-                        }
-                    ),
-                });
-            }
-        }
-
-        // Surface 2: recent timeline events as history evidence (bounded read).
-        if let Ok(timeline) = aethercore_timeline_intelligence::ingest::ingest_owner_history(
-            self.db.as_ref(),
-            owner_principal_key,
-        ) {
-            for event in timeline.into_iter().take(12) {
-                pack.push(EvidenceItem {
-                    evidence_id: event.semantic_identity_sha256.clone(),
-                    surface: EvidenceSurface::TimelinePattern,
-                    detail: format!("event class {:?} code {}", event.class, event.code),
-                });
-            }
-        }
+        let pack = compose_evidence_pack(self.db.as_ref(), owner_principal_key);
 
         // Empty evidence → typed empty response; no inference call is made.
         if pack.items.is_empty() {
