@@ -219,6 +219,28 @@ impl LlamaCppReasoner {
     }
 }
 
+/// Phase 56 — streaming generation.
+///
+/// Committed first as the honest current state: `DBT-P56-002`. Everything below
+/// this line is replaced by the real loop in the next commit; it exists so
+/// `tests/embedded_generation.rs` fails on an ASSERTION with a readable reason
+/// rather than on a missing method, which would stop the whole crate compiling.
+impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
+    fn is_loaded(&self) -> bool {
+        self.loaded
+    }
+
+    fn generate(
+        &self,
+        _pack: &crate::model::TypedEvidencePack,
+        _question: &str,
+        _budget: &crate::assistant::GenerationBudget,
+        _sink: &mut dyn FnMut(&str),
+    ) -> Result<crate::assistant::Generated, String> {
+        Err("token-level generation is not wired (DBT-P56-002)".into())
+    }
+}
+
 /// One llama.cpp backend per process (binding requirement).
 #[cfg(feature = "embedded-model")]
 fn backend_global() -> &'static llama_cpp_2::llama_backend::LlamaBackend {

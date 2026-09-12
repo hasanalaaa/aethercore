@@ -11,10 +11,16 @@
 //! I5 air-gapped: artifact manifest with pinned sha256, fail-closed loader, zero
 //!    network dependencies (audit gate enforces).
 
+pub mod assistant;
 pub mod engine;
 pub mod llama;
 pub mod model;
 
+pub use assistant::{
+    ASSISTANT_DEADLINE, ASSISTANT_SCHEMA_V1, AssistantEngine, GenerationBudget, Generated,
+    MAX_ANSWER_TOKENS, MAX_QUESTION_CHARS, RefusalReason, StreamingReasoner, TurnOutcome, ground,
+    render_prompt,
+};
 pub use engine::{
     DeterministicFallbackReasoner, INFERENCE_TIMEOUT, IntelligenceError, LocalReasoner,
     MAX_MODEL_RAM_BUDGET_BYTES, ReasonerSelector,

@@ -30,6 +30,7 @@ fn main() {
         "care.proto",
         "insights.proto",
         "capabilities.proto",
+        "assistant.proto",
         "events.proto",
         "aethercore.proto",
     ] {

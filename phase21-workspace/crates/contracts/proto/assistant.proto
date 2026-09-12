@@ -1,0 +1,106 @@
+syntax = "proto3";
+package aethercore.v1;
+
+// Phase 56 — the grounded local assistant.
+//
+// The shape argued for in `docs/phase56/DIRECTION.md` Part 2.A, stated there in
+// full BEFORE anything here was implemented, because a wire change is a
+// published-contract change. Nothing has shipped to a user, so breaking the wire
+// is free today and expensive after the first release.
+//
+// This is a SEPARATE verb family from insights.proto on purpose. An insight is
+// something the product volunteers about the machine; a turn is something the
+// user asked for, and it can end in a refusal — a state no insight has. Folding
+// a conversation into `RequestInsightRequest.question` (which exists, and is
+// answered by a rule engine that cannot answer a question) is what made commit
+// 2be8396 claim a chat that was never there. See DBT-P56-001.
+//
+// THE CONSTRAINT THAT DECIDES THE SHAPE: this product drops any claim that
+// cannot cite its evidence. An assistant answering from a 1.5B model's training
+// rather than from collected measurements is exactly what that rule exists to
+// prevent. So a turn either resolves every citation against the evidence pack it
+// was given, or it is not an answer at all.
+
+// One item of the bounded evidence pack a turn was allowed to draw on.
+message AssistantEvidenceRef {
+  string evidence_id = 1;
+  // The EvidenceSurface vocabulary, unchanged from insights.proto:
+  // bottleneckReport | repairDiagnosis | timelinePattern | maintenanceHistory |
+  // securityFinding.
+  string surface = 2;
+  // The raw observation the evidence chip expands to. Never a restatement of
+  // the claim — the observation itself.
+  string detail = 3;
+}
+
+enum AssistantTurnState {
+  ASSISTANT_TURN_STATE_UNSPECIFIED = 0;
+  // Generation is running. `answer` carries what has been produced so far and
+  // is PROVISIONAL: the citation gate can only run on a complete answer, so a
+  // client must not present streaming text as an answer.
+  ASSISTANT_TURN_STATE_STREAMING = 1;
+  // Terminal. Every claim resolved against the pack; `citations` is non-empty.
+  ASSISTANT_TURN_STATE_ANSWERED = 2;
+  // Terminal. The question could not be grounded. `refusal` says why. This is
+  // NOT a fault and NOT a policy denial — the product simply has not measured
+  // the thing being asked about.
+  ASSISTANT_TURN_STATE_REFUSED = 3;
+  // Terminal. The model was unavailable, exceeded its deadline, or emitted
+  // something unparseable. `fault_key` names which. Never an empty answer, and
+  // never a silent degrade to the rule engine.
+  ASSISTANT_TURN_STATE_FAULTED = 4;
+  // Terminal. The user cancelled; generation actually stopped.
+  ASSISTANT_TURN_STATE_CANCELLED = 5;
+}
+
+enum AssistantRefusalReason {
+  ASSISTANT_REFUSAL_REASON_UNSPECIFIED = 0;
+  // Nothing has been collected at all. The answer is the scan that would fix it.
+  ASSISTANT_REFUSAL_REASON_NO_EVIDENCE = 1;
+  // Evidence exists; none of it bears on the question, so nothing the model
+  // produced could cite it. The generated prose is DISCARDED, never shown.
+  ASSISTANT_REFUSAL_REASON_NOT_COVERED = 2;
+  // Observer-effect guard (I4): no inference while a mutation or care run holds
+  // the machine-wide lease.
+  ASSISTANT_REFUSAL_REASON_MUTATION_ACTIVE = 3;
+  // The single-flight lane is held by another turn.
+  ASSISTANT_REFUSAL_REASON_BUSY = 4;
+}
+
+message AssistantTurn {
+  // Client-assigned, echoed on every delta and on the terminal turn. The client
+  // needs it before the first event arrives, which is why the CLIENT assigns it.
+  string turn_id = 1;
+  uint32 schema_version = 2;
+  AssistantTurnState state = 3;
+  // The ACCUMULATED answer, never a fragment: a client that missed an event is
+  // then never left holding a torn sentence, and the stream's existing replay
+  // and sequence machinery applies unchanged.
+  string answer = 4;
+  // Non-empty exactly when state = ANSWERED.
+  repeated AssistantEvidenceRef citations = 5;
+  // localModel | ruleFallback | disabled. It reports what the engine IS. It does
+  // not become ruleFallback because a generation failed — that is a FAULTED
+  // turn with a reason.
+  string engine_label = 6;
+  AssistantRefusalReason refusal = 7;
+  // assistant.fault.* when state = FAULTED. A message key, not prose.
+  string fault_key = 8;
+  uint32 tokens_emitted = 9;
+  // What the turn was allowed to draw on. Sent on the first turn so the empty
+  // state can say what the assistant can answer TODAY, from counts rather than
+  // from a capability tour.
+  repeated AssistantEvidenceRef pack = 10;
+}
+
+message AskAssistantRequest {
+  string turn_id = 1;
+  string question = 2;
+}
+
+// Its own verb, not the session's CancelRequest. `AskAssistant` has already
+// returned by the time the user presses Escape, so cancelling the REQUEST would
+// cancel nothing.
+message CancelAssistantTurnRequest { string turn_id = 1; }
+
+message AssistantTurnResponse { AssistantTurn turn = 1; }

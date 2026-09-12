@@ -15,6 +15,7 @@ import "timeline.proto";
 import "care.proto";
 import "insights.proto";
 import "capabilities.proto";
+import "assistant.proto";
 
 // Request/Response remain the stable v7 RPC payloads. Session framing lives in events.proto.
 
@@ -109,6 +110,9 @@ message Request {
     RunSecurityAuditRequest run_security_audit = 90;
     // Phase 53: Telemetry Wire Contract — performance window series (additive tag 91).
     GetPerformanceWindowRequest get_performance_window = 91;
+    // Phase 56: the grounded local assistant (additive; next free tags).
+    AskAssistantRequest ask_assistant = 92;
+    CancelAssistantTurnRequest cancel_assistant_turn = 93;
   }
 }
 message Response {
@@ -169,6 +173,8 @@ message Response {
     SecurityAuditResponse security_audit_response = 52;
     // Phase 53: Telemetry Wire Contract — performance window series (additive tag 91).
     PerformanceWindowResponse performance_window = 91;
+    // Phase 56: the grounded local assistant (additive; next free tag).
+    AssistantTurnResponse assistant_turn = 92;
   }
 }
 message RunSecurityAuditRequest {

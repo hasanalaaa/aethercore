@@ -17,6 +17,7 @@ import "timeline.proto";
 import "care.proto";
 import "insights.proto";
 import "capabilities.proto";
+import "assistant.proto";
 
 enum EventKind {
   EVENT_KIND_UNSPECIFIED = 0;
@@ -54,6 +55,8 @@ enum EventKind {
   EVENT_KIND_PLATFORM_CAPABILITIES = 28;
   // Phase 32: Security Audit Domain (additive; next free tag).
   EVENT_KIND_SECURITY_AUDIT = 29;
+  // Phase 56: the grounded local assistant — one event per streamed turn state.
+  EVENT_KIND_ASSISTANT_TURN = 30;
 }
 
 enum MutationLeaseState {
@@ -134,6 +137,8 @@ message EventEnvelope {
     PlatformCapabilitiesResponse platform_capabilities = 37;
     // Phase 32: Security Audit Domain (additive; next free tag).
     SecurityAuditResponse security_audit = 38;
+    // Phase 56: the grounded local assistant (additive; next free tag).
+    AssistantTurn assistant_turn = 39;
   }
 }
 
