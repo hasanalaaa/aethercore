@@ -20,7 +20,7 @@ jobs:
         target: [export_envelope_parse, pg_conf_parse, mysql_conf_parse,
                  pg_slow_log_parse, mysql_slow_log_parse]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly

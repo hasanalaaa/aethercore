@@ -27,7 +27,7 @@ jobs:
       run:
         working-directory: phase21-workspace
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0

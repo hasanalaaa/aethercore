@@ -25,7 +25,7 @@ jobs:
   windows:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install pinned Rust toolchain
@@ -84,7 +84,7 @@ jobs:
   deny-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked
       - name: cargo deny check
