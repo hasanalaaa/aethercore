@@ -1,17 +1,42 @@
+# P59 / ITEM 2: version updates are PAUSED, not removed.
+#
+# Enabling this file in P58 opened twelve pull requests. None of them can pass
+# CI, and the reason is not their content: `ci.yml`'s first step of sixteen is
+# `freeze-dependencies.ps1 -VerifyOnly`, which throws on
+# `release/dependency-freeze.blocker.json` (OMEGA-RB-001). That step fails on
+# `main` too, so every PR opened against this repository fails identically
+# before its diff is ever compiled. Twelve PRs x (1 windows + 5 cargo-fuzz legs
+# + deny-check) is roughly two hours of runner time per Dependabot cycle, all of
+# it spent re-proving one fact already recorded in the ledger.
+#
+# Four of the twelve carry a second, independent defect: the npm ecosystem below
+# points at `/phase21-workspace/apps/ui`, but `pnpm-lock.yaml` lives one level up
+# at `/phase21-workspace`. Dependabot therefore bumps `apps/ui/package.json` and
+# cannot update the lock, and `pnpm --dir apps/ui install --frozen-lockfile`
+# fails with ERR_PNPM_OUTDATED_LOCKFILE (reproduced, exit 1). Those PRs would be
+# un-mergeable even after the freeze lands. `DBT-P59-001`; the directory is left
+# as it is because changing it cannot be verified while updates are paused.
+#
+# `open-pull-requests-limit: 0` stops version updates and leaves security
+# updates alone.
+#
+# TODO: restore the three limits to 5 once `OMEGA-RB-001` is closed - the freeze
+# set committed and `ci.yml`'s windows job reaching step 2 - and fix
+# `DBT-P59-001` in the same change, or the npm PRs come back broken.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: "/phase21-workspace"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
   - package-ecosystem: npm
     directory: "/phase21-workspace/apps/ui"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
