@@ -147,17 +147,70 @@ code — P41 recorded `wbadmin` returning 0 having done nothing.
 Enumerate the target's contents with `-Force` before writing to it, and **do not
 format anything**.
 
-**3.C — if it is not attached**, stop Item 3, record it, and do Item 4's read-only
+**3.C — if it is not attached**, stop Item 3, record it, and do Item 5's read-only
 preparation anyway. Do not start Gate 4. Say plainly that recovery is unproven.
 
 ---
 
-## ITEM 4 — prepare Gate 4 completely, then stop at the owner line
+## ITEM 4 — build the installer the owner actually ships
+
+`AetherCoreSetup.exe` exists: P49 built it (`d0398765…`, 1,128,354,997 B) and
+installed it for the first time anyone ever had. Two things are wrong with that
+artefact today.
+
+**It predates phases 50–54.** Everything since is missing from it — the rebuilt
+Overview, the Settings screen, the local AI chat, the sparkline wiring, the
+storage-capacity provider, and `ba9973b`'s fix for ephemeral insight state
+crossing authenticated principals. That last one is a cross-user data exposure;
+shipping an installer without it is not an option.
+
+**Its first-run experience is broken.** `DBT-P49-002` recorded, by observation:
+
+    title bar reads "AetherCore Setup Setup"
+    the logo is WiX's stock placeholder, not the Æ mark §48.2 made deliberate
+    the welcome screen shows no version and no license
+    progress sits on "Initializing..." for the entire 30-second install
+
+This is the first thing any user sees, before the product they installed. The app
+behind it is careful about every number it shows; its installer is not.
+
+**4.A — build both artefacts from the current source.**
+
+    MSI    → wix build → wix msi validate → check-msi-payload
+    Bundle → wix build Bundle.wxs → AetherCoreSetup.exe
+
+EXPECTED: every exit code 0, `wix msi validate` output **EMPTY** (zero ICE, no
+suppression), payload check PASS, 16 file rows. Record both sha256s and byte
+sizes. Read the Burn chain out of its own manifest with WiX's extractor, not with
+a string scan. EXPECTED: `VCRedist` → `WebView2` → `AetherCoreMsi`.
+
+If Item 1 produced a green CI run, build through that path so the artefact is
+reproducible rather than a local one-off. Say which path you used.
+
+**4.B — fix `DBT-P49-002`.** The bundle's name, its branding, its welcome text and
+its progress reporting. Use the Æ mark already in the icon pipeline. The version
+comes from the same single decider `product-identity` became in P46 — do not add
+a second literal. If the license text does not exist yet, say so rather than
+inventing one.
+
+Progress sitting on "Initializing..." for the whole install is a measuring
+instrument that lies, in the place a user is most likely to believe it. Make it
+report the chained packages as they execute, or say precisely why Burn cannot.
+
+**4.C — install it, then uninstall it through the bundle.** Restore point first,
+verified by enumeration. EXPECTED: the result is indistinguishable from an MSI
+install on every property Gate 5 checks, and uninstall leaves **zero survivors on
+all fourteen**. Record every prompt, dialog and reboot request it produces.
+
+**4.D — screenshot every screen of the installer**, in both languages if it
+supports them, and put them where the owner can see them. He has never seen it.
+
+## ITEM 5 — prepare Gate 4 completely, then stop at the owner line
 
 Gate 4 needs two things no session can supply. Prepare everything else so that
 when the owner supplies them, the gate runs in one pass.
 
-**4.A — nominate candidate devices, with evidence.** Windows Update offers this
+**5.A — nominate candidate devices, with evidence.** Windows Update offers this
 machine zero drivers, so there is no candidate yet. Enumerate what is attached and
 propose candidates the owner can choose from:
 
@@ -170,12 +223,12 @@ Present them as a short list with the risk of each stated. The Intel Arc display
 driver (31.0.101.5007, 2023-11-18) is **not** a candidate — a display driver is
 exactly the class that must not be the safe test device. Say so if it appears.
 
-**4.B — write the Gate 4 runbook** as an executable script plus a checklist: the
+**5.B — write the Gate 4 runbook** as an executable script plus a checklist: the
 restore point, the pre-mutation record, the install, the verification, the
 rollback, and the post-rollback verification. Every step with its EXPECTED value.
 Dry-run everything that can be dry-run.
 
-**4.C — verify the preconditions mechanically** and state which hold:
+**5.C — verify the preconditions mechanically** and state which hold:
 recovery point · disk image · recovery media present · recovery media boot-tested
 · candidate device chosen · driver obtainable.
 
@@ -195,6 +248,8 @@ Record both as blocking, with the exact steps the owner takes.
   needed — or why the runner cannot host it
 - the new ledger's path, and the count of debt rows you verified versus copied
 - the recovery posture, measured: what exists, what does not, what is proven
+- both artefact sha256s, and whether they came from CI or a local build
+- the installer screenshots, and what `DBT-P49-002` looks like fixed
 - the candidate device list with the risk of each
 - exactly what the owner must do for Gate 4 to run, in order
 - anything recorded rather than worked around, with its id
