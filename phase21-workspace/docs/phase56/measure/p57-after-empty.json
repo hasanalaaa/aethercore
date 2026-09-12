@@ -1,0 +1,1065 @@
+{
+  "label": "P57 after (all twelve screens)",
+  "state": "empty",
+  "width": 1280,
+  "proseMinWords": 5,
+  "measuredAt": "2026-09-12T14:59:02.328Z",
+  "rows": [
+    {
+      "page": "overview",
+      "locale": "en",
+      "state": "empty",
+      "runs": 65,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 32,
+      "labelRuns": 32,
+      "labelWords": 65,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34,
+        48
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none",
+        "rgba(92, 124, 250, 0.16) | image | none"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 0.16
+    },
+    {
+      "page": "deepScan",
+      "locale": "en",
+      "state": "empty",
+      "runs": 17,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 4,
+      "labelRuns": 12,
+      "labelWords": 24,
+      "typeSizes": [
+        11,
+        13.5,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 1.25
+    },
+    {
+      "page": "drivers",
+      "locale": "en",
+      "state": "empty",
+      "runs": 51,
+      "proseRuns": 4,
+      "proseWords": 23,
+      "dataReadings": 13,
+      "labelRuns": 34,
+      "labelWords": 59,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 6,
+          "tag": "h2",
+          "cls": "",
+          "text": "Ready for your first hardware scan"
+        },
+        {
+          "words": 6,
+          "tag": "small",
+          "cls": "",
+          "text": "Trusted updates selected by authority policy"
+        },
+        {
+          "words": 6,
+          "tag": "small",
+          "cls": "",
+          "text": "Trusted management authorities; not update evidence"
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 1.77
+    },
+    {
+      "page": "repair",
+      "locale": "en",
+      "state": "empty",
+      "runs": 17,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 4,
+      "labelRuns": 12,
+      "labelWords": 22,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 1.25
+    },
+    {
+      "page": "cleanup",
+      "locale": "en",
+      "state": "empty",
+      "runs": 36,
+      "proseRuns": 2,
+      "proseWords": 10,
+      "dataReadings": 13,
+      "labelRuns": 21,
+      "labelWords": 37,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        },
+        {
+          "words": 5,
+          "tag": "small",
+          "cls": "",
+          "text": "individual evidence frozen in service"
+        }
+      ],
+      "textToData": 0.77
+    },
+    {
+      "page": "startup",
+      "locale": "en",
+      "state": "empty",
+      "runs": 39,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 13,
+      "labelRuns": 25,
+      "labelWords": 47,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 0.38
+    },
+    {
+      "page": "performance",
+      "locale": "en",
+      "state": "empty",
+      "runs": 38,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 18,
+      "labelRuns": 19,
+      "labelWords": 30,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 0.28
+    },
+    {
+      "page": "hardware",
+      "locale": "en",
+      "state": "empty",
+      "runs": 36,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 12,
+      "labelRuns": 23,
+      "labelWords": 50,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 0.42
+    },
+    {
+      "page": "crash",
+      "locale": "en",
+      "state": "empty",
+      "runs": 47,
+      "proseRuns": 4,
+      "proseWords": 28,
+      "dataReadings": 14,
+      "labelRuns": 29,
+      "labelWords": 59,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 10,
+          "tag": "p",
+          "cls": "",
+          "text": "A bugcheck code names no component. Symbol-assisted dump analysis does."
+        },
+        {
+          "words": 8,
+          "tag": "h3",
+          "cls": "",
+          "text": "WHEA / crash context \u00b7 last 30 days"
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        },
+        {
+          "words": 5,
+          "tag": "strong",
+          "cls": "",
+          "text": "Why no culprit is named"
+        }
+      ],
+      "textToData": 2
+    },
+    {
+      "page": "activity",
+      "locale": "en",
+      "state": "empty",
+      "runs": 41,
+      "proseRuns": 6,
+      "proseWords": 36,
+      "dataReadings": 8,
+      "labelRuns": 27,
+      "labelWords": 59,
+      "typeSizes": [
+        11,
+        11.5,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 8,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "No eligible plan. Run a domain scan first."
+        },
+        {
+          "words": 7,
+          "tag": "label",
+          "cls": "sr-only svelte-u6ime",
+          "text": "Ask the local AI about this evidence\u2026"
+        },
+        {
+          "words": 6,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "No insight for the current evidence."
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        },
+        {
+          "words": 5,
+          "tag": "h3",
+          "cls": "svelte-13b0hn7",
+          "text": "What happened on this PC"
+        },
+        {
+          "words": 5,
+          "tag": "h3",
+          "cls": "svelte-swsrau",
+          "text": "Safe upkeep in one run"
+        }
+      ],
+      "textToData": 4.5
+    },
+    {
+      "page": "fleet",
+      "locale": "en",
+      "state": "empty",
+      "runs": 17,
+      "proseRuns": 2,
+      "proseWords": 11,
+      "dataReadings": 5,
+      "labelRuns": 10,
+      "labelWords": 17,
+      "typeSizes": [
+        11,
+        13.5,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 6,
+          "tag": "strong",
+          "cls": "svelte-c25qlr",
+          "text": "Fleet inventory could not be loaded"
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 2.2
+    },
+    {
+      "page": "settings",
+      "locale": "en",
+      "state": "empty",
+      "runs": 33,
+      "proseRuns": 3,
+      "proseWords": 24,
+      "dataReadings": 7,
+      "labelRuns": 23,
+      "labelWords": 45,
+      "typeSizes": [
+        11,
+        11.5,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 10,
+          "tag": "p",
+          "cls": "",
+          "text": "Sanitized and hashed. No raw minidumps, no Event Log XML."
+        },
+        {
+          "words": 9,
+          "tag": "strong",
+          "cls": "",
+          "text": "In-app updates are disabled until release trust is configured."
+        },
+        {
+          "words": 5,
+          "tag": "h2",
+          "cls": "",
+          "text": "Maintenance service is not connected"
+        }
+      ],
+      "textToData": 3.43
+    },
+    {
+      "page": "overview",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 65,
+      "proseRuns": 0,
+      "proseWords": 0,
+      "dataReadings": 32,
+      "labelRuns": 33,
+      "labelWords": 72,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34,
+        48
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none",
+        "rgba(92, 124, 250, 0.16) | image | none"
+      ],
+      "longest": [],
+      "textToData": 0
+    },
+    {
+      "page": "deepScan",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 17,
+      "proseRuns": 0,
+      "proseWords": 0,
+      "dataReadings": 4,
+      "labelRuns": 13,
+      "labelWords": 28,
+      "typeSizes": [
+        11,
+        13.5,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [],
+      "textToData": 0
+    },
+    {
+      "page": "drivers",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 51,
+      "proseRuns": 3,
+      "proseWords": 19,
+      "dataReadings": 12,
+      "labelRuns": 36,
+      "labelWords": 71,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 8,
+          "tag": "small",
+          "cls": "",
+          "text": "\u0633\u0644\u0637\u0627\u062a \u0625\u062f\u0627\u0631\u0629 \u0645\u0648\u062b\u0648\u0642\u0629 \u0648\u0644\u064a\u0633\u062a \u062f\u0644\u064a\u0644\u0627\u064b \u0639\u0644\u0649 \u0648\u062c\u0648\u062f \u062a\u062d\u062f\u064a\u062b"
+        },
+        {
+          "words": 6,
+          "tag": "small",
+          "cls": "",
+          "text": "\u062a\u062d\u062f\u064a\u062b\u0627\u062a \u0645\u0648\u062b\u0648\u0642\u0629 \u0627\u062e\u062a\u0627\u0631\u062a\u0647\u0627 \u0633\u064a\u0627\u0633\u0629 \u0645\u0635\u062f\u0631 \u0627\u0644\u062a\u0639\u0631\u064a\u0641"
+        },
+        {
+          "words": 5,
+          "tag": "small",
+          "cls": "",
+          "text": "\u0627\u0644\u0631\u0645\u0632 28 \u0641\u064a \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0623\u062c\u0647\u0632\u0629"
+        }
+      ],
+      "textToData": 1.58
+    },
+    {
+      "page": "repair",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 17,
+      "proseRuns": 0,
+      "proseWords": 0,
+      "dataReadings": 4,
+      "labelRuns": 13,
+      "labelWords": 27,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [],
+      "textToData": 0
+    },
+    {
+      "page": "cleanup",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 36,
+      "proseRuns": 2,
+      "proseWords": 11,
+      "dataReadings": 13,
+      "labelRuns": 21,
+      "labelWords": 41,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 6,
+          "tag": "small",
+          "cls": "",
+          "text": "\u0623\u062f\u0644\u0629 \u0643\u0644 \u0645\u0644\u0641 \u0645\u062b\u0628\u062a\u0629 \u062f\u0627\u062e\u0644 \u0627\u0644\u062e\u062f\u0645\u0629"
+        },
+        {
+          "words": 5,
+          "tag": "small",
+          "cls": "",
+          "text": "\u0645\u0631\u0634\u062d\u0648\u0646 \u0645\u0646 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0633\u0645\u0648\u062d\u0629 \u0641\u0642\u0637"
+        }
+      ],
+      "textToData": 0.85
+    },
+    {
+      "page": "startup",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 39,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 13,
+      "labelRuns": 25,
+      "labelWords": 59,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "small",
+          "cls": "",
+          "text": "\u0623\u0633\u0637\u062d \u0628\u062f\u0621 \u062a\u0634\u063a\u064a\u0644 \u062a\u0645 \u0641\u062d\u0635\u0647\u0627"
+        }
+      ],
+      "textToData": 0.38
+    },
+    {
+      "page": "performance",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 38,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 18,
+      "labelRuns": 19,
+      "labelWords": 32,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "\u064a\u062c\u0628 \u0623\u0646 \u062a\u0643\u0648\u0646 \u0627\u0644\u0645\u0631\u0627\u0642\u0628\u0629 \u062c\u0627\u0631\u064a\u0629."
+        }
+      ],
+      "textToData": 0.28
+    },
+    {
+      "page": "hardware",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 36,
+      "proseRuns": 1,
+      "proseWords": 5,
+      "dataReadings": 12,
+      "labelRuns": 23,
+      "labelWords": 54,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 5,
+          "tag": "small",
+          "cls": "",
+          "text": "\u0642\u064a\u0627\u0633 \u062d\u0627\u0644\u064a \u0645\u0646 \u0646\u0638\u0627\u0645 \u0627\u0644\u062a\u0634\u063a\u064a\u0644"
+        }
+      ],
+      "textToData": 0.42
+    },
+    {
+      "page": "crash",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 47,
+      "proseRuns": 2,
+      "proseWords": 17,
+      "dataReadings": 14,
+      "labelRuns": 31,
+      "labelWords": 75,
+      "typeSizes": [
+        11,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 9,
+          "tag": "p",
+          "cls": "",
+          "text": "\u0631\u0645\u0632 \u0627\u0644\u0625\u064a\u0642\u0627\u0641 \u0644\u0627 \u064a\u0633\u0645\u0651\u064a \u0645\u0643\u0648\u0651\u0646\u064b\u0627. \u062a\u062d\u0644\u064a\u0644 \u0627\u0644\u062a\u0641\u0631\u064a\u063a \u0628\u0627\u0644\u0631\u0645\u0648\u0632 \u064a\u0641\u0639\u0644."
+        },
+        {
+          "words": 8,
+          "tag": "h3",
+          "cls": "",
+          "text": "\u0633\u064a\u0627\u0642 WHEA / \u0627\u0644\u0623\u0639\u0637\u0627\u0644 \u00b7 \u0622\u062e\u0631 30 \u064a\u0648\u0645\u064b\u0627"
+        }
+      ],
+      "textToData": 1.21
+    },
+    {
+      "page": "activity",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 41,
+      "proseRuns": 3,
+      "proseWords": 18,
+      "dataReadings": 8,
+      "labelRuns": 30,
+      "labelWords": 73,
+      "typeSizes": [
+        11,
+        11.5,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgb(92, 124, 250) | none",
+        "rgb(92, 124, 250) | rgba(92, 124, 250, 0.8) 0px 14px 30px -12px",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+        "rgba(255, 255, 255, 0.5) | none"
+      ],
+      "longest": [
+        {
+          "words": 7,
+          "tag": "p",
+          "cls": "empty-state-body svelte-1tq26hh",
+          "text": "\u0644\u0627 \u062e\u0637\u0629 \u0645\u0624\u0647\u0644\u0629. \u0634\u063a\u0651\u0644 \u0641\u062d\u0635 \u0646\u0637\u0627\u0642 \u0623\u0648\u0644\u0627\u064b."
+        },
+        {
+          "words": 6,
+          "tag": "label",
+          "cls": "sr-only svelte-u6ime",
+          "text": "\u0627\u0633\u0623\u0644 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0645\u062d\u0644\u064a \u0639\u0646 \u0647\u0630\u0647 \u0627\u0644\u0623\u062f\u0644\u0629\u2026"
+        },
+        {
+          "words": 5,
+          "tag": "h3",
+          "cls": "svelte-13b0hn7",
+          "text": "\u0645\u0627\u0630\u0627 \u062d\u062f\u062b \u0639\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u062d\u0627\u0633\u0648\u0628"
+        }
+      ],
+      "textToData": 2.25
+    },
+    {
+      "page": "fleet",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 17,
+      "proseRuns": 0,
+      "proseWords": 0,
+      "dataReadings": 5,
+      "labelRuns": 12,
+      "labelWords": 26,
+      "typeSizes": [
+        11,
+        13.5,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [],
+      "textToData": 0
+    },
+    {
+      "page": "settings",
+      "locale": "ar",
+      "state": "empty",
+      "runs": 33,
+      "proseRuns": 2,
+      "proseWords": 18,
+      "dataReadings": 7,
+      "labelRuns": 24,
+      "labelWords": 53,
+      "typeSizes": [
+        11,
+        11.5,
+        13.5,
+        15,
+        20,
+        34
+      ],
+      "elevations": [
+        "rgb(106, 54, 54) | none",
+        "rgb(255, 192, 120) | none",
+        "rgba(173, 78, 188, 0.07) | none",
+        "rgba(173, 78, 188, 0.1) | none",
+        "rgba(173, 78, 188, 0.2) | none",
+        "rgba(230, 119, 0, 0.14) | none",
+        "rgba(255, 255, 255, 0.043) | none",
+        "rgba(255, 255, 255, 0.043) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset"
+      ],
+      "longest": [
+        {
+          "words": 9,
+          "tag": "strong",
+          "cls": "",
+          "text": "\u0627\u0644\u062a\u062d\u062f\u064a\u062b \u062f\u0627\u062e\u0644 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0645\u0639\u0637\u0644 \u0625\u0644\u0649 \u0623\u0646 \u062a\u064f\u0636\u0628\u0637 \u062b\u0642\u0629 \u0627\u0644\u0625\u0635\u062f\u0627\u0631."
+        },
+        {
+          "words": 9,
+          "tag": "p",
+          "cls": "",
+          "text": "\u0645\u064f\u0646\u0642\u0651\u0649 \u0648\u0645\u064f\u062c\u0632\u0651\u0623. \u0644\u0627 \u062a\u0641\u0631\u064a\u063a\u0627\u062a \u062e\u0627\u0645 \u0648\u0644\u0627 XML \u0644\u0633\u062c\u0644 \u0627\u0644\u0623\u062d\u062f\u0627\u062b."
+        }
+      ],
+      "textToData": 2.57
+    }
+  ],
+  "shell": {
+    "region": "sidebar",
+    "locale": "en",
+    "state": "empty",
+    "runs": 29,
+    "proseRuns": 1,
+    "proseWords": 10,
+    "dataReadings": 2,
+    "labelRuns": 26,
+    "labelWords": 41,
+    "typeSizes": [
+      11,
+      13.5,
+      15,
+      20
+    ],
+    "elevations": [
+      "color(srgb 0.360784 0.486274 0.980392 / 0.07) | none",
+      "color(srgb 0.360784 0.486275 0.980392 / 0.12) | rgba(255, 255, 255, 0.035) 0px 1px 0px 0px inset",
+      "rgb(255, 135, 135) | rgba(239, 154, 154, 0.18) 0px 0px 9.6px 0px",
+      "rgb(3, 5, 8) | rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset",
+      "rgba(0, 0, 0, 0.18) | none",
+      "rgba(14, 18, 23, 0.55) | rgba(255, 255, 255, 0.02) -1px 0px 0px 0px inset",
+      "rgba(142, 197, 245, 0.08) | none",
+      "rgba(173, 78, 188, 0.1) | none"
+    ],
+    "longest": [
+      {
+        "words": 10,
+        "tag": "small",
+        "cls": "",
+        "text": "Mutations stay off until you review and authorize a plan."
+      }
+    ],
+    "textToData": 5
+  }
+}
