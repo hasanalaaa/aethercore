@@ -1,4 +1,12 @@
 name: Signed Release Candidate
+
+# P58: moved here from `phase21-workspace/.github/workflows/`, where GitHub
+# never read it. See the note in `ci.yml`. Being a real workflow does not make
+# it runnable: it targets a self-hosted signing runner that does not exist
+# (0 registered), an environment that does not exist (0 defined) and three
+# repository variables that are not set (0 defined). Dispatching it queues
+# indefinitely. That is the code-signing certificate deferral, not a defect in
+# this file.
 on:
   workflow_dispatch:
   push:
@@ -15,6 +23,9 @@ jobs:
   signed-release:
     environment: production-signing
     runs-on: [self-hosted, windows, x64, aethercore-signing]
+    defaults:
+      run:
+        working-directory: phase21-workspace
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -98,6 +109,6 @@ jobs:
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: aethercore-enterprise-converged-signed-release-candidate
-          path: out/release/**
+          path: phase21-workspace/out/release/**
           if-no-files-found: error
           retention-days: 30

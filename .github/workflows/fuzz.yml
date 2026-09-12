@@ -1,5 +1,7 @@
 name: fuzz
 
+# P58: moved here from `phase21-workspace/.github/workflows/`, where GitHub
+# never read it. See the note in `ci.yml`.
 on:
   pull_request:
     branches: [main]
@@ -9,6 +11,9 @@ jobs:
   cargo-fuzz:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: phase21-workspace
     strategy:
       fail-fast: false
       matrix:
@@ -23,8 +28,10 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
 
+      # P58: `continue-on-error: true` was removed. A fuzz target that finds a
+      # crash must fail the run. With it, this job reported success no matter
+      # what libFuzzer found - a gate that cannot fail is not a gate.
       - name: Run fuzz target (${{ matrix.target }}, 200 runs)
-        continue-on-error: true
         run: |
           cargo fuzz run ${{ matrix.target }} -- -runs=200 -max_total_time=300
 
@@ -33,5 +40,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-artifacts-${{ matrix.target }}
-          path: fuzz/artifacts
+          path: phase21-workspace/fuzz/artifacts
           if-no-files-found: ignore

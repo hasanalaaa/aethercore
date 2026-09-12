@@ -1,9 +1,26 @@
 name: CI
+
+# P58: this file lived at `phase21-workspace/.github/workflows/ci.yml` from the
+# day it was written until 2026-09-12 and GitHub never saw it. Actions reads
+# only `.github/workflows/` at the repository ROOT; anything one directory down
+# is an ordinary text file. `DBT-P55-002` - 1,254 formatting violations that
+# this file's own `cargo fmt --check` step would have caught on the first push -
+# is the direct evidence. `workflow_dispatch` is added so the gate can be run
+# deliberately rather than only as a side effect of a push.
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+
+# The workspace is not the repository root. Every `run` below is written
+# relative to it, as `windows-installer.yml` already does. `uses:` inputs are
+# NOT covered by this and carry the prefix explicitly.
+defaults:
+  run:
+    working-directory: phase21-workspace
+
 jobs:
   windows:
     runs-on: windows-2025
@@ -60,7 +77,7 @@ jobs:
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: aethercore-enterprise-converged-unsigned-candidate
-          path: out/release/**
+          path: phase21-workspace/out/release/**
           if-no-files-found: error
           retention-days: 14
 

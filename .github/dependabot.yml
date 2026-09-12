@@ -1,12 +1,12 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directory: "/"
+    directory: "/phase21-workspace"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
   - package-ecosystem: npm
-    directory: "/apps/ui"
+    directory: "/phase21-workspace/apps/ui"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
