@@ -11,19 +11,18 @@ ARGS = PARSER.parse_args()
 checks: dict[str, dict[str, object]] = {}
 
 
-# P58 / DBT-P55-001: GitHub Actions reads workflows only from `.github/workflows`
-# at the REPOSITORY root, so ci.yml, fuzz.yml and release.yml now live one level
-# above this workspace. Everything else this script reads is still workspace
-# relative. Without this the reader below returned "" for a file that exists,
-# and a check asserting something is ABSENT from a workflow would have passed
-# against a file it never opened.
-def workflow_root(rel: str):
-    return ROOT.parent if rel.startswith(".github/") else ROOT
+# P59 / DBT-P58-005: one shared reader that raises instead of substituting "".
+# P58 fixed where this reader looked - `.github/` resolves against the
+# repository root - but not what it did when the look failed, so a check
+# asserting something is ABSENT still passed against a file never opened.
+# No bytecode: `omega-evidence.py` runs each gate against a disposable clone
+# and treats ANY new file in it as a source mutation, so a `__pycache__`
+# entry for this import would be reported as the gate rewriting the tree.
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gate_reader import SourceReader  # noqa: E402
 
-
-def read(rel: str) -> str:
-    path = workflow_root(rel) / rel
-    return path.read_text(encoding="utf-8") if path.is_file() else ""
+read = SourceReader(ROOT).read
 
 
 def check(name: str, ok: bool, **details: object) -> None:

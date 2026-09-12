@@ -57,7 +57,7 @@ green.** `git status` clean afterwards; the file was moved back.
 | `scripts/phase35-adversarial-audit.py:26-29` | `try: read_text() except (OSError, UnicodeDecodeError): return ""` | **B — live** | Four blind-pass: `crates/update-engine/src/manifest.rs`, `apps/desktop/Cargo.toml`, `apps/desktop/tauri.conf.json`, `Cargo.toml` |
 | `scripts/static_validate.py:585` | inline `… if …exists() else ""` | **B — live** | `scripts/setup-and-run.ps1` blind-passes |
 | `scripts/static_validate.py:1393` | inline | **B — live** | `scripts/phase10-architecture-audit.ps1` blind-passes |
-| `scripts/phase30-adversarial-audit.py:222`, `:238` | `if p.is_file() and sha256(p) != ledger[rel]` | **B — live** | A ledger entry whose file is **absent** is skipped, not flagged. `p30-fulltree-spot-hash-ok` passes on a tree missing files the ledger names — `.github/workflows/ci.yml`, `fuzz.yml`, `release.yml` and `dependabot.yml` are in that ledger and are absent from the workspace today, and the gate says nothing |
+| `scripts/phase30-adversarial-audit.py:222`, `:238` | `if p.is_file() and sha256(p) != ledger[rel]` | **B — live** | A ledger entry whose file is **absent** is skipped, not flagged — see the correction below, where the mechanism turns out to be worse than a fail-open read. `DBT-P59-002` |
 | `scripts/phase29-adversarial-audit.py:256` | `json.loads(…) if (patch_dir/"MANIFEST.json").exists() else {}` | **B — live** | With the manifest absent, `m_sha` is `{}`, `inconsistent` is `[]`, and `p29-manifest-fulltree-consistency` passes |
 | `scripts/check-dependency-freeze.py:23-28` | `expected_pnpm()` → `except Exception: return None` | **B — latent** | An unreadable `package.json` makes the expectation `None`; if the freeze metadata also lacks `pnpm`, `checks["pnpm_pin"]` is `None == None` → **True**. The file's own docstring is "Fail-closed" |
 | `scripts/static_validate.py:584, 625, 686, 687, 724, 1285, 1292, 1392, 1497, 1498, 1499, 1519, 1520, 1521, 1596-1604, 1608, 1609, 1610, 1655, 1656, 1657, 1692, 1725, 1726, 1776, 1777` | inline `… if …exists() else ""` (33 sites) | **B — latent** | Each blinds to `""`; each is caught today only because the same file is also read by a bare `read_text()` elsewhere in the same 2,006-line script. Nothing enforces that pairing |
@@ -119,3 +119,34 @@ which is the defect P58 named and did not remove: **a reader that cannot
 distinguish "absent" from "unreadable"**. The ten live B rows above are the
 proof that this is not hypothetical — they are gates reporting green today on
 files they never open.
+
+
+---
+
+## Correction — `phase30-adversarial-audit.py`, added while repairing
+
+The row above was written from the `is_file()` skip alone. Reading the whole
+block made the mechanism clearer and worse, so it is corrected here rather than
+edited away.
+
+`scripts/phase30-adversarial-audit.py:215-243` does this:
+
+1. `:215` loads the committed ledger and `:216-226` compares the tree to it;
+2. `:232-233` **throw that result away** — `spot_ok` and `diverged` are reset;
+3. `:228-230` run `scripts/_build_p30_patch.py`, which **regenerates the ledger
+   from the current tree**;
+4. `:234-242` compare the tree to the ledger just generated from it;
+5. `:243` reports `p30-fulltree-spot-hash-ok` from that comparison.
+
+So the first comparison is dead code and the second is a tautology:
+**`p30-fulltree-spot-hash-ok` cannot fail.** Every divergence the check exists
+to catch is erased by the regeneration one step earlier, and the seven ledger
+entries with no file in the tree today — `.DS_Store`, `.github/dependabot.yml`,
+`.github/workflows/ci.yml`, `fuzz.yml`, `release.yml` and two others — simply
+drop out of the regenerated ledger.
+
+Fixing the `is_file()` skip would change nothing while the ledger is minted from
+the tree it is checked against, so this is **not** repaired as part of the
+reader sweep. It is `DBT-P59-002`, and it is the same family as the readers:
+an instrument that reports without measuring. The regeneration is also the
+write that P58 recorded — running this audit rewrites four tracked files.

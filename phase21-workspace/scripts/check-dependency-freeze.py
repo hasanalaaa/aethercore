@@ -21,10 +21,15 @@ def sha256(path: Path) -> str:
 
 
 def expected_pnpm() -> str | None:
-    try:
-        value = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["packageManager"]
-    except Exception:
-        return None
+    """`None` means package.json pins no pnpm version.
+
+    P59 / DBT-P58-005: it used to mean that *or* "package.json could not be
+    read", and the two are different facts. Flattened together, a missing
+    `packageManager` in the freeze metadata compared equal to an unreadable
+    `package.json` and `checks["pnpm_pin"]` passed. This file calls itself
+    fail-closed; the read is now allowed to raise and `inspect()` reports it.
+    """
+    value = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["packageManager"]
     m = re.fullmatch(r"pnpm@([^\s]+)", str(value))
     return m.group(1) if m else None
 
@@ -43,10 +48,20 @@ def inspect() -> dict:
         "approved": False,
         "missing": missing,
         "blocker_present": BLOCKER.is_file(),
-        "expected_rust_toolchain": rust_toolchain(),
-        "expected_pnpm": expected_pnpm(),
+        "expected_rust_toolchain": None,
+        "expected_pnpm": None,
         "checks": {},
     }
+    # The tool pins this checker compares against are themselves read from the
+    # tree. A source it cannot read is not a pin of `None`; it is a verdict this
+    # checker cannot reach, and `approved` stays False while the reason names
+    # the file. P59 / DBT-P58-005.
+    try:
+        result["expected_rust_toolchain"] = rust_toolchain()
+        result["expected_pnpm"] = expected_pnpm()
+    except Exception as exc:
+        result["reason"] = f"pinned tool version source unreadable (package.json / rust-toolchain.toml): {exc}"
+        return result
     if missing:
         result["reason"] = "approved dependency freeze is incomplete"
         return result

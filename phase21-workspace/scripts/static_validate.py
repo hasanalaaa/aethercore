@@ -29,10 +29,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # workspace relative.
 REPO = ROOT.parent
 
+# P59 / DBT-P58-005: this file read 35 of its sources as
+# `X.read_text(...) if X.exists() else ""`, which cannot tell "absent" from
+# "empty". Two of them - `scripts/setup-and-run.ps1` and
+# `scripts/phase10-architecture-audit.ps1` - could be deleted with this gate's
+# report byte-identical. `read()` raises instead.
+# No bytecode: `omega-evidence.py` runs each gate against a disposable clone
+# and treats ANY new file in it as a source mutation, so a `__pycache__`
+# entry for this import would be reported as the gate rewriting the tree.
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gate_reader import SourceReader  # noqa: E402
 
-def workflow_root(rel: str):
-    """`.github/` is repository-root relative; everything else is workspace relative."""
-    return REPO if rel.startswith(".github/") else ROOT
+_READER = SourceReader(ROOT)
+read = _READER.read
+workflow_root = _READER.base
 PARSER = argparse.ArgumentParser()
 PARSER.add_argument("--output", type=Path, help="Optional explicit report path; default verification is read-only.")
 ARGS = PARSER.parse_args()
@@ -581,8 +592,8 @@ forbidden_surface = [
 surface_hits = [token for token in forbidden_surface if token in trust_surface.lower()]
 checks["typed_mutation_surface_only"] = {"ok": not surface_hits, "hits": surface_hits}
 
-verify_phase5 = (ROOT / "scripts/verify-phase5.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase5.ps1").exists() else ""
-setup_run = (ROOT / "scripts/setup-and-run.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/setup-and-run.ps1").exists() else ""
+verify_phase5 = read("scripts/verify-phase5.ps1")
+setup_run = read("scripts/setup-and-run.ps1")
 ci = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 marker(
     "phase5_windows_gate",
@@ -622,7 +633,7 @@ checks["phase6_read_only_surface"]={"ok":all(token not in (hardware_win+crash_wi
 checks["phase6_ata_is_observational_only"]={"ok":"SMART_RCV_DRIVE_DATA" in hardware_win and "SMART_SEND_DRIVE_COMMAND" not in hardware_win and "ata_smart_attributes" not in hardware.split("pub fn classify_storage",1)[1].split("#[cfg(test)]",1)[0],"note":"ATA SMART is read-only raw evidence and does not drive AetherCore health severity."}
 checks["phase6_bounded_event_window"]={"ok":"DEFAULT_EVENT_WINDOW_DAYS: u32 = 30" in crash and "TimeCreated[timediff(@SystemTime)" in crash_win and "MAX_EVENTS: usize = 128" in crash_win,"note":"System Event Log collection is explicitly bounded by age and count."}
 
-verify_phase6=(ROOT/"scripts/verify-phase6.ps1").read_text(encoding="utf-8") if (ROOT/"scripts/verify-phase6.ps1").exists() else ""
+verify_phase6=read("scripts/verify-phase6.ps1")
 marker("phase6_windows_gate", verify_phase6+"\n"+setup_run+"\n"+ci, ["aethercore-hardware-telemetry","aethercore-crash-diagnostics","aethercore-diagnostic-engine","live_storage_and_memory_collection_is_read_only","live_event_and_minidump_collection_is_read_only"])
 
 
@@ -683,8 +694,8 @@ checks["phase7_screen_reader_accessibility"] = {
 checks["phase7_adaptive_accessibility"] = {
     "ok": all(marker in phase7_css + tokens + window_ux_ts for marker in ["prefers-reduced-motion", "forced-colors", "prefers-contrast: more", ":focus-visible", "--ac-shadow-focus"]),
 }
-phase12_runtime_compat = (ROOT / "apps/ui/src/lib/i18n/runtime.ts").read_text(encoding="utf-8") if (ROOT / "apps/ui/src/lib/i18n/runtime.ts").exists() else i18n_ts
-phase12_ar_compat = (ROOT / "apps/ui/src/lib/i18n/catalog.ar.ts").read_text(encoding="utf-8") if (ROOT / "apps/ui/src/lib/i18n/catalog.ar.ts").exists() else i18n_ts
+phase12_runtime_compat = read("apps/ui/src/lib/i18n/runtime.ts")
+phase12_ar_compat = read("apps/ui/src/lib/i18n/catalog.ar.ts")
 checks["phase7_localization_rtl"] = {
     "ok": all(marker in (phase12_runtime_compat + phase12_ar_compat) for marker in ["type Locale = 'en' | 'ar'", "directionFor", "document.documentElement.dir", "aethercore.locale", "arCatalog"]) and '[dir="rtl"]' in phase7_css and 'lang="en" dir="ltr"' in (ROOT / "apps/ui/index.html").read_text(encoding="utf-8"),
 }
@@ -721,7 +732,7 @@ for svelte in sorted(ui_root.rglob("*.svelte")):
         svelte_balance_errors.append({"file": str(svelte.relative_to(ROOT)), "unclosed": stack})
 checks["phase7_svelte_block_balance"] = {"ok": not svelte_balance_errors, "errors": svelte_balance_errors}
 
-verify_phase7 = (ROOT / "scripts/verify-phase7.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase7.ps1").exists() else ""
+verify_phase7 = read("scripts/verify-phase7.ps1")
 checks["phase7_windows_gate"] = {
     "ok": (ROOT / "scripts/verify-phase7.ps1").is_file()
     and all(token in verify_phase7 for token in [
@@ -1282,14 +1293,14 @@ checks["phase9_protocol_v7"] = {
 
 # Phase 9 — principal/session ownership, one-shot consent, exact file identity, dependency freeze, sanitation.
 security9 = (ROOT / "crates/security/src/lib.rs").read_text(encoding="utf-8")
-windows_foundation = (ROOT / "crates/windows-foundation/src/lib.rs").read_text(encoding="utf-8") if (ROOT / "crates/windows-foundation/src/lib.rs").is_file() else ""
+windows_foundation = read("crates/windows-foundation/src/lib.rs")
 operation9 = (ROOT / "crates/operation-engine/src/lib.rs").read_text(encoding="utf-8")
 persistence9 = (ROOT / "crates/persistence/src/lib.rs").read_text(encoding="utf-8")
 migration9 = (ROOT / "crates/persistence/migrations/0006_phase9_security.sql").read_text(encoding="utf-8")
 cleaner_win9 = (ROOT / "crates/cleaner/src/windows_impl.rs").read_text(encoding="utf-8")
 broker9 = (ROOT / "apps/consent-broker/src/main.rs").read_text(encoding="utf-8")
 desktop9 = (ROOT / "apps/desktop/src/main.rs").read_text(encoding="utf-8")
-verify9 = (ROOT / "scripts/verify-phase9.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase9.ps1").exists() else ""
+verify9 = read("scripts/verify-phase9.ps1")
 freeze9 = (ROOT / "scripts/freeze-dependencies.ps1").read_text(encoding="utf-8")
 
 marker("phase9_kernel_derived_principal", security9, ["GetNamedPipeClientProcessId", "GetNamedPipeClientSessionId", "TokenStatistics", "TokenUser", "authentication_id", "binding_key"])
@@ -1389,8 +1400,8 @@ marker("phase10_typed_domain_states", proto + protocol10, ["enum DiscoveryState"
 marker("phase10_mutation_lease_events", kernel10 + proto, ["MutationLeaseEvent", "MutationLeaseState::Acquired", "MutationLeaseState::Released", "EventKind::MutationLease"])
 marker("phase10_all_mutation_telemetry", composition10 + repair10 + cleaner10 + startup10 + driver_install10, ["RepairCoordinator::with_telemetry", "CleanupEngine::with_telemetry", "StartupManager::with_telemetry", "kernel.telemetry().clone()", "publish_progress"])
 marker("phase10_persistence_migration", persistence9 + migration10, ["0007_phase10_kernel", "idx_maintenance_executions_domain_updated", "idx_plan_executions_stage_updated"])
-verify10 = (ROOT / "scripts/verify-phase10.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase10.ps1").exists() else ""
-audit10 = (ROOT / "scripts/phase10-architecture-audit.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/phase10-architecture-audit.ps1").exists() else ""
+verify10 = read("scripts/verify-phase10.ps1")
+audit10 = read("scripts/phase10-architecture-audit.ps1")
 ci10 = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 release10 = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
 marker("phase10_windows_gate", verify10 + audit10, ["verify-phase9.ps1", "phase10-architecture-audit.ps1", "aethercore-operation-kernel", "aethercore-maintenance-service", "aethercore-desktop", "aethercore-system-repair", "aethercore-cleaner", "aethercore-startup-manager", "cargo check --workspace --locked", "pnpm --dir apps/ui build"])
@@ -1494,9 +1505,9 @@ checks["phase11_primitive_suite"] = {
     "ok": all((ui_root / "design/primitives" / name).is_file() for name in required_primitives11),
     "primitives": required_primitives11,
 }
-verify11 = (ROOT / "scripts/verify-phase11.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase11.ps1").exists() else ""
-audit11 = (ROOT / "scripts/phase11-design-audit.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/phase11-design-audit.ps1").exists() else ""
-motion_test11 = (ROOT / "scripts/test-phase11-motion.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/test-phase11-motion.ps1").exists() else ""
+verify11 = read("scripts/verify-phase11.ps1")
+audit11 = read("scripts/phase11-design-audit.ps1")
+motion_test11 = read("scripts/test-phase11-motion.ps1")
 checks["phase11_windows_gate"] = {
     "ok": all(token in verify11 + audit11 + motion_test11 for token in ["verify-phase10.ps1", "phase11-design-audit.ps1", "test-phase11-motion.ps1", "pnpm --dir apps/ui check", "pnpm --dir apps/ui build", "fluid-press.ts", "fluid-drag.ts", "pnpm exec tsc"]),
 }
@@ -1516,9 +1527,9 @@ plural_en12 = (i18n12 / "plurals.en.ts").read_text(encoding="utf-8")
 plural_ar12 = (i18n12 / "plurals.ar.ts").read_text(encoding="utf-8")
 technical12 = (ui_root / "design/primitives/TechnicalText.svelte").read_text(encoding="utf-8")
 owned12 = (ui_root / "design/primitives/LocalizedOwnedText.svelte").read_text(encoding="utf-8")
-verify12 = (ROOT / "scripts/verify-phase12.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase12.ps1").exists() else ""
-audit12_ps = (ROOT / "scripts/phase12-localization-audit.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/phase12-localization-audit.ps1").exists() else ""
-audit12_py = (ROOT / "scripts/test-phase12-localization.py").read_text(encoding="utf-8") if (ROOT / "scripts/test-phase12-localization.py").exists() else ""
+verify12 = read("scripts/verify-phase12.ps1")
+audit12_ps = read("scripts/phase12-localization-audit.ps1")
+audit12_py = read("scripts/test-phase12-localization.py")
 
 required_phase12_artifacts = [
     "PHASE_12_DELIVERABLES.md",
@@ -1593,21 +1604,21 @@ checks["phase12_catalog_namespace_depth"] = {
 
 # Phase 12 — typed localization, full EN/AR parity, bidi integrity, plural rules and localized consent presentation.
 i18n12_dir = ui_root / "lib/i18n"
-en12 = (i18n12_dir / "catalog.en.ts").read_text(encoding="utf-8") if (i18n12_dir / "catalog.en.ts").exists() else ""
-ar12 = (i18n12_dir / "catalog.ar.ts").read_text(encoding="utf-8") if (i18n12_dir / "catalog.ar.ts").exists() else ""
-runtime12 = (i18n12_dir / "runtime.ts").read_text(encoding="utf-8") if (i18n12_dir / "runtime.ts").exists() else ""
-semantic12 = (i18n12_dir / "semantic.ts").read_text(encoding="utf-8") if (i18n12_dir / "semantic.ts").exists() else ""
-bidi12 = (i18n12_dir / "bidi.ts").read_text(encoding="utf-8") if (i18n12_dir / "bidi.ts").exists() else ""
-plurals_en12 = (i18n12_dir / "plurals.en.ts").read_text(encoding="utf-8") if (i18n12_dir / "plurals.en.ts").exists() else ""
-plurals_ar12 = (i18n12_dir / "plurals.ar.ts").read_text(encoding="utf-8") if (i18n12_dir / "plurals.ar.ts").exists() else ""
-technical12 = (ui_root / "design/primitives/TechnicalText.svelte").read_text(encoding="utf-8") if (ui_root / "design/primitives/TechnicalText.svelte").exists() else ""
-owned12 = (ui_root / "design/primitives/LocalizedOwnedText.svelte").read_text(encoding="utf-8") if (ui_root / "design/primitives/LocalizedOwnedText.svelte").exists() else ""
+en12 = read("apps/ui/src/lib/i18n/catalog.en.ts")
+ar12 = read("apps/ui/src/lib/i18n/catalog.ar.ts")
+runtime12 = read("apps/ui/src/lib/i18n/runtime.ts")
+semantic12 = read("apps/ui/src/lib/i18n/semantic.ts")
+bidi12 = read("apps/ui/src/lib/i18n/bidi.ts")
+plurals_en12 = read("apps/ui/src/lib/i18n/plurals.en.ts")
+plurals_ar12 = read("apps/ui/src/lib/i18n/plurals.ar.ts")
+technical12 = read("apps/ui/src/design/primitives/TechnicalText.svelte")
+owned12 = read("apps/ui/src/design/primitives/LocalizedOwnedText.svelte")
 typography12 = (ui_root / "design/styles/typography.css").read_text(encoding="utf-8")
 broker12 = (ROOT / "apps/consent-broker/src/main.rs").read_text(encoding="utf-8")
 desktop12 = (ROOT / "apps/desktop/src/main.rs").read_text(encoding="utf-8")
-verify12 = (ROOT / "scripts/verify-phase12.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase12.ps1").exists() else ""
-audit12 = (ROOT / "scripts/phase12-localization-audit.py").read_text(encoding="utf-8") if (ROOT / "scripts/phase12-localization-audit.py").exists() else ""
-test12 = (ROOT / "scripts/phase12-i18n-tests.cjs").read_text(encoding="utf-8") if (ROOT / "scripts/phase12-i18n-tests.cjs").exists() else ""
+verify12 = read("scripts/verify-phase12.ps1")
+audit12 = read("scripts/phase12-localization-audit.py")
+test12 = read("scripts/phase12-i18n-tests.cjs")
 required12 = [
     "apps/ui/src/lib/i18n/catalog.en.ts","apps/ui/src/lib/i18n/catalog.ar.ts","apps/ui/src/lib/i18n/plurals.en.ts","apps/ui/src/lib/i18n/plurals.ar.ts",
     "apps/ui/src/lib/i18n/runtime.ts","apps/ui/src/lib/i18n/semantic.ts","apps/ui/src/lib/i18n/bidi.ts",
@@ -1652,9 +1663,9 @@ crash_win13 = (ROOT / "crates/crash-diagnostics/src/windows_impl.rs").read_text(
 diag13 = (ROOT / "crates/diagnostic-engine/src/lib.rs").read_text(encoding="utf-8")
 proto13 = (ROOT / "crates/contracts/proto/diagnostics.proto").read_text(encoding="utf-8")
 protocol13 = (ROOT / "services/maintenance-service/src/protocol.rs").read_text(encoding="utf-8")
-verify13 = (ROOT / "scripts/verify-phase13.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase13.ps1").exists() else ""
-audit13 = (ROOT / "scripts/phase13-reliability-audit.py").read_text(encoding="utf-8") if (ROOT / "scripts/phase13-reliability-audit.py").exists() else ""
-fault13 = (ROOT / "scripts/phase13-fault-injection.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/phase13-fault-injection.ps1").exists() else ""
+verify13 = read("scripts/verify-phase13.ps1")
+audit13 = read("scripts/phase13-reliability-audit.py")
+fault13 = read("scripts/phase13-fault-injection.ps1")
 restore13 = (ROOT / "crates/restore-point/src/windows_impl.rs").read_text(encoding="utf-8")
 required13 = [
     "crates/collector-runtime/Cargo.toml", "crates/collector-runtime/src/lib.rs",
@@ -1689,7 +1700,7 @@ marker("phase13_provider_supervisor_spawn_and_panic_containment", diag13, ["fn j
 marker("phase13_top_level_scan_panic_guard", diag13, ["catch_unwind(AssertUnwindSafe(|| run(worker_inner,owner)))", "mark_scan_runtime_failure(", "scan_runtime_failure_marks_collecting_snapshot_failed"])
 marker("phase13_nested_fault_persistence", diag13, ["provider_faults.extend(h.provider_faults", "provider_faults.extend(c.provider_faults", "nested_provider_faults_are_preserved_in_the_diagnostic_snapshot"])
 marker("phase13_provider_fault_contract", proto13 + protocol13, ["enum ProviderFaultKind", "message ProviderFaultInfo", "repeated ProviderFaultInfo provider_faults = 13", "provider_fault_kind_code", "v1::ProviderFaultInfo"])
-phase13_fault_ui = (ROOT / "apps/ui/src/features/diagnostics/ProviderFaultsPanel.svelte").read_text(encoding="utf-8") if (ROOT / "apps/ui/src/features/diagnostics/ProviderFaultsPanel.svelte").exists() else ""
+phase13_fault_ui = read("apps/ui/src/features/diagnostics/ProviderFaultsPanel.svelte")
 marker("phase13_localized_fault_ui", phase13_fault_ui + semantic12 + en12 + ar12, ["localizeProviderFaultKind", "diagnostics.providerFaults.kind.timeout", "diagnostics.providerFaults.kind.malformedResponse", "TechnicalText"])
 checks["phase13_raw_fault_detail_not_user_visible"] = {"ok": "fault.detail" not in phase13_fault_ui}
 checks["phase13_fault_records_share_bounded_constructor"] = {"ok": "CollectorFaultRecord {" not in crash_win13 and "impl CollectorFaultRecord" in runtime13 and "ProviderFaultRecord{provider:\"diagnostic-engine\"" not in diag13 and "ProviderFaultRecord{provider:\"diagnostic-journal\"" not in diag13}
@@ -1722,8 +1733,8 @@ cleaner14 = (ROOT / "crates/cleaner/src/windows_impl.rs").read_text(encoding="ut
 proto_scheduler14 = (ROOT / "crates/contracts/proto/scheduler.proto").read_text(encoding="utf-8")
 proto_events14 = (ROOT / "crates/contracts/proto/events.proto").read_text(encoding="utf-8")
 activity14 = (ROOT / "apps/ui/src/features/activity/ActivityPage.svelte").read_text(encoding="utf-8")
-verify14 = (ROOT / "scripts/verify-phase14.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase14.ps1").exists() else ""
-audit14 = (ROOT / "scripts/phase14-scheduler-audit.py").read_text(encoding="utf-8") if (ROOT / "scripts/phase14-scheduler-audit.py").exists() else ""
+verify14 = read("scripts/verify-phase14.ps1")
+audit14 = read("scripts/phase14-scheduler-audit.py")
 docs14 = (ROOT / "docs/AUTONOMOUS_MAINTENANCE.md").read_text(encoding="utf-8") + "\n" + (ROOT / "docs/adr/0016-autonomous-idle-scheduler.md").read_text(encoding="utf-8")
 required14 = [
     "crates/idle-scheduler/Cargo.toml", "crates/idle-scheduler/src/model.rs", "crates/idle-scheduler/src/policy.rs",
@@ -1773,8 +1784,8 @@ update_proto15 = (ROOT / "crates/contracts/proto/update.proto").read_text(encodi
 support_proto15 = (ROOT / "crates/contracts/proto/support_bundle.proto").read_text(encoding="utf-8")
 events_proto15 = (ROOT / "crates/contracts/proto/events.proto").read_text(encoding="utf-8")
 migration15 = (ROOT / "crates/persistence/migrations/0009_phase15_update.sql").read_text(encoding="utf-8")
-verify15 = (ROOT / "scripts/verify-phase15.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase15.ps1").exists() else ""
-audit15 = (ROOT / "scripts/phase15-security-audit.py").read_text(encoding="utf-8") if (ROOT / "scripts/phase15-security-audit.py").exists() else ""
+verify15 = read("scripts/verify-phase15.ps1")
+audit15 = read("scripts/phase15-security-audit.py")
 build_release15 = (ROOT / "scripts/build-release.ps1").read_text(encoding="utf-8")
 trust_validate15 = (ROOT / "scripts/validate-update-trust.ps1").read_text(encoding="utf-8")
 product15 = (ROOT / "installer/wix/Product.wxs").read_text(encoding="utf-8")

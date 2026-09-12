@@ -12,9 +12,18 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 checks=[]
 
-def text(rel):
-    p=ROOT/rel
-    return p.read_text(encoding='utf-8') if p.is_file() else ''
+# P59 / DBT-P58-005: one shared reader that raises instead of substituting "".
+# P58 fixed where this reader looked - `.github/` resolves against the
+# repository root - but not what it did when the look failed, so a check
+# asserting something is ABSENT still passed against a file never opened.
+# No bytecode: `omega-evidence.py` runs each gate against a disposable clone
+# and treats ANY new file in it as a source mutation, so a `__pycache__`
+# entry for this import would be reported as the gate rewriting the tree.
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gate_reader import SourceReader  # noqa: E402
+
+text = SourceReader(ROOT).read
 
 def add(cid, ok, detail, evidence=()):
     checks.append({'id':cid,'ok':bool(ok),'detail':detail,'evidence':list(evidence)})

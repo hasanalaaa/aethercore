@@ -12,9 +12,12 @@ is what a moved file, a permission change or a bad mount looks like to
 `read_text`. That is the exact failure P58 hit when three workflows moved to the
 repository root: eight audits kept reporting normally while reading `""`.
 
-Before the P59 repair every case below fails. `scripts/phase16-ga-audit.py`, for
-instance, reports `{"ok": true, "checks": 42, "failed": []}` and exit 0 with one
-of the five files it audits gone.
+Before the P59 repair **ten of the fourteen** fail. `scripts/phase16-ga-audit.py`,
+for instance, reports `{"ok": true, "checks": 42, "failed": []}` and exit 0 with
+one of the five files it audits gone. The four that already passed did so by
+accident - a bare, already fail-closed read elsewhere in the same script reached
+the source first. Nothing enforced that pairing, which is what "latent" means in
+`docs/phase59/P59-READER-CENSUS.md`.
 
 Run: `python3 scripts/test_gate_readers.py`
 """
@@ -41,7 +44,11 @@ def _hit(p):
 
 def read_text(self, *a, **k):
     if _hit(self):
-        raise OSError(13, "made unreadable by scripts/test_gate_readers.py")
+        # Three arguments, so the exception carries `filename` and str() names
+        # the path - exactly what a genuinely missing file raises. A two-argument
+        # OSError would not, and the test would then be measuring its own shim
+        # rather than whether the gate says which file.
+        raise FileNotFoundError(2, "made absent by scripts/test_gate_readers.py", str(self))
     return _read_text(self, *a, **k)
 
 
@@ -90,8 +97,12 @@ def main() -> int:
             # `source in blob` alone is not enough: several of these gates print
             # the paths they checked as evidence, so a gate that failed for an
             # unrelated pre-existing reason would name the source anyway. The
-            # discriminating fact is that the READ is what aborted it.
-            aborted = "UnreadableSource" in blob and source in blob
+            # discriminating fact is that a READ is what aborted it - either the
+            # shared reader (`UnreadableSource`) or one of the bare, already
+            # fail-closed reads that sometimes reaches the source first.
+            aborted = source in blob and (
+                "UnreadableSource" in blob or "FileNotFoundError" in blob
+            )
             ok = p.returncode != 0 and aborted
             mark = "PASS" if ok else "FAIL"
             print(f"{mark}  {gate}  ⟂ {source}  exit={p.returncode}  aborted_at_read={aborted}")
@@ -110,7 +121,7 @@ def main() -> int:
         p = run("scripts/phase29-adversarial-audit.py",
                 "PHASE_29_BINARY_SAFE_PATCH/MANIFEST.json", td)
         blob = p.stdout + p.stderr
-        named = "PHASE_29_BINARY_SAFE_PATCH/MANIFEST.json" in blob
+        named = "MANIFEST.json" in blob and "FileNotFoundError" in blob
         ok = p.returncode != 0 and named
         print(f"{'PASS' if ok else 'FAIL'}  scripts/phase29-adversarial-audit.py  "
               f"⟂ PHASE_29_BINARY_SAFE_PATCH/MANIFEST.json  exit={p.returncode}  named={named}")

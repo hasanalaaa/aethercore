@@ -253,7 +253,11 @@ check("p29-dual-mode-verifier", verify29.exists() and "--full-tree" in verify29.
       "verify_phase29.py dual-mode missing")
 if full_hash.exists():
     ledger = json.loads(full_hash.read_text()).get("files", {})
-    manifest = json.loads((patch_dir / "MANIFEST.json").read_text()) if (patch_dir / "MANIFEST.json").exists() else {}
+    # P59 / DBT-P58-005: this was `… if (patch_dir / "MANIFEST.json").exists()
+    # else {}`. With the manifest absent, `m_sha` was empty, `inconsistent` was
+    # empty, and p29-manifest-fulltree-consistency passed against a manifest it
+    # never opened. Every other read in this file is bare; so is this one now.
+    manifest = json.loads((patch_dir / "MANIFEST.json").read_text())
     m_sha = manifest.get("sha256", {})
     inconsistent = [f for f, h in m_sha.items() if ledger.get(f) not in (None, h)]
     check("p29-manifest-fulltree-consistency", not inconsistent,
