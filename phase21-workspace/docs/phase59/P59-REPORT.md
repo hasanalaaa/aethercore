@@ -110,6 +110,13 @@ The four that already passed did so by accident — an unrelated bare read reach
 the source first. Nothing enforced that pairing; that is what the census calls
 *latent*.
 
+One thing the test had to be taught: running a real gate can dirty the
+repository. `phase29-adversarial-audit.py` rewrites `SBOM.cdx.json` as a side
+effect — pre-existing, the same family of audit-side write P58 recorded for the
+P30 chain — and it did modify a tracked file during this session before the
+phase29 repair made that gate abort earlier. The test now holds that file's
+bytes and puts them back, and prints what it did instead of hiding it.
+
 **EXPECTED, met**: a gate pointed at a missing file exits non-zero and says
 which file.
 

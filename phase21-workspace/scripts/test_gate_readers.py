@@ -114,12 +114,23 @@ def main() -> int:
                 )
 
     # Case 2: a missing PHASE_29 patch manifest must not make the consistency
-    # check pass. `phase29-adversarial-audit.py:256` substitutes `{}`, which
-    # makes `inconsistent` empty and the check green.
+    # check pass. `phase29-adversarial-audit.py:256` substituted `{}`, which
+    # made `inconsistent` empty and the check green.
+    #
+    # That gate rewrites `SBOM.cdx.json` as a side effect - pre-existing, and the
+    # same family of audit-side write P58 recorded for the P30 chain. A test must
+    # not leave a tracked file modified, so its bytes are held and put back, and
+    # the fact is printed rather than hidden.
+    sbom = ROOT / "SBOM.cdx.json"
+    sbom_before = sbom.read_bytes() if sbom.is_file() else None
     with tempfile.TemporaryDirectory(prefix="aethercore-p59-reader-") as td:
         Path(td, "sitecustomize.py").write_text(SHIM, encoding="utf-8")
         p = run("scripts/phase29-adversarial-audit.py",
                 "PHASE_29_BINARY_SAFE_PATCH/MANIFEST.json", td)
+        if sbom_before is not None and sbom.read_bytes() != sbom_before:
+            sbom.write_bytes(sbom_before)
+            print("NOTE  phase29-adversarial-audit.py rewrote SBOM.cdx.json; "
+                  "restored (pre-existing audit-side write)")
         blob = p.stdout + p.stderr
         named = "MANIFEST.json" in blob and "FileNotFoundError" in blob
         ok = p.returncode != 0 and named
