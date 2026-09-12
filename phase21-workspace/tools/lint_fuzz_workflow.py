@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
-"""Static lint for .github/workflows/fuzz.yml (W3)."""
-s = open('.github/workflows/fuzz.yml').read()
+"""Static lint for .github/workflows/fuzz.yml (W3).
+
+P58 / DBT-P55-001: the workflow moved to `.github/workflows` at the REPOSITORY
+root, the only place GitHub Actions reads it from. This tool is invoked with the
+workspace as the working directory, so the path is resolved from this file's
+location rather than from the cwd - a cwd-relative `open` would have raised
+FileNotFoundError from the workspace and read the wrong tree from anywhere else.
+"""
+from pathlib import Path
+
+WORKFLOW = Path(__file__).resolve().parents[2] / '.github' / 'workflows' / 'fuzz.yml'
+s = WORKFLOW.read_text(encoding='utf-8')
 targets = ['export_envelope_parse', 'pg_conf_parse', 'mysql_conf_parse',
            'pg_slow_log_parse', 'mysql_slow_log_parse']
 checks = {

@@ -18,8 +18,18 @@ ARGS = PARSER.parse_args()
 checks: dict[str, dict[str, object]] = {}
 
 
+# P58 / DBT-P55-001: GitHub Actions reads workflows only from `.github/workflows`
+# at the REPOSITORY root, so ci.yml, fuzz.yml and release.yml now live one level
+# above this workspace. Everything else this script reads is still workspace
+# relative. Without this the reader below returned "" for a file that exists,
+# and a check asserting something is ABSENT from a workflow would have passed
+# against a file it never opened.
+def workflow_root(rel: str):
+    return ROOT.parent if rel.startswith(".github/") else ROOT
+
+
 def read(rel: str) -> str:
-    path = ROOT / rel
+    path = workflow_root(rel) / rel
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 

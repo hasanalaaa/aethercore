@@ -27,6 +27,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
+# P58 / DBT-P55-001: `.github/workflows` lives at the repository root, one level
+# above this workspace - the only location GitHub Actions reads.
+REPO = ROOT.parent
 failures: list[str] = []
 checks = 0
 
@@ -76,7 +79,7 @@ required_docs = [
     "docs/phase31/PROGRESS.md",
 ]
 for rel in required_docs:
-    p = ROOT / rel
+    p = (REPO if rel.startswith(".github/") else ROOT) / rel
     ok = p.exists() and p.stat().st_size > 400
     check(f"p31-doc-exists-and-nontrivial:{rel}", ok,
           f"missing or trivially small ({p.stat().st_size if p.exists() else 0} bytes)")
@@ -136,7 +139,7 @@ check("p31-i18n-module-declared", "mod i18n;" in main_rs_txt or "pub mod i18n;" 
       "i18n module not declared in aetherctl main")
 
 # --- Gate d: fuzz workflow -------------------------------------------------------------
-fuzz_wf = ROOT / ".github/workflows/fuzz.yml"
+fuzz_wf = REPO / ".github/workflows/fuzz.yml"
 check("p31-fuzz-workflow-exists", fuzz_wf.exists(), ".github/workflows/fuzz.yml missing")
 if fuzz_wf.exists():
     wf = fuzz_wf.read_text(encoding="utf-8")
@@ -167,7 +170,7 @@ report = ROOT / "docs/phase31/CARGO_DENY_REPORT.txt"
 check("p31-deny-report-recorded", report.exists()
       and "advisories ok" in report.read_text(encoding="utf-8"),
       "CARGO_DENY_REPORT.txt must record 'advisories ok, bans ok, licenses ok, sources ok'")
-ci_yml = ROOT / ".github/workflows/ci.yml"
+ci_yml = REPO / ".github/workflows/ci.yml"
 if ci_yml.exists():
     ci = ci_yml.read_text(encoding="utf-8")
     check("p31-ci-deny-job", "cargo deny" in ci, "ci.yml lacks a cargo-deny job")

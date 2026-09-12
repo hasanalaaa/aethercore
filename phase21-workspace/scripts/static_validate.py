@@ -23,6 +23,16 @@ except Exception:
     yaml = None
 
 ROOT = Path(__file__).resolve().parents[1]
+# P58 / DBT-P55-001: the workflows moved to `.github/workflows` at the
+# REPOSITORY root, which is the only place GitHub Actions reads them from.
+# They are one level above this workspace; everything else below stays
+# workspace relative.
+REPO = ROOT.parent
+
+
+def workflow_root(rel: str):
+    """`.github/` is repository-root relative; everything else is workspace relative."""
+    return REPO if rel.startswith(".github/") else ROOT
 PARSER = argparse.ArgumentParser()
 PARSER.add_argument("--output", type=Path, help="Optional explicit report path; default verification is read-only.")
 ARGS = PARSER.parse_args()
@@ -573,7 +583,7 @@ checks["typed_mutation_surface_only"] = {"ok": not surface_hits, "hits": surface
 
 verify_phase5 = (ROOT / "scripts/verify-phase5.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase5.ps1").exists() else ""
 setup_run = (ROOT / "scripts/setup-and-run.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/setup-and-run.ps1").exists() else ""
-ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+ci = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 marker(
     "phase5_windows_gate",
     verify_phase5 + "\n" + setup_run + "\n" + ci,
@@ -746,7 +756,7 @@ audit_ps = (ROOT / "scripts/audit-dependencies.ps1").read_text(encoding="utf-8")
 repro_ps = (ROOT / "scripts/verify-reproducible.ps1").read_text(encoding="utf-8")
 webview_ps = (ROOT / "scripts/fetch-webview2.ps1").read_text(encoding="utf-8")
 fuzz_ps = (ROOT / "scripts/run-ipc-fuzz.ps1").read_text(encoding="utf-8")
-release_ci = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+release_ci = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
 dotnet_tools = json.loads((ROOT / ".config/dotnet-tools.json").read_text(encoding="utf-8"))
 deny_cfg = tomllib.loads((ROOT / "deny.toml").read_text(encoding="utf-8"))
 root_cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
@@ -784,7 +794,7 @@ required_phase8_files = [
     "docs/adr/0009-production-packaging-and-hardening.md",
     "docs/adr/0010-release-supply-chain-and-reproducibility.md",
 ]
-missing_phase8 = [name for name in required_phase8_files if not (ROOT / name).is_file()]
+missing_phase8 = [name for name in required_phase8_files if not (workflow_root(name) / name).is_file()]
 checks["phase8_required_artifacts"] = {"ok": not missing_phase8, "missing": missing_phase8}
 
 # XML well-formedness is checked separately from WiX semantic compilation on Windows.
@@ -1381,8 +1391,8 @@ marker("phase10_all_mutation_telemetry", composition10 + repair10 + cleaner10 + 
 marker("phase10_persistence_migration", persistence9 + migration10, ["0007_phase10_kernel", "idx_maintenance_executions_domain_updated", "idx_plan_executions_stage_updated"])
 verify10 = (ROOT / "scripts/verify-phase10.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/verify-phase10.ps1").exists() else ""
 audit10 = (ROOT / "scripts/phase10-architecture-audit.ps1").read_text(encoding="utf-8") if (ROOT / "scripts/phase10-architecture-audit.ps1").exists() else ""
-ci10 = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-release10 = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+ci10 = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+release10 = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
 marker("phase10_windows_gate", verify10 + audit10, ["verify-phase9.ps1", "phase10-architecture-audit.ps1", "aethercore-operation-kernel", "aethercore-maintenance-service", "aethercore-desktop", "aethercore-system-repair", "aethercore-cleaner", "aethercore-startup-manager", "cargo check --workspace --locked", "pnpm --dir apps/ui build"])
 checks["phase10_ci_release_gate"] = {
     "ok": any(gate in ci10 for gate in ["verify-phase10.ps1 -SkipOnlineSupplyChain", "verify-phase11.ps1 -SkipOnlineSupplyChain", "verify-phase12.ps1 -SkipOnlineSupplyChain", "verify-phase13.ps1 -SkipOnlineSupplyChain", "verify-phase14.ps1 -SkipOnlineSupplyChain", "verify-phase15.ps1 -SkipOnlineSupplyChain", "verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"])
@@ -1860,8 +1870,8 @@ marker("phase16_ga_seal_verify", phase16_verify_seal, ["CheckSignature", "releas
 marker("phase16_master_gate", phase16_verify, ["verify-phase15.ps1", "phase16-ga-audit.ps1", "cargo check --workspace --locked", "static_validate.py"])
 marker("phase16_production_gate", phase16_prod, ["phase16-seal-release.ps1", "verify-ga-seal.ps1", "General Availability release seal: PASS"])
 marker("phase16_honest_ga_boundary", phase16_docs + "\n" + phase16_verify, ["does not constitute GA", "Windows-native", "GA-SEAL.json", "GA-SEAL.p7s"])
-checks["phase16_ci_master_gate"] = {"ok": any(gate in (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8") for gate in ["verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"]) }
-checks["phase16_signed_release_master_gate"] = {"ok": any(gate in (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8") for gate in ["verify-phase16.ps1 -ReleasePackaging -RequireSigning", "verify-enterprise.ps1 -ReleasePackaging -RequireSigning"]) }
+checks["phase16_ci_master_gate"] = {"ok": any(gate in (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8") for gate in ["verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"]) }
+checks["phase16_signed_release_master_gate"] = {"ok": any(gate in (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8") for gate in ["verify-phase16.ps1 -ReleasePackaging -RequireSigning", "verify-enterprise.ps1 -ReleasePackaging -RequireSigning"]) }
 checks["phase16_update_broker_elevation_lifecycle"] = {"ok": "aethercore-update-broker.exe" in (ROOT / "scripts/verify-installer-security.ps1").read_text(encoding="utf-8") and "Update broker PE manifest is not requireAdministrator" in (ROOT / "scripts/verify-installer-security.ps1").read_text(encoding="utf-8")}
 checks["phase16_probe_workspace_member"] = {"ok": "tools/ga-probe" in workspace.get("members", [])}
 

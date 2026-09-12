@@ -13,9 +13,19 @@ def gate(name: str, condition: bool, detail: str = "") -> None:
     if not condition:
         failures.append(f"{name}: {detail}")
 
+# P58 / DBT-P55-001: GitHub Actions reads workflows only from `.github/workflows`
+# at the REPOSITORY root, so ci.yml, fuzz.yml and release.yml now live one level
+# above this workspace. Everything else this script reads is still workspace
+# relative. Without this the reader below returned "" for a file that exists,
+# and a check asserting something is ABSENT from a workflow would have passed
+# against a file it never opened.
+def workflow_root(rel: str):
+    return ROOT.parent if rel.startswith(".github/") else ROOT
+
+
 def text(rel: str) -> str:
     try:
-        return (ROOT / rel).read_text(encoding="utf-8")
+        return (workflow_root(rel) / rel).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return ""
 

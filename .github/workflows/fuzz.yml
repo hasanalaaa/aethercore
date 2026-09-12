@@ -31,7 +31,18 @@ jobs:
       # P58: `continue-on-error: true` was removed. A fuzz target that finds a
       # crash must fail the run. With it, this job reported success no matter
       # what libFuzzer found - a gate that cannot fail is not a gate.
+      #
+      # RUSTUP_TOOLCHAIN is not decoration. `phase21-workspace/rust-toolchain.toml`
+      # pins `channel = "1.97.1"`, and a toolchain file beats the installed
+      # default for every cargo and rustc invocation inside that directory - so
+      # installing nightly above did nothing and cargo-fuzz's `-Zsanitizer=address`
+      # came back "the option `Z` is only accepted on the nightly compiler".
+      # The environment variable outranks the toolchain file and is inherited by
+      # the `cargo build` that cargo-fuzz spawns, which the `+nightly` form is
+      # not guaranteed to be.
       - name: Run fuzz target (${{ matrix.target }}, 200 runs)
+        env:
+          RUSTUP_TOOLCHAIN: nightly
         run: |
           cargo fuzz run ${{ matrix.target }} -- -runs=200 -max_total_time=300
 
