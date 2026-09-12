@@ -57,7 +57,7 @@ evidence names where).
 | P55-1 | CI: green run of `windows-installer.yml`, run id recorded | **CLOSED — run `34683812129`, conclusion `success`, 58m0s, commit `d39e490`.** All 11 authored steps executed; **0 `continue-on-error`, 0 `if: always()`** in the workflow. Took four fixes: `07445b4` (ADK + DismApi), `f621ffc` (ADK log dir), `f54cc50` (vcomp140 via vswhere), `d39e490` (NuGet trusted signers) |
 | P55-2 | this ledger | CLOSED — this file |
 | P55-3 | recovery re-established | 3.A done (see §2). **3.B NOT DONE — owner decision 2026-09-12: do not re-image.** The existing image does not fit beside a new one, so writing one would destroy the only verified copy. `DBT-P55-003`, `DBT-P55-004` open |
-| P55-4 | build + fix + install the consumer installer | **CLOSED.** 4.A+4.B in `INSTALLER-UI.md`, 4.C+4.D in `P55-ITEM4C-LIFECYCLE.md`. Sweep: **13 of 14 pass; check 14 fails with 3 named survivors**, all `DBT-P49-003` |
+| P55-4 | build + fix + install the consumer installer | **CLOSED.** 4.A+4.B in `INSTALLER-UI.md`, 4.C+4.D in `P55-ITEM4C-LIFECYCLE.md`. Sweep: **13 of 14 pass; check 14 fails with 3 named survivors**, all `DBT-P49-003` . **Machine end state: AetherCore 0.1.11 installed from the CI build** (separate restoration install, exit 0, binaries hash-match the artefact) |
 | P55-5 | Gate 4 prepared to the owner line | CLOSED — `docs/phase55/GATE4-CANDIDATES.md`, `scripts/gate4-driver-runbook.ps1`, `scripts/gate4-preconditions.ps1`. Preconditions measured: **2 of 6 hold** |
 
 ---
