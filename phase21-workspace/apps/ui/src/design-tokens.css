@@ -185,7 +185,6 @@
   --ac-bg-mica-fallback: var(--ac-glass);
   --ac-material-structural: var(--ac-glass);
   --ac-material-base: var(--ac-glass-2);
-  --ac-material-elevated: var(--ac-glass-3);
   --ac-material-focused: var(--ac-glass);
   --ac-layer-hover: var(--ac-glass-3);
   --ac-layer-pressed: rgba(255, 255, 255, 0.11);

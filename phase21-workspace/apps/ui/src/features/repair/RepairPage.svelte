@@ -35,10 +35,10 @@
 </script>
 
 <header>
+  <!-- Title only. The 28-word subtitle described the pipeline; the screen
+       shows the pipeline's output, which is the part the reader can check. -->
   <div>
-    <p class="eyebrow">{t('repair.eyebrow', locale)}</p>
     <h1>{t('repair.title', locale)}</h1>
-    <p class="sub">{t('repair.subtitle', locale)}</p>
   </div>
   <div class="header-actions">
     <div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline', locale, { version: snapshot.serviceVersion }) : t('common.engineOffline', locale)}</div>
@@ -52,14 +52,16 @@
   <div class="phase4-hero-copy">
     <div class:ready={repairAssessment.state === 'Ready' && attentionFacts === 0} class:scanning={repairAssessment.state === 'Scanning'} class:attention={attentionFacts > 0} class="scan-orb"><span>{repairAssessment.state === 'Ready' ? (attentionFacts ? '!' : '✓') : repairAssessment.state === 'Failed' ? '!' : '◇'}</span></div>
     <div>
-      <p class="eyebrow">{t('repair.windowsHealth', locale)}</p>
       <h2>{repairAssessment.state === 'Idle' ? t('repair.hero.idle', locale) : repairAssessment.state === 'Scanning' ? t('repair.hero.scanning', locale) : repairAssessment.state === 'Ready' ? (attentionFacts ? t('repair.hero.attention', locale) : t('repair.hero.healthy', locale)) : t('repair.hero.failed', locale)}</h2>
+      <!-- The reading: how many conditions need review, and how many checks
+           reported healthy. The two paragraphs it replaces promised that
+           AetherCore would only recommend supported repairs and would not count
+           unknown checks as healthy — the first is the policy band's sentence,
+           and the second is why the healthy count is stated separately. -->
       {#if repairAssessment.errorMessage}
         <LocalizedOwnedText value={repairAssessment.errorMessage} {locale} as="p"/>
       {:else if repairAssessment.state === 'Ready'}
-        <p>{attentionFacts ? t('repair.health.attentionCopy', locale, { count: attentionFacts }) : t('repair.health.healthyCopy', locale)}</p>
-      {:else}
-        <p>{t('repair.assessmentCopy', locale)}</p>
+        <span class="hero-reading"><TechnicalText value={`${attentionFacts} · ${t('repair.needsReview', locale)}   ${healthyFacts} · ${t('repair.health.healthy', locale)}`}/></span>
       {/if}
     </div>
   </div>
@@ -93,7 +95,7 @@
   {/if}
 
   <section class="recovery-readiness-card">
-    <div><p class="eyebrow">{t('repair.recoveryEyebrow',locale)}</p><h3>{t('repair.recoveryTitle',locale)}</h3><p>{t('repair.recoveryCopy',locale)}</p></div>
+    <div><h3>{t('repair.recoveryTitle',locale)}</h3></div>
     <div class="recovery-facts">
       <div><span>{t('repair.systemRestore',locale)}</span><strong>{localizeState(recovery?.systemRestore ?? 'unknown',locale)}</strong></div>
       <div><span>{t('repair.restorePoint',locale)}</span><strong>{localizeState(recovery?.restorePointCreation ?? 'unknown',locale)}</strong></div>
@@ -118,10 +120,10 @@
 {/if}
 
 {#if repairAssessment.state === 'Ready' && recommendedNodes.length === 0 && !repairActive()}
-  <section class="phase4-action-card healthy-repair-card"><div><p class="eyebrow">{t('repair.noRepairEyebrow',locale)}</p><h3>{t('repair.noRepairTitle',locale)}</h3><p>{t('repair.noRepairCopy',locale,{healthy:healthyFacts})}</p></div></section>
+  <section class="phase4-action-card healthy-repair-card"><div><h3>{t('repair.noRepairTitle',locale)}</h3><span class="hero-reading"><TechnicalText value={`${healthyFacts} · ${t('repair.health.healthy',locale)}`}/></span></div></section>
 {:else if repairAssessment.state === 'Ready' && executableNodes.length > 0 && !repairActive() && !(repairPlan && repairPlan.state === 'AwaitingAuthorization')}
   <section class="phase4-action-card">
-    <div><p class="eyebrow">{t('repair.planEyebrow', locale)}</p><h3>{t('repair.recommendedTitle', locale,{count:executableNodes.length})}</h3><p>{t('repair.planCopy', locale)}</p></div>
+    <div><h3>{t('repair.recommendedTitle', locale,{count:executableNodes.length})}</h3></div>
     <div class="repair-plan-preview">
       {#each executableNodes as node (node.id)}<div><span>✓</span><strong>{t(`repair.action.${node.action}` as never,locale)}</strong><small>{t(`repair.safety.${node.safety}` as never,locale)}</small></div>{/each}
     </div>
@@ -131,7 +133,10 @@
     <Pressable className="install-button" onclick={reviewSystemRepair} disabled={busy}>{t('repair.review', locale)}</Pressable>
   </section>
 {:else if repairAssessment.state === 'Ready' && recommendedNodes.length > 0 && executableNodes.length === 0 && !repairActive()}
-  <section class="phase4-action-card recovery-escalation-card"><div><p class="eyebrow">{t('repair.escalationEyebrow',locale)}</p><h3>{t('repair.escalationTitle',locale)}</h3><p>{t('repair.escalationCopy',locale)}</p></div></section>
+  <!-- KEPT. This one is a fact about the evidence: the graph has a
+       recommendation that no in-product action can execute, and the reader needs
+       to know that a manual path is what remains. -->
+  <section class="phase4-action-card recovery-escalation-card"><div><h3>{t('repair.escalationTitle',locale)}</h3><p>{t('repair.escalationCopy',locale)}</p></div></section>
 {/if}
 
 {#if repairPlan && !repairStatus && repairPlan.state === 'AwaitingAuthorization'}
@@ -148,4 +153,6 @@
   </section>
 {/if}
 
-<section class="safety-note"><span>◇</span><div><strong>{t('repair.safetyTitle', locale)}</strong><p>{t('repair.safetyCopy', locale)}</p></div></section>
+<!-- The non-destructive boundary paragraph is gone. It is the policy band's
+     promise, spelled out in 31 words on one screen — and the band says it on
+     every screen, permanently. -->

@@ -1,5 +1,8 @@
 <script context="module" lang="ts">
-  export type MaterialLevel = 'base' | 'structural' | 'elevated' | 'focused';
+  /** Three neutral levels and the focused overlay. `elevated` was a fourth
+   *  fill half a step above `base`; it bought no distinction and cost every
+   *  screen a surface level (DIRECTION.md, principle 3). */
+  export type MaterialLevel = 'base' | 'structural' | 'focused';
 </script>
 
 <script lang="ts">

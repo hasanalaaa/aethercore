@@ -65,7 +65,7 @@
       <div><span>{t('common.planDigest',locale)}</span><TechnicalText value={shortDigest(repairPlan.digest)} as="code"/></div>
     </div>
     {#if repairIntelligence}
-      <div class="repair-dialog-plan" aria-label={t('repair.planEyebrow',locale)}>
+      <div class="repair-dialog-plan" aria-label={t('common.plan',locale)}>
         {#each repairDialogNodes as node (node.id)}
           <div><span>✓</span><strong>{t(`repair.action.${node.action}` as never,locale)}</strong><small>{t(`repair.safety.${node.safety}` as never,locale)}</small></div>
         {/each}

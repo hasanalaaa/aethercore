@@ -68,7 +68,9 @@
 </script>
 
 <header class="drivers-header">
-  <div><p class="eyebrow">{t('drivers.eyebrow',locale)}</p><h1>{t('drivers.title',locale)}</h1><p class="sub">{t('drivers.subtitle',locale)}</p></div>
+  <!-- Title only. "Drivers, with Windows as the authority." argued a point the
+       screen proves every row: every offer names the authority it came from. -->
+  <div><h1>{t('drivers.title',locale)}</h1></div>
   <div class="header-actions">
     <div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div>
     {#if hub.state === 'Ready' && hub.summary.recommendedUpdateCount > 0}<Pressable className="primary" onclick={() => { selectAllRecommended(); reviewDriverInstall(); }} disabled={busy || !snapshot.connected}>{t('drivers.updateRecommended',locale,{count:hub.summary.recommendedUpdateCount})}</Pressable>{/if}
@@ -79,11 +81,13 @@
 <section class="driver-hero">
   <div class="driver-hero-copy">
     <div class:scanning={scanStates.includes(hub.state)} class:ready={hub.state === 'Ready'} class="scan-orb"><span>{hub.state === 'Ready' ? '✓' : hub.state === 'Failed' ? '!' : '◫'}</span></div>
-    <div><p class="eyebrow">{t('drivers.liveDiscovery',locale)}</p><h2>{heroTitle()}</h2>
-      {#if hub.state === 'Ready'}<p>{t('drivers.inventorySummary',locale,{epoch:hub.inventoryEpoch,count:hub.summary.deviceCount})}</p>
-      {:else if hub.state === 'Idle'}<p>{t('drivers.catalogPolicy',locale)}</p>
-      {:else if hub.errorMessage}{@const err=owned(hub.errorMessage)}{#if err.localized}<p>{err.text}</p>{:else}<p><TechnicalText value={hub.errorMessage}/></p>{/if}
-      {:else}<p>{t('drivers.scanNative',locale)}</p>{/if}
+    <!-- The hero states the scan's state and, once it is current, the inventory
+         as a reading. It used to explain that AetherCore keeps no private
+         driver catalog — a fact about the product, restated on the one screen
+         where every row already names its authority. -->
+    <div><h2>{heroTitle()}</h2>
+      {#if hub.state === 'Ready'}<span class="hero-reading"><TechnicalText value={t('drivers.inventorySummary',locale,{epoch:hub.inventoryEpoch,count:hub.summary.deviceCount})}/></span>
+      {:else if hub.errorMessage}{@const err=owned(hub.errorMessage)}{#if err.localized}<p>{err.text}</p>{:else}<p><TechnicalText value={hub.errorMessage}/></p>{/if}{/if}
     </div>
   </div>
   {#if scanStates.includes(hub.state)}<div class="indeterminate"><span></span></div>{/if}
@@ -112,7 +116,7 @@
 {/if}
 
 {#if selectedCandidates().length > 0 && !installActive() && !(installPlan && installPlan.state === 'AwaitingAuthorization')}
-  <section class="selection-tray"><div><span class="selection-count">{selectedCandidates().length}</span><div><strong>{t('drivers.selectionTitle',locale)}</strong><p>{t('drivers.selectionCopy',locale,{updates:selectedUpdates().length,range:formatRange(selectedMinBytes(),selectedMaxBytes(),locale)})}</p></div></div><button use:fluidPress={{ pressedScale: 0.985 }} class="install-button" onclick={reviewDriverInstall} disabled={busy || hub.state !== 'Ready'}>{t('drivers.reviewInstall',locale)}</button></section>
+  <section class="selection-tray"><div><span class="selection-count">{selectedCandidates().length}</span><div><strong>{t('drivers.selectionTitle',locale)}</strong><span class="tray-reading"><TechnicalText value={t('drivers.selectionCopy',locale,{updates:selectedUpdates().length,range:formatRange(selectedMinBytes(),selectedMaxBytes(),locale)})}/></span></div></div><button use:fluidPress={{ pressedScale: 0.985 }} class="install-button" onclick={reviewDriverInstall} disabled={busy || hub.state !== 'Ready'}>{t('drivers.reviewInstall',locale)}</button></section>
 {/if}
 
 {#if installPlan && !installStatus && installPlan.state === 'AwaitingAuthorization'}
@@ -150,7 +154,7 @@
   <div class="driver-toolbar"><div class="filters">{#each driverFilters as name}<button use:fluidPress={{ pressedScale: 0.985 }} class:active={filter === name} aria-pressed={filter === name} onclick={() => setDriverFilter(name)}>{td(filterKeys[name],locale)}</button>{/each}</div><label class="search-box"><span>⌕</span><input value={search} oninput={(event) => setDriverSearch((event.currentTarget as HTMLInputElement).value)} placeholder={t('drivers.searchPlaceholder',locale)} /></label></div>
 
   {#if hub.state === 'Idle'}
-    <div class="driver-empty"><div>◫</div><h3>{t('drivers.emptyTitle',locale)}</h3><p>{t('drivers.emptyCopy',locale)}</p><button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={startScan} disabled={!snapshot.connected}>{t('drivers.scan',locale)}</button></div>
+    <div class="driver-empty"><div>◫</div><h3>{t('common.notCollected',locale)}</h3><p>{t('drivers.emptyCopy',locale)}</p><button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={startScan} disabled={!snapshot.connected}>{t('drivers.scan',locale)}</button></div>
   {:else if scanStates.includes(hub.state) && !hub.devices.length}
     <div class="driver-empty scanning-empty"><div>↻</div><h3>{t('drivers.discoveryProgressTitle',locale)}</h3><p>{t('drivers.discoveryProgressCopy',locale)}</p></div>
   {:else if hub.state === 'Failed'}

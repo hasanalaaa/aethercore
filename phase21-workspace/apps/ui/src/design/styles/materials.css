@@ -47,7 +47,6 @@ main .sub, main .footnote { max-inline-size:74ch; }
 .ac-material { border:1px solid var(--ac-border-subtle); }
 .ac-material-base { background:var(--ac-material-base); box-shadow:var(--ac-shadow-card); }
 .ac-material-structural { background:var(--ac-material-structural); backdrop-filter:blur(var(--ac-blur-structural)) saturate(var(--ac-saturation)); }
-.ac-material-elevated { background:var(--ac-material-elevated); backdrop-filter:blur(var(--ac-blur-elevated)) saturate(var(--ac-saturation)); box-shadow:var(--ac-shadow-card); }
 .ac-material-focused { background:var(--ac-material-focused); backdrop-filter:blur(var(--ac-fluid-surface-blur,var(--ac-blur-focused))) saturate(var(--ac-saturation)); box-shadow:var(--ac-shadow-float); }
 
 .panel,.driver-panel,.driver-hero,.hero-card,.phase4-hero,.pending-install-card,.install-progress-card,.diagnostic-cards,.crash-list,.event-list,.memory-card,.diagnostic-history-list,

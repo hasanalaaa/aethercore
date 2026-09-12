@@ -102,7 +102,7 @@
   </div>
 </header>
 
-<MaterialSurface level="elevated" className="scan-hero">
+<MaterialSurface level="base" className="scan-hero">
   <div class="status-emblem" class:scanning aria-hidden="true"><span>{scanning ? '◌' : scan.status === 1 ? '✓' : '!'}</span></div>
   <div class="scan-hero-copy">
     <h2>{scan.scanId ? statusLabel(scan.status, locale) : t('common.notCollected', locale)}</h2>
