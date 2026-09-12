@@ -48,6 +48,8 @@ evidence names where).
 | `DBT-P55-009` | launched with `/uninstall`, the bundle still presents the "Modify Setup" chooser, and **Repair is the focused default**. Enter takes Repair, not Uninstall | OPEN — usability | P55 Item 4.C: an unplanned repair ran to completion this way, `installer-screens/07-repair-complete-unplanned.png` | this machine |
 | `DBT-P49-001` | `build-release.ps1` never set the ADK `DismApi\Lib\amd64` path into `LIB`, so a clean shell died `LNK1181` | **CLOSED** | `07445b4` — `crates/system-repair/build.rs` locates the library itself; the failure was reproduced first (exit 101, `LNK1181` ×3 with `LIB` unset), then measured at exit 0 | done |
 | `DBT-P55-006` | two recorded ARM64 recipes still set `LIB` to the DismApi path by hand — `scripts/build-arm64-msi.cmd:77` and `scripts/p36vm/p36_relbuild.cmd:11`. Now redundant: `build.rs` resolves `arm64` the same way it resolves `amd64`. Harmless (build.rs treats existing `LIB` entries as a fallback), so they were **left alone rather than changed**: both are documented verbatim reproduction recipes for a VM this session cannot test on | OPEN — low | verified P55 by grep; retire them on the ARM64 VM with a build that proves the recipe still works without the line | the ARM64 VM |
+| `DBT-P56-001` | commit `2be8396` is titled **"finish local AI chat"** and delivered no chat. The AI-facing wire verbs are `ListInsights`, `RequestInsight`, `DismissInsight` and nothing else | OPEN — recorded so the message is not trusted | verified P56: `grep -c chat services/maintenance-service/src/*.rs` → 0 on all 14 files | any |
+| `DBT-P56-002` | **the embedded model has never generated a token.** `LlamaCppReasoner::infer_embedded` returns `Err` unconditionally — "token-level generation requires the context pool wired in intelligence.rs". The artifact verifies its sha256, loads, and builds a context at startup, so `engine_label` reads `localModel` until the first request; every request then degrades to `DeterministicFallbackReasoner` | OPEN — P56-2.C exists to close it | verified P56: `crates/intelligence-core/src/llama.rs`, the only `Ok` path in `infer_embedded` is unreachable | any |
 | `DBT-P42-011` | x64 numeric bias in performance readings | **RECLASSIFIED — does not reproduce** | P49 §49.6, nine rounds on the original silicon; residual means smaller than the host counter's own ±14-pt spread | done |
 
 ### P55 items still in flight
@@ -66,10 +68,10 @@ evidence names where).
 | item | what | status |
 |---|---|---|
 | P56-1.A | measure the density before solving it — words of prose, type sizes, elevations, text-to-data, per screen | **CLOSED** — `apps/ui/tools/measure-density.mjs`, `docs/phase56/DENSITY.md`, raw in `docs/phase56/measure/` |
-| P56-1.B | the design direction, written down | OPEN |
+| P56-1.B | the design direction, written down | **CLOSED** — `docs/phase56/DIRECTION.md`, five principles with numeric targets |
 | P56-1.C | rebuild the Overview to it | OPEN |
 | P56-1.D | present it — screenshots, both languages, both themes, populated and empty. **Gate: no roll-out until the owner approves** | OPEN |
-| P56-2.A | the chat's interaction design | OPEN |
+| P56-2.A | the chat's interaction design | **CLOSED** — `DIRECTION.md` Part 2.A: an inline-end drawer, three named outcomes, the wire stated before implementation |
 | P56-2.B | the wire contract | OPEN |
 | P56-2.C | the service side | OPEN |
 | P56-2.D | the UI | OPEN |

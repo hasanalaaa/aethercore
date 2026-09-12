@@ -73,11 +73,38 @@ Three findings, and only one of them is the one the owner named.
 **1. The Overview is not the wordiest screen — it is the least differentiated.**
 Populated it carries 63 prose words, the second-lowest of twelve, because P51
 already cut it. But it carries **15 distinct type sizes and 20 distinct surface
-elevations** — the most of any screen in the product. Twenty surfaces means
-nothing on the screen is more important than anything else. That is the defect
-behind "too much text": not volume, *undifferentiated* volume. The brief predicted
-this — "density is correct; *undifferentiated* density is the defect" — and the
+elevations** — the most of any screen in the product. That is the defect behind
+"too much text": not volume, *undifferentiated* volume. The brief predicted this
+— "density is correct; *undifferentiated* density is the defect" — and the
 instrument confirms it against the one screen the owner judges the product on.
+
+Splitting those 20 surfaces by whether they are neutral (a structural layer) or
+role-tinted (a chip carrying a semantic colour) separates the two problems:
+
+| screen | surfaces | neutral | role-tinted |
+|---|---:|---:|---:|
+| overview | 20 | **6** | 14 |
+| drivers | 15 | 6 | 9 |
+| repair | 12 | 4 | 8 |
+| activity | 12 | 4 | 8 |
+| settings | 10 | 4 | 6 |
+| cleanup / hardware / deepScan | 9–11 | 3 | 6–8 |
+| startup | 10 | 3 | 7 |
+| crash | 8 | 2 | 6 |
+| performance | 6 | 2 | 4 |
+| fleet | 5 | 1 | 4 |
+
+Role-tinted fills are semantics and are supposed to be plural — a critical chip
+and a healthy chip must differ. **Neutral levels are structure, and
+`apps/ui/DESIGN_LANGUAGE.md` already states the rule: "One elevation step per
+interaction layer."** The Overview renders six. That is not a new opinion; it is
+an existing rule being broken on the product's front screen.
+
+The fifteen type sizes are the same story. `design-tokens.css` defines a scale of
+**seven** sizes. Rendered, the Overview shows 9.5, 10, 10.56, 11, 11.5, 12.5, 13,
+13.12, 13.5, 14, 15, 17, 27, 34, 44 px. Eight of the fifteen are literals written
+outside the scale, and the clusters — 9.5/10/10.56, 12.5/13/13.12/13.5/14 — carry
+no distinction a reader could name.
 
 **2. The explaining happens when there is nothing to show.** Empty, the Overview
 goes from 63 prose words to **167** — it more than doubles — and the whole
