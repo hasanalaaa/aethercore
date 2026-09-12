@@ -18,7 +18,10 @@
 </script>
 
 <header>
-  <div><p class="eyebrow">{t('cleanup.eyebrow', locale)}</p><h1>{t('cleanup.title', locale)}</h1><p class="sub">{t('cleanup.subtitle', locale)}</p></div>
+  <!-- Title only. The 24-word subtitle described how a plan is frozen and
+       revalidated; the plan card below states its digest and its category
+       count, which is the part a reader can check. -->
+  <div><h1>{t('cleanup.title', locale)}</h1></div>
   <div class="header-actions">
     <div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline', locale, {version:snapshot.serviceVersion}) : t('common.engineOffline', locale)}</div>
     <Pressable className="scan-button" onclick={startCleanupScan} disabled={busy || cleanupSnapshot.state === 'Scanning' || cleanupActive() || !snapshot.connected}><span>✦</span>{cleanupSnapshot.state === 'Scanning' ? t('cleanup.scanning',locale) : cleanupSnapshot.state === 'Idle' ? t('cleanup.scan',locale) : t('cleanup.scanAgain',locale)}</Pressable>
@@ -49,9 +52,9 @@
       </label>
     {/each}
   </section>
-  <section class="selection-tray cleanup-selection"><div><span class="selection-count">{selectedCleanupCandidates().length}</span><div><strong>{t('cleanup.selectionTitle',locale)}</strong><p>{t('cleanup.selectionCopy',locale,{bytes:formatBytes(selectedCleanupBytes(),locale)})}</p></div></div><button use:fluidPress={{ pressedScale:0.985 }} class="install-button" onclick={reviewCleanup} disabled={busy || !selectedCleanupCandidates().length}>{t('cleanup.review',locale)}</button></section>
+  <section class="selection-tray cleanup-selection"><div><span class="selection-count">{selectedCleanupCandidates().length}</span><div><strong>{t('cleanup.selectionTitle',locale)}</strong><span class="tray-reading"><TechnicalText value={formatBytes(selectedCleanupBytes(),locale)}/></span></div></div><button use:fluidPress={{ pressedScale:0.985 }} class="install-button" onclick={reviewCleanup} disabled={busy || !selectedCleanupCandidates().length}>{t('cleanup.review',locale)}</button></section>
 {:else if cleanupSnapshot.state === 'Idle'}
-  <section class="panel activity-empty"><EmptyState title={t('cleanup.emptyTitle',locale)} body={t('cleanup.emptyCopy',locale)}>
+  <section class="panel activity-empty"><EmptyState title={t('common.notCollected',locale)} body={t('cleanup.emptyCopy',locale)} channels={[{ label: t('cleanup.reclaimable',locale) }, { label: t('cleanup.files',locale) }, { label: t('cleanup.categories',locale) }]}>
     <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={startCleanupScan} disabled={busy || !snapshot.connected}>{t('cleanup.scan',locale)}</button>
   </EmptyState></section>
 {/if}
@@ -70,4 +73,7 @@
   </section>
 {/if}
 
-<section class="safety-note"><span>✦</span><div><strong>{t('cleanup.safetyTitle',locale)}</strong><p>{t('cleanup.safetyCopy',locale)}</p></div></section>
+<!-- The 26-word list of what this cleaner will never delete is gone. The screen
+     IS the allowlist: every category it will touch is on it, with its size and
+     its file count. A second list, of the same information negated, told the
+     reader nothing the first one had not already shown them. -->

@@ -54,7 +54,10 @@
 </script>
 
 <header>
-  <div><p class="eyebrow">{t('startup.actualEyebrow',locale)}</p><h1>{t('startup.actualTitle',locale)}</h1><p class="sub">{t('startup.actualSubtitle',locale)}</p></div>
+  <!-- Title only. "Every new item starts Unreviewed; doing nothing changes
+       nothing" is shown by the three-way control on every row, where
+       Unreviewed is the state each one is already in. -->
+  <div><h1>{t('startup.actualTitle',locale)}</h1></div>
   <div class="header-actions"><div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div><Pressable className="scan-button" onclick={startStartupScan} disabled={busy || startupSnapshot.state === 'Scanning' || startupActive() || !snapshot.connected}><span>↻</span>{startupSnapshot.state === 'Scanning' ? t('startup.inspecting',locale) : startupSnapshot.state === 'Idle' ? t('startup.inspect',locale) : t('startup.inspectAgain',locale)}</Pressable></div>
 </header>
 
@@ -90,9 +93,9 @@
   {#if selectedStartupServices().length > 0}
     <label use:fluidPress={{ pressedScale:0.992 }} class="service-confirm"><input type="checkbox" checked={startupServiceConfirmed} onchange={(event) => setStartupServiceConfirmed((event.currentTarget as HTMLInputElement).checked)}/><span></span><div><strong>{t('startup.serviceConfirmTitle',locale)}</strong><p>{t('startup.serviceConfirmCopy',locale,{targets:tp('unit.serviceTarget',locale,selectedStartupServices().length)})}</p></div></label>
   {/if}
-  <section class="selection-tray"><div><span class="selection-count">{selectedStartupDisables().length}</span><div><strong>{t('startup.selectionTitle',locale)}</strong><p>{t('startup.selectionCopy',locale)}</p></div></div><button use:fluidPress={{ pressedScale:0.985 }} class="install-button" onclick={reviewStartupPlan} disabled={busy || !selectedStartupDisables().length || (selectedStartupServices().length > 0 && !startupServiceConfirmed)}>{t('startup.review',locale)}</button></section>
+  <section class="selection-tray"><div><span class="selection-count">{selectedStartupDisables().length}</span><div><strong>{t('startup.selectionTitle',locale)}</strong></div></div><button use:fluidPress={{ pressedScale:0.985 }} class="install-button" onclick={reviewStartupPlan} disabled={busy || !selectedStartupDisables().length || (selectedStartupServices().length > 0 && !startupServiceConfirmed)}>{t('startup.review',locale)}</button></section>
 {:else if startupSnapshot.state === 'Idle'}
-  <section class="panel activity-empty"><EmptyState title={t('startup.emptyTitle',locale)} body={t('startup.emptyCopy',locale)}>
+  <section class="panel activity-empty"><EmptyState title={t('common.notCollected',locale)} body={t('startup.emptyCopy',locale)} channels={[{ label: t('startup.targets',locale) }, { label: t('startup.manageable',locale) }, { label: t('startup.protected',locale) }]}>
     <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={startStartupScan} disabled={busy || !snapshot.connected}>{t('startup.inspect',locale)}</button>
   </EmptyState></section>
 {/if}
@@ -113,10 +116,13 @@
 
 <section class="recovery-panel startup-history">
   <div class="panel-head"><div><p class="eyebrow">{t('startup.historyEyebrow',locale)}</p><h3>{t('startup.historyTitle',locale)}</h3></div></div>
-  {#if startupHistory.length === 0}<div class="empty compact"><p>{t('startup.historyEmpty',locale)}</p></div>{/if}
+  {#if startupHistory.length === 0}<div class="empty compact"><span class="empty-reading"><TechnicalText value={t('common.notCollected',locale)}/></span></div>{/if}
   {#each startupHistory as entry (entry.changeId)}
     <div class="startup-history-row"><div><strong><TechnicalText value={entry.displayName}/></strong><p>{localizeDirection(entry.direction,locale)} · {localizeKind(entry.kind,locale)} · {localizeState(entry.state,locale)}</p>{#if entry.detail}<LocalizedOwnedText value={entry.detail} {locale} as="small"/>{/if}<small>{formatWhen(entry.updatedUnixMs,locale)} · {t('startup.changeRef',locale,{id:entry.changeId.slice(0,8)})}</small></div>{#if entry.restorable}<button use:fluidPress={{ pressedScale:0.985 }} class="secondary" onclick={() => openStartupRestore(entry)} disabled={busy}>{t('startup.restoreOriginal',locale)}</button>{/if}</div>
   {/each}
 </section>
 
-<section class="safety-note"><span>◇</span><div><strong>{t('startup.safetyTitle',locale)}</strong><p>{t('startup.safetyCopy',locale)}</p></div></section>
+<!-- The passive-default invariant is gone. Its first sentence is the policy
+     band's promise; its second — that a protected target cannot be turned into
+     a Disable plan — is shown on every protected row, where the Disable control
+     is disabled and the row carries its protection reason. -->
