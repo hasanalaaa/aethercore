@@ -19,7 +19,10 @@
 </script>
 
 <header>
-  <div><p class="eyebrow">{t('crash.eyebrow',locale)}</p><h1>{t('crash.title',locale)}</h1><p class="sub">{t('crash.subtitle',locale,{days:localizedWindow})}</p></div>
+  <!-- The 28-word subtitle stated one fact worth keeping — that full
+       driver attribution is left to symbol-assisted dump analysis — and it is
+       kept, once, at the foot of the screen where the dumps are. -->
+  <div><h1>{t('crash.title',locale)}</h1></div>
   <div class="header-actions"><div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div><Pressable className="scan-button" onclick={() => startDiagnosticsScan('crash')} disabled={busy || diagnosticRunning() || !snapshot.connected}><span>↻</span>{diagnosticRunning() ? t('crash.collecting',locale) : t('crash.refresh',locale)}</Pressable></div>
 </header>
 {#if diagnosticRunning()}<div class="indeterminate cleanup-scan-progress"><span></span></div>{/if}
@@ -31,7 +34,7 @@
   <article><span>{t('crash.shutdowns',locale)}</span><strong>{diagnostics.events.filter((event) => event.category === 'UnexpectedShutdown').length}</strong><small>{t('crash.shutdownsHint',locale)}</small></article>
   <article><span>{t('crash.snapshots',locale)}</span><strong>{diagnosticHistory.length}</strong><small>{t('crash.snapshotsHint',locale)}</small></article>
 </section>
-{#if diagnostics.state === 'Idle'}<section class="panel activity-empty"><EmptyState title={t('crash.emptyTitle',locale)} body={t('crash.emptyCopy',locale,{days:localizedWindow})}>
+{#if diagnostics.state === 'Idle'}<section class="panel activity-empty"><EmptyState title={t('common.notCollected',locale)} body={t('crash.emptyCopy',locale)} channels={[{ label: t('crash.minidumps',locale) }, { label: t('crash.whea',locale) }, { label: t('crash.shutdowns',locale) }]}>
   <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={() => startDiagnosticsScan('crash')} disabled={busy || !snapshot.connected}>{t('crash.refresh',locale)}</button>
 </EmptyState></section>{/if}
 
@@ -44,7 +47,8 @@
 {/if}
 
 <section class="event-list"><div class="panel-head"><div><p class="eyebrow">{t('crash.eventsEyebrow',locale)}</p><h3>{t('crash.eventsTitle',locale,{days:localizedWindow})}</h3></div></div>
-  {#if diagnostics.events.length === 0}<div class="empty compact"><p>{t('crash.eventsEmpty',locale,{days:localizedWindow})}</p></div>{/if}
+  <!-- A count and its window, not a sentence about a count and its window. -->
+  {#if diagnostics.events.length === 0}<div class="empty compact"><span class="empty-reading"><TechnicalText value={`${tp('unit.event',locale,0)} · ${localizedWindow}`}/></span></div>{/if}
   {#each diagnostics.events as event (event.provider + event.recordedUnixMs + event.eventId)}
     <article class="event-row"><span class:warn={eventTone(event.severity)==='warn'} class="event-dot"></span><div><LocalizedOwnedText value={event.summary} {locale} as="strong"/><LocalizedOwnedText value={event.detail} {locale} as="p"/><small><TechnicalText value={event.provider}/> · {t('crash.eventRef',locale,{id:event.eventId})} · {formatWhen(event.recordedUnixMs,locale)}</small></div><em>{localizeConfidence(event.confidence,locale)}</em></article>
   {/each}
@@ -57,9 +61,13 @@
 </section>
 
 <section class="diagnostic-history-list"><div class="panel-head"><div><p class="eyebrow">{t('crash.historyEyebrow',locale)}</p><h3>{t('crash.historyTitle',locale)}</h3></div></div>
-  {#if diagnosticHistory.length === 0}<div class="empty compact"><p>{t('crash.historyEmpty',locale)}</p></div>{/if}
+  {#if diagnosticHistory.length === 0}<div class="empty compact"><span class="empty-reading"><TechnicalText value={t('common.notCollected',locale)}/></span></div>{/if}
   {#each diagnosticHistory.slice(0,8) as entry (entry.scanId)}
     <article class="diagnostic-history-row"><div><strong>{localizeState(entry.state,locale)}</strong><p>{t('crash.historyCounts',locale,{cards:tp('unit.triageCard',locale,entry.cardCount),warnings:tp('unit.warning',locale,entry.warningCount)})}</p></div><small>{formatWhen(entry.collectedUnixMs,locale)} · {t('crash.scanRef',locale,{id:entry.scanId.slice(0,8)})}</small></article>
   {/each}
 </section>
+<!-- KEPT, and cut to the fact. This is not the policy band's promise repeated;
+     it is the epistemic limit of the evidence on THIS screen, and it is the
+     reason the screen never names a culprit. Deleting it would delete the
+     reason. -->
 <section class="safety-note"><span>⌁</span><div><strong>{t('crash.safetyTitle',locale)}</strong><p>{t('crash.safetyCopy',locale)}</p></div></section>

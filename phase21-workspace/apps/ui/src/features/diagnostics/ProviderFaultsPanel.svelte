@@ -10,10 +10,11 @@
 
 {#if faults.length}
   <section class="provider-fault-panel" aria-labelledby="provider-fault-title">
+    <!-- One title, not two: the eyebrow and the heading rendered the SAME key.
+         The paragraph under them described in 21 generic words what each row
+         below states precisely — which provider, and which fault kind. -->
     <div class="provider-fault-copy">
-      <p class="eyebrow">{t('diagnostics.providerFaults.title', locale)}</p>
       <h3 id="provider-fault-title">{t('diagnostics.providerFaults.title', locale)}</h3>
-      <p>{t('diagnostics.providerFaults.copy', locale)}</p>
     </div>
     <div class="provider-fault-list">
       {#each faults as fault, index (`${fault.provider}:${fault.operation}:${fault.kindCode}:${index}`)}

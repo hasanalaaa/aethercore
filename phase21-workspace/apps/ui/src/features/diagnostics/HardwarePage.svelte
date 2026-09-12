@@ -20,7 +20,9 @@
 </script>
 
 <header>
-  <div><p class="eyebrow">{t('hardware.eyebrow',locale)}</p><h1>{t('hardware.actualTitle',locale)}</h1><p class="sub">{t('hardware.actualSubtitle',locale)}</p></div>
+  <!-- The title is the screen's name. It was a sentence — "Measurements, not a
+       made-up health score." — which argues with a score nobody is showing. -->
+  <div><h1>{t('hardware.actualTitle',locale)}</h1></div>
   <div class="header-actions"><div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div><Pressable className="scan-button" onclick={() => startDiagnosticsScan('hardware')} disabled={busy || diagnosticRunning() || !snapshot.connected}><span>↻</span>{diagnosticRunning() ? t('hardware.collecting',locale) : diagnostics.state === 'Idle' ? t('hardware.collect',locale) : t('hardware.collectAgain',locale)}</Pressable></div>
 </header>
 {#if diagnosticRunning()}<div class="indeterminate cleanup-scan-progress"><span></span></div>{/if}
@@ -34,7 +36,7 @@
 </section>
 
 {#if diagnostics.state === 'Idle'}
-  <section class="panel activity-empty"><EmptyState title={t('hardware.emptyTitle',locale)} body={t('hardware.emptyCopy',locale)}>
+  <section class="panel activity-empty"><EmptyState title={t('common.notCollected',locale)} body={t('hardware.emptyCopy',locale)} channels={[{ label: t('hardware.storageDevices',locale) }, { label: t('hardware.memoryLoad',locale) }, { label: t('hardware.wheaMemory',locale) }]}>
     <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={() => startDiagnosticsScan('hardware')} disabled={busy || !snapshot.connected}>{t('hardware.collect',locale)}</button>
   </EmptyState></section>
 {:else}
@@ -86,4 +88,6 @@
     {/each}
   </section>
 {/if}
-<section class="safety-note"><span>▱</span><div><strong>{t('hardware.safetyTitle',locale)}</strong><p>{t('hardware.safetyCopy',locale)}</p></div></section>
+<!-- The diagnostic-honesty paragraph is gone. Every claim it made is already
+     made by the screen itself: "Not reported" is printed where a counter is
+     missing, and no percentage health score exists to disclaim. -->
