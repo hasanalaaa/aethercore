@@ -1,7 +1,15 @@
 import type { MessageKey } from './i18n';
 
-/** Stable semantic route identifiers. Display labels live exclusively in the message catalogs. */
-export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'fleet' | 'settings' | 'assistant';
+/**
+ * Stable semantic route identifiers. Display labels live exclusively in the message catalogs.
+ *
+ * P58: `'assistant'` was removed. The drawer is an overlay on top of whatever
+ * screen is active, never a destination — `DIRECTION.md` rejected a dedicated
+ * screen and `NavigationRail.svelte` says it "must not read as one". Listing it
+ * in a union whose contract is "routes" invites the next reader to give it a nav
+ * entry. `IconName` keeps it: the drawer does have an icon.
+ */
+export type PageId = 'overview' | 'deepScan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'fleet' | 'settings';
 export type IconName = 'overview' | 'scan' | 'drivers' | 'repair' | 'cleanup' | 'startup' | 'performance' | 'hardware' | 'crash' | 'activity' | 'search' | 'language' | 'theme' | 'check' | 'warning' | 'service' | 'fleet' | 'settings' | 'assistant';
 export type NavigationGroup = 'observe' | 'act' | 'history' | 'system';
 export type NavigationAvailability = 'available' | 'online';

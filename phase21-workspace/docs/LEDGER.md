@@ -89,6 +89,12 @@ Report: `docs/phase57/P57-REPORT.md`. Raw measurements:
 | P57-2 | one numeral convention for technical readings | **CLOSED — Latin digits everywhere, both languages, the log included.** Reason and measurement in `DIRECTION.md` Part 3: JetBrains Mono has no Arabic-Indic digits, so `seq ١ ١٢:٣٠:٠٠` drew 7 glyphs monospaced and 7 from a proportional face inside one token. `formatNumber`/`formatDateTime` resolve to `ar-IQ-u-nu-latn`; units, date order and AM/PM stay Arabic. Side effect: `verify-numbers` now sees **34** score-shaped numbers, up from 27 — every Arabic percentage had been invisible to the gate, because `\\d` never matched `٥١` |
 | P57-3 | the direction rolled out to the remaining eleven screens | **CLOSED** — `docs/phase57/P57-REPORT.md`, six commits, two screens each plus the two design-system steps (the type scale, the surface ladder). Twelve screens at 1280: prose **1,533 → 756** populated en and **1,136 → 162** empty en; words per reading **4.20 → 2.02** and **9.09 → 1.13**. Type sizes ≤6 on every screen, every one a token (was 3–13). Neutral surfaces ≤3 on every screen, populated AND empty (was 1–7). 71 catalog keys removed in both languages |
 
+### P58 items
+
+| item | what | status |
+|---|---|---|
+| P58-1 | `PageId` enumerated `'assistant'`, which is not a route | **CLOSED** — `apps/ui/src/lib/navigation.ts:4`. Removed from `PageId`; `IconName` keeps it, because the drawer does have an icon. Nothing depended on the page membership: no `NAVIGATION` entry, no `setPage('assistant')`, and `verify-arabic --page assistant` passes a CLI string, not a `PageId`. Measured after: `svelte-check` **229 files, 0 errors, 0 warnings**, `vite build` exit 0, and Ctrl+/ opens and focuses the drawer on **12/12** screens |
+
 ---
 
 ## §2 Recovery posture — measured 2026-09-12
