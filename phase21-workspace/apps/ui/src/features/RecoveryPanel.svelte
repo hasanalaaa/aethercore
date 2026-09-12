@@ -10,7 +10,7 @@
 
 {#if recoveryEntries.length > 0}
   <section class="recovery-panel">
-    <div class="panel-head"><div><p class="eyebrow">{t('activity.eyebrow',locale)}</p><h3>{t('recovery.title',locale)}</h3></div></div>
+    <div class="panel-head"><div><h3>{t('recovery.title',locale)}</h3></div></div>
     {#each recoveryEntries as entry (entry.seq)}
       {@const summary = localizeOwnedText(entry.summary,locale)}
       {@const detail = localizeOwnedText(entry.detail,locale)}

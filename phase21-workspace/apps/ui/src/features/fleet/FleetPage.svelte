@@ -292,11 +292,9 @@
 </script>
 
 <header>
-  <div>
-    <p class="eyebrow">{t('fleet.eyebrow', locale)}</p>
-    <h1>{t('fleet.title', locale)}</h1>
-    <p class="sub">{t('fleet.subtitle', locale)}</p>
-  </div>
+  <!-- Title only; the eyebrow repeated it verbatim ("Fleet" over "Fleet
+       hosts") and the subtitle described the view. -->
+  <div><h1>{t('fleet.title', locale)}</h1></div>
   <Pressable className="fleet-add-button" onclick={() => (showAddForm = !showAddForm)} disabled={busy}>
     {showAddForm ? t('fleet.actionCancel', locale) : t('fleet.actionAdd', locale)}
   </Pressable>

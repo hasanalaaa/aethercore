@@ -3,6 +3,7 @@
   import { streamState } from '../../platform/stream-state';
   import { t } from '../../lib/i18n';
   import { EmptyState } from '../../design/signature';
+  import { TechnicalText } from '../../design/primitives';
   $: snapshot = $streamState.snapshot;
   $: recoveryEntries = $streamState.recoveryEntries;
   $: schedulerEvent = $streamState.schedulerEvent;
@@ -48,12 +49,17 @@
 </script>
 
 <header>
-  <div><p class="eyebrow">{t('activity.eyebrow',locale)}</p><h1>{t('activity.title',locale)}</h1><p class="sub">{t('activity.subtitle',locale)}</p></div>
+  <!-- Title only. The 18-word subtitle promised that interrupted mutations are
+       never replayed; the journal below shows each one, with its restore-point
+       sequence and its backup root. -->
+  <div><h1>{t('activity.title',locale)}</h1></div>
   <div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div>
 </header>
 
 <section class="panel scheduler-activity" aria-live="polite">
-  <div class="panel-head"><div><p class="eyebrow">{t('activity.schedulerTitle',locale)}</p><h3>{t('activity.schedulerCopy',locale)}</h3></div></div>
+  <!-- A heading that is a heading. It was an eyebrow with a 16-word SENTENCE
+       under it wearing an <h3>. -->
+  <div class="panel-head"><div><h3>{t('activity.schedulerTitle',locale)}</h3></div></div>
   {#if schedulerEvent}
     <div class="scheduler-row">
       <div><strong>{schedulerWorkload(schedulerEvent.workload)}</strong><span>{schedulerState(schedulerEvent.state)}</span></div>
@@ -61,9 +67,9 @@
       <div class="meta"><span>{t('activity.schedulerEvidence',locale,{count:schedulerEvent.evidenceCount})}</span><span>{t('activity.schedulerWarnings',locale,{count:schedulerEvent.warningCount})}</span></div>
     </div>
   {:else}
-    <p class="scheduler-none">{t('activity.schedulerNone',locale)}</p>
+    <span class="scheduler-none"><TechnicalText value={t('common.notCollected',locale)}/></span>
   {/if}
 </section>
 {#if recoveryEntries.length === 0}
-  <section class="panel activity-empty"><EmptyState title={t('activity.emptyTitle',locale)} body={t('activity.emptyCopy',locale)} /></section>
+  <section class="panel activity-empty"><EmptyState title={t('common.notCollected',locale)} body={t('activity.emptyCopy',locale)} /></section>
 {/if}
