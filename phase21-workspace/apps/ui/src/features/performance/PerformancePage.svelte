@@ -18,6 +18,7 @@
   import type { PerformanceWindowResponse } from '../../lib/contracts';
   import { applyPerformanceWindow, streamState } from '../../platform/stream-state';
   import { Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
+  import { EmptyState } from '../../design/signature';
   import { t, td, tp, hasMessageKey } from '../../lib/i18n';
   import {
     analyzeBottlenecks,
@@ -152,7 +153,10 @@
 </script>
 
 <header>
-  <div><p class="eyebrow">{t('perf.eyebrow', locale)}</p><h1>{t('perf.title', locale)}</h1><p class="sub">{t('perf.subtitle', locale)}</p></div>
+  <!-- Title only. The eyebrow repeated the rail, and the subtitle
+       ("Passive telemetry, honest bottleneck attribution, reversible tuning")
+       described the screen rather than reporting anything measured. -->
+  <div><h1>{t('perf.title', locale)}</h1></div>
   <div class="header-actions">
     {#if sampling}
       <Pressable className="scan-button" onclick={stopPerfSampling} disabled={busy}><span>■</span>{t('perf.stop', locale)}</Pressable>
@@ -225,8 +229,12 @@
 </section>
 
 {#if performance.power?.throttleActive}
+  <!-- The reading is "a limit is active right now". The 26 words under it said
+       the speeds would recover when it cleared, which is a prediction, and that
+       no action is applied automatically, which the policy band already says on
+       every screen. -->
   <section class="warning-strip throttle-warning"><span>△</span>
-    <div><strong>{t('perf.throttleActive', locale)}</strong><p>{t('perf.throttleCopy', locale)}</p></div>
+    <div><strong>{t('perf.throttleActive', locale)}</strong></div>
   </section>
 {/if}
 
@@ -234,9 +242,18 @@
   <div class="panel-head"><div><p class="eyebrow">{t('perf.analysisEyebrow', locale)}</p><h3>{t('perf.analysisTitle', locale)}</h3></div>
     {#if report}<span class="risk">{tp('unit.finding', locale, report.findings.length)}</span>{/if}</div>
   {#if !report}
-    <div class="empty compact"><p>{t('perf.noAnalysisYet', locale)}</p></div>
+    <!-- Honest empty state: nothing has been analysed, and the two counts say
+         what an analysis would be run over. -->
+    <EmptyState
+      title={t('common.notCollected', locale)}
+      body={t('perf.noAnalysisYet', locale)}
+      channels={[{ label: t('perf.samples', locale), value: performanceWindow.length || undefined }]}
+    />
   {:else if report.findings.length === 0}
-    <div class="empty compact healthy"><p>{t('perf.allClear', locale)}</p></div>
+    <div class="empty compact healthy">
+      <span class="analysis-clear">{t('perf.allClear', locale)}</span>
+      <TechnicalText value={tp('unit.sample', locale, performanceWindow.length)} />
+    </div>
   {:else}
     <div class="finding-list">
       {#each report.findings as finding (finding.id)}
@@ -268,7 +285,10 @@
     {#if selectedIds.length}
       <section class="selection-tray">
         <div><span class="selection-count">{selectedIds.length}</span>
-          <div><strong>{t('perf.planTitle', locale)}</strong><p>{t('perf.planCopy', locale)}</p></div></div>
+          <!-- "Only reversible, evidence-backed actions are offered. Everything
+               is journaled and restorable." is the policy band's own sentence,
+               one region away and on every screen. -->
+          <div><strong>{t('perf.planTitle', locale)}</strong></div></div>
         <button use:fluidPress={{ pressedScale: 0.985 }} class="install-button"
           onclick={() => reviewOptimizationPlan(selectedIds)} disabled={busy}>{t('perf.reviewPlan', locale)}</button>
       </section>
@@ -276,6 +296,6 @@
   {/if}
 </section>
 
-<section class="safety-note"><span>◇</span>
-  <div><strong>{t('perf.safetyTitle', locale)}</strong><p>{t('perf.safetyCopy', locale)}</p></div>
-</section>
+<!-- The 33-word safety contract is gone. It restated, on one screen, the promise
+     the persistent policy band makes on every screen — and a promise repeated
+     twice reads as a promise the product is unsure of. -->

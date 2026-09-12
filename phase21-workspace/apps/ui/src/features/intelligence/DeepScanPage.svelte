@@ -86,11 +86,12 @@
 
 </script>
 
+<!-- The title, and nothing above or below it. The eyebrow repeated the screen
+     name the rail and the context bar already show, and the subtitle described
+     the screen rather than the machine. -->
 <header class="deep-scan-header">
   <div>
-    <p class="eyebrow">{t('deepScan.eyebrow', locale)}</p>
     <h1>{t('deepScan.title', locale)}</h1>
-    <p class="sub">{t('deepScan.subtitle', locale)}</p>
   </div>
   <div class="scan-actions">
     {#if scanning}
@@ -104,9 +105,10 @@
 <MaterialSurface level="elevated" className="scan-hero">
   <div class="status-emblem" class:scanning aria-hidden="true"><span>{scanning ? '◌' : scan.status === 1 ? '✓' : '!'}</span></div>
   <div class="scan-hero-copy">
-    <p class="eyebrow">{t('deepScan.systemStatus', locale)}</p>
-    <h2>{scan.scanId ? statusLabel(scan.status, locale) : t('deepScan.readyTitle', locale)}</h2>
-    <p>{scan.scanId ? stateLabel(scan.state, locale) : t('deepScan.readyCopy', locale)}</p>
+    <h2>{scan.scanId ? statusLabel(scan.status, locale) : t('common.notCollected', locale)}</h2>
+    <!-- The scan's own state, as a reading. It used to be a sentence telling the
+         reader to press the button beside it. -->
+    {#if scan.scanId}<span class="scan-hero-state"><TechnicalText value={stateLabel(scan.state, locale)} /></span>{/if}
   </div>
   {#if scan.scanId}
     <div class="scan-facts" aria-label={t('deepScan.summary', locale)}>
@@ -153,7 +155,6 @@
   {#if scan.warnings.length}
     <MaterialSurface level="structural" className="limitation-card">
       <strong>{t('deepScan.diagnosticLimitations',locale)}</strong>
-      <p>{t('deepScan.diagnosticLimitationsCopy',locale)}</p>
       <ul>
         {#each limitedCollectors as collector}<li><TechnicalText value={collector.id}/><span> — {collectorStateLabel(collector.state,locale)}</span></li>{/each}
         {#if hasContinuityLimitation}<li>{t('deepScan.continuityLimitation',locale)}</li>{/if}
@@ -175,7 +176,9 @@
     <MaterialSurface level="focused" className="healthy-result">
       <div aria-hidden="true">✓</div>
       <h3>{t('deepScan.noActionTitle',locale)}</h3>
-      <p>{t('deepScan.noActionCopy',locale)}</p>
+      <!-- The count of checks that reported healthy, instead of a paragraph
+           promising that no optimization was invented to fill the space. -->
+      <span class="healthy-count"><TechnicalText value={`${formatNumber(summary?.healthyChecks ?? 0, locale)} · ${td('deepScan.summary.healthy', locale)}`} /></span>
     </MaterialSurface>
   {:else}
     {#if needsAction.length}<h2 class="result-heading">{t('deepScan.group.needsAction',locale)}</h2>{/if}
@@ -209,11 +212,11 @@
 
 <style>
   .deep-scan-header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:22px}
-  .deep-scan-header h1{margin:.3rem 0 .35rem;font-size:var(--ac-type-display);font-weight:560;letter-spacing:-.035em}.deep-scan-header .sub{max-width:760px;margin:0;color:var(--ac-text-2)}
+  .deep-scan-header h1{margin:.3rem 0 .35rem;font-size:var(--ac-type-display);font-weight:560;letter-spacing:-.035em}
   .scan-actions{display:flex;gap:10px}:global(.scan-primary),:global(.scan-cancel){min-inline-size:9.5rem;padding:.72rem 1rem;border-radius:12px}:global(.scan-primary){background:var(--ac-accent-strong);color:var(--ac-text-inverse)}:global(.scan-cancel){background:transparent;border:1px solid var(--ac-border-strong)}
   :global(.scan-hero){display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px;align-items:center;padding:22px;border-radius:20px;margin-bottom:14px}
   .status-emblem{inline-size:54px;block-size:54px;border-radius:17px;display:grid;place-items:center;border:1px solid var(--ac-border-strong);font-size:var(--ac-type-title)}.status-emblem.scanning{box-shadow:inset 0 0 24px color-mix(in srgb,var(--ac-accent) 10%,transparent)}
-  .scan-hero-copy h2{margin:.25rem 0;font-size:var(--ac-type-title);font-weight:560}.scan-hero-copy p:last-child{margin:0;color:var(--ac-text-2)}
+  .scan-hero-copy h2{margin:.25rem 0;font-size:var(--ac-type-title);font-weight:560}.scan-hero-state :global(.technical-isolate),.healthy-count :global(.technical-isolate){font-family:var(--ac-font-mono);font-size:var(--ac-type-technical);color:var(--ac-text-3)}
   .scan-facts{display:grid;grid-template-columns:repeat(3,minmax(92px,1fr));gap:8px}.scan-facts div{padding:.65rem .8rem;border-inline-start:1px solid var(--ac-border-subtle)}.scan-facts span{display:block;color:var(--ac-text-3);font-size:var(--ac-type-body)}.scan-facts strong{font-size:var(--ac-type-title);font-weight:560}
   :global(.progress-card){padding:18px;border-radius:16px;margin-bottom:14px}.progress-copy{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:12px}.progress-copy h3{margin:.2rem 0 0;font-size:var(--ac-type-headline);font-weight:560}.progress-copy>strong{font-size:var(--ac-type-title);font-variant-numeric:tabular-nums}.task-counts{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;color:var(--ac-text-3);font-size:var(--ac-type-body)}
   .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}:global(.summary-tile){padding:15px;border-radius:14px}:global(.summary-tile span){display:block;color:var(--ac-text-3);font-size:var(--ac-type-body)}:global(.summary-tile strong){display:block;margin-top:.2rem;font-size:var(--ac-type-title);font-weight:540}:global(.summary-tile.healthy strong){color:var(--ac-positive)}

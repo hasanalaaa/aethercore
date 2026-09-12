@@ -59,7 +59,13 @@
   </div>
   <details>
     <summary>{t('deepScan.why',locale)}</summary>
-    <p>{message(finding.technicalKey)}</p>
+    <!-- The technical paragraph is gone. It restated the summary above it in a
+         second register — "The PnP device state contains an explicit problem
+         code for <device>" against an evidence chip that already reads
+         "SetupAPI PnpDeviceState CM_PROB_FAILED_START (28)". The chip carries
+         the observation exactly; the paragraph carried it approximately. What
+         stays here is what the chip cannot hold: the correlation, its
+         uncertainty, and the rule that fired. -->
     {#if finding.correlation}
       <div class="correlation-detail">
         <strong>{t('deepScan.correlation.strength',locale,{strength:correlationStrength(finding.correlation.strength)})}</strong>
