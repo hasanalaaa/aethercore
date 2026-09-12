@@ -60,21 +60,59 @@ $VcompExpectedBytes = 193152
 $VcompExpectedSha256 = '55aba23cdcd6484fbb06f4155b8ca75adfce7a881f10afd0c49457165e677164'
 
 function Resolve-VcompSource {
-    # Preferred: the standard MSVC toolchain environment variable set by
-    # vcvarsall.bat / a Visual Studio Developer shell — portable across
-    # machines and VS installs, unlike a hardcoded path.
+    $probed = New-Object System.Collections.Generic.List[string]
+    $relative = 'x64\Microsoft.VC143.OpenMP\vcomp140.dll'
+
+    # 1. The standard MSVC toolchain environment variable, set by vcvarsall.bat
+    #    or a Visual Studio Developer shell.
     if ($env:VCToolsRedistDir) {
-        $candidate = Join-Path $env:VCToolsRedistDir 'x64\Microsoft.VC143.OpenMP\vcomp140.dll'
+        $candidate = Join-Path $env:VCToolsRedistDir $relative
+        $probed.Add($candidate)
         if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
+    } else {
+        $probed.Add('$env:VCToolsRedistDir (not set)')
     }
-    # Fallback: this project's pinned toolchain checkout, the exact location
-    # §42.5 measured the correct file at on the release-build machine.
+
+    # 2. Ask the Visual Studio installer where VS is, then look under its own
+    #    redist tree. DBT-P42-012 check 5: the pinned fallback below is the
+    #    ARM64 VM's layout, so on any other machine -- a CI runner, a new
+    #    developer box -- the script fell straight through to a throw even when
+    #    a perfectly good copy was installed. vswhere.exe ships at a fixed,
+    #    documented location with every VS 2017+ install, so this probe needs
+    #    no environment to have been set up first. Same defect and same shape as
+    #    the DismApi LIB trap that crates/system-repair/build.rs now removes.
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path $vswhere) {
+        $roots = & $vswhere -products '*' -latest -prerelease -property installationPath 2>$null
+        foreach ($root in @($roots)) {
+            if (-not $root) { continue }
+            $redistRoot = Join-Path $root 'VC\Redist\MSVC'
+            if (-not (Test-Path $redistRoot)) { $probed.Add($redistRoot); continue }
+            # Newest toolset first, so a machine carrying several picks the same
+            # one the compiler would.
+            foreach ($ver in (Get-ChildItem $redistRoot -Directory -ErrorAction SilentlyContinue |
+                              Sort-Object Name -Descending)) {
+                $candidate = Join-Path $ver.FullName $relative
+                $probed.Add($candidate)
+                if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
+            }
+        }
+    } else {
+        $probed.Add("$vswhere (not present)")
+    }
+
+    # 3. This project's pinned toolchain checkout -- the exact location §42.5
+    #    measured the correct file at on the ARM64 release-build machine.
     $pinned = 'C:\AetherCore-P36\toolchain\vs2022\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.OpenMP\vcomp140.dll'
+    $probed.Add($pinned)
     if (Test-Path $pinned) { return (Resolve-Path $pinned).Path }
-    throw ("vcomp140.dll source not found. Checked `$env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll " +
-        "(env var " + $(if ($env:VCToolsRedistDir) { "set to $env:VCToolsRedistDir but the file is not there" } else { "not set" }) + ") " +
-        "and the pinned fallback $pinned. Run from a VS Developer shell (sets VCToolsRedistDir) or update the " +
-        "pinned path in this script to match the current toolchain checkout.")
+
+    throw ("vcomp140.dll source not found. DBT-P42-012. Probed, in order:`n  " +
+        ($probed -join "`n  ") +
+        "`nInstall the MSVC v143 x64 build tools (which carry the OpenMP redist), run from a VS " +
+        "Developer shell, or update the pinned path to match the current toolchain checkout. " +
+        "Whatever is found is hash-checked before use; do not work around this by copying a " +
+        "file of the same name from elsewhere.")
 }
 
 function Assert-VcompHash([string]$Path) {
