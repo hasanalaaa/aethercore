@@ -408,7 +408,7 @@
             <div class="trust-form">
               <label><span>{t('fleet.fieldName', locale)}</span><input bind:value={editName} /></label>
               <label><span>{t('fleet.fieldTags', locale)}</span><input bind:value={editTags} /></label>
-              <div class="form-actions"><button class="primary" onclick={() => saveEdit(host)} disabled={busy}>{t('fleet.actionSave', locale)}</button><button onclick={() => (editingHostId = '')} disabled={busy}>{t('fleet.actionCancel', locale)}</button></div>
+              <div class="form-actions"><button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={() => saveEdit(host)} disabled={busy}>{t('fleet.actionSave', locale)}</button><button use:fluidPress={{ pressedScale: 0.985 }} onclick={() => (editingHostId = '')} disabled={busy}>{t('fleet.actionCancel', locale)}</button></div>
             </div>
           {/if}
           {#if trustHostId === host.hostId}
@@ -440,7 +440,7 @@
   </section>
 
   <section class="panel fleet-schedules">
-    <div class="panel-head"><div><p class="eyebrow">{t('fleet.scheduleEyebrow', locale)}</p><h3>{t('fleet.scheduleTitle', locale)}</h3></div><div class="form-actions"><button class="primary" onclick={() => (scheduleFormOpen = !scheduleFormOpen)} disabled={busy}>{scheduleFormOpen ? t('fleet.actionCancel', locale) : t('fleet.actionScheduleAdd', locale)}</button><button onclick={runDueSchedules} disabled={busy}>{t('fleet.actionRunDue', locale)}</button></div></div>
+    <div class="panel-head"><div><p class="eyebrow">{t('fleet.scheduleEyebrow', locale)}</p><h3>{t('fleet.scheduleTitle', locale)}</h3></div><div class="form-actions"><button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={() => (scheduleFormOpen = !scheduleFormOpen)} disabled={busy}>{scheduleFormOpen ? t('fleet.actionCancel', locale) : t('fleet.actionScheduleAdd', locale)}</button><button use:fluidPress={{ pressedScale: 0.985 }} onclick={runDueSchedules} disabled={busy}>{t('fleet.actionRunDue', locale)}</button></div></div>
     <p class="form-note">{t('fleet.scheduleHint', locale)}</p>
     {#if scheduleFormOpen}
       <div class="form-grid schedule-form">
@@ -449,7 +449,7 @@
         <label><span>{t('fleet.fieldProfile', locale)}</span><select bind:value={scheduleProfile}><option value="cis-l1">{t('fleet.profileCisL1', locale)}</option><option value="cis-l2">{t('fleet.profileCisL2', locale)}</option></select></label>
         <label><span>{t('fleet.fieldCadence', locale)}</span><input bind:value={scheduleEveryHours} inputmode="numeric" /></label>
         <label class="schedule-enabled"><span>{t('fleet.fieldEnabled', locale)}</span><input type="checkbox" bind:checked={scheduleEnabled} /></label>
-        <div class="form-actions"><button class="primary" onclick={saveSchedule} disabled={busy}>{scheduleEditId ? t('fleet.actionScheduleUpdate', locale) : t('fleet.actionScheduleAdd', locale)}</button><button onclick={resetScheduleForm} disabled={busy}>{t('fleet.actionCancel', locale)}</button></div>
+        <div class="form-actions"><button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={saveSchedule} disabled={busy}>{scheduleEditId ? t('fleet.actionScheduleUpdate', locale) : t('fleet.actionScheduleAdd', locale)}</button><button use:fluidPress={{ pressedScale: 0.985 }} onclick={resetScheduleForm} disabled={busy}>{t('fleet.actionCancel', locale)}</button></div>
       </div>
     {/if}
     {#if snapshot.schedulesError}
@@ -462,7 +462,7 @@
           <article class="schedule-row">
             <div><strong><TechnicalText value={schedule.scheduleId} /></strong><small>{schedule.scope.join(', ') || t('fleet.scopeAll', locale)} · {schedule.profileId} · {schedule.cadence}</small></div>
             <div class="fleet-card-state"><em class:ok={schedule.enabled} class:warn={!schedule.enabled}>{schedule.enabled ? t('fleet.stateEnabled', locale) : t('fleet.stateDisabled', locale)}</em>{#if schedule.lastResult}<small>{schedule.lastResult.outcomeSummary}</small>{/if}</div>
-            <div class="fleet-card-actions"><button onclick={() => openScheduleEdit(schedule)}>{t('fleet.actionEdit', locale)}</button><button class="danger" onclick={() => removeSchedule(schedule)}>{t('fleet.actionScheduleRemove', locale)}</button></div>
+            <div class="fleet-card-actions"><button use:fluidPress={{ pressedScale: 0.985 }} onclick={() => openScheduleEdit(schedule)}>{t('fleet.actionEdit', locale)}</button><button use:fluidPress={{ pressedScale: 0.985 }} class="danger" onclick={() => removeSchedule(schedule)}>{t('fleet.actionScheduleRemove', locale)}</button></div>
           </article>
         {/each}
       </div>

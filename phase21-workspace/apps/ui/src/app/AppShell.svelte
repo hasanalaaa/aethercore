@@ -3,6 +3,7 @@
   import NavigationRail from '../components/NavigationRail.svelte';
   import CommandPalette from '../components/CommandPalette.svelte';
   import { FluidPage } from '../design/primitives';
+  import { fluidPress } from '../design/motion';
   import { NAVIGATION, type PageId } from '../lib/navigation';
   import { localizeOwnedText, t, td } from '../lib/i18n';
   import { initializeWindowUx, type WindowUxCleanup } from '../lib/window-ux';
@@ -105,7 +106,7 @@
              block of prose left in the product's empty state, on every screen.
              P56 left it standing because Part 3 had not reached the shell. -->
         <div><p class="eyebrow">{t('state.disconnected', $shellState.locale)}</p><h2 id="disconnected-title">{t('app.serviceUnavailable', $shellState.locale)}</h2></div>
-        <button class="secondary" type="button" onclick={() => location.reload()}>{t('app.retryConnection', $shellState.locale)}</button>
+        <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" type="button" onclick={() => location.reload()}>{t('app.retryConnection', $shellState.locale)}</button>
       </section>
     {/if}
     {#key $shellState.activePage}

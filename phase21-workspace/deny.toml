@@ -33,8 +33,33 @@ ignore = [
 
 [bans]
 multiple-versions = "warn"
-wildcards = "warn"
+# P63 / DBT-P61-001: this was "warn" in a repository whose whole release story is
+# a dependency freeze, so the policy the gate has asserted since Phase 8 was simply
+# not switched on. Measured before flipping it: zero wildcard requirements in any
+# workspace manifest, so this denies a class that does not exist today and keeps it
+# that way. `multiple-versions` stays "warn" - the workspace is still consolidating,
+# which is the reason recorded at the head of this file.
+wildcards = "deny"
+# Measured, not assumed: with `wildcards = "deny"` alone, `cargo deny check bans`
+# reports every intra-workspace `{ path = "../x" }` as a wildcard - the whole
+# internal graph, ~40 manifests. Those are not a supply-chain risk: they resolve
+# inside this repository and every workspace member is `publish = false`
+# (`Cargo.toml:68`). `allow-wildcard-paths` exempts exactly that case, so what is
+# denied is what the policy is about - a wildcard version requirement on a crate
+# fetched from a registry.
+allow-wildcard-paths = true
 skip = []
+
+# P63 / DBT-P61-001: every entry in Cargo.lock resolves to
+# `registry+https://github.com/rust-lang/crates.io-index` - zero git sources, zero
+# other registries - so this pins the freeze rather than changing what resolves.
+# `required-git-spec = "rev"` means that if a git dependency is ever introduced it
+# must name an immutable revision, not a branch or tag that can be moved under us.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+required-git-spec = "rev"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 
 [licenses]
 version = 2

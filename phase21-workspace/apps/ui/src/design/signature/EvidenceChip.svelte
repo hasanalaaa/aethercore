@@ -15,6 +15,7 @@
    * sampling interval keeps its byte order inside Arabic prose.
    */
   import TechnicalText from '../primitives/TechnicalText.svelte';
+  import { fluidPress } from '../motion';
   import { t, type Locale } from '../../lib/i18n';
   import type { Evidence } from './contracts';
 
@@ -31,6 +32,7 @@
 
 <div class="evidence">
   <button
+    use:fluidPress={{ pressedScale: 0.985 }}
     type="button"
     class="evidence-chip"
     data-evidence-chip

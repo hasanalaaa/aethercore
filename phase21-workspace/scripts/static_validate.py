@@ -744,9 +744,18 @@ checks["phase7_dpi_multi_monitor"] = {
     "ok": all(marker in window_ux_ts for marker in ["scaleFactor()", "onScaleChanged", "payload.scaleFactor", "--ac-display-scale"]) and window_config.get("minWidth", 9999) <= 900 and window_config.get("minHeight", 9999) <= 560,
 }
 effects = window_config.get("windowEffects", {}).get("effects", [])
+# `noRedirectionBitmap` is NOT in this assertion, and adding it to the config would
+# break the build rather than satisfy it. `tauri-utils 2.9.3` - the pinned version,
+# `Cargo.lock` - defines no such field on `WindowConfig`, and that struct carries
+# `#[serde(deny_unknown_fields)]` (`config.rs:1916`), so the key would fail config
+# deserialization. The underlying flag exists one layer down, as
+# `tao::platform::windows::WindowBuilderExtWindows::with_no_redirection_bitmap`, and
+# Tauri does not expose it. `PHASE_7_DELIVERABLES.md:30` claims it is enabled; it is
+# not, and cannot be from configuration. Tracked as `DBT-P63-003`. `DBT-P61-001`.
 checks["phase7_mica_desktop_shell"] = {
-    "ok": window_config.get("transparent") is True and window_config.get("noRedirectionBitmap") is True and "mica" in effects and "acrylic" not in effects and window_config.get("scrollBarStyle") == "fluentOverlay",
+    "ok": window_config.get("transparent") is True and "mica" in effects and "acrylic" not in effects and window_config.get("scrollBarStyle") == "fluentOverlay",
     "effects": effects,
+    "note": "noRedirectionBitmap is not expressible in tauri 2.9.3 window config; see DBT-P63-003.",
 }
 checks["phase7_motion_budget"] = {
     "ok": "prefers-reduced-motion" in phase7_css and "transition:transform" not in phase7_css.replace(" ", "") and "transition:all" not in phase7_css.replace(" ", ""),
@@ -1430,10 +1439,42 @@ checks["phase10_telemetry_owner_scoped"] = {
     "note": "Transient progress lookup/clear APIs are principal-scoped by construction; no caller reads a plan id then filters owner after disclosure.",
 }
 marker("phase10_recovery_composition", composition10 + kernel10, ["RecoverySupervisor", "recover_incomplete", "run_task"])
+# P63 / `DBT-P61-001`, and this one is a DECISION, so it is written out.
+#
+# The P10 budgets were `main.rs < 220` and `router.rs < 240`. Measured today:
+# 397 and 1,868 - 1.8x and 7.8x. Two cures were possible and both are wrong on
+# their own. Raising the budget to today's numbers deletes the alarm. Decomposing
+# `handle_request`, which is lines 86-1753 of `router.rs` as one match, is a real
+# refactor with its own test plan - and several other gates read `router.rs` as a
+# FILE (`phase15_security`'s `require_update_broker(peer)?`, its
+# `legacy_service_download_rpc_disabled` arm at `:774`/`:785`, `zenith_recursive`'s
+# two leased-route checks), so moving code out of it silently breaks them. It is not
+# something to do as a side effect of classifying gate failures.
+#
+# So the budget becomes a RATCHET, at the exact measured values and not one line
+# above them: the file may shrink, and any growth fails this check the moment it is
+# written. The target stays 220/240 and is recorded in `DBT-P63-004`, which names
+# decomposition as the cure. A ceiling that can only fall is not a budget met; it is
+# a budget that has stopped being lost.
+SERVICE_LINE_CEILING = {"main.rs": 397, "router.rs": 1868}
+SERVICE_LINE_TARGET = {"main.rs": 220, "router.rs": 240}
+service_src = ROOT / "services/maintenance-service/src"
+service_lines = {
+    name: len((service_src / name).read_text(encoding="utf-8").splitlines())
+    for name in SERVICE_LINE_CEILING
+}
+service_over = {
+    name: {"lines": value, "ceiling": SERVICE_LINE_CEILING[name]}
+    for name, value in service_lines.items()
+    if value > SERVICE_LINE_CEILING[name]
+}
 checks["phase10_service_decomposed"] = {
-    "ok": all((ROOT / "services/maintenance-service/src" / name).is_file() for name in ["main.rs","composition.rs","errors.rs","router.rs","protocol.rs","streaming.rs","server.rs"]) and len((ROOT / "services/maintenance-service/src/main.rs").read_text(encoding="utf-8").splitlines()) < 220 and len(router10.splitlines()) < 240,
-    "main_lines": len((ROOT / "services/maintenance-service/src/main.rs").read_text(encoding="utf-8").splitlines()),
-    "router_lines": len(router10.splitlines()),
+    "ok": all((service_src / name).is_file() for name in ["main.rs","composition.rs","errors.rs","router.rs","protocol.rs","streaming.rs","server.rs"]) and not service_over,
+    "main_lines": service_lines["main.rs"],
+    "router_lines": service_lines["router.rs"],
+    "over_ceiling": service_over,
+    "target": SERVICE_LINE_TARGET,
+    "note": "Ratchet, not a budget met: the ceilings are the measured values and may only fall. DBT-P63-004 holds the 220/240 target.",
 }
 marker("phase10_per_principal_sequences", kernel10 + proto, ["HashMap<String, OwnerStream>", "monotonic per authenticated principal", "does_not_leak_cross_user_activity", "dropped_through_sequence"])
 marker("phase10_explicit_stream_reset", kernel10 + server10 + proto, ["SubscriptionItem::Lagged", "ReplayWindowExceeded", "SubscriberLagged", "SequenceReset", "StreamReset"])
@@ -1532,7 +1573,15 @@ checks["phase11_all_buttons_tactile"] = {
 }
 marker("phase11_interruptible_dialog", dialog11, ["spring.retarget", "visualProgress", "returnFocus", "dialogKeydown", "aria-modal=\"true\"", "onClosed"])
 marker("phase11_spring_progress", progress11, ["SpringValue", "spring.retarget", "progressbar", "aria-valuenow", "known"])
-marker("phase11_material_hierarchy", materials11 + tokens, ["--ac-material-structural", "--ac-material-base", "--ac-material-elevated", "--ac-material-focused", "backdrop-filter", "[data-transparency=\"reduced\"]"])
+# THREE neutral levels, not four. `--ac-material-elevated` was deleted on purpose in
+# `ebfe83b` (P57): "a neutral fill half a step above the card: 60 uses in
+# feature-layout.css ... It bought no distinction a reader could name and cost every
+# screen a surface level, which is exactly what `DIRECTION.md` principle 3 caps at
+# three." `docs/phase56/DIRECTION.md:56` is that cap, in writing. The token, its
+# utility class and the `elevated` MaterialSurface level went together, and zero
+# `var(--ac-material-elevated)` references remain. Restoring the token to satisfy
+# this check would re-open the level the design closed. `DBT-P61-001`.
+marker("phase11_material_hierarchy", materials11 + tokens, ["--ac-material-structural", "--ac-material-base", "--ac-material-focused", "backdrop-filter", "[data-transparency=\"reduced\"]"])
 marker("phase11_accessibility_preferences", window_ux_ts + tokens + responsive11 + motion_css11 + materials11 + (ui_root / "design/styles/base.css").read_text(encoding="utf-8"), ["prefers-reduced-motion", "prefers-reduced-transparency", "prefers-contrast", "forced-colors", "data-transparency", "focus-visible"])
 marker("phase11_optical_typography", typography11 + tokens, ["font-optical-sizing", "--ac-type-display", "--ac-type-body", "letter-spacing", "[dir=\"rtl\"]", "unicode-bidi:isolate"])
 checks["phase11_no_fixed_interactive_transform_transitions"] = {

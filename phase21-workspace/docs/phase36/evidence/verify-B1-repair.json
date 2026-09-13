@@ -1,4 +1,4 @@
-﻿{
+{
     "label":  "B1-repair",
     "captured_utc":  "2026-08-30T23:47:23.1917303Z",
     "sc_query":  "SERVICE_NAME: AetherCoreMaintenance \r\n        TYPE               : 10  WIN32_OWN_PROCESS  \r\n        STATE              : 4  RUNNING \r\n                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)\r\n        WIN32_EXIT_CODE    : 0  (0x0)\r\n        SERVICE_EXIT_CODE  : 0  (0x0)\r\n        CHECKPOINT         : 0x0\r\n        WAIT_HINT          : 0x0",
