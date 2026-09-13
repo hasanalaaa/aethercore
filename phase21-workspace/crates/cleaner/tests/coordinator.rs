@@ -1,11 +1,15 @@
 use std::{
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use aethercore_cleaner::{
-    CleanerError, CleanupCandidate, CleanupEngine, CleanupPlatform, CleanupScanState,
+    CleanerError, CleanupCandidate, CleanupEngine, CleanupMutationLease, CleanupPlatform,
+    CleanupScanState,
 };
 use aethercore_operation_engine::{CleanupDeleteAction, CleanupFileEvidence, OperationEngine};
 use aethercore_operation_kernel::{
@@ -87,6 +91,37 @@ impl CleanupPlatform for FakeCleanupPlatform {
             Ok((60, 40, "one changed file was skipped".into()))
         }
     }
+
+    /// DBT-P61-002: the fake deletes nothing on the real machine, so it holds no
+    /// machine-wide boundary. Before this existed the fake fell through to the real
+    /// Windows lease, whose lock file only the installer creates — which is why these
+    /// tests could not pass on any Windows machine the product was not installed on.
+    fn acquire_mutation_lease(&self) -> aethercore_cleaner::Result<CleanupMutationLease> {
+        Ok(Box::new(()))
+    }
+}
+
+struct LeaseDenyingPlatform {
+    inner: FakeCleanupPlatform,
+    asked: Arc<AtomicUsize>,
+}
+
+impl CleanupPlatform for LeaseDenyingPlatform {
+    fn scan(&self) -> aethercore_cleaner::Result<Vec<CleanupCandidate>> {
+        self.inner.scan()
+    }
+
+    fn delete_action(
+        &self,
+        action: &CleanupDeleteAction,
+    ) -> aethercore_cleaner::Result<(u64, u64, String)> {
+        panic!("deletion ran despite a refused mutation lease: {action:?}");
+    }
+
+    fn acquire_mutation_lease(&self) -> aethercore_cleaner::Result<CleanupMutationLease> {
+        self.asked.fetch_add(1, Ordering::SeqCst);
+        Err(CleanerError::MutationBusy)
+    }
 }
 
 fn temp_root(label: &str) -> std::path::PathBuf {
@@ -117,13 +152,6 @@ fn wait_scan(cleaner: &CleanupEngine) -> aethercore_cleaner::CleanupSnapshot {
 
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-/// P36 (Hermes): on Windows the machine-mutation lock is a real machine-wide
-/// file lock. Tests in this binary that drive cleanup to execution contend for
-/// it when the harness runs them in parallel threads, producing spurious
-/// MutationBusy failures. Serialize the execution-driving tests on a test-local
-/// mutex; this changes no product behavior and keeps the real lock semantics.
-static CLEANUP_EXECUTION_SERIALIZER: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 fn authorize(engine: &OperationEngine, plan_id: &str, digest: &str) {
     let intent = engine
         .begin_consent_intent(plan_id, OWNER)
@@ -135,9 +163,6 @@ fn authorize(engine: &OperationEngine, plan_id: &str, digest: &str) {
 
 #[test]
 fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
-    let _serialized = CLEANUP_EXECUTION_SERIALIZER
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
     let root = temp_root("partial");
     std::fs::create_dir_all(&root).expect("root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
@@ -194,9 +219,6 @@ fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
 
 #[test]
 fn cleanup_failure_after_deletion_barrier_requires_recovery_review() {
-    let _serialized = CLEANUP_EXECUTION_SERIALIZER
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
     let root = temp_root("failure");
     std::fs::create_dir_all(&root).expect("root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
@@ -228,6 +250,62 @@ fn cleanup_failure_after_deletion_barrier_requires_recovery_review() {
             assert!(status.recovery_required);
             break;
         }
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// DBT-P61-002: the machine-wide mutation boundary is the platform's to supply. A
+/// platform that refuses the lease must stop the cleanup before any deletion, and the
+/// refusal must be the one the platform named. Without the routing this test cannot be
+/// written at all: the guard was a free function no injected platform could reach.
+#[test]
+fn cleanup_takes_its_mutation_lease_from_the_platform() {
+    let root = temp_root("lease");
+    std::fs::create_dir_all(&root).expect("root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let platform = Arc::new(LeaseDenyingPlatform {
+        inner: FakeCleanupPlatform { fail_delete: false },
+        asked: Arc::new(AtomicUsize::new(0)),
+    });
+    let asked = platform.asked.clone();
+    let cleaner = CleanupEngine::with_platform(engine.clone(), db.clone(), platform);
+
+    start_cleanup_scan(&cleaner, OWNER).expect("scan");
+    let snapshot = wait_scan(&cleaner);
+    let plan = cleaner
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[snapshot.candidates[0].candidate_id.clone()],
+        )
+        .expect("plan");
+    authorize(&engine, &plan.id, &plan.digest);
+    start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let status = cleaner.status(OWNER, Some(&plan.id)).unwrap().unwrap();
+        // Wait on the execution record's own stage, not the plan state: the engine's
+        // transition to Failed lands before fail_cleanup writes the record that carries
+        // the message.
+        if status.stage == "Failed" {
+            assert_eq!(status.plan_state, "Failed");
+            assert_eq!(asked.load(Ordering::SeqCst), 1);
+            assert!(
+                status
+                    .failure_message
+                    .contains("another AetherCore maintenance mutation is active"),
+                "{}",
+                status.failure_message
+            );
+            assert!(!status.mutation_started);
+            break;
+        }
+        assert_ne!(status.plan_state, "Completed");
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(10));
     }

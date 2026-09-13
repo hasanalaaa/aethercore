@@ -271,16 +271,30 @@ pub struct StartupHistoryEntry {
     pub restorable: bool,
 }
 
+/// RAII lease on the machine-wide mutation boundary, held for the duration of a startup
+/// plan's mutating phase. The value is opaque on purpose: nothing is ever read out of it,
+/// and its only job is to hold the boundary until it is dropped.
+///
+/// Not `Send`. The real Windows lease owns a raw `HANDLE` and a byte-range file lock,
+/// which belong to the thread that took them.
+pub type StartupMutationLease = Box<dyn std::any::Any>;
+
 pub trait StartupPlatform: Send + Sync + 'static {
     fn scan(&self) -> Result<(Vec<StartupItem>, Vec<String>)>;
     fn current_state(&self, action: &StartupChangeAction) -> Result<String>;
     fn apply(&self, action: &StartupChangeAction) -> Result<()>;
+    /// Acquires the machine-wide mutation boundary before any startup item is changed.
+    ///
+    /// DBT-P61-002: deliberately has no default body. A platform that mutates the real
+    /// machine must name its own cross-process boundary; a no-op default would let a new
+    /// platform inherit "no lock at all" without anyone having chosen it.
+    fn acquire_mutation_lease(&self) -> Result<StartupMutationLease>;
 }
 
 #[cfg(windows)]
 mod windows_impl;
 #[cfg(windows)]
-use windows_impl::{WindowsStartupPlatform, acquire_mutation_guard};
+use windows_impl::WindowsStartupPlatform;
 
 #[cfg(not(windows))]
 struct WindowsStartupPlatform;
@@ -295,10 +309,9 @@ impl StartupPlatform for WindowsStartupPlatform {
     fn apply(&self, _: &StartupChangeAction) -> Result<()> {
         Err(StartupError::UnsupportedPlatform)
     }
-}
-#[cfg(not(windows))]
-fn acquire_mutation_guard() -> Result<()> {
-    Ok(())
+    fn acquire_mutation_lease(&self) -> Result<StartupMutationLease> {
+        Err(StartupError::UnsupportedPlatform)
+    }
 }
 
 pub struct StartupManager {
@@ -971,7 +984,7 @@ fn execute_plan_with_telemetry(
     plan_id: &str,
 ) -> Result<()> {
     let actions = engine.startup_actions(plan_id)?;
-    let _guard = acquire_mutation_guard()?;
+    let _mutation_lease = platform.acquire_mutation_lease()?;
     publish_progress(
         telemetry,
         owner_principal_key,
@@ -1473,6 +1486,12 @@ mod tests {
                 .unwrap()
                 .insert(a.item_id.clone(), target_after(a));
             Ok(())
+        }
+        /// DBT-P61-002: the mock changes nothing on the real machine, so it holds no
+        /// machine-wide boundary. Before this existed the mock fell through to the real
+        /// Windows lease, whose lock file only the installer creates.
+        fn acquire_mutation_lease(&self) -> Result<StartupMutationLease> {
+            Ok(Box::new(()))
         }
     }
     fn item(id: &str, protected: bool, service: bool) -> StartupItem {

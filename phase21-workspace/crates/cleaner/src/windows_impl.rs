@@ -26,8 +26,8 @@ use windows::{
 };
 
 use super::{
-    CleanerError, CleanupCandidate, CleanupPlatform, Result, candidate, cap_files, evidence,
-    older_than,
+    CleanerError, CleanupCandidate, CleanupMutationLease, CleanupPlatform, Result, candidate,
+    cap_files, evidence, older_than,
 };
 use aethercore_operation_engine::{CleanupDeleteAction, CleanupFileEvidence};
 use aethercore_windows_foundation::{MachineMutationGuard, OwnedHandle};
@@ -36,18 +36,19 @@ const DELETE_ACCESS: u32 = 0x0001_0000;
 
 pub struct WindowsCleanupPlatform;
 
-pub(crate) struct CleanupMutationGuard(MachineMutationGuard);
-
-pub(crate) fn acquire_mutation_guard() -> Result<CleanupMutationGuard> {
-    let guard = MachineMutationGuard::try_acquire()
-        .map_err(|error| CleanerError::Safety(error.to_string()))?
-        .ok_or(CleanerError::MutationBusy)?;
-    Ok(CleanupMutationGuard(guard))
-}
-
 impl CleanupPlatform for WindowsCleanupPlatform {
     fn scan(&self) -> Result<Vec<CleanupCandidate>> {
         scan_impl(true)
+    }
+
+    /// The real cross-process lease: the installer-provisioned ProgramData lock file,
+    /// acquired exactly as before. Only the route to it moved (DBT-P61-002) — the
+    /// boxed value is the guard itself, released by its own Drop.
+    fn acquire_mutation_lease(&self) -> Result<CleanupMutationLease> {
+        let guard = MachineMutationGuard::try_acquire()
+            .map_err(|error| CleanerError::Safety(error.to_string()))?
+            .ok_or(CleanerError::MutationBusy)?;
+        Ok(Box::new(guard))
     }
 
     fn scan_passive(&self) -> Result<Vec<CleanupCandidate>> {

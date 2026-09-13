@@ -346,7 +346,10 @@ marker(
         "HashSet",
         "create_cleanup_plan",
         "cleanup_actions",
-        "acquire_cleanup_mutation_guard",
+        # DBT-P61-002: the guard is now the platform's to supply, so the name changed.
+        # The invariant is unchanged and still asserted here: the cleanup execution path
+        # takes a machine-wide mutation boundary before it deletes anything.
+        "platform.acquire_mutation_lease()",
         "recover_incomplete",
         "immutable targets will not be replayed automatically",
     ],

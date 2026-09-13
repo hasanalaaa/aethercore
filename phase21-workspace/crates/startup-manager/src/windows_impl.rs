@@ -38,7 +38,9 @@ use windows::{
     core::{BOOL, BSTR, GUID, PCWSTR, PWSTR},
 };
 
-use super::{NativeState, Result, StartupError, StartupItem, StartupPlatform};
+use super::{
+    NativeState, Result, StartupError, StartupItem, StartupMutationLease, StartupPlatform,
+};
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const RUNONCE_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\RunOnce";
@@ -47,15 +49,17 @@ const MAX_STARTUP_FILE_EVIDENCE_BYTES: u64 = 64 * 1024 * 1024;
 const CLSID_TASK_SCHEDULER: GUID = GUID::from_u128(0x0f87369f_a4e5_4cfc_bd3e_73e6154572dd);
 
 pub struct WindowsStartupPlatform;
-pub(crate) struct StartupMutationGuard(MachineMutationGuard);
-pub(crate) fn acquire_mutation_guard() -> Result<StartupMutationGuard> {
-    let guard = MachineMutationGuard::try_acquire()
-        .map_err(|e| StartupError::Platform(e.to_string()))?
-        .ok_or(StartupError::MutationBusy)?;
-    Ok(StartupMutationGuard(guard))
-}
 
 impl StartupPlatform for WindowsStartupPlatform {
+    /// The real cross-process lease: the installer-provisioned ProgramData lock file,
+    /// acquired exactly as before. Only the route to it moved (DBT-P61-002).
+    fn acquire_mutation_lease(&self) -> Result<StartupMutationLease> {
+        let guard = MachineMutationGuard::try_acquire()
+            .map_err(|e| StartupError::Platform(e.to_string()))?
+            .ok_or(StartupError::MutationBusy)?;
+        Ok(Box::new(guard))
+    }
+
     fn scan(&self) -> Result<(Vec<StartupItem>, Vec<String>)> {
         let mut items = Vec::new();
         let mut warnings = Vec::new();

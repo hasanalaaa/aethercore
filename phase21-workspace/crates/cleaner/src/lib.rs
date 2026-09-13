@@ -165,6 +165,15 @@ pub struct CleanupExecutionStatus {
     pub items: Vec<CleanupItemStatus>,
 }
 
+/// RAII lease on the machine-wide mutation boundary, held for the duration of a
+/// cleanup's mutating phase. The value is opaque on purpose: nothing is ever read out
+/// of it, and its only job is to hold the boundary until it is dropped.
+///
+/// Not `Send`. The real Windows lease owns a raw `HANDLE` and a byte-range file lock,
+/// which belong to the thread that took them; `run_cleanup` takes and drops the lease
+/// on one thread.
+pub type CleanupMutationLease = Box<dyn std::any::Any>;
+
 pub trait CleanupPlatform: Send + Sync + 'static {
     fn scan(&self) -> Result<Vec<CleanupCandidate>>;
     /// Conservative inventory used only by the autonomous scheduler. Implementations may narrow
@@ -178,6 +187,12 @@ pub trait CleanupPlatform: Send + Sync + 'static {
         })
     }
     fn delete_action(&self, action: &CleanupDeleteAction) -> Result<(u64, u64, String)>;
+    /// Acquires the machine-wide mutation boundary before any deletion runs.
+    ///
+    /// DBT-P61-002: deliberately has no default body. A platform that mutates the real
+    /// machine must name its own cross-process boundary; a no-op default would let a new
+    /// platform inherit "no lock at all" without anyone having chosen it.
+    fn acquire_mutation_lease(&self) -> Result<CleanupMutationLease>;
 }
 
 #[cfg(windows)]
@@ -197,19 +212,10 @@ impl CleanupPlatform for WindowsCleanupPlatform {
     fn delete_action(&self, _action: &CleanupDeleteAction) -> Result<(u64, u64, String)> {
         Err(CleanerError::UnsupportedPlatform)
     }
-}
 
-#[cfg(windows)]
-fn acquire_cleanup_mutation_guard() -> Result<windows_impl::CleanupMutationGuard> {
-    windows_impl::acquire_mutation_guard()
-}
-
-#[cfg(not(windows))]
-struct NoopCleanupMutationGuard;
-
-#[cfg(not(windows))]
-fn acquire_cleanup_mutation_guard() -> Result<NoopCleanupMutationGuard> {
-    Ok(NoopCleanupMutationGuard)
+    fn acquire_mutation_lease(&self) -> Result<CleanupMutationLease> {
+        Err(CleanerError::UnsupportedPlatform)
+    }
 }
 
 pub struct CleanupEngine {
@@ -811,7 +817,7 @@ fn run_cleanup(
         None,
     )?;
 
-    let _mutation_guard = match acquire_cleanup_mutation_guard() {
+    let _mutation_lease = match platform.acquire_mutation_lease() {
         Ok(guard) => guard,
         Err(error) => return fail_cleanup(engine, db, plan_id, error),
     };
