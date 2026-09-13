@@ -435,7 +435,7 @@ had written down what it was counting.
 |---|---|---|---|
 | P59 end (`8416e89`) | 31 | 17 | 1 |
 | P60 end (`f2ddec9`) | 35 | 19 | **3** |
-| P61 end | **39** | **18** | 1 |
+| P61 end | **39** | **17** | 1 |
 
 **Both halves of P60's disagreement are now explained rather than asserted.**
 `38` is every `| \`DBT-` line in § 1 regardless of cell count — 35 well-formed
@@ -450,7 +450,7 @@ that also renders wrong in any markdown viewer. Repaired to five cells.
 `DBT-P56-002` stays four-celled, named rather than dropped, as in P58, P59 and
 P60.
 
-**Closed this phase:** `DBT-P60-004`, `DBT-P60-005`, `DBT-P60-006`.
+**Closed this phase:** `DBT-P60-001`, `DBT-P60-004`, `DBT-P60-005`, `DBT-P60-006`.
 **Narrowed:** `DBT-P60-003` (it no longer blocks `OMEGA-RB-003`).
 **Entered:** `DBT-P61-001` (108 of 862 gate checks fail on the delivered tree),
 `DBT-P61-002` (the installer-provisioned lock two tests require).
