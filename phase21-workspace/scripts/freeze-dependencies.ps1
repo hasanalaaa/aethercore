@@ -6,10 +6,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
-$lockBaseline = Join-Path $Root 'release\dependency-locks.sha256'
-$manifestBaseline = Join-Path $Root 'release\dependency-manifests.sha256'
-$freezeMetadata = Join-Path $Root 'release\dependency-freeze.json'
-$freezeBlocker = Join-Path $Root 'release\dependency-freeze.blocker.json'
+# Forward slashes, not backslashes: .NET accepts either on Windows, but on POSIX
+# a backslash is an ordinary filename character, so 'release\dependency-locks.sha256'
+# creates one file of that literal name in the workspace root instead of one
+# inside release/. Never bit us because -Refresh has only ever run on Windows.
+$lockBaseline = Join-Path $Root 'release/dependency-locks.sha256'
+$manifestBaseline = Join-Path $Root 'release/dependency-manifests.sha256'
+$freezeMetadata = Join-Path $Root 'release/dependency-freeze.json'
+$freezeBlocker = Join-Path $Root 'release/dependency-freeze.blocker.json'
 
 function Hash-Line([string]$Path) {
     $resolved = (Resolve-Path $Path).Path
