@@ -1,28 +1,35 @@
 # P59 / ITEM 2: version updates are PAUSED, not removed.
+# P60 / ITEM 4-5: the npm directory is fixed, the pause holds, and the condition
+# that retires it is rewritten to say what it was always a proxy for.
 #
-# Enabling this file in P58 opened twelve pull requests. None of them can pass
-# CI, and the reason is not their content: `ci.yml`'s first step of sixteen is
-# `freeze-dependencies.ps1 -VerifyOnly`, which throws on
-# `release/dependency-freeze.blocker.json` (OMEGA-RB-001). That step fails on
-# `main` too, so every PR opened against this repository fails identically
-# before its diff is ever compiled. Twelve PRs x (1 windows + 5 cargo-fuzz legs
-# + deny-check) is roughly two hours of runner time per Dependabot cycle, all of
-# it spent re-proving one fact already recorded in the ledger.
+# What P59 recorded: `ci.yml`'s first gate was `freeze-dependencies.ps1
+# -VerifyOnly`, which threw on `release/dependency-freeze.blocker.json`
+# (OMEGA-RB-001). It failed on `main` too, so every PR opened against this
+# repository failed identically before its diff was ever compiled. Keeping twelve
+# PRs open meant roughly two hours of runner time per Dependabot cycle spent
+# re-proving one fact already in the ledger.
 #
-# Four of the twelve carry a second, independent defect: the npm ecosystem below
-# points at `/phase21-workspace/apps/ui`, but `pnpm-lock.yaml` lives one level up
-# at `/phase21-workspace`. Dependabot therefore bumps `apps/ui/package.json` and
-# cannot update the lock, and `pnpm --dir apps/ui install --frozen-lockfile`
-# fails with ERR_PNPM_OUTDATED_LOCKFILE (reproduced, exit 1). Those PRs would be
-# un-mergeable even after the freeze lands. `DBT-P59-001`; the directory is left
-# as it is because changing it cannot be verified while updates are paused.
+# What changed in P60: the freeze is committed (d53ec16) and OMEGA-RB-001 is
+# closed. `ci.yml`'s windows job now PASSES `Verify approved dependency freeze`
+# for the first time in this repository's history and reaches step 10 of 20 --
+# run 34751272638, steps 7, 8 and 9 green where run 34749206113 failed at 7 and
+# skipped nine gates.
 #
-# `open-pull-requests-limit: 0` stops version updates and leaves security
-# updates alone.
+# Why the pause still holds: it now fails at step 10, `Rust unit/integration
+# tests`, and it fails on `main`. `ci.yml`'s windows job never installs the
+# Windows ADK Deployment Tools -- `windows-installer.yml` does, `ci.yml` does not
+# -- so `crates/system-repair/build.rs:40` panics looking for `dismapi.lib`.
+# DBT-P60-006. That is still "every PR fails for a reason that has nothing to do
+# with its diff", ten steps later than before.
 #
-# TODO: restore the three limits to 5 once `OMEGA-RB-001` is closed - the freeze
-# set committed and `ci.yml`'s windows job reaching step 2 - and fix
-# `DBT-P59-001` in the same change, or the npm PRs come back broken.
+# So the literal condition P59 wrote is met and the thing it was a proxy for is
+# not. Restated, once: RESTORE THE THREE LIMITS TO 5 WHEN `ci.yml`'s WINDOWS JOB
+# IS GREEN ON `main`. Not when a particular step passes -- a pull request that
+# cannot get a verdict is worse than no pull request, and a skipped check that
+# reports without measuring is the class that has bitten this project four times.
+#
+# `open-pull-requests-limit: 0` stops version updates and leaves security updates
+# alone.
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -30,8 +37,28 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 0
+    ignore:
+      # DBT-P60-001. Upstream broke its API inside the 0.1.x line: 0.1.156's
+      # LlamaSampler::penalties gained an n_vocab parameter and redefined a
+      # negative penalty_last_n, and crates/intelligence-core/src/llama.rs:367
+      # does not compile against it (E0061, reproduced on macOS and on Windows in
+      # run 34745535685). PR #11 proposed exactly this bump. Adopting the new
+      # signature changes sampling behaviour and invalidates the generation
+      # measurement DBT-P56-002 rests on, so it is a deliberate decision with its
+      # own re-measurement, not a dependency bump. Remove both entries when that
+      # decision is taken.
+      - dependency-name: "llama-cpp-2"
+      - dependency-name: "llama-cpp-sys-2"
   - package-ecosystem: npm
-    directory: "/phase21-workspace/apps/ui"
+    # DBT-P59-001, fixed. This pointed at "/phase21-workspace/apps/ui", which
+    # holds only package.json: pnpm-lock.yaml and pnpm-workspace.yaml live one
+    # level up. Dependabot bumped apps/ui/package.json and could not touch the
+    # lock, and `pnpm --dir apps/ui install --frozen-lockfile` then failed with
+    # ERR_PNPM_OUTDATED_LOCKFILE (reproduced P59, exit 1). PRs #6, #7, #10 and
+    # #12 all carried it and would have been un-mergeable even after the freeze
+    # landed. The pnpm workspace root is what Dependabot has to be pointed at so
+    # it can update the manifest and the lockfile together.
+    directory: "/phase21-workspace"
     schedule:
       interval: weekly
     open-pull-requests-limit: 0
