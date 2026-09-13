@@ -338,7 +338,10 @@ check("ipc_trusted_service_sid_storage_is_aligned_bounded_and_validated", has(ip
 check("ipc_registered_service_state_is_fail_closed", has(ipc_lib, "UntrustedPeer(String)") and has(ipc_windows, "verify_registered_service_running", "SERVICE_RUNNING", "SERVICE_WIN32_OWN_PROCESS", "status.dwProcessId == 0", "TRUSTED_SERVICE_NAME", "AetherCoreMaintenance"))
 check("ipc_client_does_not_use_server_only_pid_query", "GetNamedPipeServerProcessId" not in ipc_windows)
 pipe_security = section(ipc_windows, "const PIPE_CLIENT_ACCESS_MASK", "/// Authenticate")
-check("ipc_production_pipe_owner_and_server_authority_are_service_scoped", has(pipe_security, "fn production_pipe_security_descriptor", '"O:{service_sid}D:P(A;;GA;;;{service_sid})(A;;0x00120003;;;AU)"') and has(ipc_windows, "security_descriptor_for_pipe(&pipe_name)?"))
+# The Authenticated Users grant is spelled with NAMED SDDL rights, FR plus hex 0x2, and the hex
+# form 0x00120003 is FORBIDDEN here - see the comment above ZR-016 below for why. The two checks
+# that still demanded the hex form were the last two unresolved rows of `DBT-P61-001`.
+check("ipc_production_pipe_owner_and_server_authority_are_service_scoped", has(pipe_security, "fn production_pipe_security_descriptor", '"O:{service_sid}D:P(A;;GA;;;{service_sid})(A;;FR;;;AU)(A;;0x00000002;;;AU)"') and has(ipc_windows, "security_descriptor_for_pipe(&pipe_name)?"))
 check("ipc_production_pipe_does_not_grant_system_or_admin_server_ace", has(ipc_windows, 'assert!(!descriptor.contains(";;;BA)"))', 'assert!(!descriptor.contains(";;;SY)"))'))
 check("maintenance_service_sid_is_unrestricted_for_mutation_compatibility", has(install_hardener, 'run_checked(&sc, ["sidtype", SERVICE_NAME, "unrestricted"])') and has(installer_verify, "qsidtype", "UNRESTRICTED"))
 check("ipc_native_probe_requires_unrestricted_service_sid", has(ipc_pipe_probe, "qsidtype $ServiceName", "SID-type drift", "SERVICE_SID_TYPE_UNRESTRICTED", "service_sid_type = 'UNRESTRICTED'"))
@@ -380,9 +383,30 @@ check("machine_mutation_authority_is_installer_provisioned_and_acl_hardened", ha
 check("update_broker_holds_machine_lock_before_service_claim", ordered(update_broker, "UpdateMutationGuard::acquire", "claim(&intent_id)"))
 
 # ZR-016: authenticated clients may read/write data but can never create additional server instances.
-check("ipc_authenticated_users_lack_pipe_create_instance", has(pipe_security, "const PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_0003;", "(A;;0x00120003;;;AU)") and "(A;;GRGW;;;AU)" not in pipe_security and "(A;;GW;;;AU)" not in pipe_security)
+#
+# WHY THE HEX FORM IS FORBIDDEN, so that no later phase re-raises it as drift. Until the P36
+# Tranche 1 fix the AU ACE was `(A;;0x00120003;;;AU)`. Windows' SDDL parser SILENTLY DROPS
+# SYNCHRONIZE (0x00100000) from a HEX access mask, so the DACL that materialized granted AU
+# 0x00020003 - no SYNCHRONIZE - while every client, the shipped desktop app included, opens the
+# pipe with PIPE_CLIENT_ACCESS_MASK = 0x00120003, and synchronous I/O requires SYNCHRONIZE. The
+# production pipe was unopenable as encoded. `crates/ipc/src/windows_impl.rs:268-288` records the
+# A/B live DACL dump that proved it and `:1211` asserts, in the product's own test, that the
+# broken encoding must never return.
+#
+# The cure is an ENCODING change, not a policy change. Named rights survive the parser:
+#   FR   = FILE_GENERIC_READ = READ_DATA|READ_EA|READ_ATTRIBUTES|READ_CONTROL|SYNCHRONIZE = 0x120089
+#   0x2  = FILE_WRITE_DATA, which FR does not include
+#   FR|0x2 materializes as 0x12008B
+# 0x12008B COVERS the client's requested 0x120003 (0x120003 & ~0x12008B == 0) and WITHHOLDS
+# FILE_CREATE_PIPE_INSTANCE (0x4), FILE_APPEND_DATA and every generic server right - which is the
+# whole of what ZR-016 asserts. So the check below is repointed at the named form and, unlike the
+# version it replaces, is scoped to the production builder: `pipe_security` also spans
+# DEV_PIPE_SECURITY_DESCRIPTOR, whose debug-only `(A;;0x00120003;;;AU)` is what the old token was
+# really matching. It passed without ever reading the production descriptor.
+production_descriptor = section(ipc_windows, "fn production_pipe_security_descriptor", "fn security_descriptor_for_pipe")
+check("ipc_authenticated_users_lack_pipe_create_instance", has(pipe_security, "const PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_0003;") and has(production_descriptor, "(A;;FR;;;AU)(A;;0x00000002;;;AU)") and "(A;;0x00120003;;;AU)" not in production_descriptor and "(A;;GRGW;;;AU)" not in pipe_security and "(A;;GW;;;AU)" not in pipe_security and "(A;;GA;;;AU)" not in pipe_security)
 check("ipc_clients_request_specific_non_generic_access", has(open_pipe_body, "access_mode(PIPE_CLIENT_ACCESS_MASK)", "share_mode(0)") and ".read(true).write(true)" not in open_pipe_body)
-check("ipc_pipe_create_instance_regression_test", has(ipc_windows, "authenticated_client_access_cannot_create_pipe_instances", "FILE_CREATE_PIPE_INSTANCE", "EXPECTED_CLIENT_ACCESS: u32 = 0x0012_0003", "assert_eq!(PIPE_CLIENT_ACCESS_MASK, EXPECTED_CLIENT_ACCESS)", "PIPE_CLIENT_ACCESS_MASK & FILE_CREATE_PIPE_INSTANCE", "O:S-1-5-80-1-2-3-4-5D:P(A;;GA;;;S-1-5-80-1-2-3-4-5)(A;;0x00120003;;;AU)"))
+check("ipc_pipe_create_instance_regression_test", has(ipc_windows, "authenticated_client_access_cannot_create_pipe_instances", "FILE_CREATE_PIPE_INSTANCE", "EXPECTED_CLIENT_ACCESS: u32 = 0x0012_0003", "assert_eq!(PIPE_CLIENT_ACCESS_MASK, EXPECTED_CLIENT_ACCESS)", "PIPE_CLIENT_ACCESS_MASK & FILE_CREATE_PIPE_INSTANCE", "O:S-1-5-80-1-2-3-4-5D:P(A;;GA;;;S-1-5-80-1-2-3-4-5)(A;;FR;;;AU)(A;;0x00000002;;;AU)", 'assert!(!descriptor.contains("0x00120003"))'))
 
 # ZR-017: named-pipe client opens constrain server impersonation before endpoint authentication.
 check("ipc_client_limits_named_pipe_impersonation", has(open_pipe_body, ".security_qos_flags(PIPE_CLIENT_SECURITY_QOS)") and has(pipe_security, "const PIPE_CLIENT_SECURITY_QOS: u32 = 0x0001_0000;") and has(ipc_windows, "named_pipe_client_limits_server_impersonation_to_identification"))
@@ -392,11 +416,17 @@ check("ipc_native_probe_uses_exact_production_client_rights", has(ipc_pipe_probe
 check("ipc_native_probe_requires_service_sid_owner_and_service_identity", has(ipc_pipe_probe, "NT SERVICE", "$serviceSid", "trusted service SID", "Named-pipe owner drift", "$service.StartName", "Own Process"))
 check("ipc_native_probe_understands_generic_create_instance_rights", has(ipc_pipe_probe, "GENERIC_ALL = 0x10000000", "GENERIC_WRITE = 0x40000000", "GrantsPipeCreateInstance", "TrustedServiceCanCreatePipeInstance"))
 check("ipc_native_probe_rejects_administrator_server_authority", has(ipc_pipe_probe, "AdministratorsAllowMask", "$administratorsAllowMask -ne 0", "Builtin Administrators must not have a named-pipe allow ACE"))
-check("ipc_native_probe_requires_exact_au_acl", has(ipc_pipe_probe, "$allowMask -ne $RequiredClientMask", "$denyMask -ne 0", "Authenticated Users pipe allow mask drift", "Authenticated Users pipe deny mask drift"))
+# DBT-P63-002: the probe compared the AU ALLOW MASK against $RequiredClientMask, which is the mask
+# a CLIENT ASKS FOR at open time, not what the DACL grants. Since the named-rights encoding the AU
+# grant is 0x0012008B. Exactness is kept, against the right constant, plus a coverage assertion -
+# a grant that stops covering the client mask is exactly the SYNCHRONIZE regression returning.
+check("ipc_native_probe_requires_exact_au_acl", has(ipc_pipe_probe, "$ExpectedAuthenticatedUsersGrant = [uint32]0x0012008B", "$allowMask -ne $ExpectedAuthenticatedUsersGrant", "($allowMask -band $RequiredClientMask) -ne $RequiredClientMask", "$denyMask -ne 0", "Authenticated Users pipe allow mask drift", "Authenticated Users pipe deny mask drift"))
 check("ipc_native_probe_requires_protected_expected_dacl", has(ipc_pipe_probe, "ControlFlags.DiscretionaryAclProtected", "UnexpectedAllowSids", "Named-pipe DACL is not protected from inheritance", "Unexpected named-pipe allow ACE trustee(s)"))
 check("ipc_native_probe_rejects_unparsed_ace_types", has(ipc_pipe_probe, "CommonAce ace = genericAce as CommonAce", "UnexpectedAceTypes", "Unrecognized named-pipe ACE type(s)"))
 check("ipc_native_probe_rejects_all_deny_aces", has(ipc_pipe_probe, "UnexpectedDenySids", "unexpectedDenies.Add", "Unexpected named-pipe deny ACE trustee(s)", "$denyMask -ne 0"))
-check("ipc_native_probe_requires_exact_allow_ace_cardinality", has(ipc_pipe_probe, "AllowAceCount", "AuthenticatedUsersAllowAceCount", "TrustedServiceAllowAceCount", "$result.AllowAceCount -ne 2", "exactly one AU allow and one trusted-service allow"))
+# Three allow ACEs, two of them AU: FR and 0x2 are separate ACEs. Their masks are unioned before
+# the exact check above, so the split hides nothing.
+check("ipc_native_probe_requires_exact_allow_ace_cardinality", has(ipc_pipe_probe, "AllowAceCount", "AuthenticatedUsersAllowAceCount", "TrustedServiceAllowAceCount", "$result.AllowAceCount -ne 3", "$result.AuthenticatedUsersAllowAceCount -ne 2", "exactly two AU allow ACEs (FR and 0x2) and one trusted-service allow"))
 check("ipc_native_probe_rejects_callback_object_opaque_or_flagged_aces", has(ipc_pipe_probe, "CommonAce ace = genericAce as CommonAce", "ace.AceFlags != AceFlags.None", "ace.IsCallback", "ace.OpaqueLength != 0"))
 check("ipc_native_probe_evidence_schema_v4", has(ipc_pipe_probe, "aethercore.ipc-pipe-security.v4", "allow_ace_count", "unexpected_deny_sids"))
 check("ipc_native_probe_uses_identification_sqos", has(ipc_pipe_probe, "SECURITY_IDENTIFICATION = 0x00010000", "SECURITY_SQOS_PRESENT = 0x00100000", "PIPE_SECURITY_QOS", "OPEN_EXISTING,", "PIPE_SECURITY_QOS"))

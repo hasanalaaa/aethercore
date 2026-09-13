@@ -11,8 +11,21 @@ $ServiceName = 'AetherCoreMaintenance'
 $PipePath = '\\.\pipe\AetherCore.Maintenance.v7'
 # FILE_READ_DATA | FILE_WRITE_DATA | READ_CONTROL | SYNCHRONIZE.
 # FILE_CREATE_PIPE_INSTANCE / FILE_APPEND_DATA (0x4) is intentionally absent.
+# This is what a CLIENT ASKS FOR at open time - CreateFile's dwDesiredAccess. It is NOT what the
+# DACL grants, and conflating the two is the defect below.
 $RequiredClientMask = [uint32]0x00120003
 $CreatePipeInstance = [uint32]0x00000004
+# What the DACL actually GRANTS Authenticated Users. DBT-P63-002: this file asserted the AU allow
+# mask equalled $RequiredClientMask, which stopped being true at the P36 Tranche 1 fix in
+# crates/ipc/src/windows_impl.rs:268-288. The AU grant is spelled with NAMED SDDL rights there,
+# `(A;;FR;;;AU)(A;;0x00000002;;;AU)`, because Windows' SDDL parser silently drops SYNCHRONIZE from
+# a HEX mask and the old `(A;;0x00120003;;;AU)` therefore materialized WITHOUT it, making the
+# production pipe unopenable. Named rights survive the parser and materialize as
+#   FR (FILE_GENERIC_READ) = 0x00120089  |  0x2 (FILE_WRITE_DATA)  =  0x0012008B
+# which COVERS the client's 0x00120003 and still withholds FILE_CREATE_PIPE_INSTANCE. Two named
+# ACEs, so the AU allow ACE count is 2 and the total allow count is 3.
+# Exactness is kept - this is a drift detector, not a policy - but against the right number.
+$ExpectedAuthenticatedUsersGrant = [uint32]0x0012008B
 
 $service = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'"
 if (-not $service -or $service.State -ne 'Running' -or -not $service.ProcessId) {
@@ -242,8 +255,11 @@ $administratorsAllowMask = [uint32]$result.AdministratorsAllowMask
 if ($result.OwnerSid -ne $serviceSid) {
     throw "Named-pipe owner drift: expected trusted service SID $serviceSid, found $($result.OwnerSid)."
 }
-if ($allowMask -ne $RequiredClientMask) {
-    throw ('Authenticated Users pipe allow mask drift: expected exactly 0x{0:X8}, found 0x{1:X8}.' -f $RequiredClientMask, $allowMask)
+if ($allowMask -ne $ExpectedAuthenticatedUsersGrant) {
+    throw ('Authenticated Users pipe allow mask drift: expected exactly 0x{0:X8} (SDDL (A;;FR;;;AU)(A;;0x00000002;;;AU)), found 0x{1:X8}.' -f $ExpectedAuthenticatedUsersGrant, $allowMask)
+}
+if (($allowMask -band $RequiredClientMask) -ne $RequiredClientMask) {
+    throw ('Authenticated Users pipe allow mask does not cover the client open mask: grant=0x{0:X8} required=0x{1:X8}. A hex SDDL mask loses SYNCHRONIZE; use named rights.' -f $allowMask, $RequiredClientMask)
 }
 if ($denyMask -ne 0) {
     throw ('Authenticated Users pipe deny mask drift: expected 0x00000000, found 0x{0:X8}.' -f $denyMask)
@@ -254,8 +270,10 @@ if (-not $result.TrustedServiceCanCreatePipeInstance) {
 if ($administratorsAllowMask -ne 0) {
     throw ('Builtin Administrators must not have a named-pipe allow ACE. mask=0x{0:X8}' -f $administratorsAllowMask)
 }
-if ($result.AllowAceCount -ne 2 -or $result.AuthenticatedUsersAllowAceCount -ne 1 -or $result.TrustedServiceAllowAceCount -ne 1) {
-    throw "Named-pipe DACL ACE cardinality drift: expected exactly one AU allow and one trusted-service allow; total=$($result.AllowAceCount) au=$($result.AuthenticatedUsersAllowAceCount) service=$($result.TrustedServiceAllowAceCount)."
+# Two AU allow ACEs, not one: FR and 0x2 are separate ACEs in the SDDL above. Their masks are
+# unioned into $allowMask, which is checked exactly, so splitting the grant hides nothing.
+if ($result.AllowAceCount -ne 3 -or $result.AuthenticatedUsersAllowAceCount -ne 2 -or $result.TrustedServiceAllowAceCount -ne 1) {
+    throw "Named-pipe DACL ACE cardinality drift: expected exactly two AU allow ACEs (FR and 0x2) and one trusted-service allow; total=$($result.AllowAceCount) au=$($result.AuthenticatedUsersAllowAceCount) service=$($result.TrustedServiceAllowAceCount)."
 }
 if (-not $result.DaclProtected) {
     throw 'Named-pipe DACL is not protected from inheritance.'

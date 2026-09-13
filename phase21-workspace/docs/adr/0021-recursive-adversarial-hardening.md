@@ -49,3 +49,48 @@ A watcher is an observation mechanism. It must never be the lifetime authority f
 - Native IPC evidence is exact-policy evidence: wrong service SID type/owner, missing service create-instance authority, Administrator server authority, widened AU rights, AU deny drift, unprotected DACL inheritance, unexpected allow trustees, or unrecognized ACE encodings fail qualification.
 
 - Named-pipe namespace ownership now remains continuous across normal session churn; accepted-session teardown cannot intentionally precede creation of the successor listener. Native rapid-disconnect/squatter-race evidence remains required.
+
+## Amendment — 2026-09-13 (P63): decisions 13, 15 and 19, the AU ACE encoding
+
+Decisions 13, 15 and 19 above are **unchanged as policy** and **superseded as
+encoding**. They are left as written because an accepted decision is a record,
+not a mutable field; this note says what the tree does instead and why.
+
+**What changed.** Decision 13 spells the Authenticated Users grant as the hex
+mask `0x00120003`. Windows' SDDL parser silently drops `SYNCHRONIZE`
+(`0x00100000`) from a hex access mask, so the DACL that materialized granted AU
+`0x00020003`. Every client — the shipped desktop app included — opens the pipe
+with `PIPE_CLIENT_ACCESS_MASK = 0x00120003`, and synchronous I/O requires
+`SYNCHRONIZE`, so the production pipe was **unopenable as encoded**. The P36
+Tranche 1 fix replaced the encoding with named SDDL rights:
+
+```
+(A;;FR;;;AU)(A;;0x00000002;;;AU)
+```
+
+`FR` is `FILE_GENERIC_READ` = `READ_DATA | READ_EA | READ_ATTRIBUTES |
+READ_CONTROL | SYNCHRONIZE` = `0x00120089`; `0x2` is `FILE_WRITE_DATA`, which
+`FR` does not include. The AU grant therefore materializes as **`0x0012008B`**.
+
+**Why this is not a widening.** `0x0012008B` covers the client's requested
+`0x00120003` and withholds `FILE_CREATE_PIPE_INSTANCE` (`0x4`),
+`FILE_APPEND_DATA` and every generic server right — which is the whole of what
+decisions 13, 15 and 19 assert. The policy is identical; only the spelling the
+parser accepts has changed.
+
+**Consequences for decision 15.** Named rights need two ACEs, so the DACL now
+carries **three allow ACEs, two of them AU**, not "exactly one AU allow". The
+two AU masks are unioned before the exactness check, so the split hides nothing:
+`scripts/verify-ipc-pipe-security.ps1` still requires the union to equal
+`0x0012008B` exactly, and additionally requires it to cover the client mask —
+a grant that stops covering it is precisely the `SYNCHRONIZE` regression
+returning.
+
+**The hex form is forbidden, and asserted to be.**
+`crates/ipc/src/windows_impl.rs:1211` asserts the production descriptor never
+contains `0x00120003`, and `scripts/zenith-recursive-audit.py`'s ZR-016 block
+asserts the same against the production builder. `DBT-P61-001`'s last two
+unresolved rows were gates still demanding the hex form; `DBT-P63-002` was
+`verify-ipc-pipe-security.ps1` still demanding the hex-era mask and ACE count.
+A future phase that sees `0x0012008B` where it expected `0x00120003` is looking
+at the fix, not at drift.
