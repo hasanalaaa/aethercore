@@ -87,13 +87,30 @@ if (-not $Refresh) {
     throw 'Phase 9 dependency freeze is incomplete. Run freeze-dependencies.ps1 -Refresh only on the trusted dependency-freeze workstation after reviewing dependency changes.'
 }
 
-Write-Host 'Resolving dependency lockfiles from pinned manifests...' -ForegroundColor Cyan
-& cargo generate-lockfile
-if ($LASTEXITCODE -ne 0) { throw 'Cargo lockfile generation failed.' }
-& pnpm --dir apps/ui install --lockfile-only
-if ($LASTEXITCODE -ne 0) { throw 'pnpm lockfile generation failed.' }
-& cargo metadata --locked --format-version 1 *> $null
-if ($LASTEXITCODE -ne 0) { throw 'Generated Cargo.lock does not resolve under --locked.' }
+# docs/RELEASE_SUPPLY_CHAIN.md already says lockfiles are resolved from scratch only in
+# the SEED state -- "a source snapshot may begin without lockfiles only when it has never
+# been dependency-frozen". This script did not implement that: -Refresh re-seeded
+# unconditionally, so every run minted a newer, unreviewed graph and no two runs produced
+# the same freeze. P60 measured the cost. A re-seed on 2026-09-13 moved 48 crates, added
+# 6 transitive names, and took llama-cpp-2/llama-cpp-sys-2 to 0.1.156, whose
+# LlamaSampler::penalties signature crates/intelligence-core/src/llama.rs cannot compile
+# against: E0061, reproduced on macOS and on Windows in run 34745535685. An approved graph
+# that does not build is not a freeze, and a freeze that differs every run is not reviewable.
+if ((Test-Path 'Cargo.lock') -and (Test-Path 'pnpm-lock.yaml')) {
+    Write-Host 'Verifying the committed dependency lockfiles resolve...' -ForegroundColor Cyan
+    & cargo metadata --locked --format-version 1 *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Committed Cargo.lock does not resolve under --locked. Resolve the manifests deliberately, review the graph, then re-run.' }
+    & pnpm --dir apps/ui install --lockfile-only --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) { throw 'Committed pnpm-lock.yaml is not up to date with the UI manifests.' }
+} else {
+    Write-Host 'Seed state: no committed lockfiles. Resolving from pinned manifests...' -ForegroundColor Cyan
+    & cargo generate-lockfile
+    if ($LASTEXITCODE -ne 0) { throw 'Cargo lockfile generation failed.' }
+    & pnpm --dir apps/ui install --lockfile-only
+    if ($LASTEXITCODE -ne 0) { throw 'pnpm lockfile generation failed.' }
+    & cargo metadata --locked --format-version 1 *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Generated Cargo.lock does not resolve under --locked.' }
+}
 
 New-Item -ItemType Directory -Force (Split-Path $lockBaseline -Parent) | Out-Null
 @(Current-LockLines) | Set-Content $lockBaseline -Encoding ascii

@@ -122,9 +122,19 @@ jobs:
           if ($absent) { throw "freeze did not write: $($absent -join ', ')" }
           if (Test-Path 'release/dependency-freeze.blocker.json') { throw 'freeze did not delete the blocker' }
 
+      - name: Build unsigned Windows Setup candidate
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -UnsignedCandidate -SkipOnlineSupplyChain
+
       # Everything -Refresh writes. Without this the runner is destroyed with the
       # freeze on it and OMEGA-RB-001 stays open forever. Kept out of the Setup
       # artifact deliberately: this one is reviewed and committed, that one is not.
+      #
+      # Deliberately AFTER the build. Run 34745535685 uploaded a freeze and then
+      # failed to compile the tree that freeze describes (E0061 in
+      # crates/intelligence-core/src/llama.rs). A dependency graph that does not
+      # build is not evidence of anything, and it must not reach the artifact store
+      # where a reviewer could mistake it for a candidate.
       - name: Upload dependency freeze set
         uses: actions/upload-artifact@v4
         with:
@@ -137,10 +147,6 @@ jobs:
             phase21-workspace/release/dependency-freeze.json
           if-no-files-found: error
           retention-days: 14
-
-      - name: Build unsigned Windows Setup candidate
-        shell: pwsh
-        run: ./scripts/build-release.ps1 -UnsignedCandidate -SkipOnlineSupplyChain
 
       - name: Upload Setup candidate
         uses: actions/upload-artifact@v4
