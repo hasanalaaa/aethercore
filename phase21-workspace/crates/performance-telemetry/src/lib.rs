@@ -745,9 +745,16 @@ impl PerformanceRing {
         }
         let count = state.samples.len() as u64;
         agg.sample_count = u32::try_from(count).unwrap_or(u32::MAX);
-        let first = state.samples.front().expect("non-empty").captured_unix_ms;
-        let last = state.samples.back().expect("non-empty").captured_unix_ms;
-        agg.window_ms = last.saturating_sub(first).max(0) as u64;
+        // The `is_empty` guard above already returned, so both ends exist. Expressed as a
+        // let-else rather than `expect`, so a future edit that moves the guard degrades to the
+        // documented zero aggregate instead of panicking in the collector. P63.
+        let (Some(front), Some(back)) = (state.samples.front(), state.samples.back()) else {
+            return agg;
+        };
+        agg.window_ms = back
+            .captured_unix_ms
+            .saturating_sub(front.captured_unix_ms)
+            .max(0) as u64;
 
         let mut cpu_sum = 0u64;
         let mut cpu_peak = 0u32;

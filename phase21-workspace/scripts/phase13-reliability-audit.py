@@ -86,7 +86,7 @@ check('restore_point_wmi_return_consistency', has(restore, 'terminal WBEM_S_FALS
 check('storage_outer_watchdog', has(hardware_win, 'STORAGE_GATE', 'run_isolated_gated_with_token(', 'DEFAULT_COLLECTOR_TIMEOUT', 'parent.child()'))
 check('direct_ioctl_watchdog', has(hardware_win, 'DIRECT_IOCTL_GATE', 'STORAGE_IOCTL_TIMEOUT', 'nvme-health-ioctl', 'ata-smart-ioctl', 'run_isolated_gated_with_token'))
 check('memory_isolation', has(hardware_win, 'MEMORY_GATE', 'memory_gate()', 'parent.child()'))
-check('memory_unavailable_is_optional', 'pub memory:Option<MemoryTelemetry>' in diag and 'memory:None' in diag and 'v.memory.map(|memory|' in protocol)
+check('memory_unavailable_is_optional', has(diag,'pub memory:Option<MemoryTelemetry>','memory:None') and has(protocol,'v.memory.map(|memory|'))
 check('nvme_byte_parser', has(hardware, 'parse_nvme_health_log', 'REQUIRED: usize = 192', 'u128::from_le_bytes'))
 check('nvme_protocol_window_bounds', has(hardware, 'checked_protocol_window', 'checked_add', 'escaped the bytes returned by the driver'))
 check('nvme_protocol_header_overlap_rejected', has(hardware, 'protocol payload overlapped the protocol-specific metadata header', 'minimum_data_offset'))
@@ -114,7 +114,10 @@ check('live_crash_probe_exists', has(crash, '#[ignore =', 'live_event_and_minidu
 check('provider_fanout_isolation', has(diag, 'hardware_worker = thread::Builder::new()', 'crash_worker = thread::Builder::new()', 'hardware-provider', 'crash-provider', 'hardware_gate:IsolationGate', 'crash_gate:IsolationGate', 'run_isolated_gated'))
 check('provider_supervisor_spawn_and_panic_are_contained', has(diag, 'fn join_provider<T>(', 'failed to spawn provider supervisor thread', 'provider supervisor thread terminated unexpectedly', 'provider_supervisor_panic_is_classified'))
 check('top_level_scan_panic_cannot_leave_collecting', has(diag, 'catch_unwind(AssertUnwindSafe(|| run(worker_inner,owner)))', 'mark_scan_runtime_failure(', 'scan_runtime_failure_marks_collecting_snapshot_failed'))
-check('provider_control_propagation', has(diag, 'fn hardware(&self, control: CollectorControl)', 'fn crashes(&self, control: CollectorControl)', 'collect_with_cancellation(control.cancellation())'))
+# rustfmt wrapped both signatures and added the trailing comma a wrap requires,
+# which whitespace removal cannot undo. The signatures are otherwise identical.
+# `DBT-P61-001`.
+check('provider_control_propagation', has(diag, 'fn hardware(&self, control: CollectorControl,)', 'fn crashes(&self, control: CollectorControl,)', 'collect_with_cancellation(control.cancellation())'))
 check('provider_panic_containment', 'provider_panic_is_contained_and_persisted_as_typed_fault' in diag)
 check('fault_records_share_bounded_constructor', 'CollectorFaultRecord {' not in crash_win and has(runtime, 'impl CollectorFaultRecord', 'Self::new(fault.provider') and 'ProviderFaultRecord{provider:"diagnostic-engine"' not in diag and 'ProviderFaultRecord{provider:"diagnostic-journal"' not in diag)
 check('nested_provider_faults_preserved', 'nested_provider_faults_are_preserved_in_the_diagnostic_snapshot' in diag and 'provider_faults.extend(h.provider_faults' in diag and 'provider_faults.extend(c.provider_faults' in diag)

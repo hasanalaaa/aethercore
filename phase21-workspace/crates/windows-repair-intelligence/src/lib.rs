@@ -27,15 +27,20 @@ pub fn analyze(input: &RepairObservationSet) -> RepairIntelligenceSnapshot {
     }
 }
 
+/// The fingerprint every stored assessment is keyed by. Fallible for the same reason
+/// `graph::digest` is: a fingerprint has no honest fallback. Every field of `RepairFact` and
+/// `RecoveryReadiness` is a `String`, an `i64` or a unit enum, so `to_vec` cannot actually
+/// fail today - but "cannot fail today" is not a reason to panic in a service. P63.
 pub fn canonical_machine_state_fingerprint(
     facts: &[RepairFact],
     recovery: &RecoveryReadiness,
-) -> String {
+) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     let mut canonical = facts.to_vec();
     canonical.sort_by(|a, b| a.id.cmp(&b.id).then(a.resource.cmp(&b.resource)));
-    let bytes = serde_json::to_vec(&(canonical, recovery)).expect("repair facts are serializable");
-    hex::encode(Sha256::digest(bytes))
+    let bytes = serde_json::to_vec(&(canonical, recovery))
+        .map_err(|error| format!("repair facts could not be serialized: {error}"))?;
+    Ok(hex::encode(Sha256::digest(bytes)))
 }
 
 /// Seals the workflow state at a reboot barrier. The token is never mutation authority: a fresh

@@ -2419,7 +2419,11 @@ fn fleet_remove_host(host_id: String, confirm: bool) -> UiFleetActionResult {
     }
     // Revocation must also drop the trust-store record + known_hosts line.
     if let Some(host) = removed {
-        if let Err(error) = fleet_trust_store().untrust(&host.hostname, host.port) {
+        let store = match fleet_trust_store_checked() {
+            Ok(store) => store,
+            Err(error) => return fleet_action_error(&host_id, error),
+        };
+        if let Err(error) = store.untrust(&host.hostname, host.port) {
             return fleet_action_error(&host_id, error);
         }
     }
@@ -2433,10 +2437,10 @@ fn fleet_remove_host(host_id: String, confirm: bool) -> UiFleetActionResult {
     }
 }
 
-fn fleet_trust_store() -> aethercore_fleet::TrustStore {
-    let dir = dirs_fleet_state().join("fleet").join("trust");
-    aethercore_fleet::TrustStore::open(&dir).expect("trust store dir")
-}
+// `fleet_trust_store()` lived here and panicked on an unopenable store. It was a second
+// spelling of `fleet_trust_store_checked()`, which every other caller already used, so the
+// panicking one is deleted rather than wrapped - a failed open is an ordinary I/O error the
+// UI already knows how to show. P63.
 
 /// Trust/untrust flow. `public_key_base64` + `authorized_fingerprint` are
 /// BOTH required: the store recomputes the fingerprint from the key and
@@ -2481,7 +2485,10 @@ fn fleet_trust_host(input: UiTrustInput) -> UiFleetActionResult {
             return fleet_action_error(&input.host_id, error);
         }
     }
-    let store = fleet_trust_store();
+    let store = match fleet_trust_store_checked() {
+        Ok(store) => store,
+        Err(error) => return fleet_action_error(&input.host_id, error),
+    };
     if let Err(error) = store.trust(&record) {
         return fleet_action_error(&input.host_id, error);
     }
@@ -2501,7 +2508,10 @@ fn fleet_untrust_host(host_id: String) -> UiFleetActionResult {
     if let Some(host) = inventory.get_mut(&host_id) {
         let (hostname, port) = (host.hostname.clone(), host.port);
         host.trust = None;
-        let store = fleet_trust_store();
+        let store = match fleet_trust_store_checked() {
+            Ok(store) => store,
+            Err(error) => return fleet_action_error(&host_id, error),
+        };
         if let Err(error) = store.untrust(&hostname, port) {
             return fleet_action_error(&host_id, error);
         }

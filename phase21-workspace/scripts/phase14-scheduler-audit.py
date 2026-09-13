@@ -74,9 +74,9 @@ check('active_console_session_principal',has(win,'WTSGetActiveConsoleSessionId',
 check('idle_uses_wts_session_time_not_session0_lastinput',has(win,'WTSQuerySessionInformationW','WTSSessionInfoEx','LastInputTime','CurrentTime') and 'GetLastInputInfo' not in win)
 check('power_gate',has(win,'GetSystemPowerStatus','ACLineStatus == 1','SystemStatusFlag != 0'))
 check('presentation_gate_impersonates_active_user',has(win,'ImpersonateLoggedOnUser','SHQueryUserNotificationState','RevertToSelf','security-fatal: RevertToSelf'))
-check('presentation_unknown_fail_closed','matches!(state.presentation, PresentationState::Unknown) { blocked.push(BlockReason::PresentationUnknown); }' in policy)
+check('presentation_unknown_fail_closed',has(policy,'matches!(state.presentation, PresentationState::Unknown) { blocked.push(BlockReason::PresentationUnknown); }'))
 check('servicing_gate',has(win,'TrustedInstaller','UsoSvc','WaaSMedicSvc','QueryServiceStatusEx','ServicingState::Unknown'))
-check('servicing_unknown_fail_closed','matches!(state.servicing, ServicingState::Unknown) { blocked.push(BlockReason::ServicingUnknown); }' in policy)
+check('servicing_unknown_fail_closed',has(policy,'matches!(state.servicing, ServicingState::Unknown) { blocked.push(BlockReason::ServicingUnknown); }'))
 check('network_cost_gate',has(win,'INetworkCostManager','GetCost(&mut cost, ptr::null())','NLM_CONNECTION_COST_FIXED','NetworkCost::Metered'))
 check('metered_unknown_network_blocks_driver_discovery',has(policy,'NetworkCost::Metered','NetworkCost::Unknown','NetworkCostUnknown') and 'network_sensitive' in model)
 check('thermal_acpi_probe',has(win,'MSAcpi_ThermalZoneTemperature','CurrentTemperature','CriticalTripPoint','THERMAL_WMI_DEADLINE','WBEM_S_TIMEDOUT','MAX_THERMAL_ZONES'))
@@ -88,12 +88,13 @@ check('fast_preemption_probe',has(runtime,'sample_fast','active_probe_interval',
 check('preemption_covers_full_policy',has(runtime,'preemption_required(','kernel_monitor.mutations().is_active()','monitor_fence.revoke()','monitor_token.cancel()'))
 check('probe_failure_preempts', 'Err(_) => true' in runtime)
 check('preemption_monitor_spawn_fail_closed',has(runtime,'preemptionMonitorUnavailable','commit_fence.revoke()','idle preemption monitor failed to start'))
-check('commit_fence_three_state',has(collector,'CommitFenceState { Active, Committed, Revoked }','try_commit_checked','is_committed'))
+# rustfmt puts one variant per line and adds the trailing comma. `DBT-P61-001`.
+check('commit_fence_three_state',has(collector,'CommitFenceState { Active, Committed, Revoked, }','try_commit_checked','is_committed'))
 check('commit_vs_preemption_linearized',has(collector,'if *state == CommitFenceState::Active { *state = CommitFenceState::Revoked; }','*state = CommitFenceState::Committed') and has(runtime,'let committed = commit_fence.is_committed()'))
 check('late_publication_rejected_in_domains',all('try_commit_checked' in text for text in [driver,cleaner,startup,diag]))
 check('passive_domains_recheck_cancel_at_commit',all('token.is_cancelled()' in text for text in [driver,cleaner,startup,diag]))
 check('passive_scans_no_intermediate_scanning_publish', 'pub fn passive_scan_with_fence' in driver and 'No intermediate `Scanning` state' in driver)
-check('monotonic_passive_inventory_epochs', 'inventory_epoch.saturating_add(1)' in driver and 'inventory_epoch.saturating_add(1).max' in cleaner and 'inventory_epoch.saturating_add(1).max' in startup)
+check('monotonic_passive_inventory_epochs', has(driver,'inventory_epoch.saturating_add(1)') and has(cleaner,'inventory_epoch.saturating_add(1).max') and has(startup,'inventory_epoch.saturating_add(1).max'))
 
 # Kernel/resource integration.
 check('mutation_supervisor_boolean_gate',has(kernel_mut,'pub fn is_active(&self) -> bool'))

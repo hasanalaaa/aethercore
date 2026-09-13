@@ -102,6 +102,56 @@ mod windows_impl {
         })
     }
 
+    /// Owns a Win32 kernel HANDLE that must CROSS THREADS, and closes it exactly once.
+    ///
+    /// `OwnedHandle` wraps `HANDLE`, which `windows` declares `!Send + !Sync` on purpose, so it
+    /// cannot be handed to an I/O thread or shared through an `Arc`. This one stores the opaque
+    /// numeric value instead, which makes the cross-thread contract explicit rather than
+    /// smuggling a raw pointer past the type system.
+    ///
+    /// It lives here and not beside its caller because `CloseHandle` belongs in one place -
+    /// `enterprise-adversarial-audit.py`'s `common_windows_release_pairs_are_centralized`
+    /// asserts exactly that, and `crates/ipc`'s overlapped pipe I/O had its own copy of this
+    /// type until P63. Sending a handle is safe; USING it concurrently is the caller's problem,
+    /// which is why `get` hands back a plain `HANDLE` and nothing here is `Sync`-only.
+    #[derive(Debug)]
+    pub struct SendableHandle(usize);
+
+    // SAFETY: the value is an opaque kernel handle, not a pointer into this process's address
+    // space, and every Win32 call that takes one is thread-agnostic. `CloseHandle` runs exactly
+    // once, in `Drop`, on whichever thread last releases it.
+    unsafe impl Send for SendableHandle {}
+    unsafe impl Sync for SendableHandle {}
+
+    impl SendableHandle {
+        pub fn new(handle: HANDLE) -> Self {
+            Self(handle.0 as usize)
+        }
+
+        /// A handle that owns nothing. `Drop` closes nothing; `is_null` reports it.
+        pub fn null() -> Self {
+            Self(0)
+        }
+
+        pub fn get(&self) -> HANDLE {
+            HANDLE(self.0 as *mut std::ffi::c_void)
+        }
+
+        pub fn is_null(&self) -> bool {
+            self.0 == 0
+        }
+    }
+
+    impl Drop for SendableHandle {
+        fn drop(&mut self) {
+            if self.0 != 0 {
+                unsafe {
+                    let _ = CloseHandle(self.get());
+                }
+            }
+        }
+    }
+
     /// Owns a Win32 kernel HANDLE and closes it exactly once.
     ///
     /// This wrapper is intentionally small: callers still decide which access rights to request,
@@ -327,7 +377,7 @@ mod windows_impl {
 #[cfg(windows)]
 pub use windows_impl::{
     BackgroundThreadMode, ComApartment, MachineMutationGuard, OwnedHandle, OwnedServiceHandle,
-    ThreadImpersonation, machine_identity,
+    SendableHandle, ThreadImpersonation, machine_identity,
 };
 
 #[cfg(not(windows))]

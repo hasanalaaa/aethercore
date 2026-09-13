@@ -22,13 +22,13 @@ use aethercore_contracts::{
         client_frame, server_frame,
     },
 };
-use aethercore_windows_foundation::{OwnedHandle, OwnedServiceHandle};
+use aethercore_windows_foundation::{OwnedHandle, OwnedServiceHandle, SendableHandle};
 use prost::Message;
 use windows::{
     Win32::{
         Foundation::{
-            CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_IO_PENDING,
-            ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, LocalFree,
+            ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_IO_PENDING, ERROR_PIPE_BUSY,
+            ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, LocalFree,
         },
         Security::{
             Authorization::{
@@ -478,35 +478,17 @@ fn try_acquire_slot(counter: &AtomicUsize, limit: usize) -> bool {
     }
 }
 
-/// A kernel handle held by value so it can cross threads.
-///
-/// `windows::Win32::Foundation::HANDLE` is intentionally `!Send + !Sync`; storing the opaque
-/// numeric value keeps the cross-thread contract explicit, as the previous thread-handle
-/// cancellation token did.
-struct PipeHandle(usize);
-
-impl PipeHandle {
-    fn get(&self) -> HANDLE {
-        HANDLE(self.0 as *mut c_void)
-    }
-}
-
-impl Drop for PipeHandle {
-    fn drop(&mut self) {
-        if self.0 != 0 {
-            unsafe {
-                let _ = CloseHandle(self.get());
-            }
-        }
-    }
-}
+// The kernel handle this file used to own itself is
+// `aethercore_windows_foundation::SendableHandle`. P63: `CloseHandle` belongs in one place and
+// this crate had the second copy of it - see that type's own comment. The contract is
+// unchanged: the opaque numeric value crosses threads, `Drop` closes it exactly once.
 
 /// Auto-reset: `GetOverlappedResult`'s wait consumes the signal, so every operation starts from a
 /// non-signalled event without an explicit reset.
-fn new_completion_event() -> Result<PipeHandle> {
+fn new_completion_event() -> Result<SendableHandle> {
     let handle = unsafe { CreateEventW(None, false, false, PCWSTR::null()) }
         .map_err(|error| IpcError::Windows(format!("create overlapped IPC event: {error}")))?;
-    Ok(PipeHandle(handle.0 as usize))
+    Ok(SendableHandle::new(handle))
 }
 
 /// Preserve the raw Win32 code, so a cancelled operation still surfaces as
@@ -521,11 +503,11 @@ fn win32_io_error(error: windows::core::Error) -> std::io::Error {
 /// calls issued by one thread. Every call site here already cancelled both directions, so this
 /// reproduces the teardown `CancelSynchronousIo` performed against the two I/O threads.
 #[derive(Clone)]
-struct PipeCancel(Arc<PipeHandle>);
+struct PipeCancel(Arc<SendableHandle>);
 
 impl PipeCancel {
     fn cancel(&self) {
-        if self.0.0 == 0 {
+        if self.0.is_null() {
             return;
         }
         unsafe {
@@ -535,7 +517,7 @@ impl PipeCancel {
 
     #[cfg(test)]
     fn noop_for_test() -> Self {
-        Self(Arc::new(PipeHandle(0)))
+        Self(Arc::new(SendableHandle::null()))
     }
 }
 
@@ -545,14 +527,14 @@ impl PipeCancel {
 /// file object through the shared `Arc`. Each owns its own event, and each operation gets its own
 /// `OVERLAPPED` on the calling stack, so a concurrent read and write never share completion state.
 struct PipeIo {
-    handle: Arc<PipeHandle>,
-    event: PipeHandle,
+    handle: Arc<SendableHandle>,
+    event: SendableHandle,
 }
 
 impl PipeIo {
     fn from_connected(handle: HANDLE) -> Result<Self> {
         Ok(Self {
-            handle: Arc::new(PipeHandle(handle.0 as usize)),
+            handle: Arc::new(SendableHandle::new(handle)),
             event: new_completion_event()?,
         })
     }

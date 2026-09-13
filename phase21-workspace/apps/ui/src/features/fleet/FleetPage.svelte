@@ -326,9 +326,9 @@
   {#if showAddForm}
     <section class="panel fleet-form" aria-label={t('fleet.actionAdd', locale)}>
       <div class="form-grid">
-        <label><span>{t('fleet.fieldId', locale)}</span><input bind:value={addId} placeholder="host-build-01" /></label>
+        <label><span>{t('fleet.fieldId', locale)}</span><input bind:value={addId} placeholder={t('fleet.placeholderId', locale)} /></label>
         <label><span>{t('fleet.fieldName', locale)}</span><input bind:value={addName} /></label>
-        <label><span>{t('fleet.fieldHost', locale)}</span><input bind:value={addHostname} placeholder="host.example.internal" /></label>
+        <label><span>{t('fleet.fieldHost', locale)}</span><input bind:value={addHostname} placeholder={t('fleet.placeholderHost', locale)} /></label>
         <label><span>{t('fleet.fieldPort', locale)}</span><input bind:value={addPort} inputmode="numeric" /></label>
         <label><span>{t('fleet.fieldUser', locale)}</span><input bind:value={addUser} /></label>
         <label>
@@ -340,9 +340,9 @@
           </select>
         </label>
         {#if addAuthKind !== 'agent'}
-          <label class="form-wide"><span>{t('fleet.fieldAuthPath', locale)}</span><input bind:value={addAuthPath} placeholder="/home/ops/.ssh/id_ed25519" /></label>
+          <label class="form-wide"><span>{t('fleet.fieldAuthPath', locale)}</span><input bind:value={addAuthPath} placeholder={t('fleet.placeholderAuthPath', locale)} /></label>
         {/if}
-        <label class="form-wide"><span>{t('fleet.fieldTags', locale)}</span><input bind:value={addTags} placeholder="edge, build" /></label>
+        <label class="form-wide"><span>{t('fleet.fieldTags', locale)}</span><input bind:value={addTags} placeholder={t('fleet.placeholderTags', locale)} /></label>
       </div>
       <div class="form-actions">
         <button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={submitAdd} disabled={busy}>{t('fleet.actionSave', locale)}</button>
@@ -413,8 +413,8 @@
           {/if}
           {#if trustHostId === host.hostId}
             <div class="trust-form">
-              <label><span>{t('fleet.fieldPublicKey', locale)}</span><input bind:value={trustKey} placeholder="AAAAC3NzaC1lZDI1NTE5AAAA…" /></label>
-              <label><span>{t('fleet.fieldFingerprint', locale)}</span><input bind:value={trustFingerprint} placeholder="64-char SHA-256 hex" /></label>
+              <label><span>{t('fleet.fieldPublicKey', locale)}</span><input bind:value={trustKey} placeholder={t('fleet.placeholderPublicKey', locale)} /></label>
+              <label><span>{t('fleet.fieldFingerprint', locale)}</span><input bind:value={trustFingerprint} placeholder={t('fleet.placeholderFingerprint', locale)} /></label>
               <p class="form-note">{t('fleet.trustNote', locale)}</p>
               <div class="form-actions">
                 <button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={() => submitTrust(host)} disabled={busy}>{t('fleet.actionConfirmTrust', locale)}</button>
@@ -445,7 +445,7 @@
     {#if scheduleFormOpen}
       <div class="form-grid schedule-form">
         <label><span>{t('fleet.fieldScheduleId', locale)}</span><input bind:value={scheduleId} disabled={!!scheduleEditId} /></label>
-        <label><span>{t('fleet.fieldScope', locale)}</span><input bind:value={scheduleScope} placeholder="host-a,host-b" /></label>
+        <label><span>{t('fleet.fieldScope', locale)}</span><input bind:value={scheduleScope} placeholder={t('fleet.placeholderScope', locale)} /></label>
         <label><span>{t('fleet.fieldProfile', locale)}</span><select bind:value={scheduleProfile}><option value="cis-l1">{t('fleet.profileCisL1', locale)}</option><option value="cis-l2">{t('fleet.profileCisL2', locale)}</option></select></label>
         <label><span>{t('fleet.fieldCadence', locale)}</span><input bind:value={scheduleEveryHours} inputmode="numeric" /></label>
         <label class="schedule-enabled"><span>{t('fleet.fieldEnabled', locale)}</span><input type="checkbox" bind:checked={scheduleEnabled} /></label>

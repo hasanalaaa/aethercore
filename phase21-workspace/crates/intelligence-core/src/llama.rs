@@ -151,7 +151,7 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
         #[cfg(feature = "embedded-model")]
         {
             let model = llama_cpp_2::model::LlamaModel::load_from_file(
-                backend_global(),
+                backend_global()?,
                 model_path,
                 &llama_cpp_2::model::params::LlamaModelParams::default(),
             )
@@ -161,7 +161,7 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
             // well under the declared budget for a 1.5B q4_k_m model. Temperature-0 and
             // JSON-only parsing are enforced at inference time; this warm-up proves the
             // artifact loads into a working context window.
-            let backend = backend_global();
+            let backend = backend_global()?;
             let ctx_params = llama_cpp_2::context::params::LlamaContextParams::default()
                 .with_n_ctx(std::num::NonZeroU32::new(2048))
                 .with_n_batch(256);
@@ -319,7 +319,7 @@ impl LlamaCppReasoner {
 
         let handle = self.backend.as_ref().ok_or("model not loaded")?;
         let model = &handle._model;
-        let backend = backend_global();
+        let backend = backend_global()?;
 
         // Never: the template supplies the structure, and Qwen2.5 declares
         // `add_bos_token: false`. Forcing one shifts every position by a token.
@@ -428,10 +428,15 @@ impl LlamaCppReasoner {
 
 /// One llama.cpp backend per process (binding requirement).
 #[cfg(feature = "embedded-model")]
-fn backend_global() -> &'static llama_cpp_2::llama_backend::LlamaBackend {
+fn backend_global() -> Result<&'static llama_cpp_2::llama_backend::LlamaBackend, String> {
     use std::sync::OnceLock;
-    static BACKEND: OnceLock<llama_cpp_2::llama_backend::LlamaBackend> = OnceLock::new();
-    BACKEND.get_or_init(|| {
-        llama_cpp_2::llama_backend::LlamaBackend::init().expect("llama.cpp backend init")
-    })
+    // `init()` can genuinely fail - it is a native library bring-up - and every caller here
+    // already returns `Result<_, String>`, so the failure is reported instead of aborting the
+    // service. `OnceLock<Option<_>>` because the backend is not clonable and a failed init
+    // must not be retried into a second global. P63.
+    static BACKEND: OnceLock<Option<llama_cpp_2::llama_backend::LlamaBackend>> = OnceLock::new();
+    BACKEND
+        .get_or_init(|| llama_cpp_2::llama_backend::LlamaBackend::init().ok())
+        .as_ref()
+        .ok_or_else(|| "llama.cpp backend init failed".to_string())
 }

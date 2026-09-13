@@ -20,7 +20,7 @@ checks: dict[str, dict[str, object]] = {}
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader, contains  # noqa: E402
+from gate_reader import SourceReader, contains, count, ordered as _gate_ordered  # noqa: E402
 
 read = SourceReader(ROOT).read
 
@@ -35,15 +35,9 @@ def has(text: str, *tokens: str) -> bool:
     return all(contains(text, token) for token in tokens)
 
 
-def ordered(text: str, *tokens: str) -> bool:
-    """True only when every token exists and appears in the requested order."""
-    cursor = 0
-    for token in tokens:
-        position = text.find(token, cursor)
-        if position < 0:
-            return False
-        cursor = position + len(token)
-    return True
+# `ordered` is gate_reader's too: same whitespace rule as `has`, one definition.
+# `DBT-P61-001`.
+ordered = _gate_ordered
 
 
 def section(text: str, start: str, end: str) -> str:
@@ -58,12 +52,20 @@ def section(text: str, start: str, end: str) -> str:
 
 
 def product_rust_sources() -> list[Path]:
+    """Rust that SHIPS. Harnesses are excluded, and `benches` is one of them.
+
+    `tests` and `build.rs` were already out; `benches` was not, and it is the same category -
+    a development harness that is never linked into a product binary. Half of
+    `production_rust_has_no_panic_shortcuts`'s hits were `criterion` setup code in
+    `benches/*.rs`, where `.unwrap()` on a fixture is the correct thing to write.
+    `DBT-P61-001`.
+    """
     paths: list[Path] = []
     for root in (ROOT / "crates", ROOT / "services", ROOT / "apps"):
         if not root.exists():
             continue
         for path in root.rglob("*.rs"):
-            if "tests" in path.parts or path.name == "build.rs":
+            if "tests" in path.parts or "benches" in path.parts or path.name == "build.rs":
                 continue
             paths.append(path)
     return paths
@@ -162,12 +164,16 @@ check("ipc_producers_use_nonblocking_try_send", has(ipc_win, "try_send(QueuedSer
 check("ipc_outbound_queues_are_byte_bounded", has(ipc_win, "fn try_reserve_bytes", "compare_exchange_weak", "release_bytes", "server_outbound_byte_budget_is_fail_closed_even_when_frame_slots_remain", "byte_reservation_never_exceeds_limit_under_contention"))
 check("ipc_bootstrap_replay_wait_is_bounded", has(ipc_win, "pub fn write_bootstrap", "checked_add(max_wait)", "Instant::now()>=deadline", "thread::sleep(Duration::from_millis(1))") and has(service_server, "IPC_BOOTSTRAP_ENQUEUE_TIMEOUT", ".write_bootstrap("))
 check("ipc_live_writes_remain_nonblocking", service_server.count(".write(&") >= 2 and "write_bootstrap" in service_server)
-check("ipc_has_dedicated_server_writer_thread", has(ipc_win, "aether-ipc-server-writer", "write_server_frame(&mut writer_file", "pump_alive.store(false"))
-check("ipc_has_dedicated_client_writer_thread", has(ipc_win, "aether-ipc-client-writer", "write_client_frame(&mut writer_file", "writer_pending.lock()"))
+# `writer_file` -> `writer_io` when `482d480` gave each direction its own overlapped state.
+check("ipc_has_dedicated_server_writer_thread", has(ipc_win, "aether-ipc-server-writer", "write_server_frame(&mut writer_io", "pump_alive.store(false"))
+check("ipc_has_dedicated_client_writer_thread", has(ipc_win, "aether-ipc-client-writer", "write_client_frame(&mut writer_io", "writer_pending.lock()"))
 check("ipc_session_fails_closed_after_writer_failure", has(ipc_win, "if !self.writer.is_alive()", "return Err(IpcError::Disconnected)"))
 check("ipc_outbound_backpressure_regression_present", has(ipc_win, "server_outbound_queue_saturates_fail_closed_without_blocking_request_workers", "client_outbound_queue_saturates_fail_closed_and_requests_transport_cancellation", "assert!(!writer.is_alive())", "assert!(!alive.load(Ordering::Acquire))"))
 check("ipc_client_inflight_matches_server_hello", has(ipc_win, "ClientInflightGuard", "try_acquire_inflight", "max_inflight", "client_inflight_admission_matches_server_advertised_limit"))
-check("ipc_client_shutdown_is_nonblocking_and_cancellable", has(ipc_win, "fn shutdown(&self)", "self.cancellation.cancel()", "cancel_registered_io(&self.peer_reader)", "self.writer.shutdown();") and "fn close_with" not in ipc_win)
+# Property unchanged - shutdown must not block and must abort I/O in flight. One
+# `PipeCancel` over the shared file object replaced the per-thread cancellation registry
+# (`482d480`); `cancel` is a single `CancelIoEx` and takes no lock.
+check("ipc_client_shutdown_is_nonblocking_and_cancellable", has(ipc_win, "fn shutdown(&self)", "self.cancel.cancel();", "self.writer.shutdown();") and "fn close_with" not in ipc_win)
 check("ipc_disconnect_notification_is_at_most_once", has(ipc_win, "fn notify_disconnect_once", "disconnect_notified", "writer_disconnect", "disconnect_notification_is_at_most_once_across_reader_and_writer_paths"))
 
 # Update-engine publication and state-machine reentrancy.
@@ -181,9 +187,9 @@ check("update_upload_finalize_fences_late_chunks", has(update, "closed:bool", "i
 check("update_upload_per_record_regressions", has(update, "upload_start_reservations_are_owner_scoped_not_global", "upload_records_use_independent_per_upload_mutexes"))
 check("update_staged_paths_are_owner_scoped_and_content_addressed", has(update, "owner_scope", "Sha256::digest(owner.as_bytes())", "sha256.to_ascii_lowercase()", "staged_paths_are_owner_scoped_and_content_addressed"))
 check("update_stale_cleanup_protects_active_execution", has(update, "should_remove_stale_staging", "protected.insert(active.ticket.staged_path.clone())", "file_type.is_file()", "stale_staging_cleanup_never_removes_protected_execution_artifact"))
-check("update_set_snapshot_publish_after_lock", has(update, "fn set_snapshot", "self.emit(owner,&snapshot)") and "let snapshot={" in update)
+check("update_set_snapshot_publish_after_lock", has(update, "fn set_snapshot", "self.emit(owner,&snapshot)", "let snapshot={"))
 mutate_body = section(update, "fn mutate_snapshot", "fn update_progress")
-check("update_mutate_snapshot_publish_after_lock", "fn mutate_snapshot" in mutate_body and re.search(r"let\s+published\s*=\s*\{", mutate_body) is not None and "self.emit(owner,&published)" in mutate_body)
+check("update_mutate_snapshot_publish_after_lock", has(mutate_body, "fn mutate_snapshot") and re.search(r"let\s+published\s*=\s*\{", mutate_body) is not None and has(mutate_body, "self.emit(owner,&published)"))
 
 # Support-bundle quota and privacy invariants.
 check("support_preview_reservation_state", has(support, "struct PreviewState", "reserve_preview", "release_preview"))

@@ -13,6 +13,8 @@ pub enum GraphError {
     MissingDependency { node: String, dependency: String },
     #[error("repair graph contains a dependency cycle")]
     Cycle,
+    #[error("repair graph could not be serialized for its digest: {0}")]
+    Digest(String),
     #[error("destructive recovery action cannot be SAFE_AUTO: {0}")]
     DestructiveAuto(String),
     #[error("repair action crosses a reboot boundary without a resume barrier: {0}")]
@@ -39,7 +41,7 @@ impl RepairGraphModel {
         nodes.sort_by(|a, b| a.id.cmp(&b.id));
         validate_nodes(&nodes)?;
         let order = topological_order(&nodes)?;
-        let digest = digest(&nodes, &order);
+        let digest = digest(&nodes, &order)?;
         Ok(Self {
             schema: "aethercore.repair-graph.v1".into(),
             valid: true,
@@ -172,7 +174,12 @@ fn topological_order(nodes: &[RepairNode]) -> Result<Vec<String>, GraphError> {
         out.push(id.clone());
         if let Some(next) = outgoing.get(&id) {
             for n in next {
-                let e = indegree.get_mut(n).expect("known");
+                // `indegree` was built from the same node set `outgoing` indexes, so this is
+                // always Some; a let-else keeps a malformed set out of a panic, and the
+                // `out.len() != nodes.len()` check below still rejects the result. P63.
+                let Some(e) = indegree.get_mut(n) else {
+                    continue;
+                };
                 *e -= 1;
                 if *e == 0 {
                     let pos = q.iter().position(|x| x > n).unwrap_or(q.len());
@@ -187,7 +194,10 @@ fn topological_order(nodes: &[RepairNode]) -> Result<Vec<String>, GraphError> {
     Ok(out)
 }
 
-fn digest<T: Serialize>(nodes: &T, order: &[String]) -> String {
-    let bytes = serde_json::to_vec(&(nodes, order)).expect("serializable repair graph");
-    hex::encode(Sha256::digest(bytes))
+fn digest<T: Serialize>(nodes: &T, order: &[String]) -> Result<String, GraphError> {
+    // A digest has no honest fallback: a fabricated one would be indistinguishable from a
+    // real fingerprint. So the error is propagated, not swallowed and not panicked on. P63.
+    let bytes = serde_json::to_vec(&(nodes, order))
+        .map_err(|error| GraphError::Digest(error.to_string()))?;
+    Ok(hex::encode(Sha256::digest(bytes)))
 }

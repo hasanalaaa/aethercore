@@ -13,7 +13,7 @@ checks={}
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader, contains  # noqa: E402
+from gate_reader import SourceReader, contains, count, position  # noqa: E402
 
 read = SourceReader(ROOT).read
 def check(name,ok,**detail): checks[name]={'ok':bool(ok),**detail}
@@ -65,7 +65,9 @@ check('trust_generator_https_and_key_bounds',has(trust_gen,"$uri.Scheme -ne 'htt
 check('trust_validator_requires_stable_for_enabled',has(trust_validate,"if(-not $seen['stable'])",'RequireEnabled','All-zero update public key is forbidden'))
 
 # Service descriptor / upload model: no privileged downloader.
-check('legacy_service_download_rpc_disabled',has(router,'request::Payload::CheckForUpdates(_)=>Err("legacy service-side update download is disabled"','request::Payload::StageUpdate(_)=>Err("legacy service-side update download is disabled"'))
+# rustfmt turned both arms into braced blocks. The arm, the error and the string
+# are unchanged; the `=>Err(` spelling is not. `DBT-P61-001`.
+check('legacy_service_download_rpc_disabled',has(router,'request::Payload::CheckForUpdates(_) => { Err("legacy service-side update download is disabled"','request::Payload::StageUpdate(_) => { Err("legacy service-side update download is disabled"'))
 check('descriptor_submit_upload_rpc_present',has(router,'GetUpdateCheckDescriptor','SubmitUpdateManifest','BeginUpdateStageUpload','WriteUpdateStageChunk','FinalizeUpdateStageUpload','CancelUpdateStageUpload'))
 check('desktop_fetches_service_descriptors',has(desktop,'GetUpdateCheckDescriptor','UpdateCheckDescriptor','BeginUpdateStageUpload','UpdateStageUploadDescriptor'))
 check('desktop_network_url_not_ui_parameter',all(token not in ui_controller for token in ['manifestUrl','signatureUrl','packageUrl','downloadUrl']) and has(desktop,'&descriptor.manifest_url','&descriptor.signature_url','&descriptor.package_url'))
@@ -74,25 +76,25 @@ check('desktop_bounded_chunk_upload',has(desktop,'MAX_STAGE_CHUNK_BYTES','WriteU
 check('service_upload_exact_offset',has(coordinator,'upload.offset!=offset','meta.len()!=upload.offset','checked_add(data.len() as u64)'))
 check('service_upload_exact_size',has(coordinator,'upload.offset!=upload.release.package.size_bytes','SizeMismatch'))
 check('service_staging_path_derived',has(coordinator,'expected_staged_path','owner_scope','sha256.to_ascii_lowercase()','AetherCoreUpdate-{owner_scope}-{release_id}-{}.exe') and 'staged_path' not in update_proto.split('message BeginUpdateStageUploadRequest',1)[1].split('}',1)[0])
-check('service_revalidates_hash_authenticode_hash',coordinator.count('verify_file_hash_size(&upload.temp_path')>=2 and 'self.verifier.verify_authenticode(&upload.temp_path)' in coordinator)
-check('intent_revalidates_hash_authenticode_hash',coordinator.count('verify_file_hash_size(&path,&release.sha256,release.size_bytes)')>=2 and 'self.verifier.verify_authenticode(&path)' in coordinator)
+check('service_revalidates_hash_authenticode_hash',count(coordinator,'verify_file_hash_size(&upload.temp_path')>=2 and has(coordinator,'self.verifier.verify_authenticode(&upload.temp_path)'))
+check('intent_revalidates_hash_authenticode_hash',count(coordinator,'verify_file_hash_size(&path,&release.sha256,release.size_bytes)')>=2 and has(coordinator,'self.verifier.verify_authenticode(&path)'))
 check('claim_revalidates_artifact',has(coordinator,'verify_file_hash_size(&path,&intent.release.sha256,intent.release.size_bytes)','self.verifier.verify_authenticode(&path)'))
 check('update_mutation_workload_reserved','Update' in mutation and 'MutationWorkload::Update' in coordinator)
 check('one_shot_intent_claim',has(coordinator,'claimed:bool','record.claimed','record.claimed=true','!v.claimed'))
 claim_start=coordinator.find('pub fn claim_install')
 claim_end=coordinator.find('pub fn complete_install',claim_start)
 claim_body=coordinator[claim_start:claim_end] if claim_start>=0 and claim_end>claim_start else ''
-claim_reserved=claim_body.find('record.claimed=true')
-claim_verify=claim_body.find('verify_file_hash_size(&path')
-claim_lease=claim_body.find('self.mutations.try_acquire(MutationWorkload::Update')
-check('claim_reservation_linearizes_before_verification_and_lease',claim_reserved>=0 and claim_verify>claim_reserved and claim_lease>claim_verify and 'if result.is_err()' in claim_body and 'record.claimed=false' in claim_body)
+claim_reserved=position(claim_body,'record.claimed=true')
+claim_verify=position(claim_body,'verify_file_hash_size(&path')
+claim_lease=position(claim_body,'self.mutations.try_acquire(MutationWorkload::Update')
+check('claim_reservation_linearizes_before_verification_and_lease',claim_reserved>=0 and claim_verify>claim_reserved and claim_lease>claim_verify and has(claim_body,'if result.is_err()','record.claimed=false'))
 check('claim_cleanup_preserves_inflight_reservation',has(coordinator,'intents.retain(|_,v|v.claimed||v.intent.expires_unix_ms>=now)','self.intents.lock().unwrap_or_else(|p|p.into_inner()).remove(intent_id)','cleanup_does_not_erase_an_inflight_claim_reservation'))
 check('declined_or_cancelled_intent_restores_staged_state',has(coordinator,'cancel_install_intent','UpdateState::AwaitingConsent','UpdateState::Staged') and has(desktop,'cancel_update_install_intent(&intent_id)') and has(broker,'cancel_intent(&intent_id)'))
 check('expired_intent_does_not_stick_awaiting_consent',has(coordinator,'expired_intent_owners','s.state==UpdateState::AwaitingConsent','s.staged_release.is_some()'))
 check('durable_execution_guard',has(migration,'active_update_execution','slot = 1','expected_sha256','staged_path') and has(coordinator,'replace_update_execution_guard','recover_execution_guard','clear_update_execution_guard'))
 check('execution_guard_no_url_or_command',all(token not in migration.lower() for token in ['package_url','manifest_url','command_line','arguments','consent_secret']))
 check('manifest_floor_equivocation_hash',has(migration,'manifest_sha256','update_manifest_floor') and has(coordinator,'manifest.sequence==floor.highest_sequence','manifest_sha256.eq_ignore_ascii_case'))
-check('minimum_windows_build_enforced',has(platform,'RtlGetVersion','dwOSVersionInfoSize' if False else 'size:std::mem::size_of::<RtlOsVersionInfoW>()','info.build') and 'release.minimum_windows_build<=self.current_windows_build' in coordinator and 'releases_requiring_newer_windows_build_are_not_offered' in coordinator)
+check('minimum_windows_build_enforced',has(platform,'RtlGetVersion','dwOSVersionInfoSize' if False else 'size:std::mem::size_of::<RtlOsVersionInfoW>()','info.build') and has(coordinator,'release.minimum_windows_build<=self.current_windows_build','releases_requiring_newer_windows_build_are_not_offered'))
 check('stage_failures_leave_recoverable_state',has(coordinator,'mark_stage_failed','update.status.stageFailed','assert_eq!(f.coordinator.snapshot(&f.owner).state,UpdateState::Failed)'))
 check('install_intent_claim_linearized',has(coordinator,'record.claimed=true','record.claimed=false','claim_reserves_intent_before_machine_lease_and_releases_reservation_on_busy'))
 
@@ -100,8 +102,8 @@ check('install_intent_claim_linearized',has(coordinator,'record.claimed=true','r
 check('update_broker_exact_cli_surface',has(broker,'if args.len()!=5','--intent-id','--locale') and all(token not in broker for token in ['--url','--path','--command','--args']))
 check('service_requires_exact_elevated_update_broker',has(router,'require_update_broker(peer)?','expected_update_broker_path','is_expected_broker(peer,&expected)') and has(security,'peer.elevated','image_path'))
 check('broker_never_downloads',all(token not in broker.lower() for token in ['reqwest','winhttp','http://','https://']))
-check('broker_hash_authenticode_hash',broker.count('verify_file_hash_size(&path')>=2 and 'verify_authenticode(&path)' in broker)
-check('broker_runs_exact_ticket_path_without_args','Command::new(&path).status()' in broker and 'let path=std::path::PathBuf::from(&ticket.staged_path)' in broker and '.arg(' not in broker and '.args(' not in broker)
+check('broker_hash_authenticode_hash',count(broker,'verify_file_hash_size(&path')>=2 and has(broker,'verify_authenticode(&path)'))
+check('broker_runs_exact_ticket_path_without_args',has(broker,'Command::new(&path).status()','let path=std::path::PathBuf::from(&ticket.staged_path)') and '.arg(' not in broker and '.args(' not in broker)
 check('broker_only_accepts_success_or_reboot',has(broker,'matches!(exit_code,0|3010)','complete_with_retry'))
 check('broker_completion_retry_bounded',has(broker,'Duration::from_secs(90)','Instant::now()<deadline'))
 
@@ -118,7 +120,8 @@ check('manifest_signing_key_external',has(manifest_build,'PrivateKeyPath','Resol
 # Privacy-first support bundle.
 check('support_allowlist_sections',all(name in support_service for name in ['product.json','diagnostics.json','operation-history.json','scheduler-activity.json']))
 check('support_no_raw_dump_or_eventlog_export',all(token not in support_service for token in ['read_to_end','MEMORY.DMP','Minidump','EvtRender','EventLog.xml']))
-check('support_preview_precedes_prepare',has(support,'create_preview','prepare(&self,owner:&str,preview_id:&str)','PreviewUnavailable'))
+# rustfmt wrapped `prepare` and added the trailing comma. `DBT-P61-001`.
+check('support_preview_precedes_prepare',has(support,'create_preview','pub fn prepare(&self, owner: &str, preview_id: &str,)','PreviewUnavailable'))
 check('support_preview_has_privacy_report',has(support,'PrivacyReport','user_path_redactions','account_identifier_redactions','hardware_serial_redactions','email_redactions'))
 check('support_user_path_and_account_redaction',has(support,'<redacted-account>','%USERPROFILE%','<redacted-sid>','<redacted-email>'))
 check('support_serial_non_linkable_redaction',has(support,'<redacted-hardware-serial>','serial_redaction_is_non_linkable') and 'serial-hash' not in support)
@@ -126,10 +129,13 @@ check('support_section_and_archive_caps',has(support,'MAX_SECTION_BYTES','MAX_BU
 check('support_deterministic_sorted_payloads',has(support,'files.sort_by','BTreeMap','canonical_value'))
 check('support_per_file_sha_manifest',has(support,'ManifestFile','size_bytes','sha256','payload_root_sha256'))
 check('support_installation_claim_not_vendor_attestation',has(support,'installation-ed25519','not a vendor or hardware attestation'))
-check('support_strong_verifier_requires_independent_fingerprint',has(support,'verify_archive(bytes:&[u8],expected_public_key_fingerprint_sha256:&str)','actual_fingerprint.eq_ignore_ascii_case(expected_public_key_fingerprint_sha256)','embedded_key_is_not_a_root_of_trust'))
+# rustfmt wrapped `verify_archive` and added the trailing comma. `DBT-P61-001`.
+check('support_strong_verifier_requires_independent_fingerprint',has(support,'pub fn verify_archive(bytes: &[u8], expected_public_key_fingerprint_sha256: &str,)','actual_fingerprint.eq_ignore_ascii_case(expected_public_key_fingerprint_sha256)','embedded_key_is_not_a_root_of_trust'))
 check('support_rejects_unmanifested_entries',has(support,'unmanifested archive entry','unmanifested_entry_is_rejected'))
 check('support_recomputes_root_hash',has(support,'payload_root_sha256','HashMismatch'))
-check('support_owner_scoped_chunks',has(support,'if record.owner!=owner{return Err(SupportBundleError::Ownership)}','offset>total'))
+# Not whitespace: `return Err(...)` is a statement and carries its own semicolon,
+# which the token omitted. `DBT-P61-001`.
+check('support_owner_scoped_chunks',has(support,'if record.owner != owner { return Err(SupportBundleError::Ownership); }','offset > total'))
 check('support_service_never_accepts_destination_path',all(token not in support_proto for token in ['destination_path','output_path','folder_path']) and all(token not in router for token in ['destination_path','output_path']))
 check('support_desktop_writes_user_downloads',has(desktop,'USERPROFILE','Downloads','ReadSupportBundleChunk'))
 check('support_desktop_never_overwrites_existing',has(desktop,'non_overwriting_support_path','create_new(true)','.aetherdiag-new'))
@@ -147,7 +153,7 @@ check('renderer_stream_tracks_update_support',has(stream,'updateSnapshot','suppo
 check('ui_update_is_check_stage_install',has(ui,'update.check','update.download','update.install') and has(ui_controller,'checkUpdates','stageLatestUpdate','installStagedUpdate'))
 check('ui_support_preview_before_export',has(ui_controller,'previewSupportBundle','supportPreview','if (!preview) return','exportSupportBundle'))
 check('ui_shows_privacy_preview_and_verification_fingerprint',has(ui,'support.redactions','support.estimatedSize','support.verificationFingerprint','TechnicalText'))
-check('desktop_reverifies_support_proof_before_export',has(desktop,'aethercore_support_bundle::verify_archive(&archive_bytes','support.error.integrity') and desktop.find('verify_archive(&archive_bytes') < desktop.find('std::fs::rename(&temporary,&path)'))
+check('desktop_reverifies_support_proof_before_export',has(desktop,'aethercore_support_bundle::verify_archive(&archive_bytes','support.error.integrity') and position(desktop,'verify_archive(&archive_bytes') < position(desktop,'std::fs::rename(&temporary,&path)'))
 check('typed_update_support_error_keys',has(errors,'update.error.integrity','update.error.trust','support.error.integrity','support.error.unavailable'))
 
 # Tests and release gates.

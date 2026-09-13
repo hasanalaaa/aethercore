@@ -94,7 +94,9 @@ def main() -> int:
         if bad in source: fail(errors,f'Display-string business logic reintroduced: {bad}')
 
     # Visible hard-coded English prose scanner. Technical brand/shortcut tokens are intentionally exempt.
-    allowed_exact={'AetherCore','Esc','Ctrl K'}
+    # `Ctrl /` joined `Ctrl K` and `Esc` as a keyboard shortcut rendered in a `<kbd>`
+    # (`NavigationRail.svelte:56`); a chord is not prose and does not translate. P63.
+    allowed_exact={'AetherCore','Esc','Ctrl K','Ctrl /'}
     for path in UI.rglob('*.svelte'):
         text=path.read_text(encoding='utf-8')
         text_no_script=re.sub(r'<script\b[^>]*>.*?</script>','',text,flags=re.S)
@@ -121,7 +123,16 @@ def main() -> int:
     # Arabic should not accidentally mirror English prose. Only stable technical/autonym forms are allowed identical.
     same_allow={
       'common.windows','crash.bugcheck','drivers.step.inventoryHint','locale.switchToArabic','locale.switchToEnglish',
-      'overview.moduleHardwareCopy','tech.card.bugcheckEvidence','common.countWithBytes','crash.historyCounts','tech.startup.actionProgress','tech.startup.publisherWindows'
+      'overview.moduleHardwareCopy','tech.card.bugcheckEvidence','common.countWithBytes','crash.historyCounts','tech.startup.actionProgress','tech.startup.publisherWindows',
+      # Protocol acronyms, and the six fleet PLACEHOLDER samples: an example hostname, an
+      # example identity-file path, an example base64 host key and example comma lists are
+      # technical exemplars, identical in every locale by construction. They are catalog
+      # entries rather than markup literals so they CAN diverge if a deployment ever wants
+      # different examples; the seventh, `fleet.placeholderFingerprint`, is prose and is
+      # translated. P63.
+      'fleet.ssh','repair.domain.dns',
+      'fleet.placeholderId','fleet.placeholderHost','fleet.placeholderAuthPath',
+      'fleet.placeholderTags','fleet.placeholderPublicKey','fleet.placeholderScope'
     }
     identical=[k for k in set(en)&set(ar) if en[k][0]==ar[k][0] and k not in same_allow]
     if identical: fail(errors,f'Arabic entries unexpectedly identical to English: {sorted(identical)[:30]}')

@@ -344,9 +344,13 @@ fn execute(_config: &Config, job: FleetJob) -> Result<serde_json::Value, CliErro
                 message_key: "fleet.rejected".to_string(),
                 detail: Some(error.to_string()),
             })?;
-            inventory
-                .get_mut(&host_id)
-                .expect("host checked above")
+            let Some(entry) = inventory.get_mut(&host_id) else {
+                return Err(CliError::Rejected {
+                    message_key: "fleet.unknownHost".to_string(),
+                    detail: Some(host_id),
+                });
+            };
+            entry
                 .pin_trust(
                     &record.host_key_sha256,
                     &record.key_type,
@@ -452,16 +456,25 @@ fn execute(_config: &Config, job: FleetJob) -> Result<serde_json::Value, CliErro
                     detail: Some(error.to_string()),
                 })?,
             );
-            std::fs::create_dir_all(path.parent().unwrap()).map_err(|error| CliError::LocalIo {
+            let Some(parent) = path.parent() else {
+                return Err(CliError::LocalIo {
+                    message_key: "local.io.write".to_string(),
+                    detail: Some(format!("schedules path has no parent: {}", path.display())),
+                });
+            };
+            std::fs::create_dir_all(parent).map_err(|error| CliError::LocalIo {
                 message_key: "local.io.write".to_string(),
                 detail: Some(error.to_string()),
             })?;
-            std::fs::write(&path, serde_json::to_vec_pretty(&schedules).unwrap()).map_err(
-                |error| CliError::LocalIo {
-                    message_key: "local.io.write".to_string(),
+            let encoded =
+                serde_json::to_vec_pretty(&schedules).map_err(|error| CliError::LocalIo {
+                    message_key: "fleet.schedulesInvalid".to_string(),
                     detail: Some(error.to_string()),
-                },
-            )?;
+                })?;
+            std::fs::write(&path, encoded).map_err(|error| CliError::LocalIo {
+                message_key: "local.io.write".to_string(),
+                detail: Some(error.to_string()),
+            })?;
             Ok(serde_json::json!({ "scheduled": schedule_id }))
         }
         FleetJob::ScheduleList => {
@@ -483,12 +496,15 @@ fn execute(_config: &Config, job: FleetJob) -> Result<serde_json::Value, CliErro
                     detail: Some(schedule_id),
                 });
             }
-            std::fs::write(&path, serde_json::to_vec_pretty(&schedules).unwrap()).map_err(
-                |error| CliError::LocalIo {
-                    message_key: "local.io.write".to_string(),
+            let encoded =
+                serde_json::to_vec_pretty(&schedules).map_err(|error| CliError::LocalIo {
+                    message_key: "fleet.schedulesInvalid".to_string(),
                     detail: Some(error.to_string()),
-                },
-            )?;
+                })?;
+            std::fs::write(&path, encoded).map_err(|error| CliError::LocalIo {
+                message_key: "local.io.write".to_string(),
+                detail: Some(error.to_string()),
+            })?;
             Ok(serde_json::json!({ "removedSchedule": schedule_id }))
         }
         FleetJob::ScheduleDue => {

@@ -18,7 +18,7 @@ use aethercore_persistence::{
 };
 use aethercore_windows_repair_intelligence::{
     DiagnosisConfidence, FactState, RecoveryReadiness, RepairActionKind, RepairDomain, RepairFact,
-    RepairIntelligenceSnapshot, RepairObservationSet, RepairOutcome, RepairSafetyTier,
+    RepairGraph, RepairIntelligenceSnapshot, RepairObservationSet, RepairOutcome, RepairSafetyTier,
     analyze as analyze_windows_repair, canonical_machine_state_fingerprint, reboot_resume_token,
 };
 use serde::{Deserialize, Serialize};
@@ -880,7 +880,23 @@ fn publish_progress(
 fn build_intelligence(assessment_id: &str, checks: &[RepairCheck]) -> RepairIntelligenceSnapshot {
     let facts = checks.iter().filter_map(check_to_fact).collect::<Vec<_>>();
     let recovery = recovery_from_checks(checks);
-    let fingerprint = canonical_machine_state_fingerprint(&facts, &recovery);
+    let fingerprint = match canonical_machine_state_fingerprint(&facts, &recovery) {
+        Ok(fingerprint) => fingerprint,
+        // No fingerprint means no assessment identity, so the snapshot is returned INVALID
+        // rather than carrying a blank or invented one. Same fail-closed shape
+        // `analyze_windows_repair` already uses when the graph cannot be built. P63.
+        Err(error) => {
+            return RepairIntelligenceSnapshot {
+                schema: "aethercore.windows-repair-intelligence.v1".to_string(),
+                observation_id: assessment_id.to_owned(),
+                machine_state_fingerprint: String::new(),
+                facts,
+                diagnoses: Vec::new(),
+                recovery,
+                graph: RepairGraph::invalid(error),
+            };
+        }
+    };
     analyze_windows_repair(&RepairObservationSet {
         observation_id: assessment_id.to_owned(),
         machine_state_fingerprint: fingerprint,

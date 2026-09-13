@@ -27,24 +27,27 @@ pub struct SessionConsentRegistry {
 }
 
 impl SessionConsentRegistry {
+    // A poisoned lock here means some other thread panicked while holding a set of principal
+    // keys; the set itself is still consistent, so recovery is the workspace idiom (see every
+    // other `Mutex` in this service) and a panic would take consent down with it. P63.
     pub fn grant(&self, owner_principal_key: &str) {
         self.granted
             .lock()
-            .expect("consent registry")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(owner_principal_key.to_string());
     }
 
     pub fn is_granted(&self, owner_principal_key: &str) -> bool {
         self.granted
             .lock()
-            .expect("consent registry")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .contains(owner_principal_key)
     }
 
     pub fn revoke(&self, owner_principal_key: &str) {
         self.granted
             .lock()
-            .expect("consent registry")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(owner_principal_key);
     }
 }

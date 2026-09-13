@@ -114,3 +114,22 @@ def position(text: str, token: str, start: int = 0) -> int:
     indices are never reported as line numbers.
     """
     return _squash(text).find(_squash(token), start)
+
+
+def ordered(text: str, *tokens: str) -> bool:
+    """True only when every token is present and in the requested order.
+
+    Whitespace-insensitive for the same reason `contains` is, and correct for the
+    same reason `position` is: squashing deletes characters without reordering
+    them, so "a precedes b" means the same thing on both sides of it.
+    `DBT-P61-001`.
+    """
+    squashed = _squash(text)
+    cursor = 0
+    for token in tokens:
+        needle = _squash(token)
+        found = squashed.find(needle, cursor)
+        if found < 0:
+            return False
+        cursor = found + len(needle)
+    return True

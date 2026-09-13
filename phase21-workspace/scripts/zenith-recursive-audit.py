@@ -20,7 +20,7 @@ checks: dict[str, dict[str, object]] = {}
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader, contains  # noqa: E402
+from gate_reader import SourceReader, contains, count, ordered as _gate_ordered  # noqa: E402
 
 read = SourceReader(ROOT).read
 
@@ -35,15 +35,9 @@ def has(text: str, *tokens: str) -> bool:
     return all(contains(text, token) for token in tokens)
 
 
-def ordered(text: str, *tokens: str) -> bool:
-    """True only when every token exists and appears in the requested order."""
-    cursor = 0
-    for token in tokens:
-        position = text.find(token, cursor)
-        if position < 0:
-            return False
-        cursor = position + len(token)
-    return True
+# `ordered` is gate_reader's too: same whitespace rule as `has`, one definition.
+# `DBT-P61-001`.
+ordered = _gate_ordered
 
 
 def section(text: str, start: str, end: str) -> str:
@@ -132,7 +126,7 @@ def mask_rust_noncode(text: str) -> str:
 
 
 def duplicate_impl_methods(text: str) -> list[str]:
-    """Return duplicate top-level method names within the same Rust impl block."""
+    """Return duplicate top-level method names, per cfg predicate, in one Rust impl block."""
     masked = mask_rust_noncode(text)
     duplicates: list[str] = []
     for match in re.finditer(r"(?m)^\s*impl\b[^\n{]*\{", masked):
@@ -159,13 +153,20 @@ def duplicate_impl_methods(text: str) -> list[str]:
             local_depth += segment.count("{") - segment.count("}")
             cursor = method.start()
             if local_depth == 0:
-                methods.append(method.group(1))
-        seen: set[str] = set()
-        for name in methods:
-            if name in seen:
+                # Two `fn handshake` in one impl are a duplicate; a `#[cfg(unix)]` one and a
+                # `#[cfg(windows)]` one are not - they never coexist, and the compiler would
+                # reject them if they did. The cfg predicates attached to THIS item (every
+                # attribute after the previous item's `}` or `;`) are part of the key.
+                # `DBT-P61-001`.
+                attached = re.split(r"[};]", body[:method.start()])[-1]
+                cfgs = "".join(sorted(re.findall(r"#\[cfg[^\]]*\]", attached)))
+                methods.append((cfgs, method.group(1)))
+        seen: set[tuple[str, str]] = set()
+        for key in methods:
+            if key in seen:
                 header = masked[match.start():brace].strip().replace("\n", " ")
-                duplicates.append(f"{header}::{name}")
-            seen.add(name)
+                duplicates.append(f"{header}::{key[0]}{key[1]}")
+            seen.add(key)
     return duplicates
 
 
@@ -249,7 +250,7 @@ check("event_bus_active_owner_protection_test", "active_owner_stream_is_never_ev
 # ZR-003: update owner-state cache does not retain historical logon principals forever.
 check("update_owner_state_retention_cap", has(update, "const MAX_OWNER_STATE_CACHE:usize=128;", "fn admit_owner_state", "while states.len()>=MAX_OWNER_STATE_CACHE"))
 check("update_owner_state_protects_mutation_states", has(update, "fn owner_state_is_evictable", "UpdateState::Staging|UpdateState::Staged|UpdateState::AwaitingConsent|UpdateState::Installing"))
-check("update_owner_state_admission_on_creation", update.count("admit_owner_state(&mut states,owner);") == 3)
+check("update_owner_state_admission_on_creation", count(update, "admit_owner_state(&mut states,owner);") == 3)
 check("update_owner_state_bounded_regression", "inactive_update_owner_state_cache_is_bounded" in update)
 check("update_owner_state_critical_regression", "mutation_critical_update_state_is_never_evicted" in update)
 
@@ -272,7 +273,7 @@ mutation_domains = [
 ]
 check("mutation_workers_own_lease", all("let _mutation_lease" in text and "start_with_lease" in text and workload in text for _, text, workload in mutation_domains))
 check("mutation_entrypoints_cannot_bypass_lease", all("Option<MutationLease>" not in text and "pub fn start(" not in text for _, text, _ in mutation_domains))
-check("service_routes_use_leased_mutation_start", router.count("start_with_lease(&principal_key,&v.plan_id,lease)") == 4)
+check("service_routes_use_leased_mutation_start", count(router, "start_with_lease(&principal_key,&v.plan_id,lease)") == 4)
 check("mutation_watchers_are_not_authority_holders", "MutationLease" not in streaming and "_mutation_lease" not in streaming)
 check("mutation_crates_expose_no_unleased_start", all("pub fn start(&self" not in text and "pub fn start(&self," not in text for _, text, _ in mutation_domains))
 check("mutation_private_boundary_requires_lease", all("Option<MutationLease>" not in text and ("mutation_lease: MutationLease" in text or "mutation_lease:MutationLease" in text) for _, text, _ in mutation_domains))
@@ -298,7 +299,7 @@ read_domains = [
 ]
 check("read_workers_own_budget_lease", all("let _read_budget_lease" in text and workload in text and method in text for text, workload, method in read_domains))
 check("read_entrypoints_cannot_bypass_budget", all("Option<ReadBudgetLease>" not in text and "pub fn start_scan(" not in text and "pub fn start_assessment(" not in text for text, _, _ in read_domains))
-check("service_routes_use_leased_read_start", router.count("start_scan_with_lease(&principal_key,lease)") == 4 and "start_assessment_with_lease(&principal_key,lease)" in router)
+check("service_routes_use_leased_read_start", count(router, "start_scan_with_lease(&principal_key,lease)") == 4 and contains(router, "start_assessment_with_lease(&principal_key,lease)"))
 check("read_watchers_are_not_budget_holders", "ReadBudgetLease" not in streaming and "_read_budget_lease" not in streaming)
 check("read_worker_spawn_failure_is_recoverable", all("thread::Builder::new()" in text for text, _, _ in read_domains))
 check("read_crates_expose_no_unleased_start", all("pub fn start_scan(&self" not in text and "pub fn start_assessment(&self" not in text for text, _, _ in read_domains))
@@ -315,17 +316,84 @@ check("repair_timeout_joins_pipe_readers", has(repair_windows, "let _ = stdout_t
 check("desktop_reconnect_spawn_is_fallible", has(desktop, 'name("aether-desktop-ipc-reconnect"', ").map_err(|error| -> Box<dyn std::error::Error>"))
 check("new_read_budget_dependencies_are_declared", "aethercore-operation-kernel" in driver_hub_toml and "aethercore-operation-kernel" in diagnostics_toml)
 
-# ZR-013: synchronous pipe pumps have explicit cross-thread cancellation on teardown/backpressure.
-check("ipc_sync_io_cancellation_uses_documented_thread_handle", has(ipc_windows, "CancelSynchronousIo", "OpenThread(THREAD_TERMINATE", "GetCurrentThreadId"))
-check("ipc_server_writer_shutdown_cancels_both_directions", has(ipc_windows, "struct PipeServerWriter", "cancellation:Arc<SyncIoCancellation>", "peer_reader:Arc<Mutex<Option<Arc<SyncIoCancellation>>>>", "cancel_registered_io(&self.peer_reader)"))
-check("ipc_server_reader_is_bound_to_session_worker", has(ipc_windows, "pub fn bind_reader_to_current_thread", "server reader thread already bound") and ".bind_reader_to_current_thread()" in server)
-check("ipc_client_reader_writer_are_cross_cancelled", has(ipc_windows, "reader_writer_cancellation.cancel();", "cancel_registered_io(&writer_peer_reader)"))
+# ZR-013: pipe pumps have explicit cross-thread cancellation on teardown/backpressure.
+#
+# `482d480` replaced the whole mechanism and these six checks named the old one, which is
+# why they read as eight lost safety properties and are not. Before it, both ends did
+# BLOCKING I/O from two threads on one SYNCHRONOUS kernel file object and cancellation had
+# to target a THREAD: `OpenThread(THREAD_TERMINATE)` + `CancelSynchronousIo`, a
+# `SyncIoCancellation` registry to hold those thread handles, and
+# `bind_reader_to_current_thread` so the registry knew which thread to shoot at. Its own
+# commit message: "Windows request/response has never worked ... every ServiceJob verb
+# hung." The pipes are overlapped now, each direction has its own event and OVERLAPPED, and
+# cancellation targets the FILE OBJECT - `CancelIoEx(handle, None)` aborts every in-flight
+# operation on the handle from any thread, which is strictly broader than the per-thread
+# call and needs no registry and no registration handshake.
+#
+# Each check below asserts the SAME PROPERTY against the mechanism that now provides it,
+# and three of them additionally assert the old mechanism cannot come back - satisfying the
+# tokens as written would have reintroduced the hang.
+# Property: teardown cancels through a handle it legitimately owns, not by reaching at a
+# thread. That is now the pipe handle itself. The name is kept so this row stays traceable
+# to `DBT-P61-001`; the `asserts` detail says what it measures.
+check("ipc_sync_io_cancellation_uses_documented_thread_handle",
+      has(ipc_windows, "struct PipeCancel(Arc<SendableHandle>);", "let _ = CancelIoEx(self.0.get(), None);")
+      and "OpenThread(THREAD_TERMINATE" not in ipc_windows
+      and "CancelSynchronousIo(" not in ipc_windows
+      and "SyncIoCancellation" not in ipc_windows,
+      asserts="CancelIoEx on the owned pipe handle; the pre-482d480 thread-handle mechanism is absent and must stay absent")
+# Property unchanged: the writer's shutdown must abort the session loop's pending read too.
+# One `PipeCancel` over the one file object both directions share does it in one call.
+check("ipc_server_writer_shutdown_cancels_both_directions",
+      has(ipc_windows, "pub struct PipeServerWriter", "cancel: PipeCancel",
+          "let mut writer_io = reader.split_direction()?;", "let cancel = reader.cancel();",
+          "fn shutdown(&self)", "self.cancel.cancel();"),
+      asserts="writer and session reader share one file object and one PipeCancel; shutdown cancels it")
+# Property: a server read in progress must be abortable by the writer's shutdown. The
+# binding handshake existed ONLY so a thread-targeted cancel knew which thread to name;
+# cancelling the handle needs no such registration, so the handshake is gone and asserting
+# it would be asserting dead scaffolding. What is asserted is the guarantee it existed for.
+check("ipc_server_reader_is_bound_to_session_worker",
+      has(ipc_windows, "pub fn read(&mut self) -> Result<ClientFrame>", "if !self.writer.is_alive() {",
+          "return Err(IpcError::Disconnected);", "read_client_frame(&mut self.reader)")
+      and "bind_reader_to_current_thread" not in ipc_windows
+      and "bind_reader_to_current_thread" not in server,
+      asserts="the session read is fenced by writer liveness and cancelled through the shared handle; no thread-registration handshake remains")
+# Property unchanged, and now literal: both client pumps hold a clone of the SAME
+# `PipeCancel` and each cancels it on the way out, so either thread's exit aborts the other.
+check("ipc_client_reader_writer_are_cross_cancelled",
+      has(ipc_windows, "let writer_cancel = cancel.clone();", "let reader_cancel = cancel.clone();",
+          "writer_cancel.cancel();", "reader_cancel.cancel();"),
+      asserts="client reader and writer each cancel the shared pipe handle on exit")
 check("ipc_client_backpressure_is_fail_closed", has(ipc_windows, "client_outbound_queue_saturates_fail_closed_and_requests_transport_cancellation", "self.shutdown();", "assert!(!alive.load(Ordering::Acquire));"))
 check("ipc_client_pump_fences_post_shutdown_writes", has(ipc_windows, "if !writer_alive.load(Ordering::Acquire){", "while let Ok(discarded)=writer_rx.try_recv()", "self.writer.shutdown();"))
-check("ipc_cancellation_does_not_hold_registry_lock_across_win32", has(ipc_windows, "let cancellation = slot.lock().unwrap_or_else(|p| p.into_inner()).clone();", "if let Some(cancellation) = cancellation"))
-sync_cancel_drop = section(ipc_windows, "impl Drop for SyncIoCancellation", "fn writer_thread_id")
-check("ipc_cancellation_raii_drop_is_side_effect_free", "CloseHandle(handle)" in sync_cancel_drop and "CancelSynchronousIo" not in sync_cancel_drop)
-check("ipc_thread_registration_errors_preserve_cause", has(ipc_windows, "mpsc::RecvTimeoutError::Timeout", "std::io::ErrorKind::TimedOut", "mpsc::RecvTimeoutError::Disconnected", "std::io::ErrorKind::BrokenPipe"))
+# Property: no lock is held across the Win32 cancel call. There is no registry to lock any
+# more - `PipeCancel` holds an `Arc<PipeHandle>` and calls straight through - so this is now
+# asserted structurally: the cancel body takes no lock at all.
+pipe_cancel_body = section(ipc_windows, "impl PipeCancel {", "/// One direction of overlapped I/O")
+check("ipc_cancellation_does_not_hold_registry_lock_across_win32",
+      has(pipe_cancel_body, "fn cancel(&self)", "let _ = CancelIoEx(self.0.get(), None);")
+      and "lock()" not in pipe_cancel_body,
+      asserts="PipeCancel::cancel acquires no lock before the Win32 call")
+# Property unchanged: the RAII drop releases the handle and does NOT cancel. Cancellation is
+# an explicit act; a drop that cancelled would abort live I/O whenever a clone went out of
+# scope. The owner is `windows-foundation`'s `SendableHandle` now rather than
+# `SyncIoCancellation`, and it lives there because `CloseHandle` belongs in one place - see
+# `common_windows_release_pairs_are_centralized`.
+pipe_handle_drop = section(windows_foundation, "impl Drop for SendableHandle {", "/// Owns a Win32 kernel HANDLE and closes it exactly once.")
+check("ipc_cancellation_raii_drop_is_side_effect_free",
+      has(pipe_handle_drop, "let _ = CloseHandle(self.get());")
+      and "CancelIoEx" not in pipe_handle_drop
+      and "CancelSynchronousIo" not in pipe_handle_drop,
+      asserts="Drop closes the handle and cancels nothing")
+# Property: a failed wait or a failed thread spawn surfaces WHICH failure it was, instead of
+# collapsing into one generic error. There is no registration handshake to fail any more, so
+# the two surfaces left are the response wait and the pump spawns.
+check("ipc_thread_registration_errors_preserve_cause",
+      has(ipc_windows, "Err(mpsc::RecvTimeoutError::Timeout)", "Err(IpcError::DeadlineExceeded)",
+          "Err(mpsc::RecvTimeoutError::Disconnected)", "Err(IpcError::Disconnected)",
+          ".map_err(IpcError::Io)?;", "return Err(IpcError::Io(error));"),
+      asserts="timeout and disconnect map to distinct typed errors; thread-spawn failure carries its io::Error")
 
 # ZR-014 / ZR-021: installed clients authenticate a service-SID-owned pipe and a running
 # own-process service before protocol exchange. Production server-instance authority is scoped to
@@ -333,7 +401,7 @@ check("ipc_thread_registration_errors_preserve_cause", has(ipc_windows, "mpsc::R
 # Debug console mode uses a separate per-launch 128-bit rendezvous name and never weakens the fixed
 # production endpoint policy.
 check("ipc_client_authenticates_service_sid_owned_pipe_before_hello", has(ipc_windows, "fn verify_connected_server", "verify_pipe_owned_by_trusted_service", "GetSecurityInfo", "SE_FILE_OBJECT", "OWNER_SECURITY_INFORMATION", "trusted_service_sid_string") and ordered(ipc_windows, "verify_connected_server(&file, &pipe_name)?;", "write_client_frame(&mut reader"))
-check("ipc_trusted_service_sid_resolution_is_bounded_and_cached", has(ipc_windows, "TRUSTED_SERVICE_ACCOUNT", r"NT SERVICE\AetherCoreMaintenance", "LookupAccountNameW", "ERROR_INSUFFICIENT_BUFFER", "MAX_ACCOUNT_SID_BYTES", "MAX_ACCOUNT_DOMAIN_CHARS", "ConvertSidToStringSidW", "OnceLock<String>", "TRUSTED_SERVICE_SID"))
+check("ipc_trusted_service_sid_resolution_is_bounded_and_cached", has(ipc_windows, "service_principal()", r"NT SERVICE\AetherCoreMaintenance", "LookupAccountNameW", "ERROR_INSUFFICIENT_BUFFER", "MAX_ACCOUNT_SID_BYTES", "MAX_ACCOUNT_DOMAIN_CHARS", "ConvertSidToStringSidW", "OnceLock<String>", "TRUSTED_SERVICE_SID"))
 check("ipc_trusted_service_sid_storage_is_aligned_bounded_and_validated", has(ipc_windows, "fn lookup_account_sid(account_name: &str) -> Result<Vec<u64>>", "checked_add(std::mem::size_of::<u64>() - 1)", "checked_mul(std::mem::size_of::<u64>())", "sid_capacity_bytes", "IsValidSid(sid_ptr).as_bool()", "length changed outside its allocated buffer"))
 check("ipc_registered_service_state_is_fail_closed", has(ipc_lib, "UntrustedPeer(String)") and has(ipc_windows, "verify_registered_service_running", "SERVICE_RUNNING", "SERVICE_WIN32_OWN_PROCESS", "status.dwProcessId == 0", "TRUSTED_SERVICE_NAME", "AetherCoreMaintenance"))
 check("ipc_client_does_not_use_server_only_pid_query", "GetNamedPipeServerProcessId" not in ipc_windows)
@@ -379,7 +447,7 @@ check("machine_mutation_lock_uses_protected_programdata_authority", has(windows_
 check("machine_mutation_runtime_never_creates_authority_file", "OPEN_ALWAYS" not in section(windows_foundation, "pub struct MachineMutationGuard", "/// Owns a Service Control Manager") and "CreateMutexW" not in windows_foundation and "Global\\AetherCore.WindowsUpdateMutation.v1" not in windows_foundation)
 mutation_callers = [startup_windows, cleaner_windows, repair_windows, windows_update, update_broker]
 check("machine_mutation_guard_is_centralized_across_all_mutators", all("MachineMutationGuard::try_acquire()" in text for text in mutation_callers) and all("LockFileEx(" not in text for text in mutation_callers))
-check("machine_mutation_authority_is_installer_provisioned_and_acl_hardened", has(install_hardener, "MACHINE_MUTATION_LOCK_RELATIVE_PATH", "ensure_mutation_lock_file", "machine-mutation.lock", "SERVICE_PRINCIPAL", "*S-1-5-18:F", "*S-1-5-32-544:F", "{SERVICE_PRINCIPAL}:F") and has(installer_verify, "Assert-MutationLockAcl", "Assert-MutationLockContention", "Machine mutation byte-range lock allowed overlapping exclusive ownership", "Unexpected machine mutation authority allow trustee(s)", "ReparsePoint", "AreAccessRulesProtected"))
+check("machine_mutation_authority_is_installer_provisioned_and_acl_hardened", has(install_hardener, "MACHINE_MUTATION_LOCK_RELATIVE_PATH", "ensure_mutation_lock_file", "machine-mutation.lock", "let principal = service_principal();", '&["*S-1-5-18:F", "*S-1-5-32-544:F", &format!("{principal}:F")]') and has(installer_verify, "Assert-MutationLockAcl", "Assert-MutationLockContention", "Machine mutation byte-range lock allowed overlapping exclusive ownership", "Unexpected machine mutation authority allow trustee(s)", "ReparsePoint", "AreAccessRulesProtected"))
 check("update_broker_holds_machine_lock_before_service_claim", ordered(update_broker, "UpdateMutationGuard::acquire", "claim(&intent_id)"))
 
 # ZR-016: authenticated clients may read/write data but can never create additional server instances.
@@ -447,10 +515,31 @@ check("pointer_feedback_starts_on_down", has(press, "addEventListener('pointerdo
 # Product sanitation and additive release governance.
 source_ext = {".rs", ".ts", ".svelte", ".css", ".proto", ".ps1", ".py", ".wxs", ".toml", ".yml", ".yaml"}
 violations: list[str] = []
-audit_sources = {"scripts/zenith-recursive-audit.py", "scripts/enterprise-adversarial-audit.py"}
+# A placeholder DETECTOR has to name the tokens it detects. Two were exempted; six more
+# gates search for the same words and were not, so this check was reporting the alarms
+# rather than the placeholders. The list stays explicit rather than becoming a glob over
+# `scripts/*audit*.py`: a new gate has to be added here deliberately, and a real `TODO` in
+# one of these files is still worth failing on if it is ever the point. `DBT-P61-001`.
+AUDIT_SOURCES = {
+    "scripts/zenith-recursive-audit.py",
+    "scripts/enterprise-adversarial-audit.py",
+    "scripts/phase21-adversarial-audit.py",
+    "scripts/phase18-driver-authority-audit.py",
+    "scripts/phase18_1-driver-truth-audit.py",
+    "scripts/phase19-windows-repair-audit.py",
+}
+# `node_modules`, `target` and `dist` are fetched or generated, not delivered: 8 of the 13
+# hits were upstream `.d.ts` files. `source_seal.py` draws the same line at git-tracked.
+GENERATED_PARTS = {"out", "node_modules", "target", "dist", ".git", "__pycache__"}
 for path in ROOT.rglob("*"):
     rel = path.relative_to(ROOT).as_posix() if path.is_file() else ""
-    if not path.is_file() or path.suffix.lower() not in source_ext or "out" in path.parts or rel in audit_sources:
+    if (
+        not path.is_file()
+        or path.suffix.lower() not in source_ext
+        or GENERATED_PARTS.intersection(path.parts)
+        or rel in AUDIT_SOURCES
+        or any(rel.endswith("/" + name) for name in AUDIT_SOURCES)
+    ):
         continue
     text = path.read_text(encoding="utf-8", errors="ignore")
     if re.search(r"\b(?:TODO|FIXME|HACK|XXX)\b|\btodo!\s*\(|\bunimplemented!\s*\(", text):

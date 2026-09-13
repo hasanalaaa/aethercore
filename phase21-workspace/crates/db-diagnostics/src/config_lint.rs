@@ -299,8 +299,9 @@ pub fn lint_mysql(dir: &std::path::Path) -> Result<(Vec<DbFinding>, Vec<String>)
     let broad_bind = bind
         .map(|d| d.value == "0.0.0.0" || d.value == "*")
         .unwrap_or(false);
-    if !skip_networking && broad_bind {
-        let bind_ref = bind.expect("checked above");
+    // `broad_bind` is only ever true when `bind` is Some; the `if let` says so to the
+    // compiler instead of asserting it at runtime. P63.
+    if let (false, true, Some(bind_ref)) = (skip_networking, broad_bind, bind) {
         let ev = vec![EvidenceRef {
             fact: "my.bind_address".into(),
             observed: bind_ref.value.clone(),
