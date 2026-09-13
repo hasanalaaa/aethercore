@@ -1,0 +1,20 @@
+# The working tree must equal the committed bytes on every platform.
+#
+# Two byte-exact seals depend on it and both were broken by its absence:
+# `release/dependency-locks.sha256` hashes Cargo.lock and pnpm-lock.yaml, and
+# `MANIFEST.sha256` hashes every delivered source file. GitHub's Windows runners
+# set core.autocrlf=true, so a checkout there rewrote every text file to CRLF and
+# the freeze recorded hashes of a working tree that exists only on Windows --
+# measured in P60 run 34746478525: the artifact's Cargo.lock hash is exactly
+# sha256(committed bytes with LF replaced by CRLF).
+#
+# `-text` rather than `text=auto eol=lf`: no conversion in EITHER direction, so
+# the working tree is the committed bytes and nothing is renormalized. eol=lf
+# would have rewritten 37 files that are committed with CRLF -- captured Windows
+# console output under docs/phase36/evidence/ and one .ps1 -- and the CRLF in
+# captured evidence is part of what was captured. It also leaves scripts/*.cmd
+# exactly as committed on every platform instead of picking a side.
+#
+# It does not affect diffs: EOL conversion is the `text` attribute, binary
+# detection for diff is content-based and separate.
+* -text
