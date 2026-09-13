@@ -22,6 +22,11 @@ cd phase21-workspace && python3 scripts/classify_gate_failures.py
 verdict comes from the gate's own sources and the gate's own tokens. It does not
 re-implement any check.
 
+**Confirmed on Windows.** Run `34766915417` reached step 17 — the first run ever to get
+there — and `Platform-neutral invariants` reported `checks: 347` and the same 28 failing
+names, in the same order, as this Mac. The split below holds on the platform that
+matters, name for name.
+
 Measured first, before any of this: the 108 is the same 108 before and after
 P62's `DBT-P61-002` commit — all nine gates run against a `git worktree` at
 `0512b1d` and against the working tree, identical failure names in both. The
