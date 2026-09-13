@@ -314,6 +314,10 @@ pub struct DriverHub {
 struct DriverHubInner {
     backend: Arc<dyn DiscoveryBackend>,
     database: Option<Arc<Database>>,
+    /// DBT-P62-001: the machine authority decisions are made against. Held here rather
+    /// than collected inside the scan, so a test that injects a `DiscoveryBackend` is not
+    /// still asserting against the SMBIOS of whatever box runs it.
+    machine: MachineProfile,
     snapshot: Mutex<DriverHubSnapshot>,
     owner_principal_key: Mutex<String>,
 }
@@ -337,14 +341,33 @@ impl DriverHub {
         Self::with_backend_and_database(backend, None)
     }
 
+    /// The machine profile a test asserts against. `with_backend` reads the real one,
+    /// which is right for production and wrong for a test that has already replaced
+    /// discovery with a fixture (DBT-P62-001).
+    pub fn with_backend_and_machine(
+        backend: Arc<dyn DiscoveryBackend>,
+        machine: MachineProfile,
+    ) -> Self {
+        Self::build(backend, None, machine)
+    }
+
     fn with_backend_and_database(
         backend: Arc<dyn DiscoveryBackend>,
         database: Option<Arc<Database>>,
+    ) -> Self {
+        Self::build(backend, database, MachineProfile::collect_local())
+    }
+
+    fn build(
+        backend: Arc<dyn DiscoveryBackend>,
+        database: Option<Arc<Database>>,
+        machine: MachineProfile,
     ) -> Self {
         Self {
             inner: Arc::new(DriverHubInner {
                 backend,
                 database,
+                machine,
                 snapshot: Mutex::new(DriverHubSnapshot::default()),
                 owner_principal_key: Mutex::new(String::new()),
             }),
@@ -692,7 +715,7 @@ impl DriverHub {
             devices,
             discovery,
             &overrides,
-            &MachineProfile::collect_local(),
+            &self.inner.machine,
         );
         ready.state = ScanState::Ready;
         ready.completed_unix_ms = Utc::now().timestamp_millis();
@@ -814,7 +837,7 @@ impl DriverHub {
             devices,
             discovery,
             &overrides,
-            &MachineProfile::collect_local(),
+            &self.inner.machine,
         );
         ready.state = ScanState::Ready;
         ready.completed_unix_ms = Utc::now().timestamp_millis();
@@ -1979,7 +2002,7 @@ mod tests {
 
     #[test]
     fn coordinator_reaches_ready_without_mutation_actions() {
-        let hub = DriverHub::with_backend(Arc::new(FakeBackend));
+        let hub = DriverHub::with_backend_and_machine(Arc::new(FakeBackend), test_machine());
         let started = start_scan_leased(&hub, OWNER).unwrap();
         assert_eq!(started.state, ScanState::InventoryScanning);
         for _ in 0..100 {
@@ -2008,7 +2031,7 @@ mod tests {
 
     #[test]
     fn driver_snapshot_is_principal_bound() {
-        let hub = DriverHub::with_backend(Arc::new(FakeBackend));
+        let hub = DriverHub::with_backend_and_machine(Arc::new(FakeBackend), test_machine());
         start_scan_leased(&hub, OWNER).unwrap();
         for _ in 0..100 {
             if hub.snapshot_for_owner(OWNER).unwrap().state == ScanState::Ready {
@@ -2026,7 +2049,7 @@ mod tests {
 
     #[test]
     fn overlapping_scan_is_rejected_while_inventory_is_running() {
-        let hub = DriverHub::with_backend(Arc::new(SlowBackend));
+        let hub = DriverHub::with_backend_and_machine(Arc::new(SlowBackend), test_machine());
         start_scan_leased(&hub, OWNER).unwrap();
         assert!(matches!(
             start_scan_leased(&hub, OWNER),
@@ -2047,7 +2070,8 @@ mod tests {
 
     #[test]
     fn inventory_failure_transitions_scan_to_failed() {
-        let hub = DriverHub::with_backend(Arc::new(InventoryFailureBackend));
+        let hub =
+            DriverHub::with_backend_and_machine(Arc::new(InventoryFailureBackend), test_machine());
         start_scan_leased(&hub, OWNER).unwrap();
         for _ in 0..100 {
             let snapshot = hub.snapshot();
@@ -2072,7 +2096,7 @@ mod tests {
 
     #[test]
     fn offline_scan_keeps_inventory_and_marks_update_truth_unknown() {
-        let hub = DriverHub::with_backend(Arc::new(OfflineBackend));
+        let hub = DriverHub::with_backend_and_machine(Arc::new(OfflineBackend), test_machine());
         start_scan_leased(&hub, OWNER).unwrap();
         for _ in 0..100 {
             let snapshot = hub.snapshot();
@@ -2114,7 +2138,8 @@ mod tests {
 
     #[test]
     fn wua_failure_keeps_inventory_and_completes_with_warning() {
-        let hub = DriverHub::with_backend(Arc::new(UpdateFailureBackend));
+        let hub =
+            DriverHub::with_backend_and_machine(Arc::new(UpdateFailureBackend), test_machine());
         start_scan_leased(&hub, OWNER).unwrap();
         for _ in 0..100 {
             let snapshot = hub.snapshot();
