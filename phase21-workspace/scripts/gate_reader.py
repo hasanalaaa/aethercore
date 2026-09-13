@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""One reader for the gate scripts. `DBT-P58-005`.
+"""One reader, and one token comparison, for the gate scripts.
+
+`DBT-P58-005` (the reader) and `DBT-P61-001` (the comparison, see `contains`).
 
 Ten gates read their sources through a helper shaped like
 
@@ -20,6 +22,7 @@ message names the file and the absolute path it was expected at.
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -52,3 +55,38 @@ class SourceReader:
             raise UnreadableSource(
                 f"gate source {rel!r} could not be read at {path}: {exc}"
             ) from None
+
+
+@lru_cache(maxsize=None)
+def _squash(text: str) -> str:
+    """`text` with every whitespace run removed.
+
+    Cached because the same source string is squashed once per token and the
+    gates ask hundreds of questions of a handful of files.
+    """
+    return "".join(text.split())
+
+
+def contains(text: str, token: str) -> bool:
+    """Is `token` present in `text`, ignoring whitespace? `DBT-P61-001`.
+
+    The six token gates assert by substring, and their tokens were written
+    against a tree that predates the formatter: `hardware_gate:IsolationGate`,
+    `record.claimed=true`, `if args.len()!=5`. `cargo fmt` now owns the spacing
+    of every Rust source in the workspace (`cargo fmt --all -- --check`, exit 0),
+    so the tree says `hardware_gate: IsolationGate` and 81 of the 108 failures in
+    `DBT-P61-001` are the gate spelling a construct that is present. Classified
+    before it was touched, in `docs/phase62/P62-GATE-CLASSIFICATION.md`.
+
+    Whitespace is not load-bearing in any of these tokens, so the comparison
+    drops it on both sides. It lives here, once, rather than in each gate's own
+    `has`/`marker`: six copies of a comparison is six things to keep in step.
+
+    This is deliberately a **widening** of the old `token in text`: squashing
+    preserves the order of every non-whitespace character, so anything that
+    matched exactly still matches. What it does not do is invent a match - a
+    token naming an identifier, a field or a call that is not in the tree is
+    still absent once the spaces are gone, and the check still fails. The two
+    cases in `test_gate_contains.py` are precisely that pair.
+    """
+    return token in text or _squash(token) in _squash(text)

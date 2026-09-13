@@ -39,7 +39,7 @@ REPO = ROOT.parent
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader  # noqa: E402
+from gate_reader import SourceReader, contains  # noqa: E402
 
 _READER = SourceReader(ROOT)
 read = _READER.read
@@ -61,7 +61,9 @@ def files(pattern: str) -> list[Path]:
 
 
 def marker(name: str, text: str, required: list[str]) -> None:
-    missing = [item for item in required if item not in text]
+    # `contains`, not `in`: the comparison ignores whitespace and is defined
+    # once in gate_reader. `DBT-P61-001`.
+    missing = [item for item in required if not contains(text, item)]
     checks[name] = {"ok": not missing, "missing": missing}
 
 

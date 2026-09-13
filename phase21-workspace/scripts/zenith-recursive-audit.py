@@ -20,7 +20,7 @@ checks: dict[str, dict[str, object]] = {}
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader  # noqa: E402
+from gate_reader import SourceReader, contains  # noqa: E402
 
 read = SourceReader(ROOT).read
 
@@ -30,7 +30,9 @@ def check(name: str, ok: bool, **details: object) -> None:
 
 
 def has(text: str, *tokens: str) -> bool:
-    return all(token in text for token in tokens)
+    # `contains`, not `in`: the comparison ignores whitespace and is defined
+    # once in gate_reader. `DBT-P61-001`.
+    return all(contains(text, token) for token in tokens)
 
 
 def ordered(text: str, *tokens: str) -> bool:

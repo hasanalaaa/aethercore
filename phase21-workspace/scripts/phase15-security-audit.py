@@ -13,11 +13,12 @@ checks={}
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader  # noqa: E402
+from gate_reader import SourceReader, contains  # noqa: E402
 
 read = SourceReader(ROOT).read
 def check(name,ok,**detail): checks[name]={'ok':bool(ok),**detail}
-def has(text,*tokens): return all(t in text for t in tokens)
+# `contains`, not `in`: whitespace-insensitive, defined once. `DBT-P61-001`.
+def has(text,*tokens): return all(contains(text,t) for t in tokens)
 
 root_cargo=read('Cargo.toml'); update_cargo=read('crates/update-engine/Cargo.toml'); download_cargo=read('crates/update-download/Cargo.toml'); desktop_cargo=read('apps/desktop/Cargo.toml')
 manifest=read('crates/update-engine/src/manifest.rs'); coordinator=read('crates/update-engine/src/coordinator.rs'); platform=read('crates/update-engine/src/platform.rs'); downloader=read('crates/update-download/src/lib.rs')
