@@ -24,6 +24,10 @@ import tempfile
 import time
 from pathlib import Path, PurePosixPath
 
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from source_seal import SealError, tracked_files  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 AUDITS = {
     "zenith_recursive": "scripts/zenith-recursive-audit.py",
@@ -35,9 +39,28 @@ AUDITS = {
     "phase15_security": "scripts/phase15-security-audit.py",
     "phase16_policy": "scripts/phase16-ga-audit.py",
 }
-EXCLUDED_MANIFEST_DIRS = {".git", "target", "node_modules", "out", "__pycache__"}
-EXCLUDED_MANIFEST_SUFFIXES = {".pyc", ".pyo"}
 EXECUTION_INTEGRITY: list[dict[str, object]] = []
+_DELIVERED: set[str] | None = None
+
+
+def delivered_files() -> set[str]:
+    """The delivered set: every git-tracked file under ROOT. One definition.
+
+    DBT-P60-005: this file used to carry its own -- a directory walk minus
+    {.git, target, node_modules, out, __pycache__} and {.pyc, .pyo} -- which
+    disagreed with the seal over 14 files and caught none of them. The rule and
+    its reasons are in docs/SOURCE_SEAL.md; this imports the seal's
+    implementation rather than restating it, because a second implementation of
+    one rule is how two rules happen.
+
+    DBT-P60-004: it is also what makes this script runnable. The walk included
+    `target/` -- 36 GB on the machine this was measured on -- and every clone and
+    every hash below inherited it.
+    """
+    global _DELIVERED
+    if _DELIVERED is None:
+        _DELIVERED = tracked_files(ROOT)
+    return _DELIVERED
 
 
 def run(cmd: list[str], cwd: Path) -> dict[str, object]:
@@ -70,9 +93,18 @@ def sha(path: Path) -> str:
     return h.hexdigest()
 
 
-def tree_state(root: Path) -> dict[str, str]:
+def tree_state(root: Path, rels: set[str] | None = None) -> dict[str, str]:
+    """Hash a tree. `rels` names the files to consider; None walks everything.
+
+    The delivered tree is passed its file set, because "did verification change
+    delivered bytes" is a question about delivered bytes. The disposable clone is
+    walked whole, because "did this gate write anything" is a question about
+    files that are by construction not delivered -- and the clone holds only the
+    delivered set, so walking it whole is cheap.
+    """
+    paths = (root / r for r in rels) if rels is not None else root.rglob("*")
     state: dict[str, str] = {}
-    for p in sorted(root.rglob("*"), key=lambda q: q.relative_to(root).as_posix()):
+    for p in sorted(paths, key=lambda q: q.relative_to(root).as_posix()):
         rel = p.relative_to(root).as_posix()
         if p.is_symlink():
             state[rel] = "symlink:" + os.readlink(p)
@@ -109,15 +141,52 @@ def state_changes(before: dict[str, str], after: dict[str, str], limit: int = 32
     return changes
 
 
+def clone_delivered(clone: Path) -> None:
+    """Copy the delivered set into a disposable clone, and nothing else.
+
+    Was `shutil.copytree(ROOT, clone, symlinks=True)`, which copied `target/`,
+    `node_modules/` and `out/` too -- 13 times per run (DBT-P60-004).
+    `MANIFEST.sha256` is not in the delivered set and is copied explicitly: gates
+    that read the seal must find it.
+
+    `.github/` is copied to the clone's PARENT because that is where it lives and
+    where every gate looks for it. P58 moved the four workflow/dependabot files to
+    the repository root (`8888d31`) and `scripts/gate_reader.py` resolves
+    `.github/...` against `ROOT.parent`; a clone whose parent is a bare temp
+    directory gives all eight of those gates a FileNotFoundError before their
+    first check. Measured, 2026-09-13: 8 of 8 exit 1 without it, on today's tree.
+    Those four files are outside the seal (DBT-P60-002), so they are named here
+    rather than taken from the delivered set.
+    """
+    for rel in sorted(delivered_files()):
+        src = ROOT / rel
+        dst = clone / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst, follow_symlinks=False)
+    manifest = ROOT / "MANIFEST.sha256"
+    if manifest.is_file():
+        clone.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(manifest, clone / "MANIFEST.sha256")
+    repo_github = ROOT.parent / ".github"
+    if repo_github.is_dir():
+        shutil.copytree(repo_github, clone.parent / ".github", symlinks=True)
+
+
 def run_repo_script(label: str, rel: str, args: list[str] | None = None) -> dict[str, object]:
     """Run a repository Python script against a disposable source clone and detect writes."""
     args = args or []
     with tempfile.TemporaryDirectory(prefix="aethercore-sigma-audit-") as temp:
-        clone = Path(temp) / "source"
-        shutil.copytree(ROOT, clone, symlinks=True)
-        before = tree_state(clone)
+        # The clone mirrors the repository layout, not just the workspace: the
+        # gates read `.github/` from one level above the workspace, so a clone
+        # that is not inside a repository-shaped parent is a clone they cannot
+        # audit. `repo` is what write detection covers, so a gate writing to
+        # either level is caught.
+        repo = Path(temp) / "repo"
+        clone = repo / ROOT.name
+        clone_delivered(clone)
+        before = tree_state(repo)
         result = run([sys.executable, str(clone / rel), *args], clone)
-        after = tree_state(clone)
+        after = tree_state(repo)
         changes = state_changes(before, after)
         unchanged = before == after
         EXECUTION_INTEGRITY.append({
@@ -129,17 +198,6 @@ def run_repo_script(label: str, rel: str, args: list[str] | None = None) -> dict
         result["source_tree_unchanged"] = unchanged
         result["source_tree_changes"] = changes
         return result
-
-
-def manifest_included(path: Path) -> bool:
-    rel = path.relative_to(ROOT)
-    return (
-        path.is_file()
-        and not path.is_symlink()
-        and path != ROOT / "MANIFEST.sha256"
-        and not any(part in EXCLUDED_MANIFEST_DIRS for part in rel.parts)
-        and path.suffix not in EXCLUDED_MANIFEST_SUFFIXES
-    )
 
 
 def validate_manifest_relpath(rel: str) -> str | None:
@@ -210,17 +268,10 @@ def verify_manifest(path: Path) -> dict[str, object]:
             failed.append({"path": rel, "reason": "hash", "expected": expected.lower(), "actual": actual})
         else:
             verified += 1
-    actual_files = {
-        p.relative_to(ROOT).as_posix()
-        for p in ROOT.rglob("*")
-        if manifest_included(p)
-    }
-    source_symlinks = sorted(
-        p.relative_to(ROOT).as_posix()
-        for p in ROOT.rglob("*")
-        if p.is_symlink()
-        and not any(part in EXCLUDED_MANIFEST_DIRS for part in p.relative_to(ROOT).parts)
-    )
+    delivered = delivered_files()
+    symlinked = {rel for rel in delivered if (ROOT / rel).is_symlink()}
+    source_symlinks = sorted(symlinked)
+    actual_files = {rel for rel in delivered if rel not in symlinked and (ROOT / rel).is_file()}
     for rel in source_symlinks:
         if not any(item.get("path") == rel and item.get("reason") == "symlink_not_allowed" for item in failed):
             failed.append({"path": rel, "reason": "symlink_not_allowed"})
@@ -243,15 +294,16 @@ def verify_manifest(path: Path) -> dict[str, object]:
 
 
 def cleanliness() -> dict[str, object]:
+    """Junk in the DELIVERED set. Untracked junk does not ship, so it is not a
+    delivery defect -- the `generated` exclusion list this used to carry was only
+    ever there because the walk swept in build output."""
     bad: list[str] = []
-    generated = {"out", "target", "node_modules", "__pycache__", ".devdata"}
-    for p in ROOT.rglob("*"):
-        rel = p.relative_to(ROOT).as_posix()
+    for rel in delivered_files():
+        p = ROOT / rel
         name = p.name
         if (
             p.is_symlink()
-            or "__MACOSX" in p.parts
-            or any(part in generated for part in p.relative_to(ROOT).parts)
+            or "__MACOSX" in PurePosixPath(rel).parts
             or re.search(r" \(\d+\)(?:\.[^/]*)?$", name)
             or name.endswith(("~", ".bak", ".tmp", ".orig", ".rej"))
             or name in {".DS_Store"}
@@ -333,7 +385,7 @@ def main() -> int:
     if args.blockers_output:
         args.blockers_output = args.blockers_output.expanduser().resolve()
 
-    source_before = tree_state(ROOT)
+    source_before = tree_state(ROOT, delivered_files())
     manifest_before = verify_manifest(ROOT / "MANIFEST.sha256")
     evidence: dict[str, object] = {
         "schema": "aethercore.omega-evidence.v3",
@@ -354,7 +406,7 @@ def main() -> int:
             "condition": "MANIFEST.sha256 does not match the delivered source tree before verification",
             "closure": "Regenerate the source manifest after final edits and independently reverify it before executing any repository gate.",
         })
-        source_after = tree_state(ROOT)
+        source_after = tree_state(ROOT, delivered_files())
         evidence["source_manifest"] = verify_manifest(ROOT / "MANIFEST.sha256")
         evidence["source_tree_integrity"] = {
             "ok": source_before == source_after,
@@ -448,7 +500,7 @@ def main() -> int:
         "source_tree_changes": ui["source_tree_changes"],
     }
 
-    source_after = tree_state(ROOT)
+    source_after = tree_state(ROOT, delivered_files())
     manifest_after = verify_manifest(ROOT / "MANIFEST.sha256")
     evidence["source_manifest"] = manifest_after
     evidence["source_tree_integrity"] = {
@@ -513,4 +565,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SealError as exc:
+        # The delivered set could not be determined, so nothing below it can be
+        # evaluated. Never degraded into a verdict: a run that cannot say which
+        # files are delivered cannot say whether they verify.
+        print(f"Sigma evidence: UNEVALUATED - {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
