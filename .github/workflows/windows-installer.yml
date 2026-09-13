@@ -34,53 +34,10 @@ jobs:
         shell: pwsh
         run: npm install --global pnpm@11.22.0
 
-      - name: Install Windows ADK Deployment Tools
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          # Install to the ADK's default location. The previous attempt passed
-          # /installpath C:\ADK, which adksetup does not record anywhere a build
-          # can find: the ADK registers no InstallLocation, so KitsRoot10 kept
-          # pointing at the default root and every consumer looked in the wrong
-          # place. crates/system-repair/build.rs locates the library from
-          # KitsRoot10, so a default install is the one that is discoverable.
-          $lib = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\SDKs\DismApi\Lib\amd64\dismapi.lib'
-
-          if (-not (Test-Path $lib)) {
-            $installer = Join-Path $env:RUNNER_TEMP 'adksetup.exe'
-            Invoke-WebRequest 'https://download.microsoft.com/download/2/d/9/2d9c8902-3fcd-48a6-a22a-432b08bed61e/ADK/adksetup.exe' -OutFile $installer
-
-            $sig = Get-AuthenticodeSignature $installer
-            if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
-              throw "ADK signature verification failed: status=$($sig.Status) subject=$($sig.SignerCertificate.Subject)"
-            }
-
-            # /ceip off is mandatory for an unattended install; adksetup prompts
-            # for the CEIP choice without it and exits non-zero under /quiet.
-            $logDir = Join-Path $env:RUNNER_TEMP 'adklogs'
-            New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-            $proc = Start-Process $installer -Wait -PassThru -ArgumentList @(
-              '/quiet', '/norestart', '/ceip', 'off',
-              '/features', 'OptionId.DeploymentTools',
-              '/log', (Join-Path $logDir 'adksetup.log')
-            )
-
-            # 3010 is success-pending-reboot. The previous attempt treated it as
-            # a failure; nothing here needs the reboot, only the files on disk.
-            if ($proc.ExitCode -notin @(0, 3010)) {
-              Write-Host "::error::adksetup.exe exited $($proc.ExitCode)"
-              Get-ChildItem $logDir -Recurse -Filter *.log -ErrorAction SilentlyContinue |
-                ForEach-Object { Write-Host "===== $($_.FullName) ====="; Get-Content $_.FullName -Tail 200 }
-              throw "ADK install failed: $($proc.ExitCode)"
-            }
-          }
-
-          # Verify by enumeration, not by exit code. This is the check that
-          # decides the step; a zero exit that produced no library is a failure.
-          if (-not (Test-Path $lib)) { throw "ADK reported success but $lib does not exist." }
-          $f = Get-Item $lib
-          Write-Host "dismapi.lib $($f.Length) bytes  $($f.LastWriteTimeUtc.ToString('u'))"
+      # P61: the recipe now lives in .github/actions/install-windows-adk so
+      # ci.yml runs the same one. Its comments carry the two corrections that
+      # cost a run each to find.
+      - uses: ./.github/actions/install-windows-adk
 
       - uses: actions/setup-dotnet@v4
         with:

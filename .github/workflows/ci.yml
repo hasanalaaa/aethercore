@@ -47,6 +47,11 @@ jobs:
       - uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: 8.0.x
+      # DBT-P60-006: this job has never installed the ADK, so
+      # crates/system-repair/build.rs could not find dismapi.lib and every step
+      # from `cargo test` onward was unreachable. The recipe is shared with
+      # windows-installer.yml rather than copied - see the action's own header.
+      - uses: ./.github/actions/install-windows-adk
       - name: Verify approved dependency freeze
         shell: pwsh
         run: ./scripts/freeze-dependencies.ps1 -VerifyOnly
