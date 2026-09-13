@@ -300,6 +300,7 @@ name = "aethercore-intelligence-core"
 version = "0.1.11"
 dependencies = [
  "llama-cpp-2",
+ "llama-cpp-sys-2",
  "serde",
  "serde_json",
  "sha2",

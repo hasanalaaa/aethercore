@@ -20,7 +20,28 @@ thiserror.workspace = true
 # PERMANENT embedded model (Phase 23.1, owner decision: embedded and enabled by default).
 # It performs NO network I/O at runtime; the network-ban gate continues to scan our src.
 # Reviewed and approved by the owner in the Phase 23.1 task order.
-llama-cpp-2 = "0.1.154"
+# DBT-P60-001 / P61. Pinned EXACTLY, and the -sys crate declared here so the pin
+# reaches the whole chain. llama-cpp-2 0.1.154's own manifest asks for
+# llama-cpp-sys-2 = "0.1.154", a CARET, so pinning the binding alone still lets the
+# sys crate float: P60 measured a from-scratch resolution taking llama-cpp-sys-2 to
+# 0.1.156, against which llama-cpp-2 0.1.154 fails to compile with 3 errors. A direct
+# `=` requirement here is what makes the two intersect to one version. No feature
+# change: llama-cpp-sys-2's `default = ["common"]` is already enabled through
+# llama-cpp-2's own defaults, so the feature union is identical.
+#
+# PINNED rather than adopted, and this is the reason. 0.1.156 is not a signature
+# change, it is a different engine: 139 files of the vendored llama.cpp differ and 21
+# are new (llama-kv-cache-msa.*, an arm64-windows-msvc-cuda toolchain file, ...),
+# llama_sampler_init_dry lost an argument, and negative penalty_last_n stopped
+# meaning "context size" and is now clamped to 0. DBT-P56-002 is NARROWED on a
+# measured generation result, and swapping the inference engine to make a compile
+# error go away would retire that measurement without replacing it. The baseline a
+# future adoption has to re-measure against, and beat:
+# crates/intelligence-core/tests/embedded_generation.rs, 5 of 5 in 42.46 s against the
+# shipped .gguf on macOS/Metal, 2026-09-13 -- and it must be measured on Windows,
+# which is where this product runs and where nothing has measured generation yet.
+llama-cpp-2 = "=0.1.154"
+llama-cpp-sys-2 = "=0.1.154"
 
 [dev-dependencies]
 tempfile = "3"
