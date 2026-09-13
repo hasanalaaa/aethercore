@@ -1,0 +1,33 @@
+name: Fetch and verify embedded model
+description: >
+  Downloads the pinned .gguf named by assets/models/models.manifest.json into the
+  tree and verifies its byte count and sha256 before anything is allowed to use
+  it. The model is gitignored and is NOT part of the delivered source set
+  (docs/SOURCE_SEAL.md), so every job that needs it has to fetch it. Factored out
+  of windows-installer.yml in P61 when ci.yml needed the same step, for the same
+  reason as install-windows-adk: one recipe, not two that drift.
+
+inputs:
+  workspace:
+    description: Path to the product workspace, relative to the repository root.
+    required: false
+    default: phase21-workspace
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch and verify embedded model
+      shell: pwsh
+      working-directory: ${{ inputs.workspace }}
+      run: |
+        $manifest = Get-Content assets/models/models.manifest.json -Raw | ConvertFrom-Json
+        $entry = $manifest.artifacts[0]
+        $destination = Join-Path (Resolve-Path assets/models) $entry.fileName
+        if (-not (Test-Path $destination)) {
+          Invoke-WebRequest -Uri $entry.sourceUrl -OutFile $destination
+        }
+        $hash = (Get-FileHash $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+        $bytes = (Get-Item $destination).Length
+        if ($bytes -ne $entry.bytes -or $hash -ne $entry.sha256Hex) {
+          throw "Embedded model integrity check failed: $bytes bytes / $hash"
+        }

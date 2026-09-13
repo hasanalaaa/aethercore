@@ -52,6 +52,14 @@ jobs:
       # from `cargo test` onward was unreachable. The recipe is shared with
       # windows-installer.yml rather than copied - see the action's own header.
       - uses: ./.github/actions/install-windows-adk
+      # P61: the seal P60 built and proved can fail had no automated caller —
+      # `p30-delivered-source-seal-ok` lives in phase30-adversarial-audit.py and
+      # the phase30<-31<-32<-33<-34 chain terminates unreferenced. It runs here,
+      # first, because everything after it trusts these bytes. It is also the
+      # only place `.gitattributes`'s eol rules get checked on Windows: the seal
+      # hashes the WORKING TREE, so a checkout that rewrote line endings fails it.
+      - name: Delivered source seal
+        run: python scripts/source_seal.py
       - name: Verify approved dependency freeze
         shell: pwsh
         run: ./scripts/freeze-dependencies.ps1 -VerifyOnly
@@ -59,6 +67,11 @@ jobs:
         run: pnpm --dir apps/ui install --frozen-lockfile
       - name: Rust formatting
         run: cargo fmt --all -- --check
+      # crates/intelligence-core/tests/embedded_generation.rs runs against the
+      # REAL shipped .gguf - a mock cannot prove llama.cpp is linked or that a
+      # token comes out - and asserts its absence loudly rather than skipping.
+      # The artifact is gitignored, so the job has to fetch it.
+      - uses: ./.github/actions/fetch-embedded-model
       - name: Rust unit/integration tests
         run: cargo test --locked --workspace
       - name: UI accessibility/type gate
