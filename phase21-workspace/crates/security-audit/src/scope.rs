@@ -190,8 +190,24 @@ fn resolve_within_roots(target: &Path, roots: &[PathBuf]) -> Result<(), TargetDe
                     path: target.to_string_lossy().into_owned(),
                 })?;
         }
-        if !inside && roots.iter().any(|root| contained_in(&resolved, root)) {
-            inside = true;
+        if !inside {
+            // Containment is judged on the RESOLVED form, and a reparse point is not the
+            // only way two names denote one directory. On Windows an 8.3 short name is a
+            // second alias for the same entry — `C:\Users\RUNNER~1` is
+            // `C:\Users\runneradmin` — and it is not a reparse point, so the branch
+            // above never fires for it. `OwnerScope::new` canonicalises the roots; a
+            // caller-named path arrives however the caller spelled it. Compare the
+            // resolved prefix whenever it resolves, and fall back to the raw one when it
+            // does not exist yet, which is what keeps a not-yet-created target authorised.
+            //
+            // This cannot weaken rule 4: it runs only while `inside` is false, and it can
+            // only make `inside` true for a path that genuinely resolves into a root —
+            // which then subjects every later component to the reparse-point refusal.
+            // Strictly more paths are checked, not fewer.
+            let probe = std::fs::canonicalize(&resolved).unwrap_or_else(|_| resolved.clone());
+            if roots.iter().any(|root| contained_in(&probe, root)) {
+                inside = true;
+            }
         }
     }
     if inside {
