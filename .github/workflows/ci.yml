@@ -79,7 +79,7 @@ jobs:
       - name: Build unsigned production packaging candidate
         shell: pwsh
         run: ./scripts/build-release.ps1 -SkipOnlineSupplyChain
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7
         with:
           name: aethercore-enterprise-converged-unsigned-candidate
           path: phase21-workspace/out/release/**
