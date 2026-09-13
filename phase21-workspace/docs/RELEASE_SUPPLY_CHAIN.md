@@ -12,7 +12,7 @@ A source snapshot may begin without lockfiles only when it has never been depend
 
 ### Freeze
 
-On a trusted connected Windows workstation:
+On a freeze source that meets the three criteria below:
 
 ```powershell
 .\scripts\freeze-dependencies.ps1 -Refresh
@@ -30,7 +30,80 @@ The two lockfiles and all three release evidence files must be reviewed and comm
 
 A release fails if any freeze artifact is absent, if only part of the freeze exists, if lock or manifest hashes differ from the approved baselines, if metadata baseline hashes do not match those baseline files, or if the pinned Rust/pnpm tool versions drift.
 
-Both general CI and the protected release workflow are **verify-only**. Neither is allowed to mint or refresh an approved dependency graph. `-Refresh` is reserved for the trusted dependency-freeze workstation after explicit dependency review.
+`ci.yml` and `release.yml` are **verify-only**. `windows-installer.yml` runs `-Refresh`, and that is not a contradiction: **a refresh mints a candidate, never an approved graph.** Approval is the commit, and the commit is made by a person. No workflow in this repository can approve a dependency graph, because no workflow can commit one.
+
+## What makes a freeze source acceptable
+
+Until P60 this document, the freeze script, `omega-evidence.py`, the release
+blocker and the ledger all said "the trusted dependency-freeze workstation" —
+twenty-odd occurrences, not one criterion. The only attributes ever attached to
+the phrase, both in passing prose, were *Windows* and *connected*. A precondition
+nobody wrote down is why `OMEGA-RB-001` stood open for thirty-nine phases while
+CI cleared it on every run and threw the result away.
+
+The phrase is retired. **Trust is not a property of the machine; it is a property
+of the evidence the machine leaves behind.** Three criteria, each checkable:
+
+**1. The resolution is reproducible on an independent machine.**
+Two hosts that share nothing but the pinned manifests must produce the same
+lockfile bytes. This is the criterion that makes the host replaceable, and it is
+measured, not assumed: on 2026-09-13 a GitHub-hosted `windows-2025` runner and a
+macOS 26.6 laptop each ran the resolution against the same manifests and produced
+`Cargo.lock` with sha256 `c95e3c79872d731d777c1baaaa2944d8820ebecf9cea7f3c97de29ba7e0cbb50`
+— byte-identical, across two operating systems.
+*Fails if:* the source installs its toolchain from somewhere other than the pins,
+carries registry overrides in `~/.cargo/config`, or cannot be reproduced at all.
+
+**2. The run leaves a durable third-party record naming the exact source commit.**
+A freeze nobody can re-read is a freeze you have to take on someone's word. A CI
+run id satisfies this: the log names the commit, the command, the tool versions
+and the timestamps, it is retained, and it is readable without the freeze
+author's cooperation. A developer machine satisfies it only if the author
+transcribes those facts by hand, and P59 found that none of the previous forty
+phases ever did.
+*Fails if:* the only evidence that the refresh happened is the diff it produced.
+
+**3. The graph it produces is compiled on the machine that produced it, before
+the output leaves that machine.**
+This is the criterion that has actual teeth, and P60 exists because nothing
+enforced it. On 2026-09-13 a refresh resolved `llama-cpp-2`/`llama-cpp-sys-2` to
+0.1.156, whose `LlamaSampler::penalties` gained a parameter;
+`crates/intelligence-core/src/llama.rs` does not compile against it. Neither the
+runner's identity nor its ephemerality would have caught that. Compiling it did,
+on both hosts, identically. `windows-installer.yml` therefore uploads the freeze
+set **after** the build step, not before.
+*Fails if:* the freeze artifact can exist without a green build of the tree it
+describes.
+
+### Where that leaves the two candidate sources
+
+A **GitHub-hosted runner qualifies.** It meets 1 (measured above), meets 2 by
+construction, and meets 3 now that the upload follows the build. Its ephemerality
+is a genuine advantage — a fresh VM per run cannot carry a developer's
+accumulated cargo or npm state into the resolution — and `DBT-P55-007` records
+the one supply-chain control anyone has actually measured on both:
+`signatureValidationMode=require` is **inert** on the developer machine (a cold
+restore with deliberately corrupted `trustedSigners` fingerprints still exited 0)
+and **enforced** on CI, which is where `NU3034` surfaced.
+
+The argument against it is real and is not dismissed: the runner is infrastructure
+this project does not control, and after the run there is nothing left to inspect
+but the log. That is exactly why criterion 1 exists. Reproduction on a second,
+unrelated machine is what removes the need to trust the first one, and it is
+cheap — the resolution takes about a minute.
+
+A **developer workstation does not qualify on its own.** It fails criterion 2
+outright and it has no way to satisfy criterion 1 without a second machine
+anyway. It becomes acceptable the moment it is the *second* machine: a
+workstation that reproduces the hosted runner's bytes is criterion 1 being
+satisfied, and that is a stronger position than either host alone.
+
+### What approval still is
+
+None of this is a judgement about whether the graph *should* ship. Criteria 1–3
+establish that the freeze is what it claims to be; whether the project accepts
+these dependencies is a risk acceptance, it belongs to the owner, and it happens
+when he commits the files.
 
 ## Rust policy
 

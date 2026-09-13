@@ -40,12 +40,12 @@ function Assert-Lines([string]$Baseline, [object[]]$Actual, [string]$Label) {
     if (-not (Test-Path $Baseline)) { throw "$Label baseline is missing: $Baseline" }
     $expected = @(Get-Content $Baseline | Where-Object { $_.Trim() })
     if (($expected -join "`n") -ne ($Actual -join "`n")) {
-        throw "$Label hashes differ from the approved freeze baseline. Review dependency-manifest/lock changes and refresh only on the trusted dependency-freeze workstation."
+        throw "$Label hashes differ from the approved freeze baseline. Review dependency-manifest/lock changes and refresh only on a freeze source that meets docs/RELEASE_SUPPLY_CHAIN.md's three criteria."
     }
 }
 
 if ($VerifyOnly) {
-    if (Test-Path $freezeBlocker) { throw 'Dependency freeze release blocker is still present. Refresh on the trusted workstation before verification can pass.' }
+    if (Test-Path $freezeBlocker) { throw 'Dependency freeze release blocker is still present. Refresh on a qualifying freeze source (docs/RELEASE_SUPPLY_CHAIN.md) and commit the result before verification can pass.' }
     Assert-Lines $lockBaseline @(Current-LockLines) 'Dependency lock'
     Assert-Lines $manifestBaseline @(Current-ManifestLines) 'Dependency manifest'
     if (-not (Test-Path $freezeMetadata)) { throw 'Dependency freeze metadata is missing.' }
@@ -84,7 +84,7 @@ if ($freezeExists -and -not $Refresh) {
     return
 }
 if (-not $Refresh) {
-    throw 'Phase 9 dependency freeze is incomplete. Run freeze-dependencies.ps1 -Refresh only on the trusted dependency-freeze workstation after reviewing dependency changes.'
+    throw "Phase 9 dependency freeze is incomplete. Run freeze-dependencies.ps1 -Refresh only on a freeze source that meets the three criteria in docs/RELEASE_SUPPLY_CHAIN.md, then review the graph before committing."
 }
 
 # docs/RELEASE_SUPPLY_CHAIN.md already says lockfiles are resolved from scratch only in
