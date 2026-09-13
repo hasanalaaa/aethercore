@@ -685,8 +685,15 @@ impl DriverHub {
             return Err(HubError::Cancelled);
         }
         let (overrides, overrides_warning) = self.load_overrides(owner_principal_key);
-        let mut ready =
-            match_inventory_with_overrides(scan_id, epoch, started, devices, discovery, &overrides);
+        let mut ready = match_inventory_with_overrides(
+            scan_id,
+            epoch,
+            started,
+            devices,
+            discovery,
+            &overrides,
+            &MachineProfile::collect_local(),
+        );
         ready.state = ScanState::Ready;
         ready.completed_unix_ms = Utc::now().timestamp_millis();
         ready.warnings.extend(overrides_warning);
@@ -807,6 +814,7 @@ impl DriverHub {
             devices,
             discovery,
             &overrides,
+            &MachineProfile::collect_local(),
         );
         ready.state = ScanState::Ready;
         ready.completed_unix_ms = Utc::now().timestamp_millis();
@@ -841,12 +849,17 @@ impl DriverHub {
     }
 }
 
+/// DBT-P62-001: `machine` is a parameter, not something this function collects.
+/// Matching is pure — it decides which authorities a device requires — and the machine
+/// it decides against is an input. Reading the real one from inside here made every
+/// authority-coverage assertion depend on the SMBIOS of whatever box ran the tests.
 pub fn match_inventory(
     scan_id: String,
     inventory_epoch: u64,
     started_unix_ms: i64,
     devices: Vec<DeviceRecord>,
     discovery: DiscoveryResult,
+    machine: &MachineProfile,
 ) -> DriverHubSnapshot {
     match_inventory_with_overrides(
         scan_id,
@@ -855,6 +868,7 @@ pub fn match_inventory(
         devices,
         discovery,
         &[],
+        machine,
     )
 }
 
@@ -865,6 +879,7 @@ fn match_inventory_with_overrides(
     devices: Vec<DeviceRecord>,
     discovery: DiscoveryResult,
     overrides: &[DriverOverride],
+    machine: &MachineProfile,
 ) -> DriverHubSnapshot {
     let mut hardware_map: HashMap<String, Vec<usize>> = HashMap::new();
     let mut compatible_map: HashMap<String, Vec<usize>> = HashMap::new();
@@ -944,12 +959,11 @@ fn match_inventory_with_overrides(
         }
     }
 
-    let machine_profile = MachineProfile::collect_local();
     let mut result_devices = Vec::with_capacity(devices.len());
     for (index, device) in devices.into_iter().enumerate() {
         let identity = DeviceIdentity::from_pnp(&device);
         let (required, evaluations, coverage_detail) = if let Some(registry) = registry {
-            let required = required_authorities(&identity, &machine_profile, registry);
+            let required = required_authorities(&identity, machine, registry);
             let evaluations =
                 evaluate_required_authorities(&required, registry, windows_update_state);
             let coverage = DeviceAuthorityCoverage::from_evaluations(&required, &evaluations);
@@ -995,7 +1009,7 @@ fn match_inventory_with_overrides(
 
         let decision = DriverAuthorityEngine::evaluate(
             &identity,
-            &machine_profile,
+            machine,
             std::mem::take(&mut normalized[index]),
             overrides,
             coverage_detail.completeness,
@@ -1560,7 +1574,48 @@ fn detect_gpu_vendor(device: &DeviceRecord) -> Option<GpuVendor> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aethercore_driver_authority::MachineKind;
     use aethercore_operation_kernel::ReadBudgetManager;
+
+    /// DBT-P62-001: a fixed machine, so these assertions are about the matching rules and
+    /// not about the box running them. `Default` is a non-OEM machine — which is what every
+    /// test here already assumed silently while `match_inventory` read the real SMBIOS.
+    /// True on a developer Mac; false on a CI runner whose manufacturer reads "Microsoft".
+    fn test_machine() -> MachineProfile {
+        MachineProfile::default()
+    }
+
+    /// DBT-P62-001, pinned in both directions: the machine passed in is the machine
+    /// matched against. Without the parameter `match_inventory` read the real one, so on a
+    /// developer Mac this test's OEM half could not be written at all and its non-OEM half
+    /// passed for the wrong reason — while six sibling tests failed on a CI runner whose
+    /// manufacturer reads "Microsoft".
+    #[test]
+    fn authority_requirements_follow_the_machine_passed_in_not_the_host() {
+        let oem = MachineProfile {
+            manufacturer: "Microsoft Corporation".into(),
+            machine_kind: MachineKind::Oem,
+            ..MachineProfile::default()
+        };
+        let coverage = |machine: &MachineProfile| {
+            match_inventory(
+                "scan".into(),
+                1,
+                1,
+                vec![device("PCI\\VEN_ABCD&DEV_0001", "Net")],
+                DiscoveryResult {
+                    offers: vec![],
+                    warnings: vec![],
+                },
+                machine,
+            )
+            .devices[0]
+                .authority_coverage
+                .clone()
+        };
+        assert_eq!(coverage(&test_machine()), "CompleteForRequiredAuthorities");
+        assert_eq!(coverage(&oem), "ManualAuthorityRequired");
+    }
 
     const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -1625,6 +1680,7 @@ mod tests {
                 offers: vec![],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         let d = &snapshot.devices[0];
         assert_eq!(d.authority_coverage, "CompleteForRequiredAuthorities");
@@ -1647,6 +1703,7 @@ mod tests {
                 offers: vec![offer("PCI\\VEN_ABCD&DEV_0002")],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         let d = &snapshot.devices[0];
         assert!(d.missing_driver);
@@ -1667,6 +1724,7 @@ mod tests {
                 offers: vec![offer("pci\\ven_1234&dev_5678")],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         assert_eq!(snapshot.devices[0].candidates.len(), 1);
         assert_eq!(
@@ -1689,6 +1747,7 @@ mod tests {
                 offers: vec![offer("PCI\\VEN_1234&CC_0200")],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         assert_eq!(
             snapshot.devices[0].candidates[0].match_quality,
@@ -1713,6 +1772,7 @@ mod tests {
                 offers: vec![compatible, exact],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         assert_eq!(snapshot.devices[0].candidates.len(), 1);
         assert_eq!(
@@ -1736,6 +1796,7 @@ mod tests {
                 offers: vec![offer("PCI\\VEN_AAAA&DEV_BBBB")],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         assert!(snapshot.devices[0].candidates.is_empty());
         assert_eq!(snapshot.unmatched_offers.len(), 1);
@@ -1772,6 +1833,7 @@ mod tests {
                 offers: vec![firmware_offer],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         let candidate = &snapshot.devices[0].candidates[0];
         assert!(candidate.firmware_managed);
@@ -1793,6 +1855,7 @@ mod tests {
                 offers: vec![offer("PCI\\VEN_10DE&DEV_2684")],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         let device = &snapshot.devices[0];
         assert_eq!(device.gpu.as_ref().unwrap().vendor, GpuVendor::Nvidia);
@@ -1825,6 +1888,7 @@ mod tests {
                 offers: vec![],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         let device = &snapshot.devices[0];
         assert!(device.candidates.is_empty());
@@ -1852,6 +1916,7 @@ mod tests {
                     offers: vec![],
                     warnings: vec![],
                 },
+                &test_machine(),
             );
             let d = &snapshot.devices[0];
             assert!(d.candidates.is_empty());
@@ -1877,6 +1942,7 @@ mod tests {
                 offers: vec![offer("PCI\\VEN_ABCD&DEV_0001")],
                 warnings: vec![],
             },
+            &test_machine(),
         );
         let device = &snapshot.devices[0];
         assert!(device.gpu.is_none());
@@ -1901,6 +1967,7 @@ mod tests {
                 offers: vec![offer("PCI\\VEN_1234&DEV_5678")],
                 warnings: vec!["WUA item 0 metadata was rejected".into()],
             },
+            &test_machine(),
         );
         assert_eq!(snapshot.authority_coverage, "Partial");
         assert_eq!(
