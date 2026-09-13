@@ -67,6 +67,63 @@ re-derive them:
   `scripts/test_source_seal.py` holds this: rebuilding ignored output, and adding
   more of it, does not disturb the seal.
 
+## One definition of delivered
+
+`DBT-P60-004` + `DBT-P60-005`. Two instruments were deciding what "delivered"
+means and they disagreed over 14 files: this seal asked git, and
+`scripts/omega-evidence.py` walked the directory tree minus a hardcoded
+exclusion list. At least one of the two was measuring the wrong set, so neither
+verdict could be trusted.
+
+**The decision: the seal's rule is the project's single definition of delivered,
+and `omega-evidence.py` adopts it by importing `source_seal.tracked_files`
+rather than restating it.**
+
+Three reasons, in the order they settle the question:
+
+1. **Only one of the two can be right about the 14 files, and the walk is wrong
+   about all 14.** They are nine Vite build outputs, a 1.1 GB downloaded model,
+   a release `.zip` and three runtime SQLite files. None is delivered; none was
+   caught by the exclusion list that exists to catch exactly them.
+2. **The tracked rule has no list to maintain.** The walk's rule is a list, and a
+   list is only ever as current as the last person who remembered it. Nothing
+   about `apps/ui/dist/` or `assets/models/*.gguf` was unusual — they simply
+   arrived after the list was written.
+3. **A second implementation of one rule is a second rule.** The two sets did not
+   drift because someone changed one of them; they drifted because there were two
+   of them. Importing is what closes that, and it is why both rows close in the
+   same commit: closing one and leaving the other holding a private copy is how
+   the disagreement comes back.
+
+### The one place omega-evidence needs a different set, named
+
+Per-gate write detection does **not** use the delivered set, and must not.
+`run_repo_script` asks "did running this gate write anything", and anything a
+gate writes is by construction not tracked — measuring that against the tracked
+set would answer "no" to every gate, always. It keeps a full unexcluded walk of
+the disposable clone. That is now both complete and cheap for the same reason:
+the clone is built from the delivered set, so there is no `target/` in it to
+walk.
+
+Everything else in `omega-evidence.py` asks this seal's question and takes this
+seal's set: `verify_manifest`'s deliverable inventory, `cleanliness`, and the
+`source_tree_integrity` before/after digests.
+
+### What that changes, stated rather than discovered later
+
+- **`SIGMA-RB-001` now means what it says.** Its condition is "verification
+  changed delivered source bytes"; it is now measured over delivered bytes. An
+  untracked file appearing in the workspace is no longer a whole-tree integrity
+  failure — and a gate that writes one is still caught, inside the clone, which
+  is where a gate's writes actually happen.
+- **`cleanliness` no longer reports untracked junk.** A `.DS_Store` that is not
+  tracked does not ship, so it is not a delivery defect. A tracked one still is.
+- **`DBT-P60-003` stops blocking `OMEGA-RB-003`.** The three SQLite files under
+  the leaked `C:\ProgramData` directory are untracked, so they leave the
+  deliverable set entirely and the gate can reach a verdict on this machine. The
+  underlying defect — a service writing a literal Windows path on POSIX — is
+  untouched and the row stays open on that.
+
 ## The known gap
 
 The seal covers `phase21-workspace/`. It does **not** cover the repository root,
