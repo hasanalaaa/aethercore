@@ -18,3 +18,25 @@
 # It does not affect diffs: EOL conversion is the `text` attribute, binary
 # detection for diff is content-based and separate.
 * -text
+
+# The exception, and the distinction behind it: a file that is CAPTURED keeps
+# the bytes it was captured with, and a file that is EXECUTED gets the bytes its
+# interpreter needs.
+#
+# The 37 CRLF files above are captured Windows console output under
+# docs/phase36/evidence/ -- the CRLF is part of the evidence, and rewriting it
+# would be falsifying a measurement. A .cmd has no such claim on its own bytes.
+# cmd.exe is unreliable with LF-only line endings around multi-line constructs,
+# and scripts/build-arm64-msi.cmd:91-95 is exactly one of them -- five lines
+# joined by a `^` continuation. `* -text` left both .cmd files LF on Windows,
+# where core.autocrlf used to deliver them CRLF, so the earlier comment's claim
+# that it avoided "picking a side" was wrong: LF is a side, and for a file that
+# is executed it is the wrong one.
+#
+# `eol=crlf` and not autocrlf: it is explicit and platform-INDEPENDENT, so every
+# checkout on every OS produces the same CRLF working tree. That is what keeps
+# MANIFEST.sha256 verifiable -- the seal hashes the working tree, and a working
+# tree that differs by platform is the defect 50cc466 fixed. The index keeps LF;
+# the working tree is CRLF everywhere, which is a different thing from
+# autocrlf's "CRLF on Windows, LF elsewhere".
+*.cmd text eol=crlf
