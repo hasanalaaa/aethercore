@@ -74,7 +74,13 @@ Require-Marker 'scripts/freeze-dependencies.ps1' 'lock_baseline_sha256' 'freeze 
 # Production sanitation: all retired Phase 1 authorization/demo paths are gone from product code/contracts.
 Reject-Tree '(?i)create_demo_plan|advance_demo|Phase1Simulation|simulation_only' 'Phase 1 demo transition surface'
 Reject-Tree '(?i)issue_challenge|grant_authorization|authorization_challenge|authorization_grant' 'retired challenge/grant authorization surface'
-Reject-Tree "invoke\(['\"]authorize_plan['\"]" 'legacy desktop authorization command'
+# PowerShell's escape character inside a double-quoted string is a BACKTICK, not a
+# backslash, so the `\"` here ended the string and everything after it re-parsed into an
+# unterminated single-quoted string: `The string is missing the terminator: '.` — a PARSE
+# error, so this whole file never ran, and neither did anything `verify-phase9.ps1` gates.
+# A single-quoted string needs no escape for `"` and doubles `''` for its own quote, so the
+# regex below is now exactly `invoke\([\'"]authorize_plan[\'"]`. `DBT-P63-013`.
+Reject-Tree 'invoke\([''"]authorize_plan[''"]' 'legacy desktop authorization command'
 
 $contracts = Get-Content 'crates/contracts/src/lib.rs' -Raw
 if ($contracts -notmatch 'PROTOCOL_VERSION:\s*u32\s*=\s*7') { throw 'Phase 9 requires IPC protocol version 7.' }
