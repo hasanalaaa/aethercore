@@ -18,7 +18,6 @@ New gates:
 """
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import json
 import re
@@ -208,40 +207,32 @@ if full_hash.exists():
         inconsistent = [f for f, h in m_sha.items() if ledger.get(f) not in (None, h)]
         check("p30-manifest-fulltree-consistency", not inconsistent,
               f"manifest↔fulltree mismatches: {inconsistent[:5]}")
-    # Spot-check excludes the patch directory itself: MANIFEST.json/changes.patch are
-    # rewritten by every build invocation (their hashes describe OTHER files; the ledger
-    # self-excludes only the full-hash file). Patch-dir integrity is proven by GG
-    # round-trips instead.
-    ledger = json.loads(full_hash.read_text()).get("files", {})
-    spot_ok = True
-    diverged = []
-    for rel in sorted(ledger):
-        if rel.startswith("PHASE_30_BINARY_SAFE_PATCH/"):
-            continue
-        p = ROOT / rel
-        if p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest() != ledger[rel]:
-            spot_ok = False
-            diverged.append(rel)
-            if len(diverged) >= 3:
-                break
-    # Regenerate the ledger first so audit-side artifacts don't create drift.
-    gen = ROOT / "scripts/_build_p30_patch.py"
-    if gen.exists():
-        subprocess.run([sys.executable, str(gen), str(ROOT)], capture_output=True)
-    ledger = json.loads((ROOT / "PHASE_30_BINARY_SAFE_PATCH/PHASE_30_EXPECTED_FULL_SHA256.json").read_text()).get("files", {})
-    spot_ok = True
-    diverged = []
-    for rel in sorted(ledger):
-        if rel.startswith("PHASE_30_BINARY_SAFE_PATCH/"):
-            continue
-        p = ROOT / rel
-        if p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest() != ledger[rel]:
-            spot_ok = False
-            diverged.append(rel)
-            if len(diverged) >= 3:
-                break
-    check("p30-fulltree-spot-hash-ok", spot_ok,
-          f"live file diverged from ledger: {diverged}")
+    # DBT-P59-002. What stood here loaded the ledger, compared the tree to it, threw that
+    # result away, ran _build_p30_patch.py to regenerate the ledger FROM the same tree,
+    # and compared against that — an expected value minted from the measured one. It could
+    # not fail. Introduced in Phase 31 (0e30038) to silence a `.DS_Store` divergence; what
+    # it silenced was the instrument.
+    #
+    # Its honest form is not worth restoring either. PHASE_30_EXPECTED_FULL_SHA256.json
+    # describes the Phase 32 tree — measured P60: 759 entries match, 245 diverge, 7 name
+    # files that are gone — so at Phase 60 it asks whether today's source equals a
+    # snapshot from 28 phases ago, and the correct answer is no. The ledger keeps the
+    # archive role it can actually carry, in p30-manifest-fulltree-consistency above.
+    #
+    # Sealing the delivered tree is MANIFEST.sha256's job. scripts/source_seal.py reads
+    # the committed manifest, hashes the tree independently and diffs; it never writes.
+    seal = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/source_seal.py"), "--root", str(ROOT), "--json"],
+        capture_output=True, text=True)
+    try:
+        seal_report = json.loads(seal.stdout)
+    except json.JSONDecodeError:
+        seal_report = {"ok": False, "error": (seal.stderr or seal.stdout).strip()[-400:]}
+    seal_detail = seal_report.get("error") or [
+        f"{e['reason']}:{e['path']}" for e in seal_report.get("failed", [])[:3]]
+    check("p30-delivered-source-seal-ok", seal.returncode == 0 and seal_report.get("ok") is True,
+          f"source seal exit={seal.returncode} verified="
+          f"{seal_report.get('verified')}/{seal_report.get('tracked')} {seal_detail}")
 
 # --- Gate h: wire freeze — no new tags this phase ------------------------------------
 operations_proto = (ROOT / "crates/contracts/proto/operations.proto").read_text(encoding="utf-8")
