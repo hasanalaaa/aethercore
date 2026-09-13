@@ -124,6 +124,41 @@ impl CleanupPlatform for LeaseDenyingPlatform {
     }
 }
 
+/// Poll until the execution has genuinely settled in BOTH places `status()` reads from.
+///
+/// `plan_state` comes from the operation engine; `mutation_started`, `recovery_required`
+/// and `items` come from the maintenance record in the database, and the two are written
+/// by different statements — `fail_cleanup` transitions the plan to Failed and only then
+/// upserts the record. Waiting on `plan_state` alone and asserting a record field is a
+/// read-before-write race: it is what made
+/// `cleanup_failure_after_deletion_barrier_requires_recovery_review` fail on
+/// `status.recovery_required` in CI run 34763617017 while `mutation_started`, written
+/// earlier by the Executing update, passed.
+fn wait_terminal(
+    cleaner: &CleanupEngine,
+    plan_id: &str,
+    state: &str,
+) -> aethercore_cleaner::CleanupExecutionStatus {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let status = cleaner.status(OWNER, Some(plan_id)).unwrap().unwrap();
+        if status.plan_state == state && status.stage == state {
+            return status;
+        }
+        if state != "Failed" {
+            assert_ne!(status.plan_state, "Failed", "{}", status.failure_message);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "plan never reached {state}: plan_state={} stage={} {}",
+            status.plan_state,
+            status.stage,
+            status.failure_message
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
 fn temp_root(label: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -200,20 +235,11 @@ fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
 
     authorize(&engine, &plan.id, &plan.digest);
     start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
-    let deadline = Instant::now() + Duration::from_secs(3);
-    loop {
-        let status = cleaner.status(OWNER, Some(&plan.id)).unwrap().unwrap();
-        if status.plan_state == "Completed" {
-            assert!(status.mutation_started);
-            assert_eq!(status.reclaimed_bytes, 60);
-            assert_eq!(status.skipped_bytes, 40);
-            assert_eq!(status.items[0].result_code, "Partial");
-            break;
-        }
-        assert_ne!(status.plan_state, "Failed", "{}", status.failure_message);
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(10));
-    }
+    let status = wait_terminal(&cleaner, &plan.id, "Completed");
+    assert!(status.mutation_started);
+    assert_eq!(status.reclaimed_bytes, 60);
+    assert_eq!(status.skipped_bytes, 40);
+    assert_eq!(status.items[0].result_code, "Partial");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -242,17 +268,9 @@ fn cleanup_failure_after_deletion_barrier_requires_recovery_review() {
     authorize(&engine, &plan.id, &plan.digest);
     start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
 
-    let deadline = Instant::now() + Duration::from_secs(3);
-    loop {
-        let status = cleaner.status(OWNER, Some(&plan.id)).unwrap().unwrap();
-        if status.plan_state == "Failed" {
-            assert!(status.mutation_started);
-            assert!(status.recovery_required);
-            break;
-        }
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(10));
-    }
+    let status = wait_terminal(&cleaner, &plan.id, "Failed");
+    assert!(status.mutation_started);
+    assert!(status.recovery_required);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -286,29 +304,16 @@ fn cleanup_takes_its_mutation_lease_from_the_platform() {
     authorize(&engine, &plan.id, &plan.digest);
     start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
 
-    let deadline = Instant::now() + Duration::from_secs(3);
-    loop {
-        let status = cleaner.status(OWNER, Some(&plan.id)).unwrap().unwrap();
-        // Wait on the execution record's own stage, not the plan state: the engine's
-        // transition to Failed lands before fail_cleanup writes the record that carries
-        // the message.
-        if status.stage == "Failed" {
-            assert_eq!(status.plan_state, "Failed");
-            assert_eq!(asked.load(Ordering::SeqCst), 1);
-            assert!(
-                status
-                    .failure_message
-                    .contains("another AetherCore maintenance mutation is active"),
-                "{}",
-                status.failure_message
-            );
-            assert!(!status.mutation_started);
-            break;
-        }
-        assert_ne!(status.plan_state, "Completed");
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(10));
-    }
+    let status = wait_terminal(&cleaner, &plan.id, "Failed");
+    assert_eq!(asked.load(Ordering::SeqCst), 1);
+    assert!(
+        status
+            .failure_message
+            .contains("another AetherCore maintenance mutation is active"),
+        "{}",
+        status.failure_message
+    );
+    assert!(!status.mutation_started);
     let _ = std::fs::remove_dir_all(root);
 }
 
