@@ -39,7 +39,7 @@ REPO = ROOT.parent
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader, contains  # noqa: E402
+from gate_reader import SourceReader, contains, count, position  # noqa: E402
 
 _READER = SourceReader(ROOT)
 read = _READER.read
@@ -129,8 +129,20 @@ checks["workspace_members"] = {
     "count": len(members),
 }
 
+# `PHASE_NN_BINARY_SAFE_PATCH/new-files/**` holds PATCH PAYLOADS: manifests staged
+# to be applied elsewhere, whose `path = "../operation-kernel"` siblings exist only
+# once applied. They are deliberately not resolvable where they sit, so resolving
+# them here measures the wrong tree. All 12 errors were in those three directories.
+# `DBT-P61-001`.
+PATCH_PAYLOAD_ROOTS = tuple(
+    path.name for path in ROOT.iterdir() if path.is_dir() and path.name.endswith("_BINARY_SAFE_PATCH")
+)
 path_errors = []
+path_payload_skipped = []
 for cargo in files("Cargo.toml"):
+    if cargo.relative_to(ROOT).parts[0] in PATCH_PAYLOAD_ROOTS:
+        path_payload_skipped.append(str(cargo.relative_to(ROOT)))
+        continue
     data = tomllib.loads(cargo.read_text(encoding="utf-8"))
     for section in ("dependencies", "dev-dependencies", "build-dependencies"):
         for dep, spec in data.get(section, {}).items():
@@ -144,7 +156,7 @@ for cargo in files("Cargo.toml"):
                             "path": spec["path"],
                         }
                     )
-checks["path_dependencies"] = {"ok": not path_errors, "errors": path_errors}
+checks["path_dependencies"] = {"ok": not path_errors, "errors": path_errors, "patch_payload_manifests_skipped": len(path_payload_skipped)}
 
 # Schema validation through all migrations.
 conn = sqlite3.connect(":memory:")
@@ -552,7 +564,9 @@ marker(
         "SYSTEM INTEGRITY EXECUTION",
         "Review repair",
         "Authorize & repair",
-        "DEEP CLEANUP",
+        # Localized: the screen copy now lives in `apps/ui/src/lib/i18n/catalog.en.ts`
+        # and was rewritten. `DBT-P61-001`.
+        "'cleanup.title': 'Deep Clean'",
         "Review cleanup",
         "Authorize & clean",
         "CHKDSK /scan only",
@@ -566,13 +580,20 @@ marker(
     "phase5_ui_passive_default",
     ui,
     [
-        "STARTUP & BACKGROUND SERVICES",
+        # Localized. `DBT-P61-001`.
+        "'startup.eyebrow': 'STARTUP MANAGER'",
         "Unreviewed",
         "KeepEnabled",
         "Disable reviewed",
         "Confirm background service changes separately",
-        "Unreviewed and Keep are omitted",
-        "Passive-default invariant",
+        "Unreviewed and Keep Enabled decisions are absent from the plan",
+        # The prose invariant was deleted deliberately - see the comment at
+        # `apps/ui/src/features/startup/StartupPage.svelte:125`. Its two clauses are
+        # now enforced in code, and these are the two lines that enforce them: a
+        # protected or unmanageable target is not offered as a Disable decision, and
+        # its Disable control is disabled. Stronger than the sentence was.
+        "decision !== 'Disable' || (item.manageable && !item.protected)",
+        "disabled={!item.manageable || item.protected}",
         "Restore original",
         "Create restore plan",
         "Authorize & restore",
@@ -633,7 +654,10 @@ marker("phase6_event_and_dump_collectors", crash_win, ["EvtQuery","EvtNext","Evt
 marker("phase6_non_exaggerated_crash_rules", crash+crash_win+diag, ["does not identify why","does not identify a specific DIMM","does not prove RAM is fault-free","requires symbol-assisted dump analysis","root-cause"])
 marker("phase6_diagnostic_engine", diag, ["DiagnosticEngine","start_scan","save_diagnostic_snapshot","build_cards","Back up important files immediately","Windows Memory Diagnostic"])
 marker("service_phase6_handlers", service, ["DiagnosticEngine::new","StartDiagnosticsScan","GetDiagnosticsSnapshot","GetDiagnosticsHistory","diagnostics_snapshot_proto"])
-marker("phase6_ui", ui, ["HARDWARE TELEMETRY","Measurements, not a made-up health score","ATA SMART raw attributes","CRASH & WHEA DIAGNOSTICS","No logged memory hardware errors ≠ RAM proven healthy","eventWindowDays","root cause unknown"])
+# Localized. The one token here that carries a SAFETY meaning rather than a label -
+# "no logged memory error is not proof of healthy RAM" - survives verbatim as
+# `hardware.truthNote` and is pinned to its text, not to its key. `DBT-P61-001`.
+marker("phase6_ui", ui, ["'hardware.title': 'Evidence from the hardware, without a fake health score.'","Measurements, not a made-up health score","ATA SMART raw attributes","'crash.whea': 'WHEA events'","'nav.crashDescription': 'WHEA, bugcheck and minidump evidence'","'hardware.truthNote': 'No logged memory error ≠ RAM proven healthy.'","eventWindowDays","root cause unknown"])
 checks["phase6_read_only_surface"]={"ok":all(token not in (hardware_win+crash_win+diag).lower() for token in ["setfileinformationbyhandle","changeserviceconfig","iupdateinstaller","srsetrestorepoint","deletefilew"]),"note":"Phase 6 collectors/diagnostic rules expose no system-mutation API."}
 checks["phase6_ata_is_observational_only"]={"ok":"SMART_RCV_DRIVE_DATA" in hardware_win and "SMART_SEND_DRIVE_COMMAND" not in hardware_win and "ata_smart_attributes" not in hardware.split("pub fn classify_storage",1)[1].split("#[cfg(test)]",1)[0],"note":"ATA SMART is read-only raw evidence and does not drive AetherCore health severity."}
 checks["phase6_bounded_event_window"]={"ok":"DEFAULT_EVENT_WINDOW_DAYS: u32 = 30" in crash and "TimeCreated[timediff(@SystemTime)" in crash_win and "MAX_EVENTS: usize = 128" in crash_win,"note":"System Event Log collection is explicitly bounded by age and count."}
@@ -684,9 +708,21 @@ checks["phase7_style_layering"] = {
 }
 
 page_ids = ["overview", "deepScan", "drivers", "repair", "cleanup", "startup", "hardware", "crash", "activity"]
+# The invariant is that every required surface keeps a DIRECT shortcut, not that
+# the app has exactly nine of them. Navigation has grown to 16 surfaces and 12
+# `Ctrl+Shift+` shortcuts; the equality was measuring the growth, not the promise.
+# Asserted per id instead, so deleting one surface's shortcut still fails.
+# `DBT-P61-001`.
+nav_shortcuts = [
+    page
+    for page in page_ids
+    if not any(f"id: '{page}'" in line and "shortcut: 'Ctrl+Shift+" in line for line in navigation_ts.splitlines())
+]
 checks["phase7_all_eight_surfaces"] = {
-    "ok": all(f"id: '{page}'" in navigation_ts for page in page_ids) and navigation_ts.count("shortcut: 'Ctrl+Shift+") == len(page_ids),
+    "ok": all(f"id: '{page}'" in navigation_ts for page in page_ids) and not nav_shortcuts,
     "surfaces": page_ids,
+    "without_direct_shortcut": nav_shortcuts,
+    "total_direct_shortcuts": navigation_ts.count("shortcut: 'Ctrl+Shift+"),
     "note": "Phase 17 adds Deep Scan as a ninth production surface while preserving the original eight surfaces and direct keyboard shortcuts.",
 }
 checks["phase7_keyboard_navigation"] = {
@@ -1365,8 +1401,12 @@ marker("phase10_read_budget", kernel10 + router10, ["ReadWorkload::DriverDiscove
 stale_read_workloads = [token for token in ["ReadWorkload::DriverScan", "ReadWorkload::StartupScan", "ReadWorkload::CleanupScan", "ReadWorkload::RepairScan"] if token in kernel10 + router10]
 checks["phase10_read_budget"]["stale_variants"] = stale_read_workloads
 checks["phase10_read_budget"]["ok"] = bool(checks["phase10_read_budget"]["ok"] and not stale_read_workloads)
+# `else { break };` is not Rust for this construct: every one of these is a
+# let-else, `let Ok(v) = ... else { break; };`, and the `break` is a statement
+# with its own semicolon. The token was never in the tree - six of the real
+# spelling are. `DBT-P61-001`.
 checks["phase10_read_watcher_lease_release"] = {
-    "ok": streaming10.count("else { break };") >= 5,
+    "ok": count(streaming10, "else { break; };") >= 5,
     "note": "Discovery observers terminate and release their RAII read-budget lease if the domain snapshot ownership changes before they observe terminal state.",
 }
 marker("phase10_persistent_ipc_session", ipc10 + server10, ["AetherCore.Maintenance.v7", "ClientHello", "SessionClient", "MAX_INFLIGHT_PER_SESSION", "deadline_unix_ms", "cancellation_id", "cancel_session"])
@@ -1398,7 +1438,14 @@ checks["phase10_service_decomposed"] = {
 marker("phase10_per_principal_sequences", kernel10 + proto, ["HashMap<String, OwnerStream>", "monotonic per authenticated principal", "does_not_leak_cross_user_activity", "dropped_through_sequence"])
 marker("phase10_explicit_stream_reset", kernel10 + server10 + proto, ["SubscriptionItem::Lagged", "ReplayWindowExceeded", "SubscriberLagged", "SequenceReset", "StreamReset"])
 marker("phase10_bounded_stream_backpressure", kernel10 + server10, ["SUBSCRIBER_CAPACITY", "bounded_subscriber_overflow_is_reported_as_lag_not_silent_loss", "TrySendError::Full", "SubscriptionItem::Lagged", "publish_hydration"])
-marker("phase10_session_client_shutdown", ipc10, ["impl Drop for SessionClient", "self.writer.shutdown();", "fn shutdown(&self)", "CancelSynchronousIo", "cancel_registered_io"])
+# `482d480` replaced synchronous per-thread cancellation with overlapped I/O:
+# `cancel_registered_io` and the `CancelSynchronousIo` CALL are gone deliberately -
+# "Windows request/response has never worked ... every ServiceJob verb hung". The
+# invariant is unchanged, so it is repointed at what performs it now: one
+# `PipeCancel` shared by both directions, cancelling with `CancelIoEx`. The old
+# `CancelSynchronousIo` token is dropped rather than kept: its only occurrence in
+# the tree is the doc comment explaining the replacement. `DBT-P61-001`.
+marker("phase10_session_client_shutdown", ipc10, ["impl Drop for SessionClient", "self.writer.shutdown();", "fn shutdown(&self)", "struct PipeCancel", "CancelIoEx(self.0.get(), None)", "self.cancel.cancel();"])
 marker("phase10_session_disconnect_cancellation", kernel10 + server10, ["cancel_session", "disconnect_cancels_only_the_owning_session_requests", "session_id"] )
 marker("phase10_duplicate_request_defense", ipc10 + server10 + kernel10, ["duplicate in-flight request id", "duplicate_cancellation_ids_are_rejected_instead_of_rebinding_tokens", "active_request_ids"])
 marker("phase10_typed_domain_states", proto + protocol10, ["enum DiscoveryState", "DiscoveryState state_code", "OperationState state_code", "discovery_state_code", "operation_state_code_str"])
@@ -1713,7 +1760,7 @@ checks["phase13_diagnostic_persistence_not_silent"] = {"ok": "let _=inner.db.sav
 marker("phase13_fault_injection_gate", fault13, ["aethercore-collector-runtime", "aethercore-hardware-telemetry", "aethercore-crash-diagnostics", "aethercore-diagnostic-engine", "LiveReadOnly", "render_property_count_is_rejected_before_allocation_when_pathological", "nvme_parser_accepts_vendor_tail_without_reading_past_standard_prefix"])
 marker("phase13_event_alignment_and_handle_bounds", crash_win13, ["align_of::<EVT_VARIANT>()", "align_of::<u16>()", "Take ownership of every non-null handle", "EvtNext reported more event handles than the bounded output array", "EvtNext returned null, sparse, or trailing handles inconsistent with its reported count"])
 marker("phase13_protocol_overlap_guard", hardware13, ["minimum_data_offset", "protocol payload overlapped the protocol-specific metadata header"])
-checks["phase13_memory_unavailable_is_unknown"] = {"ok": "pub memory:Option<MemoryTelemetry>" in diag13 and "memory:None" in diag13 and "v.memory.map(|memory|" in protocol13}
+checks["phase13_memory_unavailable_is_unknown"] = {"ok": contains(diag13, "pub memory:Option<MemoryTelemetry>") and contains(diag13, "memory:None") and contains(protocol13, "v.memory.map(|memory|")}
 checks["phase13_ci_release_gate"] = {"ok": any(gate in ci10 for gate in ["verify-phase13.ps1 -SkipOnlineSupplyChain", "verify-phase14.ps1 -SkipOnlineSupplyChain", "verify-phase15.ps1 -SkipOnlineSupplyChain", "verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"]) and any(gate in release10 for gate in ["verify-phase13.ps1 -ReleasePackaging -RequireSigning", "verify-phase14.ps1 -ReleasePackaging -RequireSigning", "verify-phase15.ps1 -ReleasePackaging -RequireSigning", "verify-phase16.ps1 -ReleasePackaging -RequireSigning", "verify-enterprise.ps1 -ReleasePackaging -RequireSigning"])}
 marker("phase13_windows_gate", verify13, ["verify-phase12.ps1", "phase13-reliability-audit.ps1", "phase13-fault-injection.ps1", "cargo check --workspace --locked", "cargo test --locked -p aethercore-collector-runtime"])
 checks["phase13_audit_depth"] = {"ok": all(token in audit13 for token in ["no_unbounded_wmi_in_collectors", "no_event_xml_scraping", "direct_ioctl_watchdog", "provider_fault_contract", "nested_provider_faults_preserved"])}
@@ -1809,7 +1856,7 @@ checks["phase15_http_authority_is_desktop_only"] = {"ok": "reqwest" in update_do
 marker("phase15_bounded_https_downloader", update_download15, ["reqwest::redirect::Policy::none()", "connect_timeout", "timeout", "ResponseTooLarge", "SizeMismatch", "Sha256::new"])
 checks["phase15_manifest_signature_before_parse"] = {"ok": update_manifest15.find("verifying.verify(manifest_bytes") < update_manifest15.find("serde_json::from_slice(manifest_bytes)") and all(token in update_manifest15 for token in ["MAX_MANIFEST_BYTES", "MAX_SIGNATURE_BYTES", "validate_https_url"])}
 marker("phase15_rollback_and_equivocation_floor", update_coordinator15 + migration15, ["update_manifest_floor", "highest_sequence", "manifest_sha256", "manifest.sequence==floor.highest_sequence", "manifest_sha256.eq_ignore_ascii_case"])
-checks["phase15_minimum_windows_build_enforced"] = {"ok": "RtlGetVersion" in update_platform15 and "release.minimum_windows_build<=self.current_windows_build" in update_coordinator15 and "releases_requiring_newer_windows_build_are_not_offered" in update_coordinator15}
+checks["phase15_minimum_windows_build_enforced"] = {"ok": contains(update_platform15, "RtlGetVersion") and contains(update_coordinator15, "release.minimum_windows_build<=self.current_windows_build") and contains(update_coordinator15, "releases_requiring_newer_windows_build_are_not_offered")}
 checks["phase15_service_side_download_legacy_disabled"] = {"ok": 'legacy service-side update download is disabled' in service_router15 and "CheckForUpdates" in service_router15 and "StageUpdate" in service_router15}
 marker("phase15_descriptor_chunk_upload", service_router15 + update_coordinator15 + update_proto15, ["GetUpdateCheckDescriptor", "SubmitUpdateManifest", "BeginUpdateStageUpload", "WriteUpdateStageChunk", "FinalizeUpdateStageUpload", "MAX_STAGE_CHUNK_BYTES"])
 checks["phase15_no_privileged_user_path_or_url_input"] = {"ok": "staged_path" not in update_proto15.split("message BeginUpdateStageUploadRequest",1)[1].split("}",1)[0] and "package_url" not in update_proto15.split("message BeginUpdateStageUploadRequest",1)[1].split("}",1)[0]}
@@ -1817,11 +1864,11 @@ marker("phase15_service_derived_staging", update_coordinator15, ["expected_stage
 checks["phase15_hash_authenticode_hash"] = {"ok": update_coordinator15.count("verify_file_hash_size(&path") >= 6 and update_coordinator15.count("verify_authenticode(&path)") >= 3}
 marker("phase15_authenticode_chain_validation", update_platform15, ["WinVerifyTrust", "WINTRUST_ACTION_GENERIC_VERIFY_V2", "WTD_REVOKE_WHOLECHAIN", "WTD_REVOCATION_CHECK_CHAIN"])
 checks["phase15_update_uses_global_mutation_lease"] = {"ok": update_coordinator15.count("MutationWorkload::Update") >= 2 and "active_update_execution" in migration15}
-checks["phase15_update_broker_fixed_surface"] = {"ok": "if args.len()!=5" in update_broker15 and "--intent-id" in update_broker15 and "--locale" in update_broker15 and all(token not in update_broker15 for token in ["--url","--path","--command","--args"]) and all(token not in update_broker15.lower() for token in ["reqwest","http://","https://"])}
-checks["phase15_update_broker_no_arbitrary_installer_args"] = {"ok": "Command::new(&path).status()" in update_broker15 and "let path=std::path::PathBuf::from(&ticket.staged_path)" in update_broker15 and ".args(" not in update_broker15}
+checks["phase15_update_broker_fixed_surface"] = {"ok": contains(update_broker15, "if args.len()!=5") and contains(update_broker15, "--intent-id") and contains(update_broker15, "--locale") and all(token not in update_broker15 for token in ["--url","--path","--command","--args"]) and all(token not in update_broker15.lower() for token in ["reqwest","http://","https://"])}
+checks["phase15_update_broker_no_arbitrary_installer_args"] = {"ok": contains(update_broker15, "Command::new(&path).status()") and contains(update_broker15, "let path=std::path::PathBuf::from(&ticket.staged_path)") and ".args(" not in update_broker15}
 checks["phase15_single_installer_authority_packaged"] = {"ok": "UpdateBrokerExe" in product15 and "UpdateTrustJson" in product15 and "aethercore-update-broker.exe" in product15 and "update-trust.json" in product15}
 checks["phase15_signed_release_requires_enabled_trust"] = {"ok": "AETHERCORE_UPDATE_TRUST_PATH" in build_release15 and "RequireSigning" in build_release15 and "RequireEnabled" in trust_validate15 and "stable" in trust_validate15.lower()}
-marker("phase15_support_preview_and_allowlist", support15 + support_service15, ["create_preview", "prepare(&self,owner:&str,preview_id:&str)", "product.json", "diagnostics.json", "operation-history.json", "scheduler-activity.json"])
+marker("phase15_support_preview_and_allowlist", support15 + support_service15, ["create_preview", "pub fn prepare(&self, owner: &str, preview_id: &str,) -> Result<SupportBundleReady, SupportBundleError>", "product.json", "diagnostics.json", "operation-history.json", "scheduler-activity.json"])
 checks["phase15_support_privacy_nonlinkable_redaction"] = {"ok": all(token in support15 for token in ["%USERPROFILE%", "<redacted-account>", "<redacted-sid>", "<redacted-email>", "<redacted-hardware-serial>"]) and "serial-hash" not in support15}
 marker("phase15_support_deterministic_hash_manifest", support15, ["files.sort_by", "ManifestFile", "payload_root_sha256", "sha256", "BTreeMap"])
 checks["phase15_support_proof_is_narrow"] = {"ok": "installation-ed25519" in support15 and "not a vendor or hardware attestation" in support15}
@@ -1838,13 +1885,13 @@ checks["phase15_cancelled_consent_intent_is_recoverable"] = {"ok": "CancelUpdate
 claim15_start = update_coordinator15.find("pub fn claim_install")
 claim15_end = update_coordinator15.find("pub fn complete_install", claim15_start)
 claim15_body = update_coordinator15[claim15_start:claim15_end] if claim15_start >= 0 and claim15_end > claim15_start else ""
-checks["phase15_install_claim_reservation_is_linearized"] = {"ok": claim15_body.find("record.claimed=true") >= 0 and claim15_body.find("verify_file_hash_size(&path") > claim15_body.find("record.claimed=true") and claim15_body.find("self.mutations.try_acquire(MutationWorkload::Update") > claim15_body.find("verify_file_hash_size(&path") and "if result.is_err()" in claim15_body and "record.claimed=false" in claim15_body}
-checks["phase15_claim_cleanup_preserves_inflight_reservation"] = {"ok": "intents.retain(|_,v|v.claimed||v.intent.expires_unix_ms>=now)" in update_coordinator15 and "self.intents.lock().unwrap_or_else(|p|p.into_inner()).remove(intent_id)" in claim15_body and "cleanup_does_not_erase_an_inflight_claim_reservation" in update_coordinator15}
-checks["phase15_support_archive_reverified_before_user_save"] = {"ok": "aethercore_support_bundle::verify_archive(&archive_bytes" in desktop15 and desktop15.find("verify_archive(&archive_bytes") < desktop15.find("std::fs::rename(&temporary,&path)")}
+checks["phase15_install_claim_reservation_is_linearized"] = {"ok": position(claim15_body, "record.claimed=true") >= 0 and position(claim15_body, "verify_file_hash_size(&path") > position(claim15_body, "record.claimed=true") and position(claim15_body, "self.mutations.try_acquire(MutationWorkload::Update") > position(claim15_body, "verify_file_hash_size(&path") and contains(claim15_body, "if result.is_err()") and contains(claim15_body, "record.claimed=false")}
+checks["phase15_claim_cleanup_preserves_inflight_reservation"] = {"ok": contains(update_coordinator15, "intents.retain(|_,v|v.claimed||v.intent.expires_unix_ms>=now)") and contains(claim15_body, "self.intents.lock().unwrap_or_else(|p|p.into_inner()).remove(intent_id)") and contains(update_coordinator15, "cleanup_does_not_erase_an_inflight_claim_reservation")}
+checks["phase15_support_archive_reverified_before_user_save"] = {"ok": contains(desktop15, "aethercore_support_bundle::verify_archive(&archive_bytes") and position(desktop15, "verify_archive(&archive_bytes") < position(desktop15, "std::fs::rename(&temporary,&path)")}
 checks["phase15_support_tar_header_checksum"] = {"ok": "valid_tar_checksum" in support15 and "tar_header_checksum_tampering_is_rejected" in support15}
 checks["phase15_broker_protected_machine_mutation_lock"] = {"ok": "MachineMutationGuard::try_acquire()" in update_broker15 and "pub struct MachineMutationGuard" in windows_foundation and "LockFileEx" in windows_foundation and "SHGetKnownFolderPath" in windows_foundation and "OPEN_EXISTING" in windows_foundation and "machine-mutation.lock" in windows_foundation and "UpdateMutationGuard::acquire" in update_broker15 and update_broker15.find("UpdateMutationGuard::acquire") < update_broker15.find("claim(&intent_id)")}
-checks["phase15_execution_expiry_fail_closed"] = {"ok": "if self.db.clear_update_execution_guard(&ticket_id).is_ok()" in update_coordinator15 and update_coordinator15.find("clear_update_execution_guard(&ticket_id).is_ok()") < update_coordinator15.find("self.active.lock().unwrap_or_else(|p|p.into_inner()).take()", update_coordinator15.find("pub fn reap_expired_execution"))}
-checks["phase15_restart_restores_exact_install_identity"] = {"ok": all(token in migration15 for token in ["release_version TEXT NOT NULL", "channel TEXT NOT NULL", "notes_message_key TEXT NOT NULL", "minimum_windows_build INTEGER NOT NULL"]) and all(token in update_coordinator15 for token in ["record.release_version.clone()", "record.notes_message_key.clone()", "record.minimum_windows_build", "snapshot.state=UpdateState::Installing", "durable_execution_recovery_restores_installing_snapshot_and_release_identity"])}
+checks["phase15_execution_expiry_fail_closed"] = {"ok": contains(update_coordinator15, "if self.db.clear_update_execution_guard(&ticket_id).is_ok()") and position(update_coordinator15, "clear_update_execution_guard(&ticket_id).is_ok()") < position(update_coordinator15, "self.active.lock().unwrap_or_else(|p|p.into_inner()).take()", position(update_coordinator15, "pub fn reap_expired_execution"))}
+checks["phase15_restart_restores_exact_install_identity"] = {"ok": all(contains(migration15, token) for token in ["release_version TEXT NOT NULL", "channel TEXT NOT NULL", "notes_message_key TEXT NOT NULL", "minimum_windows_build INTEGER NOT NULL"]) and all(contains(update_coordinator15, token) for token in ["record.release_version.clone()", "record.notes_message_key.clone()", "record.minimum_windows_build", "snapshot.state=UpdateState::Installing", "durable_execution_recovery_restores_installing_snapshot_and_release_identity"])}
 checks["phase15_support_strict_signature_verification"] = {"ok": "verify_strict(manifest_bytes" in support15}
 checks["phase15_support_embedded_pii_redaction"] = {"ok": "embedded_sid_and_email_are_redacted_inside_free_form_text" in support15 and "<redacted-sid>" in support15 and "<redacted-email>" in support15}
 checks["phase15_support_object_quotas_and_failure_discard"] = {"ok": all(token in support15 for token in ["MAX_ACTIVE_PREVIEWS_TOTAL", "MAX_ACTIVE_BUNDLES_TOTAL", "SupportBundleError::ResourceLimit", "one_active_bundle_per_owner_is_enforced_and_discard_releases_quota"]) and desktop15.count("request(request::Payload::DiscardSupportBundle") >= 2}

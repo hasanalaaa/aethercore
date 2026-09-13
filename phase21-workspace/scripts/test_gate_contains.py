@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader, contains  # noqa: E402
+from gate_reader import SourceReader, contains, count, position  # noqa: E402
 
 read = SourceReader(ROOT).read
 
@@ -90,7 +90,25 @@ def main() -> int:
            contains("enum E {\n    Active,\n    Committed,\n    Revoked,\n}",
                     "{ Active, Committed, Revoked }"), False)
 
-    # 5. End to end: the gate's own `has`, over the source the gate itself read.
+    # 5. `count` and `position` carry the same widening and the same limit.
+    #    `else { break; };` is a let-else body; the gate used to spell it
+    #    `else { break };`, which is not Rust and is in no tree.
+    streaming = read("services/maintenance-service/src/streaming.rs")
+    expect("literal count of 'else { break; };' in streaming.rs",
+           streaming.count("else { break; };") > 0, False)
+    expect("count(streaming, 'else { break; };') >= 5",
+           count(streaming, "else { break; };") >= 5, True)
+    expect("count(streaming, 'else { continue; };') (invented)",
+           count(streaming, "else { continue; };") > 0, False)
+    #    `position` is a SQUASHED index: never a line number, but monotone, which
+    #    is the only property the ordering checks use.
+    text = "alpha\n  beta\n    gamma\n"
+    expect("position orders 'alpha' before 'gamma'",
+           0 <= position(text, "alpha") < position(text, "gamma"), True)
+    expect("position of an absent token is -1",
+           position(text, "delta") == -1, True)
+
+    # 6. End to end: the gate's own `has`, over the source the gate itself read.
     gate = run_gate("phase13-reliability-audit.py")
     gate_has, gate_diag = gate["has"], gate["diag"]
     expect("phase13 gate has(diag, 'hardware_gate:IsolationGate')",

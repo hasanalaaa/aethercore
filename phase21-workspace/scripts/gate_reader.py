@@ -90,3 +90,27 @@ def contains(text: str, token: str) -> bool:
     cases in `test_gate_contains.py` are precisely that pair.
     """
     return token in text or _squash(token) in _squash(text)
+
+
+def count(text: str, token: str) -> int:
+    """How many times `token` occurs in `text`, ignoring whitespace.
+
+    The `>= N` checks are the same `DBT-P61-001` defect as `contains`: a gate
+    counting `verify_file_hash_size(&path` against a `rustfmt`-clean tree counts
+    zero. Squashing preserves the order of non-whitespace characters, so this is
+    never smaller than `text.count(token)`.
+    """
+    return _squash(text).count(_squash(token))
+
+
+def position(text: str, token: str, start: int = 0) -> int:
+    """Index of `token` in `text` ignoring whitespace, or -1. `DBT-P61-001`.
+
+    The index is in SQUASHED coordinates, which is why `start` must come from
+    another `position` call rather than from `str.find`. Squashing is monotone -
+    it deletes characters and never reorders them - so `position(a) <
+    position(b)` holds exactly when `a` precedes `b` in the real source. That is
+    the only property the ordering checks need, and it is the reason these
+    indices are never reported as line numbers.
+    """
+    return _squash(text).find(_squash(token), start)
