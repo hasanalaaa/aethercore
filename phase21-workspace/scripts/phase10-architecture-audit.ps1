@@ -81,7 +81,10 @@ Require-Marker 'crates/ipc/src/windows_impl.rs' 'on_stream_reset' 'stream reset 
 Require-Marker 'crates/ipc/src/windows_impl.rs' 'duplicate in-flight request id' 'desktop-side correlation-id collision defense'
 Require-Marker 'crates/ipc/src/windows_impl.rs' 'impl Drop for SessionClient' 'persistent/one-shot client shutdown lifecycle'
 Require-Marker 'crates/ipc/src/windows_impl.rs' 'CancelSynchronousIo' 'persistent session teardown cancels blocked synchronous pipe I/O'
-Require-Marker 'crates/ipc/src/windows_impl.rs' 'self.writer.shutdown();' 'SessionClient drop delegates to cancellation-first transport shutdown'
+# `Require-Marker`'s pattern is a REGEX: `shutdown();` parses as `shutdown` + an EMPTY
+# GROUP + `;`, which cannot match the literal `shutdown();` in the source. Escaped.
+# `DBT-P63-014`.
+Require-Marker 'crates/ipc/src/windows_impl.rs' 'self\.writer\.shutdown\(\);' 'SessionClient drop delegates to cancellation-first transport shutdown'
 Require-Marker 'services/maintenance-service/src/server.rs' 'inspect_named_pipe_client' 'principal derived from exact accepted pipe client'
 Require-Marker 'services/maintenance-service/src/server.rs' 'MAX_SESSIONS\s*:\s*usize\s*=\s*32' 'bounded authenticated sessions'
 Require-Marker 'services/maintenance-service/src/server.rs' 'MAX_SESSIONS_PER_USER_SID\s*:\s*usize\s*=\s*4' 'one local user cannot monopolize persistent session capacity'
@@ -94,7 +97,11 @@ Require-Marker 'services/maintenance-service/src/server.rs' 'SubscriberLagged' '
 Require-Marker 'services/maintenance-service/src/server.rs' 'publish_hydration' 'ordered typed session hydration'
 Require-Marker 'crates/contracts/proto/operations.proto' 'HydrateSessionRequest' 'explicit renderer/bootstrap stream hydration RPC'
 Require-Marker 'apps/desktop/src/main.rs' 'Payload::HydrateSession' 'renderer reload hydration over persistent session'
-Require-Marker 'apps/ui/src/App.svelte' 'resetStreamBackedState' 'stream reset clears stale renderer state before hydration'
+# `App.svelte` is a five-line wrapper around `app/AppShell.svelte` now, and the session
+# wiring moved to `platform/kernel-session.ts` + `platform/stream-state.ts`. These four
+# asserted a file that no longer holds the behaviour; `resetStreamBackedState` was also
+# renamed to `applyStreamReset`. `DBT-P63-014`.
+Require-Marker 'apps/ui/src/platform/stream-state.ts' 'export function applyStreamReset' 'stream reset clears stale renderer state before hydration'
 Require-Marker 'services/maintenance-service/src/server.rs' 'active_request_ids' 'per-session duplicate request correlation defense'
 Require-Marker 'crates/operation-kernel/src/cancellation.rs' 'AlreadyRegistered' 'duplicate active cancellation identifier defense'
 Require-Marker 'fuzz/fuzz_targets/ipc_frame.rs' 'decode_client_frame_bytes' 'v7 session parser libFuzzer coverage'
@@ -131,9 +138,9 @@ $uiText = $ui -join "`n"
 if ($uiText -match '\bsetInterval\s*\(' -or $uiText -match '\bclearInterval\s*\(') {
     throw 'Renderer polling timer remains after streaming migration.'
 }
-Require-Marker 'apps/ui/src/App.svelte' 'aethercore://kernel-event' 'renderer consumes live kernel event stream'
-Require-Marker 'apps/ui/src/App.svelte' 'start_ipc_session' 'renderer explicitly starts session after listener registration'
-Require-Marker 'apps/ui/src/App.svelte' 'stream-reset|streamReset' 'renderer consumes explicit stream resets'
+Require-Marker 'apps/ui/src/platform/kernel-session.ts' 'aethercore://kernel-event' 'renderer consumes live kernel event stream'
+Require-Marker 'apps/ui/src/platform/kernel-session.ts' 'start_ipc_session' 'renderer explicitly starts session after listener registration'
+Require-Marker 'apps/ui/src/platform/kernel-session.ts' 'stream-reset|streamReset' 'renderer consumes explicit stream resets'
 Require-Marker 'apps/desktop/src/main.rs' 'SESSION_DESIRED' 'background reconnect waits for renderer readiness'
 Require-Marker 'apps/desktop/src/main.rs' 'LAST_EVENT_SEQUENCE\.store\(reset\.current_sequence' 'service-restart sequence reset can move cursor backward'
 Require-Marker 'apps/desktop/src/main.rs' 'CONNECT_LOCK' 'desktop reconnect serialization'

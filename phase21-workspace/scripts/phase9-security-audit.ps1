@@ -23,7 +23,14 @@ function Reject-Tree([string]$Pattern,[string]$Label) {
 # Principal/session ownership is derived by the service from the connected named-pipe client.
 Require-Marker 'crates/security/src/lib.rs' 'GetNamedPipeClientProcessId' 'named-pipe client PID is kernel-derived'
 Require-Marker 'crates/security/src/lib.rs' 'GetNamedPipeClientSessionId' 'named-pipe client session is kernel-derived'
-Require-Marker 'crates/security/src/lib.rs' 'ImpersonateNamedPipeClient' 'principal token is read from the exact connected pipe client'
+# The call moved into the RAII owner that guarantees the revert: `security/src/lib.rs:128`
+# takes `ThreadImpersonation::named_pipe_client(pipe)`, and that type is the ONLY caller of
+# `ImpersonateNamedPipeClient` in the workspace (`windows-foundation/src/lib.rs:320`), which
+# is what makes a missed `RevertToSelf` impossible rather than merely discouraged. Asserting
+# the raw Win32 name in `security` asserted a spelling; asserting BOTH ends asserts the
+# chain. First evaluated ever by run 34778679667, after `DBT-P63-013` let this file parse.
+Require-Marker 'crates/security/src/lib.rs' 'ThreadImpersonation::named_pipe_client\(pipe\)' 'principal token is read from the exact connected pipe client'
+Require-Marker 'crates/windows-foundation/src/lib.rs' 'ImpersonateNamedPipeClient\(pipe\)' 'the impersonation owner is the only caller of ImpersonateNamedPipeClient'
 Require-Marker 'crates/security/src/lib.rs' 'OpenThreadToken' 'impersonated client token is queried directly'
 Require-Marker 'crates/security/src/lib.rs' 'RevertToSelf' 'service thread reverts client impersonation before request dispatch'
 Require-Marker 'crates/security/src/lib.rs' 'TokenStatistics' 'logon AuthenticationId captured from client token'
