@@ -13,6 +13,45 @@ use aethercore_system_repair::{
     RepairAssessmentState, RepairCheck, RepairCoordinator, RepairError, RepairPlatform,
 };
 
+fn wait_terminal(
+    coordinator: &RepairCoordinator,
+    plan_id: &str,
+    state: &str,
+) -> aethercore_system_repair::RepairExecutionStatus {
+    // `status()` composes `plan_state` from the operation engine and every record field -
+    // `mutation_started`, `recovery_required`, `outcome` - from the database, and both
+    // `fail_repair` and the verification path transition the plan BEFORE they upsert the
+    // record. A loop keyed on `plan_state` alone therefore reads the record one write early.
+    // Waiting for `stage` too settles the database side, because `stage` is set in that same
+    // upsert and falls back to the record when there is no live telemetry.
+    //
+    // This is `DBT-P62-003` in a second crate: P62 found and fixed the identical race in
+    // `aethercore-cleaner` and did not check its siblings. Measured, not reasoned: run
+    // `34773880960` ran this very test twice on one runner from one commit - step 13 at
+    // 18:36:00 `ok`, step 18 at 18:48:37 `FAILED` on `assertion failed: status.recovery_required`.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let status = coordinator
+            .status(OWNER, Some(plan_id))
+            .expect("status")
+            .expect("execution");
+        if status.plan_state == state && status.stage == state {
+            return status;
+        }
+        if state != "Failed" {
+            assert_ne!(status.plan_state, "Failed", "{}", status.failure_message);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "plan never reached {state}: plan_state={} stage={} {}",
+            status.plan_state,
+            status.stage,
+            status.failure_message
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
 fn start_repair(
     coordinator: &RepairCoordinator,
     owner: &str,
@@ -193,22 +232,10 @@ fn repair_plan_is_authorized_and_mutation_barrier_is_durable() {
     authorize(&engine, &plan.id, &plan.digest);
     start_repair(&coordinator, OWNER, &plan.id).expect("start repair");
 
-    let deadline = Instant::now() + Duration::from_secs(3);
-    loop {
-        let status = coordinator
-            .status(OWNER, Some(&plan.id))
-            .expect("status")
-            .expect("execution");
-        if status.plan_state == "Completed" {
-            assert!(status.mutation_started);
-            assert!(!status.recovery_required);
-            assert!(status.steps.iter().any(|step| step.id == "dism-restore"));
-            break;
-        }
-        assert_ne!(status.plan_state, "Failed", "{}", status.failure_message);
-        assert!(Instant::now() < deadline, "repair timed out");
-        thread::sleep(Duration::from_millis(10));
-    }
+    let status = wait_terminal(&coordinator, &plan.id, "Completed");
+    assert!(status.mutation_started);
+    assert!(!status.recovery_required);
+    assert!(status.steps.iter().any(|step| step.id == "dism-restore"));
 
     let events = platform.events.lock().expect("events").clone();
     let preflight = events
@@ -247,18 +274,10 @@ fn servicing_failure_before_barrier_does_not_require_recovery() {
     authorize(&engine, &plan.id, &plan.digest);
     start_repair(&coordinator, OWNER, &plan.id).expect("start");
 
-    let deadline = Instant::now() + Duration::from_secs(3);
-    loop {
-        let status = coordinator.status(OWNER, Some(&plan.id)).unwrap().unwrap();
-        if status.plan_state == "Failed" {
-            assert!(!status.mutation_started);
-            assert!(!status.recovery_required);
-            assert!(status.steps.iter().any(|step| step.id == "dism-scan"));
-            break;
-        }
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(10));
-    }
+    let status = wait_terminal(&coordinator, &plan.id, "Failed");
+    assert!(!status.mutation_started);
+    assert!(!status.recovery_required);
+    assert!(status.steps.iter().any(|step| step.id == "dism-scan"));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -286,17 +305,9 @@ fn failure_after_barrier_requires_recovery_review() {
     authorize(&engine, &plan.id, &plan.digest);
     start_repair(&coordinator, OWNER, &plan.id).expect("start");
 
-    let deadline = Instant::now() + Duration::from_secs(3);
-    loop {
-        let status = coordinator.status(OWNER, Some(&plan.id)).unwrap().unwrap();
-        if status.plan_state == "Failed" {
-            assert!(status.mutation_started);
-            assert!(status.recovery_required);
-            break;
-        }
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(10));
-    }
+    let status = wait_terminal(&coordinator, &plan.id, "Failed");
+    assert!(status.mutation_started);
+    assert!(status.recovery_required);
     let _ = std::fs::remove_dir_all(root);
 }
 
