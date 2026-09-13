@@ -65,9 +65,27 @@ fn the_shipped_artifact_is_present_and_matches_its_pinned_hash() {
     verify_model_hash(&path, &embedded_model_entry()).expect("pinned sha256 must match");
 }
 
+/// DBT-P62-004: the four tests below each load a 1.5B model and generate against it.
+/// `cargo test` runs them on parallel threads, so on the 2-vCPU Windows runner four
+/// llama contexts compete for two cores and `ASSISTANT_DEADLINE` — 20 seconds, a
+/// PRODUCT constant covering generation only — expires before the first token.
+/// Measured: run 34760963140 passed this binary, run 34765013157 reported
+/// "deadline exceeded after 0 token(s)" for four of them with two logged as "running
+/// for over 60 seconds". Same code, same deadline, different scheduling.
+///
+/// Serialising is not masking a product defect, and is the opposite of the P36 lock
+/// this phase deleted from the cleaner tests: nothing about the product runs four
+/// concurrent generations on one machine, and a throughput measurement taken under 4x
+/// CPU oversubscription is not a measurement of anything the product does. Each test
+/// gets the machine.
+static ONE_MODEL_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// The one that fails while `DBT-P56-002` is open.
 #[test]
 fn the_embedded_model_generates_tokens_over_an_evidence_pack() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = product_root().join(EMBEDDED_MODEL_RELATIVE_PATH);
     verify_model_hash(&path, &embedded_model_entry()).expect("pinned sha256 must match");
 
@@ -118,6 +136,9 @@ fn the_embedded_model_generates_tokens_over_an_evidence_pack() {
 /// reaches it: between two tokens, while generation is running.
 #[test]
 fn cancelling_the_real_loop_stops_generation_early() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = product_root().join(EMBEDDED_MODEL_RELATIVE_PATH);
     verify_model_hash(&path, &embedded_model_entry()).expect("pinned sha256 must match");
 
@@ -166,6 +187,9 @@ fn loaded_engine() -> AssistantEngine {
 /// training is one that will also answer "is my disk failing?" from training.
 #[test]
 fn the_real_model_refuses_a_question_its_evidence_cannot_answer() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let engine = loaded_engine();
     assert_eq!(engine.engine_label(), "localModel");
     let outcome = engine.ask(
@@ -186,6 +210,9 @@ fn the_real_model_refuses_a_question_its_evidence_cannot_answer() {
 /// grounded, with every citation resolving against the pack it was given.
 #[test]
 fn the_real_model_answers_a_question_its_evidence_covers_and_cites_it() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let engine = loaded_engine();
     let pack = pack();
     let outcome = engine.ask(
