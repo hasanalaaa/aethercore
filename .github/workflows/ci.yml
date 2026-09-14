@@ -63,8 +63,19 @@ jobs:
       # here, and kept because it is also the one network fetch in the first twelve
       # steps. The action still verifies by enumeration afterwards, so a partial
       # restore fails loudly rather than silently linking against nothing.
-      - name: Cache Windows ADK Deployment Tools
-        uses: actions/cache@v4
+      #
+      # Split restore/save, and the first version of this was NOT and was wrong.
+      # `actions/cache@v4` saves from a post-step declared `post-if: success()`, so
+      # on a job that fails -- which this one has, every run since P59 -- it never
+      # saves at all. Measured: run 34831042672 wrote the key, run 34834327695 asked
+      # for the same unchanged key and got "Cache not found", and the ADK install ran
+      # for 55s again. The save sits immediately after the install instead, with no
+      # `always()`: a plain step is skipped when an earlier step failed, so a failed
+      # install cannot publish a half-populated Deployment Tools directory, while a
+      # failure later in the job cannot prevent a save that has already happened.
+      - name: Restore Windows ADK Deployment Tools
+        id: adk-cache
+        uses: actions/cache/restore@v4
         with:
           path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
           key: ${{ runner.os }}-adk-deploytools-${{ hashFiles('.github/actions/install-windows-adk/action.yml') }}
@@ -73,6 +84,12 @@ jobs:
       # from `cargo test` onward was unreachable. The recipe is shared with
       # windows-installer.yml rather than copied - see the action's own header.
       - uses: ./.github/actions/install-windows-adk
+      - name: Save Windows ADK Deployment Tools
+        if: steps.adk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
+          key: ${{ steps.adk-cache.outputs.cache-primary-key }}
       # P61: the seal P60 built and proved can fail had no automated caller —
       # `p30-delivered-source-seal-ok` lives in phase30-adversarial-audit.py and
       # the phase30<-31<-32<-33<-34 chain terminates unreferenced. It runs here,
