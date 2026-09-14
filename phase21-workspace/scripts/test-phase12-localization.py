@@ -329,10 +329,15 @@ def main() -> int:
     result_code_surfaces: set[str] = set()
     for path in sorted(UI.rglob("*.svelte")):
         template = re.sub(r"<script\b[^>]*>.*?</script>", "", path.read_text(encoding="utf-8"), flags=re.S | re.I)
+        # Span-exact, not a lookbehind window: a fixed character budget before the
+        # mustache can be walked past by any <TechnicalText> short enough to fall
+        # outside it, which would let a bare render next to an unrelated isolated
+        # one read as isolated. Collect the elements and ask whether the mustache
+        # is inside one.
+        isolated = [m.span() for m in re.finditer(r"<TechnicalText\b[^>]*?/>", template)]
         for match in re.finditer(r"\{[^{}]*?\b[A-Za-z_]\w*\.resultCode\b[^{}]*\}", template):
             where = f"{path.relative_to(ROOT)}: {match.group(0)}"
-            preceding = template[max(0, match.start() - 32):match.start()]
-            if "TechnicalText value=" in preceding:
+            if any(start < match.start() and match.end() <= end for start, end in isolated):
                 result_code_surfaces.add(str(path.relative_to(ROOT)))
             elif re.match(r"\{[#:]?(?:if|else if|each)\b", match.group(0)) or ".some(" in match.group(0):
                 continue  # a branch on the value, not a render of it

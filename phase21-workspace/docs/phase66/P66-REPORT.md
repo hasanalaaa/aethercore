@@ -11,8 +11,12 @@ was thirty entries of three different kinds, and the gate was printing twenty of
 them.** Sixteen were a real EN/AR parity violation and are translated. Fourteen
 were the gate asking the wrong question, and the gate is fixed with a negative
 control on every change. `test-phase12-localization.py` goes **30/32 → 34/34**.
-**Clippy still has not run on Windows** — the brief says it did; the log says it
-did not. Dependabot stays paused.
+Run `34875004510` then carried step 21 through phases 12, 13, 14, 15, 16 and the
+enterprise adversarial audit — **eight phases further than it has ever reached**
+— and stopped at `verify-enterprise.ps1:24`. **Clippy has now executed on
+Windows for the first time**, though not in the run the brief cited, and not
+with any of the findings four phases of predictions named. Dependabot stays
+paused.
 
 ---
 
@@ -37,9 +41,9 @@ required Windows Update service` — are the same user-facing prose class as
 `detail`, rendered through the same component. A quarter of the tree failure was
 not in the brief because it was not in the gate's output. `DBT-P66-004`.
 
-**2. Clippy did not run, and `DBT-P63-010` cannot be closed.** The brief states
-that run `34845989034` had "clippy RAN AND PASSED". Measured over the whole
-21,473-line job log:
+**2. Clippy did not run in the run the brief cited, and `DBT-P63-010` still
+cannot be closed.** The brief states that run `34845989034` had "clippy RAN AND
+PASSED". Measured over the whole 21,473-line job log:
 
 ```
 grep -ci clippy   ->  2
@@ -51,9 +55,12 @@ Both are the toolchain install in step 3. `cargo clippy` never executed. That
 run died at step 21 in `phase12-localization-audit.ps1:12` reporting
 `Phase 12 localization audit: 30/32 checks passed` — which is reached through
 `verify-enterprise.ps1:15`, **eight lines before the clippy call at `:23`**.
-This is the fourth consecutive phase to expect clippy as the wall and the fourth
-to find it unreached, always for the same structural reason: line 15 throws
-before line 23 is read. The row stays **OPEN**.
+That made it the fourth consecutive phase to expect clippy as the wall and the
+fourth to find it unreached, always for the same structural reason: line 15
+throws before line 23 is read. **This phase's own run finally reached it** — and
+what it found is three findings in two crates, none of them among the 41
+measured on this Mac, with every crate behind them left unlinted. The row stays
+**OPEN**; the detail is under ITEM 3.
 
 **3. phase10 has eight inline throws, not seven.** The brief says seven and
 credits P65 with counting them. P65's prose said seven and **its own table
@@ -207,6 +214,106 @@ other flag, which decides two rows below.
 | `:56` | `enterprise-stress-matrix.ps1` | — | **NO** — behind `-RuntimeStress`/`-ExtendedSoak` | unreachable in CI |
 | `:62` | `verify-phase16.ps1 -ReleasePackaging` | — | **NO** — behind `-ReleasePackaging` | unreachable in CI |
 
+### The verdict: run `34875004510`, and the wall moved eight phases
+
+Pushed at `4b6f512`. **Twenty steps green, deny-check green, step 21 red — but
+five phases and one audit further down than it has ever reached.**
+
+```
+Phase 12 localization audit: PASS          <- the wall for two phases
+Phase 12 localization/RTL source audit passed.
+Phase 12 Intl/pluralization tests: PASS
+Phase 12 authoritative Windows verification gate passed.
+Phase 13 fault-injection suite passed.      Phase 13 gate passed.
+Phase 14 scheduler fault-injection passed.  Phase 14 gate passed.
+Phase 15 cryptographic and orchestration regressions passed.  Phase 15 gate passed.
+Phase 16 source/native master gate passed.
+Enterprise adversarial source audit passed.   (verify-enterprise.ps1:18)
+cargo fmt --all -- --check                    (verify-enterprise.ps1:21)  silent, passed
+Exception: ...\scripts\verify-enterprise.ps1:24
+  24 | ...  throw 'Enterprise clippy -D warnings gate failed.'
+```
+
+The eight never-before-evaluated throws behind `phase12-localization-audit.ps1:12`
+(the consent-broker and desktop-bridge markers at `:14-22`) were pre-measured on
+this Mac before the push and all eight passed on the runner, as did
+`node scripts/phase12-i18n-tests.cjs`.
+
+### `DBT-P63-010` — clippy has now run on Windows, and the answer is nobody's prediction
+
+`grep -ci clippy` over this run: **8**, no longer 2. The gate at
+`verify-enterprise.ps1:23` executed for the first time in this repository's
+history. It failed — and **not one of the 41 findings measured on this Mac is
+among the reasons**:
+
+| lint | file |
+|---|---|
+| `manual !RangeInclusive::contains` | `crates\windows-foundation\src\lib.rs:63:39` |
+| `manually reimplementing div_ceil` | `crates\windows-foundation\src\lib.rs:66:37` |
+| `unused variable: path` | `crates\fleet\src\trust.rs:358:19` |
+
+**Three findings, two crates.** All three are in code macOS never compiles: the
+first two are inside the `unsafe` `RegGetValueW` block in `windows-foundation`
+(`bytes < 2 || bytes > 64 * 1024`, and `((bytes as usize) + 1) / 2`), and the
+third is `fn set_owner_only(path: &Path)`, whose only body is `#[cfg(unix)]`, so
+`path` is unused on Windows and used everywhere else.
+
+**And this is a partial measurement, which is the part that matters.** The log
+carries `build failed, waiting for other jobs to finish...` exactly once, and:
+
+```
+Checking/Compiling lines on Windows for the 10 crates that fail clippy here:
+  db-diagnostics 0   support-bundle 0   intelligence-core 0   diagnostics 0
+  driver-backup 0    windows-repair-intelligence 0   security 0
+  hardware-telemetry 0   performance-telemetry 0   windows-update 0
+```
+
+**Zero. None of them was reached.** `windows-foundation` is a low-level
+dependency — four of those ten import it directly — so when it failed, cargo
+stopped scheduling and everything behind it went unlinted. Clippy is the phase
+chain in miniature: **an early failure masking an unknown quantity behind it**,
+which is the single structural defect this project has been paying for since
+P59.
+
+So the row moves from *"has never executed"* to *"executed, failed, and yielded
+its first layer of three"*, and it stays **OPEN**. What is behind it is at
+minimum the 21 macOS findings in code Windows compiles, plus whatever lives in
+the 7,575 lines of `windows_impl.rs` that no clippy run on any host has ever
+seen. Reproducing the full Windows set from this Mac was attempted —
+`cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-msvc`,
+the target already installed — and it does **not** work: crates with C build
+scripts fail in `cc-rs` (`command did not execute successfully ... "cc"`),
+because cross-compiling the native build inputs needs a Windows C toolchain this
+host does not have.
+
+**But scoped to packages, it works, and that is the most useful thing this phase
+found.** The two crates that failed are pure Rust:
+
+```
+cargo clippy -p aethercore-windows-foundation -p aethercore-fleet \
+  --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings
+
+error: manual `!RangeInclusive::contains`   crates/windows-foundation/src/lib.rs:63:39
+error: manually reimplementing `div_ceil`   crates/windows-foundation/src/lib.rs:66:37
+error: unused variable: `path`              crates/fleet/src/trust.rs:358:19
+error: unused import: `std::path::Path`     crates/fleet/src/transport.rs:506:9
+```
+
+Three of those are the runner's three, reproduced **in seconds on this Mac**.
+The fourth — `unused import: std::path::Path` at `transport.rs:506` — is in the
+`lib test` target and **the runner never printed it**, because it stopped
+scheduling before that unit ran. So the wall is four findings, not three, and
+the same masking that hid ten crates hid one more finding inside a crate it did
+report.
+
+The method matters more than the four: **`--target x86_64-pc-windows-msvc`
+scoped with `-p` reproduces the Windows clippy wall locally for any crate
+without a C build script.** P63, P64 and P65 each recorded that fixing this list
+from macOS would be "guessing at the runner's set from the wrong host". For
+pure-Rust crates that is no longer true, and it converts the remaining layers of
+`DBT-P63-010` from 50-minute round trips into local runs. It is the same lesson
+P65 drew about the Python gates, extended to the Rust ones.
+
 ### The one sub-gate built against the failure mode the last four phases hit
 
 Lines `:28-49` look redundant beside `cargo test --workspace` at `:25`, and they
@@ -299,7 +406,8 @@ to `dispatch.rs` turns step 21 red for a reason no one will connect to this.
 
 **Not resumed.** The condition in `.github/dependabot.yml` is *"RESTORE THE
 THREE LIMITS TO 5 WHEN `ci.yml`'s WINDOWS JOB IS GREEN ON `main`."* It is not
-green: run `34845989034` is `failure` at step 21. P59, P60, P63, P64 and P65
+green: this phase's own run `34875004510` is `failure` at step 21, now at
+`verify-enterprise.ps1:24`. P59, P60, P63, P64 and P65
 each declined for the same reason and each was right. Twenty-one ledger rows
 were open at the start of this session; this phase closes five it opened and
 leaves `DBT-P63-010` and `DBT-P65-003` open with corrected measurements.
@@ -358,35 +466,44 @@ cargo fmt --all -- --check     PASS
 | commit | item |
 |---|---|
 | `8111fda` | ITEM 1 + ITEM 2 — the three check defects, the sixteen translations, `DBT-P66-001..005` |
-| this one | the ledger rows, the corrections to `DBT-P63-010` and `DBT-P65-003`, and this report |
+| `4b6f512` | ITEM 3 — the sub-gate assertion record, the ledger rows, the corrections to `DBT-P63-010` and `DBT-P65-003` |
+| this one | ITEM 3's verdict from run `34875004510`, and the span-exact tightening of `result_code_path_isolation` |
 
 ## The single next action
 
-**Clippy, and it does not need CI to be read — but it does need CI to be
-believed.** It is the next thing `verify-enterprise.ps1` reaches once the Phase
-12 wall is down, and it has never executed on Windows. Measured here at
-`8111fda`: **exit 101, 41 findings across 10 crates** — not P63's 30 across 8,
-which is itself a reason to distrust any local number as a stand-in. Split by
-what the runner actually compiles:
+**Clippy, layer by layer, and it no longer needs CI.** Step 21 now stops at
+`verify-enterprise.ps1:24` with four findings in two crates, and all four
+reproduce on this Mac in seconds:
 
-* **21 will fire on Windows** — 10 `collapsible_if`, `unnecessary_unsafe` at
-  `crates/security/src/lib.rs:538`, `derivable_impls` at
-  `crates/windows-update/src/lib.rs:40`, and the rest.
-* **16 are `dead_code` that exists only because macOS cfg's out the Windows
-  consumers** — `parse_nvme_health_log`, `parse_ata_smart_sector`,
-  `sid_text_from_bytes`, the `driver-backup` manifest structs. They will not
-  fire there.
-* **4 are in `crates/performance-telemetry/src/macos_impl.rs`**, which the
-  runner never builds.
+```
+cargo clippy -p aethercore-windows-foundation -p aethercore-fleet \
+  --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings
+```
 
-And the gap runs the other way: **7,575 lines of `windows_impl.rs` across 39
-cfg-gated files have never been linted by any clippy run on any host**, so the
-runner's set is not a subset of this one and cannot be derived from it.
+Start there. Then re-run and expect a **new** layer rather than a green gate:
+cargo stopped scheduling when `windows-foundation` failed, and none of the ten
+crates that fail clippy on this host was reached. What is behind the four is at
+minimum the **21 findings measured here in code Windows compiles** — 10
+`collapsible_if`, `unnecessary_unsafe` at `crates/security/src/lib.rs:538`,
+`derivable_impls` at `crates/windows-update/src/lib.rs:40`, and the rest — plus
+an unknown amount inside the **7,575 lines of `windows_impl.rs` across 39
+cfg-gated files that no clippy run on any host has ever linted**. Of this host's
+41, 16 are `dead_code` that exists only because macOS cfg's out the Windows
+consumers and **will not** fire there, and 4 are in `macos_impl.rs`, which the
+runner never builds.
 
-Not fixed in P66, deliberately: it is in none of this session's four items, it
-changes Rust logic in eight crates, and the only thing that would validate it is
-`cargo test --workspace` — a separate, verifiable unit of work rather than a tail
-end of this one.
+Not fixed in P66, deliberately and with the reason stated: it is in none of this
+session's four items, its true size is unknown because it is masked, and every
+layer needs `cargo test --workspace` to validate. What P66 owed the next phase
+was a measurement and a method, and both are above.
+
+Two smaller things to carry in:
+
+* **`phase10-architecture-audit.ps1:177` has two lines of headroom.**
+  `dispatch.rs` is 258 against a throw at 260. An unrelated edit turns step 21
+  red for a reason nobody will connect to this.
+* **Cross-target clippy needs `-p`.** The whole-workspace form dies in `cc-rs`
+  on crates with C build scripts, so scope it to the packages the runner named.
 
 Two things to carry in:
 
