@@ -58,6 +58,10 @@ a second one.
   action is already routed and trust-checked here. A tier check belongs beside the
   existing broker trust gates, returning a **typed** answer with a message key, in
   the same shape as every other refusal.
+  *Amended 2026-09-14 (`DBT-P63-004`):* the router is a module tree now. The
+  per-request preamble every verb runs behind is `router/dispatch.rs`; the broker
+  trust gates are `router/consent.rs` (`require_broker`) and `router/updates.rs`
+  (`require_update_broker`). The boundary is unchanged — only where to look for it.
 - **`crates/operation-engine` / `operation-kernel`** — consent and mutation
   authority. A paid-tier operation refused for licensing must be refused the same
   way a non-consented operation is refused today: typed, logged, no partial work.

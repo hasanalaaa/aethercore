@@ -29,6 +29,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / "scripts"))
+from gate_reader import module_text  # noqa: E402
+
+# `DBT-P63-004`: the maintenance service router is a module tree now -
+# `router.rs` plus `router/*.rs`. These checks assert its verbs.
+ROUTER = "services/maintenance-service/src/router.rs"
 failures: list[str] = []
 checks = 0
 
@@ -85,7 +92,7 @@ if before2 - len(failures) > len(SUPERSEDED_PATTERNS):
 diag_rs = (ROOT / "crates/diagnostics/src/lib.rs").read_text(encoding="utf-8")
 live_registry = {v for _, v in re.findall(r'pub const ([A-Z_]+): &str = "([^"]+)"', diag_rs)}
 svc_callsites: set[str] = set()
-for _p in (ROOT / "services/maintenance-service/src").glob("*.rs"):
+for _p in (ROOT / "services/maintenance-service/src").rglob("*.rs"):
     svc_callsites |= set(re.findall(r"events::([A-Z_]+)", _p.read_text(encoding="utf-8")))
 unknown_live = [c for c in svc_callsites if f"pub const {c}" not in diag_rs]
 check("p29-log-callsites-live-registry", not unknown_live,
@@ -130,7 +137,7 @@ if export_rs.exists():
           "no-implicit-key invariant comment missing")
 
 # Router handler wires the export read-only through existing accessors.
-router_rs = (ROOT / "services/maintenance-service/src/router.rs").read_text(encoding="utf-8")
+router_rs = module_text(ROOT, ROUTER)
 check("p29-router-export-handler", "Payload::ExportJournal" in router_rs,
       "service export handler missing")
 for accessor in ("maintenance_executions_for_owner", "support_journal_events_for_owner",
@@ -153,7 +160,7 @@ check("p29-log-emitter-schema", '"fields"' in diag_rs and '"event"' in diag_rs,
       "structured emitter does not pin the stable schema")
 
 # Emitted event names must come from the registry (grep call sites).
-svc_srcs = list((ROOT / "services/maintenance-service/src").glob("*.rs"))
+svc_srcs = list((ROOT / "services/maintenance-service/src").rglob("*.rs"))
 emit_calls: set[str] = set()
 for p in svc_srcs:
     body = p.read_text(encoding="utf-8")

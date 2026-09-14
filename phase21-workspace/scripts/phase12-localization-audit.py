@@ -5,6 +5,13 @@ from pathlib import Path
 import re, sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / "scripts"))
+from gate_reader import module_text  # noqa: E402
+
+# `DBT-P63-004`: the maintenance service router is a module tree now -
+# `router.rs` plus `router/*.rs`. These checks assert its verbs.
+ROUTER = "services/maintenance-service/src/router.rs"
 UI = ROOT / 'apps/ui/src'
 EN = UI / 'lib/i18n/catalog.en.ts'
 AR = UI / 'lib/i18n/catalog.ar.ts'
@@ -141,8 +148,8 @@ def main() -> int:
     if 'Windows Update' in '\n'.join(v for v,_ in ar.values()): fail(errors,'Arabic catalog still contains the UI phrase "Windows Update"; use تحديث Windows.')
 
     # Every typed service error message key must have renderer catalog coverage; technical_detail stays diagnostic-only.
-    service_sources = '\n'.join((ROOT / rel).read_text(encoding='utf-8') for rel in [
-        'services/maintenance-service/src/errors.rs','services/maintenance-service/src/router.rs','services/maintenance-service/src/server.rs'
+    service_sources = '\n'.join(module_text(ROOT, rel) for rel in [
+        'services/maintenance-service/src/errors.rs', ROUTER, 'services/maintenance-service/src/server.rs'
     ])
     service_keys = set(re.findall(r'\"((?:ipc|kernel|plan|authorization|drivers|repair|cleanup|startup|diagnostics|service)\.[A-Za-z0-9_.]+)\"', service_sources))
     uncovered_service = sorted(service_keys - set(en))

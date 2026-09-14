@@ -498,7 +498,7 @@ marker(
 )
 
 service = "\n".join(
-    (ROOT / "services/maintenance-service/src" / name).read_text(encoding="utf-8")
+    _READER.read_module("services/maintenance-service/src/" + name)
     for name in ["main.rs", "composition.rs", "router.rs", "protocol.rs", "streaming.rs", "server.rs"]
 )
 marker(
@@ -1387,7 +1387,9 @@ checks["phase9_production_sanitation"] = {
 kernel10 = "\n".join(path.read_text(encoding="utf-8") for path in sorted((ROOT / "crates/operation-kernel/src").glob("*.rs")))
 ipc10 = (ROOT / "crates/ipc/src/lib.rs").read_text(encoding="utf-8") + "\n" + (ROOT / "crates/ipc/src/windows_impl.rs").read_text(encoding="utf-8")
 server10 = (ROOT / "services/maintenance-service/src/server.rs").read_text(encoding="utf-8")
-router10 = (ROOT / "services/maintenance-service/src/router.rs").read_text(encoding="utf-8")
+# `DBT-P63-004`: the router is `router.rs` plus `router/*.rs` now. These markers
+# assert its verbs and its typed errors, both of which live in the tree.
+router10 = _READER.read_module("services/maintenance-service/src/router.rs")
 protocol10 = (ROOT / "services/maintenance-service/src/protocol.rs").read_text(encoding="utf-8")
 streaming10 = (ROOT / "services/maintenance-service/src/streaming.rs").read_text(encoding="utf-8")
 composition10 = (ROOT / "services/maintenance-service/src/composition.rs").read_text(encoding="utf-8")
@@ -1439,42 +1441,60 @@ checks["phase10_telemetry_owner_scoped"] = {
     "note": "Transient progress lookup/clear APIs are principal-scoped by construction; no caller reads a plan id then filters owner after disclosure.",
 }
 marker("phase10_recovery_composition", composition10 + kernel10, ["RecoverySupervisor", "recover_incomplete", "run_task"])
-# P63 / `DBT-P61-001`, and this one is a DECISION, so it is written out.
+# P63 / `DBT-P61-001`, then P64 / `DBT-P63-004`, and this one is a DECISION, so
+# it is written out.
 #
-# The P10 budgets were `main.rs < 220` and `router.rs < 240`. Measured today:
-# 397 and 1,868 - 1.8x and 7.8x. Two cures were possible and both are wrong on
-# their own. Raising the budget to today's numbers deletes the alarm. Decomposing
-# `handle_request`, which is lines 86-1753 of `router.rs` as one match, is a real
-# refactor with its own test plan - and several other gates read `router.rs` as a
-# FILE (`phase15_security`'s `require_update_broker(peer)?`, its
-# `legacy_service_download_rpc_disabled` arm at `:774`/`:785`, `zenith_recursive`'s
-# two leased-route checks), so moving code out of it silently breaks them. It is not
-# something to do as a side effect of classifying gate failures.
+# The P10 budgets were `main.rs < 220` and `router.rs < 240`. P63 measured 397 and
+# 1,868 - 1.8x and 7.8x - and would neither raise the budget (which deletes the
+# alarm) nor decompose inside a gate-classification phase, so it froze a RATCHET at
+# the measured values: the files may shrink, and any growth fails.
 #
-# So the budget becomes a RATCHET, at the exact measured values and not one line
-# above them: the file may shrink, and any growth fails this check the moment it is
-# written. The target stays 220/240 and is recorded in `DBT-P63-004`, which names
-# decomposition as the cure. A ceiling that can only fall is not a budget met; it is
-# a budget that has stopped being lost.
-SERVICE_LINE_CEILING = {"main.rs": 397, "router.rs": 1868}
+# `router.rs` is decomposed. `handle_request` was lines 86-1753 as one match; the
+# 81 verbs are now `router/*.rs`, the module root is 116 lines, and the gates that
+# assert on the router read the tree through `SourceReader.read_module`. So the
+# router's ratchet becomes its budget again - 240, the number P10 wrote - and it is
+# met rather than merely no longer being lost.
+#
+# `main.rs` is still 397 and still a ratchet. `phase10-architecture-audit.ps1:153`
+# throws on it exactly as `:155` threw on the router, so the windows job cannot be
+# green until it is decomposed too. `DBT-P63-004` stays open for it.
+#
+# The third entry is the loophole decomposition opens: a 1,868-line dispatcher must
+# not come back as an 1,868-line `router/updates.rs`. Every file in the tree carries
+# the same kind of ratchet, at today's largest, and it may only fall.
+SERVICE_LINE_CEILING = {"main.rs": 397, "router.rs": 240}
 SERVICE_LINE_TARGET = {"main.rs": 220, "router.rs": 240}
+ROUTER_MODULE_CEILING = 258
 service_src = ROOT / "services/maintenance-service/src"
 service_lines = {
     name: len((service_src / name).read_text(encoding="utf-8").splitlines())
     for name in SERVICE_LINE_CEILING
+}
+router_module_lines = {
+    path.name: len(path.read_text(encoding="utf-8").splitlines())
+    for path in sorted((service_src / "router").glob("*.rs"))
 }
 service_over = {
     name: {"lines": value, "ceiling": SERVICE_LINE_CEILING[name]}
     for name, value in service_lines.items()
     if value > SERVICE_LINE_CEILING[name]
 }
+service_over.update({
+    f"router/{name}": {"lines": value, "ceiling": ROUTER_MODULE_CEILING}
+    for name, value in router_module_lines.items()
+    if value > ROUTER_MODULE_CEILING
+})
 checks["phase10_service_decomposed"] = {
-    "ok": all((service_src / name).is_file() for name in ["main.rs","composition.rs","errors.rs","router.rs","protocol.rs","streaming.rs","server.rs"]) and not service_over,
+    "ok": all((service_src / name).is_file() for name in ["main.rs","composition.rs","errors.rs","router.rs","protocol.rs","streaming.rs","server.rs"])
+          and bool(router_module_lines)
+          and not service_over,
     "main_lines": service_lines["main.rs"],
     "router_lines": service_lines["router.rs"],
+    "router_modules": len(router_module_lines),
+    "router_module_max": max(router_module_lines.values(), default=0),
     "over_ceiling": service_over,
     "target": SERVICE_LINE_TARGET,
-    "note": "Ratchet, not a budget met: the ceilings are the measured values and may only fall. DBT-P63-004 holds the 220/240 target.",
+    "note": "router.rs meets the P10 budget of 240 by decomposition (DBT-P63-004); main.rs is still a ratchet at its measured 397 and the P10 target is 220. Every router/*.rs carries its own ratchet so the dispatcher cannot reappear one directory down.",
 }
 marker("phase10_per_principal_sequences", kernel10 + proto, ["HashMap<String, OwnerStream>", "monotonic per authenticated principal", "does_not_leak_cross_user_activity", "dropped_through_sequence"])
 marker("phase10_explicit_stream_reset", kernel10 + server10 + proto, ["SubscriptionItem::Lagged", "ReplayWindowExceeded", "SubscriberLagged", "SequenceReset", "StreamReset"])
@@ -1877,7 +1897,7 @@ update_platform15 = (ROOT / "crates/update-engine/src/platform.rs").read_text(en
 update_coordinator15 = (ROOT / "crates/update-engine/src/coordinator.rs").read_text(encoding="utf-8")
 update_broker15 = (ROOT / "apps/update-broker/src/main.rs").read_text(encoding="utf-8")
 desktop15 = (ROOT / "apps/desktop/src/main.rs").read_text(encoding="utf-8")
-service_router15 = (ROOT / "services/maintenance-service/src/router.rs").read_text(encoding="utf-8")
+service_router15 = _READER.read_module("services/maintenance-service/src/router.rs")
 service_cargo15 = (ROOT / "services/maintenance-service/Cargo.toml").read_text(encoding="utf-8")
 support15 = (ROOT / "crates/support-bundle/src/lib.rs").read_text(encoding="utf-8")
 support_service15 = (ROOT / "services/maintenance-service/src/support.rs").read_text(encoding="utf-8")

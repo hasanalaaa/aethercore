@@ -17,6 +17,21 @@ function Reject-Marker([string]$File,[string]$Pattern,[string]$Label) {
     $text = Get-Content $File -Raw
     if ($text -match $Pattern) { throw "Forbidden Phase 10 pattern detected: $Label ($File)" }
 }
+# `DBT-P63-004`: `services/maintenance-service/src/router.rs` was one 1,868-line
+# file and is now a module root beside `router/*.rs`. Everything below that asks a
+# question OF the router asks it of the verbs, so it reads the tree. Sorted, root
+# first, so the join is reproducible.
+function Get-ModuleText([string]$File) {
+    Require-File $File "module root $File"
+    $text = Get-Content $File -Raw
+    $dir = [IO.Path]::ChangeExtension($File, $null).TrimEnd('.')
+    if (Test-Path $dir -PathType Container) {
+        foreach ($child in (Get-ChildItem $dir -Filter '*.rs' -File | Sort-Object Name)) {
+            $text = $text + "`n" + (Get-Content $child.FullName -Raw)
+        }
+    }
+    return $text
+}
 
 Write-Host 'Auditing Operation Kernel decomposition...' -ForegroundColor Cyan
 Require-File 'services/maintenance-service/src/errors.rs' 'typed service error classifier'
@@ -107,7 +122,7 @@ Require-Marker 'crates/operation-kernel/src/cancellation.rs' 'AlreadyRegistered'
 Require-Marker 'fuzz/fuzz_targets/ipc_frame.rs' 'decode_client_frame_bytes' 'v7 session parser libFuzzer coverage'
 
 Write-Host 'Auditing machine mutation supervisor integration...' -ForegroundColor Cyan
-$serviceControl = ((Get-Content 'services/maintenance-service/src/router.rs' -Raw) + "`n" + (Get-Content 'services/maintenance-service/src/streaming.rs' -Raw))
+$serviceControl = ((Get-ModuleText 'services/maintenance-service/src/router.rs') + "`n" + (Get-Content 'services/maintenance-service/src/streaming.rs' -Raw))
 foreach ($workload in @('DriverInstall','SystemRepair','Cleanup','Startup')) {
     if ($serviceControl -notmatch "MutationWorkload::$workload") { throw "Service does not acquire global machine mutation lease for $workload." }
 }
@@ -153,8 +168,16 @@ $mainLines = (Get-Content 'services/maintenance-service/src/main.rs').Count
 if ($mainLines -ge 220) { throw "maintenance-service/main.rs remains monolithic ($mainLines lines)." }
 $routerLines = (Get-Content 'services/maintenance-service/src/router.rs').Count
 if ($routerLines -ge 220) { throw "maintenance-service/router.rs remains monolithic ($routerLines lines)." }
+# The loophole decomposition opens: the dispatcher must not reappear one directory
+# down. `DBT-P63-004`.
+$routerModules = @(Get-ChildItem 'services/maintenance-service/src/router' -Filter '*.rs' -File)
+if ($routerModules.Count -lt 2) { throw 'maintenance-service/router is not decomposed into domain modules.' }
+foreach ($module in $routerModules) {
+    $moduleLines = (Get-Content $module.FullName).Count
+    if ($moduleLines -ge 260) { throw "maintenance-service/router/$($module.Name) is monolithic ($moduleLines lines)." }
+}
 Reject-Marker 'crates/ipc/src/lib.rs' 'AetherCore\.Maintenance\.v1' 'obsolete connection-per-request pipe endpoint'
 Reject-Marker 'apps/ui/src/App.svelte' 'setInterval\s*\(' 'legacy renderer polling loop'
 Reject-Marker 'crates/contracts/proto/aethercore.proto' '^\s*(message|enum|service)\s+' 'aggregator must not regain monolithic definitions'
 
-Write-Host "Phase 10 architecture/source audit passed. main.rs=$mainLines lines; router.rs=$routerLines lines." -ForegroundColor Green
+Write-Host "Phase 10 architecture/source audit passed. main.rs=$mainLines lines; router.rs=$routerLines lines + $($routerModules.Count) domain modules." -ForegroundColor Green

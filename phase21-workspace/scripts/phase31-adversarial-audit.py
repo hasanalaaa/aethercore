@@ -27,6 +27,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / "scripts"))
+from gate_reader import module_text  # noqa: E402
+
+# `DBT-P63-004`: the maintenance service router is a module tree now -
+# `router.rs` plus `router/*.rs`. These checks assert its verbs.
+ROUTER = "services/maintenance-service/src/router.rs"
 # P58 / DBT-P55-001: `.github/workflows` lives at the repository root, one level
 # above this workspace - the only location GitHub Actions reads.
 REPO = ROOT.parent
@@ -200,7 +207,7 @@ check("p31-export-header-correlation-field", "correlation_id" in export_rs,
       "EXPORT_V1 header correlation_id field missing")
 corr_test = "correlation_ids_are_clamped_typed" in export_rs
 check("p31-correlation-hostile-test", corr_test, "hostile correlation-id test missing")
-router_rs = (ROOT / "services/maintenance-service/src/router.rs").read_text(encoding="utf-8")
+router_rs = module_text(ROOT, ROUTER)
 check("p31-router-correlation-threaded",
       "build_envelope_with_correlation" in router_rs or "CorrelationId::parse" in router_rs,
       "router does not thread correlation id into exports")

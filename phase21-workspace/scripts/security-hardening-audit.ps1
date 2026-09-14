@@ -20,7 +20,9 @@ Require-Marker 'crates/ipc/src/windows_impl.rs' 'PIPE_REJECT_REMOTE_CLIENTS' 're
 Require-Marker 'crates/ipc/src/lib.rs' 'MAX_REQUEST_FRAME_BYTES' 'request allocation ceiling enforced'
 Require-Marker 'crates/ipc/src/lib.rs' 'decode_client_frame_bytes' 'production v7 client-frame parser available to fuzz target'
 Require-Marker 'crates/contracts/src/lib.rs' 'MAX_REQUEST_ID_BYTES\s*:\s*usize\s*=\s*128' 'request ID size ceiling'
-Require-Marker 'services/maintenance-service/src/router.rs' 'is_safe_request_id' 'service validates request ID syntax before dispatch'
+# `DBT-P63-004`: the request-id check runs in the dispatcher's preamble, now
+# `router/dispatch.rs`.
+Require-Marker 'services/maintenance-service/src/router/dispatch.rs' 'is_safe_request_id' 'service validates request ID syntax before dispatch'
 
 # Consent: elevated broker *and* exact executable identity; no path-prefix authorization.
 Require-Marker 'crates/security/src/lib.rs' 'peer\.elevated' 'broker elevation required'

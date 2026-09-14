@@ -3,6 +3,13 @@ from __future__ import annotations
 import argparse, json, re, sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / "scripts"))
+from gate_reader import module_text  # noqa: E402
+
+# `DBT-P63-004`: the maintenance service router is a module tree now -
+# `router.rs` plus `router/*.rs`. These checks assert its verbs.
+ROUTER = "services/maintenance-service/src/router.rs"
 P=argparse.ArgumentParser()
 P.add_argument('--output',type=Path)
 a=P.parse_args()
@@ -34,7 +41,7 @@ for cid,rel,needles in [
 ]:
     ok,missing=has(rel,*needles); add(cid,ok,'required source markers present' if ok else f'missing markers: {missing}',[rel])
 # Official source policy and no unsafe generic privileged URL/path ingress.
-auth=text('crates/driver-authority/src/lib.rs'); acq=text('crates/driver-acquisition/src/lib.rs'); router=text('services/maintenance-service/src/router.rs')
+auth=text('crates/driver-authority/src/lib.rs'); acq=text('crates/driver-acquisition/src/lib.rs'); router=module_text(ROOT, ROUTER)
 auth_prod=auth.split('#[cfg(test)]',1)[0]
 gpu_policy=text('crates/gpu-policy/src/lib.rs')
 forbidden_prod=['attacker.example','vendor.example','driverpack','driverscape','station-drivers']

@@ -56,6 +56,37 @@ class SourceReader:
                 f"gate source {rel!r} could not be read at {path}: {exc}"
             ) from None
 
+    def read_module(self, rel: str) -> str:
+        """`rel` joined with every `*.rs` in the directory Rust names after it.
+
+        `DBT-P63-004`: `services/maintenance-service/src/router.rs` was one
+        1,868-line file and is now a module root beside `router/*.rs`. Every
+        gate that asserts on the router asserts about its 81 verbs, not about
+        the file that used to hold all of them, so those gates read the tree.
+
+        Sorted, root first, so the join is reproducible and the ordering checks
+        (`position`, `ordered`) keep reading a stable text. A missing directory
+        is a plain file read - this is not a special case for one path.
+        """
+        text = self.read(rel)
+        base = self.base(rel)
+        directory = base / rel[: -len(".rs")] if rel.endswith(".rs") else base / rel
+        if not directory.is_dir():
+            return text
+        parts = [text]
+        for child in sorted(directory.glob("*.rs")):
+            parts.append(self.read(str(child.relative_to(base))))
+        return "\n".join(parts)
+
+
+def module_text(workspace: Path, rel: str) -> str:
+    """`SourceReader.read_module` for a gate that keeps no reader of its own.
+
+    Same contract: the file, joined with every `*.rs` in the directory Rust
+    names after it, root first and the rest sorted. `DBT-P63-004`.
+    """
+    return SourceReader(workspace).read_module(rel)
+
 
 @lru_cache(maxsize=None)
 def _squash(text: str) -> str:

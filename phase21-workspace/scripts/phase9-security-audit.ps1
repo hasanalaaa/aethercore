@@ -38,7 +38,10 @@ Require-Marker 'crates/security/src/lib.rs' 'TokenUser' 'client user SID capture
 Require-Marker 'crates/security/src/lib.rs' 'authentication_id' 'principal contains logon authentication identity'
 Require-Marker 'crates/security/src/lib.rs' 'binding_key' 'SID/logon/session binding key exists'
 Require-Marker 'services/maintenance-service/src/server.rs' 'inspect_named_pipe_client' 'service derives principal once for the persistent pipe session'
-Require-Marker 'services/maintenance-service/src/router.rs' 'peer\.binding_key\(\)' 'router revalidates the session principal binding'
+# `DBT-P63-004`: the router is a module tree; its per-request preamble - version,
+# request-id syntax, cancellation checkpoint, principal/session rebinding - is
+# `router/dispatch.rs`, which is what this asserts.
+Require-Marker 'services/maintenance-service/src/router/dispatch.rs' 'peer\.binding_key\(\)' 'router revalidates the session principal binding'
 Require-Marker 'crates/operation-engine/src/lib.rs' 'get_plan_for_owner' 'plan reads are owner-scoped'
 Require-Marker 'crates/persistence/migrations/0006_phase9_security.sql' 'owner_principal_key' 'plan owner persisted in safety ledger'
 Require-Marker 'crates/diagnostic-engine/src/lib.rs' 'snapshot_for_owner' 'diagnostic live snapshot is principal-scoped'

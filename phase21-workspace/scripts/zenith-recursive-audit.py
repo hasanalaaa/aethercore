@@ -22,7 +22,9 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gate_reader import SourceReader, contains, count, ordered as _gate_ordered  # noqa: E402
 
-read = SourceReader(ROOT).read
+_READER = SourceReader(ROOT)
+read = _READER.read
+read_module = _READER.read_module
 
 
 def check(name: str, ok: bool, **details: object) -> None:
@@ -177,7 +179,9 @@ server = read("services/maintenance-service/src/server.rs")
 service_main = read("services/maintenance-service/src/main.rs")
 security_core = read("crates/security/src/lib.rs")
 streaming = read("services/maintenance-service/src/streaming.rs")
-router = read("services/maintenance-service/src/router.rs")
+# `DBT-P63-004`: `router.rs` plus `router/*.rs`. The leased-route counts below
+# count verbs, and the verbs moved into the tree.
+router = read_module("services/maintenance-service/src/router.rs")
 mutation = read("crates/operation-kernel/src/mutation.rs")
 work_budget = read("crates/operation-kernel/src/work_budget.rs")
 driver_install = read("crates/driver-install/src/lib.rs")
@@ -273,7 +277,12 @@ mutation_domains = [
 ]
 check("mutation_workers_own_lease", all("let _mutation_lease" in text and "start_with_lease" in text and workload in text for _, text, workload in mutation_domains))
 check("mutation_entrypoints_cannot_bypass_lease", all("Option<MutationLease>" not in text and "pub fn start(" not in text for _, text, _ in mutation_domains))
-check("service_routes_use_leased_mutation_start", count(router, "start_with_lease(&principal_key,&v.plan_id,lease)") == 4)
+# `DBT-P63-004`: the verb handlers name `principal_key` as a `&String` borrowed
+# from the dispatch state, where the match arms held it as an owned `String`, so
+# the call sites lost one `&` that the compiler was dereferencing through
+# anyway - `clippy::needless_borrow`, and step 18 runs clippy with `-D warnings`.
+# Same call, same argument, one fewer ampersand; the count is still 4.
+check("service_routes_use_leased_mutation_start", count(router, "start_with_lease(principal_key,&v.plan_id,lease)") == 4)
 check("mutation_watchers_are_not_authority_holders", "MutationLease" not in streaming and "_mutation_lease" not in streaming)
 check("mutation_crates_expose_no_unleased_start", all("pub fn start(&self" not in text and "pub fn start(&self," not in text for _, text, _ in mutation_domains))
 check("mutation_private_boundary_requires_lease", all("Option<MutationLease>" not in text and ("mutation_lease: MutationLease" in text or "mutation_lease:MutationLease" in text) for _, text, _ in mutation_domains))
@@ -299,7 +308,7 @@ read_domains = [
 ]
 check("read_workers_own_budget_lease", all("let _read_budget_lease" in text and workload in text and method in text for text, workload, method in read_domains))
 check("read_entrypoints_cannot_bypass_budget", all("Option<ReadBudgetLease>" not in text and "pub fn start_scan(" not in text and "pub fn start_assessment(" not in text for text, _, _ in read_domains))
-check("service_routes_use_leased_read_start", count(router, "start_scan_with_lease(&principal_key,lease)") == 4 and contains(router, "start_assessment_with_lease(&principal_key,lease)"))
+check("service_routes_use_leased_read_start", count(router, "start_scan_with_lease(principal_key,lease)") == 4 and contains(router, "start_assessment_with_lease(principal_key,lease)"))
 check("read_watchers_are_not_budget_holders", "ReadBudgetLease" not in streaming and "_read_budget_lease" not in streaming)
 check("read_worker_spawn_failure_is_recoverable", all("thread::Builder::new()" in text for text, _, _ in read_domains))
 check("read_crates_expose_no_unleased_start", all("pub fn start_scan(&self" not in text and "pub fn start_assessment(&self" not in text for text, _, _ in read_domains))

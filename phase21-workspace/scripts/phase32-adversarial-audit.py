@@ -44,6 +44,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / "scripts"))
+from gate_reader import module_text  # noqa: E402
+
+# `DBT-P63-004`: the maintenance service router is a module tree now -
+# `router.rs` plus `router/*.rs`. These checks assert its verbs.
+ROUTER = "services/maintenance-service/src/router.rs"
 failures: list[str] = []
 checks = 0
 
@@ -313,7 +320,7 @@ check("p32-eventkind-anchor-platform-28",
       "EventKind anchor 28 drifted")
 
 # --- Gate g: router arm + typed guard + scoped owner-action writer ----------------------
-router_rs = (ROOT / "services/maintenance-service/src/router.rs").read_text(encoding="utf-8")
+router_rs = module_text(ROOT, ROUTER)
 check("p32-router-runsecurityaudit-arm",
       "request::Payload::RunSecurityAudit(v)" in router_rs,
       "router lacks the RunSecurityAudit arm")

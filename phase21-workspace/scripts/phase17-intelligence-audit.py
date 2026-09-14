@@ -8,9 +8,17 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / "scripts"))
+from gate_reader import module_text  # noqa: E402
+
+# `DBT-P63-004`: the maintenance service router is a module tree now -
+# `router.rs` plus `router/*.rs`. These checks assert its verbs.
+ROUTER = "services/maintenance-service/src/router.rs"
 PARSER = argparse.ArgumentParser()
 PARSER.add_argument("--output", type=Path, help="Optional explicit evidence path; default audit is read-only.")
 ARGS = PARSER.parse_args()
@@ -29,6 +37,15 @@ def require_text(check_id: str, path: str, needles: list[str]) -> None:
     text = p.read_text(encoding="utf-8")
     missing = [needle for needle in needles if needle not in text]
     add(check_id, "PASS" if not missing else "FAIL", "all required integration markers present" if not missing else f"missing markers: {missing}", [path])
+
+
+def require_module(check_id: str, path: str, needles: list[str]) -> None:
+    """`require_text` over a module tree rather than a single file."""
+    text = module_text(ROOT, path)
+    missing = [needle for needle in needles if needle not in text]
+    add(check_id, "PASS" if not missing else "FAIL",
+        "all required integration markers present" if not missing
+        else f"missing markers: {missing}", [path])
 
 
 def catalog_keys(path: Path) -> set[str]:
@@ -91,7 +108,7 @@ add("P17-STATIC-007", "PASS" if not fake_motion and primitives_ok else "FAIL", "
 require_text("P17-STATIC-008", "crates/contracts/proto/operations.proto", ["StartDeepScanRequest", "CancelDeepScanRequest", "GetDeepScanSnapshotRequest", "GetDeepScanHistoryRequest", "SealRemediationPlanRequest"])
 require_text("P17-STATIC-008B", "crates/contracts/proto/intelligence.proto", ["PcScanMetrics", "streamed_event_count", "persistence_write_count", "DeepScanSnapshot"])
 require_text("P17-STATIC-009", "crates/contracts/proto/events.proto", ["EVENT_KIND_DEEP_SCAN", "DeepScanSnapshot"])
-require_text("P17-STATIC-010", "services/maintenance-service/src/router.rs", ["StartDeepScan", "CancelDeepScan", "GetDeepScanSnapshot", "GetDeepScanHistory", "SealRemediationPlan", "watch_deep_scan"])
+require_module("P17-STATIC-010", ROUTER, ["StartDeepScan", "CancelDeepScan", "GetDeepScanSnapshot", "GetDeepScanHistory", "SealRemediationPlan", "watch_deep_scan"])
 require_text("P17-STATIC-011", "services/maintenance-service/src/streaming.rs", ["watch_deep_scan", "DeepScanSnapshot", "publish_hydration"])
 require_text("P17-STATIC-012", "apps/desktop/src/main.rs", ["start_deep_scan", "cancel_deep_scan", "get_deep_scan_snapshot", "get_deep_scan_history", "seal_remediation_plan", '"deepScanSnapshot"'])
 require_text("P17-STATIC-013", "apps/ui/src/platform/stream-state.ts", ["deepScan", "deepScanHistory", "deepScanSnapshot"])
