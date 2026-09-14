@@ -5,9 +5,17 @@ Parses Cargo.lock and pnpm-lock.yaml into a deterministic, sorted, CycloneDX-SHA
 JSON inventory. Output is labeled honestly: "generated component inventory — not a
 certified SBOM" (no NTIA/CycloneDX certification claim). Regeneration twice must be
 byte-identical (gate: p29-sbom-*).
+
+    python3 tools/generate_sbom.py [ROOT] [--out PATH]
+
+`--out` exists so a determinism check can generate into a scratch path and
+compare, instead of overwriting the delivered artifact it is measuring
+(DBT-P64-001). Default remains ROOT/SBOM.cdx.json, so regenerating the
+delivered inventory stays the plain no-flag invocation.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import re
@@ -18,8 +26,6 @@ try:
     import tomllib  # py3.11+
 except ModuleNotFoundError:  # py3.9 fallback: minimal [package] parser for Cargo.lock
     tomllib = None
-
-ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd()
 
 NOTICE = "generated component inventory — not a certified SBOM"
 
@@ -98,8 +104,29 @@ def parse_pnpm_lock(path: Path) -> list[dict]:
 
 
 def main() -> int:
-    cargo = parse_cargo_lock(ROOT / "Cargo.lock")
-    npm = parse_pnpm_lock(ROOT / "apps" / "ui" / "pnpm-lock.yaml")
+    ap = argparse.ArgumentParser(description="CycloneDX-shaped component inventory")
+    ap.add_argument("root", nargs="?", default=None,
+                    help="workspace root to read lockfiles from (default: cwd)")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="write the inventory here instead of ROOT/SBOM.cdx.json")
+    args = ap.parse_args()
+    ROOT = Path(args.root).resolve() if args.root else Path.cwd()
+
+    # DBT-P65-001: this read `apps/ui/pnpm-lock.yaml`, a path that has never existed
+    # in any commit (`git log --all -- apps/ui/pnpm-lock.yaml` is empty). pnpm's
+    # lockfile for this workspace is at the workspace root, and `ci.yml`'s
+    # `pnpm --dir apps/ui install --frozen-lockfile` resolves it from there. The
+    # missing-file branch returned [] silently, so every inventory ever generated
+    # carried zero npm components and said nothing about it.
+    cargo_lock = ROOT / "Cargo.lock"
+    pnpm_lock = ROOT / "pnpm-lock.yaml"
+    missing = [p for p in (cargo_lock, pnpm_lock) if not p.exists()]
+    if missing:
+        print("lockfile(s) absent, refusing to emit a silently partial inventory: "
+              + ", ".join(str(p) for p in missing), file=sys.stderr)
+        return 2
+    cargo = parse_cargo_lock(cargo_lock)
+    npm = parse_pnpm_lock(pnpm_lock)
     components = sorted(cargo + npm, key=lambda c: (c["purl"], c["version"]))
     inventory = {
         "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
@@ -115,13 +142,14 @@ def main() -> int:
         "components": components,
     }
     body = json.dumps(inventory, indent=2, sort_keys=True) + "\n"
-    dest = ROOT / "SBOM.cdx.json"
+    dest = args.out if args.out is not None else ROOT / "SBOM.cdx.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(body)
     digest = hashlib.sha256(dest.read_bytes()).hexdigest()
     print(f"components={len(components)} cargo={len(cargo)} npm={len(npm)} sha256={digest}")
     # Programmatic cross-check: lockfile entry counts must match emitted components.
-    assert len(cargo) == len(parse_cargo_lock(ROOT / "Cargo.lock"))
-    assert len(npm) == len(parse_pnpm_lock(ROOT / "apps" / "ui" / "pnpm-lock.yaml"))
+    assert len(cargo) == len(parse_cargo_lock(cargo_lock))
+    assert len(npm) == len(parse_pnpm_lock(pnpm_lock))
     assert len(components) == len(cargo) + len(npm)
     return 0
 

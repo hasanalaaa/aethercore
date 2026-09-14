@@ -9,7 +9,8 @@ Strict superset importing phase28's audit in-process. Adds the Enterprise Output
       the registry; fixture JSON-lines all parse with the stable schema.
   P29-c. Recipe gates: each recipe file exists, references only documented exit codes,
       R1 executed-evidence marker present.
-  P29-d. SBOM gates: determinism ×2 + lockfile-count consistency.
+  P29-d. SBOM gates: determinism ×2 + lockfile-count consistency. Both generate into
+      a scratch directory; the delivered SBOM.cdx.json is read, never written (DBT-P64-001).
   P29-e. Dependency waiver review: ed25519-dalek allowed ONLY with the in-code
       owner-review comment; no other new deps outside allowlist.
   P29-f. Full-tree hash standard continues: PHASE_29_EXPECTED_FULL_SHA256.json +
@@ -26,6 +27,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
@@ -223,16 +225,36 @@ if sbom_path.exists():
     comps = sbom.get("components", [])
     check("p29-sbom-components-nonempty", len(comps) >= 100,
           f"suspiciously small inventory: {len(comps)} components")
-    # Determinism ×2 handled by the archive build; here we re-run the generator twice.
-    runs = []
-    for _ in range(2):
-        r = subprocess.run([sys.executable, str(sbom_tool), str(ROOT)],
-                           capture_output=True, text=True)
-        runs.append(r.returncode)
-    check("p29-sbom-generator-twice-ok", runs == [0, 0], f"generator exits: {runs}")
-    after = json.loads(sbom_path.read_text()).get("components", [])
-    check("p29-sbom-count-consistency", len(after) == len(comps),
-          f"component count drifted across regeneration: {len(comps)} vs {len(after)}")
+    # DBT-P64-001: this ran the generator with no output argument, so it wrote over
+    # the very file it was about to measure. The first run on a clean tree therefore
+    # REPAIRED its own subject, and the immediate re-run passed -- measured. Both
+    # runs now go to a scratch directory and the delivered file is only ever read.
+    with tempfile.TemporaryDirectory(prefix="p29-sbom-") as tmp:
+        outs = [Path(tmp) / "run1.json", Path(tmp) / "run2.json"]
+        runs = []
+        for out in outs:
+            r = subprocess.run([sys.executable, str(sbom_tool), str(ROOT), "--out", str(out)],
+                               capture_output=True, text=True)
+            runs.append(r.returncode)
+        check("p29-sbom-generator-twice-ok", runs == [0, 0], f"generator exits: {runs}")
+        if runs != [0, 0]:
+            # Both gates below depend on an output that does not exist. They are
+            # recorded as FAILED, never skipped: a check that disappears when its
+            # input is missing reads as a pass to everything downstream.
+            detail = f"generator did not run (exits: {runs}); gate not evaluated"
+            check("p29-sbom-generator-deterministic", False, detail)
+            check("p29-sbom-count-consistency", False, detail)
+        else:
+            b1, b2 = outs[0].read_bytes(), outs[1].read_bytes()
+            # The generator's own docstring claims byte-identical regeneration. Nothing
+            # asserted it before: the old check compared component COUNTS, which two
+            # different inventories can share.
+            check("p29-sbom-generator-deterministic", b1 == b2,
+                  f"two generator runs differ: {hashlib.sha256(b1).hexdigest()[:16]} "
+                  f"vs {hashlib.sha256(b2).hexdigest()[:16]}")
+            after = json.loads(b1.decode()).get("components", [])
+            check("p29-sbom-count-consistency", len(after) == len(comps),
+                  f"component count drifted across regeneration: {len(comps)} vs {len(after)}")
 
 # --- Gate e: dependency waiver ----------------------------------------------------
 persist_cargo = (ROOT / "crates/persistence/Cargo.toml").read_text(encoding="utf-8")
