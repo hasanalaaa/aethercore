@@ -19,6 +19,16 @@ on:
 permissions:
   contents: read
 
+# P65: there was no concurrency group, so three commits pushed in a row ran three
+# ~50-minute Windows jobs in parallel and the first two were already obsolete. The
+# group is keyed on the ref, so a new push to a branch cancels that branch's
+# in-flight run and nothing else. On `main` this means a run can be cancelled
+# before it reaches step 18 -- if a verdict on a specific commit is wanted, use
+# `workflow_dispatch` on that SHA, which is what run 34827684392 was.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 # The workspace is not the repository root. Every `run` below is written
 # relative to it, as `windows-installer.yml` already does. `uses:` inputs are
 # NOT covered by this and carry the prefix explicitly.
@@ -47,6 +57,17 @@ jobs:
       - uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: 8.0.x
+      # P65: the ADK action already short-circuits on `Test-Path $lib`, so restoring
+      # the Deployment Tools directory skips the download entirely. Measured cost of
+      # the install on run 34827684392: 38s -- the smallest of the three caches added
+      # here, and kept because it is also the one network fetch in the first twelve
+      # steps. The action still verifies by enumeration afterwards, so a partial
+      # restore fails loudly rather than silently linking against nothing.
+      - name: Cache Windows ADK Deployment Tools
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
+          key: ${{ runner.os }}-adk-deploytools-${{ hashFiles('.github/actions/install-windows-adk/action.yml') }}
       # DBT-P60-006: this job has never installed the ADK, so
       # crates/system-repair/build.rs could not find dismapi.lib and every step
       # from `cargo test` onward was unreachable. The recipe is shared with
@@ -65,6 +86,27 @@ jobs:
         run: ./scripts/freeze-dependencies.ps1 -VerifyOnly
       - name: Frozen dependency restore
         run: pnpm --dir apps/ui install --frozen-lockfile
+      # P65: this job had no cache of any kind -- `package-manager-cache: false` was
+      # the only cache line in the file -- so every run downloaded the registry and
+      # rebuilt 135 binaries from scratch. `restore`/`save` are split rather than
+      # using `actions/cache` directly for one reason that matters here: this job has
+      # failed at step 18 or later in every run since P59, and a plain `cache` step
+      # saves in a post-step that a failed job skips. Split, with `if: always()` on
+      # the save, the tree built by a run that later goes red is still kept.
+      # pnpm is deliberately NOT cached: `pnpm install --frozen-lockfile` measured 3s
+      # on run 34827684392, which is less than a cache round-trip would cost.
+      - name: Restore Rust build cache
+        id: cargo-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            phase21-workspace/target
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('phase21-workspace/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.97.1-
       - name: Rust formatting
         run: cargo fmt --all -- --check
       # crates/intelligence-core/tests/embedded_generation.rs runs against the
@@ -103,6 +145,19 @@ jobs:
           path: phase21-workspace/out/release/**
           if-no-files-found: error
           retention-days: 14
+      # Last, and `always()`, so a run that dies at step 18 still leaves the build
+      # tree behind for the next one. Skipped on an exact key hit -- there is
+      # nothing new to store when Cargo.lock has not moved.
+      - name: Save Rust build cache
+        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            phase21-workspace/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
 
   deny-check:
     runs-on: ubuntu-latest
