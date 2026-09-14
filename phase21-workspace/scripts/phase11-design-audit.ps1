@@ -35,7 +35,19 @@ if ($Text -match '\bsetInterval\s*\(' -or $Text -match '\bclearInterval\s*\(') {
 if ($Text.Contains('!important')) { throw '!important is forbidden in the Phase 11 UI design system.' }
 if ($Text -match 'transition\s*:[^;]*(transform|all)') { throw 'Fixed-duration transform/all transitions are forbidden for interactive motion.' }
 if ($Text -match 'font-size\s*:\s*(7|8|9|10|11)px') { throw 'Sub-12px literal UI typography reintroduced.' }
-$ButtonTags = [regex]::Matches($Text, '<button\b.*?>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+# DBT-P65-002: this swept $Text, which includes .css. A `<button>` ELEMENT cannot
+# be authored in a stylesheet, so every match there is prose -- and four of them
+# were: three in feature-layout.css's comment about Pressable nesting and one in
+# motion.css's, all written in P48 on 2026-09-05. Run 34827684392 failed step 18
+# here, at `phase11-design-audit.ps1:40`, on a comment. The sweep is scoped to the
+# file types that can contain markup; the checks above keep .css because
+# `!important`, fixed-duration transitions and sub-12px type are CSS defects.
+# Residual, stated rather than fixed: `<button>` inside a .svelte or .ts COMMENT
+# would still trip this. There are none today (measured: 80 tags, 0 violations),
+# so stripping comments would be machinery for a case that does not exist.
+$Markup = ($Product | Where-Object { $_.Extension -in '.ts','.svelte' } |
+    ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join "`n"
+$ButtonTags = [regex]::Matches($Markup, '<button\b.*?>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
 foreach ($Tag in $ButtonTags) {
     if (-not $Tag.Value.Contains('use:fluidPress')) { throw "Raw button without pointer-down spring tactility: $($Tag.Value.Substring(0, [Math]::Min(120, $Tag.Value.Length)))" }
 }
