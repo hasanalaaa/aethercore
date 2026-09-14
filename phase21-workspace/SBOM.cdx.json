@@ -6934,6 +6934,246 @@
       "version": "1.0.23"
     },
     {
+      "name": "@jridgewell/gen-mapping",
+      "purl": "pkg:npm/@jridgewell/gen-mapping@0.3.13",
+      "type": "library",
+      "version": "0.3.13"
+    },
+    {
+      "name": "@jridgewell/remapping",
+      "purl": "pkg:npm/@jridgewell/remapping@2.3.5",
+      "type": "library",
+      "version": "2.3.5"
+    },
+    {
+      "name": "@jridgewell/resolve-uri",
+      "purl": "pkg:npm/@jridgewell/resolve-uri@3.1.2",
+      "type": "library",
+      "version": "3.1.2"
+    },
+    {
+      "name": "@jridgewell/sourcemap-codec",
+      "purl": "pkg:npm/@jridgewell/sourcemap-codec@1.5.5",
+      "type": "library",
+      "version": "1.5.5"
+    },
+    {
+      "name": "@jridgewell/trace-mapping",
+      "purl": "pkg:npm/@jridgewell/trace-mapping@0.3.31",
+      "type": "library",
+      "version": "0.3.31"
+    },
+    {
+      "name": "@oxc-project/types",
+      "purl": "pkg:npm/@oxc-project/types@0.146.0",
+      "type": "library",
+      "version": "0.146.0"
+    },
+    {
+      "name": "@rolldown/binding-android-arm-eabi",
+      "purl": "pkg:npm/@rolldown/binding-android-arm-eabi@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-android-arm64",
+      "purl": "pkg:npm/@rolldown/binding-android-arm64@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-darwin-arm64",
+      "purl": "pkg:npm/@rolldown/binding-darwin-arm64@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-darwin-x64",
+      "purl": "pkg:npm/@rolldown/binding-darwin-x64@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-freebsd-x64",
+      "purl": "pkg:npm/@rolldown/binding-freebsd-x64@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-linux-arm-gnueabihf",
+      "purl": "pkg:npm/@rolldown/binding-linux-arm-gnueabihf@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-linux-arm64-gnu",
+      "purl": "pkg:npm/@rolldown/binding-linux-arm64-gnu@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-linux-arm64-musl",
+      "purl": "pkg:npm/@rolldown/binding-linux-arm64-musl@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-linux-ppc64-gnu",
+      "purl": "pkg:npm/@rolldown/binding-linux-ppc64-gnu@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-linux-s390x-gnu",
+      "purl": "pkg:npm/@rolldown/binding-linux-s390x-gnu@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-linux-x64-gnu",
+      "purl": "pkg:npm/@rolldown/binding-linux-x64-gnu@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-linux-x64-musl",
+      "purl": "pkg:npm/@rolldown/binding-linux-x64-musl@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-openharmony-arm64",
+      "purl": "pkg:npm/@rolldown/binding-openharmony-arm64@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-win32-arm64-msvc",
+      "purl": "pkg:npm/@rolldown/binding-win32-arm64-msvc@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/binding-win32-x64-msvc",
+      "purl": "pkg:npm/@rolldown/binding-win32-x64-msvc@1.2.5",
+      "type": "library",
+      "version": "1.2.5"
+    },
+    {
+      "name": "@rolldown/pluginutils",
+      "purl": "pkg:npm/@rolldown/pluginutils@1.0.1",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "name": "@sveltejs/acorn-typescript",
+      "purl": "pkg:npm/@sveltejs/acorn-typescript@1.0.13",
+      "type": "library",
+      "version": "1.0.13"
+    },
+    {
+      "name": "@sveltejs/load-config",
+      "purl": "pkg:npm/@sveltejs/load-config@0.2.3",
+      "type": "library",
+      "version": "0.2.3"
+    },
+    {
+      "name": "@sveltejs/vite-plugin-svelte",
+      "purl": "pkg:npm/@sveltejs/vite-plugin-svelte@7.3.0",
+      "type": "library",
+      "version": "7.3.0"
+    },
+    {
+      "name": "@tauri-apps/api",
+      "purl": "pkg:npm/@tauri-apps/api@2.11.1",
+      "type": "library",
+      "version": "2.11.1"
+    },
+    {
+      "name": "@tauri-apps/cli-darwin-arm64",
+      "purl": "pkg:npm/@tauri-apps/cli-darwin-arm64@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-darwin-x64",
+      "purl": "pkg:npm/@tauri-apps/cli-darwin-x64@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-linux-arm-gnueabihf",
+      "purl": "pkg:npm/@tauri-apps/cli-linux-arm-gnueabihf@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-linux-arm64-gnu",
+      "purl": "pkg:npm/@tauri-apps/cli-linux-arm64-gnu@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-linux-arm64-musl",
+      "purl": "pkg:npm/@tauri-apps/cli-linux-arm64-musl@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-linux-riscv64-gnu",
+      "purl": "pkg:npm/@tauri-apps/cli-linux-riscv64-gnu@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-linux-x64-gnu",
+      "purl": "pkg:npm/@tauri-apps/cli-linux-x64-gnu@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-linux-x64-musl",
+      "purl": "pkg:npm/@tauri-apps/cli-linux-x64-musl@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-win32-arm64-msvc",
+      "purl": "pkg:npm/@tauri-apps/cli-win32-arm64-msvc@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-win32-ia32-msvc",
+      "purl": "pkg:npm/@tauri-apps/cli-win32-ia32-msvc@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli-win32-x64-msvc",
+      "purl": "pkg:npm/@tauri-apps/cli-win32-x64-msvc@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@tauri-apps/cli",
+      "purl": "pkg:npm/@tauri-apps/cli@2.11.4",
+      "type": "library",
+      "version": "2.11.4"
+    },
+    {
+      "name": "@types/estree",
+      "purl": "pkg:npm/@types/estree@1.0.9",
+      "type": "library",
+      "version": "1.0.9"
+    },
+    {
+      "name": "@types/trusted-types",
+      "purl": "pkg:npm/@types/trusted-types@2.0.7",
+      "type": "library",
+      "version": "2.0.7"
+    },
+    {
       "name": "acorn",
       "purl": "pkg:npm/acorn@8.18.0",
       "type": "library",

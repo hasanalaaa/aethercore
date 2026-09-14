@@ -88,9 +88,25 @@ def parse_pnpm_lock(path: Path) -> list[dict]:
             if line and not line.startswith((" ", "\t")):
                 in_packages = False
                 continue
-            m = re.match(r"\s+('?)([^@'\s]+)@([^:'\s(]+)", line)
+            # DBT-P65-005: the previous pattern was `([^@'\s]+)@(...)`, whose name
+            # class EXCLUDES `@`. Every scoped package -- `@scope/name@version` --
+            # therefore failed to match and was dropped without a word. Measured
+            # against this lockfile: `packages:` holds 85 entries, 40 of them
+            # scoped, and the old pattern matched exactly the 45 unscoped ones.
+            # pnpm's own step-10 line, "Verifying lockfile against supply-chain
+            # policies (85 entries)", is what this is reconciled against.
+            # The version is the segment after the LAST `@`, because a scoped name
+            # contains one of its own.
+            m = re.match(r"\s+'?(\S+?)'?:\s*$", line)
             if m:
-                name, version = m.group(2), m.group(3)
+                key_text = m.group(1)
+                # `name@version(peer)` -> drop the peer-dependency suffix
+                key_text = key_text.split("(", 1)[0]
+                if "@" not in key_text.lstrip("@"):
+                    continue
+                name, _, version = key_text.rpartition("@")
+                if not name or not version:
+                    continue
                 key = f"{name}@{version}"
                 if key not in seen and not name.startswith(("link:", "file:")):
                     seen.add(key)
