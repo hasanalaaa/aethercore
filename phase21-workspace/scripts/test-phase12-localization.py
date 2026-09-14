@@ -89,18 +89,53 @@ def strip_svelte_code(text: str) -> str:
     return text
 
 
+# A keyboard hint names a physical key the reader has to find on the keyboard,
+# and Arabic keyboards carry Latin legends on the modifier row. Translating
+# "Ctrl" would describe a key that is not on the keycap. The token is also the
+# source of `aria-keyshortcuts`, whose vocabulary is fixed by the UI Events
+# spec — NavigationRail.svelte derives it with .replace('Ctrl', 'Control'), so a
+# translated token would silently emit an invalid value to screen readers.
+# `kbd` is already inside the Phase 12 unicode-bidi isolation group
+# (typography.css), so the token renders LTR and does not reorder under RTL.
+KBD_ELEMENT = re.compile(r"<kbd\b[^>]*>(?P<body>[^<>]*)</kbd>", flags=re.I)
+KEY_TOKEN = re.compile(r"^(?:Ctrl|Alt|Shift|Win|Esc|Enter|Tab|Del|Space|F[1-9][0-9]?)$")
+
+
+def keyboard_shortcuts() -> list[tuple[str, str]]:
+    """Every <kbd> body in the UI, as (location, text)."""
+    found: list[tuple[str, str]] = []
+    for path in sorted(UI.rglob("*.svelte")):
+        template = strip_svelte_code(path.read_text(encoding="utf-8"))
+        for match in KBD_ELEMENT.finditer(template):
+            body = " ".join(match.group("body").split())
+            if body:
+                found.append((str(path.relative_to(ROOT)), body))
+    return found
+
+
+def non_key_shortcut_text() -> list[str]:
+    """`kbd` is exempt from the prose scan, so it must hold key names only."""
+    bad: list[str] = []
+    for where, body in keyboard_shortcuts():
+        parts = re.split(r"[ +]", body)
+        if not all(KEY_TOKEN.match(p) or len(p) == 1 for p in parts):
+            bad.append(f"{where}: <kbd> is not a key sequence: {body!r}")
+    return bad
+
+
 def hardcoded_visible_english() -> list[str]:
     # Deliberately tiny allowlist: proper product/technology names are technical
-    # evidence, not translatable AetherCore prose.
+    # evidence, not translatable AetherCore prose. Keyboard hints are NOT listed
+    # here one literal at a time — `kbd` is a category, checked separately by
+    # non_key_shortcut_text(); enumerating "Ctrl K" but not "Ctrl /" is how this
+    # gate came to treat two identical shortcuts differently (DBT-P66-002).
     allowed_phrases = {
         "AetherCore",
         "Windows Update",
-        "Esc",
-        "Ctrl K",
     }
     failures: list[str] = []
     for path in sorted(UI.rglob("*.svelte")):
-        template = strip_svelte_code(path.read_text(encoding="utf-8"))
+        template = KBD_ELEMENT.sub("", strip_svelte_code(path.read_text(encoding="utf-8")))
         # Text nodes only.
         for match in re.finditer(r">([^<>]+)<", template, flags=re.S):
             node = " ".join(match.group(1).split())
@@ -170,7 +205,10 @@ def main() -> int:
     check("no_manual_english_pluralization", not manual_plural_files, str(manual_plural_files[:10]))
 
     visible = hardcoded_visible_english()
-    check("no_hardcoded_visible_english", not visible, " | ".join(visible[:12]))
+    check("no_hardcoded_visible_english", not visible, f"{len(visible)} found: " + " | ".join(visible[:12]))
+    shortcuts = keyboard_shortcuts()
+    bad_shortcuts = non_key_shortcut_text()
+    check("keyboard_shortcuts_are_key_tokens", bool(shortcuts) and not bad_shortcuts, f"{len(shortcuts)} kbd nodes; bad={bad_shortcuts[:8]}")
 
     bidi = (I18N / "bidi.ts").read_text(encoding="utf-8")
     tech = (UI / "design/primitives/TechnicalText.svelte").read_text(encoding="utf-8")
@@ -221,23 +259,46 @@ def main() -> int:
         ROOT / "crates/hardware-telemetry", ROOT / "crates/crash-diagnostics", ROOT / "crates/diagnostic-engine",
         ROOT / "crates/driver-hub", ROOT / "crates/driver-install", ROOT / "crates/windows-update",
     ]
-    display_fields = "title|stage|detail|summary|failure_message|protection_reason|impact|confidence|evidence_detail|recommendation|health_status|reason|source_note|category|severity|kind|scope|publisher|result_code"
+    # `result_code` is deliberately absent from this list. It is a wire value, not
+    # display text: Rust matches it (`match check.result_code.as_str()` in
+    # system-repair/src/lib.rs), the UI compares it (RepairPage.svelte), every UI
+    # render site wraps it in <TechnicalText>, and it is an OPEN set —
+    # `format!("ExitCode{code}")` means it can never be enumerated in a catalog.
+    # Asking for its Arabic was a category error, not a missing translation
+    # (DBT-P66-001). result_code_path_isolation below asserts the real invariant.
+    display_fields = "title|stage|detail|summary|failure_message|protection_reason|impact|confidence|evidence_detail|recommendation|health_status|reason|source_note|category|severity|kind|scope|publisher"
     literal_rx = re.compile(rf"\b(?P<field>{display_fields})\s*:\s*\"(?P<value>(?:\\.|[^\"\\])*)\"\.into\(\)")
     native_literals: set[tuple[str, str]] = set()
+    scanned_rs = 0
     for root in native_roots:
         if not root.exists():
             continue
         for path in root.rglob("*.rs"):
             if "tests" in path.parts:
                 continue
-            for match in literal_rx.finditer(path.read_text(encoding="utf-8", errors="ignore")):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            # `"tests" in path.parts` only skips tests/ DIRECTORIES. Unit tests live
+            # in an inline `#[cfg(test)] mod` at the end of the shipping file, and
+            # their fixture labels were reaching this scan — which is why three
+            # fixtures had been hand-added to the allowlist below one at a time
+            # (DBT-P66-003). Rust convention puts that module last; the audit
+            # asserts that rather than assuming it.
+            cut = text.find("\n#[cfg(test)]")
+            if cut != -1:
+                text = text[:cut]
+            scanned_rs += 1
+            for match in literal_rx.finditer(text):
                 native_literals.add((match.group("field"), match.group("value")))
-    coded_or_fixture = {
+    # Coded enum values that ship in production code. `category` is branched on
+    # (`e.category == "BugcheckReport"` in diagnostic-engine/src/lib.rs) and is a
+    # closed set, so it stays measured here with its members named explicitly.
+    coded_values = {
         ("category", "BugcheckReport"), ("category", "SystemEvent"), ("category", "UnexpectedShutdown"),
-        ("result_code", "orcSucceeded"), ("publisher", "Vendor"), ("title", "Vendor - Device - 2.0.0.0"),
     }
-    uncovered_native = sorted((field, value) for field, value in native_literals if value and (field, value) not in coded_or_fixture and value not in semantic)
-    check("backend_literal_owned_text_coverage", not uncovered_native, str(uncovered_native[:20]))
+    uncovered_native = sorted((field, value) for field, value in native_literals if value and (field, value) not in coded_values and value not in semantic)
+    # Report the full count. This message used to print uncovered_native[:20] with
+    # no total, so a 30-failure result read as exactly 20 (DBT-P66-004).
+    check("backend_literal_owned_text_coverage", not uncovered_native, f"{len(uncovered_native)} uncovered across {scanned_rs} shipping .rs files: {uncovered_native[:20]}")
 
     dynamic_handlers = [
         "storage reliability$/", "WHEA event\\(s\\)", "No memory-related WHEA evidence",
@@ -259,6 +320,25 @@ def main() -> int:
     check("crash_code_path_isolation", "TechnicalText value={crash.dumpFile}" in crash and "TechnicalText value={crash.bugcheckHex" in crash)
     check("hardware_identifier_isolation", "TechnicalText value={disk.serialNumber" in hardware and "TechnicalText value={disk.firmwareVersion" in hardware and "nvmeCriticalWarning" in hardware)
     check("plan_hash_identifier_isolation", "TechnicalText" in dialogs and "digest" in dialogs and "repairPlan.scanId" in dialogs)
+
+    # The invariant that replaces result_code's removal from display_fields above.
+    # A wire value is exempt from translation only because it reaches the reader
+    # as isolated technical evidence; if it ever renders through a bare mustache
+    # that exemption is no longer true and this must fail.
+    bare_result_code: list[str] = []
+    result_code_surfaces: set[str] = set()
+    for path in sorted(UI.rglob("*.svelte")):
+        template = re.sub(r"<script\b[^>]*>.*?</script>", "", path.read_text(encoding="utf-8"), flags=re.S | re.I)
+        for match in re.finditer(r"\{[^{}]*?\b[A-Za-z_]\w*\.resultCode\b[^{}]*\}", template):
+            where = f"{path.relative_to(ROOT)}: {match.group(0)}"
+            preceding = template[max(0, match.start() - 32):match.start()]
+            if "TechnicalText value=" in preceding:
+                result_code_surfaces.add(str(path.relative_to(ROOT)))
+            elif re.match(r"\{[#:]?(?:if|else if|each)\b", match.group(0)) or ".some(" in match.group(0):
+                continue  # a branch on the value, not a render of it
+            else:
+                bare_result_code.append(where)
+    check("result_code_path_isolation", bool(result_code_surfaces) and not bare_result_code, f"isolated on {len(result_code_surfaces)} surfaces; bare={bare_result_code[:5]}")
 
     # Locale catalog must cover every major semantic namespace.
     required_prefixes = ["nav.","overview.","drivers.","repair.","cleanup.","startup.","hardware.","crash.","activity.","recovery.","dialog.","tech.","state.","severity.","confidence."]
