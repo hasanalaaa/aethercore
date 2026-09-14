@@ -218,8 +218,14 @@ check("p31-unix-default-transport-marker",
       "#[cfg(unix)]\nmod unix_composition;" in svc_main
       or re.search(r"#\[cfg\(unix\)\]\s*\nmod unix_composition;", svc_main) is not None,
       "unix composition is still feature-gated in main.rs")
+# `DBT-P63-004`: `mod unix_service { }` is `unix_service.rs` now, so the function
+# sits at column 0 and the four-space spelling below could never match again -
+# a negative check that cannot fire is not a passing check.
+svc_unix = (ROOT / "services/maintenance-service/src/unix_service.rs").read_text(encoding="utf-8")
 check("p31-unix-no-feature-gate-on-run_unix_service",
-      '#[cfg(feature = "unix-ipc")]\n    pub fn run_unix_service' not in svc_main,
+      '#[cfg(feature = "unix-ipc")]\npub fn run_unix_service' not in svc_unix
+      and '#[cfg(feature = "unix-ipc")]\n    pub fn run_unix_service' not in svc_main
+      and "pub fn run_unix_service" in svc_unix,
       "run_unix_service must be unconditional on unix now")
 check("p31-unix-ipc-feature-still-declared-as-alias",
       'unix-ipc' in (ROOT / "services/maintenance-service/Cargo.toml").read_text(encoding="utf-8"),

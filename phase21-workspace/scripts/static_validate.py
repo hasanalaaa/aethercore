@@ -914,7 +914,12 @@ checks["p46_service_name_has_one_decider"] = {
         for rust in (
             "crates/ipc/src/windows_impl.rs",
             "apps/install-hardener/src/main.rs",
+            # `DBT-P63-004`: the service entry point is four files now, and the
+            # SCM host is where a second decider would be most tempting.
             "services/maintenance-service/src/main.rs",
+            "services/maintenance-service/src/unix_service.rs",
+            "services/maintenance-service/src/ctrlc_handler.rs",
+            "services/maintenance-service/src/windows_service_host.rs",
         )
     ),
     "note": f"Service name is decided once in crates/product-identity ({SERVICE_NAME!r}); the three former Rust deciders now import it, and every non-Rust declaration is asserted against it.",
@@ -1455,15 +1460,25 @@ marker("phase10_recovery_composition", composition10 + kernel10, ["RecoverySuper
 # router's ratchet becomes its budget again - 240, the number P10 wrote - and it is
 # met rather than merely no longer being lost.
 #
-# `main.rs` is still 397 and still a ratchet. `phase10-architecture-audit.ps1:153`
-# throws on it exactly as `:155` threw on the router, so the windows job cannot be
-# green until it is decomposed too. `DBT-P63-004` stays open for it.
+# `main.rs` followed it. `phase10-architecture-audit.ps1:153` threw on it exactly as
+# `:155` threw on the router, and 244 of its 397 lines were three inline
+# `mod x { }` blocks: `unix_service`, `ctrlc_handler` and `windows_service_host`.
+# They are files beside it now and it is 153 lines, so this ceiling is the P10
+# budget too. Both budgets are met; neither number is a ratchet any more.
 #
 # The third entry is the loophole decomposition opens: a 1,868-line dispatcher must
 # not come back as an 1,868-line `router/updates.rs`. Every file in the tree carries
-# the same kind of ratchet, at today's largest, and it may only fall.
-SERVICE_LINE_CEILING = {"main.rs": 397, "router.rs": 240}
-SERVICE_LINE_TARGET = {"main.rs": 220, "router.rs": 240}
+# the same kind of ratchet, at today's largest, and it may only fall. `main.rs`'s
+# three siblings get no such cap: the router's cap exists because the 81-arm match
+# was the monolith and moving it created somewhere for it to hide, and none of
+# these three is anywhere near a limit. A cap without that argument is speculation.
+# The ceiling is the THROWING gate's, not the note's. `phase10-architecture-audit.ps1`
+# throws at `>= 220` for BOTH files (`:153` and `:155`), so P10's written 240 for
+# `router.rs` is looser than what actually fires in CI - and a check that permits
+# what CI rejects buys a red step 18 after a green step 17, which is the whole
+# failure mode P63 spent its day on. Measured negative control below the check.
+SERVICE_LINE_CEILING = {"main.rs": 219, "router.rs": 219}
+SERVICE_LINE_TARGET = {"main.rs": 220, "router.rs": 240}  # the P10 note, kept as the record
 ROUTER_MODULE_CEILING = 258
 service_src = ROOT / "services/maintenance-service/src"
 service_lines = {
@@ -1494,7 +1509,7 @@ checks["phase10_service_decomposed"] = {
     "router_module_max": max(router_module_lines.values(), default=0),
     "over_ceiling": service_over,
     "target": SERVICE_LINE_TARGET,
-    "note": "router.rs meets the P10 budget of 240 by decomposition (DBT-P63-004); main.rs is still a ratchet at its measured 397 and the P10 target is 220. Every router/*.rs carries its own ratchet so the dispatcher cannot reappear one directory down.",
+    "note": "Both P10 budgets are met by decomposition, not by raising them (DBT-P63-004). The ceiling here is phase10-architecture-audit.ps1's throw (>= 220 for both files), which is stricter than the P10 note's 240 for router.rs. Every router/*.rs carries its own ratchet so the dispatcher cannot reappear one directory down.",
 }
 marker("phase10_per_principal_sequences", kernel10 + proto, ["HashMap<String, OwnerStream>", "monotonic per authenticated principal", "does_not_leak_cross_user_activity", "dropped_through_sequence"])
 marker("phase10_explicit_stream_reset", kernel10 + server10 + proto, ["SubscriptionItem::Lagged", "ReplayWindowExceeded", "SubscriberLagged", "SequenceReset", "StreamReset"])

@@ -176,7 +176,12 @@ engine = read("crates/operation-engine/src/lib.rs")
 event_bus = read("crates/operation-kernel/src/event_bus.rs")
 update = read("crates/update-engine/src/coordinator.rs")
 server = read("services/maintenance-service/src/server.rs")
+# `DBT-P63-004`: `main.rs` was 397 lines, 244 of them three inline `mod x { }`
+# blocks, and `phase10-architecture-audit.ps1:153` throws above 220. The blocks
+# are files beside it now. What each check below asserts did not move; the file
+# that holds it did.
 service_main = read("services/maintenance-service/src/main.rs")
+service_scm_host = read("services/maintenance-service/src/windows_service_host.rs")
 security_core = read("crates/security/src/lib.rs")
 streaming = read("services/maintenance-service/src/streaming.rs")
 # `DBT-P63-004`: `router.rs` plus `router/*.rs`. The leased-route counts below
@@ -511,7 +516,7 @@ check("ipc_native_probe_is_in_enterprise_runtime_matrix", has(enterprise_stress,
 check("maintenance_service_token_probe_reads_live_process_token", has(service_token_probe, "OpenProcessToken", "GetTokenInformation", "TokenGroups", "TokenRestrictedSids", "SE_GROUP_ENABLED_BY_DEFAULT", "SE_GROUP_OWNER", "restricting_sid_count = 0"))
 check("maintenance_service_token_probe_requires_unrestricted_sid_policy", has(service_token_probe, "SERVICE_SID_TYPE_UNRESTRICTED", "service_sid_type = 'UNRESTRICTED'", r"NT SERVICE\$ServiceName"))
 check("maintenance_service_token_probe_is_in_enterprise_runtime_matrix", has(enterprise_stress, "verify-maintenance-service-token.ps1", "maintenance_service_token", "Native maintenance service token verification failed"))
-check("maintenance_service_self_verifies_effective_sid_before_running", has(security_core, "pub fn verify_maintenance_service_token", "CheckTokenMembership(None", "service SID is not enabled in effective token", "TokenRestrictedSids", "maintenance service token contains restricting SIDs") and ordered(service_main, "fn service_main_impl()", "verify_maintenance_service_token(SERVICE_NAME)", "ServiceState::Running"))
+check("maintenance_service_self_verifies_effective_sid_before_running", has(security_core, "pub fn verify_maintenance_service_token", "CheckTokenMembership(None", "service SID is not enabled in effective token", "TokenRestrictedSids", "maintenance service token contains restricting SIDs") and ordered(service_scm_host, "fn service_main_impl()", "verify_maintenance_service_token(SERVICE_NAME)", "ServiceState::Running"))
 check("installer_lifecycle_requires_live_service_token_evidence", has(installer_verify, "verify-maintenance-service-token.ps1", "maintenance-service-token.json", "Maintenance service token verifier produced no evidence artifact"))
 check("maintenance_service_token_self_check_is_bounded", has(security_core, "MAX_ACCOUNT_SID_BYTES", "MAX_ACCOUNT_DOMAIN_CHARS", "MAX_TOKEN_GROUP_BUFFER_BYTES", "service SID size outside safety bound", "restricted SID list size outside safety bound"))
 

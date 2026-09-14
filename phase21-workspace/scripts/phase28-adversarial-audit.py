@@ -349,10 +349,10 @@ check("p28-graceful-drain-window",
       "GRACEFUL_DRAIN_WINDOW" in (ROOT / "services/maintenance-service/src/unix_composition.rs").read_text(encoding="utf-8"),
       "daemon graceful drain window missing (QD-026-003)")
 check("p28-pid-file-removed-on-stop",
-      "pid file removed" in (ROOT / "services/maintenance-service/src/main.rs").read_text(encoding="utf-8"),
+      "pid file removed" in (ROOT / "services/maintenance-service/src/unix_service.rs").read_text(encoding="utf-8"),
       "PID file removal on graceful stop missing (QD-026-003)")
 check("p28-rotated-daemon-logs",
-      "init_json_file_rotated" in (ROOT / "services/maintenance-service/src/main.rs").read_text(encoding="utf-8"),
+      "init_json_file_rotated" in (ROOT / "services/maintenance-service/src/unix_service.rs").read_text(encoding="utf-8"),
       "--daemon rotated structured logs missing (QD-026-003)")
 check("p28-qd-026-003-closure-recorded",
       '"closedInPhase": "28"' in (ROOT / "docs/phase28/QUALIFICATION_DEBT.json").read_text(encoding="utf-8"),

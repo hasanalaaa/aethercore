@@ -106,6 +106,12 @@ check("p26-windows-pipe-intact", win_impl.exists(), "windows_impl.rs missing (fr
 # Allowed files to touch at all this phase (explicit list per contract).
 allowed_modified_prefixes = (
     "services/maintenance-service/src/main.rs",
+    # `DBT-P63-004`: this phase's `mod unix_service { }` block lived inside
+    # `main.rs`, which this list already allows. It is `unix_service.rs` now. The
+    # allowance follows the code; nothing new was permitted by moving it.
+    "services/maintenance-service/src/unix_service.rs",
+    "services/maintenance-service/src/ctrlc_handler.rs",
+    "services/maintenance-service/src/windows_service_host.rs",
     "crates/ipc/",
     "crates/platform-capabilities/",
     "scripts/phase26-adversarial-audit.py",
