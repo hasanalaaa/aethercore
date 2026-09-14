@@ -222,6 +222,27 @@ the install failed, and already finished before step 20 can fail.
 budget — the one thing `d1af6df` flagged as unmeasured is now measured. On the
 warm run the save step correctly **skipped** on an exact key hit.
 
+### Both caches confirmed working, end to end
+
+The ADK fix took three runs to prove because a cache cannot be shown to work
+until something has written it:
+
+```
+34831042672  save skipped (post-if: success on a failed job)   install 50s
+34834327695  "Cache not found", same unchanged key             install 55s
+34845207210  "Cache saved with key: Windows-adk-deploytools-e76dcfae..."
+34845793277  restore 0m02s -> install-windows-adk 0m00s, save SKIPPED (hit)
+```
+
+**38-55s to 0m00s.** The action's own `Test-Path $lib` short-circuit does the
+work once the directory is restored, and the save correctly skips when there is
+nothing new to store. The cargo cache behaves the same way on its exact-key hit.
+
+One thing this also demonstrated, unplanned: run `34845207210` was **cancelled
+mid-flight** by the concurrency group when the next commit was pushed. That is
+the feature working, and it is the reason this session held every push until the
+run it was measuring had finished.
+
 Two consequences stated rather than discovered later:
 
 * `cancel-in-progress: true` applies on `main`. A push can cancel a run before it
