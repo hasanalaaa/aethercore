@@ -11,11 +11,10 @@ use aethercore_operation_kernel::MutationSupervisor;
 use aethercore_performance_bottleneck::{Confidence, Report, Role};
 use aethercore_performance_optimization::{
     ActionKind, ApplyOutcome, ChangeRecord, NoopPlatform, OptimizationError, OptimizationGovernor,
-    OptimizationPlatform, Plan, ProcessKey, Reversibility,
+    OptimizationPlatform, ProcessKey, Reversibility,
 };
 
 const OWNER_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const OWNER_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn finding(id: &str, code: &str, actions: &[&str]) -> aethercore_performance_bottleneck::Finding {
     aethercore_performance_bottleneck::Finding {
