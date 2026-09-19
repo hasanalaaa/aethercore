@@ -44,7 +44,7 @@ pub fn default_platform_verifier() -> Arc<dyn PlatformVerifier> {
 pub fn current_windows_build() -> Result<u32, UpdateEngineError> {
     #[cfg(windows)]
     {
-        return current_windows_build_impl();
+        current_windows_build_impl()
     }
     #[cfg(not(windows))]
     {

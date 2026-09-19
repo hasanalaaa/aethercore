@@ -28,7 +28,12 @@ const CBS_TAIL_LIMIT: u64 = 4 * 1024 * 1024;
 
 pub struct WindowsRepairPlatform;
 
-struct ServicingGuard(MachineMutationGuard);
+/// RAII holder for the machine-mutation lock: the field is never read by design,
+/// the lock is released when it drops. A tuple field cannot be underscore-named,
+/// so this mirrors `windows-update`'s `MachineMutationLease` and names it `_guard`.
+struct ServicingGuard {
+    _guard: MachineMutationGuard,
+}
 
 impl RepairPlatform for WindowsRepairPlatform {
     fn assess(&self) -> Result<(String, Vec<RepairCheck>)> {
@@ -210,7 +215,7 @@ fn acquire_servicing_guard() -> Result<ServicingGuard> {
     let guard = MachineMutationGuard::try_acquire()
         .map_err(|error| RepairError::Command(error.to_string()))?
         .ok_or(RepairError::ServicingBusy)?;
-    Ok(ServicingGuard(guard))
+    Ok(ServicingGuard { _guard: guard })
 }
 
 fn update_health_check() -> RepairCheck {
@@ -407,7 +412,7 @@ fn run_sfc(exe: &Path, args: &[&str], id: &str, title: &str, root: &Path) -> Res
     // only as bounded diagnostic context. The normalized result comes from the bounded CBS [SR]
     // evidence stream when present; otherwise the state remains Unknown and cannot resolve a Finding.
     let cbs = parse_recent_cbs_sr(&root.join("Logs").join("CBS").join("CBS.log"));
-    let repair_mode = args.iter().any(|arg| arg.eq_ignore_ascii_case(&"/scannow"));
+    let repair_mode = args.iter().any(|arg| arg.eq_ignore_ascii_case("/scannow"));
     match cbs {
         CbsIntegrityEvidence::NoViolation => {
             check.stage = "Completed".into();
