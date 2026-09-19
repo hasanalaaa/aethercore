@@ -28,15 +28,21 @@
 # cannot get a verdict is worse than no pull request, and a skipped check that
 # reports without measuring is the class that has bitten this project four times.
 #
-# `open-pull-requests-limit: 0` stops version updates and leaves security updates
-# alone.
+# P68: THE CONDITION IS MET AND THE PAUSE IS LIFTED. Run 35471181801 at d7b087a
+# on `main`: windows SUCCESS, deny-check SUCCESS, zero failed steps -- every step
+# through 27, including 21 (the clippy gate that had never passed), 22 and 23
+# (the Zenith gates, skipped every run since) and 25 (packaging). Not a step, the
+# whole job. DBT-P60-006 is closed with it: `crates/system-repair/build.rs`
+# finds `dismapi.lib` on the runner, which is why step 16 completes at all.
+#
+# The three limits go back to 5.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: "/phase21-workspace"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 5
     ignore:
       # DBT-P60-001. Upstream broke its API inside the 0.1.x line: 0.1.156's
       # LlamaSampler::penalties gained an n_vocab parameter and redefined a
@@ -61,9 +67,9 @@ updates:
     directory: "/phase21-workspace"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 5
