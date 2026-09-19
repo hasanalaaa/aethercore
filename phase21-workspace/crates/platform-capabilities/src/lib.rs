@@ -158,9 +158,7 @@ pub fn current_windows_sku() -> WindowsSku {
     {
         use std::ffi::c_void;
         use windows::{
-            Win32::System::Registry::{
-                HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
-            },
+            Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW},
             core::PCWSTR,
         };
 
@@ -182,7 +180,7 @@ pub fn current_windows_sku() -> WindowsSku {
                     Some(&mut bytes),
                 )
             };
-            if status.is_err() || bytes < 2 || bytes > 4096 {
+            if status.is_err() || !(2..=4096).contains(&bytes) {
                 return None;
             }
             let mut buffer = vec![0u16; (bytes as usize).div_ceil(2)];

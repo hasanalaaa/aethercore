@@ -25,7 +25,7 @@ use aethercore_windows_update::{
 
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-fn approve(engine: &OperationEngine, plan_id: &str, digest: &str) {
+fn approve(engine: &OperationEngine, plan_id: &str) {
     let intent = engine
         .begin_consent_intent(plan_id, OWNER)
         .expect("consent intent");
@@ -314,7 +314,7 @@ fn protection_barrier_precedes_every_fake_mutation_and_completes() {
         )
         .expect("plan");
     assert_eq!(plan.state, PlanState::AwaitingAuthorization);
-    approve(&engine, &plan.id, &plan.digest);
+    approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -398,7 +398,7 @@ fn backup_failure_cancels_protection_and_never_reaches_install() {
             &[candidate_id],
         )
         .expect("plan");
-    approve(&engine, &plan.id, &plan.digest);
+    approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -471,7 +471,7 @@ fn restore_end_failure_after_mutation_requires_recovery_and_never_completes() {
             &[candidate_id],
         )
         .expect("plan");
-    approve(&engine, &plan.id, &plan.digest);
+    approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
     let deadline = Instant::now() + Duration::from_secs(3);

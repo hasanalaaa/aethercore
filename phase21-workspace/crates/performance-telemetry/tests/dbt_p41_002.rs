@@ -119,11 +119,13 @@ fn pdh_value_is_decoded_from_large_value_not_cstatus() {
 
     // A destination smaller than the struct PDH writes is an out-of-bounds write
     // on every counter read, not merely a wrong number (§41.17 DBT-P41-002b).
-    assert!(
-        PDH_VALUE_SLOT_BYTES >= 16,
-        "PdhGetFormattedCounterValue writes a 16-byte PDH_FMT_COUNTERVALUE; \
-         supplying {PDH_VALUE_SLOT_BYTES} bytes overflows the destination"
-    );
+    const {
+        assert!(
+            PDH_VALUE_SLOT_BYTES >= 16,
+            "PdhGetFormattedCounterValue writes a 16-byte PDH_FMT_COUNTERVALUE; \
+             a smaller destination slot overflows on every counter read"
+        )
+    };
 
     // Offset 0 and offset 8 are deliberately different so the two are
     // distinguishable: CStatus = PDH_CSTATUS_VALID_DATA (0), measurement = 701 bp

@@ -365,13 +365,20 @@ fn request(payload: request::Payload) -> anyhow::Result<v1::Response> {
     };
     #[cfg(not(windows))]
     let resp = aethercore_ipc::connect(&req)?;
-    if let Some(error) = resp.error.as_ref() {
-        if error.code != v1::ErrorCode::Unspecified as i32 {
-            anyhow::bail!(error.message_key.clone());
-        }
+    if let Some(error) = resp.error.as_ref()
+        && error.code != v1::ErrorCode::Unspecified as i32
+    {
+        anyhow::bail!(error.message_key.clone());
     }
     if resp.status_code != 0 {
-        anyhow::bail!(resp.error_message.clone());
+        // Typed ErrorInfo carries the same detail string as the deprecated
+        // Response::error_message wire field (proto field 3).
+        anyhow::bail!(
+            resp.error
+                .as_ref()
+                .map(|e| e.technical_detail.clone())
+                .unwrap_or_else(|| "unspecified rejection".into())
+        );
     }
     Ok(resp)
 }
@@ -401,7 +408,7 @@ async fn start_ipc_session() -> Result<UiSessionState, String> {
                     .error
                     .as_ref()
                     .map(|value| value.message_key.clone())
-                    .unwrap_or_else(|| response.error_message.clone());
+                    .unwrap_or_else(|| "unspecified rejection".into());
                 anyhow::bail!(detail);
             }
             Ok::<_, anyhow::Error>(client)
@@ -2273,10 +2280,10 @@ struct UiFleetActionResult {
 
 fn load_fleet_inventory() -> aethercore_fleet::FleetInventory {
     let path = dirs_fleet_state().join("fleet").join("inventory.json");
-    if let Ok(raw) = std::fs::read(&path) {
-        if let Ok(inventory) = aethercore_fleet::FleetInventory::from_bytes(&raw) {
-            return inventory;
-        }
+    if let Ok(raw) = std::fs::read(&path)
+        && let Ok(inventory) = aethercore_fleet::FleetInventory::from_bytes(&raw)
+    {
+        return inventory;
     }
     aethercore_fleet::FleetInventory::new()
 }
@@ -2476,14 +2483,14 @@ fn fleet_trust_host(input: UiTrustInput) -> UiFleetActionResult {
     };
     // Bind the same fingerprint into the inventory pin (single source of
     // truth for the trust decision).
-    if let Some(host_mut) = inventory.get_mut(&input.host_id) {
-        if let Err(error) = host_mut.pin_trust(
+    if let Some(host_mut) = inventory.get_mut(&input.host_id)
+        && let Err(error) = host_mut.pin_trust(
             &record.host_key_sha256,
             &record.key_type,
             record.trusted_unix_ms,
-        ) {
-            return fleet_action_error(&input.host_id, error);
-        }
+        )
+    {
+        return fleet_action_error(&input.host_id, error);
     }
     let store = match fleet_trust_store_checked() {
         Ok(store) => store,

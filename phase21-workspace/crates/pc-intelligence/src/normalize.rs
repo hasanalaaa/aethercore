@@ -169,8 +169,8 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
                 source_severity: d.severity.clone(),
                 // DBT-P46-B3: carry the collector's own distinction through
                 // instead of re-defaulting it away one layer downstream of B2.
-                uncorrected_read_errors: r.read_errors_uncorrected.map(u64::from),
-                uncorrected_write_errors: r.write_errors_uncorrected.map(u64::from),
+                uncorrected_read_errors: r.read_errors_uncorrected,
+                uncorrected_write_errors: r.write_errors_uncorrected,
                 nvme_critical_warning: r.nvme_critical_warning,
                 nvme_media_errors_nonzero: nonzero(r.nvme_media_errors.as_deref()),
                 wear_percent: r
@@ -212,7 +212,7 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
             "crash-diagnostics",
             ResourceRef::global(
                 "hardware-event",
-                &format!("{}-{}-{}", e.provider, e.event_id, e.recorded_unix_ms),
+                format!("{}-{}-{}", e.provider, e.event_id, e.recorded_unix_ms),
                 "Hardware error evidence",
             ),
             e.recorded_unix_ms,

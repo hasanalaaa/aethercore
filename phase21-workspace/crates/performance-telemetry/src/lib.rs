@@ -804,12 +804,12 @@ impl PerformanceRing {
         agg.hard_faults_per_sec_avg = hard_sum / count;
         agg.hard_faults_per_sec_peak = hard_peak;
         agg.commit_pressure_bp = (commit_bp_sum / count) as u32;
-        if store_n > 0 {
-            agg.storage_active_bp_avg = (store_sum / store_n) as u32;
+        if let Some(avg) = store_sum.checked_div(store_n) {
+            agg.storage_active_bp_avg = avg as u32;
         }
         agg.storage_active_bp_peak = store_peak;
-        if gpu_n > 0 {
-            agg.gpu_busy_bp_avg = (gpu_sum / gpu_n) as u32;
+        if let Some(avg) = gpu_sum.checked_div(gpu_n) {
+            agg.gpu_busy_bp_avg = avg as u32;
         }
         agg
     }

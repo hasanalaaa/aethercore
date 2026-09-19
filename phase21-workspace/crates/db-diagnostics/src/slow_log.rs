@@ -122,6 +122,9 @@ pub fn analyze_postgres_log(path: &str, top: usize) -> Result<DiagnosticReport, 
 
 /// MySQL slow log entries:
 /// `# Query_time: 1.234  Lock_time: 0.001 Rows_sent: 5  Rows_examined: 1200` then SQL.
+// `flush!` resets the per-entry accumulators for the next entry; in its final
+// expansion — the `flush!()` after the loop — those resets are by definition dead.
+#[allow(unused_assignments)]
 pub fn analyze_mysql_log(path: &str, top: usize) -> Result<DiagnosticReport, String> {
     const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
     let meta = std::fs::metadata(path).map_err(|e| format!("{path}: {e}"))?;

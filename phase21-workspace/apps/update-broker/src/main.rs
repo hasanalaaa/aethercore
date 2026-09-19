@@ -169,7 +169,14 @@ fn call(payload: request::Payload) -> Result<v1::Response> {
     };
     let response = aethercore_ipc::connect(&req).context("connect to maintenance service")?;
     if response.status_code != 0 {
-        bail!("update request rejected: {}", response.error_message)
+        // Typed ErrorInfo carries the same detail string as the deprecated
+        // Response::error_message wire field (proto field 3).
+        let detail = response
+            .error
+            .as_ref()
+            .map(|e| e.technical_detail.as_str())
+            .unwrap_or("unspecified rejection");
+        bail!("update request rejected: {detail}")
     }
     Ok(response)
 }

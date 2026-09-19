@@ -166,7 +166,6 @@ fn main() {
         check(record("LEGIT_AUDIT_OWN_SCOPE", false, call(audit(&own))));
     }
     check(record("LEGIT_JOURNAL_OWN_SCOPE", false, call(journal(""))));
-    drop(check);
 
     println!("FAILURES={failures}");
     std::process::exit(if failures == 0 { 0 } else { 1 });

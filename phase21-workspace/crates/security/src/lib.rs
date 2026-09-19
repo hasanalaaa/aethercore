@@ -78,8 +78,6 @@ pub enum SecurityError {
 pub fn inspect_named_pipe_client(
     raw_handle: std::os::windows::io::RawHandle,
 ) -> Result<PrincipalContext, SecurityError> {
-    use std::ffi::c_void;
-
     use aethercore_windows_foundation::{OwnedHandle, ThreadImpersonation};
     use windows::{
         Win32::{
@@ -97,7 +95,7 @@ pub fn inspect_named_pipe_client(
     };
 
     unsafe {
-        let pipe = HANDLE(raw_handle as *mut c_void);
+        let pipe = HANDLE(raw_handle);
 
         // PID and Terminal Services session are kernel-reported properties of this server-side pipe
         // connection. PID is used only to resolve the executable image; security ownership is read
@@ -344,7 +342,7 @@ fn profile_dir_for_sid_text(sid_text: &str) -> Option<String> {
             Some(&mut bytes),
         )
     };
-    if status.is_err() || bytes < 2 || bytes > 4096 {
+    if status.is_err() || !(2..=4096).contains(&bytes) {
         return None;
     }
     let mut buffer = vec![0u16; (bytes as usize).div_ceil(2)];

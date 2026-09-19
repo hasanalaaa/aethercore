@@ -187,7 +187,7 @@ fn wait_scan(cleaner: &CleanupEngine) -> aethercore_cleaner::CleanupSnapshot {
 
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-fn authorize(engine: &OperationEngine, plan_id: &str, digest: &str) {
+fn authorize(engine: &OperationEngine, plan_id: &str) {
     let intent = engine
         .begin_consent_intent(plan_id, OWNER)
         .expect("consent intent");
@@ -216,7 +216,7 @@ fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
             OWNER,
             &snapshot.scan_id,
             snapshot.inventory_epoch,
-            &[id.clone()],
+            std::slice::from_ref(&id),
         )
         .expect("plan");
     let actions = engine.cleanup_actions(&plan.id).expect("actions");
@@ -233,7 +233,7 @@ fn cleanup_uses_frozen_candidate_evidence_and_reports_partial_skips() {
         Err(CleanerError::CandidateInvalid(_))
     ));
 
-    authorize(&engine, &plan.id, &plan.digest);
+    authorize(&engine, &plan.id);
     start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
     let status = wait_terminal(&cleaner, &plan.id, "Completed");
     assert!(status.mutation_started);
@@ -265,7 +265,7 @@ fn cleanup_failure_after_deletion_barrier_requires_recovery_review() {
             &[snapshot.candidates[0].candidate_id.clone()],
         )
         .expect("plan");
-    authorize(&engine, &plan.id, &plan.digest);
+    authorize(&engine, &plan.id);
     start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
 
     let status = wait_terminal(&cleaner, &plan.id, "Failed");
@@ -301,7 +301,7 @@ fn cleanup_takes_its_mutation_lease_from_the_platform() {
             &[snapshot.candidates[0].candidate_id.clone()],
         )
         .expect("plan");
-    authorize(&engine, &plan.id, &plan.digest);
+    authorize(&engine, &plan.id);
     start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
 
     let status = wait_terminal(&cleaner, &plan.id, "Failed");

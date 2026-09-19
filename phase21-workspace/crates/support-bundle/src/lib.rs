@@ -483,12 +483,12 @@ impl SupportBundleEngine {
             return Ok(SigningKey::from_bytes(&key));
         }
         let _guard = self.key_lock.lock().unwrap_or_else(|p| p.into_inner());
-        if let Ok(bytes) = fs::read(&self.key_path) {
-            if bytes.len() == 32 {
-                let mut raw = [0u8; 32];
-                raw.copy_from_slice(&bytes);
-                return Ok(SigningKey::from_bytes(&raw));
-            }
+        if let Ok(bytes) = fs::read(&self.key_path)
+            && bytes.len() == 32
+        {
+            let mut raw = [0u8; 32];
+            raw.copy_from_slice(&bytes);
+            return Ok(SigningKey::from_bytes(&raw));
         }
         if let Some(parent) = self.key_path.parent() {
             fs::create_dir_all(parent)?
@@ -579,7 +579,7 @@ impl SupportBundleEngine {
 }
 
 fn sanitize_value(value: Value) -> (Value, PrivacyReport) {
-    fn walk(value: Value, key: Option<&str>, report: &mut PrivacyReport) -> Value {
+    fn walk(value: Value, report: &mut PrivacyReport) -> Value {
         match value {
             Value::Object(map) => {
                 let mut out = serde_json::Map::new();
@@ -597,19 +597,19 @@ fn sanitize_value(value: Value) -> (Value, PrivacyReport) {
                         out.insert(k, Value::String("<redacted-hardware-serial>".into()));
                         continue;
                     }
-                    out.insert(k.clone(), walk(v, Some(&k), report));
+                    out.insert(k.clone(), walk(v, report));
                 }
                 Value::Object(out)
             }
             Value::Array(values) => {
-                Value::Array(values.into_iter().map(|v| walk(v, key, report)).collect())
+                Value::Array(values.into_iter().map(|v| walk(v, report)).collect())
             }
             Value::String(s) => Value::String(sanitize_string(&s, report)),
             other => other,
         }
     }
     let mut report = PrivacyReport::default();
-    let value = walk(value, None, &mut report);
+    let value = walk(value, &mut report);
     (value, report)
 }
 fn is_account_key(key: &str) -> bool {
@@ -652,9 +652,7 @@ fn sanitize_string(value: &str, report: &mut PrivacyReport) -> String {
             };
             let name_start = pos + marker.len();
             let rest = &out[name_start..];
-            let end = rest
-                .find(|c: char| c == '\\' || c == '/')
-                .unwrap_or(rest.len());
+            let end = rest.find(['\\', '/']).unwrap_or(rest.len());
             if end == 0 {
                 break;
             }

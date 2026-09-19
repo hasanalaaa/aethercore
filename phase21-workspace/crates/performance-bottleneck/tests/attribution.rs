@@ -223,7 +223,7 @@ fn working_set_bloat_measures_growth_not_absolute_size() {
         snap.memory.modified_page_list_bytes = first.memory.modified_page_list_bytes;
         filler.push(snap);
     }
-    let (report, _) = build_window(vec![vec![first], filler, vec![last]].concat());
+    let (report, _) = build_window([vec![first], filler, vec![last]].concat());
     let bloat = report
         .findings
         .iter()

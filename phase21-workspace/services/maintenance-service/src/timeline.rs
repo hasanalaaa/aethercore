@@ -156,7 +156,7 @@ impl TimelineCoordinator {
         before_sequence: u64,
     ) -> Result<(v1::TimelineResponse, Timeline), aethercore_persistence::PersistenceError> {
         let page_size = requested_page_size.clamp(1, MAX_PAGE_SIZE as u32) as usize;
-        let before_index = before_sequence.max(0).min(usize::MAX as u64) as usize;
+        let before_index = before_sequence.min(usize::MAX as u64) as usize;
         let timeline = self.build_timeline(owner_principal_key)?;
         let page = timeline_page_proto(&timeline, page_size, before_index);
         Ok((page, timeline))

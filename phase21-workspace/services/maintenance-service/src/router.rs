@@ -29,10 +29,10 @@ use aethercore_operation_kernel::{
 };
 use aethercore_pc_intelligence::DeepScanCoordinator;
 use aethercore_persistence::Database;
-use aethercore_startup_manager::{RecommendationDecision, StartupDecision, StartupManager};
+use aethercore_startup_manager::{StartupDecision, StartupManager};
 use aethercore_support_bundle::SupportBundleEngine;
 use aethercore_system_repair::RepairCoordinator;
-use aethercore_update_engine::{UpdateChannel, UpdateCoordinator};
+use aethercore_update_engine::UpdateCoordinator;
 use anyhow::{Context, Result};
 
 use crate::{errors::ServiceError, performance::PerformanceEngine, protocol::*, streaming::*};

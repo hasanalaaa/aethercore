@@ -698,7 +698,7 @@ fn query_nvme_health(index: u32) -> Result<NvmeHealthValues> {
     // query to begin at AdditionalParameters rather than after sizeof(STORAGE_PROPERTY_QUERY).
     let query_prefix = offset_of!(STORAGE_PROPERTY_QUERY, AdditionalParameters);
     let input_len = query_prefix + size_of::<STORAGE_PROTOCOL_SPECIFIC_DATA>();
-    let mut input_words = vec![0u64; (input_len + 7) / 8];
+    let mut input_words = vec![0u64; input_len.div_ceil(8)];
     let input_ptr = input_words.as_mut_ptr() as *mut u8;
     unsafe {
         let q = &mut *(input_ptr as *mut STORAGE_PROPERTY_QUERY);
@@ -714,7 +714,7 @@ fn query_nvme_health(index: u32) -> Result<NvmeHealthValues> {
 
     const NVME_HEALTH_LOG_BYTES: usize = 512;
     let out_len = size_of::<STORAGE_PROTOCOL_DATA_DESCRIPTOR>() + NVME_HEALTH_LOG_BYTES + 64;
-    let mut output_words = vec![0u64; (out_len + 7) / 8];
+    let mut output_words = vec![0u64; out_len.div_ceil(8)];
     let mut returned = 0u32;
     let output_ptr = output_words.as_mut_ptr() as *mut u8;
     unsafe {

@@ -108,7 +108,7 @@ pub struct ReplayBatch {
 
 #[derive(Debug)]
 pub enum SubscriptionItem {
-    Event(EventEnvelope),
+    Event(Box<EventEnvelope>),
     Lagged,
     Timeout,
     Disconnected,
@@ -147,7 +147,7 @@ impl EventSubscription {
             return SubscriptionItem::Lagged;
         }
         match self.rx.recv_timeout(timeout) {
-            Ok(event) => SubscriptionItem::Event(event),
+            Ok(event) => SubscriptionItem::Event(Box::new(event)),
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if self.lagged.swap(false, Ordering::AcqRel) {
                     self.drain_after_lag();
@@ -166,7 +166,7 @@ impl EventSubscription {
             return SubscriptionItem::Lagged;
         }
         match self.rx.try_recv() {
-            Ok(event) => SubscriptionItem::Event(event),
+            Ok(event) => SubscriptionItem::Event(Box::new(event)),
             Err(mpsc::TryRecvError::Empty) => SubscriptionItem::Timeout,
             Err(mpsc::TryRecvError::Disconnected) => SubscriptionItem::Disconnected,
         }
@@ -396,13 +396,11 @@ mod tests {
         let (subscription, replay) = bus.subscribe("owner-a", 0);
         assert_eq!(replay.events.len(), 1);
         bus.publish("owner-a", EventKind::PlanChanged, "p2", None);
-        match subscription
+        let event = subscription
             .rx
             .recv_timeout(Duration::from_millis(50))
-            .unwrap()
-        {
-            event => assert_eq!(event.sequence, 2),
-        }
+            .unwrap();
+        assert_eq!(event.sequence, 2);
     }
     #[test]
     fn sequence_from_previous_service_epoch_requires_reset() {

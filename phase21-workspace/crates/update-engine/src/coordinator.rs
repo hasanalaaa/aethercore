@@ -365,6 +365,7 @@ impl UpdateCoordinator {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn assemble(
         current_version: String,
         current_windows_build: u32,
@@ -418,6 +419,7 @@ impl UpdateCoordinator {
     }
 
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     fn with_dependencies_and_observer(
         current_version: &str,
         current_windows_build: u32,
@@ -1538,11 +1540,11 @@ impl UpdateCoordinator {
             s.progress_known = total > 0;
             s.bytes_completed = done;
             s.bytes_total = total;
-            s.overall_percent = if total == 0 {
-                0
-            } else {
-                ((done.saturating_mul(100) / total).min(100)) as u32
-            };
+            s.overall_percent = done
+                .saturating_mul(100)
+                .checked_div(total)
+                .unwrap_or(0)
+                .min(100) as u32;
         });
     }
     fn emit(&self, owner: &str, snapshot: &UpdateSnapshot) {

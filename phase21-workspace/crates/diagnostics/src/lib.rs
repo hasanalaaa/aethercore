@@ -181,7 +181,7 @@ impl std::io::Write for RotatingOwnedGuard<'_> {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        std::io::Write::flush(&mut (*self.0).file)
+        std::io::Write::flush(&mut self.0.file)
     }
 }
 

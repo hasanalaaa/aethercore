@@ -311,10 +311,11 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
                 .to_string(),
         );
     }
-    if let (Some(t), Some(max)) = (r.temperature_c, r.temperature_max_c) {
-        if max > 0 && t >= max {
-            attention.push(format!("Current temperature ({t} °C) is at or above the device/Windows-reported maximum ({max} °C)."));
-        }
+    if let (Some(t), Some(max)) = (r.temperature_c, r.temperature_max_c)
+        && max > 0
+        && t >= max
+    {
+        attention.push(format!("Current temperature ({t} °C) is at or above the device/Windows-reported maximum ({max} °C)."));
     }
     for (label, latency) in [
         ("read", r.read_latency_max_ms),

@@ -60,10 +60,10 @@ mod windows_impl {
                 Some(&mut bytes),
             )
         };
-        if status != ERROR_SUCCESS || bytes < 2 || bytes > 64 * 1024 {
+        if status != ERROR_SUCCESS || !(2..=64 * 1024).contains(&bytes) {
             return String::new();
         }
-        let mut buffer = vec![0u16; ((bytes as usize) + 1) / 2];
+        let mut buffer = vec![0u16; (bytes as usize).div_ceil(2)];
         let status = unsafe {
             RegGetValueW(
                 HKEY_LOCAL_MACHINE,

@@ -132,13 +132,13 @@ pub(super) fn export_journal(call: &Call<'_>, v: v1::ExportJournalRequest) -> Ro
     );
     // Signing happens ONLY with an explicitly provisioned owner key file
     // pointed at by AETHERCORE_EXPORT_KEY; otherwise digest-only honesty.
-    if let Some(key_path) = std::env::var_os("AETHERCORE_EXPORT_KEY") {
-        if let Ok(key_hex) = std::fs::read_to_string(std::path::Path::new(&key_path)) {
-            let key_hex = key_hex.trim();
-            if let Some(seed) = decode_key_seed(key_hex) {
-                let signing = aethercore_persistence::export::signing_key_from_seed(&seed);
-                aethercore_persistence::export::sign_envelope(&mut envelope, &signing);
-            }
+    if let Some(key_path) = std::env::var_os("AETHERCORE_EXPORT_KEY")
+        && let Ok(key_hex) = std::fs::read_to_string(std::path::Path::new(&key_path))
+    {
+        let key_hex = key_hex.trim();
+        if let Some(seed) = decode_key_seed(key_hex) {
+            let signing = aethercore_persistence::export::signing_key_from_seed(&seed);
+            aethercore_persistence::export::sign_envelope(&mut envelope, &signing);
         }
     }
     let response_payload = v1::ExportJournalResponse {

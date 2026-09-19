@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn same_state_ignores_timestamp_evidence_text_and_order() {
-        let mut a = fact(
+        let a = fact(
             100,
             FactPayload::DeviceHealth {
                 missing_driver: false,
@@ -396,7 +396,7 @@ mod tests {
             "C:\\Users\\Alice\\private",
         );
         assert_eq!(
-            machine_state_fingerprint(&[state.clone()]),
+            machine_state_fingerprint(std::slice::from_ref(&state)),
             machine_state_fingerprint(&[state, limitation])
         );
     }

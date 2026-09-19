@@ -4,9 +4,10 @@ use aethercore_performance_telemetry::{PerfSnapshot, PerformanceRing};
 use criterion::{Criterion, criterion_group, criterion_main};
 
 fn idle_snapshot(base_ms: u64, index: usize) -> PerfSnapshot {
-    let mut snap = PerfSnapshot::default();
-    snap.captured_unix_ms = (base_ms + index as u64 * 1000) as i64;
-    snap
+    PerfSnapshot {
+        captured_unix_ms: (base_ms + index as u64 * 1000) as i64,
+        ..Default::default()
+    }
 }
 
 fn bench_ring_aggregate(c: &mut Criterion) {

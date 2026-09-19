@@ -363,5 +363,5 @@ fn digest_changes_when_history_changes_but_pattern_content_does_not_leak_noise()
 #[test]
 fn page_size_contract_constant_is_render_safe() {
     // Server-side clamping uses this bound; it must be sane against abuse.
-    assert!(MAX_PAGE_SIZE >= 1 && MAX_PAGE_SIZE <= 1000);
+    const { assert!(MAX_PAGE_SIZE >= 1 && MAX_PAGE_SIZE <= 1000) };
 }

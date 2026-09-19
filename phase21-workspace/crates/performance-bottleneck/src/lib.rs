@@ -430,8 +430,8 @@ fn thermal_clamp(window: &[PerfSnapshot]) -> Option<RuleOutput> {
     let majority = throttled * 2 > window.len();
     let reason = window
         .iter()
-        .filter(|snap| snap.power.throttle_active)
-        .last()
+        .rev()
+        .find(|snap| snap.power.throttle_active)
         .map(|snap| snap.power.throttle_reason)
         .unwrap_or_default();
     let (code, title, summary) = match reason {

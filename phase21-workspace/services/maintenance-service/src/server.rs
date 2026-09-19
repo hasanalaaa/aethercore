@@ -286,7 +286,7 @@ fn serve_session(
                     SubscriptionItem::Event(event) => {
                         if pump_writer
                             .write(&ServerFrame {
-                                payload: Some(server_frame::Payload::Event(event)),
+                                payload: Some(server_frame::Payload::Event(*event)),
                             })
                             .is_err()
                         {
@@ -508,6 +508,7 @@ fn error_response(request_id: &str, status: u32, code: ErrorCode, detail: &str) 
             request_id: request_id.into(),
         }),
         status_code: status,
+        #[allow(deprecated)] // wire-contract placeholder field (proto field 3)
         error_message: detail.into(),
         error: Some(ErrorInfo {
             code: code as i32,

@@ -495,25 +495,25 @@ fn sample_power(partial: &mut Vec<CollectorFault>) -> Reading<PowerSample> {
             let max_mhz = read_u32(4);
             let current_mhz = read_u32(8);
             let mhz_limit = read_u32(12);
-            if let (Some(max), Some(current)) = (max_mhz, current_mhz) {
-                if max > 0 && current > 0 {
-                    let ratio_bp =
-                        ((u64::from(current) * 10_000) / u64::from(max)).min(10_000) as u32;
-                    // A sustained ratio materially below max indicates a clamp in effect.
-                    if ratio_bp < 8_500 {
-                        sample.throttle_active = true;
-                        // Without vendor MSRs we cannot distinguish VRM vs package power here;
-                        // report the conservative generic power clamp and surface raw evidence.
-                        sample.throttle_reason = ThermalThrottleReason::Power;
-                    }
+            if let (Some(max), Some(current)) = (max_mhz, current_mhz)
+                && max > 0
+                && current > 0
+            {
+                let ratio_bp = ((u64::from(current) * 10_000) / u64::from(max)).min(10_000) as u32;
+                // A sustained ratio materially below max indicates a clamp in effect.
+                if ratio_bp < 8_500 {
+                    sample.throttle_active = true;
+                    // Without vendor MSRs we cannot distinguish VRM vs package power here;
+                    // report the conservative generic power clamp and surface raw evidence.
+                    sample.throttle_reason = ThermalThrottleReason::Power;
                 }
             }
-            if let Some(limit) = mhz_limit {
-                if limit < 100 {
-                    sample.throttle_active = true;
-                    if sample.throttle_reason == ThermalThrottleReason::Unspecified {
-                        sample.throttle_reason = ThermalThrottleReason::Thermal;
-                    }
+            if let Some(limit) = mhz_limit
+                && limit < 100
+            {
+                sample.throttle_active = true;
+                if sample.throttle_reason == ThermalThrottleReason::Unspecified {
+                    sample.throttle_reason = ThermalThrottleReason::Thermal;
                 }
             }
         }
@@ -805,10 +805,7 @@ fn query_disk_space(instance: &str) -> (u64, u64) {
         let part = part.trim();
         if part.len() == 2
             && part.ends_with(':')
-            && part
-                .chars()
-                .next()
-                .map_or(false, |c| c.is_ascii_alphabetic())
+            && part.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
         {
             Some(format!("{}\\", part))
         } else {

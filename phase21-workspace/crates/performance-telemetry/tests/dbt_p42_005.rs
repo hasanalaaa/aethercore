@@ -22,6 +22,8 @@
 //! These are written and committed FAILING before the Part 1.C fix, matching
 //! the practice §42.1 established for Windows.
 
+#![cfg(any(target_os = "macos", target_os = "linux"))]
+
 use std::time::Duration;
 
 use aethercore_performance_telemetry::{CollectorFault, PerfPlatform, PerfSnapshot};

@@ -221,20 +221,20 @@ pub fn publish_hydration(ctx: &ServiceContext, owner: &str) {
             update_snapshot_proto(ctx.updates.snapshot(owner)),
         )),
     );
-    if let Ok(value) = ctx.intelligence.snapshot_for_owner(owner) {
-        if !value.scan_id.is_empty() {
-            let _ = ctx.intelligence.record_stream_event(owner, &value.scan_id);
-            let value = ctx.intelligence.snapshot_for_owner(owner).unwrap_or(value);
-            publish(
-                ctx,
-                owner,
-                EventKind::DeepScan,
-                "",
-                Some(event_envelope::Payload::DeepScanSnapshot(
-                    deep_scan_snapshot_proto(value),
-                )),
-            );
-        }
+    if let Ok(value) = ctx.intelligence.snapshot_for_owner(owner)
+        && !value.scan_id.is_empty()
+    {
+        let _ = ctx.intelligence.record_stream_event(owner, &value.scan_id);
+        let value = ctx.intelligence.snapshot_for_owner(owner).unwrap_or(value);
+        publish(
+            ctx,
+            owner,
+            EventKind::DeepScan,
+            "",
+            Some(event_envelope::Payload::DeepScanSnapshot(
+                deep_scan_snapshot_proto(value),
+            )),
+        );
     }
 }
 

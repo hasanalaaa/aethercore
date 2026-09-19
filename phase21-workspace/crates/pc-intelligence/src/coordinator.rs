@@ -172,7 +172,7 @@ impl DeepScanCoordinator {
             return Err(IntelligenceError::Internal(error.to_string()));
         }
 
-        self.snapshot_for_owner(&owner)
+        self.snapshot_for_owner(owner)
     }
 
     pub fn cancel(&self, owner: &str, scan_id: &str) -> Result<DeepScanSnapshot> {
@@ -624,6 +624,7 @@ fn run(inner: Arc<Inner>, owner: String, token: CancellationToken, identity: Run
     clear_run_if_owner(&inner, &identity);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_batch(
     inner: &Arc<Inner>,
     owner: &str,
@@ -932,6 +933,7 @@ fn publish_findings(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn complete(
     inner: &Inner,
     owner: &str,

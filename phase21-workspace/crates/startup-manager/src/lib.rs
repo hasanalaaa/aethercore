@@ -944,6 +944,7 @@ impl StartupManager {
     }
 }
 
+#[cfg(test)]
 fn execute_plan(
     engine: &OperationEngine,
     db: &Database,
@@ -1126,14 +1127,15 @@ fn execute_plan_with_telemetry(
             rec.restored_unix_ms = Some(rec.updated_unix_ms);
         }
         db.upsert_startup_change(&rec)?;
-        if action.direction == "Restore" && rec.origin_change_id != rec.change_id {
-            if let Some(mut source) = db.get_startup_change(&rec.origin_change_id)? {
-                source.state = "Restored".into();
-                source.detail = format!("Restored by startup change {}.", rec.change_id);
-                source.updated_unix_ms = rec.updated_unix_ms;
-                source.restored_unix_ms = Some(rec.updated_unix_ms);
-                db.upsert_startup_change(&source)?;
-            }
+        if action.direction == "Restore"
+            && rec.origin_change_id != rec.change_id
+            && let Some(mut source) = db.get_startup_change(&rec.origin_change_id)?
+        {
+            source.state = "Restored".into();
+            source.detail = format!("Restored by startup change {}.", rec.change_id);
+            source.updated_unix_ms = rec.updated_unix_ms;
+            source.restored_unix_ms = Some(rec.updated_unix_ms);
+            db.upsert_startup_change(&source)?;
         }
         db.upsert_maintenance_item(&MaintenanceItemRecord {
             plan_id: plan_id.into(),
@@ -1244,6 +1246,7 @@ fn fail_execution(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_exec(
     db: &Database,
     plan_id: &str,

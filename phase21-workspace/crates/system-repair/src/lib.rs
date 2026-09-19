@@ -352,14 +352,13 @@ impl RepairCoordinator {
                         // from pre-reboot assumptions without rebuilding and revalidating the graph.
                         if let Ok(Some(previous)) =
                             db.latest_pending_repair_reboot_resume(&owner_for_worker)
+                            && previous.assessment_id != assessment_id
                         {
-                            if previous.assessment_id != assessment_id {
-                                let _ = db.consume_repair_reboot_resume(
-                                    &previous.token_sha256,
-                                    "FreshAssessmentPerformed",
-                                    completed,
-                                );
-                            }
+                            let _ = db.consume_repair_reboot_resume(
+                                &previous.token_sha256,
+                                "FreshAssessmentPerformed",
+                                completed,
+                            );
                         }
                         if intelligence
                             .graph
@@ -1109,6 +1108,7 @@ fn verification_proves_success(
     component_ok && system_ok && disk_ok && service_ok && update_ok
 }
 
+#[allow(clippy::too_many_arguments)]
 fn timeline_event(
     db: &Database,
     owner: &str,

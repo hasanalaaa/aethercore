@@ -37,7 +37,10 @@ const POLL_INTERVAL: Duration = Duration::from_millis(500);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 
-struct MachineMutationLease(MachineMutationGuard);
+/// Held only for its `Drop`: releasing the machine-wide mutation guard at end of scope.
+struct MachineMutationLease {
+    _guard: MachineMutationGuard,
+}
 
 #[windows::core::implement(IDownloadProgressChangedCallback)]
 struct DownloadProgressCallback;
@@ -417,7 +420,7 @@ fn acquire_mutation_mutex() -> Result<MachineMutationLease> {
     let guard = MachineMutationGuard::try_acquire()
         .map_err(wua_err)?
         .ok_or(UpdateError::Busy)?;
-    Ok(MachineMutationLease(guard))
+    Ok(MachineMutationLease { _guard: guard })
 }
 
 fn clamp_percent(value: i32) -> u32 {

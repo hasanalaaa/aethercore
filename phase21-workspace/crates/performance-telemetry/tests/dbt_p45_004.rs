@@ -27,6 +27,7 @@
 //! `cpu` `Unavailable` fault naming the tick delta, and never as a confident `0`.
 //! A silent zero is the defect, at any rate above zero.
 
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 
 #[cfg(target_os = "macos")]

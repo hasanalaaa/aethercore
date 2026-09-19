@@ -138,6 +138,5 @@ fn truncate(value: &str) -> String {
         .chars()
         .take(512)
         .collect::<String>()
-        .replace('\r', " ")
-        .replace('\n', " ")
+        .replace(['\r', '\n'], " ")
 }

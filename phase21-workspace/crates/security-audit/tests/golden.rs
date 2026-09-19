@@ -4,7 +4,6 @@
 
 use aethercore_security_audit as sec;
 use sec::model::{AuditTarget, Confidence, Severity};
-use std::path::PathBuf;
 
 /// DBT-P48-003: same shape as the four sites DBT-P42-013 fixed and as
 /// `crates/ipc/tests/unix_adversarial.rs` — cleaned at the start of the NEXT

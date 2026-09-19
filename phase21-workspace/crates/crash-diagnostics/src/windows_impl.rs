@@ -85,7 +85,7 @@ impl RenderBuffer {
             ));
         }
         let address = self.words.as_ptr() as usize;
-        if address % align_of::<EVT_VARIANT>() != 0 {
+        if !address.is_multiple_of(align_of::<EVT_VARIANT>()) {
             return Err(CrashError::MalformedResponse(
                 "EvtRender buffer was not aligned for EVT_VARIANT".into(),
             ));
@@ -207,11 +207,10 @@ fn collect_events(
     .map_err(win)?;
     let result = EventHandle(result);
     let system_context = EventHandle(
-        unsafe { EvtCreateRenderContext(None, EvtRenderContextSystem.0 as u32) }.map_err(win)?,
+        unsafe { EvtCreateRenderContext(None, EvtRenderContextSystem.0) }.map_err(win)?,
     );
-    let user_context = EventHandle(
-        unsafe { EvtCreateRenderContext(None, EvtRenderContextUser.0 as u32) }.map_err(win)?,
-    );
+    let user_context =
+        EventHandle(unsafe { EvtCreateRenderContext(None, EvtRenderContextUser.0) }.map_err(win)?);
 
     let mut out = Vec::new();
     let mut malformed_events = 0usize;
@@ -333,10 +332,10 @@ fn render_user_values(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<Vec<Stri
     let variants = buffer.variants()?;
     let mut values = Vec::new();
     for variant in variants.iter().take(MAX_EVENT_PROPERTIES) {
-        if let Some(value) = variant_to_bounded_text(variant, &buffer)? {
-            if !value.is_empty() {
-                values.push(value);
-            }
+        if let Some(value) = variant_to_bounded_text(variant, &buffer)?
+            && !value.is_empty()
+        {
+            values.push(value);
         }
     }
     Ok(values)
@@ -361,17 +360,17 @@ fn render_values(context: EVT_HANDLE, event: EVT_HANDLE, max_bytes: usize) -> Re
         EvtRender(
             Some(context),
             event,
-            EvtRenderEventValues.0 as u32,
+            EvtRenderEventValues.0,
             0,
             None,
             &mut used,
             &mut properties,
         )
     };
-    if let Err(error) = first {
-        if error.code() != ERROR_INSUFFICIENT_BUFFER.to_hresult() {
-            return Err(win(error));
-        }
+    if let Err(error) = first
+        && error.code() != ERROR_INSUFFICIENT_BUFFER.to_hresult()
+    {
+        return Err(win(error));
     }
     // Property count is untrusted provider output. Reject pathological counts before allocating
     // the render buffer; the byte cap alone does not express this semantic invariant.
@@ -401,7 +400,7 @@ fn render_values(context: EVT_HANDLE, event: EVT_HANDLE, max_bytes: usize) -> Re
         EvtRender(
             Some(context),
             event,
-            EvtRenderEventValues.0 as u32,
+            EvtRenderEventValues.0,
             used,
             Some(words.as_mut_ptr().cast()),
             &mut actual_used,
@@ -453,7 +452,7 @@ fn variant_unicode_string(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Resul
             "EVT_VARIANT string pointer escaped its render buffer".into(),
         ));
     }
-    if (address as usize) % align_of::<u16>() != 0 {
+    if !(address as usize).is_multiple_of(align_of::<u16>()) {
         return Err(CrashError::MalformedResponse(
             "EVT_VARIANT UTF-16 string pointer was misaligned".into(),
         ));
@@ -582,7 +581,7 @@ fn collect_minidumps(
             ),
         }
     }
-    entries.sort_by_key(|(_, modified)| std::cmp::Reverse(modified.clone()));
+    entries.sort_by_key(|(_, modified)| std::cmp::Reverse(*modified));
     entries.truncate(MAX_DUMPS);
 
     let mut out = Vec::new();
@@ -756,9 +755,11 @@ mod tests {
 
     #[test]
     fn render_caps_are_explicit_and_small() {
-        assert!(MAX_SYSTEM_RENDER_BYTES <= 64 * 1024);
-        assert!(MAX_USER_RENDER_BYTES <= 256 * 1024);
-        assert!(MAX_EVENT_PROPERTIES <= 256);
+        const {
+            assert!(MAX_SYSTEM_RENDER_BYTES <= 64 * 1024);
+            assert!(MAX_USER_RENDER_BYTES <= 256 * 1024);
+            assert!(MAX_EVENT_PROPERTIES <= 256);
+        }
     }
 
     #[test]

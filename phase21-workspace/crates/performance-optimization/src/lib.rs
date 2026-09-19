@@ -470,10 +470,10 @@ impl OptimizationGovernor {
         };
         {
             let mut running = lock(&self.running);
-            if let Some(state) = running.as_mut() {
-                if state.plan_id == plan.plan_id {
-                    state.status = status.clone();
-                }
+            if let Some(state) = running.as_mut()
+                && state.plan_id == plan.plan_id
+            {
+                state.status = status.clone();
             }
         }
         drop(lease); // RAII release publishes MutationLease event via kernel observer

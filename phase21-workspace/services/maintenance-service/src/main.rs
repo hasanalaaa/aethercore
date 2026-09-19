@@ -1,13 +1,15 @@
-use std::{
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+use std::path::PathBuf;
+#[cfg(windows)]
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
-use anyhow::{Context, Result};
-use tracing::{error, warn};
+#[cfg(windows)]
+use anyhow::Context;
+use anyhow::Result;
+#[cfg(windows)]
+use tracing::warn;
 
 mod assistant;
 mod care;
@@ -52,10 +54,6 @@ mod unix_service;
 #[cfg(windows)]
 mod windows_service_host;
 
-// DBT-P46-D1: one decider, shared with the IPC peer check and the installer
-// hardener, which had each declared this independently.
-use aethercore_product_identity::SERVICE_NAME;
-
 fn main() -> Result<()> {
     #[cfg(windows)]
     {
@@ -91,12 +89,11 @@ fn main() -> Result<()> {
 fn product_data_root() -> PathBuf {
     let mut args = std::env::args();
     while let Some(arg) = args.next() {
-        if arg == "--data-dir" {
-            if let Some(value) = args.next() {
-                if !value.trim().is_empty() {
-                    return PathBuf::from(value);
-                }
-            }
+        if arg == "--data-dir"
+            && let Some(value) = args.next()
+            && !value.trim().is_empty()
+        {
+            return PathBuf::from(value);
         }
     }
     if let Ok(v) = std::env::var("AETHERCORE_DATA_DIR") {

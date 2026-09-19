@@ -172,7 +172,7 @@ pub struct StartupChangeAction {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PlanAction {
-    InstallWindowsDriver(DriverInstallAction),
+    InstallWindowsDriver(Box<DriverInstallAction>),
     RepairWindowsIntegrity(SystemRepairAction),
     DeleteCleanupCandidate(CleanupDeleteAction),
     ChangeStartupTarget(StartupChangeAction),
@@ -294,7 +294,7 @@ impl OperationEngine {
             owner_principal_key: owner_principal_key.into(),
             actions: actions
                 .into_iter()
-                .map(PlanAction::InstallWindowsDriver)
+                .map(|action| PlanAction::InstallWindowsDriver(Box::new(action)))
                 .collect(),
         };
         self.insert_material(
@@ -380,7 +380,7 @@ impl OperationEngine {
         let mut actions = Vec::new();
         for action in material.actions {
             match action {
-                PlanAction::InstallWindowsDriver(v) => actions.push(v),
+                PlanAction::InstallWindowsDriver(v) => actions.push(*v),
                 _ => return Err(EngineError::WrongActionType),
             }
         }
@@ -763,12 +763,14 @@ fn plan_kind(actions: &[PlanAction]) -> Result<&'static str> {
         PlanAction::DeleteCleanupCandidate(_) => "Cleanup",
         PlanAction::ChangeStartupTarget(_) => "Startup",
     };
-    if actions.iter().any(|action| match (kind, action) {
-        ("DriverInstall", PlanAction::InstallWindowsDriver(_))
-        | ("SystemRepair", PlanAction::RepairWindowsIntegrity(_))
-        | ("Cleanup", PlanAction::DeleteCleanupCandidate(_))
-        | ("Startup", PlanAction::ChangeStartupTarget(_)) => false,
-        _ => true,
+    if actions.iter().any(|action| {
+        !matches!(
+            (kind, action),
+            ("DriverInstall", PlanAction::InstallWindowsDriver(_))
+                | ("SystemRepair", PlanAction::RepairWindowsIntegrity(_))
+                | ("Cleanup", PlanAction::DeleteCleanupCandidate(_))
+                | ("Startup", PlanAction::ChangeStartupTarget(_))
+        )
     }) {
         return Err(EngineError::WrongActionType);
     }

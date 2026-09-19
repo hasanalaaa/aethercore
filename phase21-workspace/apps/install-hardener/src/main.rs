@@ -171,10 +171,12 @@ fn ensure_mutation_lock_file(data_dir: &Path) -> anyhow::Result<PathBuf> {
             parent.display()
         );
     }
+    // Existence-only: an already-present lock file keeps its contents.
     let _ = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(&path)?;
     let metadata = std::fs::symlink_metadata(&path)?;
     if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {

@@ -10,7 +10,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use aethercore_performance_bottleneck::analyze;
-use aethercore_performance_telemetry::{PerfSnapshot, PerformanceRing};
+#[cfg(target_os = "macos")]
+use aethercore_performance_telemetry::PerfSnapshot;
+use aethercore_performance_telemetry::PerformanceRing;
 
 #[cfg(target_os = "macos")]
 const TICKS: u64 = 12;

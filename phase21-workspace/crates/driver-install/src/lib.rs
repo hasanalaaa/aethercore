@@ -174,7 +174,7 @@ impl InstallPlatform for WindowsInstallPlatform {
         progress: &mut dyn FnMut(WuaProgress),
         before: &mut dyn FnMut() -> std::result::Result<(), String>,
     ) -> std::result::Result<WuaExecutionResult, String> {
-        aethercore_windows_update::execute_driver_updates(ids, |p| progress(p), || before())
+        aethercore_windows_update::execute_driver_updates(ids, progress, before)
             .map_err(|e| e.to_string())
     }
 }
@@ -484,13 +484,13 @@ impl DriverInstallCoordinator {
                     self.add_recovery(&execution, "warning", "interrupted-mutation", "Driver installation was interrupted", "Installation was not replayed. Review the restore point and exported driver backup before further action.")?;
                 }
                 PlanState::Preflight | PlanState::Protected => {
-                    if let Some(seq) = execution.restore_point_sequence {
-                        if !execution.mutation_started {
-                            let _ = self.platform.cancel_restore(
-                                seq,
-                                &aethercore_restore_point::description_for_plan(&plan.id),
-                            );
-                        }
+                    if let Some(seq) = execution.restore_point_sequence
+                        && !execution.mutation_started
+                    {
+                        let _ = self.platform.cancel_restore(
+                            seq,
+                            &aethercore_restore_point::description_for_plan(&plan.id),
+                        );
                     }
                     execution.recovery_required = false;
                     execution.failure_message =
@@ -659,7 +659,6 @@ impl DriverInstallCoordinator {
         let wua = platform
             .execute_wua(&identities, &mut on_progress, &mut before)
             .map_err(InstallError::Execution);
-        drop(before); // release the closure's mutable borrow of restore_evidence before recovery handling
         let mut execution = self
             .db
             .get_execution(plan_id)?
@@ -1203,65 +1202,65 @@ impl DriverInstallCoordinator {
 
     fn fail_safely(&self, plan_id: &str, message: &str) -> Result<()> {
         let state = self.engine.get_plan(plan_id).ok().map(|p| p.state);
-        if let Some(mut r) = self.db.get_execution(plan_id)? {
-            if r.completed_unix_ms.is_none() {
-                let restore_description = aethercore_restore_point::description_for_plan(plan_id);
-                let close_error = match (r.restore_point_sequence, r.mutation_started) {
-                    (Some(seq), false) => self
-                        .platform
-                        .cancel_restore(seq, &restore_description)
-                        .err(),
-                    (Some(seq), true) => self.platform.end_restore(seq, &restore_description).err(),
-                    _ => None,
-                };
-                r.failure_message = message.chars().take(1024).collect();
-                r.recovery_required = r.mutation_started || close_error.is_some();
-                r.stage = if r.mutation_started {
-                    "FailedAfterMutation"
-                } else {
-                    "FailedSafe"
-                }
-                .into();
-                r.detail = if r.mutation_started {
-                    "The operation stopped after the mutation barrier. AetherCore will not replay installation automatically.".into()
-                } else {
-                    "The operation stopped before driver mutation. Any fresh restore point was cancelled when possible.".into()
-                };
-                if let Some(close_error) = close_error {
-                    r.detail.push_str(&format!(
-                        " Restore transaction close also failed: {close_error}"
-                    ));
-                }
-                r.updated_unix_ms = now_ms();
-                r.completed_unix_ms = Some(now_ms());
-                self.db.upsert_execution(&r)?;
-                if r.recovery_required {
-                    self.add_recovery(
-                        &r,
-                        "warning",
-                        "safe-failure",
-                        "Driver installation needs recovery review",
-                        &r.detail,
-                    )?;
-                }
+        if let Some(mut r) = self.db.get_execution(plan_id)?
+            && r.completed_unix_ms.is_none()
+        {
+            let restore_description = aethercore_restore_point::description_for_plan(plan_id);
+            let close_error = match (r.restore_point_sequence, r.mutation_started) {
+                (Some(seq), false) => self
+                    .platform
+                    .cancel_restore(seq, &restore_description)
+                    .err(),
+                (Some(seq), true) => self.platform.end_restore(seq, &restore_description).err(),
+                _ => None,
+            };
+            r.failure_message = message.chars().take(1024).collect();
+            r.recovery_required = r.mutation_started || close_error.is_some();
+            r.stage = if r.mutation_started {
+                "FailedAfterMutation"
+            } else {
+                "FailedSafe"
+            }
+            .into();
+            r.detail = if r.mutation_started {
+                "The operation stopped after the mutation barrier. AetherCore will not replay installation automatically.".into()
+            } else {
+                "The operation stopped before driver mutation. Any fresh restore point was cancelled when possible.".into()
+            };
+            if let Some(close_error) = close_error {
+                r.detail.push_str(&format!(
+                    " Restore transaction close also failed: {close_error}"
+                ));
+            }
+            r.updated_unix_ms = now_ms();
+            r.completed_unix_ms = Some(now_ms());
+            self.db.upsert_execution(&r)?;
+            if r.recovery_required {
+                self.add_recovery(
+                    &r,
+                    "warning",
+                    "safe-failure",
+                    "Driver installation needs recovery review",
+                    &r.detail,
+                )?;
             }
         }
-        if let Some(state) = state {
-            if matches!(
+        if let Some(state) = state
+            && matches!(
                 state,
                 PlanState::Preflight
                     | PlanState::Protected
                     | PlanState::Executing
                     | PlanState::Verifying
                     | PlanState::Resuming
-            ) {
-                let _ = self.engine.transition(
-                    plan_id,
-                    state,
-                    PlanState::Failed,
-                    "driver install worker failed safely",
-                );
-            }
+            )
+        {
+            let _ = self.engine.transition(
+                plan_id,
+                state,
+                PlanState::Failed,
+                "driver install worker failed safely",
+            );
         }
         Ok(())
     }

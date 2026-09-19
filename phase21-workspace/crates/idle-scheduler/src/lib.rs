@@ -9,7 +9,7 @@ mod windows_state;
 
 pub use model::*;
 pub use policy::{EligibilityEngine, WorkloadPolicy};
-pub use resource::ResourceGovernor;
+pub use resource::{Cancelled, ResourceGovernor};
 pub use runtime::{
     IdleScheduler, PassiveWorkExecutor, SchedulerHandle, SchedulerStartError, SystemStateProbe,
 };

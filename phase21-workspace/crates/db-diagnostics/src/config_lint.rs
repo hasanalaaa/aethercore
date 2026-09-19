@@ -157,44 +157,45 @@ pub fn lint_postgres(dir: &std::path::Path) -> Result<(Vec<DbFinding>, Vec<Strin
     let mut findings = Vec::new();
     let get = |key: &str| directives.iter().find(|d| d.key == key);
 
-    if let Some(d) = get("fsync") {
-        if !boolish(&d.value) {
-            let ev = vec![EvidenceRef {
-                fact: "pg.fsync".into(),
-                observed: d.value.clone(),
-                expected_or_threshold: "on".into(),
-                source_location: d.source_location.clone(),
-            }];
-            if let Some(f) = DbFinding::try_new(
-                "pg-fsync-off",
-                "db.pg.durability.fsyncOff",
-                Severity::Critical,
-                ev,
-                "db.finding.pgFsync",
-                Confidence::Measured,
-            ) {
-                findings.push(f);
-            }
+    if let Some(d) = get("fsync")
+        && !boolish(&d.value)
+    {
+        let ev = vec![EvidenceRef {
+            fact: "pg.fsync".into(),
+            observed: d.value.clone(),
+            expected_or_threshold: "on".into(),
+            source_location: d.source_location.clone(),
+        }];
+        if let Some(f) = DbFinding::try_new(
+            "pg-fsync-off",
+            "db.pg.durability.fsyncOff",
+            Severity::Critical,
+            ev,
+            "db.finding.pgFsync",
+            Confidence::Measured,
+        ) {
+            findings.push(f);
         }
     }
-    if let Some(d) = get("synchronous_commit") {
-        if !boolish(&d.value) && d.value != "remote_apply" {
-            let ev = vec![EvidenceRef {
-                fact: "pg.synchronous_commit".into(),
-                observed: d.value.clone(),
-                expected_or_threshold: "on|remote_apply".into(),
-                source_location: d.source_location.clone(),
-            }];
-            if let Some(f) = DbFinding::try_new(
-                "pg-sync-commit-off",
-                "db.pg.durability.synchronousCommitOff",
-                Severity::Warning,
-                ev,
-                "db.finding.pgSyncCommit",
-                Confidence::Measured,
-            ) {
-                findings.push(f);
-            }
+    if let Some(d) = get("synchronous_commit")
+        && !boolish(&d.value)
+        && d.value != "remote_apply"
+    {
+        let ev = vec![EvidenceRef {
+            fact: "pg.synchronous_commit".into(),
+            observed: d.value.clone(),
+            expected_or_threshold: "on|remote_apply".into(),
+            source_location: d.source_location.clone(),
+        }];
+        if let Some(f) = DbFinding::try_new(
+            "pg-sync-commit-off",
+            "db.pg.durability.synchronousCommitOff",
+            Severity::Warning,
+            ev,
+            "db.finding.pgSyncCommit",
+            Confidence::Measured,
+        ) {
+            findings.push(f);
         }
     }
     if let (Some(listen), ssl) = (get("listen_addresses"), get("ssl")) {
@@ -235,26 +236,25 @@ pub fn lint_postgres(dir: &std::path::Path) -> Result<(Vec<DbFinding>, Vec<Strin
     let standby_hint = directives
         .iter()
         .any(|d| d.key == "primary_conninfo" || d.key == "standby_mode");
-    if standby_hint {
-        if let Some(wal) = get("wal_level") {
-            if !matches!(wal.value.as_str(), "replica" | "logical") {
-                let ev = vec![EvidenceRef {
-                    fact: "pg.wal_level".into(),
-                    observed: wal.value.clone(),
-                    expected_or_threshold: "replica|logical with standby hints present".into(),
-                    source_location: wal.source_location.clone(),
-                }];
-                if let Some(f) = DbFinding::try_new(
-                    "pg-wal-level",
-                    "db.pg.replication.walLevel",
-                    Severity::Critical,
-                    ev,
-                    "db.finding.pgWalLevel",
-                    Confidence::Measured,
-                ) {
-                    findings.push(f);
-                }
-            }
+    if standby_hint
+        && let Some(wal) = get("wal_level")
+        && !matches!(wal.value.as_str(), "replica" | "logical")
+    {
+        let ev = vec![EvidenceRef {
+            fact: "pg.wal_level".into(),
+            observed: wal.value.clone(),
+            expected_or_threshold: "replica|logical with standby hints present".into(),
+            source_location: wal.source_location.clone(),
+        }];
+        if let Some(f) = DbFinding::try_new(
+            "pg-wal-level",
+            "db.pg.replication.walLevel",
+            Severity::Critical,
+            ev,
+            "db.finding.pgWalLevel",
+            Confidence::Measured,
+        ) {
+            findings.push(f);
         }
     }
 
@@ -272,24 +272,24 @@ pub fn lint_mysql(dir: &std::path::Path) -> Result<(Vec<DbFinding>, Vec<String>)
     let mut findings = Vec::new();
     let get = |key: &str| directives.iter().find(|d| d.key == key);
 
-    if let Some(d) = get("innodb_flush_log_at_trx_commit") {
-        if d.value != "1" {
-            let ev = vec![EvidenceRef {
-                fact: "my.innodb_flush_log_at_trx_commit".into(),
-                observed: d.value.clone(),
-                expected_or_threshold: "1".into(),
-                source_location: d.source_location.clone(),
-            }];
-            if let Some(f) = DbFinding::try_new(
-                "my-flush-trx",
-                "db.my.durability.flushLogAtTrxCommit",
-                Severity::Critical,
-                ev,
-                "db.finding.myFlushTrx",
-                Confidence::Measured,
-            ) {
-                findings.push(f);
-            }
+    if let Some(d) = get("innodb_flush_log_at_trx_commit")
+        && d.value != "1"
+    {
+        let ev = vec![EvidenceRef {
+            fact: "my.innodb_flush_log_at_trx_commit".into(),
+            observed: d.value.clone(),
+            expected_or_threshold: "1".into(),
+            source_location: d.source_location.clone(),
+        }];
+        if let Some(f) = DbFinding::try_new(
+            "my-flush-trx",
+            "db.my.durability.flushLogAtTrxCommit",
+            Severity::Critical,
+            ev,
+            "db.finding.myFlushTrx",
+            Confidence::Measured,
+        ) {
+            findings.push(f);
         }
     }
     let skip_networking = get("skip_networking")

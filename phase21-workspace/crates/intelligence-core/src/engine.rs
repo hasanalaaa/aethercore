@@ -132,8 +132,8 @@ impl LocalReasoner for DeterministicFallbackReasoner {
             .iter()
             .filter(|item| matches!(item.surface, crate::model::EvidenceSurface::RepairDiagnosis))
             .collect();
-        if !repair_items.is_empty() {
-            if let Some(insight) = Insight::build(
+        if !repair_items.is_empty()
+            && let Some(insight) = Insight::build(
                 "insight.summary.repairState",
                 format!(
                     "{} repair diagnosis entr(ies) present with their own verification states.",
@@ -149,9 +149,9 @@ impl LocalReasoner for DeterministicFallbackReasoner {
                     })
                     .collect(),
                 InsightEngineKind::RuleFallback,
-            ) {
-                out.push(insight);
-            }
+            )
+        {
+            out.push(insight);
         }
 
         // Rule 3: recurrence pattern summary.
@@ -160,8 +160,8 @@ impl LocalReasoner for DeterministicFallbackReasoner {
             .iter()
             .filter(|item| matches!(item.surface, crate::model::EvidenceSurface::TimelinePattern))
             .collect();
-        if pattern_items.len() >= 1 {
-            if let Some(insight) = Insight::build(
+        if !pattern_items.is_empty()
+            && let Some(insight) = Insight::build(
                 "insight.summary.recurrence",
                 format!(
                     "{} recurring pattern(s) detected by timeline intelligence with full evidence matrices.",
@@ -177,9 +177,9 @@ impl LocalReasoner for DeterministicFallbackReasoner {
                     })
                     .collect(),
                 InsightEngineKind::RuleFallback,
-            ) {
-                out.push(insight);
-            }
+            )
+        {
+            out.push(insight);
         }
 
         // Rule 4 (Phase 32): security-finding posture summary. Cites the
@@ -309,18 +309,18 @@ impl ReasonerSelector {
         let mut candidates: Vec<Insight> = Vec::new();
         let mut used_engine = InsightEngineKind::RuleFallback;
 
-        if let Some(model) = &self.model_reasoner {
-            if model.is_loaded() {
-                match model.infer(pack, question, deadline) {
-                    Ok(mut insights) if !insights.is_empty() => {
-                        candidates.clear();
-                        candidates.append(&mut insights);
-                        used_engine = InsightEngineKind::LocalModel;
-                    }
-                    _ => {
-                        // Unavailable / unparseable / empty → silent degrade (I3).
-                        candidates.clear();
-                    }
+        if let Some(model) = &self.model_reasoner
+            && model.is_loaded()
+        {
+            match model.infer(pack, question, deadline) {
+                Ok(mut insights) if !insights.is_empty() => {
+                    candidates.clear();
+                    candidates.append(&mut insights);
+                    used_engine = InsightEngineKind::LocalModel;
+                }
+                _ => {
+                    // Unavailable / unparseable / empty → silent degrade (I3).
+                    candidates.clear();
                 }
             }
         }

@@ -1175,15 +1175,15 @@ fn aggregate_device_coverage(devices: &[DriverDevice], fallback: CoverageState) 
         .iter()
         .map(|d| d.authority_coverage.as_str())
         .collect();
-    if states.iter().any(|s| *s == "Offline") {
+    if states.contains(&"Offline") {
         CoverageState::Offline
-    } else if states.iter().any(|s| *s == "ProviderUnavailable") {
+    } else if states.contains(&"ProviderUnavailable") {
         CoverageState::ProviderUnavailable
-    } else if states.iter().any(|s| *s == "Unknown") {
+    } else if states.contains(&"Unknown") {
         CoverageState::Unknown
-    } else if states.iter().any(|s| *s == "Partial") {
+    } else if states.contains(&"Partial") {
         CoverageState::Partial
-    } else if states.iter().any(|s| *s == "ManualAuthorityRequired") {
+    } else if states.contains(&"ManualAuthorityRequired") {
         CoverageState::ManualAuthorityRequired
     } else {
         CoverageState::CompleteForRequiredAuthorities
@@ -1522,13 +1522,6 @@ fn coverage_label(v: CoverageState) -> &'static str {
         CoverageState::ManualAuthorityRequired => "ManualAuthorityRequired",
         CoverageState::Unknown => "Unknown",
     }
-}
-
-fn is_firmware_device(device: &DeviceRecord) -> bool {
-    device.class_name.eq_ignore_ascii_case("Firmware")
-        || device
-            .class_guid
-            .eq_ignore_ascii_case("{F2E7DD72-6468-4E36-B6F1-6488F42C1B52}")
 }
 
 fn gpu_policy_for_device(device: &DeviceRecord) -> Option<GpuManagement> {

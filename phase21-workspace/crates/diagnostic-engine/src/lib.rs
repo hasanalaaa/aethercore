@@ -308,7 +308,7 @@ impl DiagnosticEngine {
             mark_scan_runtime_failure(&self.inner, "scan.spawn", error.to_string());
             return Err(DiagnosticError::Internal(error.to_string()));
         }
-        Ok(self.snapshot_for_owner(owner_principal_key)?)
+        self.snapshot_for_owner(owner_principal_key)
     }
     pub fn passive_hardware_refresh(
         &self,
@@ -912,10 +912,10 @@ fn build_cards_with_availability(
         });
     } else {
         let mut evidence = Vec::new();
-        if let Some(memory) = memory {
-            if !memory.pressure_explanation.is_empty() {
-                evidence.push(memory.pressure_explanation.clone());
-            }
+        if let Some(memory) = memory
+            && !memory.pressure_explanation.is_empty()
+        {
+            evidence.push(memory.pressure_explanation.clone());
         }
         cards.push(DiagnosticCard {
             card_id: "memory:no-logged-errors".into(),
@@ -931,24 +931,30 @@ fn build_cards_with_availability(
         });
     }
 
-    if let Some(memory) = memory {
-        if memory.memory_load_percent >= 80 {
-            cards.push(DiagnosticCard {
-                card_id: "memory:pressure".into(),
-                domain: "Memory".into(),
-                severity: if memory.memory_load_percent >= 90 { "Attention" } else { "Info" }.into(),
-                confidence: "CurrentOSMetric".into(),
-                title: "Current memory pressure".into(),
-                summary: memory.pressure_explanation.clone(),
-                evidence: vec![format!(
-                    "Available physical memory: {} of {} bytes",
-                    memory.available_physical_bytes, memory.total_physical_bytes
-                )],
-                actions: vec![
-                    "Close or inspect memory-heavy applications if performance is currently affected.".into(),
-                ],
-            });
-        }
+    if let Some(memory) = memory
+        && memory.memory_load_percent >= 80
+    {
+        cards.push(DiagnosticCard {
+            card_id: "memory:pressure".into(),
+            domain: "Memory".into(),
+            severity: if memory.memory_load_percent >= 90 {
+                "Attention"
+            } else {
+                "Info"
+            }
+            .into(),
+            confidence: "CurrentOSMetric".into(),
+            title: "Current memory pressure".into(),
+            summary: memory.pressure_explanation.clone(),
+            evidence: vec![format!(
+                "Available physical memory: {} of {} bytes",
+                memory.available_physical_bytes, memory.total_physical_bytes
+            )],
+            actions: vec![
+                "Close or inspect memory-heavy applications if performance is currently affected."
+                    .into(),
+            ],
+        });
     }
 
     for e in events

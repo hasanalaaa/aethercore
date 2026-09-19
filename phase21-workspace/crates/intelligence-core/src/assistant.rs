@@ -216,22 +216,19 @@ pub fn ground(raw: &str, pack: &TypedEvidencePack) -> Option<(String, Vec<Citati
                 }
                 if scan > digits_start && scan < bytes.len() && bytes[scan] == b']' {
                     let index: usize = raw[digits_start..scan].parse().unwrap_or(0);
-                    match index.checked_sub(1).and_then(|i| pack.items.get(i)) {
-                        Some(item) => {
-                            let citation = Citation {
-                                evidence_id: item.evidence_id.clone(),
-                                surface: item.surface,
-                            };
-                            if !citations.contains(&citation) {
-                                citations.push(citation);
-                            }
-                            // Normalised spelling, so the renderer has one shape
-                            // to match rather than `[e1]` and `[E1]` both.
-                            text.push_str(&format!("[E{index}]"));
+                    if let Some(item) = index.checked_sub(1).and_then(|i| pack.items.get(i)) {
+                        let citation = Citation {
+                            evidence_id: item.evidence_id.clone(),
+                            surface: item.surface,
+                        };
+                        if !citations.contains(&citation) {
+                            citations.push(citation);
                         }
-                        // Unresolvable: dropped, silently, from the text.
-                        None => {}
+                        // Normalised spelling, so the renderer has one shape
+                        // to match rather than `[e1]` and `[E1]` both.
+                        text.push_str(&format!("[E{index}]"));
                     }
+                    // Unresolvable index: dropped, silently, from the text.
                     cursor = scan + 1;
                     continue;
                 }

@@ -7,7 +7,9 @@
 
 use std::time::Duration;
 
-use aethercore_performance_telemetry::{PerfPlatform, PerfSnapshot, SyntheticPerfPlatform};
+use aethercore_performance_telemetry::SyntheticPerfPlatform;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use aethercore_performance_telemetry::{PerfPlatform, PerfSnapshot};
 
 #[cfg(target_os = "macos")]
 mod macos {
@@ -245,6 +247,7 @@ mod linux_parsers {
 }
 
 /// Shared helper: run `normalized()` exactly like the production pipeline does.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn normalized_snapshot(snapshot: PerfSnapshot) -> PerfSnapshot {
     snapshot.normalized()
 }

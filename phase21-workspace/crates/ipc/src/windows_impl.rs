@@ -315,7 +315,7 @@ fn verify_connected_server(file: &File, pipe_name: &str) -> Result<()> {
 }
 
 fn verify_pipe_owned_by_trusted_service(file: &File) -> Result<()> {
-    let pipe = HANDLE(file.as_raw_handle() as *mut c_void);
+    let pipe = HANDLE(file.as_raw_handle());
     let mut owner = PSID::default();
     let mut descriptor = PSECURITY_DESCRIPTOR::default();
     // Keep the runtime object-type contract identical to the native qualification probe.
@@ -1010,14 +1010,13 @@ impl SessionClient {
                 while let Ok(frame) = read_server_frame(&mut reader) {
                     match frame.payload {
                         Some(server_frame::Payload::Response(resp)) => {
-                            if let Some(id) = resp.header.as_ref().map(|h| h.request_id.clone()) {
-                                if let Some(tx) = reader_pending
+                            if let Some(id) = resp.header.as_ref().map(|h| h.request_id.clone())
+                                && let Some(tx) = reader_pending
                                     .lock()
                                     .unwrap_or_else(|p| p.into_inner())
                                     .remove(&id)
-                                {
-                                    let _ = tx.send(resp);
-                                }
+                            {
+                                let _ = tx.send(resp);
                             }
                         }
                         Some(server_frame::Payload::Event(event)) => on_event(event),

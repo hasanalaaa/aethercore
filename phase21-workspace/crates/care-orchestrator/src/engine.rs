@@ -103,6 +103,7 @@ pub struct CareRunResult {
 ///
 /// `consent_granted` must come from the service layer's per-session consent record —
 /// the orchestrator never treats absence of refusal as consent (product invariant 6).
+#[allow(clippy::too_many_arguments)]
 pub fn run_care_plan(
     supervisor: &MutationSupervisor,
     executor: &dyn DomainStepExecutor,

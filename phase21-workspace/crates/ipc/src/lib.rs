@@ -1,7 +1,8 @@
+#[cfg(not(windows))]
+use aethercore_contracts::v1::Response;
 use aethercore_contracts::{
-    MAX_CLIENT_SESSION_FRAME_BYTES, MAX_REQUEST_FRAME_BYTES, MAX_RESPONSE_FRAME_BYTES,
-    MAX_SERVER_SESSION_FRAME_BYTES,
-    v1::{ClientFrame, Request, Response, ServerFrame},
+    MAX_CLIENT_SESSION_FRAME_BYTES, MAX_REQUEST_FRAME_BYTES, MAX_SERVER_SESSION_FRAME_BYTES,
+    v1::{ClientFrame, Request, ServerFrame},
 };
 use prost::Message;
 use thiserror::Error;
@@ -116,19 +117,15 @@ fn read_message_with_limit<R: std::io::Read, M: Message + Default>(
     Ok(M::decode(bytes.as_slice())?)
 }
 
-// Legacy payload-frame helpers are retained as deterministic fuzz targets. Production v7 uses
-// ClientFrame/ServerFrame session envelopes below.
-pub(crate) fn write_request<W: std::io::Write>(writer: &mut W, request: &Request) -> Result<()> {
-    write_message_with_limit(writer, request, MAX_REQUEST_FRAME_BYTES)
-}
+// Legacy payload-frame reader: still the decoder behind `decode_request_frame_bytes`.
+// Production v7 uses the ClientFrame/ServerFrame session envelopes below; the response-side
+// legacy pair had no caller left in the workspace and is gone.
 pub(crate) fn read_request<R: std::io::Read>(reader: &mut R) -> Result<Request> {
     read_message_with_limit(reader, MAX_REQUEST_FRAME_BYTES)
 }
-pub(crate) fn write_response<W: std::io::Write>(writer: &mut W, response: &Response) -> Result<()> {
-    write_message_with_limit(writer, response, MAX_RESPONSE_FRAME_BYTES)
-}
-pub(crate) fn read_response<R: std::io::Read>(reader: &mut R) -> Result<Response> {
-    read_message_with_limit(reader, MAX_RESPONSE_FRAME_BYTES)
+#[cfg(test)]
+pub(crate) fn write_request<W: std::io::Write>(writer: &mut W, request: &Request) -> Result<()> {
+    write_message_with_limit(writer, request, MAX_REQUEST_FRAME_BYTES)
 }
 // P36 Tranche 1 closure (Hermes): the frame codec is a public, side-effect-free surface
 // (length-prefix + protobuf over any reader/writer; decode_* byte equivalents were already
@@ -290,7 +287,7 @@ pub use unix_impl::{UnixSocketListener, UnixSocketSession};
 mod tests {
     use super::*;
     use aethercore_contracts::{
-        PROTOCOL_VERSION,
+        MAX_RESPONSE_FRAME_BYTES, PROTOCOL_VERSION,
         v1::{RequestHeader, request},
     };
 
@@ -339,13 +336,15 @@ mod tests {
     }
     #[test]
     fn request_limit_is_smaller_than_response_limit() {
-        assert!(MAX_REQUEST_FRAME_BYTES < MAX_RESPONSE_FRAME_BYTES);
+        const { assert!(MAX_REQUEST_FRAME_BYTES < MAX_RESPONSE_FRAME_BYTES) };
     }
     #[test]
     fn session_direction_limits_match_trust_and_payload_shape() {
-        assert!(MAX_CLIENT_SESSION_FRAME_BYTES >= MAX_REQUEST_FRAME_BYTES);
-        assert!(MAX_CLIENT_SESSION_FRAME_BYTES < MAX_RESPONSE_FRAME_BYTES);
-        assert!(MAX_SERVER_SESSION_FRAME_BYTES >= MAX_RESPONSE_FRAME_BYTES);
+        const {
+            assert!(MAX_CLIENT_SESSION_FRAME_BYTES >= MAX_REQUEST_FRAME_BYTES);
+            assert!(MAX_CLIENT_SESSION_FRAME_BYTES < MAX_RESPONSE_FRAME_BYTES);
+            assert!(MAX_SERVER_SESSION_FRAME_BYTES >= MAX_RESPONSE_FRAME_BYTES);
+        }
     }
     #[test]
     fn rejects_zero_and_oversized_request_before_allocation() {

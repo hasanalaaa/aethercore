@@ -202,7 +202,7 @@ fn single_in_flight_lane_rejects_second_request() {
     // The lane token is internal; simulate contention by checking Busy via two threads
     // racing is flaky — instead assert the API contract through the slow-model trick:
     // a model that sleeps past its own call forces the second caller to observe Busy.
-    struct SlowModel(std::sync::Mutex<()>);
+    struct SlowModel;
     impl LocalReasoner for SlowModel {
         fn load(&mut self, _: &std::path::Path) -> Result<(), String> {
             Ok(())
@@ -220,9 +220,7 @@ fn single_in_flight_lane_rejects_second_request() {
             Ok(Vec::new()) // empty → falls back internally; still occupies the lane
         }
     }
-    let selector = Arc::new(ReasonerSelector::new(Some(Box::new(SlowModel(
-        std::sync::Mutex::new(()),
-    )))));
+    let selector = Arc::new(ReasonerSelector::new(Some(Box::new(SlowModel))));
     let s2 = selector.clone();
     let t1 = std::thread::spawn(move || {
         let mut pack = populated_pack();

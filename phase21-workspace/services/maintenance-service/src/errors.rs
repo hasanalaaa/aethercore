@@ -493,6 +493,35 @@ impl From<SupportBundleError> for ServiceError {
     }
 }
 
+impl From<IntelligenceError> for ServiceError {
+    fn from(value: IntelligenceError) -> Self {
+        let detail = value.to_string();
+        match value {
+            IntelligenceError::Busy => Self::busy("pc-intelligence", "deepScan.busy", detail),
+            IntelligenceError::Ownership | IntelligenceError::UnknownScan => Self::not_found(
+                "pc-intelligence",
+                "deepScan.stateUnavailable",
+                "deep scan state is unavailable",
+            ),
+            IntelligenceError::Persistence(_) | IntelligenceError::Internal(_) => {
+                Self::internal("pc-intelligence", "deepScan.failure", detail)
+            }
+        }
+    }
+}
+
+// Phase 27: the unix build compiles router.rs without the Windows-only broker helpers,
+// so this conversion must live here (the Windows path reaches it identically).
+impl From<aethercore_persistence::PersistenceError> for ServiceError {
+    fn from(value: aethercore_persistence::PersistenceError) -> Self {
+        Self::internal(
+            "persistence",
+            "persistence.error.internal",
+            value.to_string(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,34 +577,5 @@ mod tests {
         let stale = ServiceError::from(HubError::StaleSnapshot);
         assert_eq!(stale.status, 409);
         assert_eq!(stale.code, ErrorCode::Conflict);
-    }
-}
-
-impl From<IntelligenceError> for ServiceError {
-    fn from(value: IntelligenceError) -> Self {
-        let detail = value.to_string();
-        match value {
-            IntelligenceError::Busy => Self::busy("pc-intelligence", "deepScan.busy", detail),
-            IntelligenceError::Ownership | IntelligenceError::UnknownScan => Self::not_found(
-                "pc-intelligence",
-                "deepScan.stateUnavailable",
-                "deep scan state is unavailable",
-            ),
-            IntelligenceError::Persistence(_) | IntelligenceError::Internal(_) => {
-                Self::internal("pc-intelligence", "deepScan.failure", detail)
-            }
-        }
-    }
-}
-
-// Phase 27: the unix build compiles router.rs without the Windows-only broker helpers,
-// so this conversion must live here (the Windows path reaches it identically).
-impl From<aethercore_persistence::PersistenceError> for ServiceError {
-    fn from(value: aethercore_persistence::PersistenceError) -> Self {
-        Self::internal(
-            "persistence",
-            "persistence.error.internal",
-            value.to_string(),
-        )
     }
 }

@@ -9,7 +9,7 @@ use std::time::Duration;
 use aethercore_performance_telemetry::{
     CollectorFault, CpuSample, GpuEngineSample, GpuSample, MAX_GPU_ENGINES, MAX_PROCESS_TOP,
     MAX_RING_SAMPLES, MAX_STORAGE_DEVICES, MemorySample, PerfPlatform, PerfSnapshot,
-    PerformanceRing, StorageQueueSample, SyntheticPerfPlatform, ThermalThrottleReason,
+    PerformanceRing, StorageQueueSample, SyntheticPerfPlatform,
 };
 
 const OWNER_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

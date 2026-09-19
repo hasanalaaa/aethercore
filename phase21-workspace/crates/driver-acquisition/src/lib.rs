@@ -102,7 +102,7 @@ impl ProviderNetworkPolicy {
     }
 
     fn byte_limit(&self) -> u64 {
-        self.max_download_bytes.min(MAX_DOWNLOAD_BYTES).max(1)
+        self.max_download_bytes.clamp(1, MAX_DOWNLOAD_BYTES)
     }
 }
 
@@ -230,10 +230,10 @@ impl DriverAcquisitionEngine {
         if declared.is_some_and(|bytes| bytes > limit) {
             return Err(AcquisitionError::TooLarge);
         }
-        if let (Some(expected), Some(actual)) = (request.expected_bytes, declared) {
-            if expected != actual {
-                return Err(AcquisitionError::DigestMismatch);
-            }
+        if let (Some(expected), Some(actual)) = (request.expected_bytes, declared)
+            && expected != actual
+        {
+            return Err(AcquisitionError::DigestMismatch);
         }
 
         let partial = staging_root.join(format!("{}.partial", safe_token(&request.candidate_id)));

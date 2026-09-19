@@ -196,7 +196,7 @@ fn wait_assessment(coordinator: &RepairCoordinator) -> String {
 
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-fn authorize(engine: &OperationEngine, plan_id: &str, digest: &str) {
+fn authorize(engine: &OperationEngine, plan_id: &str) {
     let intent = engine
         .begin_consent_intent(plan_id, OWNER)
         .expect("consent intent");
@@ -229,7 +229,7 @@ fn repair_plan_is_authorized_and_mutation_barrier_is_durable() {
         start_repair(&coordinator, OWNER, &plan.id),
         Err(RepairError::AuthorizationRequired)
     ));
-    authorize(&engine, &plan.id, &plan.digest);
+    authorize(&engine, &plan.id);
     start_repair(&coordinator, OWNER, &plan.id).expect("start repair");
 
     let status = wait_terminal(&coordinator, &plan.id, "Completed");
@@ -271,7 +271,7 @@ fn servicing_failure_before_barrier_does_not_require_recovery() {
     let plan = coordinator
         .create_plan(OWNER, &assessment_id, false)
         .expect("plan");
-    authorize(&engine, &plan.id, &plan.digest);
+    authorize(&engine, &plan.id);
     start_repair(&coordinator, OWNER, &plan.id).expect("start");
 
     let status = wait_terminal(&coordinator, &plan.id, "Failed");
@@ -302,7 +302,7 @@ fn failure_after_barrier_requires_recovery_review() {
     let plan = coordinator
         .create_plan(OWNER, &assessment_id, false)
         .expect("plan");
-    authorize(&engine, &plan.id, &plan.digest);
+    authorize(&engine, &plan.id);
     start_repair(&coordinator, OWNER, &plan.id).expect("start");
 
     let status = wait_terminal(&coordinator, &plan.id, "Failed");

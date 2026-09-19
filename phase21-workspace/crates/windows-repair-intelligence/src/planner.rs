@@ -1,7 +1,6 @@
 use crate::{
-    Diagnosis, DiagnosisConfidence, FactState, GraphError, RecoveryReadiness, RepairActionKind,
-    RepairGraph, RepairNode, RepairObservationSet, RepairSafetyTier, Reversibility,
-    VerificationKind,
+    Diagnosis, DiagnosisConfidence, FactState, GraphError, RepairActionKind, RepairGraph,
+    RepairNode, RepairObservationSet, RepairSafetyTier, Reversibility, VerificationKind,
 };
 use thiserror::Error;
 

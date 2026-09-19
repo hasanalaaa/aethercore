@@ -246,7 +246,7 @@ impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
 
         // Kind probe order mirrors plan_kind(): cleanup → startup → repair. The first
         // coordinator that OWNS this plan id performs the dispatch.
-        if let Ok(Some(status)) = self
+        if let Ok(Some(_status)) = self
             .cleaner
             .status(owner_principal_key, Some(domain_plan_id))
         {
@@ -265,27 +265,25 @@ impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
                 if let Ok(Some(s)) = self
                     .cleaner
                     .status(owner_principal_key, Some(domain_plan_id))
+                    && (is_terminal_plan_state(&s.plan_state)
+                        || std::time::Instant::now() >= deadline)
                 {
-                    if is_terminal_plan_state(&s.plan_state)
-                        || std::time::Instant::now() >= deadline
-                    {
-                        let verified = !s.items.is_empty()
-                            && s.items.iter().all(|item| item.result_code == "Deleted");
-                        let failure = if s.plan_state == "Failed" {
-                            "care.error.domainFailure"
+                    let verified = !s.items.is_empty()
+                        && s.items.iter().all(|item| item.result_code == "Deleted");
+                    let failure = if s.plan_state == "Failed" {
+                        "care.error.domainFailure"
+                    } else {
+                        ""
+                    };
+                    return Ok((
+                        s.plan_state,
+                        if verified {
+                            "Verified".into()
                         } else {
-                            ""
-                        };
-                        return Ok((
-                            s.plan_state,
-                            if verified {
-                                "Verified".into()
-                            } else {
-                                String::new()
-                            },
-                            failure.into(),
-                        ));
-                    }
+                            String::new()
+                        },
+                        failure.into(),
+                    ));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(DISPATCH_POLL_MS));
             }
@@ -310,27 +308,25 @@ impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
                 if let Ok(Some(s)) = self
                     .startup
                     .status(owner_principal_key, Some(domain_plan_id))
+                    && (is_terminal_plan_state(&s.plan_state)
+                        || std::time::Instant::now() >= deadline)
                 {
-                    if is_terminal_plan_state(&s.plan_state)
-                        || std::time::Instant::now() >= deadline
-                    {
-                        let verified = !s.items.is_empty()
-                            && s.items.iter().all(|i| i.result_code == "Verified");
-                        let failure = if s.plan_state == "Failed" {
-                            "care.error.domainFailure"
+                    let verified =
+                        !s.items.is_empty() && s.items.iter().all(|i| i.result_code == "Verified");
+                    let failure = if s.plan_state == "Failed" {
+                        "care.error.domainFailure"
+                    } else {
+                        ""
+                    };
+                    return Ok((
+                        s.plan_state,
+                        if verified {
+                            "Verified".into()
                         } else {
-                            ""
-                        };
-                        return Ok((
-                            s.plan_state,
-                            if verified {
-                                "Verified".into()
-                            } else {
-                                String::new()
-                            },
-                            failure.into(),
-                        ));
-                    }
+                            String::new()
+                        },
+                        failure.into(),
+                    ));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(DISPATCH_POLL_MS));
             }
@@ -355,17 +351,15 @@ impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
                 if let Ok(Some(s)) = self
                     .repair
                     .status(owner_principal_key, Some(domain_plan_id))
+                    && (is_terminal_plan_state(&s.plan_state)
+                        || std::time::Instant::now() >= deadline)
                 {
-                    if is_terminal_plan_state(&s.plan_state)
-                        || std::time::Instant::now() >= deadline
-                    {
-                        let failure = if s.plan_state == "Failed" {
-                            "care.error.domainFailure"
-                        } else {
-                            ""
-                        };
-                        return Ok((s.plan_state, s.verification_state, failure.into()));
-                    }
+                    let failure = if s.plan_state == "Failed" {
+                        "care.error.domainFailure"
+                    } else {
+                        ""
+                    };
+                    return Ok((s.plan_state, s.verification_state, failure.into()));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(DISPATCH_POLL_MS));
             }

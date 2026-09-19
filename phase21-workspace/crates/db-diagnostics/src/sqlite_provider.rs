@@ -7,9 +7,7 @@
 //!   wal_autocheckpoint · page_count/freelist waste ratio · schema object census.
 //! - Every finding cites verbatim PRAGMA output rows.
 
-use crate::model::{
-    Confidence, DbFinding, DiagnosticReport, DiagnosticTarget, EvidenceRef, Severity, seal_report,
-};
+use crate::model::{Confidence, DbFinding, DiagnosticReport, EvidenceRef, Severity, seal_report};
 use rusqlite::{Connection, OpenFlags};
 
 /// Hard capacity bound: integrity_check rows consumed per scan (hostile-input clamp).

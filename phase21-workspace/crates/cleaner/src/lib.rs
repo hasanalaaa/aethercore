@@ -5,7 +5,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex, RwLock},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime},
 };
 
 use aethercore_collector_runtime::{CancellationToken, CommitFence};
@@ -1058,6 +1058,7 @@ pub(crate) fn older_than(metadata: &std::fs::Metadata, age: Duration) -> bool {
         .unwrap_or(false)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn candidate(
     provider: &str,
     title: &str,

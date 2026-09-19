@@ -355,16 +355,17 @@ impl TrustStore {
     }
 }
 
+#[cfg(unix)]
 fn set_owner_only(path: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-    }
-    #[cfg(not(unix))]
-    {
-        Ok(())
-    }
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+}
+
+/// No-op off unix: the mode bits have no Windows equivalent here. The ACL
+/// tightening that would replace them is tracked separately, not inlined.
+#[cfg(not(unix))]
+fn set_owner_only(_path: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// Fingerprint of a public key blob (SHA-256, lowercase hex) — the pin format.

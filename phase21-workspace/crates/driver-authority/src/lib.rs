@@ -1220,7 +1220,7 @@ impl DriverAuthorityEngine {
         }
 
         candidates.sort_by(|a, b| compare_candidate_rank(device, machine, b, a));
-        let recommended_idx = candidates.iter().position(|c| candidate_can_recommend(c));
+        let recommended_idx = candidates.iter().position(candidate_can_recommend);
         if let Some(index) = recommended_idx {
             let recommended_snapshot = candidates[index].clone();
             for (i, candidate) in candidates.iter_mut().enumerate() {
@@ -1404,13 +1404,13 @@ fn parse_best_hardware_id(values: &[String]) -> BTreeMap<String, String> {
             out.entry("DEV".into()).or_insert_with(|| v.into());
         } else if let Some(v) = token.strip_prefix("REV_") {
             out.entry("REV".into()).or_insert_with(|| v.into());
-        } else if let Some(v) = token.strip_prefix("SUBSYS_") {
-            if v.len() >= 8 {
-                out.entry("SUBSYS_DEVICE".into())
-                    .or_insert_with(|| v[..4].into());
-                out.entry("SUBSYS_VENDOR".into())
-                    .or_insert_with(|| v[4..8].into());
-            }
+        } else if let Some(v) = token.strip_prefix("SUBSYS_")
+            && v.len() >= 8
+        {
+            out.entry("SUBSYS_DEVICE".into())
+                .or_insert_with(|| v[..4].into());
+            out.entry("SUBSYS_VENDOR".into())
+                .or_insert_with(|| v[4..8].into());
         }
     }
     out

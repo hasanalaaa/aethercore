@@ -503,7 +503,6 @@ mod tests {
     use crate::domain::{AuthReference, FleetHost};
     use crate::trust::{TrustedHostKey, fingerprint_of_blob};
     use std::collections::BTreeSet;
-    use std::path::Path;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// An exit-0 program that stands in for `ssh`.

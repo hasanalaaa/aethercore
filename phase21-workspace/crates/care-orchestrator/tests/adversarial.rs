@@ -4,8 +4,8 @@
 //! hostile domain responses (fail / timeout / poisoned lock), plan-digest
 //! determinism under reordering/duplication, and journal completeness.
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
 
 use aethercore_care_orchestrator::{
     CareError, CareJournal, CarePlan, CareSafety, CareStep, StepOutcome, run_care_plan,
@@ -95,10 +95,13 @@ impl CareJournal for MemoryJournal {
     }
 }
 
+/// One scripted executor call: the outcome it returns, or the domain rejection it fails with.
+type ScriptedCall = Result<(StepOutcome, String, String), CareError>;
+
 /// Scriptable fake executor.
 struct FakeExecutor {
     /// Per-call outcomes in order; None means the call fails with a domain rejection.
-    script: Mutex<Vec<Result<(StepOutcome, String, String), CareError>>>,
+    script: Mutex<Vec<ScriptedCall>>,
     calls: AtomicU32,
 }
 
@@ -110,7 +113,7 @@ impl FakeExecutor {
         }
     }
 
-    fn scripted(outcomes: Vec<Result<(StepOutcome, String, String), CareError>>) -> Self {
+    fn scripted(outcomes: Vec<ScriptedCall>) -> Self {
         Self {
             script: Mutex::new(outcomes),
             calls: AtomicU32::new(0),

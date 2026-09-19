@@ -30,17 +30,12 @@ pub enum UpdateError {
 
 pub type Result<T> = std::result::Result<T, UpdateError>;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum VersionSource {
     TitleHeuristic,
+    #[default]
     Unavailable,
-}
-
-impl Default for VersionSource {
-    fn default() -> Self {
-        Self::Unavailable
-    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -156,7 +151,7 @@ pub fn extract_version_from_update_title(title: &str) -> Option<String> {
 }
 
 pub fn ole_automation_date_to_iso(value: f64) -> Option<String> {
-    if !value.is_finite() || value < -100_000.0 || value > 1_000_000.0 {
+    if !value.is_finite() || !(-100_000.0..=1_000_000.0).contains(&value) {
         return None;
     }
     let base = NaiveDate::from_ymd_opt(1899, 12, 30)?.and_hms_opt(0, 0, 0)?;

@@ -1,10 +1,13 @@
 //! Phase 26 — capability matrix pinning tests (cfg-gated per OS; all run on this host).
 
+#[cfg(target_os = "macos")]
+use aethercore_platform_capabilities::keys;
 use aethercore_platform_capabilities::{
     Availability, Platform, PlatformCapability as C, WindowsSku, available_on,
-    available_on_windows_sku, classify_windows_sku, keys, matrix_for_current_platform,
+    available_on_windows_sku, classify_windows_sku, matrix_for_current_platform,
 };
 
+#[cfg(target_os = "macos")]
 fn is_na(av: &Availability) -> bool {
     matches!(av, Availability::NotAvailable { .. })
 }

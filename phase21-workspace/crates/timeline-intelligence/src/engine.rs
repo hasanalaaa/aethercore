@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use sha2::{Digest, Sha256};
 
 use crate::model::{
-    EventClass, MAX_PATTERN_EVIDENCE, MAX_PATTERNS, MAX_RECURRENCE_GAP_MS, MAX_TIMELINE_EVENTS,
+    MAX_PATTERN_EVIDENCE, MAX_PATTERNS, MAX_RECURRENCE_GAP_MS, MAX_TIMELINE_EVENTS,
     MIN_OCCURRENCES_FOR_PATTERN, Outcome, PatternEvidence, RecurrenceConfidence, RecurrencePattern,
     Timeline, TimelineError, TimelineEvent,
 };
@@ -38,13 +38,13 @@ impl TimelineBuilder {
     /// Ingests one candidate event. Exact duplicates (same semantic identity AND same
     /// observation timestamp) collapse silently; everything else is retained in order.
     pub fn ingest(&mut self, event: TimelineEvent) -> Result<&mut Self, TimelineError> {
-        if let Some(watermark) = self.watermark_unix_ms {
-            if event.observed_unix_ms > watermark {
-                return Err(TimelineError::FutureTimestamp {
-                    observed_unix_ms: event.observed_unix_ms,
-                    watermark_unix_ms: watermark,
-                });
-            }
+        if let Some(watermark) = self.watermark_unix_ms
+            && event.observed_unix_ms > watermark
+        {
+            return Err(TimelineError::FutureTimestamp {
+                observed_unix_ms: event.observed_unix_ms,
+                watermark_unix_ms: watermark,
+            });
         }
         if self.events.len() >= MAX_TIMELINE_EVENTS {
             return Err(TimelineError::CapacityExceeded {
@@ -290,7 +290,7 @@ fn bounded_evidence(group: &[&TimelineEvent]) -> Vec<PatternEvidence> {
     let step = if count <= MAX_PATTERN_EVIDENCE {
         1usize
     } else {
-        (count + MAX_PATTERN_EVIDENCE - 1) / MAX_PATTERN_EVIDENCE
+        count.div_ceil(MAX_PATTERN_EVIDENCE)
     };
     let mut indices: Vec<usize> = (0..count).step_by(step).collect();
     if indices.last() != Some(&(count - 1)) {

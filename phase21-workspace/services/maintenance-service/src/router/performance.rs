@@ -152,7 +152,7 @@ pub(super) fn create_optimization_plan(
     )))
 }
 
-pub(super) fn start_optimization(call: &Call<'_>, v: v1::StartOptimizationRequest) -> Routed {
+pub(super) fn start_optimization(call: &Call<'_>, _v: v1::StartOptimizationRequest) -> Routed {
     let request_context = call.request_context;
     request_context.checkpoint().map_err(err)?;
     Err(ServiceError::forbidden(

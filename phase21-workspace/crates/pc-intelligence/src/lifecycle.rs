@@ -49,6 +49,7 @@ pub(crate) fn default_resolution_authority(code: &str) -> Vec<String> {
     scopes.iter().map(|scope| (*scope).into()).collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn reconcile(
     db: &Database,
     owner: &str,
