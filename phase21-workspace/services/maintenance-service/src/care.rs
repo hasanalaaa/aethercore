@@ -43,13 +43,6 @@ impl SessionConsentRegistry {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .contains(owner_principal_key)
     }
-
-    pub fn revoke(&self, owner_principal_key: &str) {
-        self.granted
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(owner_principal_key);
-    }
 }
 
 /// Safety classification of an existing domain plan. The mapping mirrors the

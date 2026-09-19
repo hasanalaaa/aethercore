@@ -1,7 +1,11 @@
 //! Phase 27 — the unix composition now binds the REAL v7 socket when built with
 //! `unix-ipc`; this test drives it as a long-lived child in both modes.
 
+// The only test in this file is #[cfg(unix)]; on Windows the target still
+// compiles, so ungated imports here read as unused there.
+#[cfg(unix)]
 use std::process::{Command, Stdio};
+#[cfg(unix)]
 use std::time::Duration;
 
 #[test]

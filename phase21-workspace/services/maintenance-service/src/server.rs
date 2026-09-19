@@ -11,8 +11,8 @@ use std::{
 use aethercore_contracts::{
     DEFAULT_REQUEST_DEADLINE_MS, MAX_REQUEST_DEADLINE_MS, PROTOCOL_VERSION,
     v1::{
-        self, ClientFrame, ErrorCode, ErrorInfo, Response, ResponseHeader, ServerFrame,
-        ServerHello, StreamReset, StreamResetReason, client_frame, server_frame,
+        ErrorCode, ErrorInfo, Response, ResponseHeader, ServerFrame, ServerHello, StreamReset,
+        StreamResetReason, client_frame, server_frame,
     },
 };
 use aethercore_operation_kernel::{RequestContext, SubscriptionItem};

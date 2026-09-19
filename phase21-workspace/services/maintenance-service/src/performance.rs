@@ -7,12 +7,10 @@ use aethercore_contracts::v1;
 use aethercore_performance_bottleneck::{
     Confidence as BottleneckConfidence, Finding, Report, Role,
 };
-use aethercore_performance_optimization::{
-    ActionKind, ExecutionItem, ExecutionStatus, Plan, Reversibility,
-};
+use aethercore_performance_optimization::{ActionKind, Plan, Reversibility};
 use aethercore_performance_telemetry::{
-    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfPlatform,
-    PerfSnapshot, PowerSample, ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
+    CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample, PerfSnapshot, PowerSample,
+    ProcessCpuTopEntry, StorageQueueSample, ThermalThrottleReason,
 };
 
 pub(crate) fn thermal_reason_proto(value: ThermalThrottleReason) -> v1::ThermalThrottleReason {
@@ -257,35 +255,6 @@ pub(crate) fn plan_proto(value: &Plan) -> v1::OptimizationPlanSnapshot {
     }
 }
 
-pub(crate) fn optimization_status_proto(value: &ExecutionStatus) -> v1::OptimizationStatus {
-    v1::OptimizationStatus {
-        plan_id: value.plan_id.clone(),
-        plan_state: value.plan_state.clone(),
-        stage: value.stage.clone(),
-        progress_known: value.progress_known,
-        overall_percent: value.overall_percent,
-        current_candidate_id: value.current_candidate_id.clone(),
-        detail: value.detail.clone(),
-        mutation_started: value.mutation_started,
-        recovery_required: value.recovery_required,
-        failure_message: value.failure_message.clone(),
-        started_unix_ms: value.started_unix_ms,
-        updated_unix_ms: value.updated_unix_ms,
-        completed_unix_ms: value.completed_unix_ms,
-        items: value
-            .items
-            .iter()
-            .map(|item: &ExecutionItem| v1::OptimizationExecutionItem {
-                candidate_id: item.candidate_id.clone(),
-                stage: item.stage.clone(),
-                result_code: item.result_code.clone(),
-                detail: item.detail.clone(),
-                verified: item.verified,
-            })
-            .collect(),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Service-side performance engine (Domain A+B+C composition)
 // ---------------------------------------------------------------------------
@@ -293,9 +262,8 @@ pub(crate) fn optimization_status_proto(value: &ExecutionStatus) -> v1::Optimiza
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use aethercore_collector_runtime::CommitFence;
 use aethercore_operation_kernel::MutationSupervisor;
-use aethercore_performance_optimization::{ExecutionStatus as OptStatus, OptimizationGovernor};
+use aethercore_performance_optimization::OptimizationGovernor;
 
 /// Owns the sampling ring and the optimization governor. Sampling is passive: the engine only
 /// runs while an owner has explicitly started it, and every analysis is computed on demand from
@@ -337,14 +305,6 @@ impl PerformanceEngine {
                 mutations,
             ),
         }
-    }
-
-    #[cfg(not(windows))]
-    pub fn with_synthetic(mutations: MutationSupervisor) -> Self {
-        Self::new(
-            Arc::new(aethercore_performance_telemetry::SyntheticPerfPlatform::new()),
-            mutations,
-        )
     }
 
     pub fn start_sampling(&self, owner: &str, interval_ms: u32) -> Result<(), String> {
@@ -434,19 +394,6 @@ impl PerformanceEngine {
         aethercore_performance_optimization::OptimizationError,
     > {
         self.governor.create_plan(report, selected, offenders)
-    }
-
-    pub fn start_optimization(
-        &self,
-        owner: &str,
-        plan: &aethercore_performance_optimization::Plan,
-        fence: CommitFence,
-    ) -> Result<OptStatus, aethercore_performance_optimization::OptimizationError> {
-        self.governor.start(owner, plan, fence)
-    }
-
-    pub fn optimization_status(&self, plan_id: &str) -> Option<OptStatus> {
-        self.governor.status(plan_id)
     }
 }
 

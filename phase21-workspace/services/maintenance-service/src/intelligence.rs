@@ -70,13 +70,6 @@ impl EphemeralInsights {
         store.retain(|insight| insight.id != insight_id);
         store.len() != before
     }
-
-    fn clear(&self, owner: &str) {
-        self.items
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .remove(owner);
-    }
 }
 
 /// The bounded evidence pack, composed from PUBLIC read APIs of existing domains
@@ -276,11 +269,6 @@ impl IntelligenceCoordinator {
     /// Dismisses one session insight. Returns true when it existed.
     pub fn dismiss(&self, owner: &str, insight_id: &str) -> bool {
         self.session.dismiss(owner, insight_id)
-    }
-
-    /// Clears session insights (e.g., when a care run starts — observer hygiene).
-    pub fn clear_session(&self, owner: &str) {
-        self.session.clear(owner);
     }
 }
 
