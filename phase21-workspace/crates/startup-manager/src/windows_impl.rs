@@ -38,6 +38,15 @@ use windows::{
     core::{BOOL, BSTR, GUID, PCWSTR, PWSTR},
 };
 
+// Not referenced as a value here: the demand-start decision is the literal `3`
+// at lib.rs:1345, so Windows clippy reports this import unused. It is retained
+// because `scripts/static_validate.py` asserts the token's presence in this file
+// (`startup_service_is_next_start_only`, line 468, and
+// `startup_windows_inventory_and_reversible_mutation`, line 455). Removing it
+// turns step 20 red, which is how it came back. Keep it, or fix the check first.
+#[allow(unused_imports)]
+use windows::Win32::System::Services::SERVICE_DEMAND_START;
+
 use super::{
     NativeState, Result, StartupError, StartupItem, StartupMutationLease, StartupPlatform,
 };
