@@ -3,8 +3,6 @@ use aethercore_contracts::{
     v1::{self, Request, RequestHeader, request, response},
 };
 #[cfg(windows)]
-use aethercore_update_engine::PlatformVerifier as _;
-#[cfg(windows)]
 use aethercore_windows_foundation::MachineMutationGuard;
 use anyhow::{Context, Result, bail};
 use std::{
@@ -41,9 +39,8 @@ fn run_windows() -> Result<()> {
     }
     // Defense in depth across service restart/process boundaries. MutationSupervisor::Update remains
     // the central logical authority; this is the same protected ProgramData lock used by the existing Windows mutators.
-    let _machine_guard = UpdateMutationGuard::acquire().map_err(|error| {
+    let _machine_guard = UpdateMutationGuard::acquire().inspect_err(|_| {
         let _ = cancel_intent(&intent_id);
-        error
     })?;
     let ticket = claim(&intent_id)?;
     let release = ticket
@@ -86,14 +83,19 @@ fn run_windows() -> Result<()> {
 }
 
 #[cfg(windows)]
-struct UpdateMutationGuard(MachineMutationGuard);
+/// RAII holder for the machine-mutation lock: the field is never read by design,
+/// the lock is released when it drops. Mirrors `system-repair`'s `ServicingGuard`
+/// and `windows-update`'s `MachineMutationLease` in naming it `_guard`.
+struct UpdateMutationGuard {
+    _guard: MachineMutationGuard,
+}
 #[cfg(windows)]
 impl UpdateMutationGuard {
     fn acquire() -> Result<Self> {
         let guard = MachineMutationGuard::try_acquire()
             .context("acquire AetherCore machine mutation lock")?
             .ok_or_else(|| anyhow::anyhow!("another Windows mutation is already active"))?;
-        Ok(Self(guard))
+        Ok(Self { _guard: guard })
     }
 }
 
