@@ -99,38 +99,36 @@ fn scan_impl(include_profile_roots: bool) -> Result<Vec<CleanupCandidate>> {
         .parent()
         .unwrap_or(Path::new(r"C:\"))
         .join("Users");
-    if include_profile_roots {
-        if let Ok(entries) = std::fs::read_dir(&users) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if matches!(
-                    name.to_ascii_lowercase().as_str(),
-                    "public" | "default" | "default user" | "all users"
-                ) {
-                    continue;
-                }
-                let profile = entry.path();
-                push_root(
-                    &mut output,
-                    "UserTemp",
-                    &format!("{name} temporary files"),
-                    "Profile-specific temp files older than seven days. Because the service cannot infer that this is the interactive caller’s profile, this category requires explicit review.",
-                    &profile.join(r"AppData\Local\Temp"),
-                    Duration::from_secs(7 * 24 * 3600),
-                    false,
-                    true,
-                )?;
-                push_root(
-                    &mut output,
-                    "ShaderCache",
-                    &format!("{name} Direct3D shader cache"),
-                    "Profile-specific rebuildable Direct3D cache files older than 72 hours. This category requires explicit review.",
-                    &profile.join(r"AppData\Local\D3DSCache"),
-                    Duration::from_secs(72 * 3600),
-                    false,
-                    true,
-                )?;
+    if include_profile_roots && let Ok(entries) = std::fs::read_dir(&users) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if matches!(
+                name.to_ascii_lowercase().as_str(),
+                "public" | "default" | "default user" | "all users"
+            ) {
+                continue;
             }
+            let profile = entry.path();
+            push_root(
+                &mut output,
+                "UserTemp",
+                &format!("{name} temporary files"),
+                "Profile-specific temp files older than seven days. Because the service cannot infer that this is the interactive caller’s profile, this category requires explicit review.",
+                &profile.join(r"AppData\Local\Temp"),
+                Duration::from_secs(7 * 24 * 3600),
+                false,
+                true,
+            )?;
+            push_root(
+                &mut output,
+                "ShaderCache",
+                &format!("{name} Direct3D shader cache"),
+                "Profile-specific rebuildable Direct3D cache files older than 72 hours. This category requires explicit review.",
+                &profile.join(r"AppData\Local\D3DSCache"),
+                Duration::from_secs(72 * 3600),
+                false,
+                true,
+            )?;
         }
     }
 
@@ -185,6 +183,9 @@ fn scan_impl(include_profile_roots: bool) -> Result<Vec<CleanupCandidate>> {
     Ok(output)
 }
 
+// Same eight-field shape as `candidate`, which this forwards to and which
+// carries the identical allow (lib.rs:1061).
+#[allow(clippy::too_many_arguments)]
 fn push_root(
     output: &mut Vec<CleanupCandidate>,
     provider: &str,
