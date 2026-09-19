@@ -310,13 +310,12 @@ fn active_session() -> anyhow::Result<Arc<aethercore_ipc::SessionClient>> {
 
 #[cfg(windows)]
 fn invalidate_session_if_current(failed: &Arc<aethercore_ipc::SessionClient>) {
-    if let Ok(mut slot) = session_slot().lock() {
-        if slot
+    if let Ok(mut slot) = session_slot().lock()
+        && slot
             .as_ref()
             .is_some_and(|current| Arc::ptr_eq(current, failed))
-        {
-            *slot = None;
-        }
+    {
+        *slot = None;
     }
 }
 
@@ -416,14 +415,14 @@ async fn start_ipc_session() -> Result<UiSessionState, String> {
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())?;
-        return Ok(UiSessionState {
+        Ok(UiSessionState {
             connected: true,
             session_id: client.hello.session_id.clone(),
             service_version: client.hello.service_version.clone(),
             current_sequence: LAST_EVENT_SEQUENCE.load(Ordering::Acquire),
             replay_floor_sequence: client.hello.replay_floor_sequence,
             replay_complete: client.hello.replay_complete,
-        });
+        })
     }
     #[cfg(not(windows))]
     Err("Windows only".into())

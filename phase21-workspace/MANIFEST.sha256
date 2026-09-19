@@ -366,7 +366,7 @@ cdb90b1abe7de763c10995ef1a54ea5985c6d170ebadde93265a840e27d4daf6  apps/desktop/i
 7185cc1961f13d3d3bf1d469b704f55970f1f3ab71e25d83ce0903de5a977a88  apps/desktop/icons/ios/AppIcon-76x76@1x.png
 a835ebdcb06c210bb052c4fa990f2c242cc114b72e92b9ab030aa13a80766692  apps/desktop/icons/ios/AppIcon-76x76@2x.png
 cd8e50a8b143056b015ac69b20021ee32f6bc91b4780bc4fb211aba5e3b079dd  apps/desktop/icons/ios/AppIcon-83.5x83.5@2x.png
-49be41fd5a729d6aeee073b00a4f55a013eabcd405ac48590d1c96fe4bb922c6  apps/desktop/src/main.rs
+ba93c548ced9ee9ad09e39c0347694511671821b9e4884c6150d060e3d202171  apps/desktop/src/main.rs
 c6dd529592ec2ed7f367da81ed3c3b6c830ba97165f72bb536a9f9ca319856f6  apps/desktop/tauri.conf.json
 c84c4062dcfcd4d23520ede03c63406d1e9f92ddea0884de5ae1ca63e48b0f55  apps/install-hardener/Cargo.toml
 7d2c23aa7bd245e31c3c157858ac468bfda1d676bfc6249e7c9541ecbb0ee4bd  apps/install-hardener/src/main.rs
