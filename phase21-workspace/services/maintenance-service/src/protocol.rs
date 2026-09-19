@@ -199,6 +199,10 @@ pub(crate) fn driver_hub_proto(snapshot: DriverHubSnapshot) -> v1::DriverHubSnap
     }
 }
 
+// `state` and `risk` are deprecated placeholder fields (proto), superseded by
+// state_code/risk_code set just below. A struct literal must still populate
+// them, so the write stays behind the same allow dispatch.rs:245 uses.
+#[allow(deprecated)]
 pub(crate) fn plan_proto(p: PlanView) -> v1::PlanSnapshot {
     let state_code = operation_state_code(p.state) as i32;
     let risk_code = risk_code(&p.risk) as i32;

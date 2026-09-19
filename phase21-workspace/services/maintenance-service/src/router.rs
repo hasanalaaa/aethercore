@@ -42,6 +42,12 @@ mod care;
 mod cleanup;
 mod consent;
 mod diagnostics;
+// The two legacy update arms in dispatch.rs match deprecated wire variants in
+// order to reject them; dropping the arms would let them fall through. The
+// allow lives here because dispatch.rs is at its 258-line P10 ceiling exactly
+// (static_validate.py:1482) and its arm text is asserted verbatim by three
+// validators, so neither an attribute line nor a reflow can go in that file.
+#[allow(deprecated)]
 mod dispatch;
 mod drivers;
 mod insights;
