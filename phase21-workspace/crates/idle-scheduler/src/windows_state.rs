@@ -150,7 +150,7 @@ impl WindowsSystemStateProbe {
             WTSQueryUserToken(session_id, &mut raw_token)
                 .map_err(|e| format!("WTSQueryUserToken: {e}"))?;
             let token = OwnedHandle::new(raw_token);
-            let result = (|| {
+            (|| {
                 let principal =
                     inspect_session_token(token.get(), session_id).map_err(|e| e.to_string())?;
                 let (idle_for, active, unlocked) = query_idle(session_id)?;
@@ -176,8 +176,7 @@ impl WindowsSystemStateProbe {
                     presentation,
                     servicing: slow.servicing,
                 })
-            })();
-            result
+            })()
         }
     }
 }

@@ -28,10 +28,10 @@ use windows::{
             Services::{
                 ChangeServiceConfig2W, ChangeServiceConfigW, OpenSCManagerW, OpenServiceW,
                 SERVICE_CHANGE_CONFIG, SERVICE_CONFIG_DELAYED_AUTO_START_INFO,
-                SERVICE_DELAYED_AUTO_START_INFO, SERVICE_DEMAND_START, SERVICE_ERROR,
-                SERVICE_NO_CHANGE, SERVICE_QUERY_CONFIG, SERVICE_START_TYPE,
+                SERVICE_DELAYED_AUTO_START_INFO, SERVICE_ERROR, SERVICE_NO_CHANGE,
+                SERVICE_QUERY_CONFIG, SERVICE_START_TYPE,
             },
-            TaskScheduler::{IRegisteredTask, ITaskFolder, ITaskService},
+            TaskScheduler::{ITaskFolder, ITaskService},
             Variant::VARIANT,
         },
     },
@@ -223,6 +223,9 @@ fn scan_registry_startup(out: &mut Vec<StartupItem>, warnings: &mut Vec<String>)
     Ok(())
 }
 
+// Eight registry-enumeration coordinates, each independent; the same allow
+// lib.rs:1249 already carries for this crate's wide-signature helpers.
+#[allow(clippy::too_many_arguments)]
 fn enum_registry_values(
     root: HKEY,
     hive_label: &str,
@@ -502,7 +505,7 @@ fn scan_services(out: &mut Vec<StartupItem>, warnings: &mut Vec<String>) -> Resu
         configs.insert(name, (start, ty, image, delayed, launch, deps));
     }
     let mut depended = HashSet::new();
-    for (_, (_, _, _, _, _, deps)) in &configs {
+    for (_, _, _, _, _, deps) in configs.values() {
         for d in deps {
             depended.insert(d.to_ascii_lowercase());
         }
@@ -642,30 +645,29 @@ fn query_startup_file_state(
             backup_exists: !backup.is_empty() && b.is_file(),
         });
     }
-    if !backup.is_empty() {
-        if let Ok(m) = std::fs::symlink_metadata(b) {
-            if m.file_type().is_symlink()
-                || (m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0) != 0
-            {
-                return Err(StartupError::Platform(
-                    "startup backup became a reparse/symlink".into(),
-                ));
-            }
-            if m.len() > MAX_STARTUP_FILE_EVIDENCE_BYTES {
-                return Err(StartupError::Platform(
-                    "startup backup exceeds evidence-size budget".into(),
-                ));
-            }
-            return Ok(NativeState::StartupFile {
-                path: path.into(),
-                exists: false,
-                size_bytes: m.len(),
-                modified_unix_ms: modified_ms(&m),
-                sha256: file_sha256(b)?,
-                backup_path: backup.into(),
-                backup_exists: true,
-            });
+    if !backup.is_empty()
+        && let Ok(m) = std::fs::symlink_metadata(b)
+    {
+        if m.file_type().is_symlink() || (m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0) != 0
+        {
+            return Err(StartupError::Platform(
+                "startup backup became a reparse/symlink".into(),
+            ));
         }
+        if m.len() > MAX_STARTUP_FILE_EVIDENCE_BYTES {
+            return Err(StartupError::Platform(
+                "startup backup exceeds evidence-size budget".into(),
+            ));
+        }
+        return Ok(NativeState::StartupFile {
+            path: path.into(),
+            exists: false,
+            size_bytes: m.len(),
+            modified_unix_ms: modified_ms(&m),
+            sha256: file_sha256(b)?,
+            backup_path: backup.into(),
+            backup_exists: true,
+        });
     }
     Ok(NativeState::StartupFile {
         path: path.into(),
