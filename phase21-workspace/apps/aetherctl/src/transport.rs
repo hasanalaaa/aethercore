@@ -17,7 +17,9 @@
 use crate::cli::Config;
 use crate::error::CliError;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[cfg(unix)]
+use std::time::Instant;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 use aethercore_ipc::unix_impl::default_socket_dir;
@@ -26,12 +28,19 @@ use aethercore_ipc::unix_impl::default_socket_dir;
 use aethercore_contracts::v1::{ClientFrame, ClientHello, client_frame, server_frame};
 
 /// Socket file name served by the maintenance service (crates/ipc contract).
+/// Read only by the `#[cfg(unix)]` `endpoint_path`; Windows has no socket path.
+#[cfg_attr(windows, allow(dead_code))]
 pub const SOCKET_FILE_NAME: &str = "aethercore-maintenance.sock";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceState {
-    Reachable { pid: Option<u32> },
+    Reachable {
+        pid: Option<u32>,
+    },
     Offline,
+    /// Constructed only by the `#[cfg(unix)]` detect path; the match arms that
+    /// render it are platform-neutral, so the variant stays on both.
+    #[cfg_attr(windows, allow(dead_code))]
     StaleEndpointRecovered,
 }
 
@@ -116,14 +125,14 @@ pub fn pid_file_path() -> Option<std::path::PathBuf> {
     }
     #[cfg(windows)]
     {
-        return Some(
+        Some(
             std::env::var_os("ProgramData")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| std::path::PathBuf::from(r"C:\ProgramData"))
                 .join(aethercore_product_identity::PRODUCT_NAME)
                 .join("state")
                 .join("aethercore.pid"),
-        );
+        )
     }
     #[cfg(not(windows))]
     None
@@ -297,12 +306,6 @@ impl ServiceClient {
                 detail: "expected ServerHello after ClientHello".to_string(),
             }),
         }
-    }
-
-    #[cfg(windows)]
-    fn handshake(&mut self) -> Result<(), CliError> {
-        // SessionClient performs the handshake inside connect(); nothing further here.
-        Ok(())
     }
 
     #[cfg(unix)]

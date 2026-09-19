@@ -66,6 +66,7 @@ fn dirs_state() -> Option<PathBuf> {
 ///   * it survived uninstall, because the MSI knows nothing about a roaming
 ///     profile — 841 bytes including `fleet\trust\known_hosts` were still there
 ///     after a clean removal that reported success.
+///
 /// Which hosts this machine is allowed to reach over SSH is machine policy. It
 /// belongs beside the rest of the machine data, where the uninstaller's
 /// `purge-data` action already removes it.

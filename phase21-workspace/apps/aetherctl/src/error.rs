@@ -12,6 +12,9 @@ pub enum CliError {
     ServiceUnreachable {
         message_key: String,
     },
+    /// Constructed only by the `#[cfg(unix)]` transport-error mapping; every
+    /// match arm over it is platform-neutral.
+    #[cfg_attr(windows, allow(dead_code))]
     Timeout,
     Rejected {
         message_key: String,
