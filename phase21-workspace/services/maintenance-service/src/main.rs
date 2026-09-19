@@ -8,8 +8,12 @@ use std::sync::{
 #[cfg(windows)]
 use anyhow::Context;
 use anyhow::Result;
-#[cfg(windows)]
-use tracing::warn;
+// `error` has no consumer in this file: windows_service_host.rs inherits this
+// crate-root scope through `use super::*` and calls `error!` there. Gating the
+// import on #[cfg(windows)] would work, but this form keeps the import visible
+// to a macOS reader as live code rather than a platform special case.
+#[cfg_attr(not(windows), allow(unused_imports))]
+use tracing::{error, warn};
 
 mod assistant;
 mod care;
@@ -53,6 +57,13 @@ mod unix_composition;
 mod unix_service;
 #[cfg(windows)]
 mod windows_service_host;
+
+// DBT-P46-D1: one decider, shared with the IPC peer check and the installer
+// hardener, which had each declared this independently.
+// The only consumer is windows_service_host.rs, which reaches it through
+// `use super::*` — so a macOS build sees an import with no local use.
+#[cfg_attr(not(windows), allow(unused_imports))]
+use aethercore_product_identity::SERVICE_NAME;
 
 fn main() -> Result<()> {
     #[cfg(windows)]
