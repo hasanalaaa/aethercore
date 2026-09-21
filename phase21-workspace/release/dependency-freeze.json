@@ -3,7 +3,7 @@
   "rust_toolchain": "1.97.1",
   "pnpm": "11.22.0",
   "cargo_lock_sha256": "18c82ee5bfe5ca109444d87ada3ec97d9348f891dacc428c99fd1db042d14030",
-  "pnpm_lock_sha256": "6bda309c4a483ece97cce68d34eeb281fc6c22fbd85ab235ae21e78faf08b746",
-  "manifest_baseline_sha256": "58462aa31ed0b29821f185727ca71df88e8d46c1116989aec136aa989164d71a",
-  "lock_baseline_sha256": "9ddfb1b81a5b94695be6213cd9f826577233d43a644bd3a3051546e3766816b0"
+  "pnpm_lock_sha256": "c3fbfe1aca0d2f14726eff3d2228314583c75a92619718ef3fe8ed0aff297a43",
+  "manifest_baseline_sha256": "66aed95ede8b65bd554ab621b8a05c9fbe5533d2bb7769e4b1467571ba7dc37b",
+  "lock_baseline_sha256": "914a7f1878b9c8909aeffb61a37c9fbfd0f0a30383a855893d041b7540bb22ec"
 }
