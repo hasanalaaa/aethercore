@@ -36,6 +36,21 @@
 # finds `dismapi.lib` on the runner, which is why step 16 completes at all.
 #
 # The three limits go back to 5.
+#
+# P69 / BLOCKER: a cargo or npm bump edits a file the source seal covers, so it
+# fails `ci.yml` step 10 `Delivered source seal` before step 11 and dies with
+# seventeen gates unrun (PR #19, run 35474420447: `hash Cargo.lock`). Lockfiles
+# are NOT excluded from the seal -- see docs/SOURCE_SEAL.md, "Dependency bumps".
+# Whoever merges a bump runs these two, in this order, on the bump's own branch:
+#   python3 scripts/source_seal.py --json          # every failed[] entry must be
+#       "reason":"hash" on a path the bump touched; anything else is not a bump
+#   python3 scripts/regenerate-source-manifest.py  # re-seal, and commit MANIFEST.sha256
+#
+# That clears step 10 and stops there. Step 11 `Verify approved dependency
+# freeze` then throws (freeze-dependencies.ps1:43) because the lock hashes no
+# longer match release/dependency-locks.sha256 -- measured on #19 at 70cdde6,
+# run 35484566311. Refreshing the freeze is an OWNER action with three criteria
+# in docs/RELEASE_SUPPLY_CHAIN.md; do not do it as part of taking a bump.
 version: 2
 updates:
   - package-ecosystem: cargo

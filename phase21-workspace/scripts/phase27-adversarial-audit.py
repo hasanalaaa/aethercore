@@ -277,7 +277,14 @@ if unix_comp_path.exists():
           "live process" in uc or "live-stomp" in uc or "stale" in uc,
           "live-stomp refusal wording missing")
 main_rs = (ROOT / "services/maintenance-service/src/main.rs").read_text(encoding="utf-8")
-check("p27-main-mod-gates", '#[cfg(all(unix, feature = "unix-ipc"))]\nmod composition;' in main_rs,
+# P31 (W7) retired the manual feature gate on the unix composition: the module is
+# now wired on every unix build, and `unix-ipc` survives only as an accepted
+# force-on alias for exotic hosts (main.rs:50-52 says so in as many words). This
+# check still demanded the P27 spelling, which cannot match a P31+ tree for two
+# independent reasons -- the feature predicate is gone, and the module it named is
+# `unix_composition`, not `composition`. Assert what P31 decided: unconditional on
+# unix. A narrower gate reappearing here is the drift worth catching.
+check("p27-main-mod-gates", '#[cfg(unix)]\nmod unix_composition;' in main_rs,
       "unix composition module gate drifted")
 desktop_main = (ROOT / "apps/desktop/src/main.rs").read_text(encoding="utf-8")
 check("p27-desktop-capability-command", "async fn get_platform_capabilities" in desktop_main,
