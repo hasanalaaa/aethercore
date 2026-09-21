@@ -75,7 +75,7 @@ jobs:
       # failure later in the job cannot prevent a save that has already happened.
       - name: Restore Windows ADK Deployment Tools
         id: adk-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
           key: ${{ runner.os }}-adk-deploytools-${{ hashFiles('.github/actions/install-windows-adk/action.yml') }}
@@ -86,7 +86,7 @@ jobs:
       - uses: ./.github/actions/install-windows-adk
       - name: Save Windows ADK Deployment Tools
         if: steps.adk-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
           key: ${{ steps.adk-cache.outputs.cache-primary-key }}
@@ -114,7 +114,7 @@ jobs:
       # on run 34827684392, which is less than a cache round-trip would cost.
       - name: Restore Rust build cache
         id: cargo-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -167,7 +167,7 @@ jobs:
       # nothing new to store when Cargo.lock has not moved.
       - name: Save Rust build cache
         if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/.cargo/registry/index
