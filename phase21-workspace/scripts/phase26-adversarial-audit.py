@@ -148,7 +148,14 @@ for p in rs_files:
     # Freeze invariant: existing cfg(windows) blocks keep their line count stable is not
     # checkable without the base tree here; instead assert none of these files contains
     # NEW windows-gated edits introduced by phase 26 markers.
-    if "// Phase 26" in text or "phase 26" in text.lower() and "cfg(windows)" in text:
+    # `and` binds tighter than `or`, so the original spelling read as
+    # ("// Phase 26" in text) or (... and "cfg(windows)" in text) -- the first arm
+    # alone condemned any file merely MENTIONING Phase 26, whatever it was gated on.
+    # That is how services/maintenance-service/src/unix_composition.rs came to be
+    # reported as a cfg(windows) freeze violation while containing zero occurrences
+    # of cfg(windows): its line 97 says "// Phase 26 contract enforcement happens
+    # HERE". The check is about windows-gated edits, so both halves must hold.
+    if "phase 26" in text.lower() and "cfg(windows)" in text:
         violations.append(rel_str)
 check(
     "p26-cfg-windows-freeze-scan",
@@ -164,8 +171,18 @@ check(
 # --- Gate d: dependency allowlist (new crates) ------------------------------------
 for crate_name, cargo_rel, allowed in [
     ("platform-capabilities", "crates/platform-capabilities/Cargo.toml", {"serde"}),
+    # `aethercore-product-identity` is a workspace path dep, added by P46 3.3 D1
+    # (71fc629) so the Windows service name has one decider; ipc consumes it at
+    # src/windows_impl.rs:130 for the pipe security descriptor's service SID.
+    # Dropping it to satisfy this list would re-duplicate the service name, which
+    # is the defect P46 removed. `tempfile` is a [dev-dependencies] entry used only
+    # by tests/unix_adversarial.rs -- the loop below scans every section whose name
+    # contains "dependencies", so dev-only crates land here too; it is allowed as a
+    # test dependency, not as shipped surface. Neither is network-capable, which is
+    # what the companion p26-no-network-deps check actually defends.
     ("ipc", "crates/ipc/Cargo.toml",
-     {"prost", "thiserror", "tracing", "aethercore-contracts"}),
+     {"prost", "thiserror", "tracing", "aethercore-contracts",
+      "aethercore-product-identity", "tempfile"}),
 ]:
     cargo = (ROOT / cargo_rel).read_text(encoding="utf-8")
     current: str | None = None
