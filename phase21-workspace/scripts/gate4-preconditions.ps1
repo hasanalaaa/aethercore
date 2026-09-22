@@ -27,6 +27,22 @@ function Add-Result {
     [void]$results.Add([pscustomobject]@{ Condition = $Condition; State = $State; Evidence = $Evidence })
 }
 
+# Two of the six conditions read instruments that require elevation:
+# Get-ComputerRestorePoint and wbadmin. Run unelevated they do not report an
+# absent subject, they refuse to look -- and condition 6 already states the rule
+# this file follows: an instrument that cannot see its subject reports UNKNOWN,
+# never a verdict about the subject. P71 measured both reporting FAILS from an
+# unelevated session on a machine that has a restore point and an image, which
+# is a false accusation of exactly the kind the phase 26/27 audits carried.
+# UNKNOWN still blocks Gate 4 -- `State -ne 'HOLDS'` -- so nothing is loosened.
+$IsElevated = ([Security.Principal.WindowsPrincipal] `
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $IsElevated) {
+    Write-Host ("NOTE: not elevated. Conditions that need elevation report " +
+                "UNKNOWN rather than FAILS.") -ForegroundColor DarkYellow
+}
+
 # --- 1. recovery point -----------------------------------------------------
 try {
     $rps = @(Get-ComputerRestorePoint -ErrorAction Stop)
@@ -39,7 +55,12 @@ try {
         Add-Result 'recovery point' 'FAILS' 'System Restore is queryable but holds zero restore points'
     }
 } catch {
-    Add-Result 'recovery point' 'FAILS' "Get-ComputerRestorePoint threw: $($_.Exception.Message)"
+    # A throw is the instrument failing, never evidence the subject is absent.
+    # The empty-list branch above stays FAILS because a queryable System Restore
+    # holding zero points IS evidence; this is not.
+    $why = if ($IsElevated) { '' } else { ' (session is not elevated; this cmdlet requires it)' }
+    Add-Result 'recovery point' 'UNKNOWN' `
+        "Get-ComputerRestorePoint threw: $($_.Exception.Message)$why -- not measured, not claimed"
 }
 
 # --- 2. disk image ---------------------------------------------------------
@@ -52,7 +73,16 @@ if (-not $imageTarget) {
 } else {
     $txt = & wbadmin get versions -backupTarget:$imageTarget 2>&1 | Out-String
     $ids = [regex]::Matches($txt, 'Version identifier:\s*(\S+)') | ForEach-Object { $_.Groups[1].Value }
-    if ($ids.Count -eq 0) {
+    if ($ids.Count -eq 0 -and -not $IsElevated) {
+        # wbadmin requires elevation. Unelevated it prints an access error and
+        # parses to zero versions, which is indistinguishable from "no image"
+        # to the regex and is not the same thing at all. P71 measured this
+        # against a D:\WindowsImageBackup dated 2026-09-02 whose ACL denies an
+        # unelevated read outright.
+        Add-Result 'disk image' 'UNKNOWN' (
+            "WindowsImageBackup exists on $imageTarget but wbadmin needs elevation; " +
+            "version count is UNKNOWN, not zero -- re-run elevated")
+    } elseif ($ids.Count -eq 0) {
         # P41 recorded wbadmin returning 0 having done nothing. An empty listing
         # is a FAIL regardless of the exit code.
         Add-Result 'disk image' 'FAILS' "WindowsImageBackup exists on $imageTarget but wbadmin lists zero versions"

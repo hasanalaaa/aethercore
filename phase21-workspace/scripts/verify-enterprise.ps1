@@ -20,7 +20,7 @@ if($LASTEXITCODE -ne 0){throw 'Enterprise adversarial architecture audit failed.
 
 & cargo fmt --all -- --check
 if($LASTEXITCODE -ne 0){throw 'Enterprise rustfmt gate failed.'}
-& cargo clippy --workspace --all-targets --locked -- -D warnings
+& cargo clippy --workspace --all-targets --locked --keep-going -- -D warnings
 if($LASTEXITCODE -ne 0){throw 'Enterprise clippy -D warnings gate failed.'}
 & cargo test --workspace --locked
 if($LASTEXITCODE -ne 0){throw 'Enterprise full workspace regression gate failed.'}
