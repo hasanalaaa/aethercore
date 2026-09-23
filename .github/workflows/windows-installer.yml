@@ -122,6 +122,9 @@ jobs:
   # bundle decides: where the logs land, each log file's DACL, and a clean
   # install/uninstall. C:\Windows\Temp's own DACL belongs to the machine image,
   # so it is recorded, as are the forced-LogOpen-failure and held-handle results.
+  # P74 adds DBT-P73-001 to the gate: after a non-admin squats the data root, the
+  # hardener must leave every node owned by SYSTEM or Administrators, and the
+  # squatter's own icacls /grant must fail.
   bundle-log-acl-probe:
     if: github.event_name == 'workflow_dispatch'
     needs: build-unsigned-candidate
@@ -299,9 +302,14 @@ jobs:
           # [ProgramData]\AetherCore\logs prefix, done by a real non-admin before install.
           Section 'Non-admin pre-creates C:\ProgramData\AetherCore\logs'
           if ($probe) {
-            $null = Invoke-AsProbe 'squat-programdata' "New-Item -ItemType Directory -Force '$pdRoot\logs' | Out-Null; 'created'"
-            Write-Host "owner before install: $((Get-Acl $pdRoot).Owner)"
-          }
+            # A file too, so the hardener's owner reset is exercised on a file, not only on directories.
+            $null = Invoke-AsProbe 'squat-programdata' "New-Item -ItemType Directory -Force '$pdRoot\logs' | Out-Null; New-Item -ItemType File -Force '$pdRoot\logs\planted.txt' | Out-Null; 'created'"
+            $squatOwner = (Get-Acl $pdRoot).GetOwner([Security.Principal.SecurityIdentifier]).Value
+            $summary.pdRootOwnerBeforeInstall = $squatOwner
+            Write-Host "owner before install: $squatOwner"
+            # Without a squat the owner gate below proves nothing.
+            if ($squatOwner -ne $probe) { $gate.Add("squat did not take: data root owner before install is $squatOwner, not the probe $probe") }
+          } else { $gate.Add('no non-admin probe account, so DBT-P73-001 is unmeasured') }
 
           Section 'Install 1'
           $t1 = Get-Date
@@ -316,12 +324,23 @@ jobs:
           Section 'Product data root after the hardener ran'
           Show-Acl $pdRoot
           $summary.pdRootOwner = (Get-Acl $pdRoot).Owner
+          # DBT-P73-001: every node the squatter created, and every node the installer
+          # created, must be owned by SYSTEM or Administrators.
+          $owners = @(Get-Item -LiteralPath $pdRoot -Force) + @(Get-ChildItem -LiteralPath $pdRoot -Recurse -Force) | ForEach-Object {
+            [pscustomobject]@{ owner = (Get-Acl -LiteralPath $_.FullName).GetOwner([Security.Principal.SecurityIdentifier]).Value; path = $_.FullName }
+          }
+          $owners | Format-Table -AutoSize | Out-String -Width 300 | Tee-Object (Join-Path $ev 'programdata-owners.txt') | Write-Host
+          foreach ($o in $owners) { if ($o.owner -notin 'S-1-5-18', 'S-1-5-32-544') { $gate.Add("data tree node owned by $($o.owner): $($o.path)") } }
+          $summary.pdTreeOwners = (($owners | Group-Object owner | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ', ')
           if ($probe) {
             # An owner holds WRITE_DAC implicitly (no OWNER RIGHTS ACE is present).
             # Exercise it as an attacker would, and read back the resulting DACL.
             $r = Invoke-AsProbe 'programdata-writedac' "`$out = icacls '$pdRoot' /grant '*${probe}:(OI)(CI)F' 2>&1; [ordered]@{ exit = `$LASTEXITCODE; out = (`$out -join ' | ') }"
-            $summary.pdRootNonAdmin = "icacls /grant as the non-admin owner: $($r | ConvertTo-Json -Compress)"
+            $summary.pdRootNonAdmin = "icacls /grant as the non-admin squatter: $($r | ConvertTo-Json -Compress)"
             Show-Acl $pdRoot
+            if ($r.exit -eq 0) { $gate.Add("non-admin icacls /grant on the data root succeeded: $($r.out)") }
+            $granted = @((Get-Acl $pdRoot).Access | Where-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq $probe })
+            if ($granted) { $gate.Add("data root DACL holds an ACE for the non-admin: $($granted.FileSystemRights -join ', ')") }
           }
           Write-Host "owner: $($summary.pdRootOwner); non-admin: $($summary.pdRootNonAdmin)"
 
@@ -368,6 +387,29 @@ jobs:
           Write-Host $summary.forcedFailure
           Get-ChildItem $winTemp -Filter 'AetherCore_*' -Directory | Remove-Item -Force
 
+          # DBT-P73-002: what a rolled-back uninstall leaves the service as. The SCM view,
+          # the SID type the hardener would have set, whether the process is alive, and
+          # whether it accepts a stop now (MSI waits 4 minutes before reporting 1921).
+          function Save-ServiceState([string]$tag, [datetime]$since) {
+            $f = Join-Path $ev "$tag.service-state.txt"
+            'queryex', 'qc', 'qsidtype', 'sdshow' | ForEach-Object { "--- sc $_"; sc.exe $_ AetherCoreMaintenance 2>&1 } | Add-Content $f
+            $pid_ = (Get-CimInstance Win32_Service -Filter "Name='AetherCoreMaintenance'").ProcessId
+            "--- process $pid_ alive: $([bool]($pid_ -and (Get-Process -Id $pid_ -ErrorAction SilentlyContinue)))" | Add-Content $f
+            $sw = [Diagnostics.Stopwatch]::StartNew(); $stop = sc.exe stop AetherCoreMaintenance 2>&1; $stopExit = $LASTEXITCODE; $sw.Stop()
+            "--- sc stop ($($sw.ElapsedMilliseconds) ms, exit $stopExit)" | Add-Content $f; $stop | Add-Content $f
+            '--- System log, Service Control Manager' | Add-Content $f
+            Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; StartTime = $since } -ErrorAction SilentlyContinue |
+              Where-Object Message -match 'AetherCore' | ForEach-Object { "$($_.TimeCreated.ToString('HH:mm:ss')) $($_.Id) $($_.Message)" } | Add-Content $f
+            '--- logs\service.jsonl, last 20 lines' | Add-Content $f
+            Get-Content "$pdRoot\logs\service.jsonl" -Tail 20 -ErrorAction SilentlyContinue | Add-Content $f
+            '--- what is left under the data root' | Add-Content $f
+            Get-ChildItem $pdRoot -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object FullName | Add-Content $f
+            Get-Content $f | Write-Host
+            $q = sc.exe queryex AetherCoreMaintenance | Select-String 'STATE|WIN32_EXIT_CODE|SERVICE_EXIT_CODE' | ForEach-Object { ($_ -replace '\s+', ' ').Trim() }
+            $sid = (sc.exe qsidtype AetherCoreMaintenance | Select-String 'SERVICE_SID_TYPE') -replace '\s+', ' '
+            $summary["${tag}ServiceState"] = "$($q -join '; '); $sid; process alive: $([bool]($pid_ -and (Get-Process -Id $pid_ -ErrorAction SilentlyContinue))); sc stop exit $stopExit"
+          }
+
           # Burn opens its log with FILE_SHARE_READ only. A handle held that way
           # inside C:\ProgramData\AetherCore is what a Burn log there would be during
           # the purge-data custom action. Last, because it leaves the machine dirty.
@@ -383,6 +425,7 @@ jobs:
           $summary.heldUninstall = "exit $code; service present after: $svc; ProgramData\AetherCore exists after: $(Test-Path $pdRoot)"
           Write-Host $summary.heldUninstall
           New-Logs $t5 | Copy-Item -Destination $ev
+          if ($svc) { Save-ServiceState 'held' $t5 }
 
           Section 'Summary'
           $summary | ConvertTo-Json | Tee-Object (Join-Path $ev 'summary.json') | Write-Host

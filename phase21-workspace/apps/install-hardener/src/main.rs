@@ -103,6 +103,17 @@ fn apply() -> anyhow::Result<()> {
     // link discovered during a race is operated on as a link rather than followed to its target.
     reject_reparse_tree(&bin_dir)?;
     reject_reparse_tree(&data_dir)?;
+    // DBT-P73-001: Users may create folders under %ProgramData%, so a non-admin can create
+    // AetherCore there before install and own it. /reset and /grant:r never change an owner,
+    // and an owner holds WRITE_DAC implicitly, so the squatter could grant itself FullControl
+    // over the hardened data root. Every node is therefore re-owned before anything below
+    // trusts the tree. SYSTEM, because that is the owner a clean install produces, so a
+    // squatted install converges on the same state. Refusing a foreign owner instead would
+    // let any local user block install and repair with one mkdir. bin_dir gets the same
+    // treatment: Users cannot create under Program Files on a stock ACL, but the invariant
+    // is then "the hardener set every owner", not "nobody could have".
+    set_owner_tree(&icacls, &bin_dir)?;
+    set_owner_tree(&icacls, &data_dir)?;
     let mutation_lock = ensure_mutation_lock_file(&data_dir)?;
 
     let principal = service_principal();
@@ -274,14 +285,26 @@ where
 }
 
 #[cfg(windows)]
+fn set_owner_tree(exe: &Path, root: &Path) -> anyhow::Result<()> {
+    icacls_tree(exe, root, &["/setowner", "*S-1-5-18"])
+}
+
+#[cfg(windows)]
 fn reset_acl_tree(exe: &Path, root: &Path) -> anyhow::Result<()> {
+    icacls_tree(exe, root, &["/reset"])
+}
+
+#[cfg(windows)]
+fn icacls_tree(exe: &Path, root: &Path, verb: &[&str]) -> anyhow::Result<()> {
     let output = Command::new(exe)
         .arg(root)
-        .args(["/reset", "/T", "/C", "/L", "/Q"])
+        .args(verb)
+        .args(["/T", "/C", "/L", "/Q"])
         .output()?;
     if !output.status.success() {
         anyhow::bail!(
-            "ACL reset failed for {} ({}): {}",
+            "icacls {} failed for {} ({}): {}",
+            verb.join(" "),
             root.display(),
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
