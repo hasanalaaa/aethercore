@@ -8,7 +8,7 @@ use windows_service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
         ServiceType,
     },
-    service_control_handler::{self, ServiceControlHandlerResult},
+    service_control_handler::{self, ServiceControlHandlerResult, ServiceStatusHandle},
     service_dispatcher,
 };
 
@@ -27,11 +27,10 @@ fn service_main(_: Vec<OsString>) {
 }
 
 fn service_main_impl() -> Result<()> {
-    // Fail before SERVICE_RUNNING if SCM configuration has not produced the expected live token.
-    // This turns service startup itself into the authoritative SID-policy activation check.
-    aethercore_security::verify_maintenance_service_token(SERVICE_NAME)
-        .context("maintenance service token policy mismatch")?;
-
+    // Registered before anything can fail, so that every exit reports SERVICE_STOPPED.
+    // DBT-P73-002: the token check used to return before any status was set. SCM then held
+    // the service at START_PENDING with its process alive in the dispatcher, so it could
+    // be neither started nor stopped: MSI 1920, then 1921 after a 4-minute wait.
     let stop = Arc::new(AtomicBool::new(false));
     let stop_for_handler = stop.clone();
     let status_handle =
@@ -45,17 +44,7 @@ fn service_main_impl() -> Result<()> {
             _ => ServiceControlHandlerResult::NotImplemented,
         })?;
 
-    status_handle.set_service_status(ServiceStatus {
-        service_type: ServiceType::OWN_PROCESS,
-        current_state: ServiceState::Running,
-        controls_accepted: ServiceControlAccept::STOP,
-        exit_code: ServiceExitCode::Win32(0),
-        checkpoint: 0,
-        wait_hint: Duration::default(),
-        process_id: None,
-    })?;
-
-    let result = run_server(stop);
+    let result = verify_then_run(status_handle, stop);
     status_handle.set_service_status(ServiceStatus {
         service_type: ServiceType::OWN_PROCESS,
         current_state: ServiceState::Stopped,
@@ -66,4 +55,21 @@ fn service_main_impl() -> Result<()> {
         process_id: None,
     })?;
     result
+}
+
+fn verify_then_run(status_handle: ServiceStatusHandle, stop: Arc<AtomicBool>) -> Result<()> {
+    // Fail before SERVICE_RUNNING if SCM configuration has not produced the expected live token.
+    // This turns service startup itself into the authoritative SID-policy activation check.
+    aethercore_security::verify_maintenance_service_token(SERVICE_NAME)
+        .context("maintenance service token policy mismatch")?;
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Running,
+        controls_accepted: ServiceControlAccept::STOP,
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    })?;
+    run_server(stop)
 }
