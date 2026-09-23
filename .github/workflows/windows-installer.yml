@@ -135,8 +135,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $setup = (Get-ChildItem setup -Recurse -Filter AetherCoreSetup.exe | Select-Object -First 1).FullName
-          if (-not $setup) { throw 'AetherCoreSetup.exe is not in the artifact' }
+          # build-installer.ps1 names it AetherCoreSetup-<version>-x64.exe; exactly one.
+          $found = @(Get-ChildItem setup -Recurse -Filter 'AetherCoreSetup-*-x64.exe')
+          if ($found.Count -ne 1) { throw "expected one AetherCoreSetup-*-x64.exe in the artifact, found $($found.Count)" }
+          $setup = $found[0].FullName
+          Write-Host "bundle: $setup"
           $winTemp  = Join-Path $env:SystemRoot 'Temp'
           $userTemp = [IO.Path]::GetTempPath()
           $pdRoot   = Join-Path $env:ProgramData 'AetherCore'
