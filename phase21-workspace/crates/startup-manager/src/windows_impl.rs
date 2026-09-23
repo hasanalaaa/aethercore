@@ -28,8 +28,8 @@ use windows::{
             Services::{
                 ChangeServiceConfig2W, ChangeServiceConfigW, OpenSCManagerW, OpenServiceW,
                 SERVICE_CHANGE_CONFIG, SERVICE_CONFIG_DELAYED_AUTO_START_INFO,
-                SERVICE_DELAYED_AUTO_START_INFO, SERVICE_ERROR, SERVICE_NO_CHANGE,
-                SERVICE_QUERY_CONFIG, SERVICE_START_TYPE,
+                SERVICE_DELAYED_AUTO_START_INFO, SERVICE_DEMAND_START, SERVICE_ERROR,
+                SERVICE_NO_CHANGE, SERVICE_QUERY_CONFIG, SERVICE_START_TYPE,
             },
             TaskScheduler::{ITaskFolder, ITaskService},
             Variant::VARIANT,
@@ -37,15 +37,6 @@ use windows::{
     },
     core::{BOOL, BSTR, GUID, PCWSTR, PWSTR},
 };
-
-// Not referenced as a value here: the demand-start decision is the literal `3`
-// at lib.rs:1345, so Windows clippy reports this import unused. It is retained
-// because `scripts/static_validate.py` asserts the token's presence in this file
-// (`startup_service_is_next_start_only`, line 468, and
-// `startup_windows_inventory_and_reversible_mutation`, line 455). Removing it
-// turns step 20 red, which is how it came back. Keep it, or fix the check first.
-#[allow(unused_imports)]
-use windows::Win32::System::Services::SERVICE_DEMAND_START;
 
 use super::{
     NativeState, Result, StartupError, StartupItem, StartupMutationLease, StartupPlatform,
@@ -794,6 +785,22 @@ fn set_task_enabled(path: &str, enabled: bool) -> Result<()> {
     })
 }
 fn set_service_start(name: &str, start: u32, delayed: bool) -> Result<()> {
+    // SCM start types are ordered by how early the service launches, so a LARGER
+    // value is a WEAKER start. Phase 5's whole mandate is to move a service off
+    // automatic boot and no further: demand start is the floor, and this function
+    // is the only place in the crate that writes a start type, so the floor is
+    // enforced here rather than at each caller. Both legitimate callers are below
+    // it already -- restore replays the scanned original, and scan_services admits
+    // only `start == 2`; apply writes the `3` at lib.rs:1345. A weaker value can
+    // therefore only arrive from a corrupted or hand-edited state JSON, and
+    // writing it would leave a real service unable to start with no record of the
+    // value it had. Refuse instead of reporting a success that disabled something.
+    if start > SERVICE_DEMAND_START.0 {
+        return Err(StartupError::Platform(format!(
+            "refusing to set service {name} start type to {start}: weaker than demand start ({}); this tool never writes past demand start",
+            SERVICE_DEMAND_START.0
+        )));
+    }
     unsafe {
         let scm = OwnedServiceHandle::new(
             OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), 0x0001).map_err(win)?,
@@ -1189,6 +1196,31 @@ mod windows_policy_tests {
         assert_eq!(task_definition_hash(a), task_definition_hash(b));
         assert_eq!(task_definition_hash(a), task_definition_hash(d));
         assert_ne!(task_definition_hash(a), task_definition_hash(c));
+    }
+
+    #[test]
+    fn set_service_start_refuses_start_types_weaker_than_demand() {
+        // The floor is checked before any SCM call, so this needs no privileges and
+        // touches no real service. Naming a service that does not exist separates the
+        // two outcomes: a refused start type never reaches the SCM, while an accepted
+        // one does and comes back with the SCM's own failure instead.
+        let refused =
+            set_service_start("AetherCoreNoSuchService", SERVICE_DEMAND_START.0 + 1, false)
+                .expect_err("a start type past demand start must be refused");
+        assert!(
+            matches!(&refused, StartupError::Platform(m) if m.contains("weaker than demand start")),
+            "expected the demand-start floor to reject it, got: {refused:?}"
+        );
+
+        // Demand start itself is the floor, not past it: the guard must let it through
+        // to the SCM, which then fails for its own reason. Asserting on the absence of
+        // the guard's wording keeps this independent of which SCM error comes back.
+        let passed = set_service_start("AetherCoreNoSuchService", SERVICE_DEMAND_START.0, false)
+            .expect_err("no such service exists, so the SCM call must still fail");
+        assert!(
+            !matches!(&passed, StartupError::Platform(m) if m.contains("weaker than demand start")),
+            "demand start is the floor and must not be refused, got: {passed:?}"
+        );
     }
 
     #[test]

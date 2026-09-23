@@ -180,6 +180,56 @@ both the generator and the verifier, so a file you forgot to add is not sealed â
 and the moment you do add it, the verifier reports it `unlisted`. That is the
 seal working, not a bug.
 
+### Dependency bumps: re-seal on the bump's own branch
+
+A Dependabot PR edits `Cargo.lock`, `Cargo.toml`, `package.json` or
+`pnpm-lock.yaml`. All four are git-tracked under the sealed root, so all four are
+sealed, and Dependabot has no step that regenerates `MANIFEST.sha256`. `Delivered
+source seal` is step 10 of `ci.yml`'s windows job, so a bump dies there and the
+seventeen gates after it never run. Measured on PR #19, uuid 1.25.0 -> 1.26.1,
+run 35474420447: `FAILED - 1488 of 1489 tracked files verified, 1 problems`,
+`hash Cargo.lock`, steps 11-26 skipped.
+
+Lockfiles are **not** excluded from the seal to make that stop. The rule is
+*every tracked file, no list*, for the reason all of **What is inside it** gives;
+and a dependency lock is the most tamper-relevant delivered file in the tree, so
+an exclusion would put the hole exactly where it pays to have one. The person
+merging the bump re-seals it, in two commands whose order is the whole point:
+
+```bash
+python3 scripts/source_seal.py --json          # read this BEFORE re-sealing
+python3 scripts/regenerate-source-manifest.py  # then re-seal; commit the manifest
+```
+
+1. **Read `--json` first.** Every object in `failed[]` must have
+   `"reason": "hash"` and a `"path"` the bump was supposed to touch. A `hash` on
+   anything else, or any `unlisted`, `missing`, `not_tracked` or `symlink` entry,
+   means something other than a version bump rode in on the branch. Regenerating
+   first destroys that evidence: the new manifest describes whatever is on disk,
+   including whatever you did not look at. This is the same rule that made the
+   202 conflicts classifiable in P60 and it fails the same way if skipped.
+2. **Then re-seal on the bump's branch, in the same PR.** The generator hashes
+   the working tree, so it has to run where the bumped lockfile is. Merging a
+   bump and re-sealing on `main` afterwards leaves `main` red at step 10 in
+   between, which fails every other open PR too.
+
+If `MANIFEST.sha256` conflicts when a bump branch is brought up to date with
+`main`, resolve it by rerunning the generator, never by merging hash lines by
+hand. A hand-merged manifest is a manifest nothing produced.
+
+**Re-sealing clears step 10 and stops there.** Step 11 is
+`freeze-dependencies.ps1 -VerifyOnly`, which is the *second* row of the table in
+**What it seals against** and asks a different question â€” is this dependency
+graph an approved one. A bump changes the answer to both, and only the seal's
+answer is mechanical. Measured on PR #19 at `70cdde6`, run `35484566311`: step
+10 `Delivered source seal` **success**, step 11 throws at
+`freeze-dependencies.ps1:43`, `Dependency lock hashes differ from the approved
+freeze baseline`. Refreshing the freeze is an owner action with three criteria
+in `docs/RELEASE_SUPPLY_CHAIN.md`, and that document is explicit that no
+workflow can approve a graph because no workflow can commit one. So: re-seal as
+part of taking the bump; do **not** refresh the freeze as part of taking the
+bump.
+
 The verifier requires `git` and says so rather than falling back to a directory
 walk. A tree with no git metadata cannot be asked which files were delivered,
 only which happen to be on disk, and the difference between those two questions
