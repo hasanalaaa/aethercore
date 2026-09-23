@@ -15,7 +15,7 @@ use aethercore_collector_runtime::{
 use aethercore_contracts::v1::{self, EventKind, SchedulerRunState, event_envelope};
 use aethercore_operation_kernel::{OperationKernel, ReadWorkload};
 use chrono::Utc;
-use rand::Rng;
+use rand::RngExt;
 use tracing::{info, warn};
 
 use crate::{model::*, policy::EligibilityEngine, resource::ResourceGovernor};
