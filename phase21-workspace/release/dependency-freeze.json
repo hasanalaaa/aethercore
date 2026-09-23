@@ -2,8 +2,8 @@
   "schema": "aethercore.dependency-freeze.v1",
   "rust_toolchain": "1.97.1",
   "pnpm": "11.22.0",
-  "cargo_lock_sha256": "e56acd8057633f0a19f92bc316fd7d6655cdf0326ff326cfc23c8ad8132e3674",
-  "pnpm_lock_sha256": "6bda309c4a483ece97cce68d34eeb281fc6c22fbd85ab235ae21e78faf08b746",
-  "manifest_baseline_sha256": "58462aa31ed0b29821f185727ca71df88e8d46c1116989aec136aa989164d71a",
-  "lock_baseline_sha256": "83b2912afc3771f2ae2dc3ea7607b5b99a26ee52f6d5d0e52eab9b48be0121a8"
+  "cargo_lock_sha256": "4b0103363f91853c5bb66738ed3d99509aebb1c81fd657a6d0184d166ac1fccb",
+  "pnpm_lock_sha256": "f381c6589c26e3b1e6e2e8428341400e6fb4a0dec8b96304ddbf246b7a4e02b3",
+  "manifest_baseline_sha256": "d874b06e20d2dcb0cd618e09f581eceffa9bb3c0b2bb0f7c8fa5600c727e11d7",
+  "lock_baseline_sha256": "23836433c25eee7fe1c0a01c087e6f0f97f48fba61012e1ca36b05a8436dcf9e"
 }
