@@ -37,6 +37,18 @@ jobs:
       # P61: the recipe now lives in .github/actions/install-windows-adk so
       # ci.yml runs the same one. Its comments carry the two corrections that
       # cost a run each to find.
+      #
+      # P73: restore ci.yml's Deployment Tools cache first, and the action then
+      # skips the download. On 2026-09-23 adksetup.exe failed 0x80091007
+      # (CRYPT_E_HASH_VALUE) on two runs in a row (35805995871, 35806212967).
+      # ci.yml was unaffected because it restores. Restore only: ci.yml on main
+      # owns the save, and a save from here would create a branch-scoped entry no
+      # other ref could read.
+      - name: Restore Windows ADK Deployment Tools
+        uses: actions/cache/restore@v6
+        with:
+          path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
+          key: ${{ runner.os }}-adk-deploytools-${{ hashFiles('.github/actions/install-windows-adk/action.yml') }}
       - uses: ./.github/actions/install-windows-adk
 
       - uses: actions/setup-dotnet@v4
