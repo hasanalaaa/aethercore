@@ -17,6 +17,29 @@
       DisableRemove="no"
       Condition="VersionNT64 AND ((NTProductType = 1 AND WindowsBuildNumber &gt;= 22621) OR (NTProductType = 3 AND WindowsBuildNumber &gt;= 17763))">
 
+    <!-- DBT-P49-003: without this the elevated child wrote its log into the
+         unelevated user's %TEMP%, inheriting a DACL that gave that user
+         FullControl over a file an administrator wrote (P71). A rooted Prefix
+         moves the directory for the parent and the elevated child alike
+         (Burn logging.cpp LoggingOpen, WiX v6.0.2).
+
+         Why C:\Windows\Temp and not C:\ProgramData\AetherCore\logs:
+         * [ProgramData] is not a Burn variable. It formats to "", which leaves
+           \AetherCore\logs, a path relative to the drive root.
+         * The unelevated parent opens its log first, so it would create
+           C:\ProgramData\AetherCore and own it. The install hardener resets the
+           DACL there but never the owner, and an owner can always rewrite the
+           DACL.
+         * Burn keeps its log open without FILE_SHARE_DELETE, which blocks the
+           purge-data uninstall action from deleting that tree.
+         The OS owns C:\Windows\Temp, and Users can add files there but cannot
+         list, delete or change them. A file the elevated child creates there
+         inherits no ACE for Users.
+
+         [WindowsFolder] already ends in a backslash (Burn's ShelGetFolder). The measured
+         DACLs are in docs/phase73/P73-REPORT.md. -->
+    <Log Prefix="[WindowsFolder]Temp\AetherCore" Extension="log" />
+
     <!-- DBT-P49-002.
 
          LogoFile: the welcome screen showed WiX's 852-byte stock placeholder,

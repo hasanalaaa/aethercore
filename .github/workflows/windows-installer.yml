@@ -101,3 +101,246 @@ jobs:
           path: phase21-workspace/out/release/**/*.exe
           if-no-files-found: error
           retention-days: 14
+
+  # DBT-P49-003 (P73). Installs the candidate on the runner and measures where the
+  # Burn logs land and who can touch them. Access is measured by opening each log
+  # with CreateFileW as a real non-admin account, so it is not inferred from the
+  # ACL text. workflow_dispatch only, because it installs software and creates a
+  # local user, which a tag build has no reason to do. Only the ACL/access gate
+  # fails the job. The other sections record their measurements and do not fail.
+  bundle-log-acl-probe:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build-unsigned-candidate
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: AetherCoreSetup-windows-unsigned-${{ github.sha }}
+          path: setup
+
+      - name: Measure bundle log placement and access
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Get-ChildItem setup -Recurse -Filter AetherCoreSetup.exe | Select-Object -First 1).FullName
+          if (-not $setup) { throw 'AetherCoreSetup.exe is not in the artifact' }
+          $winTemp  = Join-Path $env:SystemRoot 'Temp'
+          $userTemp = [IO.Path]::GetTempPath()
+          $pdRoot   = Join-Path $env:ProgramData 'AetherCore'
+          $ev = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'p73-evidence')
+          $gate = [Collections.Generic.List[string]]::new()
+          $summary = [ordered]@{}
+          function Section($t) { Write-Host "`n===== $t =====" }
+
+          # CreateFileW with an explicit access mask: GRANTED/DENIED is the kernel's
+          # access check for that principal, including FILE_DELETE_CHILD on the parent
+          # for DELETE. Nothing is modified.
+          $helpers = @'
+          Add-Type -Namespace P73 -Name K -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t);'
+          function Test-Access([string]$path, [uint32]$access, [switch]$dir) {
+            $flags = if ($dir) { 0x02000000 } else { 0x80 }
+            $h = [P73.K]::CreateFileW($path, $access, 7, [IntPtr]::Zero, 3, $flags, [IntPtr]::Zero)
+            $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            if ($h.IsInvalid) { "DENIED($err)" } else { $h.Dispose(); 'GRANTED' }
+          }
+          $fileRights = [ordered]@{ READ = 0x120089; WRITE_DATA = 0x2; DELETE = 0x10000; WRITE_DAC = 0x40000; WRITE_OWNER = 0x80000 }
+          $dirRights  = [ordered]@{ LIST = 0x1; DELETE_CHILD = 0x40; DELETE = 0x10000; WRITE_DAC = 0x40000; WRITE_OWNER = 0x80000 }
+          '@
+          . ([scriptblock]::Create($helpers))
+
+          Section 'Principal on this runner'
+          whoami /user /groups
+          $lua = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').EnableLUA
+          $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrators')
+          $summary.runner = "sid=$runnerSid admin=$isAdmin EnableLUA=$lua"
+          Write-Host $summary.runner
+
+          # A real non-admin principal, so the P71 split (unelevated owner of the
+          # location vs elevated writer) is measured rather than assumed.
+          $probe = $null
+          try {
+            $pw = -join ([Security.Cryptography.RandomNumberGenerator]::GetBytes(16) | ForEach-Object { $_.ToString('x2') }) + 'Aa1!'
+            Write-Host "::add-mask::$pw"
+            net user aprobe $pw /add | Out-Null
+            if ($LASTEXITCODE) { throw "net user exit $LASTEXITCODE" }
+            $probeSid = (New-Object Security.Principal.NTAccount 'aprobe').Translate([Security.Principal.SecurityIdentifier]).Value
+            $cred = [pscredential]::new("$env:COMPUTERNAME\aprobe", (ConvertTo-SecureString $pw -AsPlainText -Force))
+            Set-Service seclogon -StartupType Manual; Start-Service seclogon
+            $xchg = New-Item -ItemType Directory -Force 'C:\p73x'
+            icacls $xchg.FullName /grant "*${probeSid}:(OI)(CI)M" | Out-Null
+            $pwsh = (Get-Command pwsh).Source
+            function Invoke-AsProbe([string]$name, [string]$body) {
+              $f = Join-Path $xchg "$name.ps1"; $o = Join-Path $xchg "$name.json"
+              Remove-Item $o -ErrorAction Ignore
+              Set-Content -LiteralPath $f -Value ($helpers + "`n`$r = & { $body }`n`$r | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath '$o'")
+              $p = Start-Process -FilePath $pwsh -Credential $cred -LoadUserProfile -WorkingDirectory $xchg -PassThru -Wait `
+                -ArgumentList '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$f
+              if ($p.ExitCode -ne 0 -or -not (Test-Path $o)) { throw "probe '$name' exit $($p.ExitCode), no result" }
+              Get-Content $o -Raw | ConvertFrom-Json
+            }
+            $who = Invoke-AsProbe 'whoami' '[ordered]@{ name = [Security.Principal.WindowsIdentity]::GetCurrent().Name; admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole("Administrators") }'
+            if ($who.admin) { throw "probe account is an administrator: $($who.name)" }
+            $probe = $probeSid
+            $summary.probe = "non-admin probe running as $($who.name) ($probeSid)"
+          } catch {
+            $summary.probe = "NOT AVAILABLE: $_"
+          }
+          Write-Host $summary.probe
+
+          function Invoke-Setup([string[]]$argv) {
+            $p = Start-Process -FilePath $setup -ArgumentList $argv -PassThru
+            $null = $p.Handle  # without this ExitCode can read back empty
+            if (-not $p.WaitForExit(1200000)) { $p.Kill($true); throw "setup $argv timed out" }
+            $p.ExitCode
+          }
+          function New-Logs([datetime]$since) {
+            @(Get-ChildItem $winTemp, $userTemp -Filter 'AetherCore_*' -File -ErrorAction SilentlyContinue |
+              Where-Object LastWriteTime -ge $since)
+          }
+          # Every allow ACE on the object for anyone other than SYSTEM, Administrators
+          # and this runner's own (administrator) account, with rights in $mask.
+          function Get-AclViolations([string]$path, [int64]$mask) {
+            $acl = Get-Acl -LiteralPath $path
+            $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+            if ($owner -notin 'S-1-5-18', 'S-1-5-32-544', $runnerSid, 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464') { "owner $owner" }
+            foreach ($ace in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+              if ($ace.AccessControlType -ne 'Allow') { continue }
+              if ($ace.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) { continue }
+              $sid = $ace.IdentityReference.Value
+              if ($sid -in 'S-1-5-18', 'S-1-5-32-544', $runnerSid) { continue }
+              if ([int64]$ace.FileSystemRights -band $mask) { "$sid $($ace.FileSystemRights)" }
+            }
+          }
+          function Save-Acl([string]$path, [string]$tag) {
+            $out = Join-Path $ev "$tag.acl.txt"
+            "== $path" | Add-Content $out
+            (icacls $path) | Add-Content $out
+            "SDDL: $((Get-Acl -LiteralPath $path).Sddl)" | Add-Content $out
+            Get-Content $out | Write-Host
+          }
+          $fileMask = 0x2 -bor 0x4 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x10000000 -bor 0x40000000
+          $dirMask  = 0x40 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x10000000
+
+          Section 'Baseline'
+          $pre = @(Get-ChildItem $winTemp, $userTemp -Filter 'AetherCore_*' -ErrorAction SilentlyContinue)
+          $summary.baseline = "AetherCore_* before first install: $($pre.Count)"
+          Write-Host $summary.baseline
+          Save-Acl $winTemp 'windows-temp'
+          foreach ($v in Get-AclViolations $winTemp $dirMask) { $gate.Add("C:\Windows\Temp: $v") }
+
+          # What the unelevated parent's DirEnsureExists would do under the brief's
+          # [ProgramData]\AetherCore\logs prefix, done by a non-admin before install.
+          Section 'Non-admin pre-creates C:\ProgramData\AetherCore\logs'
+          if ($probe) {
+            $r = Invoke-AsProbe 'squat-programdata' "New-Item -ItemType Directory -Force '$pdRoot\logs' | Out-Null; 'created'"
+            Write-Host "probe: $r; owner now $((Get-Acl $pdRoot).Owner)"
+          }
+
+          Section 'Install 1'
+          $t1 = Get-Date
+          $code = Invoke-Setup '/quiet', '/norestart'
+          $summary.install1 = "exit $code"
+          Write-Host "install exit $code"
+          $logs1 = New-Logs $t1
+          $logs1 | Format-Table FullName, Length, LastWriteTime -AutoSize | Out-String | Write-Host
+          if ($code -notin 0, 3010) { $gate.Add("install 1 exit $code"); }
+          if (-not ($logs1 | Where-Object DirectoryName -eq $winTemp)) { $gate.Add('install 1 wrote no log under C:\Windows\Temp') }
+          foreach ($l in $logs1 | Where-Object { $_.DirectoryName -ne $winTemp }) { $gate.Add("log outside C:\Windows\Temp: $($l.FullName)") }
+          $summary.install1Logs = ($logs1 | ForEach-Object Name) -join ', '
+
+          Section 'Product data root after the hardener ran'
+          if (Test-Path $pdRoot) {
+            Save-Acl $pdRoot 'programdata-aethercore'
+            $summary.pdRootOwner = (Get-Acl $pdRoot).Owner
+            if ($probe) {
+              $r = Invoke-AsProbe 'programdata-access' "[ordered]@{ WRITE_DAC = Test-Access '$pdRoot' 0x40000 -dir; WRITE_OWNER = Test-Access '$pdRoot' 0x80000 -dir; LIST = Test-Access '$pdRoot' 0x1 -dir }"
+              $summary.pdRootProbe = ($r | ConvertTo-Json -Compress)
+            }
+            Write-Host "owner: $($summary.pdRootOwner); non-admin: $($summary.pdRootProbe)"
+          }
+
+          function Test-Logs([System.IO.FileInfo[]]$logs, [string]$tag) {
+            foreach ($l in $logs) {
+              Save-Acl $l.FullName $tag
+              Copy-Item $l.FullName $ev
+              foreach ($v in Get-AclViolations $l.FullName $fileMask) { $gate.Add("$($l.Name): $v") }
+            }
+            if ($probe -and $logs) {
+              $paths = ($logs | ForEach-Object { "'$($_.FullName)'" }) -join ','
+              $r = Invoke-AsProbe "access-$tag" @"
+          `$o = [ordered]@{ WindowsTemp = [ordered]@{} }
+          foreach (`$k in `$dirRights.Keys) { `$o.WindowsTemp[`$k] = Test-Access '$winTemp' `$dirRights[`$k] -dir }
+          foreach (`$p in @($paths)) { `$e = [ordered]@{}; foreach (`$k in `$fileRights.Keys) { `$e[`$k] = Test-Access `$p `$fileRights[`$k] }; `$o[(Split-Path `$p -Leaf)] = `$e }
+          `$o
+          "@
+              $j = $r | ConvertTo-Json -Depth 5
+              Write-Host "non-admin effective access ($tag):`n$j"
+              $j | Set-Content (Join-Path $ev "$tag.probe-access.json")
+              foreach ($prop in $r.PSObject.Properties) {
+                foreach ($right in $prop.Value.PSObject.Properties) {
+                  if ($right.Name -in 'READ', 'LIST') { continue }
+                  if ($right.Value -eq 'GRANTED') { $gate.Add("non-admin holds $($right.Name) on $($prop.Name)") }
+                }
+              }
+            }
+          }
+          Section 'Install 1 logs: DACL and non-admin access'
+          Test-Logs $logs1 'install1'
+
+          # Burn opens its log with FILE_SHARE_READ only. A handle held that way
+          # inside C:\ProgramData\AetherCore is what a Burn log there would be
+          # during the purge-data custom action.
+          Section 'Uninstall while a log-like handle is open under C:\ProgramData\AetherCore'
+          $held = $null
+          try {
+            New-Item -ItemType Directory -Force "$pdRoot\logs" | Out-Null
+            $held = [IO.File]::Open("$pdRoot\logs\AetherCore_held.log", 'CreateNew', 'Write', 'Read')
+            $t2 = Get-Date
+            $code = Invoke-Setup '/uninstall', '/quiet', '/norestart'
+          } finally { if ($held) { $held.Dispose() } }
+          $left = @(Get-ChildItem $pdRoot -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($pdRoot.Length) })
+          $svc = [bool](Get-Service AetherCoreMaintenance -ErrorAction SilentlyContinue)
+          $summary.heldUninstall = "exit $code; service present after: $svc; entries left under ProgramData\AetherCore: $($left.Count)"
+          Write-Host $summary.heldUninstall
+          $left | Select-Object -First 40 | Write-Host
+          $logs2 = New-Logs $t2
+
+          Section 'Uninstall, nothing held'
+          $t3 = Get-Date
+          $code = Invoke-Setup '/uninstall', '/quiet', '/norestart'
+          $summary.uninstall = "exit $code; ProgramData\AetherCore exists after: $(Test-Path $pdRoot)"
+          Write-Host $summary.uninstall
+          $logs3 = New-Logs $t3
+          Section 'Uninstall logs: DACL and non-admin access'
+          Test-Logs (@($logs2) + @($logs3)) 'uninstall'
+          foreach ($l in @($logs2) + @($logs3) | Where-Object { $_.DirectoryName -ne $winTemp }) { $gate.Add("log outside C:\Windows\Temp: $($l.FullName)") }
+
+          # Forced LogOpen failure: occupy every name Burn could pick for the next
+          # 15 minutes. Burn retries CREATE_NEW ten times, 100 ms apart, then
+          # (logging.cpp:186-193) disables logging and continues.
+          Section 'Forced LogOpen failure'
+          $squat = "`$t = Get-Date; `$n = 0; foreach (`$s in -2..900) { `$ts = `$t.AddSeconds(`$s).ToString('yyyyMMddHHmmss'); foreach (`$suffix in '.log', '.elevated.log') { New-Item -ItemType Directory -Force (Join-Path '$winTemp' ""AetherCore_`$ts`$suffix"") | Out-Null; `$n++ } }; `$n"
+          if ($probe) { $n = Invoke-AsProbe 'squat-names' $squat; $by = 'non-admin' }
+          else { $n = & ([scriptblock]::Create($squat)); $by = 'admin (no probe account)' }
+          $t4 = Get-Date
+          $code = Invoke-Setup '/quiet', '/norestart'
+          $logs4 = New-Logs $t4
+          $summary.forcedFailure = "squatted $n names as $by; install exit $code; bundle logs written: $($logs4.Count) ($(($logs4 | ForEach-Object Name) -join ', '))"
+          Write-Host $summary.forcedFailure
+
+          Section 'Summary'
+          $summary | ConvertTo-Json | Tee-Object (Join-Path $ev 'summary.json') | Write-Host
+          if ($gate.Count) { $gate | ForEach-Object { Write-Host "GATE: $_" }; throw "$($gate.Count) gate violation(s)" }
+          Write-Host 'GATE: pass'
+          exit 0  # the runner's wrapper would otherwise exit with the last native command's code
+
+      - name: Upload log ACL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-log-acl-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/p73-evidence
+          if-no-files-found: warn
+          retention-days: 14
