@@ -118,8 +118,10 @@ jobs:
   # Burn logs land and who can touch them. Access is measured by opening each log
   # with CreateFileW as a real non-admin account, so it is not inferred from the
   # ACL text. workflow_dispatch only, because it installs software and creates a
-  # local user, which a tag build has no reason to do. Only the ACL/access gate
-  # fails the job. The other sections record their measurements and do not fail.
+  # local user, which a tag build has no reason to do. The gate covers what the
+  # bundle decides: where the logs land, each log file's DACL, and a clean
+  # install/uninstall. C:\Windows\Temp's own DACL belongs to the machine image,
+  # so it is recorded, as are the forced-LogOpen-failure and held-handle results.
   bundle-log-acl-probe:
     if: github.event_name == 'workflow_dispatch'
     needs: build-unsigned-candidate
@@ -147,6 +149,9 @@ jobs:
           $gate = [Collections.Generic.List[string]]::new()
           $summary = [ordered]@{}
           function Section($t) { Write-Host "`n===== $t =====" }
+          # SYSTEM, Administrators, TrustedInstaller. The runner's own account is an
+          # administrator and is added below.
+          $trusted = [Collections.Generic.List[string]]@('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
 
           # CreateFileW with an explicit access mask: GRANTED/DENIED is the kernel's
           # access check for that principal, including FILE_DELETE_CHILD on the parent
@@ -160,7 +165,7 @@ jobs:
             if ($h.IsInvalid) { "DENIED($err)" } else { $h.Dispose(); 'GRANTED' }
           }
           $fileRights = [ordered]@{ READ = 0x120089; WRITE_DATA = 0x2; DELETE = 0x10000; WRITE_DAC = 0x40000; WRITE_OWNER = 0x80000 }
-          $dirRights  = [ordered]@{ LIST = 0x1; DELETE_CHILD = 0x40; DELETE = 0x10000; WRITE_DAC = 0x40000; WRITE_OWNER = 0x80000 }
+          $dirRights  = [ordered]@{ LIST = 0x1; ADD_FILE = 0x2; DELETE_CHILD = 0x40; WRITE_DAC = 0x40000; WRITE_OWNER = 0x80000 }
           '@
           . ([scriptblock]::Create($helpers))
 
@@ -169,6 +174,7 @@ jobs:
           $lua = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').EnableLUA
           $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
           $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrators')
+          if ($isAdmin) { $trusted.Add($runnerSid) }
           $summary.runner = "sid=$runnerSid admin=$isAdmin EnableLUA=$lua"
           Write-Host $summary.runner
 
@@ -178,7 +184,9 @@ jobs:
           try {
             $pw = -join ([Security.Cryptography.RandomNumberGenerator]::GetBytes(16) | ForEach-Object { $_.ToString('x2') }) + 'Aa1!'
             Write-Host "::add-mask::$pw"
-            net user aprobe $pw /add | Out-Null
+            # /y: a password over 14 characters makes net.exe ask Y/N, and with no
+            # console that answer never comes (run 35809121248: exit -1).
+            net user aprobe $pw /add /y | Out-Null
             if ($LASTEXITCODE) { throw "net user exit $LASTEXITCODE" }
             $probeSid = (New-Object Security.Principal.NTAccount 'aprobe').Translate([Security.Principal.SecurityIdentifier]).Value
             $cred = [pscredential]::new("$env:COMPUTERNAME\aprobe", (ConvertTo-SecureString $pw -AsPlainText -Force))
@@ -214,43 +222,80 @@ jobs:
             @(Get-ChildItem $winTemp, $userTemp -Filter 'AetherCore_*' -File -ErrorAction SilentlyContinue |
               Where-Object LastWriteTime -ge $since)
           }
-          # Every allow ACE on the object for anyone other than SYSTEM, Administrators
-          # and this runner's own (administrator) account, with rights in $mask.
+          function Show-Acl([string]$path) {
+            $text = @("== $path") + @(icacls $path) + "SDDL: $((Get-Acl -LiteralPath $path).Sddl)"
+            $text | Add-Content (Join-Path $ev 'acls.txt')
+            $text | Write-Host
+          }
+          # Allow ACEs on the object itself (not inherit-only) for anyone outside
+          # $trusted with rights in $mask, plus an untrusted owner.
           function Get-AclViolations([string]$path, [int64]$mask) {
             $acl = Get-Acl -LiteralPath $path
             $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
-            if ($owner -notin 'S-1-5-18', 'S-1-5-32-544', $runnerSid, 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464') { "owner $owner" }
+            if ($owner -notin $trusted) { "owner $owner" }
             foreach ($ace in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
               if ($ace.AccessControlType -ne 'Allow') { continue }
               if ($ace.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) { continue }
-              $sid = $ace.IdentityReference.Value
-              if ($sid -in 'S-1-5-18', 'S-1-5-32-544', $runnerSid) { continue }
-              if ([int64]$ace.FileSystemRights -band $mask) { "$sid $($ace.FileSystemRights)" }
+              if ($ace.IdentityReference.Value -in $trusted) { continue }
+              if ([int64]$ace.FileSystemRights -band $mask) { "$($ace.IdentityReference.Value) $($ace.FileSystemRights)" }
             }
           }
-          function Save-Acl([string]$path, [string]$tag) {
-            $out = Join-Path $ev "$tag.acl.txt"
-            "== $path" | Add-Content $out
-            (icacls $path) | Add-Content $out
-            "SDDL: $((Get-Acl -LiteralPath $path).Sddl)" | Add-Content $out
-            Get-Content $out | Write-Host
-          }
+          # WRITE_DATA, APPEND_DATA, DELETE, WRITE_DAC, WRITE_OWNER, GENERIC_ALL, GENERIC_WRITE
           $fileMask = 0x2 -bor 0x4 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x10000000 -bor 0x40000000
+          # DELETE_CHILD, DELETE, WRITE_DAC, WRITE_OWNER, GENERIC_ALL
           $dirMask  = 0x40 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x10000000
+
+          # The gate is what the bundle decides: where the logs go and the DACL each
+          # log file ends up with. C:\Windows\Temp's own DACL belongs to the machine
+          # image, so it is measured and reported, not gated.
+          function Test-Logs([System.IO.FileInfo[]]$logs, [string]$tag) {
+            foreach ($l in $logs) {
+              if ($l.DirectoryName -ne $winTemp) { $gate.Add("$tag log outside C:\Windows\Temp: $($l.FullName)") }
+              Show-Acl $l.FullName
+              Copy-Item $l.FullName $ev
+              foreach ($v in Get-AclViolations $l.FullName $fileMask) { $gate.Add("$tag $($l.Name): $v") }
+            }
+            if ($probe -and $logs) {
+              $paths = ($logs | ForEach-Object { "'$($_.FullName)'" }) -join ','
+              $r = Invoke-AsProbe "access-$tag" @"
+          `$o = [ordered]@{}
+          foreach (`$p in @($paths)) { `$e = [ordered]@{}; foreach (`$k in `$fileRights.Keys) { `$e[`$k] = Test-Access `$p `$fileRights[`$k] }; `$o[(Split-Path `$p -Leaf)] = `$e }
+          `$o
+          "@
+              $j = $r | ConvertTo-Json -Depth 5
+              Write-Host "non-admin effective access to the $tag logs:`n$j"
+              $j | Set-Content (Join-Path $ev "$tag.probe-access.json")
+              foreach ($file in $r.PSObject.Properties) {
+                foreach ($right in $file.Value.PSObject.Properties) {
+                  # DELETE is reported, not gated: it is granted through
+                  # FILE_DELETE_CHILD on the directory, which the image owns.
+                  if ($right.Name -in 'READ', 'DELETE') { continue }
+                  if ($right.Value -eq 'GRANTED') { $gate.Add("$tag non-admin holds $($right.Name) on $($file.Name)") }
+                }
+              }
+              $summary["${tag}NonAdminDelete"] = ($r.PSObject.Properties | ForEach-Object { "$($_.Name)=$($_.Value.DELETE)" }) -join '; '
+            }
+            $summary["${tag}Logs"] = ($logs | ForEach-Object Name) -join ', '
+          }
 
           Section 'Baseline'
           $pre = @(Get-ChildItem $winTemp, $userTemp -Filter 'AetherCore_*' -ErrorAction SilentlyContinue)
           $summary.baseline = "AetherCore_* before first install: $($pre.Count)"
           Write-Host $summary.baseline
-          Save-Acl $winTemp 'windows-temp'
-          foreach ($v in Get-AclViolations $winTemp $dirMask) { $gate.Add("C:\Windows\Temp: $v") }
+          Show-Acl $winTemp
+          $summary.windowsTempDacl = (Get-AclViolations $winTemp $dirMask) -join '; '
+          if ($probe) {
+            $r = Invoke-AsProbe 'windows-temp' "`$o = [ordered]@{}; foreach (`$k in `$dirRights.Keys) { `$o[`$k] = Test-Access '$winTemp' `$dirRights[`$k] -dir }; `$o"
+            $summary.windowsTempNonAdmin = ($r | ConvertTo-Json -Compress)
+          }
+          Write-Host "C:\Windows\Temp non-admin: $($summary.windowsTempNonAdmin); ACEs beyond trusted: $($summary.windowsTempDacl)"
 
           # What the unelevated parent's DirEnsureExists would do under the brief's
-          # [ProgramData]\AetherCore\logs prefix, done by a non-admin before install.
+          # [ProgramData]\AetherCore\logs prefix, done by a real non-admin before install.
           Section 'Non-admin pre-creates C:\ProgramData\AetherCore\logs'
           if ($probe) {
-            $r = Invoke-AsProbe 'squat-programdata' "New-Item -ItemType Directory -Force '$pdRoot\logs' | Out-Null; 'created'"
-            Write-Host "probe: $r; owner now $((Get-Acl $pdRoot).Owner)"
+            $null = Invoke-AsProbe 'squat-programdata' "New-Item -ItemType Directory -Force '$pdRoot\logs' | Out-Null; 'created'"
+            Write-Host "owner before install: $((Get-Acl $pdRoot).Owner)"
           }
 
           Section 'Install 1'
@@ -258,79 +303,41 @@ jobs:
           $code = Invoke-Setup '/quiet', '/norestart'
           $summary.install1 = "exit $code"
           Write-Host "install exit $code"
+          if ($code -notin 0, 3010) { $gate.Add("install 1 exit $code") }
           $logs1 = New-Logs $t1
-          $logs1 | Format-Table FullName, Length, LastWriteTime -AutoSize | Out-String | Write-Host
-          if ($code -notin 0, 3010) { $gate.Add("install 1 exit $code"); }
           if (-not ($logs1 | Where-Object DirectoryName -eq $winTemp)) { $gate.Add('install 1 wrote no log under C:\Windows\Temp') }
-          foreach ($l in $logs1 | Where-Object { $_.DirectoryName -ne $winTemp }) { $gate.Add("log outside C:\Windows\Temp: $($l.FullName)") }
-          $summary.install1Logs = ($logs1 | ForEach-Object Name) -join ', '
-
-          Section 'Product data root after the hardener ran'
-          if (Test-Path $pdRoot) {
-            Save-Acl $pdRoot 'programdata-aethercore'
-            $summary.pdRootOwner = (Get-Acl $pdRoot).Owner
-            if ($probe) {
-              $r = Invoke-AsProbe 'programdata-access' "[ordered]@{ WRITE_DAC = Test-Access '$pdRoot' 0x40000 -dir; WRITE_OWNER = Test-Access '$pdRoot' 0x80000 -dir; LIST = Test-Access '$pdRoot' 0x1 -dir }"
-              $summary.pdRootProbe = ($r | ConvertTo-Json -Compress)
-            }
-            Write-Host "owner: $($summary.pdRootOwner); non-admin: $($summary.pdRootProbe)"
-          }
-
-          function Test-Logs([System.IO.FileInfo[]]$logs, [string]$tag) {
-            foreach ($l in $logs) {
-              Save-Acl $l.FullName $tag
-              Copy-Item $l.FullName $ev
-              foreach ($v in Get-AclViolations $l.FullName $fileMask) { $gate.Add("$($l.Name): $v") }
-            }
-            if ($probe -and $logs) {
-              $paths = ($logs | ForEach-Object { "'$($_.FullName)'" }) -join ','
-              $r = Invoke-AsProbe "access-$tag" @"
-          `$o = [ordered]@{ WindowsTemp = [ordered]@{} }
-          foreach (`$k in `$dirRights.Keys) { `$o.WindowsTemp[`$k] = Test-Access '$winTemp' `$dirRights[`$k] -dir }
-          foreach (`$p in @($paths)) { `$e = [ordered]@{}; foreach (`$k in `$fileRights.Keys) { `$e[`$k] = Test-Access `$p `$fileRights[`$k] }; `$o[(Split-Path `$p -Leaf)] = `$e }
-          `$o
-          "@
-              $j = $r | ConvertTo-Json -Depth 5
-              Write-Host "non-admin effective access ($tag):`n$j"
-              $j | Set-Content (Join-Path $ev "$tag.probe-access.json")
-              foreach ($prop in $r.PSObject.Properties) {
-                foreach ($right in $prop.Value.PSObject.Properties) {
-                  if ($right.Name -in 'READ', 'LIST') { continue }
-                  if ($right.Value -eq 'GRANTED') { $gate.Add("non-admin holds $($right.Name) on $($prop.Name)") }
-                }
-              }
-            }
-          }
-          Section 'Install 1 logs: DACL and non-admin access'
           Test-Logs $logs1 'install1'
 
-          # Burn opens its log with FILE_SHARE_READ only. A handle held that way
-          # inside C:\ProgramData\AetherCore is what a Burn log there would be
-          # during the purge-data custom action.
-          Section 'Uninstall while a log-like handle is open under C:\ProgramData\AetherCore'
-          $held = $null
-          try {
-            New-Item -ItemType Directory -Force "$pdRoot\logs" | Out-Null
-            $held = [IO.File]::Open("$pdRoot\logs\AetherCore_held.log", 'CreateNew', 'Write', 'Read')
-            $t2 = Get-Date
-            $code = Invoke-Setup '/uninstall', '/quiet', '/norestart'
-          } finally { if ($held) { $held.Dispose() } }
-          $left = @(Get-ChildItem $pdRoot -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($pdRoot.Length) })
-          $svc = [bool](Get-Service AetherCoreMaintenance -ErrorAction SilentlyContinue)
-          $summary.heldUninstall = "exit $code; service present after: $svc; entries left under ProgramData\AetherCore: $($left.Count)"
-          Write-Host $summary.heldUninstall
-          $left | Select-Object -First 40 | Write-Host
-          $logs2 = New-Logs $t2
+          Section 'Product data root after the hardener ran'
+          Show-Acl $pdRoot
+          $summary.pdRootOwner = (Get-Acl $pdRoot).Owner
+          if ($probe) {
+            $r = Invoke-AsProbe 'programdata-access' "[ordered]@{ WRITE_DAC = Test-Access '$pdRoot' 0x40000 -dir; WRITE_OWNER = Test-Access '$pdRoot' 0x80000 -dir; LIST = Test-Access '$pdRoot' 0x1 -dir }"
+            $summary.pdRootNonAdmin = ($r | ConvertTo-Json -Compress)
+          }
+          Write-Host "owner: $($summary.pdRootOwner); non-admin: $($summary.pdRootNonAdmin)"
 
-          Section 'Uninstall, nothing held'
-          $t3 = Get-Date
+          Section 'Uninstall'
+          $t2 = Get-Date
           $code = Invoke-Setup '/uninstall', '/quiet', '/norestart'
           $summary.uninstall = "exit $code; ProgramData\AetherCore exists after: $(Test-Path $pdRoot)"
           Write-Host $summary.uninstall
-          $logs3 = New-Logs $t3
-          Section 'Uninstall logs: DACL and non-admin access'
-          Test-Logs (@($logs2) + @($logs3)) 'uninstall'
-          foreach ($l in @($logs2) + @($logs3) | Where-Object { $_.DirectoryName -ne $winTemp }) { $gate.Add("log outside C:\Windows\Temp: $($l.FullName)") }
+          if ($code -notin 0, 3010) { $gate.Add("uninstall exit $code") }
+          Test-Logs (New-Logs $t2) 'uninstall'
+
+          # The unelevated parent on a real machine. It opens its log before it asks
+          # for elevation, so the log's placement is observable even though a non-admin
+          # cannot complete the install. Killed after two minutes if still waiting.
+          Section 'Bundle started by the non-admin'
+          if ($probe) {
+            Copy-Item $setup (Join-Path $xchg 'setup.exe')
+            $t3 = Get-Date
+            $r = Invoke-AsProbe 'run-bundle' "`$p = Start-Process '$xchg\setup.exe' -ArgumentList '/quiet','/norestart' -PassThru; `$null = `$p.Handle; if (`$p.WaitForExit(120000)) { `"exit `$(`$p.ExitCode)`" } else { `$p.Kill(`$true); 'killed after 120 s' }"
+            $logs3 = New-Logs $t3
+            $summary.nonAdminBundle = "$r; logs: " + (($logs3 | ForEach-Object { "$($_.FullName) owner=$((Get-Acl $_.FullName).Owner)" }) -join '; ')
+            $logs3 | ForEach-Object { Show-Acl $_.FullName; Copy-Item $_.FullName $ev }
+            Write-Host $summary.nonAdminBundle
+          }
 
           # Forced LogOpen failure: occupy every name Burn could pick for the next
           # 15 minutes. Burn retries CREATE_NEW ten times, 100 ms apart, then
@@ -344,6 +351,23 @@ jobs:
           $logs4 = New-Logs $t4
           $summary.forcedFailure = "squatted $n names as $by; install exit $code; bundle logs written: $($logs4.Count) ($(($logs4 | ForEach-Object Name) -join ', '))"
           Write-Host $summary.forcedFailure
+          Get-ChildItem $winTemp -Filter 'AetherCore_*' -Directory | Remove-Item -Force
+
+          # Burn opens its log with FILE_SHARE_READ only. A handle held that way
+          # inside C:\ProgramData\AetherCore is what a Burn log there would be during
+          # the purge-data custom action. Last, because it leaves the machine dirty.
+          Section 'Uninstall while a log-like handle is open under C:\ProgramData\AetherCore'
+          $held = $null
+          try {
+            New-Item -ItemType Directory -Force "$pdRoot\logs" | Out-Null
+            $held = [IO.File]::Open("$pdRoot\logs\AetherCore_held.log", 'CreateNew', 'Write', 'Read')
+            $t5 = Get-Date
+            $code = Invoke-Setup '/uninstall', '/quiet', '/norestart'
+          } finally { if ($held) { $held.Dispose() } }
+          $svc = [bool](Get-Service AetherCoreMaintenance -ErrorAction SilentlyContinue)
+          $summary.heldUninstall = "exit $code; service present after: $svc; ProgramData\AetherCore exists after: $(Test-Path $pdRoot)"
+          Write-Host $summary.heldUninstall
+          New-Logs $t5 | Copy-Item -Destination $ev
 
           Section 'Summary'
           $summary | ConvertTo-Json | Tee-Object (Join-Path $ev 'summary.json') | Write-Host
