@@ -440,21 +440,19 @@ jobs:
           try {
             New-Item -ItemType Directory -Force "$pdRoot\logs" | Out-Null
             $held = [IO.File]::Open("$pdRoot\logs\AetherCore_held.log", 'CreateNew', 'Write', 'Read')
-            # Kept so purge-data can be re-run by hand below; uninstall removes the installed copy.
-            Copy-Item "$env:ProgramFiles\AetherCore\aethercore-install-hardener.exe" $env:RUNNER_TEMP
             $t5 = Get-Date
             $code = Invoke-Setup '/uninstall', '/quiet', '/norestart'
           } finally { if ($held) { $held.Dispose() } }
           $svc = [bool](Get-Service AetherCoreMaintenance -ErrorAction SilentlyContinue)
           # What purge-data could not delete it must have scheduled for deletion at reboot.
-          # Run 35921021467 read none of the three paths here although purge-data (exit 0)
-          # can only succeed if MoveFileExW did, so every PendingFileRenameOperations*
-          # value is read and dumped raw rather than assumed.
+          # Every PendingFileRename* value is dumped raw. On windows-2025 each source reads
+          # `*1\??\<path>`, not the documented `\??\<path>` (run 35924932884), so an
+          # optional `*<n>` prefix is stripped before matching.
           $sm = Get-Item 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'
           $pending = @(foreach ($n in @($sm.GetValueNames() -like 'PendingFileRename*')) {
             $v = @($sm.GetValue($n, $null, 'DoNotExpandEnvironmentNames'))
             @("[$n] $($sm.GetValueKind($n)), $($v.Count) strings") + ($v | ForEach-Object { "  <$_>" }) | Add-Content (Join-Path $ev 'held.pending-renames.txt')
-            $v
+            $v -replace '^\*\d+', ''
           })
           if (Test-Path (Join-Path $ev 'held.pending-renames.txt')) { Get-Content (Join-Path $ev 'held.pending-renames.txt') | Write-Host }
           else { Write-Host 'no PendingFileRename* value under Session Manager' }
@@ -468,13 +466,6 @@ jobs:
           if ($code -notin 0, 3010) { $gate.Add("uninstall with a held handle exit $code") }
           if ($svc) { $gate.Add('uninstall with a held handle left the service installed') }
           foreach ($u in $unscheduled) { $gate.Add("left behind and not scheduled for deletion: $u") }
-          if ($unscheduled) {
-            # Same code path, outside MSI, so its own error text is visible.
-            $h2 = [IO.File]::Open("$pdRoot\logs\held-again.log", 'CreateNew', 'Write', 'Read')
-            try { $out = & "$env:RUNNER_TEMP\aethercore-install-hardener.exe" purge-data 2>&1; $pe = $LASTEXITCODE } finally { $h2.Dispose() }
-            Write-Host "purge-data by hand: exit $pe; $($out -join ' | ')"
-            $summary.purgeByHand = "exit $pe; $($out -join ' | '); PendingFileRename* now: $((@($sm.GetValueNames() -like 'PendingFileRename*') | ForEach-Object { "$_=" + (@($sm.GetValue($_)) -join ';') }) -join ' ')"
-          }
 
           Section 'Summary'
           $summary | ConvertTo-Json | Tee-Object (Join-Path $ev 'summary.json') | Write-Host
