@@ -155,7 +155,12 @@ jobs:
 
           # CreateFileW with an explicit access mask: GRANTED/DENIED is the kernel's
           # access check for that principal, including FILE_DELETE_CHILD on the parent
-          # for DELETE. Nothing is modified.
+          # for DELETE. Nothing is modified. CreateFileW always adds SYNCHRONIZE and
+          # FILE_READ_ATTRIBUTES, so GRANTED is conclusive but DENIED is conclusive only
+          # where the principal already holds those two (true for the logs: Users RX).
+          # Run 35812233071 showed the gap. The owner of C:\ProgramData\AetherCore,
+          # with no ACE, read DENIED for WRITE_DAC. So owner rights are tested below by
+          # exercising them.
           $helpers = @'
           Add-Type -Namespace P73 -Name K -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t);'
           function Test-Access([string]$path, [uint32]$access, [switch]$dir) {
@@ -312,8 +317,11 @@ jobs:
           Show-Acl $pdRoot
           $summary.pdRootOwner = (Get-Acl $pdRoot).Owner
           if ($probe) {
-            $r = Invoke-AsProbe 'programdata-access' "[ordered]@{ WRITE_DAC = Test-Access '$pdRoot' 0x40000 -dir; WRITE_OWNER = Test-Access '$pdRoot' 0x80000 -dir; LIST = Test-Access '$pdRoot' 0x1 -dir }"
-            $summary.pdRootNonAdmin = ($r | ConvertTo-Json -Compress)
+            # An owner holds WRITE_DAC implicitly (no OWNER RIGHTS ACE is present).
+            # Exercise it as an attacker would, and read back the resulting DACL.
+            $r = Invoke-AsProbe 'programdata-writedac' "`$out = icacls '$pdRoot' /grant '*${probe}:(OI)(CI)F' 2>&1; [ordered]@{ exit = `$LASTEXITCODE; out = (`$out -join ' | ') }"
+            $summary.pdRootNonAdmin = "icacls /grant as the non-admin owner: $($r | ConvertTo-Json -Compress)"
+            Show-Acl $pdRoot
           }
           Write-Host "owner: $($summary.pdRootOwner); non-admin: $($summary.pdRootNonAdmin)"
 
@@ -333,10 +341,17 @@ jobs:
             Copy-Item $setup (Join-Path $xchg 'setup.exe')
             $t3 = Get-Date
             $r = Invoke-AsProbe 'run-bundle' "`$p = Start-Process '$xchg\setup.exe' -ArgumentList '/quiet','/norestart' -PassThru; `$null = `$p.Handle; if (`$p.WaitForExit(120000)) { `"exit `$(`$p.ExitCode)`" } else { `$p.Kill(`$true); 'killed after 120 s' }"
-            $logs3 = New-Logs $t3
+            $probeTemp = 'C:\Users\aprobe\AppData\Local\Temp'
+            $logs3 = @(Get-ChildItem $winTemp, $probeTemp -Filter 'AetherCore_*' -File -ErrorAction SilentlyContinue | Where-Object LastWriteTime -ge $t3)
             $summary.nonAdminBundle = "$r; logs: " + (($logs3 | ForEach-Object { "$($_.FullName) owner=$((Get-Acl $_.FullName).Owner)" }) -join '; ')
             $logs3 | ForEach-Object { Show-Acl $_.FullName; Copy-Item $_.FullName $ev }
             Write-Host $summary.nonAdminBundle
+            # Run 35812233071: 0x80070005 and no log. An explicit -log bypasses the
+            # prefix, so this run says why the non-admin bundle stops, not where it logs.
+            $r = Invoke-AsProbe 'run-bundle-log' "`$p = Start-Process '$xchg\setup.exe' -ArgumentList '/quiet','/norestart','/log','$xchg\nonadmin.log' -PassThru; `$null = `$p.Handle; if (`$p.WaitForExit(120000)) { `"exit `$(`$p.ExitCode)`" } else { `$p.Kill(`$true); 'killed after 120 s' }"
+            Write-Host "with explicit -log: $r"
+            if (Test-Path "$xchg\nonadmin.log") { Copy-Item "$xchg\nonadmin.log" $ev; Get-Content "$xchg\nonadmin.log" | Select-Object -Last 60 | Write-Host }
+            else { Write-Host 'no log at the explicit -log path either' }
           }
 
           # Forced LogOpen failure: occupy every name Burn could pick for the next
