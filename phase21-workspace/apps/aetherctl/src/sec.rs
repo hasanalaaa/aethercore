@@ -164,20 +164,26 @@ pub fn verify_compliance_report(file: &str) -> Result<serde_json::Value, CliErro
     })?;
     let report = sec::compliance::parse_report_bytes(&raw).map_err(compliance_error)?;
     sec::compliance::verify_integrity(&report).map_err(compliance_error)?;
+    // The key is read from the report itself: a valid signature says WHO signed, not
+    // that the signer is trusted, so the signer is always shown for the reader to pin.
+    let mut signer_fingerprint = None;
     if let Some(signature) = &report.signature {
         let signature = aethercore_persistence::export::ExportSignature {
             public_key_hex: signature.public_key_hex.clone(),
             signature_hex: signature.signature_hex.clone(),
         };
-        aethercore_persistence::export::verify_digest_signature(&report.digest, &signature)
-            .map_err(|_| CliError::LocalIo {
-                message_key: "sec.signatureMismatch".to_string(),
-                detail: Some("signature mismatch".to_string()),
-            })?;
+        signer_fingerprint = Some(
+            aethercore_persistence::export::verify_digest_signature(&report.digest, &signature)
+                .map_err(|_| CliError::LocalIo {
+                    message_key: "sec.signatureMismatch".to_string(),
+                    detail: Some("signature mismatch".to_string()),
+                })?,
+        );
     }
     Ok(serde_json::json!({
         "verified": true,
         "signed": report.signed,
+        "signerFingerprint": signer_fingerprint,
         "digest": report.digest,
         "profile": report.profile_id,
     }))
@@ -549,6 +555,14 @@ mod phase33_tests {
             .expect("verify signed report");
         assert_eq!(verified["verified"], true);
         assert_eq!(verified["signed"], true);
+        let owner = aethercore_persistence::export::signing_key_from_seed(&[9_u8; 32]);
+        let owner_hex: String = owner
+            .verifying_key()
+            .to_bytes()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(verified["signerFingerprint"], owner_hex.as_str());
 
         let html = std::fs::read_to_string(signed_path.with_extension("html"))
             .expect("read standalone HTML");
@@ -605,6 +619,7 @@ mod phase33_tests {
         let unsigned_verified = verify_compliance_report(&unsigned_path.display().to_string())
             .expect("verify unsigned integrity");
         assert_eq!(unsigned_verified["signed"], false);
+        assert!(unsigned_verified["signerFingerprint"].is_null());
 
         let signed_report: sec::compliance::ComplianceReport =
             serde_json::from_slice(&std::fs::read(&signed_path).expect("read report first time"))
