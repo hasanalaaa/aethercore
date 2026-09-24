@@ -70,7 +70,7 @@ fn insight_without_citations_cannot_be_constructed() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn dangling_citations_produce_zero_surviving_insights() {
+fn dangling_citations_never_survive_and_the_fallback_serves() {
     struct Fabricator;
     impl LocalReasoner for Fabricator {
         fn load(&mut self, _: &std::path::Path) -> Result<(), String> {
@@ -107,8 +107,65 @@ fn dangling_citations_produce_zero_surviving_insights() {
         .request_insights(&pack, "explain", false)
         .expect("call succeeds");
     assert!(
-        out.is_empty(),
-        "I2: insights with unresolvable citations must be dropped"
+        out.iter().all(|insight| insight
+            .citations
+            .iter()
+            .all(|c| c.evidence_id != "totally-fabricated-id")),
+        "I2: insights with unresolvable citations must be dropped: {out:?}"
+    );
+    // P75: a model whose every insight fails the citation gate has served
+    // nothing, so the rule engine serves this call — it used to return ZERO
+    // insights while `engine_label` read `localModel`, because the fallback
+    // only ran when the model returned no raw candidates at all.
+    assert!(
+        !out.is_empty(),
+        "the fallback must serve when nothing cited survives"
+    );
+    assert!(
+        out.iter()
+            .all(|i| i.engine == InsightEngineKind::RuleFallback
+                && i.citations.iter().all(|c| pack.resolves(c))),
+        "{out:?}"
+    );
+    assert_eq!(selector.engine_label(), "ruleFallback");
+}
+
+/// A model that panics must not hold the single-flight lane forever. The lane
+/// used to be released by a plain store after the call, which a panic skips —
+/// every later request then read `Busy` until the service restarted.
+#[test]
+fn a_panicking_model_releases_the_single_flight_lane() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct PanicsOnce(AtomicBool);
+    impl LocalReasoner for PanicsOnce {
+        fn load(&mut self, _: &std::path::Path) -> Result<(), String> {
+            Ok(())
+        }
+        fn is_loaded(&self) -> bool {
+            true
+        }
+        fn infer(
+            &self,
+            _: &TypedEvidencePack,
+            _: &str,
+            _: Instant,
+        ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
+            if !self.0.swap(true, Ordering::SeqCst) {
+                panic!("the model crashed mid-inference");
+            }
+            Ok(Vec::new())
+        }
+    }
+    let selector = ReasonerSelector::new(Some(Box::new(PanicsOnce(AtomicBool::new(false)))));
+    let crashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        selector.request_insights(&populated_pack(), "", false)
+    }));
+    assert!(crashed.is_err(), "the first call panics");
+    let next = selector.request_insights(&populated_pack(), "", false);
+    assert!(
+        matches!(&next, Ok(insights) if !insights.is_empty()),
+        "the lane must be free after a panic, got {:?}",
+        next.map(|i| i.len())
     );
 }
 
