@@ -125,7 +125,8 @@ jobs:
   # P74 adds DBT-P73-001 to the gate: after a non-admin squats the data root, the
   # hardener must leave every node owned by SYSTEM or Administrators, and the
   # squatter's own icacls /grant must fail. And DBT-P73-002: a handle held under the
-  # data root must not fail the uninstall, and a rolled-back service must stop.
+  # data root must not fail the uninstall. P75 (DBT-P74-001): a rolled-back uninstall
+  # must restore a running service with the hardener's SID type, and return promptly.
   bundle-log-acl-probe:
     if: github.event_name == 'workflow_dispatch'
     needs: build-unsigned-candidate
@@ -386,16 +387,21 @@ jobs:
           $logs4 = New-Logs $t4
           $summary.forcedFailure = "squatted $n names as $by; install exit $code; bundle logs written: $($logs4.Count) ($(($logs4 | ForEach-Object Name) -join ', '))"
           Write-Host $summary.forcedFailure
+          # The rollback below uninstalls this install. Without it there is nothing to roll back.
+          if ($code -notin 0, 3010) { $gate.Add("install with the log names squatted exit $code") }
           Get-ChildItem $winTemp -Filter 'AetherCore_*' -Directory | Remove-Item -Force
 
-          # DBT-P73-002: what a rolled-back uninstall leaves the service as. The SCM view,
-          # the SID type the hardener would have set, whether the process is alive, and
-          # whether it accepts a stop now (MSI waits 4 minutes before reporting 1921).
+          # DBT-P73-002 / DBT-P74-001: what a rolled-back uninstall leaves the service as. The
+          # state, SID type and process are sampled FIRST, before this function's own stop
+          # changes them. Then whether it accepts a stop (MSI waited 4 minutes before 1921).
           function Save-ServiceState([string]$tag, [datetime]$since) {
             $f = Join-Path $ev "$tag.service-state.txt"
-            'queryex', 'qc', 'qsidtype', 'sdshow' | ForEach-Object { "--- sc $_"; sc.exe $_ AetherCoreMaintenance 2>&1 } | Add-Content $f
+            $q = sc.exe queryex AetherCoreMaintenance | Select-String 'STATE|WIN32_EXIT_CODE|SERVICE_EXIT_CODE' | ForEach-Object { ($_ -replace '\s+', ' ').Trim() }
+            $sid = ((sc.exe qsidtype AetherCoreMaintenance | Select-String 'SERVICE_SID_TYPE') -replace '\s+', ' ').Trim()
             $pid_ = (Get-CimInstance Win32_Service -Filter "Name='AetherCoreMaintenance'").ProcessId
-            "--- process $pid_ alive: $([bool]($pid_ -and (Get-Process -Id $pid_ -ErrorAction SilentlyContinue)))" | Add-Content $f
+            $alive = [bool]($pid_ -and (Get-Process -Id $pid_ -ErrorAction SilentlyContinue))
+            'queryex', 'qc', 'qsidtype', 'sdshow' | ForEach-Object { "--- sc $_"; sc.exe $_ AetherCoreMaintenance 2>&1 } | Add-Content $f
+            "--- process $pid_ alive: $alive" | Add-Content $f
             $sw = [Diagnostics.Stopwatch]::StartNew(); $stop = sc.exe stop AetherCoreMaintenance 2>&1; $stopExit = $LASTEXITCODE; $sw.Stop()
             "--- sc stop ($($sw.ElapsedMilliseconds) ms, exit $stopExit)" | Add-Content $f; $stop | Add-Content $f
             '--- System log, Service Control Manager' | Add-Content $f
@@ -406,15 +412,16 @@ jobs:
             '--- what is left under the data root' | Add-Content $f
             Get-ChildItem $pdRoot -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object FullName | Add-Content $f
             Get-Content $f | Write-Host
-            $q = sc.exe queryex AetherCoreMaintenance | Select-String 'STATE|WIN32_EXIT_CODE|SERVICE_EXIT_CODE' | ForEach-Object { ($_ -replace '\s+', ' ').Trim() }
-            $sid = (sc.exe qsidtype AetherCoreMaintenance | Select-String 'SERVICE_SID_TYPE') -replace '\s+', ' '
-            $summary["${tag}ServiceState"] = "$($q -join '; '); $sid; process alive: $([bool]($pid_ -and (Get-Process -Id $pid_ -ErrorAction SilentlyContinue))); sc stop exit $stopExit"
+            $summary["${tag}ServiceState"] = "$($q -join '; '); $sid; process alive: $alive; sc stop exit $stopExit"
+            [pscustomobject]@{ state = $q -join '; '; sid = $sid }
           }
 
-          # DBT-P73-002, the rollback on its own. purge-data refuses a reparse point anywhere
+          # DBT-P74-001, the rollback on its own. purge-data refuses a reparse point anywhere
           # in the tree, so a junction under the data root forces the rollback that P73's held
           # handle caused, and does so deterministically now that a held handle no longer
-          # fails the uninstall. The rolled-back service must end STOPPED, not START_PENDING.
+          # fails the uninstall. The rolled-back service must be RUNNING with the SID type the
+          # hardener sets, sampled before anything stops it, and MSI's rollback start must not
+          # sit out its ~250 s of retries (runs 35921021467, 35924932884, 35929322712).
           Section 'Uninstall forced to roll back by a junction under the data root'
           $target = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'p74-junction-target')
           $junction = New-Item -ItemType Junction -Path "$pdRoot\p74-junction" -Target $target.FullName
@@ -422,13 +429,16 @@ jobs:
           $sw = [Diagnostics.Stopwatch]::StartNew()
           $code = Invoke-Setup '/uninstall', '/quiet', '/norestart'
           $sw.Stop()
-          $summary.rollbackUninstall = "exit $code in $([int]$sw.Elapsed.TotalSeconds) s"
+          $elapsed = [int]$sw.Elapsed.TotalSeconds
+          $summary.rollbackUninstall = "exit $code in $elapsed s"
           Write-Host $summary.rollbackUninstall
           New-Logs $t6 | Copy-Item -Destination $ev
           if ($code -in 0, 3010) { $gate.Add("the junction did not force a rollback (uninstall exit $code)") }
+          if ($elapsed -ge 60) { $gate.Add("the forced-rollback uninstall took $elapsed s (limit 60)") }
           if (Get-Service AetherCoreMaintenance -ErrorAction SilentlyContinue) {
-            Save-ServiceState 'rollback' $t6
-            if ($summary.rollbackServiceState -match 'START_PENDING') { $gate.Add("rolled-back service is stuck: $($summary.rollbackServiceState)") }
+            $s = Save-ServiceState 'rollback' $t6
+            if ($s.state -notmatch '\bRUNNING\b') { $gate.Add("rolled-back service is not running: $($s.state)") }
+            if ($s.sid -notmatch '\bUNRESTRICTED\b') { $gate.Add("rolled-back service SID type is not the hardener's: $($s.sid)") }
           } else { $gate.Add('the rollback did not restore the service') }
           [IO.Directory]::Delete($junction.FullName)  # the link only, never its target
 
@@ -462,7 +472,7 @@ jobs:
           $summary.heldUninstall = "exit $code; service present after: $svc; left under the data root: $($left.Count), of which not scheduled for reboot: $($unscheduled.Count)"
           Write-Host $summary.heldUninstall
           New-Logs $t5 | Copy-Item -Destination $ev
-          if ($svc) { Save-ServiceState 'held' $t5 }
+          if ($svc) { $null = Save-ServiceState 'held' $t5 }
           if ($code -notin 0, 3010) { $gate.Add("uninstall with a held handle exit $code") }
           if ($svc) { $gate.Add('uninstall with a held handle left the service installed') }
           foreach ($u in $unscheduled) { $gate.Add("left behind and not scheduled for deletion: $u") }
