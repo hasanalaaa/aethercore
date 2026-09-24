@@ -15,7 +15,7 @@
 use std::collections::VecDeque;
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
 };
 use std::thread;
 use std::time::Duration;
@@ -593,9 +593,12 @@ static PUBLISHED_TOTAL: AtomicU64 = AtomicU64::new(0);
 /// because the producer runs at >= 250 ms cadence.
 pub struct PerformanceRing {
     state: Arc<Mutex<RingState>>,
-    active: Arc<AtomicBool>,
-    #[allow(dead_code)]
-    generation: Arc<AtomicU64>,
+    /// Generation of the sampler that may run, `0` when stopped. A sampler thread
+    /// exits as soon as this is not its own generation, so `stop()` + `start()`
+    /// inside one interval cannot leave the old thread running beside the new one
+    /// (a bool could not tell the two apart).
+    running: Arc<AtomicU64>,
+    generation: AtomicU64,
 }
 
 impl Default for PerformanceRing {
@@ -611,13 +614,13 @@ impl PerformanceRing {
                 samples: VecDeque::with_capacity(MAX_RING_SAMPLES),
                 owner_principal_key: String::new(),
             })),
-            active: Arc::new(AtomicBool::new(false)),
-            generation: Arc::new(AtomicU64::new(0)),
+            running: Arc::new(AtomicU64::new(0)),
+            generation: AtomicU64::new(0),
         }
     }
 
     pub fn is_active(&self) -> bool {
-        self.active.load(Ordering::Acquire)
+        self.running.load(Ordering::Acquire) != 0
     }
 
     /// Installs an owner and starts the background sampler. A second concurrent start is
@@ -631,7 +634,13 @@ impl PerformanceRing {
         if owner_principal_key.trim().is_empty() {
             return Err(TelemetryError::NotActive);
         }
-        if self.is_active() {
+        // `+ 1` keeps 0 meaning "stopped". One atomic claim, not a check and a store.
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+        if self
+            .running
+            .compare_exchange(0, generation, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return Err(TelemetryError::AlreadyActive);
         }
         {
@@ -642,19 +651,23 @@ impl PerformanceRing {
         let interval = Duration::from_millis(u64::from(PerfSnapshot::clamped_interval_ms(
             requested_interval_ms,
         )));
-        self.active.store(true, Ordering::Release);
 
-        let active = self.active.clone();
+        let running = self.running.clone();
         let state = self.state.clone();
         let spawned = thread::Builder::new()
             .name("aether-perf-sampler".into())
             .spawn(move || {
-                while active.load(Ordering::Acquire) {
+                while running.load(Ordering::Acquire) == generation {
                     let started = std::time::Instant::now();
                     let snapshot = platform.sample(interval).normalized();
-                    PUBLISHED_TOTAL.fetch_add(1, Ordering::Relaxed);
                     {
                         let mut guard = lock(&state);
+                        // Checked under the ring lock: a tick that finishes after
+                        // stop() must not land in the next owner's ring.
+                        if running.load(Ordering::Acquire) != generation {
+                            break;
+                        }
+                        PUBLISHED_TOTAL.fetch_add(1, Ordering::Relaxed);
                         if guard.samples.len() >= MAX_RING_SAMPLES {
                             guard.samples.pop_front();
                         }
@@ -670,14 +683,16 @@ impl PerformanceRing {
                 }
             });
         if spawned.is_err() {
-            self.active.store(false, Ordering::Release);
+            let _ =
+                self.running
+                    .compare_exchange(generation, 0, Ordering::AcqRel, Ordering::Acquire);
             return Err(TelemetryError::NotActive);
         }
         Ok(())
     }
 
     pub fn stop(&self) {
-        self.active.store(false, Ordering::Release);
+        self.running.store(0, Ordering::Release);
     }
 
     /// Pushes one externally produced snapshot (service-driven mode / tests). Enforces the bound;
