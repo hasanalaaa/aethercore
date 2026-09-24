@@ -1,5 +1,5 @@
 //! `aetherctl keys generate` against the real binary: an existing seed file is never
-//! overwritten.
+//! overwritten, and the reported permissions are the ones the file really has.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -52,4 +52,31 @@ fn refuses_to_overwrite_an_existing_seed_file() {
         old,
         "the existing seed must survive byte for byte"
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn seed_file_is_owner_only_and_the_report_matches_it() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = TempDir::new("mode");
+    let out = dir.0.join("owner.key");
+
+    let (status, envelope) = keys_generate(&out);
+
+    assert_eq!(status, Some(0), "{envelope}");
+    let mode = std::fs::metadata(&out).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600, "seed file mode is {mode:o}");
+    assert_eq!(envelope["data"]["permissions"], "0600");
+}
+
+#[test]
+#[cfg(windows)]
+fn windows_reports_the_inherited_acl_not_a_unix_mode() {
+    let dir = TempDir::new("acl");
+    let out = dir.0.join("owner.key");
+
+    let (status, envelope) = keys_generate(&out);
+
+    assert_eq!(status, Some(0), "{envelope}");
+    assert_eq!(envelope["data"]["permissions"], "inherited", "{envelope}");
 }

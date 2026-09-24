@@ -100,7 +100,7 @@ fn execute(config: &Config, job: OfflineJob) -> Result<serde_json::Value, CliErr
         // locally; trusts nothing it cannot recompute. Typed failure names the break.
         OfflineJob::ExportVerify { file } => export_verify(file.as_str()),
         // Phase 29 (T3): EXPLICIT owner key generation. The 32-byte seed is drawn from
-        // the OS CSPRNG and written to --out with 0600 permissions; the public key
+        // the OS CSPRNG and written to a new --out file (0600 on unix); the public key
         // fingerprint is printed alongside. Nothing else in the product ever creates keys.
         OfflineJob::KeysGenerate { out } => keys_generate(out.as_str()),
         OfflineJob::KeysFingerprint { input } => keys_fingerprint(&input),
@@ -587,7 +587,8 @@ fn export_verify(file: &str) -> Result<serde_json::Value, CliError> {
 }
 
 /// `keys generate --out <path>` — EXPLICIT owner action. Writes the 32-byte seed as
-/// lowercase hex with 0600 permissions and prints the public-key fingerprint.
+/// lowercase hex to a NEW file (0600 on unix; the inherited ACL on Windows) and
+/// prints the public-key fingerprint.
 /// Key material is never created anywhere else in the product.
 fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
     let mut seed = [0u8; 32];
@@ -616,29 +617,39 @@ fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
     }
     // create_new (O_EXCL / CREATE_NEW): overwriting would destroy the previous signing
     // key for good, so an existing path — file, directory or symlink — is refused.
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::AlreadyExists => CliError::local_io_with(
-                "local.keys.exists",
-                format!("refusing to overwrite existing key file {out}"),
-            ),
-            _ => CliError::local_io_with("local.io.write", format!("create key file: {e}")),
-        })?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // 0600 is applied by the creating open itself, so the seed is never on disk
+    // readable by others; create-then-chmod left exactly that window.
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::AlreadyExists => CliError::local_io_with(
+            "local.keys.exists",
+            format!("refusing to overwrite existing key file {out}"),
+        ),
+        _ => CliError::local_io_with("local.io.write", format!("create key file: {e}")),
+    })?;
     std::io::Write::write_all(&mut file, format!("{seed_hex}\n").as_bytes())
         .map_err(|e| CliError::local_io_with("local.io.write", format!("write key file: {e}")))?;
+    // Reported as measured, not as requested: a umask or a filesystem without unix
+    // modes can leave something other than 0600.
     #[cfg(unix)]
-    {
+    let permissions = {
         use std::os::unix::fs::PermissionsExt as _;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-    }
+        let metadata = file.metadata().map_err(|e| {
+            CliError::local_io_with("local.io.write", format!("stat key file: {e}"))
+        })?;
+        format!("{:04o}", metadata.permissions().mode() & 0o777)
+    };
+    // Nothing here narrows the Windows ACL: the file inherits its directory's.
+    #[cfg(windows)]
+    let permissions = "inherited".to_string();
     Ok(serde_json::json!({
         "generated": true,
         "out": out,
         "publicKeyFingerprint": public_hex,
-        "permissions": "0600",
+        "permissions": permissions,
     }))
 }
 
