@@ -331,7 +331,14 @@
          snapshot races a live writer. Observed on the gate: uninstall exit 1603,
          "Error 2318: File does not exist: C:\ProgramData\AetherCore\logs\service.jsonl",
          and the entire product left on disk. Scheduling after DeleteServices is the
-         only ordering that cannot race. -->
+         only ordering that cannot race.
+
+         P75: never in a major upgrade. MajorUpgrade removes the old product with REMOVE=ALL
+         too, with UPGRADINGPRODUCTCODE set, and that removal runs the OLD package's
+         sequence, so REMOVE="ALL" alone would delete the state DB, logs, signing key and
+         trust store on every upgrade. bundle-log-acl-probe upgrades an earlier version and
+         gates on a marker under state\ surviving. A package built before this condition
+         existed still purges when it is the one being upgraded away. -->
     <CustomAction Id="PurgeMachineData"
                   FileRef="InstallHardenerExe"
                   ExeCommand="purge-data"
@@ -359,7 +366,7 @@
     <InstallExecuteSequence>
       <Custom Action="HardenInstalledSecurity" After="InstallServices" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
       <Custom Action="RestoreServiceConfigRollback" Before="DeleteServices" Condition="REMOVE = &quot;ALL&quot;" />
-      <Custom Action="PurgeMachineData" After="DeleteServices" Condition="REMOVE = &quot;ALL&quot;" />
+      <Custom Action="PurgeMachineData" After="DeleteServices" Condition="REMOVE = &quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
 
     <Feature Id="Complete" Title="AetherCore" Level="1">
