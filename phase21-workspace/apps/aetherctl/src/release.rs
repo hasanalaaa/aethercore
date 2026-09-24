@@ -2,8 +2,8 @@
 
 use crate::error::CliError;
 use aethercore_release_authority::{
-    ReleaseManifest, SignatureEnvelope, TrustedKeyring, UpdateMetadata, parse_strict,
-    verify_release_manifest, verify_update_metadata,
+    ReleaseManifest, SignatureEnvelope, TargetArchitecture, TargetPlatform, TrustedKeyring,
+    UpdateMetadata, parse_strict, verify_release_manifest, verify_update_metadata,
 };
 use std::{fs, path::Path};
 
@@ -56,24 +56,61 @@ pub fn verify_update(
     let metadata: UpdateMetadata = read(metadata_path)?;
     let signature: SignatureEnvelope = read(signature_path)?;
     let keyring: TrustedKeyring = read(keyring_path)?;
+    // "Installed" and "now" come from this binary and this clock, never from the file
+    // being verified (the workspace version is the single product version source).
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| CliError::local_io_with("cli.update.clockBeforeEpoch", e.to_string()))?
+        .as_secs();
     let installed = aethercore_release_authority::ReleaseIdentity {
-        version: metadata.current_version.clone(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        platform: this_platform()?,
+        architecture: this_architecture()?,
+        // The installed channel is not recorded anywhere this CLI can read, so it is
+        // taken from the metadata and reported under notChecked.
         ..metadata.target_identity.clone()
     };
-    verify_update_metadata(
-        &metadata,
-        &signature,
-        &keyring,
-        metadata.generated_epoch,
-        &installed,
-    )
-    .map_err(|e| CliError::Rejected {
-        message_key: "cli.update.verificationFailed".into(),
-        detail: Some(e.to_string()),
+    verify_update_metadata(&metadata, &signature, &keyring, now, &installed).map_err(|e| {
+        CliError::Rejected {
+            message_key: "cli.update.verificationFailed".into(),
+            detail: Some(e.to_string()),
+        }
     })?;
-    Ok(
-        serde_json::json!({ "status": "verified", "channel": metadata.channel, "targetVersion": metadata.target_identity.version, "keyId": signature.key_id }),
-    )
+    Ok(serde_json::json!({
+        "status": "verified",
+        "channel": metadata.channel,
+        "targetVersion": metadata.target_identity.version,
+        "keyId": signature.key_id,
+        "installedVersion": installed.version,
+        "checkedAtEpoch": now,
+        "notChecked": ["installedChannel"],
+    }))
+}
+
+fn this_platform() -> Result<TargetPlatform, CliError> {
+    if cfg!(windows) {
+        Ok(TargetPlatform::Windows)
+    } else if cfg!(target_os = "macos") {
+        Ok(TargetPlatform::Macos)
+    } else if cfg!(target_os = "linux") {
+        Ok(TargetPlatform::Linux)
+    } else {
+        Err(CliError::capability_unavailable(
+            "updatePlatformUnsupported",
+        ))
+    }
+}
+
+fn this_architecture() -> Result<TargetArchitecture, CliError> {
+    if cfg!(target_arch = "x86_64") {
+        Ok(TargetArchitecture::X86_64)
+    } else if cfg!(target_arch = "aarch64") {
+        Ok(TargetArchitecture::Aarch64)
+    } else {
+        Err(CliError::capability_unavailable(
+            "updateArchitectureUnsupported",
+        ))
+    }
 }
 
 pub fn verify_offline_bundle(path: &str) -> Result<serde_json::Value, CliError> {
