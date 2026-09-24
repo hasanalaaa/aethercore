@@ -1,7 +1,7 @@
-//! Embedded OFFLINE commands (T3): they work with NO service and are STRICTLY
-//! read-only. This module contains zero mutation-capable symbols — enforced by the
-//! Phase 28 audit symbol scan (p28-mutation-guard): no filesystem writes, no wire
-//! request construction, no mutating RPC payload types.
+//! Embedded OFFLINE commands (T3): they work with NO service and are read-only
+//! EXCEPT one explicit owner action: `keys generate` creates a NEW seed file and
+//! never overwrites one. No wire request construction, no mutating RPC payload
+//! types. The Phase 28 audit symbol scan (p28-mutation-guard) flags that one writer.
 
 use crate::cli::{Config, OfflineJob};
 use crate::error::CliError;
