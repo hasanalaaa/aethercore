@@ -81,6 +81,18 @@ pub fn run_compliance_audit(
             "--sign and explicit --key <seedfile> must be supplied together".to_string(),
         ));
     }
+    // `both` writes the JSON to --out and the HTML beside it as <name>.html; an --out
+    // that already ends in .html would receive both, the HTML silently replacing the JSON.
+    if format == "both"
+        && std::path::Path::new(out)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+    {
+        return Err(usage_error(format!(
+            "--format both writes the JSON to --out and the HTML beside it as .html; \
+--out '{out}' would receive both (use e.g. report.json)"
+        )));
+    }
 
     let parsed = if targets.is_empty() {
         default_live_targets()

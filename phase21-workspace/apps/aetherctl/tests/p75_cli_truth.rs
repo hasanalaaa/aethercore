@@ -248,3 +248,32 @@ fn vulndb_update_that_cannot_pin_keeps_the_old_db() {
     assert!(!dest.join("vulndb.manifest.json.tmp").exists());
     assert!(!dest.join("vulndb.json.prev").exists());
 }
+
+// ---------------------------------------------------------------------------
+// sec audit --format both: two distinct files, or a typed refusal
+// ---------------------------------------------------------------------------
+
+#[test]
+fn format_both_refuses_an_html_out_path_instead_of_overwriting_the_json() {
+    let dir = scratch("format-both");
+    let ssh = dir.join("sshd_config");
+    std::fs::write(&ssh, "PermitRootLogin yes\n").unwrap();
+    for out in ["report.html", "report.HTML"] {
+        let out = dir.join(out);
+        let (code, envelope) = json(&[
+            "sec",
+            "audit",
+            "--profile",
+            "cis-l1",
+            "--format",
+            "both",
+            "--out",
+            path(&out),
+            "--ssh",
+            path(&ssh),
+        ]);
+        assert_eq!(code, 2, "{envelope}");
+        assert_eq!(envelope["error"]["kind"], "Usage");
+        assert!(!out.exists(), "nothing may be written on a refused command");
+    }
+}
