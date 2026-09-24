@@ -60,21 +60,62 @@ fn purge_data() -> anyhow::Result<()> {
         return Ok(());
     }
     reject_reparse_tree(&data_dir)?;
-    // One retry: the service has just been deleted and a handle can still be closing.
-    for attempt in 0..2 {
-        match std::fs::remove_dir_all(&data_dir) {
-            Ok(()) => return Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => {
-                if attempt == 1 {
-                    return Err(anyhow::anyhow!(
-                        "could not remove {}: {error}",
-                        data_dir.display()
-                    ));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(1500));
-            }
+    match std::fs::remove_dir_all(&data_dir) {
+        Ok(()) => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => {}
+    }
+    // The service has just been deleted and a handle can still be closing.
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    // DBT-P73-002: a handle opened without FILE_SHARE_DELETE (AV, an indexer, an editor)
+    // made this action fail, and the uninstall then rolled back into a service that could
+    // not start. The data is not worth that: whatever is still undeletable is deleted at
+    // the next reboot instead, which is what Windows Installer does with its own files in
+    // use. Only a path that cannot even be scheduled fails the uninstall.
+    delete_or_schedule(&data_dir)
+}
+
+#[cfg(windows)]
+fn delete_or_schedule(path: &Path) -> anyhow::Result<()> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    // Children first: at boot, PendingFileRenameOperations runs in order, and a directory
+    // can only go once it is empty.
+    let removed = if metadata.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            delete_or_schedule(&entry?.path())?;
         }
+        std::fs::remove_dir(path)
+    } else {
+        std::fs::remove_file(path)
+    };
+    match removed {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => delete_at_reboot(path),
+    }
+}
+
+#[cfg(windows)]
+fn delete_at_reboot(path: &Path) -> anyhow::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
+    }
+    const MOVEFILE_DELAY_UNTIL_REBOOT: u32 = 0x4;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // A null new name with DELAY_UNTIL_REBOOT schedules a delete. It only writes the
+    // registry, so a handle held on the file does not stop it.
+    if unsafe { MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT) } == 0 {
+        anyhow::bail!(
+            "could not remove {} or schedule it for deletion at reboot: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
     }
     Ok(())
 }
@@ -103,6 +144,17 @@ fn apply() -> anyhow::Result<()> {
     // link discovered during a race is operated on as a link rather than followed to its target.
     reject_reparse_tree(&bin_dir)?;
     reject_reparse_tree(&data_dir)?;
+    // DBT-P73-001: Users may create folders under %ProgramData%, so a non-admin can create
+    // AetherCore there before install and own it. /reset and /grant:r never change an owner,
+    // and an owner holds WRITE_DAC implicitly, so the squatter could grant itself FullControl
+    // over the hardened data root. Every node is therefore re-owned before anything below
+    // trusts the tree. SYSTEM, because that is the owner a clean install produces, so a
+    // squatted install converges on the same state. Refusing a foreign owner instead would
+    // let any local user block install and repair with one mkdir. bin_dir gets the same
+    // treatment: Users cannot create under Program Files on a stock ACL, but the invariant
+    // is then "the hardener set every owner", not "nobody could have".
+    set_owner_tree(&icacls, &bin_dir)?;
+    set_owner_tree(&icacls, &data_dir)?;
     let mutation_lock = ensure_mutation_lock_file(&data_dir)?;
 
     let principal = service_principal();
@@ -274,14 +326,26 @@ where
 }
 
 #[cfg(windows)]
+fn set_owner_tree(exe: &Path, root: &Path) -> anyhow::Result<()> {
+    icacls_tree(exe, root, &["/setowner", "*S-1-5-18"])
+}
+
+#[cfg(windows)]
 fn reset_acl_tree(exe: &Path, root: &Path) -> anyhow::Result<()> {
+    icacls_tree(exe, root, &["/reset"])
+}
+
+#[cfg(windows)]
+fn icacls_tree(exe: &Path, root: &Path, verb: &[&str]) -> anyhow::Result<()> {
     let output = Command::new(exe)
         .arg(root)
-        .args(["/reset", "/T", "/C", "/L", "/Q"])
+        .args(verb)
+        .args(["/T", "/C", "/L", "/Q"])
         .output()?;
     if !output.status.success() {
         anyhow::bail!(
-            "ACL reset failed for {} ({}): {}",
+            "icacls {} failed for {} ({}): {}",
+            verb.join(" "),
             root.display(),
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()

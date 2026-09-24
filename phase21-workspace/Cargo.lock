@@ -372,7 +372,6 @@ dependencies = [
  "aethercore-persistence",
  "chrono",
  "hex",
- "rand",
  "rusqlite",
  "serde",
  "serde_json",
