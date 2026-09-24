@@ -590,15 +590,11 @@ fn export_verify(file: &str) -> Result<serde_json::Value, CliError> {
 /// lowercase hex with 0600 permissions and prints the public-key fingerprint.
 /// Key material is never created anywhere else in the product.
 fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
-    // Seed from the OS CSPRNG (/dev/urandom on macOS/Linux). Explicit owner action only.
-    use std::io::Read as _;
     let mut seed = [0u8; 32];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut seed))
-        .map_err(|e| CliError::LocalIo {
-            message_key: "local.io.read".to_string(),
-            detail: Some(format!("entropy: {e}")),
-        })?;
+    os_random(&mut seed).map_err(|e| CliError::LocalIo {
+        message_key: "local.io.read".to_string(),
+        detail: Some(format!("entropy: {e}")),
+    })?;
     let signing = ed25519_dalek::SigningKey::from_bytes(&seed);
     let seed_hex: String = signing
         .to_bytes()
@@ -633,6 +629,47 @@ fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
         "publicKeyFingerprint": public_hex,
         "permissions": "0600",
     }))
+}
+
+/// Fills `seed` from the OS CSPRNG. Any error aborts key generation (fail closed).
+#[cfg(unix)]
+fn os_random(seed: &mut [u8; 32]) -> std::io::Result<()> {
+    use std::io::Read as _;
+    // Absolute on unix, and only root can create nodes under /dev.
+    std::fs::File::open("/dev/urandom")?.read_exact(seed)
+}
+
+/// On Windows `/dev/urandom` resolves to `<current drive>:\dev\urandom`, a file any
+/// local user can create — so the seed comes from BCryptGenRandom, never from a path.
+#[cfg(windows)]
+fn os_random(seed: &mut [u8; 32]) -> std::io::Result<()> {
+    #[link(name = "bcrypt")]
+    unsafe extern "system" {
+        fn BCryptGenRandom(
+            algorithm: *mut std::ffi::c_void,
+            buffer: *mut u8,
+            len: u32,
+            flags: u32,
+        ) -> i32;
+    }
+    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+    // SAFETY: SYSTEM_PREFERRED_RNG requires a null algorithm handle; the pointer and
+    // length describe exactly the exclusively borrowed 32-byte buffer.
+    let status = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            seed.as_mut_ptr(),
+            seed.len() as u32,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "BCryptGenRandom failed, NTSTATUS {status:#010x}"
+        )))
+    }
 }
 
 /// `keys fingerprint --in <path>` — derives the Ed25519 public-key fingerprint from an
