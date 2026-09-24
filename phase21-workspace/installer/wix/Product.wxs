@@ -339,8 +339,26 @@
                   Impersonate="no"
                   Return="check"
                   HideTarget="yes" />
+    <!-- DBT-P74-001: a rolled-back uninstall re-creates the service from the ServiceInstall
+         row above (SID type NONE, plain auto-start), the service's token check then refuses
+         to run, and MSI retried the rollback start for about 250 s before returning 1603
+         with a service that never runs. This rollback action puts back the service settings
+         HardenInstalledSecurity sets, through the same code, and nothing else: "apply"
+         needs both trees intact, which a rollback after purge-data cannot promise.
+         Sequenced between StopServices and DeleteServices, so in the reversed rollback
+         script it runs after DeleteServices' undo re-creates the service and before
+         StopServices' undo starts it (order read from the MSI log of run 35929322712).
+         Return="ignore": a rollback cannot be failed, only logged. -->
+    <CustomAction Id="RestoreServiceConfigRollback"
+                  FileRef="InstallHardenerExe"
+                  ExeCommand="configure-service"
+                  Execute="rollback"
+                  Impersonate="no"
+                  Return="ignore"
+                  HideTarget="yes" />
     <InstallExecuteSequence>
       <Custom Action="HardenInstalledSecurity" After="InstallServices" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="RestoreServiceConfigRollback" Before="DeleteServices" Condition="REMOVE = &quot;ALL&quot;" />
       <Custom Action="PurgeMachineData" After="DeleteServices" Condition="REMOVE = &quot;ALL&quot;" />
     </InstallExecuteSequence>
 
