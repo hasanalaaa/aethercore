@@ -614,10 +614,21 @@ fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
             detail: Some(format!("create key dir: {e}")),
         })?;
     }
-    std::fs::write(path, format!("{seed_hex}\n")).map_err(|e| CliError::LocalIo {
-        message_key: "local.io.write".to_string(),
-        detail: Some(format!("write key file: {e}")),
-    })?;
+    // create_new (O_EXCL / CREATE_NEW): overwriting would destroy the previous signing
+    // key for good, so an existing path — file, directory or symlink — is refused.
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::AlreadyExists => CliError::local_io_with(
+                "local.keys.exists",
+                format!("refusing to overwrite existing key file {out}"),
+            ),
+            _ => CliError::local_io_with("local.io.write", format!("create key file: {e}")),
+        })?;
+    std::io::Write::write_all(&mut file, format!("{seed_hex}\n").as_bytes())
+        .map_err(|e| CliError::local_io_with("local.io.write", format!("write key file: {e}")))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
