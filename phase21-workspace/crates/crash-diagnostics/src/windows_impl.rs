@@ -30,7 +30,7 @@ use windows::{
 
 use crate::{
     CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EventEvidence,
-    Result, classify_event,
+    Result, assemble_snapshot, classify_event,
 };
 
 const MAX_EVENTS: usize = 128;
@@ -113,7 +113,7 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
     let mut warnings = Vec::new();
     let mut provider_faults = Vec::new();
 
-    let events = match run_isolated_gated_with_token(
+    let event_log = match run_isolated_gated_with_token(
         eventlog_gate(),
         "crash-diagnostics",
         "eventlog",
@@ -124,12 +124,12 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
         Ok((events, event_warnings, event_faults)) => {
             warnings.extend(event_warnings);
             provider_faults.extend(event_faults);
-            events
+            Some(events)
         }
         Err(error) => {
             warnings.push(format!("Windows Event Log collection unavailable: {error}"));
             provider_faults.push(CollectorFaultRecord::from(&error));
-            Vec::new()
+            None
         }
     };
 
@@ -153,13 +153,12 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
         }
     };
 
-    Ok(CrashDiagnosticsSnapshot {
-        event_window_days: DEFAULT_EVENT_WINDOW_DAYS,
-        events,
+    Ok(assemble_snapshot(
+        event_log,
         crashes,
         provider_faults,
         warnings,
-    })
+    ))
 }
 
 fn collector_fault(operation: &'static str, error: CrashError) -> CollectorFault {

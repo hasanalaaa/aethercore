@@ -61,11 +61,39 @@ pub struct CrashRecord {
 pub struct CrashDiagnosticsSnapshot {
     #[serde(default)]
     pub event_window_days: u32,
+    /// False when the Event Log could not be read: `events` is then empty because nothing was
+    /// read, not because nothing was logged. Defaults to false so a snapshot that does not say
+    /// it read the log never vouches for an empty one.
+    #[serde(default)]
+    pub event_log_read: bool,
     pub events: Vec<EventEvidence>,
     pub crashes: Vec<CrashRecord>,
     #[serde(default)]
     pub provider_faults: Vec<CollectorFaultRecord>,
     pub warnings: Vec<String>,
+}
+
+/// Folds one collection pass into a snapshot. `event_log` is `None` when the Event Log read
+/// failed.
+pub fn assemble_snapshot(
+    event_log: Option<Vec<EventEvidence>>,
+    crashes: Vec<CrashRecord>,
+    provider_faults: Vec<CollectorFaultRecord>,
+    warnings: Vec<String>,
+) -> CrashDiagnosticsSnapshot {
+    let event_log_read = event_log.is_some();
+    CrashDiagnosticsSnapshot {
+        event_window_days: if event_log_read {
+            DEFAULT_EVENT_WINDOW_DAYS
+        } else {
+            0
+        },
+        event_log_read,
+        events: event_log.unwrap_or_default(),
+        crashes,
+        provider_faults,
+        warnings,
+    }
 }
 
 pub fn classify_event(
@@ -175,6 +203,16 @@ mod tests {
             1,
         );
         assert_eq!(e.category, "ProcessorHardwareEvidence");
+    }
+
+    #[test]
+    fn a_failed_event_log_read_is_not_an_empty_one() {
+        let failed = assemble_snapshot(None, Vec::new(), Vec::new(), Vec::new());
+        assert!(!failed.event_log_read);
+        assert_eq!(failed.event_window_days, 0);
+        let empty = assemble_snapshot(Some(Vec::new()), Vec::new(), Vec::new(), Vec::new());
+        assert!(empty.event_log_read);
+        assert_eq!(empty.event_window_days, DEFAULT_EVENT_WINDOW_DAYS);
     }
 
     #[test]
