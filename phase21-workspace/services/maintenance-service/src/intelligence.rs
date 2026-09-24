@@ -18,6 +18,7 @@ use aethercore_intelligence_core::{
     TypedEvidencePack,
 };
 use aethercore_persistence::Database;
+use aethercore_timeline_intelligence::RecurrenceConfidence;
 
 /// True when the embedded model verified and loaded at startup. When false, the panel
 /// shows the honest degraded-mode chip (ruleFallback) until the fault clears (I3) —
@@ -105,20 +106,60 @@ pub fn compose_evidence_pack(db: &Database, owner_principal_key: &str) -> TypedE
         }
     }
 
-    // Surface 2: recent timeline events as history evidence (bounded read).
-    if let Ok(timeline) =
-        aethercore_timeline_intelligence::ingest::ingest_owner_history(db, owner_principal_key)
-    {
-        for event in timeline.into_iter().take(12) {
-            pack.push(EvidenceItem {
-                evidence_id: event.semantic_identity_sha256.clone(),
-                surface: EvidenceSurface::TimelinePattern,
-                detail: format!("event class {:?} code {}", event.class, event.code),
-            });
-        }
+    // Surface 2: recurrence patterns the timeline engine DETECTED, most recent
+    // first. P75: this used to push the first 12 raw ingested events here, in
+    // per-table order, as `TimelinePattern` — so journal transitions that never
+    // recurred were cited as patterns, the same identity appeared once per row,
+    // and the rule engine announced "recurring pattern(s) … with full evidence
+    // matrices" at Strong over them. A pattern is what `TimelineBuilder` emits
+    // after its evidence-matrix checks, and nothing else.
+    let mut patterns = recurrence_patterns(db, owner_principal_key);
+    patterns.sort_by_key(|pattern| std::cmp::Reverse(pattern.last_observed_unix_ms));
+    for pattern in patterns.into_iter().take(12) {
+        pack.push(EvidenceItem {
+            detail: format!(
+                "recurring failure: class {} domain {} code {}, {} occurrences, recurrence confidence {}",
+                pattern.class.as_str(),
+                pattern.domain,
+                pattern.code,
+                pattern.occurrence_count,
+                match pattern.confidence {
+                    RecurrenceConfidence::Weak => "weak",
+                    RecurrenceConfidence::Moderate => "moderate",
+                    RecurrenceConfidence::Strong => "strong",
+                }
+            ),
+            evidence_id: pattern.semantic_identity_sha256,
+            surface: EvidenceSurface::TimelinePattern,
+        });
     }
 
     pack
+}
+
+/// The owner's detected recurrence patterns, built the way the timeline page
+/// builds them (`timeline.rs`): the service's own clock is the freshness
+/// watermark, so a future-stamped row can neither order nor recur. An
+/// unreadable history yields no patterns, as it yielded no events before.
+fn recurrence_patterns(
+    db: &Database,
+    owner_principal_key: &str,
+) -> Vec<aethercore_timeline_intelligence::RecurrencePattern> {
+    let watermark = chrono::Utc::now().timestamp_millis();
+    let Ok(candidates) =
+        aethercore_timeline_intelligence::ingest::ingest_owner_history_with_watermark(
+            db,
+            owner_principal_key,
+            watermark,
+        )
+    else {
+        return Vec::new();
+    };
+    let mut builder = aethercore_timeline_intelligence::TimelineBuilder::new().watermark(watermark);
+    if builder.ingest_all(candidates).is_err() {
+        return Vec::new();
+    }
+    builder.build().patterns
 }
 
 pub struct IntelligenceCoordinator {
@@ -350,6 +391,98 @@ mod tests {
         assert_eq!(registry.list("owner-a").len(), 2);
         assert!(registry.dismiss("owner-a", &second[0].id));
         assert_eq!(registry.list("owner-a").len(), 1);
+    }
+
+    fn journal_db(transitions: &[(&str, i64)]) -> (Database, std::path::PathBuf) {
+        let path =
+            std::env::temp_dir().join(format!("aethercore-p75-pack-{}.db", uuid::Uuid::new_v4()));
+        let db = Database::open(&path).expect("database");
+        db.insert_plan(
+            &aethercore_persistence::PlanRecord {
+                id: "plan-1".into(),
+                title: "seed".into(),
+                state: "Completed".into(),
+                digest: "digest-plan-1".into(),
+                risk: "Low".into(),
+                immutable_json: "{}".into(),
+                created_unix_ms: 1_000,
+                updated_unix_ms: 1_000,
+                owner_principal_key: "owner-a".into(),
+            },
+            "created",
+        )
+        .expect("plan");
+        for (state, at) in transitions {
+            db.append_plan_event("plan-1", state, "state_transition", "", *at)
+                .expect("journal row");
+        }
+        (db, path)
+    }
+
+    const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+
+    /// P75. Raw journal rows are events, not patterns. They used to enter the
+    /// pack as `TimelinePattern`, so the rule engine announced "recurring
+    /// pattern(s) detected by timeline intelligence with full evidence
+    /// matrices" at Strong confidence over a machine where nothing recurred.
+    #[test]
+    fn raw_timeline_events_are_not_presented_as_recurring_patterns() {
+        let (db, path) = journal_db(&[
+            ("Executing", 2 * DAY_MS),
+            ("Completed", 3 * DAY_MS),
+            ("RecoveryRequired", 4 * DAY_MS),
+        ]);
+        let pack = compose_evidence_pack(&db, "owner-a");
+        assert!(
+            !pack
+                .items
+                .iter()
+                .any(|item| item.surface == EvidenceSurface::TimelinePattern),
+            "nothing recurred, yet the pack holds pattern evidence: {:?}",
+            pack.items
+        );
+        let insights = ReasonerSelector::new(None)
+            .request_insights(&pack, "", false)
+            .unwrap_or_default();
+        assert!(
+            !insights
+                .iter()
+                .any(|insight| insight.summary_key == "insight.summary.recurrence"),
+            "{insights:?}"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// And a failure that really recurs is cited under the pattern's own
+    /// identity, with what the timeline engine measured about it.
+    #[test]
+    fn a_detected_recurrence_enters_the_pack_as_one_pattern() {
+        let (db, path) = journal_db(&[
+            ("RecoveryRequired", 2 * DAY_MS),
+            ("RecoveryRequired", 3 * DAY_MS),
+            ("RecoveryRequired", 4 * DAY_MS),
+        ]);
+        let pack = compose_evidence_pack(&db, "owner-a");
+        let patterns: Vec<_> = pack
+            .items
+            .iter()
+            .filter(|item| item.surface == EvidenceSurface::TimelinePattern)
+            .collect();
+        assert_eq!(patterns.len(), 1, "{:?}", pack.items);
+        assert_eq!(
+            patterns[0].evidence_id,
+            aethercore_timeline_intelligence::semantic_identity(
+                aethercore_timeline_intelligence::EventClass::Operation,
+                "operationJournal",
+                "journal.transition:RecoveryRequired",
+            )
+        );
+        assert!(
+            patterns[0].detail.contains("3 occurrences"),
+            "{}",
+            patterns[0].detail
+        );
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
