@@ -155,6 +155,43 @@ fn update_verify_checks_the_real_installed_version() {
     assert_ne!(code, 0);
 }
 
+/// EXIT_CODES.md: 5 means the maintenance SERVICE answered with a rejection; a local
+/// artifact that is invalid or fails verification is 8 (LocalIo, fail-closed).
+#[test]
+fn local_release_and_update_verification_failures_exit_local_io_not_service_rejection() {
+    let now = now_epoch();
+    let forged = update_fixture("exit-update", "9.9.0", "9.9.1", now - 60, now + 3600);
+    let (code, envelope) = update_verify(&forged);
+    assert_eq!(
+        (code, envelope["error"]["kind"].clone()),
+        (8, "LocalIo".into())
+    );
+
+    let garbage = scratch("exit-release").join("manifest.json");
+    std::fs::write(&garbage, "{\"not\":\"a manifest\"}").unwrap();
+    let g = path(&garbage);
+    for args in [
+        vec!["release", "inspect", "--manifest", g],
+        vec![
+            "release",
+            "verify",
+            "--manifest",
+            g,
+            "--signature",
+            g,
+            "--keyring",
+            g,
+        ],
+    ] {
+        let (code, envelope) = json(&args);
+        assert_eq!(
+            (code, envelope["error"]["kind"].clone()),
+            (8, "LocalIo".into()),
+            "{args:?}: {envelope}"
+        );
+    }
+}
+
 #[test]
 fn update_verify_uses_the_real_clock() {
     // Signed long ago, expired long ago: the metadata's own generated_epoch is not "now".

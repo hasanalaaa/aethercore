@@ -10,7 +10,7 @@ use std::{fs, path::Path};
 fn read<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, CliError> {
     let bytes = fs::read(path)
         .map_err(|e| CliError::local_io_with("cli.release.readFailed", e.to_string()))?;
-    parse_strict(&bytes, 256 * 1024).map_err(|e| CliError::Rejected {
+    parse_strict(&bytes, 256 * 1024).map_err(|e| CliError::LocalIo {
         message_key: "cli.release.invalidArtifact".into(),
         detail: Some(e.to_string()),
     })
@@ -18,7 +18,7 @@ fn read<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, CliError> {
 
 pub fn inspect(path: Option<&str>) -> Result<serde_json::Value, CliError> {
     let manifest: ReleaseManifest = read(path.unwrap_or("release/release-manifest.json"))?;
-    manifest.validate().map_err(|e| CliError::Rejected {
+    manifest.validate().map_err(|e| CliError::LocalIo {
         message_key: "cli.release.invalidManifest".into(),
         detail: Some(e.to_string()),
     })?;
@@ -38,7 +38,7 @@ pub fn verify_manifest(
     let signature: SignatureEnvelope = read(signature_path)?;
     let keyring: TrustedKeyring = read(keyring_path)?;
     let digest = verify_release_manifest(&manifest, &bytes, &signature, &keyring).map_err(|e| {
-        CliError::Rejected {
+        CliError::LocalIo {
             message_key: "cli.release.verificationFailed".into(),
             detail: Some(e.to_string()),
         }
@@ -71,7 +71,7 @@ pub fn verify_update(
         ..metadata.target_identity.clone()
     };
     verify_update_metadata(&metadata, &signature, &keyring, now, &installed).map_err(|e| {
-        CliError::Rejected {
+        CliError::LocalIo {
             message_key: "cli.update.verificationFailed".into(),
             detail: Some(e.to_string()),
         }
