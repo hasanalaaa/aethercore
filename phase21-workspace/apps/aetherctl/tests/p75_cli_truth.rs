@@ -178,3 +178,73 @@ fn update_verify_reports_what_it_checked_and_what_it_did_not() {
     assert!(data["checkedAtEpoch"].as_u64().unwrap() >= now);
     assert_eq!(data["notChecked"], serde_json::json!(["installedChannel"]));
 }
+
+// ---------------------------------------------------------------------------
+// vulndb update: the live DB changes only together with its manifest
+// ---------------------------------------------------------------------------
+
+const DB_A: &str = r#"[{"cve_id":"CVE-2026-0001","package":"openssl","introduced":"","fixed":"3.0.14","summary":"a"}]"#;
+const DB_B: &str = r#"[{"cve_id":"CVE-2026-0002","package":"zlib","introduced":"","fixed":"1.3.1","summary":"b"}]"#;
+
+fn vulndb_update(from: &std::path::Path, dest: &std::path::Path) -> (i32, serde_json::Value) {
+    json(&[
+        "vulndb",
+        "update",
+        "--from",
+        path(from),
+        "--dest",
+        path(dest),
+    ])
+}
+
+#[test]
+fn vulndb_update_installs_a_pair_the_loader_accepts() {
+    let dir = scratch("vulndb-ok");
+    let (a, b, dest) = (dir.join("a.json"), dir.join("b.json"), dir.join("db"));
+    std::fs::write(&a, DB_A).unwrap();
+    std::fs::write(&b, DB_B).unwrap();
+    assert_eq!(vulndb_update(&a, &dest).0, 0);
+    let (code, envelope) = vulndb_update(&b, &dest);
+    assert_eq!(code, 0, "{envelope}");
+    assert_eq!(
+        std::fs::read_to_string(dest.join("vulndb.json")).unwrap(),
+        DB_B
+    );
+    aethercore_security_audit::vulndb::load_verified(
+        &dest.join("vulndb.json"),
+        &dest.join("vulndb.manifest.json"),
+    )
+    .expect("installed pair verifies");
+    let names: Vec<_> = std::fs::read_dir(&dest)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(names.len(), 2, "no staging leftovers: {names:?}");
+}
+
+#[test]
+fn vulndb_update_that_cannot_pin_keeps_the_old_db() {
+    let dir = scratch("vulndb-fail");
+    let (a, b, dest) = (dir.join("a.json"), dir.join("b.json"), dir.join("db"));
+    std::fs::write(&a, DB_A).unwrap();
+    std::fs::write(&b, DB_B).unwrap();
+    assert_eq!(vulndb_update(&a, &dest).0, 0);
+    // The manifest can no longer be replaced: a non-empty directory sits at its path.
+    let manifest = dest.join("vulndb.manifest.json");
+    std::fs::remove_file(&manifest).unwrap();
+    std::fs::create_dir_all(manifest.join("blocker")).unwrap();
+
+    let (code, envelope) = vulndb_update(&b, &dest);
+    assert_eq!(envelope["ok"], false, "{envelope}");
+    assert_eq!(code, 8);
+    assert_eq!(
+        std::fs::read_to_string(dest.join("vulndb.json"))
+            .ok()
+            .as_deref(),
+        Some(DB_A),
+        "the old DB must survive a failed update"
+    );
+    assert!(!dest.join("vulndb.json.tmp").exists());
+    assert!(!dest.join("vulndb.manifest.json.tmp").exists());
+    assert!(!dest.join("vulndb.json.prev").exists());
+}

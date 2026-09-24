@@ -482,27 +482,84 @@ pub fn vulndb_update_from(file: &str, dest_dir: &str) -> Result<serde_json::Valu
     })?;
     let db_path = dest.join("vulndb.json");
     let manifest_path = dest.join("vulndb.manifest.json");
-    std::fs::write(&db_path, &raw).map_err(|e| CliError::LocalIo {
-        message_key: "local.io.write".to_string(),
-        detail: Some(format!("write db: {e}")),
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest).map_err(|e| CliError::LocalIo {
+        message_key: "sec.vulndbManifestWrite".to_string(),
+        detail: Some(format!("serialize manifest: {e}")),
     })?;
-    let pretty = serde_json::to_vec_pretty(&manifest);
-    let wrote = pretty
-        .ok()
-        .map(|bytes| std::fs::write(&manifest_path, bytes));
-    if wrote.is_none() || matches!(wrote, Some(Err(_))) {
-        // Roll back the db copy so no unpinned artifact remains.
-        let _ = std::fs::remove_file(&db_path);
-        return Err(CliError::LocalIo {
+    install_pinned_pair(&raw, &manifest_bytes, &db_path, &manifest_path).map_err(|detail| {
+        CliError::LocalIo {
             message_key: "sec.vulndbManifestWrite".to_string(),
-            detail: Some("manifest serialization/write failed; db copy rolled back".into()),
-        });
-    }
+            detail: Some(detail),
+        }
+    })?;
     Ok(serde_json::json!({
         "installed": true,
         "db": db_path.display().to_string(),
         "manifest": manifest_path.display().to_string(),
     }))
+}
+
+/// Puts a new DB live only together with its manifest. Both are staged and synced
+/// beside the live pair first, so a failed write never touches the live files; the old
+/// DB is moved aside and put back if the swap cannot finish.
+// ponytail: two renames are not one atomic step. A crash between them leaves a DB and
+// a manifest that disagree, which the loader refuses (the CVE lane fails closed, never
+// wrong). A directory swap would close the window but changes the layout it reads.
+fn install_pinned_pair(
+    db: &[u8],
+    manifest: &[u8],
+    db_path: &std::path::Path,
+    manifest_path: &std::path::Path,
+) -> Result<(), String> {
+    use std::fs;
+    fn write_synced(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+        use std::io::Write as _;
+        let mut file = fs::File::create(path)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    }
+    let db_tmp = db_path.with_extension("json.tmp");
+    let manifest_tmp = manifest_path.with_extension("json.tmp");
+    let db_prev = db_path.with_extension("json.prev");
+    let discard_staged = || {
+        let _ = fs::remove_file(&db_tmp);
+        let _ = fs::remove_file(&manifest_tmp);
+    };
+    if let Err(e) = write_synced(&db_tmp, db).and_then(|()| write_synced(&manifest_tmp, manifest)) {
+        discard_staged();
+        return Err(format!("stage db and manifest: {e}; nothing was changed"));
+    }
+    let had_old = db_path.is_file();
+    if had_old && let Err(e) = fs::rename(db_path, &db_prev) {
+        discard_staged();
+        return Err(format!(
+            "set the previous db aside: {e}; nothing was changed"
+        ));
+    }
+    if let Err(e) =
+        fs::rename(&db_tmp, db_path).and_then(|()| fs::rename(&manifest_tmp, manifest_path))
+    {
+        discard_staged();
+        let restored = if had_old {
+            fs::rename(&db_prev, db_path)
+        } else {
+            match fs::remove_file(db_path) {
+                Err(gone) if gone.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                other => other,
+            }
+        };
+        return Err(match restored {
+            Ok(()) => format!("install db and manifest: {e}; the previous database was kept"),
+            Err(r) => format!(
+                "install db and manifest: {e}; restoring the previous database also failed: {r}"
+            ),
+        });
+    }
+    if had_old {
+        // A leftover .prev is inert: the loader reads only vulndb.json + its manifest.
+        let _ = fs::remove_file(&db_prev);
+    }
+    Ok(())
 }
 
 /// Counts DB entries during validation (single parse, shared shape check).
