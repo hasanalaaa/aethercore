@@ -322,6 +322,13 @@ jobs:
           $logs1 = New-Logs $t1
           if (-not ($logs1 | Where-Object DirectoryName -eq $winTemp)) { $gate.Add('install 1 wrote no log under C:\Windows\Temp') }
           Test-Logs $logs1 'install1'
+          # P75: the ProductCode this build registered, and a copy of the MSI Burn cached, which
+          # the major-upgrade section at the end installs as an earlier version.
+          $arp = @(Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.WindowsInstaller -eq 1 -and $_.DisplayName -eq 'AetherCore' })
+          $summary.productCode = ($arp | ForEach-Object { "$($_.PSChildName) v$($_.DisplayVersion)" }) -join ', '
+          $oldMsi = Join-Path $env:RUNNER_TEMP 'p75-earlier.msi'
+          $cached = @(Get-ChildItem "$env:ProgramData\Package Cache" -Recurse -Filter 'AetherCore*.msi' -ErrorAction SilentlyContinue)
+          if ($cached.Count -eq 1) { Copy-Item $cached[0].FullName $oldMsi; (Get-Item $oldMsi).IsReadOnly = $false } else { $gate.Add("expected one cached AetherCore MSI, found $($cached.Count): $($cached.FullName -join ', ')") }
 
           Section 'Product data root after the hardener ran'
           Show-Acl $pdRoot
@@ -352,6 +359,8 @@ jobs:
           $summary.uninstall = "exit $code; ProgramData\AetherCore exists after: $(Test-Path $pdRoot)"
           Write-Host $summary.uninstall
           if ($code -notin 0, 3010) { $gate.Add("uninstall exit $code") }
+          # P75: purge-data is now skipped in a major upgrade; a plain uninstall must still purge.
+          if (Test-Path $pdRoot) { $gate.Add('uninstall left C:\ProgramData\AetherCore behind') }
           Test-Logs (New-Logs $t2) 'uninstall'
 
           # The unelevated parent on a real machine. It opens its log before it asks
@@ -477,6 +486,52 @@ jobs:
           if ($svc) { $gate.Add('uninstall with a held handle left the service installed') }
           foreach ($u in $unscheduled) { $gate.Add("left behind and not scheduled for deletion: $u") }
 
+          # P75: a major upgrade must keep the machine data. The earlier version is this build's
+          # own MSI with ProductVersion 0.0.1 and a fresh ProductCode and PackageCode, set with
+          # the Windows Installer automation API; its tables and sequence are otherwise this
+          # build's. In a major upgrade the OLD package's own sequence removes it (REMOVE=ALL,
+          # UPGRADINGPRODUCTCODE set), so its purge-data condition is the one under test.
+          Section 'Major upgrade from an earlier version'
+          if (Test-Path $oldMsi) {
+            function Invoke-Com($o, [string]$member, [Reflection.BindingFlags]$how, [object[]]$argv) { $o.GetType().InvokeMember($member, $how, $null, $o, $argv) }
+            $lowPc = [guid]::NewGuid().ToString('B').ToUpperInvariant()
+            $wi = New-Object -ComObject WindowsInstaller.Installer
+            $db = Invoke-Com $wi 'OpenDatabase' 'InvokeMethod' @($oldMsi, 1)
+            foreach ($sql in ('UPDATE `Property` SET `Value`=''{0}'' WHERE `Property`=''ProductCode''' -f $lowPc), 'UPDATE `Property` SET `Value`=''0.0.1'' WHERE `Property`=''ProductVersion''') {
+              $view = Invoke-Com $db 'OpenView' 'InvokeMethod' @($sql)
+              $null = Invoke-Com $view 'Execute' 'InvokeMethod' @()
+              $null = Invoke-Com $view 'Close' 'InvokeMethod' @()
+              $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)
+            }
+            $si = Invoke-Com $db 'SummaryInformation' 'GetProperty' @(4)
+            $null = Invoke-Com $si 'Property' 'SetProperty' @(9, [guid]::NewGuid().ToString('B').ToUpperInvariant())
+            $null = Invoke-Com $si 'Persist' 'InvokeMethod' @()
+            $null = Invoke-Com $db 'Commit' 'InvokeMethod' @()
+            $si, $db, $wi | ForEach-Object { $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($_) }
+            $t7 = Get-Date
+            $p = Start-Process msiexec.exe -ArgumentList '/i', $oldMsi, '/qn', '/norestart', '/l*v', (Join-Path $ev 'upgrade-earlier-install.log') -PassThru
+            $null = $p.Handle
+            $p.WaitForExit()
+            $earlierExit = $p.ExitCode
+            $marker = "$pdRoot\state\p75-upgrade-marker.txt"
+            if ($earlierExit -in 0, 3010) { Set-Content -LiteralPath $marker 'machine data written under the earlier version' }
+            $code = Invoke-Setup '/quiet', '/norestart'
+            New-Logs $t7 | Copy-Item -Destination $ev
+            $earlierLeft = Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$lowPc"
+            $kept = Test-Path -LiteralPath $marker
+            $summary.upgrade = "earlier 0.0.1 as $lowPc exit $earlierExit; bundle upgrade exit $code; earlier still registered: $earlierLeft; marker kept: $kept; data root entries: $(@(Get-ChildItem $pdRoot -Recurse -Force -ErrorAction SilentlyContinue).Count)"
+            Write-Host $summary.upgrade
+            if ($earlierExit -notin 0, 3010) { $gate.Add("earlier-version install exit $earlierExit") }
+            if ($code -notin 0, 3010) { $gate.Add("major upgrade exit $code") }
+            if ($earlierLeft) { $gate.Add("the upgrade did not remove the earlier version $lowPc") }
+            if (-not $kept) { $gate.Add('the major upgrade deleted the machine data under C:\ProgramData\AetherCore') }
+            if (Get-Service AetherCoreMaintenance -ErrorAction SilentlyContinue) {
+              $s = Save-ServiceState 'upgrade' $t7
+              if ($s.state -notmatch '\bRUNNING\b') { $gate.Add("upgraded service is not running: $($s.state)") }
+              if ($s.sid -notmatch '\bUNRESTRICTED\b') { $gate.Add("upgraded service SID type is not the hardener's: $($s.sid)") }
+            } else { $gate.Add('no service after the major upgrade') }
+          }
+
           Section 'Summary'
           $summary | ConvertTo-Json | Tee-Object (Join-Path $ev 'summary.json') | Write-Host
           if ($gate.Count) { $gate | ForEach-Object { Write-Host "GATE: $_" }; throw "$($gate.Count) gate violation(s)" }
@@ -491,3 +546,43 @@ jobs:
           path: ${{ runner.temp }}/p73-evidence
           if-no-files-found: warn
           retention-days: 14
+
+  # P75: build-installer.ps1 derives the MSI ProductCode from "AetherCore/<version>/x64"
+  # in Deterministic-ProductCode. Its parameter was named $input, which is also
+  # PowerShell's automatic pipeline enumerator. This evaluates the function exactly as
+  # the script defines it, for two versions, in pwsh (which build-release.ps1 runs it
+  # under here) and in Windows PowerShell. Two versions must get two codes, or no major
+  # upgrade can ever fire; and the shell that builds must not change the code.
+  product-code-probe:
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Evaluate Deterministic-ProductCode in both shells
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $measure = @'
+          $ast = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/build-installer.ps1').Path, [ref]$null, [ref]$null)
+          $fn = $ast.Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Deterministic-ProductCode' }, $true)
+          . ([scriptblock]::Create($fn.Extent.Text))
+          'AetherCore/0.1.10/x64', 'AetherCore/0.1.11/x64' | ForEach-Object { Deterministic-ProductCode $_ }
+          '@
+          $pwshCodes = @(& ([scriptblock]::Create($measure)))
+          $winCodes = @(powershell -NoProfile -NonInteractive -EncodedCommand ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($measure))))
+          if ($LASTEXITCODE) { throw "powershell exit $LASTEXITCODE" }
+          Write-Host "pwsh $($PSVersionTable.PSVersion): 0.1.10 -> $($pwshCodes[0]); 0.1.11 -> $($pwshCodes[1])"
+          Write-Host "Windows PowerShell:  0.1.10 -> $($winCodes[0]); 0.1.11 -> $($winCodes[1])"
+          $gate = @()
+          foreach ($c in @(@{ shell = 'pwsh'; codes = $pwshCodes }, @{ shell = 'powershell'; codes = $winCodes })) {
+            if ($c.codes.Count -ne 2 -or ($c.codes -notmatch '^\{[0-9A-F-]{36}\}$')) { $gate += "$($c.shell) did not return two GUIDs: $($c.codes -join ', ')" }
+            elseif ($c.codes[0] -eq $c.codes[1]) { $gate += "$($c.shell): two versions share ProductCode $($c.codes[0])" }
+          }
+          if (($pwshCodes -join ',') -ne ($winCodes -join ',')) { $gate += 'pwsh and Windows PowerShell derive different ProductCodes' }
+          if ($gate) { $gate | ForEach-Object { Write-Host "GATE: $_" }; throw "$($gate.Count) gate violation(s)" }
+          Write-Host 'GATE: pass'
