@@ -2,9 +2,12 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
     sync::{Arc, Mutex, RwLock},
     thread,
+};
+#[cfg(windows)]
+use std::{
+    path::Path,
     time::{Duration, SystemTime},
 };
 
@@ -23,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+#[cfg(windows)]
 const MAX_FILES_PER_CANDIDATE: usize = 5_000;
 const MAX_PLAN_FILES: usize = 20_000;
 
@@ -1029,6 +1033,8 @@ fn update_current(
     Ok(())
 }
 
+// Scan helpers for windows_impl, the only platform that scans.
+#[cfg(windows)]
 pub(crate) fn evidence(
     path: &Path,
     root: &Path,
@@ -1049,6 +1055,7 @@ pub(crate) fn evidence(
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn older_than(metadata: &std::fs::Metadata, age: Duration) -> bool {
     metadata
         .modified()
@@ -1058,6 +1065,7 @@ pub(crate) fn older_than(metadata: &std::fs::Metadata, age: Duration) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(windows)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn candidate(
     provider: &str,
@@ -1085,6 +1093,7 @@ pub(crate) fn candidate(
     }
 }
 
+#[cfg(windows)]
 pub(crate) fn cap_files(mut files: Vec<CleanupFileEvidence>) -> (Vec<CleanupFileEvidence>, bool) {
     if files.len() > MAX_FILES_PER_CANDIDATE {
         files.sort_by_key(|file| file.modified_unix_ms);

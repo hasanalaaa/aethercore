@@ -8,8 +8,11 @@ use std::{
 
 // DBT-P46-D1: the third independent declaration of the service name, and the
 // second full re-typing of its account, both now derived from one decider.
+#[cfg(windows)]
 use aethercore_product_identity::{PRODUCT_NAME, SERVICE_NAME, service_principal};
+#[cfg(windows)]
 const SERVICE_SDDL: &str = "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)";
+#[cfg(windows)]
 const MACHINE_MUTATION_LOCK_RELATIVE_PATH: &str = r"state\machine-mutation.lock";
 #[cfg(windows)]
 const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
