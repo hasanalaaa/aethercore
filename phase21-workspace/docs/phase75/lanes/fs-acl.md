@@ -1,0 +1,85 @@
+# P75 lane `fs-acl` — evidence
+
+The branch is `lane/fs-acl`. Scope: `crates/security-audit/**`; no dependency or
+lockfile change. `DBT-P36-006` is the filesystem posture row. The CVE and
+firewall changes correct two further unsupported-state claims.
+
+## Filesystem permissions (`DBT-P36-006`)
+
+The old Windows path substituted mode `0666` for every file, then declared
+every one world-writable at Exact confidence. It also skipped files directly
+beneath the scan root. Windows red-before CI `36057784591` at `23f7169`
+failed all three new posture tests. The implementation now reads the DACL with
+`GetNamedSecurityInfoW`, walks applicable ACEs, and reports the SID and mask
+of broad write grants. A null DACL is exposed; a missing DACL read yields
+unavailable evidence instead of invented mode bits. Root-level files are
+included. Callback deny ACEs do not hide an unconditional broad grant, covered
+by `conditional_deny_cannot_hide_an_unconditional_broad_write_grant`.
+
+The fixed-source Windows probe `36178087566` passed the firewall assertion,
+then its full workspace suite failed in `ssh_findings_follow_the_real_permissions`.
+That test's Windows `make_private` helper had been a no-op. CI `36179998645`
+(`e114099`) and `36181357153` (`8eb928f`) then showed the flagged SID ending
+`-500` (mask `0x001f01ff`) survives an explicit `/remove:g` of that SID
+followed by `/grant:r` for the current user: the runner's user **is** the RID-500
+account. The runner is elevated, so its files are owned by
+`BUILTIN\Administrators` (`S-1-5-32-544`), not by the user, and the audit's
+rule (owner, SYSTEM, Administrators) correctly names the user's ACE as
+another principal. The fixture now removes inheritance, grants only the user,
+SYSTEM and Administrators, then sets the current user as owner (as
+`ssh-keygen` run by that user leaves it). The grant must come first: in CI
+`36184178072` a `/setowner` straight after `/inheritance:r` was denied on the
+key file, because an owner holds WRITE_DAC implicitly but not WRITE_OWNER. The
+order was checked on the runner in the throwaway run `36185665074`. Both paths
+ended owned by `runneradmin`, with only Administrators, SYSTEM and
+`runneradmin` holding access.
+
+Proposed new row (not fixed here): the rule uses the owner as the stand-in for
+the key's user. Win32-OpenSSH trusts the account's own SID. Key material
+created by an elevated administrator is owned by `S-1-5-32-544`, so that
+user's own ACE is reported Critical. Fixing it needs the profile's SID, for
+example from the `ProfileList` registry key.
+
+## CVE census
+
+The old `cve` lane reported `Ok(0)` when no supported package census could run.
+`unavailable_census_reason` now maps that to `NotAvailable`; the unit test
+`unsupported_package_census_cannot_report_zero_cves` fails on the old code
+and passes on this branch. A zero remains meaningful only when at least one
+census source actually ran against the verified local database join.
+
+## Firewall configuration
+
+The old Windows path looked for Unix pf/ufw/nftables files and produced a
+Unix-specific absence reason. A test-only probe run `36111505675` failed
+earlier in an unrelated cleaner timeout, so it did **not** measure firewall
+red-before. Probe `36177125187` at `38db6f7` ran the focused assertion before
+the workspace suite on Windows Server 2025: **red before the fix**, with
+`firewall_evidence_names_windows_registry_profile_values ... FAILED` and the
+actual reason `no pf/ufw/nftables configuration file found; live state probing
+requires elevation...`. This is the old product code giving a Unix answer on
+Windows; it is not a build or setup failure.
+
+The new code reads `EnableFirewall` as a DWORD for Domain, Private and Public
+profiles under `HKLM`, taking a policy value first and a local configuration
+value only when policy is absent. Per-profile read errors or missing settings
+are reported as unavailable. The finding names each observed profile, value
+and registry path. It explicitly says that registry configuration is not the
+effective firewall state; no live rule or packet-filter claim is made.
+
+The same focused Windows assertion passed on the fixed source in probe
+`36178087566` at `0a8bc68` (step `P75 Windows firewall red probe before
+unrelated workspace tests`, 19:16:27–19:17:17 UTC). The test accepts an honest
+`NotAvailable` if all registry reads fail, so this proves Windows-specific
+evidence and its limit, **not** that any particular profile was enabled.
+
+## Local verification
+
+From `phase21-workspace/`, with debug info and incremental builds disabled:
+
+* `cargo test -p aethercore-security-audit --locked`: 58 passed, 0 failed.
+* `cargo clippy -p aethercore-security-audit --all-targets --locked --no-deps -- -D warnings`: pass.
+* `cargo clippy -p aethercore-security-audit --lib --target x86_64-pc-windows-msvc --locked --no-deps -- -D warnings`: pass (Windows library type-check; the runner remains the runtime verdict).
+
+Integration CI at the final PR head and the main merge SHA is required before
+this lane is closed. No Windows effective firewall state was measured.
