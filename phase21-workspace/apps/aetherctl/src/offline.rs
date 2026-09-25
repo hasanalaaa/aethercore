@@ -1,7 +1,7 @@
-//! Embedded OFFLINE commands (T3): they work with NO service and are STRICTLY
-//! read-only. This module contains zero mutation-capable symbols — enforced by the
-//! Phase 28 audit symbol scan (p28-mutation-guard): no filesystem writes, no wire
-//! request construction, no mutating RPC payload types.
+//! Embedded OFFLINE commands (T3): they work with NO service and are read-only
+//! EXCEPT one explicit owner action: `keys generate` creates a NEW seed file and
+//! never overwrites one. No wire request construction, no mutating RPC payload
+//! types. The Phase 28 audit symbol scan (p28-mutation-guard) flags that one writer.
 
 use crate::cli::{Config, OfflineJob};
 use crate::error::CliError;
@@ -100,7 +100,7 @@ fn execute(config: &Config, job: OfflineJob) -> Result<serde_json::Value, CliErr
         // locally; trusts nothing it cannot recompute. Typed failure names the break.
         OfflineJob::ExportVerify { file } => export_verify(file.as_str()),
         // Phase 29 (T3): EXPLICIT owner key generation. The 32-byte seed is drawn from
-        // the OS CSPRNG and written to --out with 0600 permissions; the public key
+        // the OS CSPRNG and written to a new --out file (0600 on unix); the public key
         // fingerprint is printed alongside. Nothing else in the product ever creates keys.
         OfflineJob::KeysGenerate { out } => keys_generate(out.as_str()),
         OfflineJob::KeysFingerprint { input } => keys_fingerprint(&input),
@@ -587,18 +587,15 @@ fn export_verify(file: &str) -> Result<serde_json::Value, CliError> {
 }
 
 /// `keys generate --out <path>` — EXPLICIT owner action. Writes the 32-byte seed as
-/// lowercase hex with 0600 permissions and prints the public-key fingerprint.
+/// lowercase hex to a NEW file (0600 on unix; the inherited ACL on Windows) and
+/// prints the public-key fingerprint.
 /// Key material is never created anywhere else in the product.
 fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
-    // Seed from the OS CSPRNG (/dev/urandom on macOS/Linux). Explicit owner action only.
-    use std::io::Read as _;
     let mut seed = [0u8; 32];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut seed))
-        .map_err(|e| CliError::LocalIo {
-            message_key: "local.io.read".to_string(),
-            detail: Some(format!("entropy: {e}")),
-        })?;
+    os_random(&mut seed).map_err(|e| CliError::LocalIo {
+        message_key: "local.io.read".to_string(),
+        detail: Some(format!("entropy: {e}")),
+    })?;
     let signing = ed25519_dalek::SigningKey::from_bytes(&seed);
     let seed_hex: String = signing
         .to_bytes()
@@ -618,21 +615,83 @@ fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
             detail: Some(format!("create key dir: {e}")),
         })?;
     }
-    std::fs::write(path, format!("{seed_hex}\n")).map_err(|e| CliError::LocalIo {
-        message_key: "local.io.write".to_string(),
-        detail: Some(format!("write key file: {e}")),
-    })?;
+    // create_new (O_EXCL / CREATE_NEW): overwriting would destroy the previous signing
+    // key for good, so an existing path — file, directory or symlink — is refused.
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // 0600 is applied by the creating open itself, so the seed is never on disk
+    // readable by others; create-then-chmod left exactly that window.
     #[cfg(unix)]
-    {
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::AlreadyExists => CliError::local_io_with(
+            "local.keys.exists",
+            format!("refusing to overwrite existing key file {out}"),
+        ),
+        _ => CliError::local_io_with("local.io.write", format!("create key file: {e}")),
+    })?;
+    std::io::Write::write_all(&mut file, format!("{seed_hex}\n").as_bytes())
+        .map_err(|e| CliError::local_io_with("local.io.write", format!("write key file: {e}")))?;
+    // Reported as measured, not as requested: a umask or a filesystem without unix
+    // modes can leave something other than 0600.
+    #[cfg(unix)]
+    let permissions = {
         use std::os::unix::fs::PermissionsExt as _;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-    }
+        let metadata = file.metadata().map_err(|e| {
+            CliError::local_io_with("local.io.write", format!("stat key file: {e}"))
+        })?;
+        format!("{:04o}", metadata.permissions().mode() & 0o777)
+    };
+    // Nothing here narrows the Windows ACL: the file inherits its directory's.
+    #[cfg(windows)]
+    let permissions = "inherited".to_string();
     Ok(serde_json::json!({
         "generated": true,
         "out": out,
         "publicKeyFingerprint": public_hex,
-        "permissions": "0600",
+        "permissions": permissions,
     }))
+}
+
+/// Fills `seed` from the OS CSPRNG. Any error aborts key generation (fail closed).
+#[cfg(unix)]
+fn os_random(seed: &mut [u8; 32]) -> std::io::Result<()> {
+    use std::io::Read as _;
+    // Absolute on unix, and only root can create nodes under /dev.
+    std::fs::File::open("/dev/urandom")?.read_exact(seed)
+}
+
+/// On Windows `/dev/urandom` resolves to `<current drive>:\dev\urandom`, a file any
+/// local user can create — so the seed comes from BCryptGenRandom, never from a path.
+#[cfg(windows)]
+fn os_random(seed: &mut [u8; 32]) -> std::io::Result<()> {
+    #[link(name = "bcrypt")]
+    unsafe extern "system" {
+        fn BCryptGenRandom(
+            algorithm: *mut std::ffi::c_void,
+            buffer: *mut u8,
+            len: u32,
+            flags: u32,
+        ) -> i32;
+    }
+    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+    // SAFETY: SYSTEM_PREFERRED_RNG requires a null algorithm handle; the pointer and
+    // length describe exactly the exclusively borrowed 32-byte buffer.
+    let status = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            seed.as_mut_ptr(),
+            seed.len() as u32,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "BCryptGenRandom failed, NTSTATUS {status:#010x}"
+        )))
+    }
 }
 
 /// `keys fingerprint --in <path>` — derives the Ed25519 public-key fingerprint from an

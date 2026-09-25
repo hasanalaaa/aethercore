@@ -1,7 +1,7 @@
 use aethercore_windows_foundation::ComApartment;
 use windows::{
     Win32::{
-        Foundation::{DECIMAL, VARIANT_BOOL},
+        Foundation::{DECIMAL, VARIANT_BOOL, VARIANT_FALSE, VARIANT_TRUE},
         System::{
             Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
             UpdateAgent::{
@@ -14,8 +14,8 @@ use windows::{
 };
 
 use crate::{
-    DiscoveryResult, DriverOffer, Result, UpdateError, UpdateHealthProbe, VersionSource,
-    extract_version_from_update_title, ole_automation_date_to_iso,
+    DiscoveryResult, DriverOffer, Result, SearchScope, UpdateError, UpdateHealthProbe,
+    VersionSource, extract_version_from_update_title, ole_automation_date_to_iso,
 };
 
 #[derive(Clone)]
@@ -123,7 +123,7 @@ fn update_probe_error(error: windows::core::Error) -> UpdateHealthProbe {
     }
 }
 
-pub fn discover_driver_offers() -> Result<DiscoveryResult> {
+pub fn discover_driver_offers(scope: SearchScope) -> Result<DiscoveryResult> {
     let _guard = ComApartment::mta()
         .map_err(|hr| UpdateError::Wua(format!("CoInitializeEx failed: 0x{:08X}", hr.0 as u32)))?;
 
@@ -133,10 +133,15 @@ pub fn discover_driver_offers() -> Result<DiscoveryResult> {
     unsafe { session.SetClientApplicationID(&app_id).map_err(wua_err)? };
     let searcher = unsafe { session.CreateUpdateSearcher().map_err(wua_err)? };
 
-    // Force an online applicability scan while retaining the machine's configured update source
-    // (Microsoft Update/Windows Update or an enterprise WSUS policy selected by WUA).
+    // Always set explicitly, never left to WUA's default. VARIANT_FALSE means the search uses
+    // local data only ([MS-UAMG] 3.38.4.13). An online search keeps the machine's configured
+    // update source (Microsoft Update/Windows Update or an enterprise WSUS policy selected by WUA).
+    let online = match scope {
+        SearchScope::Online => VARIANT_TRUE,
+        SearchScope::LocalCacheOnly => VARIANT_FALSE,
+    };
     unsafe {
-        searcher.SetOnline(VARIANT_BOOL(-1)).map_err(wua_err)?;
+        searcher.SetOnline(online).map_err(wua_err)?;
     }
 
     // WUA evaluates applicability. AetherCore never ranks packages by version number.

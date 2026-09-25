@@ -14,10 +14,7 @@ pub fn run_unix_service(
 ) -> anyhow::Result<()> {
     use std::{
         io::Write as _,
-        sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
+        sync::{Arc, atomic::AtomicBool},
     };
     println!(
         "aethercore-maintenance-service: starting in {} mode",
@@ -92,11 +89,11 @@ pub fn run_unix_service(
     // CLI's detection cross-check converges to Offline after a clean stop.
     let result =
         crate::unix_composition::run_unix_server(stop, context, data_dir_override.as_deref());
-    if let Some(path) = pid_path {
-        if std::fs::remove_file(&path).is_ok() {
-            println!("pid file removed: {}", path.display());
-            let _ = std::io::stdout().flush();
-        }
+    if let Some(path) = pid_path
+        && std::fs::remove_file(&path).is_ok()
+    {
+        println!("pid file removed: {}", path.display());
+        let _ = std::io::stdout().flush();
     }
     result
 }
