@@ -339,11 +339,7 @@ fn sample_memory(partial: &mut Vec<CollectorFault>) -> Reading<MemorySample> {
 
     let available = free.saturating_add(inactive.min(purgeable));
     let used = memsize.saturating_sub(available);
-    let load_percent = if memsize > 0 {
-        ((used * 100) / memsize) as u32
-    } else {
-        0
-    };
+    let load_percent = (used * 100).checked_div(memsize).map_or(0, |p| p as u32);
     Reading::from_evidence(
         Some(MemorySample {
             total_physical_bytes: memsize,
@@ -384,8 +380,8 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
             continue;
         }
         let block = u64::from(fs.f_bsize.max(1));
-        let total = u64::from(fs.f_blocks).saturating_mul(block);
-        let available = u64::from(fs.f_bavail).saturating_mul(block);
+        let total = fs.f_blocks.saturating_mul(block);
+        let available = fs.f_bavail.saturating_mul(block);
         if total == 0 {
             // §44 1.A: this path used to be a silent skip — no fault, no
             // evidence either way. Named now, same as a statfs() failure.
@@ -488,7 +484,7 @@ fn sample_process_top() -> Reading<Vec<ProcessCpuTopEntry>> {
             continue;
         }
         let name = unsafe {
-            let mut name_buf = [0i8; 2 * libc::MAXCOMLEN as usize + 1];
+            let mut name_buf = [0i8; 2 * libc::MAXCOMLEN + 1];
             let n = libc::proc_name(pid, name_buf.as_mut_ptr().cast(), name_buf.len() as u32);
             if n <= 0 {
                 String::new()
