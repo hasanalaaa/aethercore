@@ -2,9 +2,10 @@
 //!
 //! The sampler is a passive, bounded, ring-buffered pipeline. Design invariants:
 //!
-//! 1. **No observer effect.** The sampling thread sleeps between ticks; every collector runs
-//!    under a timeout via the shared `collector-runtime` isolation gate. A collector that
-//!    misbehaves becomes a typed fault, never a stalled pipeline.
+//! 1. **No observer effect.** The sampling thread sleeps between ticks; every background tick
+//!    runs under a timeout via the shared `collector-runtime` isolation gate. A collector that
+//!    hangs becomes a typed fault, never a stalled pipeline. Direct `PerfPlatform::sample`
+//!    calls are not wrapped; the caller owns their deadline.
 //! 2. **Bounded memory.** The ring holds at most [`MAX_RING_SAMPLES`] samples and each sample
 //!    bounds its own repeated collections (processors, devices, processes).
 //! 3. **Owner-scoped.** Samples belong to one principal key; nothing leaks across owners.
@@ -20,6 +21,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
+use aethercore_collector_runtime::{DEFAULT_COLLECTOR_TIMEOUT, IsolationGate, run_isolated_gated};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -586,6 +588,44 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 static PUBLISHED_TOTAL: AtomicU64 = AtomicU64::new(0);
 
+/// One sampler tick under the `collector-runtime` watchdog. The platform sleeps
+/// through its measurement window, so the deadline is that window plus the
+/// runtime's shared collector budget.
+fn sample_isolated(
+    gate: &IsolationGate,
+    platform: &Arc<dyn PerfPlatform>,
+    interval: Duration,
+) -> PerfSnapshot {
+    let worker = Arc::clone(platform);
+    match run_isolated_gated(
+        gate,
+        "performance-telemetry",
+        "sample",
+        interval.saturating_add(DEFAULT_COLLECTOR_TIMEOUT),
+        move |_| Ok(worker.sample(interval)),
+    ) {
+        Ok(snapshot) => snapshot.normalized(),
+        Err(fault) => {
+            // Every subsystem is named, so `measured_subsystems()` reads none of
+            // them as measured. No window was measured, so none is published.
+            let unavailable = |collector: &str| CollectorFault {
+                collector: collector.into(),
+                kind: format!("{:?}", fault.kind),
+                detail: fault.detail.clone(),
+            };
+            CollectedSubsystems {
+                cpu: Reading::unavailable(unavailable("cpu")),
+                power: Reading::unavailable(unavailable("power")),
+                memory: Reading::unavailable(unavailable("memory")),
+                storage: Reading::unavailable(unavailable("storage")),
+                gpu: Reading::unavailable(unavailable("gpu")),
+                process_top: Reading::unavailable(unavailable("processTop")),
+            }
+            .into_snapshot(Duration::ZERO)
+        }
+    }
+}
+
 /// Owner-scoped bounded sample ring plus lifecycle for the background sampler thread.
 ///
 /// Concurrency model: one short-lived mutex guards the deque; the worker holds it for a single
@@ -657,9 +697,13 @@ impl PerformanceRing {
         let spawned = thread::Builder::new()
             .name("aether-perf-sampler".into())
             .spawn(move || {
+                // One gate per sampler: while a timed-out tick is still stuck in
+                // the platform, later ticks fault at once instead of stacking
+                // another stuck worker behind it.
+                let gate = IsolationGate::default();
                 while running.load(Ordering::Acquire) == generation {
                     let started = std::time::Instant::now();
-                    let snapshot = platform.sample(interval).normalized();
+                    let snapshot = sample_isolated(&gate, &platform, interval);
                     {
                         let mut guard = lock(&state);
                         // Checked under the ring lock: a tick that finishes after
