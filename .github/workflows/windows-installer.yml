@@ -493,31 +493,37 @@ jobs:
           # UPGRADINGPRODUCTCODE set), so its purge-data condition is the one under test.
           Section 'Major upgrade from an earlier version'
           if (Test-Path $oldMsi) {
-            # Arguments are unwrapped to their base objects: a PSObject (Join-Path's output, for
-            # one) reaches IDispatch as DISP_E_TYPEMISMATCH (runs 36024443316, 36025198764).
-            function Invoke-Com($o, [string]$member, [Reflection.BindingFlags]$how, [object[]]$argv) {
-              $a = [object[]]::new($argv.Count)
-              for ($i = 0; $i -lt $argv.Count; $i++) { $a[$i] = [Management.Automation.PSObject]::AsPSObject($argv[$i]).BaseObject }
-              $t = [Management.Automation.PSObject]::AsPSObject($o).BaseObject
-              # Keep the original target if this wrapper has no BaseObject.
-              if ($null -eq $t) { $t = $o }
-              if ($null -eq $t) { throw "Invoke-Com received a null target for $member" }
-              $t.GetType().InvokeMember($member, $how, $null, $t, $a)
-            }
+            # The COM edit runs as its own script: in this step, unwrapping through
+            # PSObject.BaseObject gave a null target (run 36111864600) and then
+            # DISP_E_TYPEMISMATCH on OpenDatabase (run 36178393577). This exact script
+            # passed under pwsh 7.6.6 and PowerShell 5.1 on windows-2025 (run 36184110472).
             $lowPc = [guid]::NewGuid().ToString('B').ToUpperInvariant()
-            $wi = New-Object -ComObject WindowsInstaller.Installer
-            $db = Invoke-Com $wi 'OpenDatabase' 'InvokeMethod' @($oldMsi, 1)
-            foreach ($sql in ('UPDATE `Property` SET `Value`=''{0}'' WHERE `Property`=''ProductCode''' -f $lowPc), 'UPDATE `Property` SET `Value`=''0.0.1'' WHERE `Property`=''ProductVersion''') {
-              $view = Invoke-Com $db 'OpenView' 'InvokeMethod' @($sql)
-              $null = Invoke-Com $view 'Execute' 'InvokeMethod' @()
-              $null = Invoke-Com $view 'Close' 'InvokeMethod' @()
-              $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)
-            }
-            $si = Invoke-Com $db 'SummaryInformation' 'GetProperty' @(4)
-            $null = Invoke-Com $si 'Property' 'SetProperty' @(9, [guid]::NewGuid().ToString('B').ToUpperInvariant())
-            $null = Invoke-Com $si 'Persist' 'InvokeMethod' @()
-            $null = Invoke-Com $db 'Commit' 'InvokeMethod' @()
-            $si, $db, $wi | ForEach-Object { $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($_) }
+            $downgrade = Join-Path $env:RUNNER_TEMP 'p75-downgrade.ps1'
+            @'
+          param([string]$msi, [string]$pc)
+          $ErrorActionPreference = 'Stop'
+          $step = 'start'
+          trap { Write-Host "downgrade failed at ${step}: $_"; exit 1 }
+          function Call($o, [string]$m, [string]$how, [object[]]$a) { $script:step = $m; $o.GetType().InvokeMember($m, $how, $null, $o, $a) }
+          $wi = New-Object -ComObject WindowsInstaller.Installer
+          $db = Call $wi 'OpenDatabase' 'InvokeMethod' @($msi, 1)
+          foreach ($sql in ("UPDATE ``Property`` SET ``Value``='$pc' WHERE ``Property``='ProductCode'"), "UPDATE ``Property`` SET ``Value``='0.0.1' WHERE ``Property``='ProductVersion'") {
+            $view = Call $db 'OpenView' 'InvokeMethod' @($sql)
+            $null = Call $view 'Execute' 'InvokeMethod' @()
+            $null = Call $view 'Close' 'InvokeMethod' @()
+          }
+          $si = Call $db 'SummaryInformation' 'GetProperty' @(4)
+          $null = Call $si 'Property' 'SetProperty' @(9, [guid]::NewGuid().ToString('B').ToUpperInvariant())
+          $null = Call $si 'Persist' 'InvokeMethod' @()
+          $null = Call $db 'Commit' 'InvokeMethod' @()
+          $view = Call $db 'OpenView' 'InvokeMethod' @("SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ProductCode'")
+          $null = Call $view 'Execute' 'InvokeMethod' @()
+          $got = Call (Call $view 'Fetch' 'InvokeMethod' @()) 'StringData' 'GetProperty' @(1)
+          Write-Host "earlier MSI ProductCode $got, expected $pc"
+          if ($got -ne $pc) { exit 1 }
+          '@ | Set-Content -LiteralPath $downgrade
+            pwsh -NoProfile -File $downgrade $oldMsi $lowPc
+            if ($LASTEXITCODE) { throw "the earlier-version MSI could not be prepared (exit $LASTEXITCODE)" }
             $t7 = Get-Date
             $p = Start-Process msiexec.exe -ArgumentList '/i', $oldMsi, '/qn', '/norestart', '/l*v', (Join-Path $ev 'upgrade-earlier-install.log') -PassThru
             $null = $p.Handle
