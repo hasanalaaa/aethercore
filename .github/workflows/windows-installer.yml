@@ -499,6 +499,8 @@ jobs:
               $a = [object[]]::new($argv.Count)
               for ($i = 0; $i -lt $argv.Count; $i++) { $a[$i] = [Management.Automation.PSObject]::AsPSObject($argv[$i]).BaseObject }
               $t = [Management.Automation.PSObject]::AsPSObject($o).BaseObject
+              # Keep the original target if this wrapper has no BaseObject.
+              if ($null -eq $t) { $t = $o }
               if ($null -eq $t) { throw "Invoke-Com received a null target for $member" }
               $t.GetType().InvokeMember($member, $how, $null, $t, $a)
             }
