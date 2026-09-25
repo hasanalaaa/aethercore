@@ -79,8 +79,8 @@ fn make_world_writable(path: &Path) {
     icacls_grant(path, "*S-1-1-0:(W)");
 }
 
-/// Owner-only on unix. On Windows, remove inherited entries and grant only the
-/// current user, SYSTEM and Administrators, so the fixture is truly private.
+/// Owner-only on unix. On Windows, make the current user the owner, remove inherited
+/// entries and grant only that user, SYSTEM and Administrators.
 fn make_private(path: &Path, dir: bool) {
     #[cfg(unix)]
     chmod(path, if dir { 0o700 } else { 0o600 });
@@ -94,18 +94,15 @@ fn make_private(path: &Path, dir: bool) {
             .status()
             .expect("icacls runs");
         assert!(status.success(), "icacls /inheritance:r failed");
-        // The hosted runner also adds an explicit ACE for its local Administrator
-        // account; removing inheritance alone does not remove that entry.
-        let (machine_sid, _) = user_sid.rsplit_once('-').expect("user SID RID");
+        // An elevated process (the CI runner) creates files owned by BUILTIN\Administrators,
+        // not by its user; ssh-keygen run by the user leaves the user as owner.
         let status = std::process::Command::new("icacls")
             .arg(path)
-            .args(["/remove:g", &format!("*{machine_sid}-500")])
+            .arg("/setowner")
+            .arg(format!("*{user_sid}"))
             .status()
             .expect("icacls runs");
-        assert!(
-            status.success(),
-            "icacls /remove:g local Administrator failed"
-        );
+        assert!(status.success(), "icacls /setowner failed");
         let status = std::process::Command::new("icacls")
             .arg(path)
             .arg("/grant:r")

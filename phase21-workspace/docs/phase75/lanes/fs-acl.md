@@ -18,12 +18,22 @@ by `conditional_deny_cannot_hide_an_unconditional_broad_write_grant`.
 
 The fixed-source Windows probe `36178087566` passed the firewall assertion,
 then its full workspace suite failed in `ssh_findings_follow_the_real_permissions`.
-That test's Windows `make_private` helper had been a no-op. The runner's temp
-tree gave `.ssh` and its private key an inherited allow ACE for the local
-Administrator account (SID ending `-500`, mask `0x001f01ff`), which the audit
-correctly reported as another principal. The fixture now removes inheritance
-and explicitly grants only the current user, SYSTEM and Administrators before
-testing the quiet case. A Windows rerun must confirm this correction.
+That test's Windows `make_private` helper had been a no-op. CI `36179998645`
+(`e114099`) and `36181357153` (`8eb928f`) then showed the flagged SID ending
+`-500` (mask `0x001f01ff`) survives an explicit `/remove:g` of that SID
+followed by `/grant:r` for the current user: the runner's user **is** the RID-500
+account. The runner is elevated, so its files are owned by
+`BUILTIN\Administrators` (`S-1-5-32-544`), not by the user, and the audit's
+rule (owner, SYSTEM, Administrators) correctly names the user's ACE as
+another principal. The fixture now sets the current user as owner (as
+`ssh-keygen` run by that user leaves it), removes inheritance and grants only
+the user, SYSTEM and Administrators.
+
+Proposed new row (not fixed here): the rule uses the owner as the stand-in for
+the key's user. Win32-OpenSSH trusts the account's own SID. Key material
+created by an elevated administrator is owned by `S-1-5-32-544`, so that
+user's own ACE is reported Critical. Fixing it needs the profile's SID, for
+example from the `ProfileList` registry key.
 
 ## CVE census
 
