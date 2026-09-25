@@ -59,6 +59,71 @@ fn stop_then_start_within_an_interval_leaves_exactly_one_sampler() {
     );
 }
 
+/// Never returns: a stand-in for a PDH wildcard expansion that hangs.
+struct Hung;
+
+impl PerfPlatform for Hung {
+    fn sample(&self, _interval: Duration) -> PerfSnapshot {
+        loop {
+            std::thread::park();
+        }
+    }
+}
+
+/// `lib.rs` promised that every collector runs under the `collector-runtime`
+/// timeout; none did, so one hung platform call stalled the sampler forever and
+/// the ring stayed empty with nothing said. The tick must now publish a fault
+/// for every subsystem once the deadline passes, and keep ticking.
+#[test]
+fn a_hung_collector_becomes_a_timeout_fault_not_a_stalled_sampler() {
+    let ring = PerformanceRing::new();
+    ring.start(Arc::new(Hung), OWNER, 250).expect("start");
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let snapshot = loop {
+        if let Some(snapshot) = ring.latest(OWNER) {
+            break snapshot;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "a hung collector stalled the sampler: no snapshot after 15 s"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    for collector in ["cpu", "power", "memory", "storage", "gpu", "processTop"] {
+        let fault = snapshot
+            .collector_faults
+            .iter()
+            .find(|fault| fault.collector == collector)
+            .unwrap_or_else(|| panic!("no {collector} fault in {:?}", snapshot.collector_faults));
+        assert_eq!(fault.kind, "Timeout", "{fault:?}");
+    }
+    let measured = snapshot.measured_subsystems();
+    assert!(!measured.cpu && !measured.memory && !measured.storage && !measured.gpu);
+    assert_eq!(
+        snapshot.interval_ms, 0,
+        "nothing was measured, so no window"
+    );
+
+    // The worker is still stuck; later ticks must say so at once, not queue
+    // another stuck thread behind it.
+    let first = snapshot.captured_unix_ms;
+    std::thread::sleep(Duration::from_millis(700));
+    let later = ring.latest(OWNER).expect("later tick");
+    ring.stop();
+    assert!(
+        later.captured_unix_ms > first,
+        "the sampler stopped ticking"
+    );
+    assert!(
+        later
+            .collector_faults
+            .iter()
+            .any(|fault| fault.collector == "cpu" && fault.kind == "Unavailable"),
+        "{:?}",
+        later.collector_faults
+    );
+}
+
 /// Two concurrent starts must not both win (the check and the store were two
 /// separate operations).
 #[test]
