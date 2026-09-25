@@ -94,15 +94,6 @@ fn make_private(path: &Path, dir: bool) {
             .status()
             .expect("icacls runs");
         assert!(status.success(), "icacls /inheritance:r failed");
-        // An elevated process (the CI runner) creates files owned by BUILTIN\Administrators,
-        // not by its user; ssh-keygen run by the user leaves the user as owner.
-        let status = std::process::Command::new("icacls")
-            .arg(path)
-            .arg("/setowner")
-            .arg(format!("*{user_sid}"))
-            .status()
-            .expect("icacls runs");
-        assert!(status.success(), "icacls /setowner failed");
         let status = std::process::Command::new("icacls")
             .arg(path)
             .arg("/grant:r")
@@ -111,6 +102,16 @@ fn make_private(path: &Path, dir: bool) {
             .status()
             .expect("icacls runs");
         assert!(status.success(), "icacls private grants failed");
+        // An elevated process (the CI runner) creates files owned by BUILTIN\Administrators,
+        // not by its user; ssh-keygen run by the user leaves the user as owner. Granted first:
+        // an owner implicitly holds WRITE_DAC but not WRITE_OWNER (run 36184178072).
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/setowner")
+            .arg(format!("*{user_sid}"))
+            .status()
+            .expect("icacls runs");
+        assert!(status.success(), "icacls /setowner failed");
     }
 }
 

@@ -25,9 +25,14 @@ followed by `/grant:r` for the current user: the runner's user **is** the RID-50
 account. The runner is elevated, so its files are owned by
 `BUILTIN\Administrators` (`S-1-5-32-544`), not by the user, and the audit's
 rule (owner, SYSTEM, Administrators) correctly names the user's ACE as
-another principal. The fixture now sets the current user as owner (as
-`ssh-keygen` run by that user leaves it), removes inheritance and grants only
-the user, SYSTEM and Administrators.
+another principal. The fixture now removes inheritance, grants only the user,
+SYSTEM and Administrators, then sets the current user as owner (as
+`ssh-keygen` run by that user leaves it). The grant must come first: in CI
+`36184178072` a `/setowner` straight after `/inheritance:r` was denied on the
+key file, because an owner holds WRITE_DAC implicitly but not WRITE_OWNER. The
+order was checked on the runner in the throwaway run `36185665074`. Both paths
+ended owned by `runneradmin`, with only Administrators, SYSTEM and
+`runneradmin` holding access.
 
 Proposed new row (not fixed here): the rule uses the owner as the stand-in for
 the key's user. Win32-OpenSSH trusts the account's own SID. Key material
