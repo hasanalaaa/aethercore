@@ -29,8 +29,8 @@ use windows::{
 };
 
 use crate::{
-    CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EventEvidence,
-    Result, assemble_snapshot, classify_event,
+    CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EVENT_WINDOW_MS,
+    EventEvidence, Result, assemble_snapshot, classify_event, event_query,
 };
 
 const MAX_EVENTS: usize = 128;
@@ -39,7 +39,6 @@ const MAX_SYSTEM_RENDER_BYTES: usize = 64 * 1024;
 const MAX_USER_RENDER_BYTES: usize = 256 * 1024;
 const MAX_EVENT_PROPERTIES: usize = 256;
 const MAX_EVENT_STRING_UTF16: usize = 16 * 1024;
-const EVENT_WINDOW_MS: u64 = DEFAULT_EVENT_WINDOW_DAYS as u64 * 24 * 60 * 60 * 1000;
 const FILETIME_UNIX_EPOCH_TICKS: u64 = 116_444_736_000_000_000;
 
 static EVENTLOG_GATE: OnceLock<IsolationGate> = OnceLock::new();
@@ -192,9 +191,7 @@ fn collect_events(
 ) -> Result<(Vec<EventEvidence>, Vec<String>, Vec<CollectorFaultRecord>)> {
     checkpoint(control, "eventlog.begin")?;
     let channel = w("System");
-    let query = w(&format!(
-        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or Provider[@Name='Microsoft-Windows-Kernel-Power'] or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= {EVENT_WINDOW_MS}]]]"
-    ));
+    let query = w(&event_query(EVENT_WINDOW_MS));
     let result = unsafe {
         EvtQuery(
             None,

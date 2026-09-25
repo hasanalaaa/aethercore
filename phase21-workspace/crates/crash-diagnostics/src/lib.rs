@@ -25,6 +25,18 @@ pub type Result<T> = std::result::Result<T, CrashError>;
 
 pub const DEFAULT_EVENT_WINDOW_DAYS: u32 = 30;
 
+/// The crash window in milliseconds.
+pub const EVENT_WINDOW_MS: u64 = DEFAULT_EVENT_WINDOW_DAYS as u64 * 24 * 60 * 60 * 1000;
+
+/// The System-channel XPath for the crash window. Kernel-Power is taken for id 41
+/// only: it is the one id `classify_event` reads, and its routine power-transition
+/// ids would otherwise fill the collector's event cap ahead of WHEA records.
+pub fn event_query(window_ms: u64) -> String {
+    format!(
+        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= {window_ms}]]]"
+    )
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EventEvidence {
@@ -177,6 +189,16 @@ pub fn collect_with_cancellation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_kernel_power_41_competes_for_the_event_cap() {
+        let q = event_query(EVENT_WINDOW_MS);
+        assert!(
+            q.contains("(Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41)"),
+            "{q}"
+        );
+        assert!(q.contains("Microsoft-Windows-WHEA-Logger"), "{q}");
+        assert!(q.contains(&format!("<= {EVENT_WINDOW_MS}")), "{q}");
+    }
     #[test]
     fn kernel_power_never_claims_root_cause() {
         let e = classify_event("Microsoft-Windows-Kernel-Power", 41, &[], 1);
