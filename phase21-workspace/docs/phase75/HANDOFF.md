@@ -76,11 +76,14 @@ never `git add -A`, never force-push, never merge red. Windows behaviour is prov
 
 # Continuation — state at 2026-09-26 (second lead session)
 
-One lane at a time locally; no subagents. `main` = `9e0b755` (#28 merged after #29).
-**`main` is RED** on `t5_budget_constants_respected_on_load_and_call` (run `36197424831`):
-#29 made the model really decode, and the decode loops overran the 10 s budget on the
-2-vCPU runner (#29's own run passed; three later runs failed). **PR #36
-(`lane/insight-deadline`) is the fix-forward and must merge before anything else.**
+One lane at a time locally; no subagents. `main` = `883e0f4` (#36 merged: the t5 red that #29
+introduced is fixed — on the runner the insight prefill now stops at 8.5 s and the rule answer
+arrives at 9.5 s, inside 10 s; CI `36198857596`). Main run `36202710076` at `883e0f4` pending.
+
+**Ledger merges:** every lane edits `docs/LEDGER.md`, so `git merge origin/main` conflicts on the
+"Last moved" line AND, when two lanes add rows at the same place, on the rows. Never resolve by
+replacing hunks: rebuild from `origin/main`'s file plus exactly the rows the lane changed since the
+merge base (the script used is reproduced at the end of this file).
 
 ## Merge train (one PR at a time; each needs `main` merged in, which conflicts only on
 `docs/LEDGER.md` "Last moved" and `MANIFEST.sha256`, then a fresh CI at the new head)
@@ -93,9 +96,9 @@ One lane at a time locally; no subagents. `main` = `9e0b755` (#28 merged after #
 | #31 | diagnosis-evidence | `6f47c6c` | green pre-#29 (`36187290070`) | Kernel-Power XPath measured in throwaway run `36186229655` |
 | #32 | plan-journal | `f017f7c` | green pre-#29 (`36187928668`) | replayed onto main; `DBT-P75-027` open (needs a dev-dependency) |
 | #33 | telemetry-windows | `8d6b46d` | `36189280509` | only lifecycle + watchdog; the Windows counter items are not started |
-| #34 | service-rollback | `5dc124f` | `36192907227` | installer probe red `36184401229` / green `36184392149`; `DBT-P74-002` not started |
+| #34 | service-rollback | `8dc5c5f` (next to merge) | pending (`5dc124f` failed only on t5) | installer probe red `36184401229` / green `36184392149`; `DBT-P74-002` not started |
 | #35 | db-diagnostics (Wave 2) | `707d735` | failed only on t5 | 7 red-before tests |
-| #36 | insight-deadline | `10f0e16` | pending | fixes main's red t5; merge first |
+| #36 | insight-deadline | merged `883e0f4` | `36198857596` green | fixed main's red t5 |
 
 Ledger ids assigned: `DBT-P75-006`…`034` (see each lane doc under `docs/phase75/lanes/`).
 
@@ -114,3 +117,32 @@ Ledger ids assigned: `DBT-P75-006`…`034` (see each lane doc under `docs/phase7
 
 Wave 2: installer-ux (after service-rollback), care-consent (after plan-journal), gate-honesty,
 ui-truth, service-host, update-trust, fuzz, seal-root (last). `P75-REPORT.md` not written.
+
+## Ledger merge resolver (run from `phase21-workspace/` during the merge; arg = lane name)
+
+```python
+import re, subprocess, sys
+lane = sys.argv[1]
+P = 'phase21-workspace/docs/LEDGER.md'
+show = lambda rev: subprocess.run(['git', 'show', f'{rev}:{P}'], capture_output=True, text=True, check=True).stdout
+base_rev = subprocess.run(['git', 'merge-base', 'HEAD', 'origin/main'], capture_output=True, text=True, check=True).stdout.strip()
+base, ours, main = show(base_rev), show('HEAD'), show('origin/main')
+rid = lambda line: line.split('|')[1].strip() if line.startswith('| `DBT-') else None
+rows = lambda text: {rid(l): l for l in text.split('\n') if rid(l)}
+b, o = rows(base), rows(ours)
+changed = [i for i in o if b.get(i) != o[i]]
+out = main.split('\n')
+for i in changed:
+    k = next((n for n, l in enumerate(out) if rid(l) == i), None)
+    if k is not None:
+        out[k] = o[i]
+        continue
+    before = [n for n, l in enumerate(out) if rid(l) and rid(l).startswith('`DBT-P75-') and rid(l) < i]
+    out.insert((before[-1] if before else max(n for n, l in enumerate(out) if rid(l))) + 1, o[i])
+text = '\n'.join(out)
+text, n = re.subn(r"Last moved: P75 \(2026-09-\d\d\), lane `[^`]+`\.", f"Last moved: P75 (2026-09-26), lane `{lane}`.", text)
+assert n == 1, n
+open('docs/LEDGER.md', 'w').write(text)
+```
+Then `git checkout --theirs MANIFEST.sha256`, `source_seal.py --json` (every failing path must be
+the lane's own or the ledger), add them, regenerate, seal OK, commit, push.
