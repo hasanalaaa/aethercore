@@ -126,6 +126,8 @@ jobs:
             ${{ runner.os }}-cargo-1.97.1-
       - name: Rust formatting
         run: cargo fmt --all -- --check
+      - name: P75 Windows firewall red probe before unrelated workspace tests
+        run: cargo test -p aethercore-security-audit --lib firewall_evidence_names_windows_registry_profile_values --locked
       # crates/intelligence-core/tests/embedded_generation.rs runs against the
       # REAL shipped .gguf - a mock cannot prove llama.cpp is linked or that a
       # token comes out - and asserts its absence loudly rather than skipping.
