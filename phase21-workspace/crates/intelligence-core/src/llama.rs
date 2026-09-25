@@ -377,17 +377,18 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
 }
 
 #[cfg(feature = "embedded-model")]
-/// Whether one more prompt chunk can start at `now` and still end by `deadline`. One
-/// `decode` cannot be interrupted, and on the 2-vCPU runner a 128-token chunk took over
-/// a second: checking only "is it past the deadline yet" overran the insight budget by
-/// up to 1.4 s (CI `36185690510`). The previous chunk's time predicts the next; the
-/// first chunk has no estimate and starts if the deadline has not passed.
-fn chunk_fits(
+/// Whether one more decode step (a prompt chunk, or one generated token) can start at
+/// `now` and still end by `deadline`. One `decode` cannot be interrupted, and on the
+/// 2-vCPU runner a 128-token chunk took over a second: checking only "is it past the
+/// deadline yet" overran the insight budget by up to 1.4 s (CI `36185690510`). The
+/// previous step's time predicts the next; the first step has no estimate and starts if
+/// the deadline has not passed.
+fn step_fits(
     now: std::time::Instant,
-    last_chunk: Option<std::time::Duration>,
+    last_step: Option<std::time::Duration>,
     deadline: std::time::Instant,
 ) -> bool {
-    now + last_chunk.unwrap_or_default() < deadline
+    now + last_step.unwrap_or_default() < deadline
 }
 
 impl LlamaCppReasoner {
@@ -471,7 +472,7 @@ impl LlamaCppReasoner {
                     ..Default::default()
                 });
             }
-            if !chunk_fits(std::time::Instant::now(), last_chunk, budget.deadline) {
+            if !step_fits(std::time::Instant::now(), last_chunk, budget.deadline) {
                 return Err(format!(
                     "deadline exceeded after {first} of {} prompt token(s)",
                     tokens.len()
@@ -523,6 +524,8 @@ impl LlamaCppReasoner {
         let mut cancelled = false;
         let mut streamed = String::new();
 
+        let mut last_step: Option<std::time::Duration> = None;
+        let mut step_started: Option<std::time::Instant> = None;
         while emitted < budget.max_tokens {
             // The three ceilings, checked between tokens. Cancel first: a user
             // who pressed Escape should not pay for one more token.
@@ -530,7 +533,12 @@ impl LlamaCppReasoner {
                 cancelled = true;
                 break;
             }
-            if budget.expired() {
+            let now = std::time::Instant::now();
+            if let Some(started) = step_started {
+                last_step = Some(now - started);
+            }
+            step_started = Some(now);
+            if !step_fits(now, last_step, budget.deadline) {
                 return Err(format!("deadline exceeded after {emitted} token(s)"));
             }
 
@@ -610,22 +618,22 @@ fn backend_global() -> Result<&'static llama_cpp_2::llama_backend::LlamaBackend,
 #[cfg(test)]
 mod tests {
 
-    /// P75 — the prefill stops before a chunk that would end past the deadline, not
-    /// only once the deadline has already passed (DBT-P62-004's 1.4 s overshoot).
+    /// P75 — a decode step (prompt chunk or token) that would end past the deadline does not
+    /// start; stopping only once it had passed overshot by 1.4 s (DBT-P62-004).
     #[test]
-    fn a_prompt_chunk_that_would_end_past_the_deadline_does_not_start() {
+    fn a_decode_step_that_would_end_past_the_deadline_does_not_start() {
         use std::time::Duration;
         let now = std::time::Instant::now();
         let deadline = now + Duration::from_millis(1_000);
-        assert!(chunk_fits(now, None, deadline), "the first chunk starts");
-        assert!(chunk_fits(now, Some(Duration::from_millis(900)), deadline));
-        assert!(!chunk_fits(
+        assert!(step_fits(now, None, deadline), "the first chunk starts");
+        assert!(step_fits(now, Some(Duration::from_millis(900)), deadline));
+        assert!(!step_fits(
             now,
             Some(Duration::from_millis(1_300)),
             deadline
         ));
         assert!(
-            !chunk_fits(deadline, None, deadline),
+            !step_fits(deadline, None, deadline),
             "a passed deadline stops"
         );
     }
