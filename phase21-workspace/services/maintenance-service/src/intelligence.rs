@@ -14,8 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use aethercore_contracts::v1;
 use aethercore_intelligence_core::{
-    EvidenceItem, EvidenceSurface, LlamaCppReasoner, LocalReasoner, ReasonerSelector,
-    TypedEvidencePack,
+    EvidenceItem, EvidenceSurface, LlamaCppReasoner, ReasonerSelector, TypedEvidencePack,
 };
 use aethercore_persistence::Database;
 use aethercore_timeline_intelligence::RecurrenceConfidence;
@@ -186,38 +185,25 @@ impl IntelligenceCoordinator {
     /// RAM budget → load within budget → typed log line. The embedded reasoner is the
     /// PERMANENT default; failure here is a defect logged loudly while insights degrade
     /// to ruleFallback (I3).
-    pub fn activate_embedded_default(&mut self, product_root: &std::path::Path) {
+    pub fn activate_embedded_default(
+        &mut self,
+        product_root: &std::path::Path,
+    ) -> Option<LlamaCppReasoner> {
         use std::sync::atomic::Ordering;
-        let model_path =
-            product_root.join(aethercore_intelligence_core::EMBEDDED_MODEL_RELATIVE_PATH);
-        match aethercore_intelligence_core::verify_model_hash(
-            &model_path,
-            &aethercore_intelligence_core::embedded_model_entry(),
-        ) {
-            Ok(()) => {
-                let mut reasoner = LlamaCppReasoner::new();
-                match reasoner.load(&model_path) {
-                    Ok(()) => {
-                        self.selector = Arc::new(ReasonerSelector::new(Some(Box::new(reasoner))));
-                        EMBEDDED_ENGINE_ACTIVE.store(true, Ordering::SeqCst);
-                        // Typed startup log line (contract M2).
-                        eprintln!(
-                            "intelligence-core: embedded reasoner active (model=qwen2.5-1.5b-instruct-q4_k_m, sha256 ok)"
-                        );
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "intelligence-core: embedded reasoner FAILED to load ({e}); degraded to rule fallback — defect"
-                        );
-                        EMBEDDED_ENGINE_ACTIVE.store(false, Ordering::SeqCst);
-                    }
-                }
+        match aethercore_intelligence_core::activate_embedded_reasoner(product_root) {
+            Ok((reasoner, label)) => {
+                // Both clones hold the same model and generation gate.
+                self.selector = Arc::new(ReasonerSelector::new(Some(Box::new(reasoner.clone()))));
+                EMBEDDED_ENGINE_ACTIVE.store(true, Ordering::SeqCst);
+                eprintln!("{label}");
+                Some(reasoner)
             }
             Err(e) => {
                 eprintln!(
-                    "intelligence-core: embedded artifact verification FAILED ({e}); degraded to rule fallback — defect"
+                    "intelligence-core: embedded reasoner unavailable ({e}); degraded to rule fallback — defect"
                 );
                 EMBEDDED_ENGINE_ACTIVE.store(false, Ordering::SeqCst);
+                None
             }
         }
     }
