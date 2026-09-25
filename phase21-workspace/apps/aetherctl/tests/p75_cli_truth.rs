@@ -314,3 +314,74 @@ fn format_both_refuses_an_html_out_path_instead_of_overwriting_the_json() {
         assert!(!out.exists(), "nothing may be written on a refused command");
     }
 }
+
+// ---------------------------------------------------------------------------
+// --lang ar / AETHERCORE_LANG=ar: human text is Arabic, JSON stays locale-neutral
+// ---------------------------------------------------------------------------
+
+fn has_arabic(text: &str) -> bool {
+    text.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c))
+}
+
+fn export_file(tag: &str) -> PathBuf {
+    let file = scratch(tag).join("export.json");
+    let envelope = aethercore_persistence::export::build_envelope(
+        vec![("plan_event".into(), 1, serde_json::json!({"k": "v"}))],
+        0,
+        "fp".into(),
+    );
+    std::fs::write(&file, serde_json::to_vec(&envelope).unwrap()).unwrap();
+    file
+}
+
+#[test]
+fn lang_ar_renders_success_text_in_arabic() {
+    let file = export_file("lang-ok");
+    let out = aetherctl(&["--lang", "ar", "export", "verify", path(&file)]);
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("تم التحقق من السلسلة"), "{stdout}");
+    assert!(stdout.contains("السجلات"), "{stdout}");
+
+    let english = aetherctl(&["--lang", "en", "export", "verify", path(&file)]);
+    assert!(!has_arabic(&String::from_utf8(english.stdout).unwrap()));
+}
+
+#[test]
+fn lang_ar_renders_errors_and_usage_in_arabic() {
+    let missing = scratch("lang-err").join("missing.key");
+    let out = aetherctl(&["--lang", "ar", "keys", "fingerprint", path(&missing)]);
+    assert_eq!(out.status.code(), Some(8));
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("فشلت عملية ملف محلي"), "{stderr}");
+
+    // A line that fails to parse still honours --lang for its reason and usage block.
+    let out = aetherctl(&["--lang", "ar", "no-such-command"]);
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("أمر غير معروف"), "{stderr}");
+    assert!(stderr.contains("الرايات العامة"), "{stderr}");
+}
+
+#[test]
+fn aethercore_lang_env_selects_arabic_when_no_flag_is_given() {
+    let file = export_file("lang-env");
+    let out = Command::new(env!("CARGO_BIN_EXE_aetherctl"))
+        .args(["export", "verify", path(&file)])
+        .env("AETHERCORE_LANG", "ar")
+        .output()
+        .unwrap();
+    assert!(has_arabic(&String::from_utf8(out.stdout).unwrap()));
+}
+
+#[test]
+fn json_output_is_identical_in_every_language() {
+    let file = export_file("lang-json");
+    let (_, en) = json(&["--lang", "en", "export", "verify", path(&file)]);
+    let (_, ar) = json(&["--lang", "ar", "export", "verify", path(&file)]);
+    assert_eq!(en, ar);
+    let missing = scratch("lang-json-err").join("missing.key");
+    let (_, en) = json(&["--lang", "en", "keys", "fingerprint", path(&missing)]);
+    let (_, ar) = json(&["--lang", "ar", "keys", "fingerprint", path(&missing)]);
+    assert_eq!(en, ar);
+}
