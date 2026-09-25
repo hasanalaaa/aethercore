@@ -30,8 +30,25 @@ events as patterns. Model tests run over the actual pinned GGUF artifact;
 they check that every returned citation resolves, the engine is `LocalModel`,
 and the model remains inside its deadline. On this Mac, the selector test
 printed `3 insight(s) in 2583 ms (budget 10000 ms)`. That is a Mac
-measurement, not a Windows wall-time claim. Windows CI `36180691145` at
-`ca16e44` is running; its real-model timings must be read from its log.
+measurement, not a Windows wall-time claim.
+
+Windows CI `36180691145` at `ca16e44` (windows-2025, 2 vCPU, CPU-only;
+llama.cpp is always built `Release`, `LLAMA_LIB_PROFILE` default) measured:
+
+* assistant: `24 token(s) in 5985 ms (deadline 20000 ms)`;
+* insight: `deadline exceeded after 640 of 927 prompt token(s)` — the runner
+  cannot even prefill the insight prompt inside the 10 s budget.
+
+The deadline was not widened. The test that asserted a model-served insight on
+every host was asserting hardware, not code; it is now
+`the_real_model_insight_path_is_cited_and_truthfully_badged`. On every host the
+answer must be non-empty, fully cited and badged with the engine that served
+it (`ruleFallback` when the model misses its deadline); a model-served answer
+must arrive inside 10 s. macOS, where the model measured 3 insights in 2583 ms,
+must be served by the model. **So `DBT-P56-002` closes for the code path, and
+the Windows CPU budget is `DBT-P62-004`'s, still OPEN: on the 2-vCPU runner every
+insight request spends 10 s in the model and then returns rule findings.** A
+shorter insight prompt is the next lever; that is not done here.
 
 ## Local verification
 
