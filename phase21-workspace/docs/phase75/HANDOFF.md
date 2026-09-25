@@ -71,3 +71,42 @@ SYSTEM; never weaken a gate or edit an expected value; lockfile changes only in 
 with the freeze minted by `windows-installer.yml` on that branch (`docs/phase70/P70-REPORT.md` §3);
 never `git add -A`, never force-push, never merge red. Windows behaviour is proven on the
 `windows-2025` runner, never asserted. At the end: `docs/phase75/P75-REPORT.md` per `AMBITION.md` §6.
+
+---
+
+# Continuation — state at 2026-09-26 (second lead session)
+
+One lane at a time locally; no subagents. `main` = `b032a71` (#29 merged). `bcd7211` (#27) is
+green on run `36182970532`.
+
+## Merge train (one PR at a time; each needs `main` merged in, which conflicts only on
+`docs/LEDGER.md` "Last moved" and `MANIFEST.sha256`, then a fresh CI at the new head)
+
+| PR | lane | head at writing | PR CI | notes |
+|---|---|---|---|---|
+| #25, #26, #27, #29 | no-egress, mac-clippy, keygen-rng, insight-model | merged | green | #29's main run `36192104951` |
+| #28 | fs-acl | `b7d4e47` | `36192190898` | fixture made user-owned (runner user is RID 500, elevated → owner is Administrators; `DBT-P75-008` opened); icacls order proven in throwaway run `36185665074`; firewall test moved behind `#[cfg(test)]` for `enterprise-adversarial-audit` |
+| #30 | cli-truth | `9f15666` | green pre-#29 (`36186619945`) | exit-code change 5→8 flagged for the owner (`DBT-P75-016`) |
+| #31 | diagnosis-evidence | `6f47c6c` | green pre-#29 (`36187290070`) | Kernel-Power XPath measured in throwaway run `36186229655` |
+| #32 | plan-journal | `f017f7c` | green pre-#29 (`36187928668`) | replayed onto main; `DBT-P75-027` open (needs a dev-dependency) |
+| #33 | telemetry-windows | `8d6b46d` | `36189280509` | only lifecycle + watchdog; the Windows counter items are not started |
+| #34 | service-rollback | `5dc124f` | `36192907227` | installer probe red `36184401229` / green `36184392149`; `DBT-P74-002` not started |
+| #35 | db-diagnostics (Wave 2) | `707d735` | pending | 7 red-before tests |
+
+Ledger ids assigned: `DBT-P75-006`…`034` (see each lane doc under `docs/phase75/lanes/`).
+
+## Measurements that change earlier beliefs
+
+* Windows insight generation does not fit 10 s on the 2-vCPU runner: `deadline exceeded after
+  768 of 927 prompt token(s)` at 11.1–11.4 s. The budget overshoots by up to 1.4 s because the
+  deadline is checked between prompt chunks (`DBT-P62-004`, OPEN). Answers are badged
+  `ruleFallback`.
+* The pwsh COM wrapper in `windows-installer.yml` was the cause of the masked upgrade gate, not
+  the product; the harness now runs a standalone script (proven under pwsh 7.6.6 and 5.1).
+* Throwaway branch `probe/p75-com` (push-triggered, ~2 min on windows-2025) is the cheap way to
+  measure a Windows fact before spending an 80-minute CI run. Delete it when P75 closes.
+
+## Not started
+
+Wave 2: installer-ux (after service-rollback), care-consent (after plan-journal), gate-honesty,
+ui-truth, service-host, update-trust, fuzz, seal-root (last). `P75-REPORT.md` not written.
