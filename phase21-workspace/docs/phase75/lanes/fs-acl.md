@@ -29,9 +29,12 @@ census source actually ran against the verified local database join.
 The old Windows path looked for Unix pf/ufw/nftables files and produced a
 Unix-specific absence reason. A test-only probe run `36111505675` failed
 earlier in an unrelated cleaner timeout, so it did **not** measure firewall
-red-before. Probe `36177125187` at `38db6f7` runs the focused Windows
-assertion before the workspace suite; its result must be read before claiming
-the Windows red-before.
+red-before. Probe `36177125187` at `38db6f7` ran the focused assertion before
+the workspace suite on Windows Server 2025: **red before the fix**, with
+`firewall_evidence_names_windows_registry_profile_values ... FAILED` and the
+actual reason `no pf/ufw/nftables configuration file found; live state probing
+requires elevation...`. This is the old product code giving a Unix answer on
+Windows; it is not a build or setup failure.
 
 The new code reads `EnableFirewall` as a DWORD for Domain, Private and Public
 profiles under `HKLM`, taking a policy value first and a local configuration
