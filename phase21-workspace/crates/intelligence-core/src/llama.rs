@@ -377,6 +377,20 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
 }
 
 #[cfg(feature = "embedded-model")]
+/// Whether one more decode step (a prompt chunk, or one generated token) can start at
+/// `now` and still end by `deadline`. One `decode` cannot be interrupted, and on the
+/// 2-vCPU runner a 128-token chunk took over a second: checking only "is it past the
+/// deadline yet" overran the insight budget by up to 1.4 s (CI `36185690510`). The
+/// previous step's time predicts the next; the first step has no estimate and starts if
+/// the deadline has not passed.
+fn step_fits(
+    now: std::time::Instant,
+    last_step: Option<std::time::Duration>,
+    deadline: std::time::Instant,
+) -> bool {
+    now + last_step.unwrap_or_default() < deadline
+}
+
 impl LlamaCppReasoner {
     /// Context window for one generation. The prompt is bounded at 8,192 CHARS,
     /// well under 2,048 tokens for this tokenizer, and an answer at 512 tokens —
@@ -449,6 +463,7 @@ impl LlamaCppReasoner {
             .map_err(|error| format!("context init failed: {error}"))?;
 
         let mut batch = LlamaBatch::new(Self::PROMPT_CHUNK_TOKENS, 1);
+        let mut last_chunk: Option<std::time::Duration> = None;
         for (chunk_index, chunk) in tokens.chunks(Self::PROMPT_CHUNK_TOKENS).enumerate() {
             let first = chunk_index * Self::PROMPT_CHUNK_TOKENS;
             if budget.cancelled() {
@@ -457,7 +472,7 @@ impl LlamaCppReasoner {
                     ..Default::default()
                 });
             }
-            if budget.expired() {
+            if !step_fits(std::time::Instant::now(), last_chunk, budget.deadline) {
                 return Err(format!(
                     "deadline exceeded after {first} of {} prompt token(s)",
                     tokens.len()
@@ -470,8 +485,10 @@ impl LlamaCppReasoner {
                     .add(*token, position as i32, &[0], position + 1 == tokens.len())
                     .map_err(|error| format!("batch fill failed: {error}"))?;
             }
+            let started = std::time::Instant::now();
             ctx.decode(&mut batch)
                 .map_err(|error| format!("prompt decode failed: {error}"))?;
+            last_chunk = Some(started.elapsed());
         }
 
         // Temperature 0, with a repetition penalty in front of it.
@@ -507,6 +524,8 @@ impl LlamaCppReasoner {
         let mut cancelled = false;
         let mut streamed = String::new();
 
+        let mut last_step: Option<std::time::Duration> = None;
+        let mut step_started: Option<std::time::Instant> = None;
         while emitted < budget.max_tokens {
             // The three ceilings, checked between tokens. Cancel first: a user
             // who pressed Escape should not pay for one more token.
@@ -514,7 +533,12 @@ impl LlamaCppReasoner {
                 cancelled = true;
                 break;
             }
-            if budget.expired() {
+            let now = std::time::Instant::now();
+            if let Some(started) = step_started {
+                last_step = Some(now - started);
+            }
+            step_started = Some(now);
+            if !step_fits(now, last_step, budget.deadline) {
                 return Err(format!("deadline exceeded after {emitted} token(s)"));
             }
 
@@ -593,6 +617,27 @@ fn backend_global() -> Result<&'static llama_cpp_2::llama_backend::LlamaBackend,
 
 #[cfg(test)]
 mod tests {
+
+    /// P75 — a decode step (prompt chunk or token) that would end past the deadline does not
+    /// start; stopping only once it had passed overshot by 1.4 s (DBT-P62-004).
+    #[test]
+    fn a_decode_step_that_would_end_past_the_deadline_does_not_start() {
+        use std::time::Duration;
+        let now = std::time::Instant::now();
+        let deadline = now + Duration::from_millis(1_000);
+        assert!(step_fits(now, None, deadline), "the first chunk starts");
+        assert!(step_fits(now, Some(Duration::from_millis(900)), deadline));
+        assert!(!step_fits(
+            now,
+            Some(Duration::from_millis(1_300)),
+            deadline
+        ));
+        assert!(
+            !step_fits(deadline, None, deadline),
+            "a passed deadline stops"
+        );
+    }
+
     use super::*;
     use crate::model::{EvidenceItem, EvidenceSurface};
 
