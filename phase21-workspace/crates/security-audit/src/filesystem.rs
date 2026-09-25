@@ -111,6 +111,8 @@ mod acl {
     pub struct Ace {
         pub sid: String,
         pub allow: bool,
+        /// A callback ACE's condition may not hold for the caller.
+        pub conditional: bool,
         /// INHERIT_ONLY_ACE: applies to children only, never to this object.
         pub inherit_only: bool,
         pub mask: u32,
@@ -146,7 +148,11 @@ mod acl {
         {
             let rights = write_rights(ace.mask);
             if !ace.allow {
-                denied.push((&ace.sid, rights));
+                // A callback deny may have a false condition for this caller.
+                // Let a later unconditional grant remain visible.
+                if !ace.conditional {
+                    denied.push((&ace.sid, rights));
+                }
                 continue;
             }
             let masked = denied
@@ -233,8 +239,9 @@ mod win {
         sid_start: u32,
     }
 
-    // ACE types whose body is Mask + SID. The callback (conditional) forms are read as
-    // unconditional: that can over-report a grant, never hide one.
+    // ACE types whose body is Mask + SID. A callback allow is a possible grant;
+    // a callback deny cannot mask a later unconditional grant without evaluating
+    // its condition for the caller.
     const ACCESS_ALLOWED: u8 = 0;
     const ACCESS_DENIED: u8 = 1;
     const ACCESS_ALLOWED_CALLBACK: u8 = 9;
@@ -322,9 +329,11 @@ mod win {
             }
             let ace = raw.cast::<MaskAndSidAce>();
             let (ace_type, ace_flags) = unsafe { ((*ace).ace_type, (*ace).ace_flags) };
-            let allow = match ace_type {
-                ACCESS_ALLOWED | ACCESS_ALLOWED_CALLBACK => true,
-                ACCESS_DENIED | ACCESS_DENIED_CALLBACK => false,
+            let (allow, conditional) = match ace_type {
+                ACCESS_ALLOWED => (true, false),
+                ACCESS_ALLOWED_CALLBACK => (true, true),
+                ACCESS_DENIED => (false, false),
+                ACCESS_DENIED_CALLBACK => (false, true),
                 // Object ACEs (directory-service objects) and audit or label ACEs
                 // grant no file access, and their SID sits at another offset.
                 _ => continue,
@@ -334,6 +343,7 @@ mod win {
             aces.push(Ace {
                 sid,
                 allow,
+                conditional,
                 inherit_only: ace_flags & INHERIT_ONLY_ACE != 0,
                 mask,
             });
@@ -605,6 +615,7 @@ mod tests {
         Ace {
             sid: sid.into(),
             allow: true,
+            conditional: false,
             inherit_only: false,
             mask,
         }
@@ -682,6 +693,16 @@ mod tests {
         // A deny for another SID does not cover Everyone.
         let other = [deny("S-1-5-32-545", 0x6), allow("S-1-1-0", 0x6)];
         assert!(world_writable(Some(&other)).is_some());
+    }
+
+    #[test]
+    fn conditional_deny_cannot_hide_an_unconditional_broad_write_grant() {
+        let conditional_deny = Ace {
+            conditional: true,
+            ..deny("S-1-1-0", 0x6)
+        };
+        let dacl = [conditional_deny, allow("S-1-1-0", 0x6)];
+        assert!(world_writable(Some(&dacl)).is_some());
     }
 
     #[test]
