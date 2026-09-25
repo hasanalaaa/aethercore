@@ -144,28 +144,20 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
     let mut intelligence_core = crate::intelligence::IntelligenceCoordinator::new(db.clone(), None);
     // Phase 23.1: the embedded model is the PERMANENT default engine — verify + load at
     // every service start; fallback engages ONLY on runtime faults (I3).
-    intelligence_core.activate_embedded_default(product_dir.as_path());
+    let assistant_reasoner = intelligence_core
+        .activate_embedded_default(product_dir.as_path())
+        .map(|reasoner| {
+            Box::new(reasoner) as Box<dyn aethercore_intelligence_core::StreamingReasoner>
+        });
     let intelligence_core = Arc::new(intelligence_core);
 
-    // Phase 56: the grounded assistant. It answers from the SAME evidence pack
-    // the insight path composes, and it is the only consumer of token-level
-    // generation — `DBT-P56-002` records that the insight path's own model call
-    // has never produced a token and still degrades to the rule engine.
+    // Phase 56/P75: the grounded assistant answers from the SAME evidence pack
+    // and a clone of the SAME loaded model the insight path uses. The clones
+    // share one generation gate; neither queues behind the other.
     //
     // A failure to load is NOT fatal and is NOT silent: the coordinator's engine
     // label then reads `disabled`, and every turn terminates FAULTED with
     // `assistant.fault.modelUnavailable` rather than with an empty answer.
-    let assistant_reasoner =
-        match aethercore_intelligence_core::load_streaming_reasoner(product_dir.as_path()) {
-            Ok(reasoner) => Some(reasoner),
-            Err(error) => {
-                eprintln!(
-                    "assistant: embedded reasoner unavailable ({error}); every turn will fault \
-                     with assistant.fault.modelUnavailable — defect"
-                );
-                None
-            }
-        };
     let assistant = Arc::new(crate::assistant::AssistantCoordinator::new(
         db.clone(),
         assistant_reasoner,

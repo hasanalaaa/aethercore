@@ -5,8 +5,11 @@
 //! is ONLY automatic runtime fault-handling (I3), never a supported configuration.
 
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
+use crate::assistant::{GenerationBudget, MODEL_BUSY};
 use crate::engine::LocalReasoner;
+use crate::model::{Citation, Insight, InsightConfidence, InsightEngineKind, TypedEvidencePack};
 use sha2::Digest;
 
 /// Pinned artifact manifest entry (I5). The loader refuses any mismatch.
@@ -19,6 +22,9 @@ pub struct ModelManifestEntry {
 
 /// Computes the sha256 of the file at `model_path` and compares it to the pinned
 /// entry. ANY mismatch (or unreadable file) fails closed: Err, never "load anyway".
+///
+/// Streamed through the hasher: this used to `fs::read` the whole 1.1 GB
+/// artifact into the heap, at every service start, before llama.cpp mapped it.
 pub fn verify_model_hash(model_path: &Path, pinned: &ModelManifestEntry) -> Result<(), String> {
     if pinned.declared_ram_budget_bytes > crate::engine::MAX_MODEL_RAM_BUDGET_BYTES {
         return Err(format!(
@@ -26,8 +32,11 @@ pub fn verify_model_hash(model_path: &Path, pinned: &ModelManifestEntry) -> Resu
             pinned.declared_ram_budget_bytes
         ));
     }
-    let bytes = std::fs::read(model_path).map_err(|e| format!("model read failed: {e}"))?;
-    let digest = sha2::Sha256::digest(&bytes);
+    let mut file =
+        std::fs::File::open(model_path).map_err(|e| format!("model read failed: {e}"))?;
+    let mut hasher = sha2::Sha256::new();
+    std::io::copy(&mut file, &mut hasher).map_err(|e| format!("model read failed: {e}"))?;
+    let digest = hasher.finalize();
     let actual = {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut out = String::with_capacity(digest.len() * 2);
@@ -57,8 +66,18 @@ pub fn embedded_model_entry() -> ModelManifestEntry {
 }
 
 /// Full startup sequence (M2): locate → sha256 vs pinned+manifest → RAM budget →
-/// load within budget. Returns Ok(engine_label) after emitting the typed startup log.
-pub fn activate_embedded_reasoner(product_root: &Path) -> Result<String, String> {
+/// load within budget. Returns the loaded reasoner and the typed startup log
+/// line for the caller to emit.
+///
+/// P75: this is the ONE load. The service used to verify and load the artifact
+/// twice — once for insights, once for the assistant — holding two copies with
+/// two independent busy lanes, so both could generate at once on a 2-vCPU
+/// machine. The reasoner is cheap to clone and every clone shares the one
+/// model and the one generation gate, so the insight path and the assistant
+/// each take a clone.
+pub fn activate_embedded_reasoner(
+    product_root: &Path,
+) -> Result<(LlamaCppReasoner, String), String> {
     let model_path = product_root.join(EMBEDDED_MODEL_RELATIVE_PATH);
     let pinned = embedded_model_entry();
     verify_model_hash(&model_path, &pinned)?;
@@ -71,44 +90,125 @@ pub fn activate_embedded_reasoner(product_root: &Path) -> Result<String, String>
         "intelligence-core: embedded reasoner active (model={}, sha256 ok)",
         pinned.file_name.trim_end_matches(".gguf")
     );
-    eprintln!("{label}");
-    Ok(label)
+    Ok((reasoner, label))
 }
 
-/// Verifies and loads the embedded artifact as a STREAMING reasoner — the engine
-/// the assistant answers from.
+/// The rules the model writes INSIGHTS under. Separate from the assistant's
+/// `SYSTEM_PROMPT` because the output is different: findings the product
+/// volunteers, one per line, each machine-checkable against the pack. The shape
+/// is enforced by [`insight_grammar`]; this prompt is what makes the model fill
+/// that shape with something worth reading.
+pub const INSIGHT_SYSTEM_PROMPT: &str = "You are an offline diagnostic assistant for one computer. \
+State up to three findings about this computer, one per line, using ONLY the EVIDENCE block. \
+Each finding is one short sentence that ends with the tags of the evidence it rests on, in square \
+brackets, then a period. Never use general knowledge about computers. Never copy the long ids.\n\n\
+Example EVIDENCE:\n\
+[E1] surface=MaintenanceHistory id=plan-0007 :: plan plan-0007 domain startup stage completed\n\
+[E2] surface=TimelinePattern id=pattern-disk-2 :: recurring failure: class operation domain disk \
+code DSK-2, 3 occurrences, recurrence confidence weak\n\
+Example ANSWER:\n\
+A startup maintenance plan completed [E1].\n\
+A disk operation has failed three times [E2].\n\n\
+If the EVIDENCE block supports no finding, reply with exactly NO EVIDENCE.";
+
+/// Token ceiling for one insight generation: three short cited lines. A line
+/// the ceiling cuts off is incomplete and is dropped, never shown truncated.
+pub const INSIGHT_MAX_TOKENS: u32 = 160;
+
+/// The only output shape the insight sampler can produce, built per call from
+/// the pack size: "NO EVIDENCE", or one to three lines, each prose ending in one
+/// or more `[En]` tags and a period. `idx` enumerates exactly `1..=n`, so a tag
+/// naming evidence the pack does not hold cannot be generated at all. Prose
+/// excludes brackets and newlines, and allows a period only inside a number
+/// (`18.4`), so a line cannot end before its citation.
+pub fn insight_grammar(pack_len: usize) -> String {
+    let idx = (1..=pack_len.max(1))
+        .map(|i| format!("\"{i}\""))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    format!(
+        "root ::= \"NO EVIDENCE\" | line line? line?\n\
+         line ::= txt cite+ \".\\n\"\n\
+         txt ::= ([^\\[\\]\\n.] | \".\" [0-9])+\n\
+         cite ::= \" [E\" idx \"]\"\n\
+         idx ::= {idx}\n"
+    )
+}
+
+/// Turns generated insight text into insights. Pure, so every rule below is
+/// tested without a model.
 ///
-/// Separate from [`activate_embedded_reasoner`], which returns the insight
-/// path's `LocalReasoner`. The two traits have different shapes (one streams
-/// under a cancellable budget, one returns a finished insight vector), so one
-/// object cannot satisfy both; this is the one the assistant needs.
-pub fn load_streaming_reasoner(
-    product_root: &Path,
-) -> Result<Box<dyn crate::assistant::StreamingReasoner>, String> {
-    let model_path = product_root.join(EMBEDDED_MODEL_RELATIVE_PATH);
-    verify_model_hash(&model_path, &embedded_model_entry())?;
-    let mut reasoner = LlamaCppReasoner::new();
-    LocalReasoner::load(&mut reasoner, &model_path)?;
-    if !LocalReasoner::is_loaded(&reasoner) {
-        return Err("loader returned success but model is not loaded".into());
-    }
-    Ok(Box::new(reasoner))
+/// A line is admitted only when it is COMPLETE (ends `.\n` — a line cut off by
+/// the token ceiling is not) and EVERY tag on it resolves against the pack. One
+/// unresolvable tag drops the whole line rather than the tag: the claim was
+/// written as resting on that evidence, and the product does not hold it. The
+/// tags leave the explanation, because the renderer shows citations beside it,
+/// not a pack index it cannot resolve. One cited observation is Weak, two or more
+/// Moderate; a 1.5B model's reading is never Strong.
+pub fn insights_from_text(text: &str, pack: &TypedEvidencePack) -> Vec<Insight> {
+    text.split_inclusive('\n')
+        .filter_map(|line| {
+            let (prose, tags) = line.strip_suffix(".\n")?.split_once(" [E")?;
+            let mut citations: Vec<Citation> = Vec::new();
+            for tag in tags.split(" [E") {
+                let index: usize = tag.strip_suffix(']')?.parse().ok()?;
+                let item = index.checked_sub(1).and_then(|i| pack.items.get(i))?;
+                let citation = Citation {
+                    evidence_id: item.evidence_id.clone(),
+                    surface: item.surface,
+                };
+                if !citations.contains(&citation) {
+                    citations.push(citation);
+                }
+            }
+            let prose = prose.trim();
+            if prose.is_empty() {
+                return None;
+            }
+            let confidence = if citations.len() >= 2 {
+                InsightConfidence::Moderate
+            } else {
+                InsightConfidence::Weak
+            };
+            Insight::build(
+                "insight.summary.observation",
+                format!("{prose}."),
+                confidence,
+                citations,
+                InsightEngineKind::LocalModel,
+            )
+        })
+        .collect()
+}
+
+/// A system turn and a user turn in Qwen's own chat template. `str_to_token`
+/// parses special tokens, so the control tokens are real ones, and `<|im_end|>`
+/// is an EOG token — what ends generation naturally.
+fn chat_prompt(system: &str, user: &str) -> String {
+    format!(
+        "<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n"
+    )
 }
 
 /// LlamaCpp-backed reasoner — the PERMANENT default engine when the artifact verifies.
 ///
-/// Bounded-context contract (unchanged): prompt ≤ [`Self::MAX_PROMPT_CHARS`] chars,
-/// temperature 0, JSON-only INSIGHT_SCHEMA_V1 output parsed strictly; malformed
-/// output surfaces as Err so the selector degrades to fallback for that call (I3).
+/// `Clone` shares, it does not copy: every clone holds the same loaded model and
+/// the same generation gate. Generation is serialised through that gate with a
+/// TRY-lock, so the insight path and the assistant never decode at once on the
+/// user's machine and neither ever queues behind the other: the one that finds
+/// the gate held returns [`MODEL_BUSY`] at once — an insight then degrades to the
+/// rule engine, an assistant turn is refused `Busy`.
+#[derive(Clone)]
 pub struct LlamaCppReasoner {
     loaded: bool,
     /// Handle text kept opaque; the binding types are feature-internal.
-    backend: Option<LlamaBackendHandle>,
+    backend: Option<Arc<LlamaBackendHandle>>,
+    gate: Arc<Mutex<()>>,
 }
 
 #[cfg(feature = "embedded-model")]
 struct LlamaBackendHandle {
-    _model: llama_cpp_2::model::LlamaModel,
+    model: llama_cpp_2::model::LlamaModel,
 }
 
 #[cfg(not(feature = "embedded-model"))]
@@ -122,20 +222,52 @@ impl LlamaCppReasoner {
         Self {
             loaded: false,
             backend: None,
+            gate: Arc::new(Mutex::new(())),
         }
     }
 
-    fn render_prompt(pack_json: &str, question: &str) -> String {
-        // Temperature-0 JSON-only prompt contract (INSIGHT_SCHEMA_V1). Evidence packs
-        // are pre-typed structured data; hostile text can only appear inside bounded
-        // detail fields, never as instructions (threat-model mitigation).
-        format!(
-            "You are an offline diagnostic advisor. Answer ONLY with a JSON array of              insights matching INSIGHT_SCHEMA_V1: [{{\"summaryKey\":\"...\",\"explanation\":\
-             \"...\",\"confidence\":\"Weak|Moderate|Strong\",\"citations\":[{{\"evidenceId\":\
-             \"...\",\"surface\":\"bottleneckReport|repairDiagnosis|timelinePattern|\
-             maintenanceHistory\"}}]}}]. Every insight MUST cite at least one evidenceId \
-             from the pack. Question: {question}\nEvidencePack: {pack_json}"
-        )
+    /// The insight generation itself, exposed so a test can read its token
+    /// count and wall time; [`LocalReasoner::infer`] is this plus
+    /// [`insights_from_text`].
+    pub fn generate_insight_text(
+        &self,
+        pack: &TypedEvidencePack,
+        question: &str,
+        deadline: std::time::Instant,
+    ) -> Result<crate::assistant::Generated, String> {
+        // DBT-P46-B23: an empty pack would ask the model the question with NO
+        // evidence, and anything it answered would be uncitable by construction.
+        if pack.items.is_empty() {
+            return Err("an empty evidence pack has nothing to cite".into());
+        }
+        let prompt = chat_prompt(
+            INSIGHT_SYSTEM_PROMPT,
+            &crate::assistant::render_user_message(pack, question),
+        );
+        if prompt.len() > Self::MAX_PROMPT_CHARS {
+            return Err("prompt exceeds bounded context contract".into());
+        }
+        // Its own cancel flag: nothing outside raises it. The deadline is the
+        // selector's, so the insight path keeps its 10 s budget on the RPC thread.
+        let budget = GenerationBudget {
+            deadline,
+            max_tokens: INSIGHT_MAX_TOKENS,
+            cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        };
+        #[cfg(feature = "embedded-model")]
+        {
+            self.decode_loop(
+                &prompt,
+                &budget,
+                Some(&insight_grammar(pack.items.len())),
+                &mut |_| {},
+            )
+        }
+        #[cfg(not(feature = "embedded-model"))]
+        {
+            let _ = budget;
+            Err("embedded-model feature not compiled".into())
+        }
     }
 }
 
@@ -157,10 +289,8 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
             )
             .map_err(|e| format!("gguf load failed: {e}"))?;
 
-            // Bounded context: 2048 tokens is generous for schema + pack and keeps RAM
-            // well under the declared budget for a 1.5B q4_k_m model. Temperature-0 and
-            // JSON-only parsing are enforced at inference time; this warm-up proves the
-            // artifact loads into a working context window.
+            // Context creation at load proves the artifact loads into a working
+            // window; each generation builds its own context from the shared model.
             let backend = backend_global()?;
             let ctx_params = llama_cpp_2::context::params::LlamaContextParams::default()
                 .with_n_ctx(std::num::NonZeroU32::new(2048))
@@ -169,11 +299,9 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
                 let _ctx = model
                     .new_context(backend, ctx_params)
                     .map_err(|e| format!("context init failed: {e}"))?;
-                // Context creation itself proves the artifact loads and the window
-                // works; token-level generation is driven per-request by the service.
             }
 
-            self.backend = Some(LlamaBackendHandle { _model: model });
+            self.backend = Some(Arc::new(LlamaBackendHandle { model }));
             self.loaded = true;
             Ok(())
         }
@@ -188,69 +316,26 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
         self.loaded
     }
 
+    /// P75 — `DBT-P56-002`'s other half. This returned `Err` unconditionally
+    /// ("token-level generation requires the context pool…"), so every insight in
+    /// the product's life came from the rule engine. It now generates under the
+    /// insight grammar and admits only complete, fully cited lines.
     fn infer(
         &self,
-        pack: &crate::model::TypedEvidencePack,
+        pack: &TypedEvidencePack,
         question: &str,
         deadline: std::time::Instant,
-    ) -> Result<Vec<crate::model::Insight>, String> {
-        // DBT-P46-B23: `infer` already has an error channel, so there is no
-        // reason to default here. An empty pack would ask the model the
-        // question with NO evidence, and anything it answered would be
-        // uncitable by construction.
-        let pack_json = serde_json::to_string(pack)
-            .map_err(|error| format!("evidence pack could not be serialized: {error}"))?;
-        let prompt = Self::render_prompt(&pack_json, question);
-        if prompt.len() > Self::MAX_PROMPT_CHARS {
-            return Err("prompt exceeds bounded context contract".into());
-        }
-        #[cfg(feature = "embedded-model")]
-        {
-            self.infer_embedded(&prompt, deadline)
-        }
-        #[cfg(not(feature = "embedded-model"))]
-        {
-            let _ = deadline;
-            Err("embedded-model feature not compiled".into())
-        }
+    ) -> Result<Vec<Insight>, String> {
+        let generated = self.generate_insight_text(pack, question, deadline)?;
+        Ok(insights_from_text(&generated.text, pack))
     }
 }
 
-impl LlamaCppReasoner {
-    /// Real generation over the stored model handle. The mutable context is created
-    /// per call from the shared backend (cheap relative to prompt processing at this
-    /// model size and keeps `&self` semantics for the trait).
-    #[cfg(feature = "embedded-model")]
-    fn infer_embedded(
-        &self,
-        _prompt: &str,
-        deadline: std::time::Instant,
-    ) -> Result<Vec<crate::model::Insight>, String> {
-        let handle = self.backend.as_ref().ok_or("model not loaded")?;
-        // The stored LlamaModel is read-only after load; contexts are created per call
-        // from the process-global backend (cheap relative to prompt processing here).
-        let model: &llama_cpp_2::model::LlamaModel = &handle._model;
-        let _ = model;
-        if std::time::Instant::now() >= deadline {
-            return Err("inference deadline exceeded before generation".into());
-        }
-        Err("token-level generation requires the context pool wired in intelligence.rs              (QD-023-003 perf validation lands first); fallback serves this request"
-            .into())
-    }
-}
-
-/// Phase 56 — real token-level generation.
+/// Phase 56 — real token-level generation for the assistant.
 ///
-/// `DBT-P56-002`: this did not exist. `infer_embedded` returned `Err`
-/// unconditionally, so the artifact verified its sha256, loaded, built a context
-/// at startup — and then every request in the product's life fell through to the
-/// deterministic rule engine while `engine_label` still read `localModel`.
-///
-/// The loop below is the whole of it: tokenize the grounded prompt, decode it,
-/// then greedily sample one token at a time, checking the three ceilings BETWEEN
-/// tokens — cancel, deadline, token count. Greedy rather than sampled because
-/// the same question over the same evidence must give the same answer; a
-/// diagnostic tool that says something different each time you ask is not one.
+/// Greedy rather than sampled because the same question over the same evidence
+/// must give the same answer; a diagnostic tool that says something different
+/// each time you ask is not one.
 impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
     fn is_loaded(&self) -> bool {
         self.loaded
@@ -258,9 +343,9 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
 
     fn generate(
         &self,
-        pack: &crate::model::TypedEvidencePack,
+        pack: &TypedEvidencePack,
         question: &str,
-        budget: &crate::assistant::GenerationBudget,
+        budget: &GenerationBudget,
         sink: &mut dyn FnMut(&str),
     ) -> Result<crate::assistant::Generated, String> {
         // The shipped artifact is qwen2.5-1.5b-INSTRUCT, and an instruct model
@@ -268,13 +353,9 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
         // flat prompt. Measured: flat, the model echoed the instruction text
         // back into the answer ("Mark every claim with the tag of the evidence
         // it rests on: NO EVIDENCE") and kept writing past its conclusion.
-        // `str_to_token` parses special tokens, so the control tokens below are
-        // real ones, not literal text; `<|im_end|>` is an EOG token, which is
-        // what ends the loop naturally instead of the 512-token ceiling.
-        let prompt = format!(
-            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        let prompt = chat_prompt(
             crate::assistant::SYSTEM_PROMPT,
-            crate::assistant::render_user_message(pack, question),
+            &crate::assistant::render_user_message(pack, question),
         );
         if prompt.len() > Self::MAX_PROMPT_CHARS {
             return Err(format!(
@@ -285,7 +366,7 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
         }
         #[cfg(feature = "embedded-model")]
         {
-            self.generate_embedded(&prompt, budget, sink)
+            self.decode_loop(&prompt, budget, None, sink)
         }
         #[cfg(not(feature = "embedded-model"))]
         {
@@ -297,20 +378,29 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
 
 #[cfg(feature = "embedded-model")]
 impl LlamaCppReasoner {
-    /// Context window for one turn. The prompt is bounded at 8,192 CHARS, which
-    /// is well under 2,048 tokens for this tokenizer, and the answer is bounded
-    /// at 512 tokens — so 2,048 holds both with room, and keeps RAM far under
-    /// the declared budget for a 1.5B q4_k_m model.
+    /// Context window for one generation. The prompt is bounded at 8,192 CHARS,
+    /// well under 2,048 tokens for this tokenizer, and an answer at 512 tokens —
+    /// so 2,048 holds both with room, and keeps RAM far under the declared budget.
     const CONTEXT_TOKENS: u32 = 2_048;
+
+    /// The prompt is decoded in chunks of this many tokens with the ceilings
+    /// checked between them. One `decode` call cannot be interrupted, and on a
+    /// slow CPU a whole prompt in one call ran long past the deadline it was
+    /// handed before the loop below ever looked at the clock.
+    const PROMPT_CHUNK_TOKENS: usize = 128;
 
     /// Repetition penalty window and strength. See the sampler chain below.
     const PENALTY_WINDOW_TOKENS: i32 = 256;
     const PENALTY_REPEAT: f32 = 1.15;
 
-    fn generate_embedded(
+    /// The one decode loop both paths run. `grammar` constrains every sampled
+    /// token (insights); `None` leaves the sampler as the assistant has always
+    /// had it.
+    fn decode_loop(
         &self,
         prompt: &str,
-        budget: &crate::assistant::GenerationBudget,
+        budget: &GenerationBudget,
+        grammar: Option<&str>,
         sink: &mut dyn FnMut(&str),
     ) -> Result<crate::assistant::Generated, String> {
         use llama_cpp_2::llama_batch::LlamaBatch;
@@ -318,7 +408,15 @@ impl LlamaCppReasoner {
         use llama_cpp_2::sampling::LlamaSampler;
 
         let handle = self.backend.as_ref().ok_or("model not loaded")?;
-        let model = &handle._model;
+        let _held = match self.gate.try_lock() {
+            Ok(held) => held,
+            // A panic mid-generation poisons the gate. The model is read-only
+            // after load and each call builds its own context, so there is no
+            // torn state to protect — refusing forever would only disable it.
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => return Err(MODEL_BUSY.into()),
+        };
+        let model = &handle.model;
         let backend = backend_global()?;
 
         // Never: the template supplies the structure, and Qwen2.5 declares
@@ -336,42 +434,78 @@ impl LlamaCppReasoner {
             ));
         }
 
+        // llama.cpp's default is 4 threads whatever the machine. On the 2-vCPU
+        // runner that is 2x oversubscription on every decode (DBT-P62-004).
+        // ponytail: capped at the old default of 4 so a large machine is not
+        // taken over while the user is diagnosing why it is slow.
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(4)) as i32;
         let ctx_params = llama_cpp_2::context::params::LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(Self::CONTEXT_TOKENS))
-            .with_n_batch(Self::CONTEXT_TOKENS);
+            .with_n_batch(Self::PROMPT_CHUNK_TOKENS as u32)
+            .with_n_threads(threads)
+            .with_n_threads_batch(threads);
         let mut ctx = model
             .new_context(backend, ctx_params)
             .map_err(|error| format!("context init failed: {error}"))?;
 
-        let mut batch = LlamaBatch::new(tokens.len().max(1), 1);
-        batch
-            .add_sequence(&tokens, 0, false)
-            .map_err(|error| format!("batch fill failed: {error}"))?;
-        ctx.decode(&mut batch)
-            .map_err(|error| format!("prompt decode failed: {error}"))?;
+        let mut batch = LlamaBatch::new(Self::PROMPT_CHUNK_TOKENS, 1);
+        for (chunk_index, chunk) in tokens.chunks(Self::PROMPT_CHUNK_TOKENS).enumerate() {
+            let first = chunk_index * Self::PROMPT_CHUNK_TOKENS;
+            if budget.cancelled() {
+                return Ok(crate::assistant::Generated {
+                    cancelled: true,
+                    ..Default::default()
+                });
+            }
+            if budget.expired() {
+                return Err(format!(
+                    "deadline exceeded after {first} of {} prompt token(s)",
+                    tokens.len()
+                ));
+            }
+            batch.clear();
+            for (offset, token) in chunk.iter().enumerate() {
+                let position = first + offset;
+                batch
+                    .add(*token, position as i32, &[0], position + 1 == tokens.len())
+                    .map_err(|error| format!("batch fill failed: {error}"))?;
+            }
+            ctx.decode(&mut batch)
+                .map_err(|error| format!("prompt decode failed: {error}"))?;
+        }
 
         // Temperature 0, with a repetition penalty in front of it.
         //
-        // Greedy alone is deterministic — the same question over the same
-        // evidence gives the same answer, which a diagnostic tool owes its user
-        // — but a 1.5B model reading back a small evidence pack falls into a
-        // loop: measured here, every answer ran to the full 512-token ceiling
-        // repeating one clause ("is the only evidence that answers the question"
-        // x14). The penalty is applied to the logits BEFORE the argmax, so the
-        // result is still a deterministic function of the prompt.
+        // Greedy alone is deterministic, but a 1.5B model reading back a small
+        // evidence pack falls into a loop: measured, every answer ran to the full
+        // 512-token ceiling repeating one clause. The penalty is applied to the
+        // logits BEFORE the argmax, so the result is still a deterministic
+        // function of the prompt. 1.15 over the last 256 tokens: enough to break
+        // a repeated clause, gentle enough that an evidence tag can be named twice.
         //
-        // 1.15 over the last 256 tokens: enough to break a repeated clause,
-        // gentle enough that an evidence id can still be named twice in one
-        // answer, which a grounded answer routinely needs to do.
-        let mut sampler = LlamaSampler::chain_simple([
-            LlamaSampler::penalties(Self::PENALTY_WINDOW_TOKENS, Self::PENALTY_REPEAT, 0.0, 0.0),
-            LlamaSampler::greedy(),
-        ]);
+        // A grammar goes first, so nothing it forbids reaches the penalty or the
+        // argmax.
+        let mut chain = Vec::with_capacity(3);
+        if let Some(grammar) = grammar {
+            chain.push(
+                LlamaSampler::grammar(model, grammar, "root")
+                    .map_err(|error| format!("grammar rejected: {error}"))?,
+            );
+        }
+        chain.push(LlamaSampler::penalties(
+            Self::PENALTY_WINDOW_TOKENS,
+            Self::PENALTY_REPEAT,
+            0.0,
+            0.0,
+        ));
+        chain.push(LlamaSampler::greedy());
+        let mut sampler = LlamaSampler::chain_simple(chain);
 
         let mut position = tokens.len() as i32;
         let mut bytes: Vec<u8> = Vec::new();
         let mut emitted = 0u32;
         let mut cancelled = false;
+        let mut streamed = String::new();
 
         while emitted < budget.max_tokens {
             // The three ceilings, checked between tokens. Cancel first: a user
@@ -384,20 +518,20 @@ impl LlamaCppReasoner {
                 return Err(format!("deadline exceeded after {emitted} token(s)"));
             }
 
+            // `sample` also ACCEPTS the token into every sampler in the chain
+            // (llama_sampler_sample calls llama_sampler_accept). The explicit
+            // `accept` this loop used to make on top of it counted each token
+            // twice in the penalty window — and a grammar accepting one token
+            // twice empties its stacks.
             let token = sampler.sample(&ctx, batch.n_tokens() - 1);
             if model.is_eog_token(token) {
                 break;
             }
-            sampler.accept(token);
 
             // Accumulate BYTES, not strings: a multi-byte character can span two
-            // tokens, and decoding each piece on its own would emit replacement
-            // characters into Arabic mid-word.
-            //
-            // The 8-byte first guess is the binding's own default and it is not
-            // always enough — an Arabic token overran it and the run died
-            // "Insufficient Buffer Space -10". The error carries the size it
-            // needed as a negative, so the retry is exact rather than a guess.
+            // tokens. The 8-byte first guess is the binding's own default and an
+            // Arabic token overran it ("Insufficient Buffer Space -10"); the error
+            // carries the size it needed, so the retry is exact.
             let piece = match model.token_to_piece_bytes(token, 8, false, None) {
                 Ok(piece) => piece,
                 Err(llama_cpp_2::TokenToStringError::InsufficientBufferSpace(needed)) => model
@@ -407,7 +541,17 @@ impl LlamaCppReasoner {
             };
             bytes.extend_from_slice(&piece);
             emitted += 1;
-            sink(&String::from_utf8_lossy(&bytes));
+            // Stream only the complete characters. Decoding the whole buffer
+            // lossily put U+FFFD at the end whenever a character straddled two
+            // tokens, and the next event replaced it — the stream went BACKWARDS
+            // mid-word in Arabic, where it must only ever grow.
+            let complete = match std::str::from_utf8(&bytes) {
+                Ok(text) => text,
+                Err(error) => std::str::from_utf8(&bytes[..error.valid_up_to()]).unwrap_or(""),
+            };
+            streamed.clear();
+            streamed.push_str(complete);
+            sink(&streamed);
 
             batch.clear();
             batch
@@ -418,8 +562,14 @@ impl LlamaCppReasoner {
                 .map_err(|error| format!("decode failed at token {emitted}: {error}"))?;
         }
 
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        if text != streamed {
+            // Only a trailing partial character was held back; the final text
+            // still extends everything streamed.
+            sink(&text);
+        }
         Ok(crate::assistant::Generated {
-            text: String::from_utf8_lossy(&bytes).into_owned(),
+            text,
             tokens: emitted,
             cancelled,
         })
@@ -439,4 +589,90 @@ fn backend_global() -> Result<&'static llama_cpp_2::llama_backend::LlamaBackend,
         .get_or_init(|| llama_cpp_2::llama_backend::LlamaBackend::init().ok())
         .as_ref()
         .ok_or_else(|| "llama.cpp backend init failed".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{EvidenceItem, EvidenceSurface};
+
+    fn pack() -> TypedEvidencePack {
+        let mut pack = TypedEvidencePack::default();
+        for (id, surface) in [
+            ("plan-1", EvidenceSurface::MaintenanceHistory),
+            ("pattern-1", EvidenceSurface::TimelinePattern),
+        ] {
+            pack.push(EvidenceItem {
+                evidence_id: id.into(),
+                surface,
+                detail: format!("detail for {id}"),
+            });
+        }
+        pack
+    }
+
+    #[test]
+    fn complete_cited_lines_become_insights_without_their_tags() {
+        let insights = insights_from_text(
+            "A cleanup plan completed [E1].\nA failure recurs [E2] [E1].\n",
+            &pack(),
+        );
+        assert_eq!(insights.len(), 2, "{insights:?}");
+        assert_eq!(insights[0].explanation, "A cleanup plan completed.");
+        assert_eq!(insights[0].confidence, InsightConfidence::Weak);
+        assert_eq!(insights[0].citations[0].evidence_id, "plan-1");
+        assert_eq!(insights[1].confidence, InsightConfidence::Moderate);
+        assert_eq!(insights[1].citations.len(), 2);
+        assert!(
+            insights
+                .iter()
+                .all(|i| i.engine == InsightEngineKind::LocalModel
+                    && i.summary_key == "insight.summary.observation")
+        );
+    }
+
+    /// One tag the pack cannot resolve drops the whole line, not just the tag.
+    #[test]
+    fn a_line_with_an_unresolvable_tag_is_dropped_whole() {
+        let insights =
+            insights_from_text("Disk is failing [E1] [E9].\nA plan ran [E1].\n", &pack());
+        assert_eq!(insights.len(), 1, "{insights:?}");
+        assert_eq!(insights[0].explanation, "A plan ran.");
+        assert!(insights_from_text("Ghost [E0].\n", &pack()).is_empty());
+    }
+
+    /// A line the token ceiling cut off never finished its claim.
+    #[test]
+    fn a_truncated_last_line_is_dropped() {
+        let insights = insights_from_text("A plan ran [E1].\nA failure rec", &pack());
+        assert_eq!(insights.len(), 1);
+        assert!(insights_from_text("A plan ran [E1]", &pack()).is_empty());
+        assert!(insights_from_text("A plan ran [E1].", &pack()).is_empty());
+    }
+
+    #[test]
+    fn the_models_refusal_and_uncited_prose_yield_nothing() {
+        assert!(insights_from_text("NO EVIDENCE", &pack()).is_empty());
+        assert!(insights_from_text("Your PC is slow.\n", &pack()).is_empty());
+        assert!(insights_from_text(" [E1].\n", &pack()).is_empty());
+    }
+
+    #[test]
+    fn arabic_findings_keep_their_text() {
+        let insights = insights_from_text("اكتملت خطة تنظيف [E1].\n", &pack());
+        assert_eq!(insights.len(), 1);
+        assert_eq!(insights[0].explanation, "اكتملت خطة تنظيف.");
+    }
+
+    /// The grammar enumerates exactly the pack's tags.
+    #[test]
+    fn the_grammar_names_every_tag_the_pack_holds_and_no_other() {
+        let grammar = insight_grammar(3);
+        assert!(
+            grammar.contains("idx ::= \"1\" | \"2\" | \"3\"\n"),
+            "{grammar}"
+        );
+        assert!(!grammar.contains("\"4\""), "{grammar}");
+        assert!(grammar.starts_with("root ::= \"NO EVIDENCE\" | line line? line?"));
+    }
 }
