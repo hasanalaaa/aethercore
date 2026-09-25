@@ -1,0 +1,56 @@
+name: P75 COM probe
+on:
+  push:
+    branches: [probe/p75-com]
+permissions:
+  contents: read
+jobs:
+  com:
+    runs-on: windows-2025
+    steps:
+      - name: Write probe script
+        shell: pwsh
+        run: |
+          $src = Get-ChildItem C:\Windows\Installer\*.msi | Sort-Object Length | Select-Object -First 1
+          Write-Host "source MSI: $($src.FullName) $($src.Length)"
+          Set-Content -LiteralPath "$env:RUNNER_TEMP\src.txt" $src.FullName
+          @'
+          param([string]$msi)
+          $ErrorActionPreference = 'Stop'
+          $step = 'start'
+          trap { Write-Host "FAILED at ${step}: $_"; exit 1 }
+          function Call($o, [string]$m, [string]$how, [object[]]$a) { $script:step = $m; $o.GetType().InvokeMember($m, $how, $null, $o, $a) }
+          Write-Host "PS $($PSVersionTable.PSVersion) $($PSVersionTable.PSEdition)"
+          $pc = [guid]::NewGuid().ToString('B').ToUpperInvariant()
+          $wi = New-Object -ComObject WindowsInstaller.Installer
+          $db = Call $wi 'OpenDatabase' 'InvokeMethod' @($msi, 1)
+          foreach ($sql in ("UPDATE ``Property`` SET ``Value``='$pc' WHERE ``Property``='ProductCode'"), "UPDATE ``Property`` SET ``Value``='0.0.1' WHERE ``Property``='ProductVersion'") {
+            $view = Call $db 'OpenView' 'InvokeMethod' @($sql)
+            $null = Call $view 'Execute' 'InvokeMethod' @()
+            $null = Call $view 'Close' 'InvokeMethod' @()
+          }
+          $si = Call $db 'SummaryInformation' 'GetProperty' @(4)
+          $null = Call $si 'Property' 'SetProperty' @(9, [guid]::NewGuid().ToString('B').ToUpperInvariant())
+          $null = Call $si 'Persist' 'InvokeMethod' @()
+          $null = Call $db 'Commit' 'InvokeMethod' @()
+          $view = Call $db 'OpenView' 'InvokeMethod' @("SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ProductCode'")
+          $null = Call $view 'Execute' 'InvokeMethod' @()
+          $rec = Call $view 'Fetch' 'InvokeMethod' @()
+          $got = Call $rec 'StringData' 'GetProperty' @(1)
+          Write-Host "ProductCode now $got expected $pc match=$($got -eq $pc)"
+          if ($got -ne $pc) { exit 1 }
+          '@ | Set-Content -LiteralPath "$env:RUNNER_TEMP\downgrade.ps1"
+      - name: Windows PowerShell 5.1
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Copy-Item (Get-Content "$env:RUNNER_TEMP\src.txt") "$env:RUNNER_TEMP\a.msi"; (Get-Item "$env:RUNNER_TEMP\a.msi").IsReadOnly = $false
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\downgrade.ps1" "$env:RUNNER_TEMP\a.msi"
+          if ($LASTEXITCODE) { throw "exit $LASTEXITCODE" }
+      - name: pwsh 7
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Copy-Item (Get-Content "$env:RUNNER_TEMP\src.txt") "$env:RUNNER_TEMP\b.msi"; (Get-Item "$env:RUNNER_TEMP\b.msi").IsReadOnly = $false
+          pwsh -NoProfile -File "$env:RUNNER_TEMP\downgrade.ps1" "$env:RUNNER_TEMP\b.msi"
+          if ($LASTEXITCODE) { throw "exit $LASTEXITCODE" }
