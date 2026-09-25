@@ -34,7 +34,11 @@ fn parse_pg_line(line: &str, loc: &str) -> Option<Directive> {
     })
 }
 
-/// Parses one MySQL-style line (`key = value` or `key` alone, `#`/`;` comments).
+/// Parses one MySQL option line (`key = value` or a bare `key` flag). As MySQL reads
+/// option files: `#`/`;` start a comment line, `#` also ends a value outside quotes, a
+/// value may be quoted, and `-`/`_` are the same in option names (`loose-` is a prefix
+/// that only changes how unknown options are reported). Group headers are handled by
+/// the caller, which keeps only server groups.
 fn parse_my_line(line: &str, loc: &str) -> Option<Directive> {
     let trimmed = line.trim();
     if trimmed.is_empty()
@@ -45,14 +49,48 @@ fn parse_my_line(line: &str, loc: &str) -> Option<Directive> {
         return None;
     }
     let (key, value) = match trimmed.split_once('=') {
-        Some((k, v)) => (k.trim(), v.trim()),
-        None => (trimmed, ""),
+        Some((k, v)) => (k.trim().to_string(), strip_my_value(v)),
+        None => (strip_my_value(trimmed), String::new()),
     };
+    let key = key.to_ascii_lowercase().replace('-', "_");
+    let key = key.strip_prefix("loose_").unwrap_or(&key).to_string();
     Some(Directive {
-        key: key.trim().to_ascii_lowercase(),
-        value: value.to_string(),
+        key,
+        value,
         source_location: loc.to_string(),
     })
+}
+
+/// A value without its trailing `#` comment (outside quotes) and without matching quotes.
+fn strip_my_value(raw: &str) -> String {
+    let mut quote: Option<char> = None;
+    let mut end = raw.len();
+    for (i, c) in raw.char_indices() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), c) if c == q => quote = None,
+            (None, '#') => {
+                end = i;
+                break;
+            }
+            _ => {}
+        }
+    }
+    let value = raw[..end].trim();
+    for q in ['"', '\''] {
+        if let Some(inner) = value.strip_prefix(q).and_then(|v| v.strip_suffix(q)) {
+            return inner.to_string();
+        }
+    }
+    value.to_string()
+}
+
+/// Option groups the MySQL/MariaDB server reads (`[client]`, `[mysqldump]` … are not).
+fn is_server_group(header: &str) -> bool {
+    let name = header.trim().to_ascii_lowercase();
+    matches!(name.as_str(), "mysqld" | "server" | "mariadb" | "mariadbd")
+        || name.starts_with("mysqld-")
+        || name.starts_with("mariadb-")
 }
 
 fn read_capped(path: &std::path::Path) -> Result<String, String> {
@@ -116,16 +154,22 @@ pub fn load_mysql_directives(dir: &std::path::Path) -> Result<Vec<Directive>, St
         paths
     };
     for p in paths {
+        // Lines before any group header belong to no group; MySQL rejects them.
+        let mut in_server_group = false;
         for (i, line) in read_capped(&p)?.lines().enumerate() {
             if out.len() >= MAX_DIRECTIVES {
                 break;
             }
+            let trimmed = line.trim();
+            if let Some(header) = trimmed.strip_prefix('[').and_then(|h| h.split_once(']')) {
+                in_server_group = is_server_group(header.0);
+                continue;
+            }
+            if !in_server_group {
+                continue;
+            }
             if let Some(d) = parse_my_line(line, &format!("{}:{}", p.display(), i + 1)) {
-                if let Some(existing) = out.iter_mut().find(|e| e.key == d.key) {
-                    *existing = d; // last wins, like MySQL
-                } else {
-                    out.push(d);
-                }
+                set_last(&mut out, d); // last wins, like MySQL
             }
         }
     }
@@ -293,10 +337,11 @@ pub fn lint_mysql(dir: &std::path::Path) -> Result<(Vec<DbFinding>, Vec<String>)
             findings.push(f);
         }
     }
+    // A bare `skip-networking` is a flag set ON.
     let skip_networking = get("skip_networking")
-        .map(|d| boolish(&d.value))
+        .map(|d| d.value.is_empty() || boolish(&d.value))
         .unwrap_or(false);
-    let bind = get("bind_address").or_else(|| get("bind-address"));
+    let bind = get("bind_address");
     let broad_bind = bind
         .map(|d| d.value == "0.0.0.0" || d.value == "*")
         .unwrap_or(false);
