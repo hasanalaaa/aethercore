@@ -334,6 +334,7 @@ fn io_saturation_still_cites_a_latency_devices_did_report() {
         .map(|index| PerfSnapshot {
             captured_unix_ms: 1_700_000_000_000 + index * 1_000,
             storage: vec![StorageQueueSample {
+                active_time_bp: thresholds::STORAGE_SATURATION_PEAK_BP,
                 avg_transfer_latency_us: thresholds::TRANSFER_LATENCY_US,
                 ..Default::default()
             }],

@@ -194,7 +194,7 @@ pub fn analyze(aggregate: &WindowAggregate, window: &[PerfSnapshot], now_unix_ms
     if let Some(out) = commit_pressure(aggregate, window) {
         outputs.push(out);
     }
-    if let Some(out) = io_saturation(aggregate, window) {
+    if let Some(out) = io_saturation(window) {
         outputs.push(out);
     }
     if let Some(out) = gpu_bound(window) {
@@ -535,9 +535,21 @@ fn commit_pressure(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Opti
     })
 }
 
-fn io_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option<RuleOutput> {
-    let saturated = aggregate.storage_active_bp_peak >= thresholds::STORAGE_SATURATION_PEAK_BP
-        || aggregate.storage_active_bp_avg >= thresholds::STORAGE_SATURATION_AVG_BP;
+fn io_saturation(window: &[PerfSnapshot]) -> Option<RuleOutput> {
+    let readings: Vec<(u64, i64)> = window
+        .iter()
+        .filter_map(|snap| {
+            snap.storage
+                .iter()
+                .map(|device| u64::from(device.active_time_bp))
+                .max()
+                .map(|value| (value, snap.captured_unix_ms))
+        })
+        .collect();
+    let (active_peak, peak_at) = readings.iter().max_by_key(|(value, _)| *value).copied()?;
+    let active_avg = readings.iter().map(|(value, _)| *value).sum::<u64>() / readings.len() as u64;
+    let saturated = active_peak >= u64::from(thresholds::STORAGE_SATURATION_PEAK_BP)
+        || active_avg >= u64::from(thresholds::STORAGE_SATURATION_AVG_BP);
     if !saturated {
         return None;
     }
@@ -549,9 +561,9 @@ fn io_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option
     });
     let mut evidence_vec = vec![evidence(
         "storage.activeBp.peak",
-        u64::from(aggregate.storage_active_bp_peak),
+        active_peak,
         u64::from(thresholds::STORAGE_SATURATION_PEAK_BP),
-        window.last()?.captured_unix_ms,
+        peak_at,
     )];
     let slow_transfer = latency_evidence
         .as_ref()
@@ -576,14 +588,8 @@ fn io_saturation(aggregate: &WindowAggregate, window: &[PerfSnapshot]) -> Option
         title_key: "perf.finding.ioSaturation.title",
         summary_key: "perf.finding.ioSaturation.summary",
         args: vec![
-            arg(
-                "activePeakPercent",
-                format!("{}", aggregate.storage_active_bp_peak / 100),
-            ),
-            arg(
-                "activeAvgPercent",
-                format!("{}", aggregate.storage_active_bp_avg / 100),
-            ),
+            arg("activePeakPercent", format!("{}", active_peak / 100)),
+            arg("activeAvgPercent", format!("{}", active_avg / 100)),
         ],
         evidence: evidence_vec,
         depends_on: vec![],
