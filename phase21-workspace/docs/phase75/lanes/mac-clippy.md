@@ -117,3 +117,46 @@ out red at clippy, the cell stays OPEN and names the step.)
    `recv_timeout`. Clippy surfaced this as `unused variable: subscription`. The
    lane only renamed the binding and kept behaviour identical. Status: OPEN,
    needs an owner decision, machine: macOS/Linux.
+
+
+## Integration verification (2026-09-25)
+
+Main `9aa1cef72e7b479140c2ec46a21d14c31534cd3f` was confirmed green by
+`gh api repos/hasanalaaa/aethercore/actions/runs/36084004450` (`success`, same
+`head_sha`) before integrating it. Prior lane CI `36058189476` is independently
+confirmed `success` at `753cfd68772b7f74681b80fb2838fc9880db2ffd`.
+
+Fresh local commands, with all three disk-budget environment variables set:
+
+```text
+cargo fmt --all -- --check
+exit 0
+cargo clippy --workspace --all-targets --locked -- -D warnings
+Finished `dev` profile [unoptimized] target(s) in 1.00s; exit 0
+cargo test --workspace --locked
+649 passed; 0 failed; 1 ignored; 135 suites; exit 0
+cargo clippy -p aethercore-driver-backup -p aethercore-hardware-telemetry -p aethercore-security -p aethercore-consent-broker -p aethercore-install-hardener --target x86_64-pc-windows-msvc --all-targets --locked -- -D warnings
+exit 0
+cargo clippy -p aethercore-performance-telemetry --target x86_64-pc-windows-msvc --lib --locked -- -D warnings
+exit 0
+python3 scripts/static_validate.py
+{"ok": true, "checks": 347, "failed": []}
+python3 scripts/test_gate_readers.py
+all 14 readers fail closed
+python3 scripts/ps_marker_scan.py
+total assertions=234 failed=0 unmeasured=3
+UNMEASURED $lockBaseline, $manifestBaseline (freeze-dependencies.ps1)
+UNMEASURED $MutationLock (verify-installer-security.ps1)
+Each is an expression this scanner does not evaluate.
+```
+
+Nineteen relevant audit scripts were re-run. Ten exited 0; nine exited 1.
+The nine were also run in a detached worktree at `9aa1cef`: phase17, phase19,
+phase27, phase28, phase31, phase32, phase33, phase34 and phase35. Failure output
+matches after accounting for workspace/temp paths and Python set ordering.
+These remain failures, not local passes. No new failure was found.
+
+The two proposed new ledger rows are assigned `DBT-P75-001` (Linux lint,
+reproduced: exit 101 with five findings) and `DBT-P75-002` (Unix event delivery,
+source inspection). `DBT-P63-010` is closed and its literal table-cell pipes
+are encoded so the ledger's five-cell parser can count it.
