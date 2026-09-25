@@ -8,6 +8,41 @@ fn write(dir: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
     p
 }
 
+fn pg_codes(conf: &str) -> Vec<String> {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "postgresql.conf", conf);
+    let (findings, _) = config_lint::lint_postgres(dir.path()).expect("lint postgres");
+    findings.into_iter().map(|f| f.code).collect()
+}
+
+#[test]
+fn postgres_last_setting_in_a_file_wins() {
+    let codes = pg_codes("fsync = off\nfsync = on\n");
+    assert!(
+        !codes.iter().any(|c| c == "db.pg.durability.fsyncOff"),
+        "{codes:?}"
+    );
+}
+
+#[test]
+fn synchronous_commit_is_off_only_when_it_is_off() {
+    for durable in ["on", "local", "remote_write", "remote_apply"] {
+        let codes = pg_codes(&format!("synchronous_commit = {durable}\n"));
+        assert!(
+            !codes
+                .iter()
+                .any(|c| c == "db.pg.durability.synchronousCommitOff"),
+            "{durable}: {codes:?}"
+        );
+    }
+    let codes = pg_codes("synchronous_commit = off\n");
+    assert!(
+        codes
+            .iter()
+            .any(|c| c == "db.pg.durability.synchronousCommitOff")
+    );
+}
+
 #[test]
 fn mysql_query_time_is_seconds_not_milliseconds() {
     let dir = tempfile::tempdir().unwrap();

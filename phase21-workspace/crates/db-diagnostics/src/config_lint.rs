@@ -67,36 +67,33 @@ fn read_capped(path: &std::path::Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Collects postgresql.conf + postgresql.auto.conf (auto overrides base), bounded.
+/// Replaces an earlier setting of the same key, or appends: the server keeps the last.
+fn set_last(out: &mut Vec<Directive>, directive: Directive) {
+    match out
+        .iter_mut()
+        .find(|existing| existing.key == directive.key)
+    {
+        Some(existing) => *existing = directive,
+        None => out.push(directive),
+    }
+}
+
+/// Collects postgresql.conf then postgresql.auto.conf, bounded. As in PostgreSQL, the last
+/// setting of a key wins, within a file and across the two, so auto.conf overrides the base.
 pub fn load_postgres_directives(dir: &std::path::Path) -> Result<Vec<Directive>, String> {
     let mut out = Vec::new();
-    let base = dir.join("postgresql.conf");
-    for (i, line) in read_capped(&base)?.lines().enumerate() {
-        if out.len() >= MAX_DIRECTIVES {
-            break;
-        }
-        if let Some(d) = parse_pg_line(line, &format!("{}:{}", base.display(), i + 1)) {
-            out.push(d);
-        }
-    }
     let auto = dir.join("postgresql.auto.conf");
+    let mut files = vec![dir.join("postgresql.conf")];
     if auto.exists() {
-        for (i, line) in read_capped(&auto)?.lines().enumerate() {
+        files.push(auto);
+    }
+    for path in files {
+        for (i, line) in read_capped(&path)?.lines().enumerate() {
             if out.len() >= MAX_DIRECTIVES {
                 break;
             }
-            if let Some(d) = parse_pg_line(line, &format!("{}:{}", auto.display(), i + 1)) {
-                // auto.conf entries override base-file entries with the same key.
-                if let Some(existing) = out
-                    .iter_mut()
-                    .find(|e| e.key == d.key && e.source_location.contains("postgresql.conf"))
-                {
-                    *existing = d;
-                } else if let Some(existing) = out.iter_mut().find(|e| e.key == d.key) {
-                    *existing = d;
-                } else {
-                    out.push(d);
-                }
+            if let Some(d) = parse_pg_line(line, &format!("{}:{}", path.display(), i + 1)) {
+                set_last(&mut out, d);
             }
         }
     }
@@ -177,14 +174,18 @@ pub fn lint_postgres(dir: &std::path::Path) -> Result<(Vec<DbFinding>, Vec<Strin
             findings.push(f);
         }
     }
+    // `local` and `remote_write` still flush the local WAL before a commit returns;
+    // only `off` acknowledges commits that a crash can lose.
     if let Some(d) = get("synchronous_commit")
-        && !boolish(&d.value)
-        && d.value != "remote_apply"
+        && matches!(
+            d.value.to_ascii_lowercase().as_str(),
+            "off" | "false" | "no" | "0"
+        )
     {
         let ev = vec![EvidenceRef {
             fact: "pg.synchronous_commit".into(),
             observed: d.value.clone(),
-            expected_or_threshold: "on|remote_apply".into(),
+            expected_or_threshold: "not off (on|local|remote_write|remote_apply)".into(),
             source_location: d.source_location.clone(),
         }];
         if let Some(f) = DbFinding::try_new(
