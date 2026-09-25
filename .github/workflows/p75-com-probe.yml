@@ -5,25 +5,21 @@ on:
 permissions:
   contents: read
 jobs:
-  acl:
+  xpath:
     runs-on: windows-2025
     steps:
-      - name: icacls fixture order
+      - name: Event Log XPath, old and new
         shell: pwsh
         run: |
-          $sid = (whoami /user /fo csv | ConvertFrom-Csv).SID
-          Write-Host "user SID $sid"
-          function Private($p) {
-            icacls $p /inheritance:r | Out-Null; Write-Host "inheritance:r $LASTEXITCODE"
-            icacls $p /grant:r "*${sid}:(F)" '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' | Out-Null; Write-Host "grant:r $LASTEXITCODE"
-            icacls $p /setowner "*$sid" | Out-Null; Write-Host "setowner $LASTEXITCODE"
+          $w = 30 * 24 * 60 * 60 * 1000
+          $old = "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or Provider[@Name='Microsoft-Windows-Kernel-Power'] or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= $w]]]"
+          $new = "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= $w]]]"
+          foreach ($pair in @(@('old', $old), @('new', $new))) {
+            try {
+              $e = @(Get-WinEvent -LogName System -FilterXPath $pair[1] -ErrorAction Stop)
+              Write-Host "$($pair[0]): VALID, $($e.Count) event(s)"
+              $e | Group-Object ProviderName, Id | ForEach-Object { Write-Host "  $($pair[0]) $($_.Name): $($_.Count)" }
+            } catch {
+              Write-Host "$($pair[0]): $($_.FullyQualifiedErrorId) :: $($_.Exception.Message)"
+            }
           }
-          $root = Join-Path $env:TEMP "p75-acl-$(Get-Random)"
-          $ssh = Join-Path $root '.ssh'
-          New-Item -ItemType Directory $ssh | Out-Null
-          Private $ssh
-          $key = Join-Path $ssh 'id_ed25519'
-          Set-Content $key 'x'
-          Write-Host "--- key as created"; icacls $key
-          Private $key
-          foreach ($p in $ssh, $key) { Write-Host "--- $p"; icacls $p; (Get-Acl $p).Owner }
