@@ -30,7 +30,7 @@ use windows::{
 
 use crate::{
     CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EVENT_WINDOW_MS,
-    EventEvidence, Result, assemble_snapshot, classify_event, dump_in_window, event_query,
+    EventEvidence, Result, assemble_snapshot, classify_event, dump_in_window,
 };
 
 const MAX_EVENTS: usize = 128;
@@ -184,6 +184,16 @@ fn checkpoint(control: &CollectorControl, operation: &'static str) -> Result<()>
             FaultKind::Cancelled => CrashError::Cancelled(fault.detail),
             _ => CrashError::Unavailable(fault.detail),
         })
+}
+
+/// The System-channel XPath for the crash window. Kernel-Power is taken for id 41
+/// only: it is the one id `classify_event` reads, and its routine power-transition
+/// ids would otherwise fill the collector's event cap ahead of WHEA records. It stays
+/// in this file: the phase-6 static gate pins the bounded window to the collector.
+fn event_query(window_ms: u64) -> String {
+    format!(
+        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= {window_ms}]]]"
+    )
 }
 
 fn collect_events(
@@ -775,5 +785,15 @@ mod tests {
         );
         let error = checked_render_property_count((MAX_EVENT_PROPERTIES + 1) as u32).unwrap_err();
         assert!(matches!(error, CrashError::MalformedResponse(_)));
+    }
+    #[test]
+    fn only_kernel_power_41_competes_for_the_event_cap() {
+        let q = event_query(EVENT_WINDOW_MS);
+        assert!(
+            q.contains("(Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41)"),
+            "{q}"
+        );
+        assert!(q.contains("Microsoft-Windows-WHEA-Logger"), "{q}");
+        assert!(q.contains(&format!("<= {EVENT_WINDOW_MS}")), "{q}");
     }
 }

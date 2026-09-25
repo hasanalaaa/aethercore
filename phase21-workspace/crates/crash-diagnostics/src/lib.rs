@@ -28,15 +28,6 @@ pub const DEFAULT_EVENT_WINDOW_DAYS: u32 = 30;
 /// The crash window in milliseconds.
 pub const EVENT_WINDOW_MS: u64 = DEFAULT_EVENT_WINDOW_DAYS as u64 * 24 * 60 * 60 * 1000;
 
-/// The System-channel XPath for the crash window. Kernel-Power is taken for id 41
-/// only: it is the one id `classify_event` reads, and its routine power-transition
-/// ids would otherwise fill the collector's event cap ahead of WHEA records.
-pub fn event_query(window_ms: u64) -> String {
-    format!(
-        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= {window_ms}]]]"
-    )
-}
-
 /// Whether a minidump written at `modified` belongs to the crash window ending `now`.
 /// A dump whose time cannot be read is left out: it cannot be shown as recent. A time
 /// after `now` (clock skew) counts as recent.
@@ -203,16 +194,6 @@ pub fn collect_with_cancellation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn only_kernel_power_41_competes_for_the_event_cap() {
-        let q = event_query(EVENT_WINDOW_MS);
-        assert!(
-            q.contains("(Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41)"),
-            "{q}"
-        );
-        assert!(q.contains("Microsoft-Windows-WHEA-Logger"), "{q}");
-        assert!(q.contains(&format!("<= {EVENT_WINDOW_MS}")), "{q}");
-    }
     #[test]
     fn minidumps_outside_the_window_or_without_a_time_are_left_out() {
         use std::time::{Duration, SystemTime};
