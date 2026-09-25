@@ -21,6 +21,7 @@ use aethercore_operation_kernel::{ReadBudgetLease, ReadWorkload};
 use aethercore_persistence::{Database, DriverAuthorityOverrideRecord, DriverAuthorityScanRecord};
 use aethercore_windows_pnp::{DeviceRecord, InstalledDriver, normalize_pnp_id};
 use aethercore_windows_update::DiscoveryResult;
+pub use aethercore_windows_update::SearchScope;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -285,7 +286,21 @@ impl std::fmt::Display for DiscoveryFailure {
 
 pub trait DiscoveryBackend: Send + Sync + 'static {
     fn inventory(&self) -> std::result::Result<Vec<DeviceRecord>, String>;
+    /// The online search. The hub never calls it directly: it goes through `updates_in`.
     fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure>;
+    /// Every hub scan names its scope (no network at rest). The default fails closed, so a
+    /// backend that cannot search the local cache is never sent online by a passive scan.
+    fn updates_in(
+        &self,
+        scope: SearchScope,
+    ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+        match scope {
+            SearchScope::Online => self.updates(),
+            SearchScope::LocalCacheOnly => Err(DiscoveryFailure::Unavailable(
+                "this discovery backend has no local-cache search".into(),
+            )),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -297,7 +312,14 @@ impl DiscoveryBackend for WindowsDiscoveryBackend {
     }
 
     fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
-        aethercore_windows_update::discover_driver_offers().map_err(|error| match error {
+        self.updates_in(SearchScope::Online)
+    }
+
+    fn updates_in(
+        &self,
+        scope: SearchScope,
+    ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+        aethercore_windows_update::discover_driver_offers(scope).map_err(|error| match error {
             aethercore_windows_update::UpdateError::Offline(detail) => {
                 DiscoveryFailure::Offline(detail)
             }
@@ -656,6 +678,8 @@ impl DriverHub {
     /// Passive, synchronous discovery for the idle scheduler. No intermediate `Scanning` state is
     /// published. A cancellation observed before the final owner+snapshot commit makes the result
     /// ineligible for publication, so a late platform return cannot overwrite interactive state.
+    /// Nobody asked for it, so it never touches the network: Windows Update is searched
+    /// `LocalCacheOnly`, and only a user-initiated scan searches online.
     pub fn passive_scan(
         &self,
         owner_principal_key: &str,
@@ -696,10 +720,11 @@ impl DriverHub {
         if token.is_cancelled() {
             return Err(HubError::Cancelled);
         }
+        let scope = SearchScope::LocalCacheOnly;
         let discovery = self
             .inner
             .backend
-            .updates()
+            .updates_in(scope)
             .unwrap_or_else(|error| DiscoveryResult {
                 offers: Vec::new(),
                 warnings: vec![format!("Windows Update discovery unavailable: {error}")],
@@ -714,6 +739,7 @@ impl DriverHub {
             started,
             devices,
             discovery,
+            scope,
             &overrides,
             &self.inner.machine,
         );
@@ -815,7 +841,8 @@ impl DriverHub {
         };
 
         self.update_state(ScanState::UpdateSearching);
-        let discovery = match self.inner.backend.updates() {
+        let scope = SearchScope::Online;
+        let discovery = match self.inner.backend.updates_in(scope) {
             Ok(result) => result,
             Err(DiscoveryFailure::Offline(error)) => DiscoveryResult {
                 offers: Vec::new(),
@@ -836,6 +863,7 @@ impl DriverHub {
             base.started_unix_ms,
             devices,
             discovery,
+            scope,
             &overrides,
             &self.inner.machine,
         );
@@ -876,6 +904,7 @@ impl DriverHub {
 /// Matching is pure — it decides which authorities a device requires — and the machine
 /// it decides against is an input. Reading the real one from inside here made every
 /// authority-coverage assertion depend on the SMBIOS of whatever box ran the tests.
+/// `discovery` is read as the result of an online search.
 pub fn match_inventory(
     scan_id: String,
     inventory_epoch: u64,
@@ -890,17 +919,20 @@ pub fn match_inventory(
         started_unix_ms,
         devices,
         discovery,
+        SearchScope::Online,
         &[],
         machine,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn match_inventory_with_overrides(
     scan_id: String,
     inventory_epoch: u64,
     started_unix_ms: i64,
     devices: Vec<DeviceRecord>,
     discovery: DiscoveryResult,
+    scope: SearchScope,
     overrides: &[DriverOverride],
     machine: &MachineProfile,
 ) -> DriverHubSnapshot {
@@ -921,7 +953,7 @@ fn match_inventory_with_overrides(
         }
     }
 
-    let windows_update_state = windows_update_scan_state(&discovery);
+    let windows_update_state = windows_update_scan_state(&discovery, scope);
     let registry_result = builtin_provider_registry();
     let registry = registry_result.as_ref().ok();
     let mut warnings = discovery.warnings.clone();
@@ -1147,7 +1179,7 @@ fn match_inventory_with_overrides(
     }
 }
 
-fn windows_update_scan_state(discovery: &DiscoveryResult) -> CoverageState {
+fn windows_update_scan_state(discovery: &DiscoveryResult, scope: SearchScope) -> CoverageState {
     let offline = discovery
         .warnings
         .iter()
@@ -1160,9 +1192,10 @@ fn windows_update_scan_state(discovery: &DiscoveryResult) -> CoverageState {
         CoverageState::Offline
     } else if unavailable {
         CoverageState::ProviderUnavailable
-    } else if discovery.warnings.is_empty() {
+    } else if discovery.warnings.is_empty() && scope == SearchScope::Online {
         CoverageState::CompleteForRequiredAuthorities
     } else {
+        // A local-cache answer is whatever Windows last synchronised; it cannot prove "up to date".
         CoverageState::Partial
     }
 }
@@ -2153,5 +2186,99 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         panic!("scan did not reach Ready after WUA failure");
+    }
+
+    /// A backend that only knows the online search, as every backend did before P75.
+    #[derive(Default)]
+    struct OnlineOnlyBackend {
+        online_searches: std::sync::atomic::AtomicUsize,
+    }
+    impl DiscoveryBackend for OnlineOnlyBackend {
+        fn inventory(&self) -> std::result::Result<Vec<DeviceRecord>, String> {
+            Ok(vec![device("PCI\\VEN_1234&DEV_5678", "Net")])
+        }
+        fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+            self.online_searches
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(DiscoveryResult::default())
+        }
+    }
+
+    /// No network at rest: the idle scheduler's passive scan must never reach an online
+    /// search, even through a backend that has no local-cache search to offer.
+    #[test]
+    fn passive_scan_never_reaches_an_online_only_backend() {
+        let backend = Arc::new(OnlineOnlyBackend::default());
+        let hub = DriverHub::with_backend_and_machine(backend.clone(), test_machine());
+        let snapshot = hub
+            .passive_scan(OWNER, CancellationToken::default())
+            .unwrap();
+        assert_eq!(
+            backend
+                .online_searches
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the passive scan went online"
+        );
+        assert_eq!(snapshot.authority_coverage, "ProviderUnavailable");
+    }
+
+    #[derive(Default)]
+    struct ScopeRecorder {
+        scopes: Mutex<Vec<SearchScope>>,
+    }
+    impl DiscoveryBackend for ScopeRecorder {
+        fn inventory(&self) -> std::result::Result<Vec<DeviceRecord>, String> {
+            Ok(vec![device("PCI\\VEN_1234&DEV_5678", "Net")])
+        }
+        fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+            unreachable!("every hub scan names its search scope")
+        }
+        fn updates_in(
+            &self,
+            scope: SearchScope,
+        ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+            self.scopes.lock().unwrap().push(scope);
+            Ok(DiscoveryResult::default())
+        }
+    }
+
+    #[test]
+    fn passive_scan_searches_local_cache_and_user_scan_searches_online() {
+        let backend = Arc::new(ScopeRecorder::default());
+        let hub = DriverHub::with_backend_and_machine(backend.clone(), test_machine());
+
+        let passive = hub
+            .passive_scan(OWNER, CancellationToken::default())
+            .unwrap();
+        assert_eq!(
+            *backend.scopes.lock().unwrap(),
+            vec![SearchScope::LocalCacheOnly]
+        );
+        // An empty cache answer is not proof of "up to date".
+        assert_eq!(passive.authority_coverage, "Partial");
+        assert_eq!(
+            passive.devices[0].update_status,
+            "NoUpdateFoundFromCheckedSources"
+        );
+
+        start_scan_leased(&hub, OWNER).unwrap();
+        for _ in 0..100 {
+            let snapshot = hub.snapshot();
+            if snapshot.state == ScanState::Ready {
+                assert_eq!(
+                    *backend.scopes.lock().unwrap(),
+                    vec![SearchScope::LocalCacheOnly, SearchScope::Online]
+                );
+                assert_eq!(
+                    snapshot.authority_coverage,
+                    "CompleteForRequiredAuthorities"
+                );
+                assert_eq!(snapshot.devices[0].update_status, "UpToDate");
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("scan did not reach Ready");
     }
 }

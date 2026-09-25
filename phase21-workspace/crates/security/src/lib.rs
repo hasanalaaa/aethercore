@@ -263,6 +263,7 @@ fn principal_from_token(
 /// big-endian identifier authority, then little-endian 32-bit sub-authorities. Written by
 /// hand rather than through `ConvertSidToStringSidW` so it is testable on any host and so
 /// the caller needs no Win32 call at all.
+#[cfg(any(windows, test))]
 fn sid_text_from_bytes(sid: &[u8]) -> Option<String> {
     if sid.len() < 8 || sid[0] != 1 {
         return None;
@@ -533,7 +534,7 @@ pub fn inspect_named_pipe_client(
 /// QD-026-001.
 #[cfg(unix)]
 pub fn socket_owner_principal() -> PrincipalContext {
-    let uid = unsafe { libc_getuid() };
+    let uid = libc_getuid();
     let pid = std::process::id();
     // Identity material mirrors the Windows shape: a stable per-user string plus stable
     // session context. On unix the logon/session dimension collapses to the uid itself.

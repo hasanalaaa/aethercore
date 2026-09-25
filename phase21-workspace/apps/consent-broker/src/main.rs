@@ -1,8 +1,12 @@
+#[cfg(windows)]
 use aethercore_contracts::{
     PROTOCOL_VERSION,
     v1::{self, Request, RequestHeader, request, response},
 };
-use anyhow::{Context, Result, bail};
+#[cfg(windows)]
+use anyhow::Context;
+use anyhow::{Result, bail};
+#[cfg(windows)]
 use uuid::Uuid;
 
 fn main() -> Result<()> {
@@ -186,6 +190,7 @@ fn format_number_ar(value: u64) -> String {
         .collect()
 }
 
+#[cfg(windows)]
 fn arg(args: &[String], name: &str) -> Result<String> {
     let index = args
         .iter()

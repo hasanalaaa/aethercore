@@ -26,7 +26,6 @@ use aethercore_contracts::{
     MAX_CLIENT_SESSION_FRAME_BYTES, MAX_SERVER_SESSION_FRAME_BYTES, PROTOCOL_VERSION,
     v1::{ClientFrame, ServerFrame, ServerHello, client_frame, server_frame},
 };
-use aethercore_ipc::Transport;
 use chrono::Utc;
 use prost::Message as _;
 use tracing::{info, warn};
@@ -34,7 +33,6 @@ use uuid::Uuid;
 
 use crate::router::ServiceContext;
 
-const IPC_BOOTSTRAP_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(2);
 /// Mirrors server.rs session admission so unix never admits more persistent sessions
 /// than the Windows pipe host would.
 const MAX_UNIX_SESSIONS: usize = 32;
@@ -47,20 +45,20 @@ static UNIX_SESSIONS: AtomicUsize = AtomicUsize::new(0);
 
 /// Optional startup hook (set by the service binary) that announces the bound socket
 /// path — used by integration tests and the daemon log to discover the rendezvous.
-static SOCKET_ANNOUNCER: std::sync::Mutex<Option<Box<dyn Fn(&str) + Send>>> =
-    std::sync::Mutex::new(None);
+type SocketAnnouncer = Box<dyn Fn(&str) + Send>;
+static SOCKET_ANNOUNCER: std::sync::Mutex<Option<SocketAnnouncer>> = std::sync::Mutex::new(None);
 
-pub fn set_socket_announcer(f: Box<dyn Fn(&str) + Send>) {
+pub fn set_socket_announcer(f: SocketAnnouncer) {
     if let Ok(mut slot) = SOCKET_ANNOUNCER.lock() {
         *slot = Some(f);
     }
 }
 
 fn announce_socket(path: &std::path::Path) {
-    if let Ok(slot) = SOCKET_ANNOUNCER.lock() {
-        if let Some(f) = slot.as_ref() {
-            f(path.to_str().unwrap_or(""));
-        }
+    if let Ok(slot) = SOCKET_ANNOUNCER.lock()
+        && let Some(f) = slot.as_ref()
+    {
+        f(path.to_str().unwrap_or(""));
     }
 }
 
@@ -109,7 +107,7 @@ pub fn run_unix_server(
     }
     // bind() enforces ensure_private_dir (0700), removes a stale socket from a crashed
     // prior run after proving nothing lives behind it, and refuses to stomp a live one.
-    let mut listener = aethercore_ipc::UnixSocketListener::bind(&dir)
+    let listener = aethercore_ipc::UnixSocketListener::bind(&dir)
         .map_err(|error| anyhow::anyhow!("bind unix IPC socket in {}: {error}", dir.display()))?;
     info!(
         socket = %listener.socket_path().display(),
@@ -191,7 +189,8 @@ fn serve_unix_session(
 
     // Subscription installation and replay capture stay inside one EventBus critical
     // section — the same replay->live race-freedom argument as the Windows host.
-    let (subscription, replay) = context
+    // Named, not `_`: the binding keeps the subscription alive for the whole session.
+    let (_subscription, replay) = context
         .kernel
         .events()
         .subscribe(&owner, hello.replay_after_sequence);

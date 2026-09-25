@@ -34,6 +34,8 @@ pub struct BackupEvidence {
     pub not_applicable: bool,
 }
 
+// Only windows_impl builds a manifest; off Windows these would be dead code.
+#[cfg(windows)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BackupManifest {
@@ -41,6 +43,7 @@ struct BackupManifest {
     files: Vec<BackupFile>,
 }
 
+#[cfg(windows)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BackupFile {
