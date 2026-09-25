@@ -87,16 +87,29 @@ fn make_private(path: &Path, dir: bool) {
     #[cfg(windows)]
     {
         let _ = dir;
+        let user_sid = current_user_sid();
         let status = std::process::Command::new("icacls")
             .arg(path)
             .arg("/inheritance:r")
             .status()
             .expect("icacls runs");
         assert!(status.success(), "icacls /inheritance:r failed");
+        // The hosted runner also adds an explicit ACE for its local Administrator
+        // account; removing inheritance alone does not remove that entry.
+        let (machine_sid, _) = user_sid.rsplit_once('-').expect("user SID RID");
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .args(["/remove:g", &format!("*{machine_sid}-500")])
+            .status()
+            .expect("icacls runs");
+        assert!(
+            status.success(),
+            "icacls /remove:g local Administrator failed"
+        );
         let status = std::process::Command::new("icacls")
             .arg(path)
             .arg("/grant:r")
-            .arg(format!("*{}:(F)", current_user_sid()))
+            .arg(format!("*{user_sid}:(F)"))
             .args(["*S-1-5-18:(F)", "*S-1-5-32-544:(F)"])
             .status()
             .expect("icacls runs");
