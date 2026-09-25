@@ -79,8 +79,11 @@ fn a_hung_collector_becomes_a_timeout_fault_not_a_stalled_sampler() {
     let ring = PerformanceRing::new();
     ring.start(Arc::new(Hung), OWNER, 250).expect("start");
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    // The first tick is the one that timed out; under load a poll can wake after
+    // the next tick (correctly `Unavailable`) is already the latest, so read the
+    // ring's oldest sample, not its newest.
     let snapshot = loop {
-        if let Some(snapshot) = ring.latest(OWNER) {
+        if let Some(snapshot) = ring.window(OWNER).into_iter().next() {
             break snapshot;
         }
         assert!(
