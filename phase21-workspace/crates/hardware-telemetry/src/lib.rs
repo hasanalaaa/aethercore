@@ -33,10 +33,16 @@ pub struct AtaSmartAttribute {
     pub raw_value_hex: String,
 }
 
+// The storage-IOCTL parsers below serve windows_impl; off Windows they are compiled only
+// for their host-agnostic tests.
+#[cfg(any(windows, test))]
 const ATA_SMART_SECTOR_BYTES: usize = 512;
+#[cfg(any(windows, test))]
 const ATA_SMART_ATTRIBUTE_COUNT: usize = 30;
+#[cfg(any(windows, test))]
 const ATA_SMART_ATTRIBUTE_BYTES: usize = 12;
 
+#[cfg(any(windows, test))]
 pub(crate) fn parse_ata_smart_sector(data: &[u8]) -> Result<Vec<AtaSmartAttribute>> {
     if data.len() < ATA_SMART_SECTOR_BYTES {
         return Err(TelemetryError::MalformedResponse(format!(
@@ -71,6 +77,7 @@ pub(crate) fn parse_ata_smart_sector(data: &[u8]) -> Result<Vec<AtaSmartAttribut
     Ok(attrs)
 }
 
+#[cfg(any(windows, test))]
 pub(crate) fn parse_ata_driver_response(
     output: &[u8],
     returned: usize,
@@ -108,6 +115,7 @@ pub(crate) fn parse_ata_driver_response(
     parse_ata_smart_sector(&output[data_offset..required_end])
 }
 
+#[cfg(any(windows, test))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct NvmeHealthValues {
     pub critical: u8,
@@ -119,6 +127,7 @@ pub(crate) struct NvmeHealthValues {
     pub error_entries: String,
 }
 
+#[cfg(any(windows, test))]
 pub(crate) fn parse_nvme_health_log(data: &[u8]) -> Result<NvmeHealthValues> {
     const REQUIRED: usize = 192;
     if data.len() < REQUIRED {
@@ -144,6 +153,7 @@ pub(crate) fn parse_nvme_health_log(data: &[u8]) -> Result<NvmeHealthValues> {
     })
 }
 
+#[cfg(any(windows, test))]
 pub(crate) fn checked_protocol_window(
     returned: usize,
     protocol_offset: usize,

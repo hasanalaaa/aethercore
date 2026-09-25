@@ -59,6 +59,17 @@ pub struct DriverOffer {
     pub support_url: String,
 }
 
+/// Where a driver search may look. No network at rest: background work searches
+/// `LocalCacheOnly`; only a user-initiated scan may search `Online`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchScope {
+    /// `IUpdateSearcher.Online = VARIANT_FALSE`: WUA answers from local data only
+    /// ([MS-UAMG] 3.38.4.13), i.e. whatever Windows itself last synchronised.
+    LocalCacheOnly,
+    /// `IUpdateSearcher.Online = VARIANT_TRUE`: WUA may contact the configured update server.
+    Online,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscoveryResult {
@@ -184,7 +195,7 @@ pub fn probe_update_health() -> UpdateHealthProbe {
 }
 
 #[cfg(not(windows))]
-pub fn discover_driver_offers() -> Result<DiscoveryResult> {
+pub fn discover_driver_offers(_scope: SearchScope) -> Result<DiscoveryResult> {
     Err(UpdateError::UnsupportedPlatform)
 }
 
