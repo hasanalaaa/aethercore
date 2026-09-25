@@ -76,8 +76,11 @@ never `git add -A`, never force-push, never merge red. Windows behaviour is prov
 
 # Continuation — state at 2026-09-26 (second lead session)
 
-One lane at a time locally; no subagents. `main` = `b032a71` (#29 merged). `bcd7211` (#27) is
-green on run `36182970532`.
+One lane at a time locally; no subagents. `main` = `9e0b755` (#28 merged after #29).
+**`main` is RED** on `t5_budget_constants_respected_on_load_and_call` (run `36197424831`):
+#29 made the model really decode, and the decode loops overran the 10 s budget on the
+2-vCPU runner (#29's own run passed; three later runs failed). **PR #36
+(`lane/insight-deadline`) is the fix-forward and must merge before anything else.**
 
 ## Merge train (one PR at a time; each needs `main` merged in, which conflicts only on
 `docs/LEDGER.md` "Last moved" and `MANIFEST.sha256`, then a fresh CI at the new head)
@@ -85,13 +88,14 @@ green on run `36182970532`.
 | PR | lane | head at writing | PR CI | notes |
 |---|---|---|---|---|
 | #25, #26, #27, #29 | no-egress, mac-clippy, keygen-rng, insight-model | merged | green | #29's main run `36192104951` |
-| #28 | fs-acl | `b7d4e47` | `36192190898` | fixture made user-owned (runner user is RID 500, elevated → owner is Administrators; `DBT-P75-008` opened); icacls order proven in throwaway run `36185665074`; firewall test moved behind `#[cfg(test)]` for `enterprise-adversarial-audit` |
+| #28 | fs-acl | merged `9e0b755` | `36192190898` green | fixture made user-owned (runner user is RID 500, elevated → owner is Administrators; `DBT-P75-008` opened); icacls order proven in throwaway run `36185665074`; firewall test moved behind `#[cfg(test)]` for `enterprise-adversarial-audit` |
 | #30 | cli-truth | `9f15666` | green pre-#29 (`36186619945`) | exit-code change 5→8 flagged for the owner (`DBT-P75-016`) |
 | #31 | diagnosis-evidence | `6f47c6c` | green pre-#29 (`36187290070`) | Kernel-Power XPath measured in throwaway run `36186229655` |
 | #32 | plan-journal | `f017f7c` | green pre-#29 (`36187928668`) | replayed onto main; `DBT-P75-027` open (needs a dev-dependency) |
 | #33 | telemetry-windows | `8d6b46d` | `36189280509` | only lifecycle + watchdog; the Windows counter items are not started |
 | #34 | service-rollback | `5dc124f` | `36192907227` | installer probe red `36184401229` / green `36184392149`; `DBT-P74-002` not started |
-| #35 | db-diagnostics (Wave 2) | `707d735` | pending | 7 red-before tests |
+| #35 | db-diagnostics (Wave 2) | `707d735` | failed only on t5 | 7 red-before tests |
+| #36 | insight-deadline | `10f0e16` | pending | fixes main's red t5; merge first |
 
 Ledger ids assigned: `DBT-P75-006`…`034` (see each lane doc under `docs/phase75/lanes/`).
 
