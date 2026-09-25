@@ -80,3 +80,18 @@ pub fn firewall_findings(status: &FirewallStatus) -> Option<SecFinding> {
         ),
     }
 }
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn firewall_evidence_names_windows_registry_profile_values() {
+        let FirewallStatus::NotAvailable { reason } = audit_firewall_state() else {
+            panic!("Windows firewall probe must state the evidence and its limit");
+        };
+        assert!(reason.contains("DomainProfile"), "{reason}");
+        assert!(reason.contains("EnableFirewall"), "{reason}");
+        assert!(reason.contains("effective state"), "{reason}");
+    }
+}
