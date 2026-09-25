@@ -6,7 +6,9 @@ use aethercore_contracts::{
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tauri::{Emitter, command};
+#[cfg(windows)]
+use tauri::Emitter;
+use tauri::command;
 use uuid::Uuid;
 
 #[cfg(windows)]
@@ -37,6 +39,7 @@ static LAST_EVENT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[cfg(windows)]
 static SESSION_DESIRED: AtomicBool = AtomicBool::new(false);
 
+#[cfg(windows)]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UiKernelEvent {
@@ -56,6 +59,7 @@ struct UiSessionState {
     replay_floor_sequence: u64,
     replay_complete: bool,
 }
+#[cfg(windows)]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UiStreamReset {
@@ -1209,6 +1213,7 @@ fn cancel_update_upload(upload_id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
 fn cancel_update_install_intent(intent_id: &str) -> anyhow::Result<()> {
     if intent_id.is_empty() {
         return Ok(());
@@ -2990,6 +2995,8 @@ fn dirs_fleet_state() -> std::path::PathBuf {
 fn main() {
     let result = tauri::Builder::default()
         .setup(|app| {
+            #[cfg(not(windows))]
+            let _ = app;
             #[cfg(windows)]
             {
                 let _ = APP_HANDLE.set(app.handle().clone());

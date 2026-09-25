@@ -1,15 +1,20 @@
+#[cfg(windows)]
 use aethercore_contracts::{
     PROTOCOL_VERSION,
     v1::{self, Request, RequestHeader, request, response},
 };
 #[cfg(windows)]
 use aethercore_windows_foundation::MachineMutationGuard;
-use anyhow::{Context, Result, bail};
+#[cfg(windows)]
+use anyhow::Context;
+use anyhow::{Result, bail};
+#[cfg(windows)]
 use std::{
     process::Command,
     thread,
     time::{Duration, Instant},
 };
+#[cfg(windows)]
 use uuid::Uuid;
 
 fn main() -> Result<()> {
@@ -222,6 +227,7 @@ fn confirm(intent: &v1::UpdateInstallIntentResponse, locale: &str) -> Result<boo
     };
     Ok(unsafe { MessageBoxW(None, PCWSTR(b.as_ptr()), PCWSTR(t.as_ptr()), flags) } == IDYES)
 }
+#[cfg(windows)]
 fn arg(args: &[String], name: &str) -> Result<String> {
     let index = args
         .iter()
