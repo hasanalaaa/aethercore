@@ -216,6 +216,14 @@ pub struct RecoveryRecord {
     pub created_unix_ms: i64,
 }
 
+/// The execution record a plan transition commits together with the new plan state, so no reader
+/// can see a terminal plan without the record that explains it (DBT-P63-012). The recovery record,
+/// when present, lands in the same transaction.
+pub enum PlanJournal<'a> {
+    Maintenance(&'a MaintenanceExecutionRecord, Option<&'a RecoveryRecord>),
+    Driver(&'a ExecutionRecord, Option<&'a RecoveryRecord>),
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MaintenanceExecutionRecord {
     pub plan_id: String,
@@ -521,18 +529,46 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let changed = tx.execute(
-            "UPDATE plans SET state=?,updated_unix_ms=? WHERE id=? AND state=?",
-            params![next, now_ms, id, expected],
-        )?;
-        if changed == 1 {
-            tx.execute(
-                "INSERT INTO plan_events(plan_id,from_state,to_state,event_kind,detail,created_unix_ms) VALUES(?,?,?,?,?,?)",
-                params![id,expected,next,"state_transition",detail,now_ms],
-            )?;
+        let changed = transition_plan_in(&tx, id, expected, next, detail, now_ms)?;
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    /// `transition_plan` and the plan's execution journal in ONE transaction. The journal is
+    /// written first, so it is already in place at the instant the state flips; if the state CAS
+    /// misses, or any write fails, the whole transaction rolls back and nothing is recorded.
+    pub fn transition_plan_with_journal(
+        &self,
+        id: &str,
+        expected: &str,
+        next: &str,
+        detail: &str,
+        now_ms: i64,
+        journal: PlanJournal<'_>,
+    ) -> Result<bool> {
+        let mut conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let recovery = match journal {
+            PlanJournal::Maintenance(r, recovery) => {
+                upsert_maintenance_execution_in(&tx, r)?;
+                recovery
+            }
+            PlanJournal::Driver(r, recovery) => {
+                upsert_execution_in(&tx, r)?;
+                recovery
+            }
+        };
+        if let Some(r) = recovery {
+            add_recovery_record_in(&tx, r)?;
+        }
+        if !transition_plan_in(&tx, id, expected, next, detail, now_ms)? {
+            return Ok(false);
         }
         tx.commit()?;
-        Ok(changed == 1)
+        Ok(true)
     }
 
     pub fn append_plan_event(
@@ -703,12 +739,7 @@ impl Database {
             .connection
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
-        conn.execute(
-            "INSERT INTO plan_executions(plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms,bytes_downloaded_known,bytes_total_known) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-             ON CONFLICT(plan_id) DO UPDATE SET stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_candidate_id=excluded.current_candidate_id,bytes_downloaded=excluded.bytes_downloaded,bytes_total=excluded.bytes_total,bytes_downloaded_known=excluded.bytes_downloaded_known,bytes_total_known=excluded.bytes_total_known,detail=excluded.detail,reboot_required=excluded.reboot_required,reboot_boot_marker_ms=excluded.reboot_boot_marker_ms,restore_point_sequence=excluded.restore_point_sequence,backup_root=excluded.backup_root,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
-            params![r.plan_id,r.stage,bool_i(r.progress_known),r.overall_percent,r.current_candidate_id,u64_to_i64(r.bytes_downloaded.unwrap_or(0)),u64_to_i64(r.bytes_total.unwrap_or(0)),r.detail,bool_i(r.reboot_required),r.reboot_boot_marker_ms,r.restore_point_sequence,r.backup_root,bool_i(r.mutation_started),bool_i(r.recovery_required),r.failure_message,r.started_unix_ms,r.updated_unix_ms,r.completed_unix_ms,bool_i(r.bytes_downloaded.is_some()),bool_i(r.bytes_total.is_some())],
-        )?;
-        Ok(())
+        upsert_execution_in(&conn, r)
     }
 
     pub fn get_execution(&self, plan_id: &str) -> Result<Option<ExecutionRecord>> {
@@ -942,11 +973,7 @@ impl Database {
             .connection
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
-        conn.execute(
-            "INSERT INTO recovery_records(plan_id,severity,kind,summary,detail,restore_point_sequence,backup_root,created_unix_ms) VALUES(?,?,?,?,?,?,?,?)",
-            params![r.plan_id,r.severity,r.kind,r.summary,r.detail,r.restore_point_sequence,r.backup_root,r.created_unix_ms],
-        )?;
-        Ok(conn.last_insert_rowid())
+        add_recovery_record_in(&conn, r)
     }
 
     pub fn recovery_records(&self, limit: usize) -> Result<Vec<RecoveryRecord>> {
@@ -1008,12 +1035,7 @@ impl Database {
             .connection
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
-        conn.execute(
-            "INSERT INTO maintenance_executions(plan_id,domain,stage,progress_known,overall_percent,current_item_id,detail,mutation_started,recovery_required,failure_message,outcome,machine_state_fingerprint,repair_graph_digest,reboot_required,reboot_resume_token,verification_state,started_unix_ms,updated_unix_ms,completed_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-             ON CONFLICT(plan_id) DO UPDATE SET domain=excluded.domain,stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_item_id=excluded.current_item_id,detail=excluded.detail,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,outcome=excluded.outcome,machine_state_fingerprint=excluded.machine_state_fingerprint,repair_graph_digest=excluded.repair_graph_digest,reboot_required=excluded.reboot_required,reboot_resume_token=excluded.reboot_resume_token,verification_state=excluded.verification_state,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
-            params![r.plan_id,r.domain,r.stage,bool_i(r.progress_known),r.overall_percent,r.current_item_id,r.detail,bool_i(r.mutation_started),bool_i(r.recovery_required),r.failure_message,r.outcome,r.machine_state_fingerprint,r.repair_graph_digest,bool_i(r.reboot_required),r.reboot_resume_token,r.verification_state,r.started_unix_ms,r.updated_unix_ms,r.completed_unix_ms],
-        )?;
-        Ok(())
+        upsert_maintenance_execution_in(&conn, r)
     }
 
     pub fn get_maintenance_execution(
@@ -2035,6 +2057,58 @@ impl Database {
     }
 }
 
+// Statement bodies shared by the standalone writers and `transition_plan_with_journal`, which
+// must run them on one transaction.
+fn transition_plan_in(
+    conn: &Connection,
+    id: &str,
+    expected: &str,
+    next: &str,
+    detail: &str,
+    now_ms: i64,
+) -> Result<bool> {
+    let changed = conn.execute(
+        "UPDATE plans SET state=?,updated_unix_ms=? WHERE id=? AND state=?",
+        params![next, now_ms, id, expected],
+    )?;
+    if changed == 1 {
+        conn.execute(
+            "INSERT INTO plan_events(plan_id,from_state,to_state,event_kind,detail,created_unix_ms) VALUES(?,?,?,?,?,?)",
+            params![id,expected,next,"state_transition",detail,now_ms],
+        )?;
+    }
+    Ok(changed == 1)
+}
+
+fn upsert_execution_in(conn: &Connection, r: &ExecutionRecord) -> Result<()> {
+    conn.execute(
+        "INSERT INTO plan_executions(plan_id,stage,progress_known,overall_percent,current_candidate_id,bytes_downloaded,bytes_total,detail,reboot_required,reboot_boot_marker_ms,restore_point_sequence,backup_root,mutation_started,recovery_required,failure_message,started_unix_ms,updated_unix_ms,completed_unix_ms,bytes_downloaded_known,bytes_total_known) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(plan_id) DO UPDATE SET stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_candidate_id=excluded.current_candidate_id,bytes_downloaded=excluded.bytes_downloaded,bytes_total=excluded.bytes_total,bytes_downloaded_known=excluded.bytes_downloaded_known,bytes_total_known=excluded.bytes_total_known,detail=excluded.detail,reboot_required=excluded.reboot_required,reboot_boot_marker_ms=excluded.reboot_boot_marker_ms,restore_point_sequence=excluded.restore_point_sequence,backup_root=excluded.backup_root,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
+        params![r.plan_id,r.stage,bool_i(r.progress_known),r.overall_percent,r.current_candidate_id,u64_to_i64(r.bytes_downloaded.unwrap_or(0)),u64_to_i64(r.bytes_total.unwrap_or(0)),r.detail,bool_i(r.reboot_required),r.reboot_boot_marker_ms,r.restore_point_sequence,r.backup_root,bool_i(r.mutation_started),bool_i(r.recovery_required),r.failure_message,r.started_unix_ms,r.updated_unix_ms,r.completed_unix_ms,bool_i(r.bytes_downloaded.is_some()),bool_i(r.bytes_total.is_some())],
+    )?;
+    Ok(())
+}
+
+fn upsert_maintenance_execution_in(
+    conn: &Connection,
+    r: &MaintenanceExecutionRecord,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO maintenance_executions(plan_id,domain,stage,progress_known,overall_percent,current_item_id,detail,mutation_started,recovery_required,failure_message,outcome,machine_state_fingerprint,repair_graph_digest,reboot_required,reboot_resume_token,verification_state,started_unix_ms,updated_unix_ms,completed_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(plan_id) DO UPDATE SET domain=excluded.domain,stage=excluded.stage,progress_known=excluded.progress_known,overall_percent=excluded.overall_percent,current_item_id=excluded.current_item_id,detail=excluded.detail,mutation_started=excluded.mutation_started,recovery_required=excluded.recovery_required,failure_message=excluded.failure_message,outcome=excluded.outcome,machine_state_fingerprint=excluded.machine_state_fingerprint,repair_graph_digest=excluded.repair_graph_digest,reboot_required=excluded.reboot_required,reboot_resume_token=excluded.reboot_resume_token,verification_state=excluded.verification_state,updated_unix_ms=excluded.updated_unix_ms,completed_unix_ms=excluded.completed_unix_ms",
+        params![r.plan_id,r.domain,r.stage,bool_i(r.progress_known),r.overall_percent,r.current_item_id,r.detail,bool_i(r.mutation_started),bool_i(r.recovery_required),r.failure_message,r.outcome,r.machine_state_fingerprint,r.repair_graph_digest,bool_i(r.reboot_required),r.reboot_resume_token,r.verification_state,r.started_unix_ms,r.updated_unix_ms,r.completed_unix_ms],
+    )?;
+    Ok(())
+}
+
+fn add_recovery_record_in(conn: &Connection, r: &RecoveryRecord) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO recovery_records(plan_id,severity,kind,summary,detail,restore_point_sequence,backup_root,created_unix_ms) VALUES(?,?,?,?,?,?,?,?)",
+        params![r.plan_id,r.severity,r.kind,r.summary,r.detail,r.restore_point_sequence,r.backup_root,r.created_unix_ms],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
 fn apply_migrations(conn: &mut Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum_sha256 TEXT NOT NULL, applied_unix_ms INTEGER NOT NULL);",
@@ -2374,6 +2448,159 @@ mod tests {
             )
             .unwrap()
         );
+        drop(db);
+        cleanup_database(&path);
+    }
+
+    fn journal_plan(db: &Database, id: &str, state: &str) {
+        db.insert_plan(
+            &PlanRecord {
+                id: id.into(),
+                title: "Journal".into(),
+                state: state.into(),
+                digest: format!("digest-{id}"),
+                risk: "Amber".into(),
+                immutable_json: "{}".into(),
+                created_unix_ms: 1,
+                updated_unix_ms: 1,
+                owner_principal_key: "test-owner".into(),
+            },
+            "plan_created",
+        )
+        .unwrap();
+    }
+
+    fn failed_journal(plan_id: &str) -> (MaintenanceExecutionRecord, RecoveryRecord) {
+        (
+            MaintenanceExecutionRecord {
+                plan_id: plan_id.into(),
+                domain: "Cleanup".into(),
+                stage: "Failed".into(),
+                mutation_started: true,
+                recovery_required: true,
+                updated_unix_ms: 5,
+                completed_unix_ms: Some(5),
+                ..Default::default()
+            },
+            RecoveryRecord {
+                plan_id: plan_id.into(),
+                severity: "Amber".into(),
+                kind: "CleanupFailed".into(),
+                created_unix_ms: 5,
+                ..Default::default()
+            },
+        )
+    }
+
+    /// DBT-P63-012. The probe trigger fires inside the transition's own UPDATE, so it captures
+    /// the journal exactly as any reader could see it at the instant the plan turned terminal.
+    #[test]
+    fn terminal_state_is_committed_with_the_journal_that_explains_it() {
+        let (db, path) = temp_db();
+        journal_plan(&db, "p-probe", "Executing");
+        db.connection
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE probe(stage TEXT, recovery_required INTEGER, completed_unix_ms INTEGER);
+                 CREATE TRIGGER probe_flip AFTER UPDATE OF state ON plans
+                 WHEN NEW.state IN ('Failed','Completed') BEGIN
+                   INSERT INTO probe SELECT stage,recovery_required,completed_unix_ms
+                   FROM maintenance_executions WHERE plan_id=NEW.id;
+                 END;",
+            )
+            .unwrap();
+        let (record, recovery) = failed_journal("p-probe");
+        assert!(
+            db.transition_plan_with_journal(
+                "p-probe",
+                "Executing",
+                "Failed",
+                "cleanup failed",
+                5,
+                PlanJournal::Maintenance(&record, Some(&recovery)),
+            )
+            .unwrap()
+        );
+        let probe: (String, i64, Option<i64>) = db
+            .connection
+            .lock()
+            .unwrap()
+            .query_row("SELECT * FROM probe", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(probe, ("Failed".into(), 1, Some(5)));
+        assert_eq!(db.recovery_records(10).unwrap()[0].plan_id, "p-probe");
+        drop(db);
+        cleanup_database(&path);
+    }
+
+    /// A journal write that fails - the in-process stand-in for dying mid-write - must leave the
+    /// plan non-terminal, where `recoverable_plans` still finds it after restart.
+    #[test]
+    fn failed_journal_write_leaves_the_plan_recoverable() {
+        let (db, path) = temp_db();
+        journal_plan(&db, "p-abort", "Executing");
+        db.upsert_maintenance_execution(&MaintenanceExecutionRecord {
+            plan_id: "p-abort".into(),
+            domain: "Cleanup".into(),
+            stage: "Executing".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        db.connection
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER journal_fault BEFORE UPDATE ON maintenance_executions
+                 WHEN NEW.stage='Failed' BEGIN SELECT RAISE(ABORT,'injected journal fault'); END;",
+            )
+            .unwrap();
+        let (record, recovery) = failed_journal("p-abort");
+        assert!(
+            db.transition_plan_with_journal(
+                "p-abort",
+                "Executing",
+                "Failed",
+                "cleanup failed",
+                5,
+                PlanJournal::Maintenance(&record, Some(&recovery)),
+            )
+            .is_err()
+        );
+        assert_eq!(db.get_plan("p-abort").unwrap().unwrap().state, "Executing");
+        assert_eq!(db.plans_in_states(&["Executing"]).unwrap().len(), 1);
+        assert_eq!(db.event_count().unwrap(), 1);
+        assert!(db.recovery_records(10).unwrap().is_empty());
+        drop(db);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn missed_state_cas_writes_no_journal() {
+        let (db, path) = temp_db();
+        journal_plan(&db, "p-cas", "Verifying");
+        let (_, recovery) = failed_journal("p-cas");
+        let execution = ExecutionRecord {
+            plan_id: "p-cas".into(),
+            stage: "FailedAfterMutation".into(),
+            ..Default::default()
+        };
+        assert!(
+            !db.transition_plan_with_journal(
+                "p-cas",
+                "Executing",
+                "Failed",
+                "stale expectation",
+                5,
+                PlanJournal::Driver(&execution, Some(&recovery)),
+            )
+            .unwrap()
+        );
+        assert_eq!(db.get_plan("p-cas").unwrap().unwrap().state, "Verifying");
+        assert!(db.get_execution("p-cas").unwrap().is_none());
+        assert!(db.recovery_records(10).unwrap().is_empty());
         drop(db);
         cleanup_database(&path);
     }

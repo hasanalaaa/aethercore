@@ -17,7 +17,7 @@ use aethercore_operation_kernel::{
     ReadWorkload,
 };
 use aethercore_persistence::{
-    Database, MaintenanceExecutionRecord, MaintenanceItemRecord, RecoveryRecord,
+    Database, MaintenanceExecutionRecord, MaintenanceItemRecord, PlanJournal, RecoveryRecord,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -629,22 +629,24 @@ impl CleanupEngine {
         owner_principal_key: &str,
         plan_id: Option<&str>,
     ) -> Result<Option<CleanupExecutionStatus>> {
-        let record = match plan_id {
-            Some(id) => {
-                self.engine.get_plan_for_owner(id, owner_principal_key)?;
-                self.db.get_maintenance_execution(id)?
-            }
-            None => self
+        // Plan first, then its journal: a terminal transition commits the journal with it
+        // (DBT-P63-012), so a terminal state read first is never paired with an older record.
+        let plan_id = match plan_id {
+            Some(id) => id.to_owned(),
+            None => match self
                 .db
-                .latest_maintenance_execution_for_owner("Cleanup", owner_principal_key)?,
+                .latest_maintenance_execution_for_owner("Cleanup", owner_principal_key)?
+            {
+                Some(record) => record.plan_id,
+                None => return Ok(None),
+            },
         };
-        let Some(record) = record else {
-            return Ok(None);
-        };
-
         let plan = self
             .engine
-            .get_plan_for_owner(&record.plan_id, owner_principal_key)?;
+            .get_plan_for_owner(&plan_id, owner_principal_key)?;
+        let Some(record) = self.db.get_maintenance_execution(&plan_id)? else {
+            return Ok(None);
+        };
         let actions = self.engine.cleanup_actions(&record.plan_id)?;
         let expected: HashMap<&str, u64> = actions
             .iter()
@@ -725,44 +727,41 @@ impl CleanupEngine {
 
             let mutated = matches!(plan.state, PlanState::Executing | PlanState::Verifying);
             let now = now_ms();
-            let _ = self.engine.transition(
+            let record = MaintenanceExecutionRecord {
+                plan_id: plan.id.clone(),
+                domain: "Cleanup".into(),
+                stage: "Interrupted".into(),
+                detail: if mutated {
+                    "Cleanup stopped after deletion began. No deletion was replayed automatically."
+                        .into()
+                } else {
+                    "Cleanup stopped before deletion began. No files were changed.".into()
+                },
+                mutation_started: mutated,
+                recovery_required: mutated,
+                failure_message: "Service restart interrupted cleanup".into(),
+                started_unix_ms: plan.created_unix_ms,
+                updated_unix_ms: now,
+                completed_unix_ms: Some(now),
+                ..Default::default()
+            };
+            let recovery = RecoveryRecord {
+                plan_id: plan.id.clone(),
+                severity: "Amber".into(),
+                kind: "CleanupInterrupted".into(),
+                summary: "Cleanup was interrupted after deletion began".into(),
+                detail: "AetherCore did not replay deletion after restart. Run a fresh cleanup scan before any further action."
+                    .into(),
+                created_unix_ms: now,
+                ..Default::default()
+            };
+            self.engine.transition_with_journal(
                 &plan.id,
                 plan.state,
                 PlanState::Failed,
                 "cleanup interrupted; immutable targets will not be replayed automatically",
-            );
-            self.db
-                .upsert_maintenance_execution(&MaintenanceExecutionRecord {
-                    plan_id: plan.id.clone(),
-                    domain: "Cleanup".into(),
-                    stage: "Interrupted".into(),
-                    detail: if mutated {
-                        "Cleanup stopped after deletion began. No deletion was replayed automatically."
-                            .into()
-                    } else {
-                        "Cleanup stopped before deletion began. No files were changed.".into()
-                    },
-                    mutation_started: mutated,
-                    recovery_required: mutated,
-                    failure_message: "Service restart interrupted cleanup".into(),
-                    started_unix_ms: plan.created_unix_ms,
-                    updated_unix_ms: now,
-                    completed_unix_ms: Some(now),
-                    ..Default::default()
-                })?;
-
-            if mutated {
-                self.db.add_recovery_record(&RecoveryRecord {
-                    plan_id: plan.id,
-                    severity: "Amber".into(),
-                    kind: "CleanupInterrupted".into(),
-                    summary: "Cleanup was interrupted after deletion began".into(),
-                    detail: "AetherCore did not replay deletion after restart. Run a fresh cleanup scan before any further action."
-                        .into(),
-                    created_unix_ms: now,
-                    ..Default::default()
-                })?;
-            }
+                PlanJournal::Maintenance(&record, mutated.then_some(&recovery)),
+            )?;
         }
         Ok(())
     }
@@ -898,13 +897,22 @@ fn run_cleanup(
         true,
         None,
     )?;
-    engine.transition(
+    let record = staged(
+        db,
+        plan_id,
+        "Completed",
+        100,
+        "Reviewed cleanup completed. Locked or changed files were left untouched.",
+        true,
+        Some(now_ms()),
+    )?;
+    engine.transition_with_journal(
         plan_id,
         PlanState::Verifying,
         PlanState::Completed,
         "allowlisted cleanup completed",
+        PlanJournal::Maintenance(&record, None),
     )?;
-    let now = now_ms();
     publish_progress(
         telemetry,
         owner_principal_key,
@@ -914,15 +922,6 @@ fn run_cleanup(
         "",
         "Reviewed cleanup completed. Locked or changed files were left untouched.",
     );
-    update(
-        db,
-        plan_id,
-        "Completed",
-        100,
-        "Reviewed cleanup completed. Locked or changed files were left untouched.",
-        true,
-        Some(now),
-    )?;
     Ok(())
 }
 
@@ -960,14 +959,6 @@ fn fail_cleanup(
     error: CleanerError,
 ) -> Result<()> {
     let current = engine.get_plan(plan_id)?;
-    if !current.state.is_terminal() {
-        let _ = engine.transition(
-            plan_id,
-            current.state,
-            PlanState::Failed,
-            "cleanup execution failed",
-        );
-    }
     let now = now_ms();
     let mut record = db.get_maintenance_execution(plan_id)?.unwrap_or_default();
     record.plan_id = plan_id.into();
@@ -978,7 +969,27 @@ fn fail_cleanup(
     record.recovery_required = record.mutation_started;
     record.updated_unix_ms = now;
     record.completed_unix_ms = Some(now);
-    db.upsert_maintenance_execution(&record)?;
+    if current.state.is_terminal() {
+        db.upsert_maintenance_execution(&record)?;
+    } else {
+        let recovery = RecoveryRecord {
+            plan_id: plan_id.into(),
+            severity: "Amber".into(),
+            kind: "CleanupInterrupted".into(),
+            summary: "Cleanup was interrupted after deletion began".into(),
+            detail: "Cleanup stopped after deletion began. No deletion was replayed automatically."
+                .into(),
+            created_unix_ms: now,
+            ..Default::default()
+        };
+        engine.transition_with_journal(
+            plan_id,
+            current.state,
+            PlanState::Failed,
+            "cleanup execution failed",
+            PlanJournal::Maintenance(&record, record.recovery_required.then_some(&recovery)),
+        )?;
+    }
     Err(error)
 }
 
@@ -991,6 +1002,21 @@ fn update(
     mutation: bool,
     completed: Option<i64>,
 ) -> Result<()> {
+    let record = staged(db, plan_id, stage, percent, detail, mutation, completed)?;
+    db.upsert_maintenance_execution(&record)?;
+    Ok(())
+}
+
+/// The journal `update` would write, without writing it.
+fn staged(
+    db: &Database,
+    plan_id: &str,
+    stage: &str,
+    percent: u32,
+    detail: &str,
+    mutation: bool,
+    completed: Option<i64>,
+) -> Result<MaintenanceExecutionRecord> {
     let now = now_ms();
     let mut record =
         db.get_maintenance_execution(plan_id)?
@@ -1009,8 +1035,7 @@ fn update(
     if completed.is_some() {
         record.completed_unix_ms = completed;
     }
-    db.upsert_maintenance_execution(&record)?;
-    Ok(())
+    Ok(record)
 }
 
 fn update_current(

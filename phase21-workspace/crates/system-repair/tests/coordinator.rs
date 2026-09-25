@@ -19,23 +19,22 @@ fn wait_terminal(
     state: &str,
 ) -> aethercore_system_repair::RepairExecutionStatus {
     // `status()` composes `plan_state` from the operation engine and every record field -
-    // `mutation_started`, `recovery_required`, `outcome` - from the database, and both
-    // `fail_repair` and the verification path transition the plan BEFORE they upsert the
-    // record. A loop keyed on `plan_state` alone therefore reads the record one write early.
-    // Waiting for `stage` too settles the database side, because `stage` is set in that same
-    // upsert and falls back to the record when there is no live telemetry.
+    // `mutation_started`, `recovery_required`, `outcome` - from the database. The terminal
+    // transition now commits that record in the same transaction, and `status()` reads the
+    // plan before the record (DBT-P63-012), so a loop keyed on `plan_state` alone sees the
+    // final record.
     //
-    // This is `DBT-P62-003` in a second crate: P62 found and fixed the identical race in
-    // `aethercore-cleaner` and did not check its siblings. Measured, not reasoned: run
-    // `34773880960` ran this very test twice on one runner from one commit - step 13 at
-    // 18:36:00 `ok`, step 18 at 18:48:37 `FAILED` on `assertion failed: status.recovery_required`.
+    // It did not while `fail_repair` and the verification path transitioned BEFORE they
+    // upserted (`DBT-P62-003` in a second crate): run `34773880960` ran this very test twice
+    // on one runner from one commit - step 13 `ok`, step 18 `FAILED` on
+    // `assertion failed: status.recovery_required` - and this loop had to wait on `stage` too.
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let status = coordinator
             .status(OWNER, Some(plan_id))
             .expect("status")
             .expect("execution");
-        if status.plan_state == state && status.stage == state {
+        if status.plan_state == state {
             return status;
         }
         if state != "Failed" {
@@ -308,6 +307,9 @@ fn failure_after_barrier_requires_recovery_review() {
     let status = wait_terminal(&coordinator, &plan.id, "Failed");
     assert!(status.mutation_started);
     assert!(status.recovery_required);
+    // DBT-P63-012: the Recovery panel reads recovery records, not the journal flag.
+    let records = db.recovery_records(20).expect("recovery records");
+    assert!(records.iter().any(|r| r.plan_id == plan.id), "{records:?}");
     let _ = std::fs::remove_dir_all(root);
 }
 
