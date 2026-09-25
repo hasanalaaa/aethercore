@@ -30,7 +30,7 @@ use windows::{
 
 use crate::{
     CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EVENT_WINDOW_MS,
-    EventEvidence, Result, assemble_snapshot, classify_event, event_query,
+    EventEvidence, Result, assemble_snapshot, classify_event, dump_in_window, event_query,
 };
 
 const MAX_EVENTS: usize = 128;
@@ -576,6 +576,15 @@ fn collect_minidumps(
                 MAX_MINIDUMP_FAULTS,
             ),
         }
+    }
+    let now = std::time::SystemTime::now();
+    let before = entries.len();
+    entries.retain(|(_, modified)| dump_in_window(*modified, now, EVENT_WINDOW_MS));
+    let left_out = before - entries.len();
+    if left_out > 0 {
+        warnings.push(format!(
+            "{left_out} minidump(s) older than {DEFAULT_EVENT_WINDOW_DAYS} days, or without a readable time, were left out."
+        ));
     }
     entries.sort_by_key(|(_, modified)| std::cmp::Reverse(*modified));
     entries.truncate(MAX_DUMPS);

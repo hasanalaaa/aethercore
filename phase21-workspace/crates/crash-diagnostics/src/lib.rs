@@ -37,6 +37,20 @@ pub fn event_query(window_ms: u64) -> String {
     )
 }
 
+/// Whether a minidump written at `modified` belongs to the crash window ending `now`.
+/// A dump whose time cannot be read is left out: it cannot be shown as recent. A time
+/// after `now` (clock skew) counts as recent.
+pub fn dump_in_window(
+    modified: Option<std::time::SystemTime>,
+    now: std::time::SystemTime,
+    window_ms: u64,
+) -> bool {
+    modified.is_some_and(|written| {
+        now.duration_since(written)
+            .map_or(true, |age| age.as_millis() <= u128::from(window_ms))
+    })
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EventEvidence {
@@ -198,6 +212,17 @@ mod tests {
         );
         assert!(q.contains("Microsoft-Windows-WHEA-Logger"), "{q}");
         assert!(q.contains(&format!("<= {EVENT_WINDOW_MS}")), "{q}");
+    }
+    #[test]
+    fn minidumps_outside_the_window_or_without_a_time_are_left_out() {
+        use std::time::{Duration, SystemTime};
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+        let day = Duration::from_secs(86_400);
+        assert!(dump_in_window(Some(now - day), now, EVENT_WINDOW_MS));
+        assert!(dump_in_window(Some(now - 30 * day), now, EVENT_WINDOW_MS));
+        assert!(!dump_in_window(Some(now - 31 * day), now, EVENT_WINDOW_MS));
+        assert!(!dump_in_window(None, now, EVENT_WINDOW_MS));
+        assert!(dump_in_window(Some(now + day), now, EVENT_WINDOW_MS));
     }
     #[test]
     fn kernel_power_never_claims_root_cause() {
