@@ -43,6 +43,12 @@ are reported as unavailable. The finding names each observed profile, value
 and registry path. It explicitly says that registry configuration is not the
 effective firewall state; no live rule or packet-filter claim is made.
 
+The same focused Windows assertion passed on the fixed source in probe
+`36178087566` at `0a8bc68` (step `P75 Windows firewall red probe before
+unrelated workspace tests`, 19:16:27–19:17:17 UTC). The test accepts an honest
+`NotAvailable` if all registry reads fail, so this proves Windows-specific
+evidence and its limit, **not** that any particular profile was enabled.
+
 ## Local verification
 
 From `phase21-workspace/`, with debug info and incremental builds disabled:
