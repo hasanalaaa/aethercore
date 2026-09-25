@@ -68,6 +68,7 @@ pub const KEYS: &[&str] = &[
     "err.dbSubcommandRequired",
     "err.dbCheckRequiresSqlite",
     "err.integerInvalid",
+    "err.usage",
     "ok.exportWritten",
     "ok.verified",
     "ok.keysGenerated",
@@ -200,6 +201,7 @@ or `report`"
         }
         "err.dbCheckRequiresSqlite" => "`db check` requires `--sqlite <file>`",
         "err.integerInvalid" => "expects a signed integer",
+        "err.usage" => "invalid command line",
         "ok.exportWritten" => "export written",
         "ok.verified" => "chain verified",
         "ok.keysGenerated" => "signing key generated (seed 0600)",
@@ -332,6 +334,7 @@ pub fn ar(key: &str) -> &'static str {
         }
         "err.dbCheckRequiresSqlite" => "`db check` يتطلب `--sqlite <file>`",
         "err.integerInvalid" => "يتوقع عدداً صحيحاً بإشارة",
+        "err.usage" => "سطر أوامر غير صالح",
         "ok.exportWritten" => "تم كتابة التصدير",
         "ok.verified" => "تم التحقق من السلسلة",
         "ok.keysGenerated" => "تم توليد مفتاح التوقيع (بصلاحية 0600)",
@@ -438,6 +441,103 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
     }
 }
 
+/// Usage-block headings, localized by `cli::usage_text`.
+pub const USAGE_HEADINGS: [&str; 4] = [
+    "usage.header",
+    "usage.globalFlags",
+    "usage.offlineCommands",
+    "usage.serviceCommands",
+];
+
+/// Catalog text for a failure, most specific first: its own message key, the `err.*`
+/// twin of a `cli.usage.*` key, then its kind. Never empty.
+pub fn error_text(lang: Lang, error: &crate::error::CliError) -> &'static str {
+    use crate::error::CliError as E;
+    let key = error.message_key();
+    let twin = key
+        .strip_prefix("cli.usage.")
+        .map(|name| format!("err.{name}"));
+    let needs_value = key.starts_with("cli.usage.flag") && key.ends_with("RequiresValue");
+    let kind_key = match error {
+        E::Usage { .. } if needs_value => "err.flagNeedsValue",
+        E::Usage { .. } => "err.usage",
+        E::ServiceUnreachable { message_key } if message_key == "cli.detect.staleEndpoint" => {
+            "err.staleEndpoint"
+        }
+        E::ServiceUnreachable { .. } => "err.daemonUnreachable",
+        E::Timeout => "err.timeout",
+        E::Rejected { .. } => "err.rejectedByService",
+        E::ConsentRequired { .. } => "err.consentRequired",
+        E::CapabilityUnavailable { .. } => "state.notAvailable",
+        E::LocalIo { .. } => "err.localIo",
+        E::ProtocolViolation { .. } => "err.protocolViolation",
+    };
+    [Some(key), twin, Some(kind_key.to_string())]
+        .into_iter()
+        .flatten()
+        .map(|k| t(lang, &k))
+        .find(|text| !text.is_empty())
+        .unwrap_or_default()
+}
+
+/// Catalog key of a data field that has a human label.
+fn field_key(field: &str) -> Option<&'static str> {
+    Some(match field {
+        "platform" => "label.platform",
+        "source" => "label.engineSource",
+        "capabilities" => "label.capabilities",
+        "recordCount" => "label.recordCount",
+        "signed" => "label.signed",
+        "digest" => "label.digest",
+        "publicKeyFingerprint" | "signerFingerprint" => "label.fingerprint",
+        _ => return None,
+    })
+}
+
+/// Human label for a data field; the JSON name in English (whose text output predates
+/// the catalog and is kept byte-for-byte) or when the catalog has none.
+pub fn field_label(lang: Lang, field: &str) -> String {
+    if lang == Lang::En {
+        return field.to_string();
+    }
+    field_key(field)
+        .map(|key| t(lang, key).to_string())
+        .unwrap_or_else(|| field.to_string())
+}
+
+/// Human text for a string value: catalog keys carried as data (finding summaries,
+/// compliance reasons, detection states, availability states) are translated; any
+/// other value is data and is shown verbatim. English shows every value verbatim, as it
+/// did before the catalog.
+pub fn value_text(lang: Lang, value: &str) -> String {
+    if lang == Lang::En {
+        return value.to_string();
+    }
+    let key = match value {
+        "native" => "state.native",
+        "degraded" => "state.degraded",
+        "notAvailable" => "state.notAvailable",
+        "cli.detect.reachable" => "detect.online",
+        "cli.detect.staleEndpoint" => "detect.staleEndpoint",
+        other => other,
+    };
+    match t(lang, key) {
+        "" => value.to_string(),
+        text => text.to_string(),
+    }
+}
+
+/// One-line outcome printed above a command's data, where the catalog has one.
+pub fn outcome_text(lang: Lang, command: &str) -> Option<&'static str> {
+    let key = match command {
+        "export journal" => "ok.exportWritten",
+        "export verify" => "ok.verified",
+        "keys generate" => "ok.keysGenerated",
+        _ => return None,
+    };
+    Some(t(lang, key))
+}
+
 /// Parity helper used by the audit and tests: true when every KEYS entry resolves
 /// non-empty in BOTH catalogs.
 pub fn parity_ok() -> bool {
@@ -470,6 +570,85 @@ mod tests {
     fn unknown_key_returns_empty_not_panic() {
         assert_eq!(t(Lang::En, "nope.nope"), "");
         assert_eq!(t(Lang::Ar, "nope.nope"), "");
+    }
+
+    #[test]
+    fn every_error_kind_has_text_in_both_languages() {
+        use crate::error::CliError;
+        let errors = [
+            CliError::usage("cli.usage.exportRequiresOut"),
+            CliError::usage("cli.usage.flagoutRequiresValue"),
+            CliError::usage("cli.usage.somethingUncatalogued"),
+            CliError::service_unreachable("cli.detect.offline"),
+            CliError::service_unreachable("cli.detect.staleEndpoint"),
+            CliError::Timeout,
+            CliError::Rejected {
+                message_key: "sec.traversalRejected".into(),
+                detail: None,
+            },
+            CliError::ConsentRequired {
+                message_key: "cli.consent.declined".into(),
+            },
+            CliError::capability_unavailable("x"),
+            CliError::local_io("local.io.read"),
+            CliError::ProtocolViolation { detail: "x".into() },
+        ];
+        for error in &errors {
+            assert!(!error_text(Lang::En, error).is_empty(), "{error:?}");
+            assert!(!error_text(Lang::Ar, error).is_empty(), "{error:?}");
+        }
+        assert_eq!(
+            error_text(Lang::Ar, &errors[0]),
+            ar("err.exportRequiresOut")
+        );
+        assert_eq!(error_text(Lang::Ar, &errors[1]), ar("err.flagNeedsValue"));
+        assert_eq!(error_text(Lang::Ar, &errors[4]), ar("err.staleEndpoint"));
+        assert_eq!(
+            error_text(Lang::Ar, &errors[6]),
+            ar("sec.traversalRejected")
+        );
+    }
+
+    #[test]
+    fn usage_headings_are_found_and_translated() {
+        let arabic = crate::cli::usage_text(Lang::Ar);
+        for key in USAGE_HEADINGS {
+            assert!(crate::cli::USAGE.contains(en(key)), "{key} not in USAGE");
+            assert!(
+                arabic.contains(ar(key)) && !arabic.contains(en(key)),
+                "{key}"
+            );
+        }
+        assert_eq!(crate::cli::usage_text(Lang::En), crate::cli::USAGE);
+    }
+
+    #[test]
+    fn data_values_that_are_catalog_keys_are_translated_and_data_is_not() {
+        assert_eq!(
+            value_text(Lang::Ar, "sec.ssh.permitRootLogin"),
+            ar("sec.ssh.permitRootLogin")
+        );
+        assert_eq!(
+            value_text(Lang::Ar, "compliance.not_verified"),
+            ar("compliance.not_verified")
+        );
+        assert_eq!(
+            value_text(Lang::Ar, "notAvailable"),
+            ar("state.notAvailable")
+        );
+        assert_eq!(
+            value_text(Lang::Ar, "cli.detect.reachable"),
+            ar("detect.online")
+        );
+        assert_eq!(
+            value_text(Lang::Ar, "/etc/ssh/sshd_config"),
+            "/etc/ssh/sshd_config"
+        );
+        assert_eq!(
+            field_label(Lang::Ar, "recordCount"),
+            ar("label.recordCount")
+        );
+        assert_eq!(field_label(Lang::Ar, "file"), "file");
     }
 
     #[test]
