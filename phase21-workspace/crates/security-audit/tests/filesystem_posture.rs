@@ -47,6 +47,24 @@ fn icacls_grant(path: &Path, grant: &str) {
     assert!(status.success(), "icacls {} /grant {grant}", path.display());
 }
 
+#[cfg(windows)]
+fn current_user_sid() -> String {
+    let output = std::process::Command::new("whoami")
+        .args(["/user", "/fo", "csv", "/nh"])
+        .output()
+        .expect("whoami runs");
+    assert!(output.status.success(), "whoami /user failed");
+    let text = String::from_utf8(output.stdout).expect("UTF-8 whoami output");
+    let sid = text
+        .trim()
+        .split(',')
+        .next_back()
+        .expect("SID column")
+        .trim_matches('"');
+    assert!(sid.starts_with("S-1-"), "unexpected whoami SID: {text}");
+    sid.to_string()
+}
+
 #[cfg(unix)]
 fn chmod(path: &Path, mode: u32) {
     use std::os::unix::fs::PermissionsExt;
@@ -61,13 +79,29 @@ fn make_world_writable(path: &Path) {
     icacls_grant(path, "*S-1-1-0:(W)");
 }
 
-/// Owner-only on unix. On Windows a fresh file or directory keeps the ACL it inherited
-/// from the profile's temp directory: the owner, SYSTEM and Administrators.
+/// Owner-only on unix. On Windows, remove inherited entries and grant only the
+/// current user, SYSTEM and Administrators, so the fixture is truly private.
 fn make_private(path: &Path, dir: bool) {
     #[cfg(unix)]
     chmod(path, if dir { 0o700 } else { 0o600 });
     #[cfg(windows)]
-    let _ = (path, dir);
+    {
+        let _ = dir;
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/inheritance:r")
+            .status()
+            .expect("icacls runs");
+        assert!(status.success(), "icacls /inheritance:r failed");
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/grant:r")
+            .arg(format!("*{}:(F)", current_user_sid()))
+            .args(["*S-1-5-18:(F)", "*S-1-5-32-544:(F)"])
+            .status()
+            .expect("icacls runs");
+        assert!(status.success(), "icacls private grants failed");
+    }
 }
 
 fn expose_to_others(path: &Path) {

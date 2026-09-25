@@ -16,6 +16,15 @@ unavailable evidence instead of invented mode bits. Root-level files are
 included. Callback deny ACEs do not hide an unconditional broad grant, covered
 by `conditional_deny_cannot_hide_an_unconditional_broad_write_grant`.
 
+The fixed-source Windows probe `36178087566` passed the firewall assertion,
+then its full workspace suite failed in `ssh_findings_follow_the_real_permissions`.
+That test's Windows `make_private` helper had been a no-op. The runner's temp
+tree gave `.ssh` and its private key an inherited allow ACE for the local
+Administrator account (SID ending `-500`, mask `0x001f01ff`), which the audit
+correctly reported as another principal. The fixture now removes inheritance
+and explicitly grants only the current user, SYSTEM and Administrators before
+testing the quiet case. A Windows rerun must confirm this correction.
+
 ## CVE census
 
 The old `cve` lane reported `Ok(0)` when no supported package census could run.
