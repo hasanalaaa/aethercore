@@ -116,43 +116,6 @@ fn read_windows_profile(name: &str) -> WindowsProfile {
     }
 }
 
-#[cfg(all(test, windows))]
-mod windows_tests {
-    use super::*;
-
-    #[test]
-    fn firewall_evidence_names_windows_registry_profile_values() {
-        let status = audit_firewall_state();
-        eprintln!("Windows firewall registry evidence: {status:?}");
-        match status {
-            FirewallStatus::WindowsProfiles { profiles } => {
-                assert_eq!(profiles.len(), 3);
-                for name in ["DomainProfile", "PrivateProfile", "PublicProfile"] {
-                    let profile = profiles
-                        .iter()
-                        .find(|profile| profile.name == name)
-                        .unwrap();
-                    assert!(profile.source.contains("EnableFirewall"), "{profile:?}");
-                }
-                let finding = firewall_findings(&FirewallStatus::WindowsProfiles { profiles })
-                    .expect("registry values become evidence");
-                assert!(
-                    finding
-                        .evidence
-                        .iter()
-                        .all(|e| { e.expected_or_threshold.contains("effective state") })
-                );
-            }
-            FirewallStatus::NotAvailable { reason } => {
-                assert!(reason.contains("DomainProfile"), "{reason}");
-                assert!(reason.contains("EnableFirewall"), "{reason}");
-                assert!(reason.contains("effective state"), "{reason}");
-            }
-            FirewallStatus::ConfigPresent { .. } => panic!("Unix config is not Windows evidence"),
-        }
-    }
-}
-
 #[cfg(windows)]
 fn registry_dword(subkey: &str, name: &str) -> Result<Option<u32>, String> {
     use std::ffi::c_void;
@@ -256,5 +219,44 @@ pub fn firewall_findings(status: &FirewallStatus) -> Option<SecFinding> {
             "sec.fw.notAvailable",
             Confidence::Heuristic,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(windows)]
+    use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn firewall_evidence_names_windows_registry_profile_values() {
+        let status = audit_firewall_state();
+        eprintln!("Windows firewall registry evidence: {status:?}");
+        match status {
+            FirewallStatus::WindowsProfiles { profiles } => {
+                assert_eq!(profiles.len(), 3);
+                for name in ["DomainProfile", "PrivateProfile", "PublicProfile"] {
+                    let profile = profiles
+                        .iter()
+                        .find(|profile| profile.name == name)
+                        .unwrap();
+                    assert!(profile.source.contains("EnableFirewall"), "{profile:?}");
+                }
+                let finding = firewall_findings(&FirewallStatus::WindowsProfiles { profiles })
+                    .expect("registry values become evidence");
+                assert!(
+                    finding
+                        .evidence
+                        .iter()
+                        .all(|e| { e.expected_or_threshold.contains("effective state") })
+                );
+            }
+            FirewallStatus::NotAvailable { reason } => {
+                assert!(reason.contains("DomainProfile"), "{reason}");
+                assert!(reason.contains("EnableFirewall"), "{reason}");
+                assert!(reason.contains("effective state"), "{reason}");
+            }
+            FirewallStatus::ConfigPresent { .. } => panic!("Unix config is not Windows evidence"),
+        }
     }
 }
