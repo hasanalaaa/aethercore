@@ -598,13 +598,18 @@ fn io_saturation(window: &[PerfSnapshot]) -> Option<RuleOutput> {
 }
 
 fn gpu_bound(window: &[PerfSnapshot]) -> Option<RuleOutput> {
-    let peak = peak_of_reported(window, |snap| {
+    let reported = |snap: &PerfSnapshot| {
         snap.gpu
             .engines
             .first()
             .map(|engine| u64::from(engine.utilization_bp))
-    })?;
-    if peak.0 < u64::from(thresholds::GPU_SATURATION_BP) {
+    };
+    let peak = peak_of_reported(window, reported)?;
+    // Owning the GPU is a window property, as CPU saturation is: decided on the average
+    // of the samples that reported an engine, so one spike is not a root cause.
+    let readings: Vec<u64> = window.iter().filter_map(reported).collect();
+    let average = readings.iter().sum::<u64>() / readings.len() as u64;
+    if average < u64::from(thresholds::GPU_SATURATION_BP) {
         return None;
     }
     let jitter_peak = peak_of(window, |snap| snap.gpu.frametime_jitter_us);

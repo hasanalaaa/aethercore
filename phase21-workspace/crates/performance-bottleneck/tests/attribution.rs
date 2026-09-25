@@ -356,3 +356,29 @@ fn io_saturation_still_cites_a_latency_devices_did_report() {
     );
     assert_eq!(finding.confidence, Confidence::Confirmed);
 }
+
+/// P75 — one saturated GPU sample in an otherwise idle window is a spike, not the
+/// workload owning the GPU; it used to be reported as the root cause.
+#[test]
+fn a_single_gpu_spike_is_not_a_root_cause() {
+    let samples: Vec<PerfSnapshot> = (0..8)
+        .map(|index| {
+            let mut snap = idle_snapshot(1_700_000_000_000 + index * 1000);
+            snap.gpu.engines.clear();
+            snap.gpu.engines.push(GpuEngineSample {
+                engine_name: "3D".into(),
+                utilization_bp: if index == 3 { 10_000 } else { 1_000 },
+            });
+            snap
+        })
+        .collect();
+    let (report, _) = build_window(samples);
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|f| f.code != "GPU_BOUND_WORKLOAD"),
+        "a single spike became a finding: {:?}",
+        report.findings.iter().map(|f| &f.code).collect::<Vec<_>>()
+    );
+}
