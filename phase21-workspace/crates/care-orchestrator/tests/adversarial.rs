@@ -151,6 +151,11 @@ impl aethercore_care_orchestrator::DomainStepExecutor for FakeExecutor {
     }
 }
 
+/// The consent an owner gives after being shown `plan`.
+fn approved(plan: &CarePlan) -> Option<&str> {
+    Some(&plan.plan_digest_sha256)
+}
+
 fn two_step_plan() -> CarePlan {
     CarePlan::build(vec![
         step("cleanup-plan-1", "Cleanup", CareSafety::Auto),
@@ -234,7 +239,7 @@ fn refuses_to_run_without_explicit_session_consent() {
         OWNER,
         "run-1",
         &two_step_plan(),
-        false, // no consent — absence of refusal is NOT consent
+        None, // no consent — absence of refusal is NOT consent
     )
     .expect_err("must refuse");
     assert_eq!(error, CareError::ConsentRequired);
@@ -262,7 +267,7 @@ fn second_concurrent_start_is_rejected_by_single_flight() {
         OWNER,
         "run-2",
         &two_step_plan(),
-        true,
+        approved(&two_step_plan()),
     )
     .expect_err("machine is busy");
     assert_eq!(error, CareError::LeaseBusy);
@@ -278,7 +283,7 @@ fn second_concurrent_start_is_rejected_by_single_flight() {
         OWNER,
         "run-3",
         &two_step_plan(),
-        true,
+        approved(&two_step_plan()),
     )
     .expect("runs after lease released");
     assert!(result.all_steps_verified);
@@ -307,7 +312,7 @@ fn hostile_domain_failure_stops_run_and_journals_evidence() {
         OWNER,
         "run-4",
         &two_step_plan(),
-        true,
+        approved(&two_step_plan()),
     )
     .expect_err("hostile domain stops the run");
     assert!(matches!(error, CareError::DomainRejected { .. }));
@@ -350,7 +355,7 @@ fn unverified_domain_outcome_never_counts_as_verified() {
         OWNER,
         "run-5",
         &two_step_plan(),
-        true,
+        approved(&two_step_plan()),
     )
     .expect("run completes");
     assert!(
@@ -375,7 +380,7 @@ fn revoked_fence_stops_remaining_steps_and_marks_them_skipped() {
         OWNER,
         "run-6",
         &two_step_plan(),
-        true,
+        approved(&two_step_plan()),
     )
     .expect("cancelled run still returns a report");
     assert!(result.stopped_for_consent);
@@ -403,7 +408,7 @@ fn poisoned_journal_surfaces_as_typed_error_not_silent_progress() {
         OWNER,
         "run-7",
         &two_step_plan(),
-        true,
+        approved(&two_step_plan()),
     )
     .expect_err("journal poisoning must surface");
     assert!(matches!(error, CareError::Journal(_)));
@@ -424,7 +429,7 @@ fn journal_records_every_transition_in_order_for_a_clean_run() {
         OWNER,
         "run-8",
         &plan,
-        true,
+        approved(&plan),
     )
     .expect("clean run");
     assert!(result.all_steps_verified);
@@ -437,4 +442,83 @@ fn journal_records_every_transition_in_order_for_a_clean_run() {
     assert_eq!(events[4], "step:run-8:1:startup-plan-1:Executing");
     assert!(events[5].starts_with("result:run-8:1:Completed:VerifiedByDomain:Verified"));
     assert!(events[6].starts_with("finished:run-8:Completed:care.status.completedVerified"));
+}
+
+// ---------------------------------------------------------------------------
+// P75 care-consent: review work is listed, never run, and never runs first
+// ---------------------------------------------------------------------------
+
+fn mixed_plan() -> CarePlan {
+    CarePlan::build(vec![
+        step("drv-plan-1", "DriverInstall", CareSafety::ReviewOnly),
+        step("clean-plan-1", "Cleanup", CareSafety::Auto),
+    ])
+    .expect("plan")
+}
+
+#[test]
+fn auto_work_is_ordered_before_review_work() {
+    let plan = mixed_plan();
+    assert_eq!(plan.steps[0].domain_plan_id, "clean-plan-1");
+    assert_eq!(plan.steps[1].domain_plan_id, "drv-plan-1");
+}
+
+#[test]
+fn review_only_steps_are_never_executed() {
+    let supervisor = MutationSupervisor::new();
+    let executor = FakeExecutor::always_verified();
+    let journal = MemoryJournal::default();
+    let plan = mixed_plan();
+    let result = run_care_plan(
+        &supervisor,
+        &executor,
+        &journal,
+        &CommitFence::new(),
+        OWNER,
+        "run-review",
+        &plan,
+        approved(&plan),
+    )
+    .expect("the auto step runs");
+    assert_eq!(
+        executor.calls.load(Ordering::SeqCst),
+        1,
+        "only the auto step reaches a domain"
+    );
+    let review = result
+        .steps
+        .iter()
+        .find(|report| report.domain_plan_id == "drv-plan-1")
+        .expect("the review step is still reported");
+    assert_eq!(review.outcome, StepOutcome::Skipped);
+    assert!(
+        !journal
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| event.contains("drv-plan-1")),
+        "a step that never ran is not journaled as executing"
+    );
+}
+
+#[test]
+fn consent_given_for_another_plan_is_refused() {
+    let supervisor = MutationSupervisor::new();
+    let executor = FakeExecutor::always_verified();
+    let journal = MemoryJournal::default();
+    let error = run_care_plan(
+        &supervisor,
+        &executor,
+        &journal,
+        &CommitFence::new(),
+        OWNER,
+        "run-stale",
+        &two_step_plan(),
+        approved(&mixed_plan()),
+    )
+    .expect_err("the owner never saw this plan");
+    assert_eq!(error, CareError::DigestChanged);
+    assert_eq!(executor.calls.load(Ordering::SeqCst), 0);
+    assert!(journal.events.lock().unwrap().is_empty());
 }

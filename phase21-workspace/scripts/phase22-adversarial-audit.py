@@ -149,8 +149,11 @@ consent_registry = re.search(r"struct SessionConsentRegistry", service_care) is 
 check("p22-session-consent-registry", consent_registry, "session consent registry missing")
 check(
     "p22-consent-required-guard",
-    "ConsentRequired" in engine_src and "consent_granted" in engine_src,
-    "run must refuse without explicit session consent",
+    # P75: consent is the digest of the plan the owner was shown; check the refusals
+    # themselves, not a parameter name.
+    re.search(r"None\s*=>\s*return\s+Err\(CareError::ConsentRequired\)", engine_src) is not None
+    and re.search(r"digest\s*!=\s*plan\.plan_digest_sha256\s*=>\s*return\s+Err\(CareError::DigestChanged\)", engine_src) is not None,
+    "run must refuse without explicit session consent, and consent given for another plan",
 )
 
 # --- Gate P22-5: single-flight --------------------------------------------------

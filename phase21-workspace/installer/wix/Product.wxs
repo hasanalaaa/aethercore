@@ -39,10 +39,13 @@
                       Type="raw"
                       Bitness="always64" />
     </Property>
+    <!-- P75: every launch condition starts with "Installed OR". Launch conditions are evaluated
+         on uninstall and repair too, so without it a machine that later fails one (an OS
+         change, a VC++ runtime someone removed) could no longer remove or repair AetherCore. -->
     <Launch
-        Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 17763))"
+        Condition="Installed OR (VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 17763)))"
         Message="AetherCore supports 64-bit Windows 11 build 22621+ and Windows Server 2019, 2022, or 2025+ (build 17763+)." />
-    <Launch Condition="MsiNTProductType &lt;&gt; 2"
+    <Launch Condition="Installed OR (MsiNTProductType &lt;&gt; 2)"
             Message="AetherCore does not support domain controllers." />
 
     <!-- DBT-P41-001. Five of the six shipped binaries import VCRUNTIME140.dll and the
@@ -82,7 +85,7 @@
                       Bitness="always64" />
     </Property>
     <Launch
-        Condition="VCRUNTIMEVERSION"
+        Condition="Installed OR VCRUNTIMEVERSION"
         Message="AetherCore requires the Microsoft Visual C++ 2015-2022 Redistributable ($(sys.BUILDARCH)), which is not installed on this computer. AetherCore loads VCRUNTIME140.dll and MSVCP140.dll from it. Install vc_redist.$(sys.BUILDARCH).exe, or run AetherCoreSetup.exe instead." />
 
     <!-- Direct MSI installs are supported for managed environments, but the consumer bundle is
