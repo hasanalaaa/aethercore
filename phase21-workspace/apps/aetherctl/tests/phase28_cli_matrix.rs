@@ -345,6 +345,23 @@ fn service_backed_command_matrix_round_trips_over_real_uds() {
 // kill -9 → stale detection + next-daemon rebind
 // ---------------------------------------------------------------------------
 
+/// P75 trial: `doctor` is the "one-shot health report" the help names, so on a service
+/// that has not collected diagnostics yet it collects them (read-only) and reports,
+/// instead of failing with diagnostics.stateUnavailable (exit 5) on first use.
+#[test]
+#[cfg(unix)]
+fn doctor_on_a_fresh_service_collects_and_reports() {
+    let root = fresh_root("doctor");
+    let mut daemon = spawn_daemon(&root, false);
+    let _socket_path = wait_for_socket_line(&mut daemon);
+    let doctor = run_cli(&root.join("ipc"), Some(&root), &["doctor"]);
+    let envelope = expect_ok_envelope(&doctor, "doctor");
+    assert!(envelope["data"]["scanId"].is_string(), "{}", doctor.stdout);
+    assert_ne!(envelope["data"]["state"], "Collecting", "{}", doctor.stdout);
+    drop(daemon);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 #[cfg(unix)]
 fn kill9_stale_endpoint_detected_then_next_daemon_rebinds() {
