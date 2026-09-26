@@ -13,11 +13,12 @@
    * report is truth-first — every step cites its own domain verification outcome,
    * and the summary never claims more than the evidence shows.
    */
+  import { onMount } from 'svelte';
   import { fluidPress } from '../../design/motion';
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { Pressable, TechnicalText } from '../../design/primitives';
-  import { t, td, tp, hasMessageKey } from '../../lib/i18n';
+  import { localizePlanKind, t, td, hasMessageKey } from '../../lib/i18n';
   import type { MessageKey } from '../../lib/i18n';
   import type { CareStepReport } from '../../lib/contracts';
   import { EmptyState } from '../../design/signature';
@@ -29,6 +30,11 @@
 
   $: locale = $shellState.locale;
   $: care = $streamState.careStatus;
+
+  // The panel shows the plan as the service composes it; an unloaded plan is not an empty one.
+  onMount(() => {
+    if (!$streamState.careStatus) void loadCareStatus();
+  });
 
   const AUTO_LEVEL = 0;
 
@@ -85,7 +91,7 @@
     <ol class="care-list">
       {#each care.steps as step (step.stepIndex)}
         <li class="care-row" class:failed={step.outcome === 'Failed'}>
-          <span class="kind"><TechnicalText value={step.domainKind} /></span>
+          <span class="kind">{localizePlanKind(step.domainKind, locale)}</span>
           <span class="safety" class:auto={step.safetyLevel <= AUTO_LEVEL}>{safetyLabel(step.safetyLevel)}</span>
           <span class="outcome">{outcomeLabel(step)}</span>
           {#if step.failureMessageKey && hasMessageKey(step.failureMessageKey)}

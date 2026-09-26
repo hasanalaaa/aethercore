@@ -3,7 +3,7 @@
   import { shellState } from './shell-state';
   import { streamState } from '../platform/stream-state';
   import { FluidDialog, Pressable, TechnicalText } from '../design/primitives';
-  import { localizeDirection, localizeRisk, localizeState, t, tp } from '../lib/i18n';
+  import { localizeDirection, localizePlanKind, localizeRisk, localizeState, t, tp } from '../lib/i18n';
   import { authorizeAndInstall, closeDriverReview, driversUi } from '../features/drivers/controller';
   import { authorizeAndRepair, closeRepairReview, repairUi } from '../features/repair/controller';
   import { authorizeAndCleanup, cleanupUi, closeCleanupReview } from '../features/cleanup/controller';
@@ -156,11 +156,18 @@
   <p class="eyebrow">{t('care.eyebrow', locale)}</p>
   <h2 id="care-consent-title">{t('care.consentTitle', locale)}</h2>
   <p class="review-copy">{t('care.consentCopy', locale)}</p>
-  {#if careShown}
+  {#if careShown && approvedStepCount(careShown) > 0}
     <p class="review-copy">
       {t('care.consentApproves', locale, { steps: tp('unit.careStep', locale, approvedStepCount(careShown)) })}
       <TechnicalText value={shortDigest(careShown.planDigestSha256)} />
     </p>
+    <ol class="consent-list">
+      {#each careShown.steps.filter((step) => step.safetyLevel <= 0) as step (step.stepIndex)}
+        <li>{localizePlanKind(step.domainKind, locale)} · <TechnicalText value={step.domainPlanId.slice(0, 8)} /></li>
+      {/each}
+    </ol>
+  {:else}
+    <p class="review-copy">{t('care.empty', locale)}</p>
   {/if}
   <ul class="consent-list">
     <li>{t('care.consentBulletScope', locale)}</li>
@@ -170,6 +177,6 @@
   </ul>
   <div class="review-actions">
     <Pressable className="secondary" onclick={closeCareConsent} disabled={busy}>{t('common.cancel', locale)}</Pressable>
-    <Pressable className="primary" onclick={authorizeAndStartCare} disabled={busy}>{busy ? t('dialog.waitingConsent', locale) : t('care.consentAuthorize', locale)}</Pressable>
+    <Pressable className="primary" onclick={authorizeAndStartCare} disabled={busy || approvedStepCount(careShown) === 0}>{busy ? t('dialog.waitingConsent', locale) : t('care.consentAuthorize', locale)}</Pressable>
   </div>
 </FluidDialog>

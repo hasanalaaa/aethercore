@@ -13,19 +13,18 @@ export const careUi = writable({
 /** Pulls the current care status (also the deterministic plan preview). */
 export async function loadCareStatus(): Promise<void> {
   await runBusy(async () => {
-    setPage('overview');
-    try {
-      const status = await serviceInvoke<CareRunStatus>('get_care_status');
-      patchStreamState({ careStatus: status });
-    } catch {
-      // Offline is a normal early state; the section simply stays idle.
-      patchStreamState({ careStatus: null });
-    }
+    patchStreamState({ careStatus: await serviceInvoke<CareRunStatus>('get_care_status') });
   });
 }
 
-/** Opens the explicit consent dialog. Nothing runs until the owner confirms. */
-export function openCareConsent(): void {
+/**
+ * Opens the approval dialog on the plan as the service composes it now, so the owner approves
+ * a plan they are shown. Nothing runs until the owner confirms.
+ */
+export async function openCareConsent(): Promise<void> {
+  const shown = await runBusy(() => serviceInvoke<CareRunStatus>('get_care_status'));
+  if (!shown) return;
+  patchStreamState({ careStatus: shown });
   careUi.update((state) => ({ ...state, consentDialogOpen: true }));
 }
 
@@ -46,10 +45,13 @@ export async function authorizeAndStartCare(): Promise<void> {
     const next = afterApproval(shown, granted);
     if (!next.start) {
       patchStreamState({ careStatus: next.status });
+      setPage('activity');
       return;
     }
     const status = await serviceInvoke<CareRunStatus>('start_care_run');
     patchStreamState({ careStatus: status });
+    // The report lives in the care panel on the Activity page (§51.3), not where the click was.
+    setPage('activity');
   });
 }
 

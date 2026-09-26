@@ -381,7 +381,7 @@ d45645342a5cb961af55b6adea6126c01b40b71d69adb9fad9e1c6f671811723  apps/ui/index.
 541605853a6882fdbec51d6e941a5bee6e0b52408bbe87253b9a1591d8866036  apps/ui/package.json
 63201c04675bbb046c7f54a46ff8ec61e4d388d775c467d4d4ff8d70a0d484ed  apps/ui/src/App.svelte
 de351bc64003fe8d9690d420a440e819d499548e0fbdf161b03955bad29c5d90  apps/ui/src/app/AppShell.svelte
-d3e26a652cdd75d5a77fa2d8a2620112a6aeb979fd2bcedee732efa6f80c1202  apps/ui/src/app/PlanDialogs.svelte
+ccdae417c130a36c4377de3ec0382979ca3c4345780d47b127259df807bee473  apps/ui/src/app/PlanDialogs.svelte
 66e991745e25ba239c4972929df13d6e60e407df3c867a9f43f5a23048a13db8  apps/ui/src/app/activity-counter.ts
 3df86f52e8e63c3e3ca1386e8cfa740ead818029b52378bba20888ea67dcfd35  apps/ui/src/app/shell-state.ts
 6e155626ab8a87a3d4069e6cc18c7610c3943af4c6c8bf557c7915b1e8e06ee1  apps/ui/src/components/AboutPanel.svelte
@@ -424,14 +424,14 @@ eec37c71f08c871f07eb1f89b7a2c42910c1a2b0471ed35f73ef0274697a1b8d  apps/ui/src/de
 8016304c25fb6507350adcdd13c1c38bd601aaa410f6611ab47d0b8c4835a662  apps/ui/src/design/styles/navigation.css
 70d35f82309f64a39253039e038aed554e48f621bf115a8f96b181d6b41a7152  apps/ui/src/design/styles/responsive.css
 6f2bf78f7b6055439a138c940ab14d6cdb47bb3fe75e18b68e0745a9897f7ba6  apps/ui/src/design/styles/typography.css
-2f5bfcfde33524a23d21e4a1da6a112003f9501e2ee7074ce8a4d4d7c5a886b0  apps/ui/src/dev/layout-fixture.ts
+d1706a6b81e32303741963d2c32f8164eee200c5c7757a4be5d4f3e106abc1f7  apps/ui/src/dev/layout-fixture.ts
 6989f51918c2fb50d52ecf149378df57e11be44302ee1e66464e179b9200fcd0  apps/ui/src/features/RecoveryPanel.svelte
 6ade8fb850fd4982fe84f63eaad464c6dd7740c0fc7a425253bfee6e47e3a99c  apps/ui/src/features/activity/ActivityPage.svelte
 ee6685eddf06cfafafdd03cd6fb7dbed3172a7849540fb6e10e759958a990490  apps/ui/src/features/assistant/AssistantDrawer.svelte
 52f0607f7f4f24e9a3364b607c9ef3e2b01a41f60d66945f4ecf6c76c9041b3a  apps/ui/src/features/assistant/controller.ts
-85e83b8f8e2932eb4bc73924ecd5c2b57aff1d634a40907368d890dd77b87e67  apps/ui/src/features/care/CarePanel.svelte
+6013dad2a3401ca5e71e155694a55419e9fea3477b78518d24a8c0876c3a403d  apps/ui/src/features/care/CarePanel.svelte
 dcb02ab2200b8b700bd252b1a57d53d973669dbe466d219264b4a93c511e4c32  apps/ui/src/features/care/approval.ts
-6eeb20e3c791e4e6702aac73be5c88c82d41087a70a1d0b2f0a875115ad5cae4  apps/ui/src/features/care/controller.ts
+19e673759cc9a541ed0e0eab865ec86f0d2bbef2ad0e3d07e8b261841ae6efe1  apps/ui/src/features/care/controller.ts
 9f84b19ee567b431fb8ab387a557f6ef3d1bafe97b53ab87ba4e8f5f46e47995  apps/ui/src/features/cleanup/CleanupPage.svelte
 5bf669667854c15a7f51917977aea62632b28cd397034f64a5c24bff0be117fc  apps/ui/src/features/cleanup/controller.ts
 cb27aa39857efb1273f3c0cdfed0eb764dbee0bc2ce75d4af10d4d7e8504df92  apps/ui/src/features/diagnostics/CrashPage.svelte
@@ -464,7 +464,7 @@ bbe46e0168a9ea2689d2b40a88ccd3d9dc098aeccfcf91da74e22d627fa1cb32  apps/ui/src/fe
 e68eca0a5dba40b456b45f2fb7de56ee0848781bdc50d1c28895f9663550acc4  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-4fe0540c86f2d3188559796bd1c06868e7f88de801f6e167cba4587c8bc51649  apps/ui/src/lib/i18n/catalog.ar.ts
+3a5b22414f4be9de6495dbff2f0d014502bdbfa63640ba7189441542920f1528  apps/ui/src/lib/i18n/catalog.ar.ts
 2d09371c7c0c5192aef2dc509162499f6a408fd616ddb33eb9dc43a5632d3deb  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 0ee3fe5ad69f55120691cd13b28c2251bdf53679bd09d591fce58d6d9fee9e86  apps/ui/src/lib/i18n/plurals.ar.ts
