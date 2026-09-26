@@ -5,6 +5,21 @@ on:
 permissions:
   contents: read
 jobs:
+  posix:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Gate self-tests on ubuntu
+        run: |
+          python3 --version
+          for t in scripts/test_gate_contains.py scripts/test_gate_module_reader.py scripts/test_gate_readers.py scripts/test_omega_delivered_set.py scripts/test_source_seal.py scripts/test_windows_server_support.py scripts/test-phase12-localization.py scripts/ps_marker_scan.py; do
+            python3 "$t" > /tmp/out.txt 2>&1; rc=$?; tail -3 /tmp/out.txt; echo "RESULT: $t exit $rc"
+          done
   gates:
     runs-on: windows-2025
     timeout-minutes: 20
