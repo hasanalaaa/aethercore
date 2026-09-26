@@ -768,8 +768,12 @@ pub fn compare_versions(a: &str, b: &str) -> i8 {
             .map(|part| part.parse::<u64>().unwrap_or(0))
             .collect()
     };
-    let left = parse(a);
-    let right = parse(b);
+    let mut left = parse(a);
+    let mut right = parse(b);
+    // `1.2` and `1.2.0` name one release; without padding, the shorter sorted lower.
+    let width = left.len().max(right.len());
+    left.resize(width, 0);
+    right.resize(width, 0);
     match left.cmp(&right) {
         std::cmp::Ordering::Less => -1,
         std::cmp::Ordering::Equal => 0,
@@ -1045,6 +1049,14 @@ mod tests {
             rotation.authorize(&ring, 50).is_ok(),
             "inside its window it still may"
         );
+    }
+    /// P75 — trailing zero components do not make a version newer.
+    #[test]
+    fn trailing_zero_components_compare_equal() {
+        assert_eq!(compare_versions("1.2", "1.2.0"), 0);
+        assert_eq!(compare_versions("1.2.0.0", "1.2"), 0);
+        assert_eq!(compare_versions("1.2", "1.2.1"), -1);
+        assert_eq!(compare_versions("1.10", "1.9.9"), 1);
     }
     #[test]
     fn rollback_cannot_be_reused_for_different_current_version() {
