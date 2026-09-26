@@ -71,3 +71,49 @@ SYSTEM; never weaken a gate or edit an expected value; lockfile changes only in 
 with the freeze minted by `windows-installer.yml` on that branch (`docs/phase70/P70-REPORT.md` §3);
 never `git add -A`, never force-push, never merge red. Windows behaviour is proven on the
 `windows-2025` runner, never asserted. At the end: `docs/phase75/P75-REPORT.md` per `AMBITION.md` §6.
+
+---
+
+# Continuation — second lead session, 2026-09-26
+
+One lane at a time locally, no subagents. Every PR below merged green, and `main` went green at
+each merge sha before the next one, except where noted.
+
+| PR | lane | ledger | notes |
+|---|---|---|---|
+| #27 | keygen-rng | `DBT-P75-004`, `-005` (open) | merged by the owner before this session |
+| #29 | insight-model | `DBT-P56-002` closed, `DBT-P62-004` open | real-model insights; see the incident below |
+| #28 | fs-acl | `DBT-P36-006`, `DBT-P75-006`…`008` (`008` open) | runner user is RID 500 and elevated → owner is Administrators |
+| #36, #38 | insight-deadline, insight-budget | `DBT-P62-004` | fix-forwards for the red main below |
+| #34 | service-rollback | `DBT-P74-001`, `DBT-P75-009`, `-010` | installer probe red `36184401229` / green `36184392149` |
+| #32 | plan-journal | `DBT-P63-012`, `DBT-P75-024`…`027` (`027` open: needs a dev-dependency) | merged before cli-truth: it fixes main's flaky system-repair race |
+| #30 | cli-truth | `DBT-P75-011`…`017` | **exit code 5 → 8 for three local-verify commands (`016`) — owner's call** |
+| #31 | diagnosis-evidence | `DBT-P75-018`…`023` | |
+| #33 | telemetry-windows | `DBT-P75-028`, `-029` | Windows counter items not started (lane doc) |
+| #35 | db-diagnostics (Wave 2) | `DBT-P75-030`…`034` | |
+| #37 | update-trust, release-authority part (Wave 2) | `DBT-P75-035`…`037` | this PR; the rest of update-trust not started |
+
+**Incident — main red twice after #29.** With the real model, the 2-vCPU Windows runner cannot
+finish an insight in 10 s, and the decode loops checked the deadline only after a step. `t5`
+("load+infer must respect the hard time budget") failed on `9e0b755` and `a013de5`. #36 made each
+step predict from the previous one; #38 keeps room for a step twice as long and makes `t4` assert
+the contract (finish, or stop honestly before the deadline) instead of the host's speed. Measured
+on the runner after #38: prefill stops at ~9.8 s, the rule answer at ~9.9 s, `t4`/`t5` pass. If it
+recurs, the next step is a per-phase maximum step time — never a wider deadline.
+
+**Ledger merges.** Every lane edits `docs/LEDGER.md`; two lanes adding rows at the same spot
+conflict on the rows too. Rebuild from `origin/main`'s file plus exactly the rows the lane changed
+since the merge base; never resolve by replacing hunks (one row loss was caught and repaired
+before push).
+
+**Cheap Windows measurement.** A push-triggered throwaway workflow on `probe/p75-com` (~2 min on
+windows-2025) measured the COM harness, the icacls order and the Event Log XPath before spending an
+80-minute CI run. Delete that branch when P75 closes.
+
+**Owner decisions / cleanup not done (need approval):** remote branches `wip/*`,
+`lane/service-rollback-before`, `probe/p75-*`, `docs/p75-handoff-2` can be deleted; local
+worktrees under `.claude/worktrees/` can be removed.
+
+**Not started:** Wave 2 `installer-ux`, `care-consent`, `gate-honesty`, `ui-truth`,
+`service-host`, the rest of `update-trust`, `fuzz` (needs seven dependencies → dependency lane),
+`seal-root` (last). `DBT-P74-002`. `docs/phase75/P75-REPORT.md`.

@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P75 (2026-09-26), lane `db-diagnostics`.
+Last moved: P75 (2026-09-26), lane `update-trust`.
 
 ---
 
@@ -225,6 +225,9 @@ Report: `docs/phase57/P57-REPORT.md`. Raw measurements:
 | `DBT-P75-032` | PostgreSQL config lint read the first of duplicate settings; the server uses the last | **CLOSED by P75 lane `db-diagnostics`**, pending integration CI at its final head | `6966d93`. Red-before and evidence: `docs/phase75/lanes/db-diagnostics.md`. | any host |
 | `DBT-P75-033` | `synchronous_commit = local` / `remote_write` were reported as synchronous commit off | **CLOSED by P75 lane `db-diagnostics`**, pending integration CI at its final head | `6966d93`. Red-before and evidence: `docs/phase75/lanes/db-diagnostics.md`. | any host |
 | `DBT-P75-034` | MySQL option files: every group linted as server config, inline comments and quotes kept in values, `-`/`_` distinct, a bare `skip-networking` read as off | **CLOSED by P75 lane `db-diagnostics`**, pending integration CI at its final head | `fecef56`. Red-before and evidence: `docs/phase75/lanes/db-diagnostics.md`. | any host |
+| `DBT-P75-035` | An expired release key could authorize a key rotation (`active_key(old, None)` skipped its validity window) | **CLOSED by P75 lane `update-trust`**, pending integration CI at its final head | `c6d2530`: `authorize(keyring, now_epoch)`. Red-before and evidence: `docs/phase75/lanes/update-trust.md`. | any host |
+| `DBT-P75-036` | `compare_versions("1.2", "1.2.0")` was -1, so a re-release of the same version passed as an upgrade | **CLOSED by P75 lane `update-trust`**, pending integration CI at its final head | `bbab01e`: zero-padded components. Red-before and evidence: `docs/phase75/lanes/update-trust.md`. | any host |
+| `DBT-P75-037` | An offline update source rejected `..` only in absolute paths | **CLOSED by P75 lane `update-trust`**, pending integration CI at its final head | `360cd87`: any `ParentDir` component is refused. Red-before and evidence: `docs/phase75/lanes/update-trust.md`. | any host |
 ## §2 Recovery posture — measured 2026-09-12
 
 P49 recorded `Gate 0f` as regressed: "there is no `D:` and no

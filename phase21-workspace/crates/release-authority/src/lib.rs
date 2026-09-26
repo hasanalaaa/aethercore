@@ -322,14 +322,20 @@ impl KeyRotation {
         canonical_json(&copy)
     }
 
-    pub fn authorize(&self, keyring: &TrustedKeyring) -> Result<TrustedKeyring, AuthorityError> {
+    /// `now_epoch` is required: rotation mints new trust, so the authorizing key must be
+    /// inside its own validity window when the rotation is applied.
+    pub fn authorize(
+        &self,
+        keyring: &TrustedKeyring,
+        now_epoch: u64,
+    ) -> Result<TrustedKeyring, AuthorityError> {
         if self.schema != ROTATION_SCHEMA
             || self.authorized_by != self.old_key_id
             || self.new_key.key_id == self.old_key_id
         {
             return Err(AuthorityError::RotationConflict);
         }
-        let old = keyring.active_key(&self.old_key_id, None)?;
+        let old = keyring.active_key(&self.old_key_id, Some(now_epoch))?;
         verify_signature(&self.unsigned_bytes()?, &self.signature_hex, old)?;
         let mut next = keyring.clone();
         if next.keys.iter().any(|k| k.key_id == self.new_key.key_id) {
@@ -653,8 +659,12 @@ impl UpdateSource {
         match self {
             Self::Offline { path } => {
                 let candidate = Path::new(path);
+                // Any `..` component, relative or absolute: the old test was
+                // `is_absolute() && contains("..")`, which let `../../x` through.
                 if path.is_empty()
-                    || candidate.is_absolute() && path.contains("..")
+                    || candidate
+                        .components()
+                        .any(|part| part == std::path::Component::ParentDir)
                     || path.contains('\0')
                 {
                     return Err(AuthorityError::UnsupportedSource);
@@ -762,8 +772,12 @@ pub fn compare_versions(a: &str, b: &str) -> i8 {
             .map(|part| part.parse::<u64>().unwrap_or(0))
             .collect()
     };
-    let left = parse(a);
-    let right = parse(b);
+    let mut left = parse(a);
+    let mut right = parse(b);
+    // `1.2` and `1.2.0` name one release; without padding, the shorter sorted lower.
+    let width = left.len().max(right.len());
+    left.resize(width, 0);
+    right.resize(width, 0);
     match left.cmp(&right) {
         std::cmp::Ordering::Less => -1,
         std::cmp::Ordering::Equal => 0,
@@ -1005,8 +1019,79 @@ mod tests {
                 .sign(&rotation.unsigned_bytes().unwrap())
                 .to_bytes(),
         );
-        let next = rotation.authorize(&ring).unwrap();
+        let next = rotation.authorize(&ring, 50).unwrap();
         assert!(next.keys.iter().any(|k| k.key_id == "new"));
+    }
+    /// P75 — an expired key must not authorize a rotation: rotation is the one
+    /// operation that mints new trust, and it ignored the key's validity window.
+    #[test]
+    fn an_expired_key_cannot_authorize_a_rotation() {
+        let (mut old, seed) = key(11, "old");
+        old.not_after_epoch = Some(100);
+        let (new_key, _) = key(12, "new");
+        let ring = TrustedKeyring {
+            schema: KEYRING_SCHEMA.into(),
+            keys: vec![old],
+        };
+        let mut rotation = KeyRotation {
+            schema: ROTATION_SCHEMA.into(),
+            old_key_id: "old".into(),
+            new_key,
+            authorized_by: "old".into(),
+            signature_hex: String::new(),
+        };
+        rotation.signature_hex = hex::encode(
+            SigningKey::from_bytes(&seed)
+                .sign(&rotation.unsigned_bytes().unwrap())
+                .to_bytes(),
+        );
+        assert!(matches!(
+            rotation.authorize(&ring, 200),
+            Err(AuthorityError::RevokedKey(_))
+        ));
+        assert!(
+            rotation.authorize(&ring, 50).is_ok(),
+            "inside its window it still may"
+        );
+    }
+    /// P75 — trailing zero components do not make a version newer.
+    #[test]
+    fn trailing_zero_components_compare_equal() {
+        assert_eq!(compare_versions("1.2", "1.2.0"), 0);
+        assert_eq!(compare_versions("1.2.0.0", "1.2"), 0);
+        assert_eq!(compare_versions("1.2", "1.2.1"), -1);
+        assert_eq!(compare_versions("1.10", "1.9.9"), 1);
+    }
+    /// P75 — an offline source may not climb out of where it is resolved from,
+    /// relative or absolute.
+    #[test]
+    fn offline_source_with_a_parent_component_is_refused() {
+        for path in [
+            "../../etc/update.zip",
+            "updates/../../x.zip",
+            "/opt/../etc/x.zip",
+        ] {
+            assert!(
+                UpdateSource::Offline { path: path.into() }
+                    .validate()
+                    .is_err(),
+                "{path}"
+            );
+        }
+        assert!(
+            UpdateSource::Offline {
+                path: "updates/x.zip".into()
+            }
+            .validate()
+            .is_ok()
+        );
+        assert!(
+            UpdateSource::Offline {
+                path: "a..b/x.zip".into()
+            }
+            .validate()
+            .is_ok()
+        );
     }
     #[test]
     fn rollback_cannot_be_reused_for_different_current_version() {
