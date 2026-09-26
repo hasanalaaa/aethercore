@@ -76,9 +76,13 @@ never `git add -A`, never force-push, never merge red. Windows behaviour is prov
 
 # Continuation — state at 2026-09-26 (second lead session)
 
-One lane at a time locally; no subagents. `main` = `883e0f4` (#36 merged: the t5 red that #29
-introduced is fixed — on the runner the insight prefill now stops at 8.5 s and the rule answer
-arrives at 9.5 s, inside 10 s; CI `36198857596`). Main run `36202710076` at `883e0f4` pending.
+One lane at a time locally; no subagents. `main` = `a013de5` (#34 merged) and **RED** on
+`t4`/`t5` in `intelligence-core/tests/adversarial.rs` (run `36206362980`): with the real model the
+2-vCPU runner is too slow for t4's "finish in 10 s" and t5 overran by one token step. #36 fixed
+the 1.4 s prefill overrun but predicted each step from the previous one only. **PR #38
+(`lane/insight-budget`) is the fix-forward — merge it before anything else.** Real-model timing on
+the runner is the weak spot of this phase: if #38 is not enough, the next step is a per-phase
+maximum step time, not a wider deadline.
 
 **Ledger merges:** every lane edits `docs/LEDGER.md`, so `git merge origin/main` conflicts on the
 "Last moved" line AND, when two lanes add rows at the same place, on the rows. Never resolve by
@@ -92,13 +96,15 @@ merge base (the script used is reproduced at the end of this file).
 |---|---|---|---|---|
 | #25, #26, #27, #29 | no-egress, mac-clippy, keygen-rng, insight-model | merged | green | #29's main run `36192104951` |
 | #28 | fs-acl | merged `9e0b755` | `36192190898` green | fixture made user-owned (runner user is RID 500, elevated → owner is Administrators; `DBT-P75-008` opened); icacls order proven in throwaway run `36185665074`; firewall test moved behind `#[cfg(test)]` for `enterprise-adversarial-audit` |
-| #30 | cli-truth | `9f15666` | green pre-#29 (`36186619945`) | exit-code change 5→8 flagged for the owner (`DBT-P75-016`) |
+| #30 | cli-truth | `d4ffac8` | `36206404288` green (needs main again after #38) | exit-code change 5→8 flagged for the owner (`DBT-P75-016`) |
 | #31 | diagnosis-evidence | `6f47c6c` | green pre-#29 (`36187290070`) | Kernel-Power XPath measured in throwaway run `36186229655` |
 | #32 | plan-journal | `f017f7c` | green pre-#29 (`36187928668`) | replayed onto main; `DBT-P75-027` open (needs a dev-dependency) |
 | #33 | telemetry-windows | `8d6b46d` | `36189280509` | only lifecycle + watchdog; the Windows counter items are not started |
-| #34 | service-rollback | `8dc5c5f` (next to merge) | pending (`5dc124f` failed only on t5) | installer probe red `36184401229` / green `36184392149`; `DBT-P74-002` not started |
+| #34 | service-rollback | merged `a013de5` | `36202794187` green | installer probe red `36184401229` / green `36184392149`; `DBT-P74-002` not started |
 | #35 | db-diagnostics (Wave 2) | `707d735` | failed only on t5 | 7 red-before tests |
-| #36 | insight-deadline | merged `883e0f4` | `36198857596` green | fixed main's red t5 |
+| #36 | insight-deadline | merged `883e0f4` | `36198857596` green | fixed the prefill overrun |
+| #37 | update-trust (release-authority part) | `lane/update-trust` | pending | DBT-P75-035..037 |
+| #38 | insight-budget | `lane/insight-budget` | pending | **fixes main red on t4/t5; merge first** |
 
 Ledger ids assigned: `DBT-P75-006`…`034` (see each lane doc under `docs/phase75/lanes/`).
 
