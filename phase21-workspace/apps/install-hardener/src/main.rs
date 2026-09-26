@@ -30,8 +30,43 @@ fn main() -> anyhow::Result<()> {
     match (args.next(), args.next()) {
         (Some(mode), None) if mode == OsStr::new("apply") => apply(),
         (Some(mode), None) if mode == OsStr::new("purge-data") => purge_data(),
-        _ => anyhow::bail!("usage: aethercore-install-hardener.exe apply|purge-data"),
+        (Some(mode), None) if mode == OsStr::new("configure-service") => {
+            configure_service(system32_tool("sc.exe")?)
+        }
+        _ => anyhow::bail!(
+            "usage: aethercore-install-hardener.exe apply|purge-data|configure-service"
+        ),
     }
+}
+
+#[cfg(windows)]
+/// The service's own settings, which `apply` sets after InstallServices. The
+/// `configure-service` verb runs this alone as a rollback action.
+///
+/// DBT-P74-001: a rolled-back uninstall re-creates the service from the MSI
+/// ServiceInstall row, which has SID type NONE and plain auto-start. The service's
+/// token check then refuses to run, and MSI retries the rollback start for about
+/// four minutes before returning 1603 with a service that never runs. `apply`
+/// cannot serve as that rollback action: it needs both trees present and free of
+/// reparse points, and a rollback can follow a purge that removed the data tree,
+/// or one refused because of a junction under it. So only the SCM steps run there.
+fn configure_service(sc: PathBuf) -> anyhow::Result<()> {
+    // These are fixed, non-user-controlled SCM operations. The helper is intentionally not a
+    // general command runner and accepts no paths or service names on its command line.
+    run_checked(&sc, ["sidtype", SERVICE_NAME, "unrestricted"])?;
+    run_checked(
+        &sc,
+        [
+            "config",
+            SERVICE_NAME,
+            "start=",
+            "delayed-auto",
+            "obj=",
+            "LocalSystem",
+        ],
+    )?;
+    run_checked(&sc, ["sdset", SERVICE_NAME, SERVICE_SDDL])?;
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -125,12 +160,8 @@ fn delete_at_reboot(path: &Path) -> anyhow::Result<()> {
 
 #[cfg(windows)]
 fn apply() -> anyhow::Result<()> {
-    let system_root = trusted_absolute_env("SystemRoot")?;
-    let system32 = system_root.join("System32");
-    let sc = system32.join("sc.exe");
-    let icacls = system32.join("icacls.exe");
-    ensure_fixed_tool(&sc, "sc.exe")?;
-    ensure_fixed_tool(&icacls, "icacls.exe")?;
+    let sc = system32_tool("sc.exe")?;
+    let icacls = system32_tool("icacls.exe")?;
 
     let program_files = std::env::var_os("ProgramW6432")
         .or_else(|| std::env::var_os("ProgramFiles"))
@@ -162,21 +193,7 @@ fn apply() -> anyhow::Result<()> {
 
     let principal = service_principal();
 
-    // These are fixed, non-user-controlled SCM operations. The helper is intentionally not a
-    // general command runner and accepts no paths or service names on its command line.
-    run_checked(&sc, ["sidtype", SERVICE_NAME, "unrestricted"])?;
-    run_checked(
-        &sc,
-        [
-            "config",
-            SERVICE_NAME,
-            "start=",
-            "delayed-auto",
-            "obj=",
-            "LocalSystem",
-        ],
-    )?;
-    run_checked(&sc, ["sdset", SERVICE_NAME, SERVICE_SDDL])?;
+    configure_service(sc)?;
 
     // Normalize each tree back to its parent ACL first, then replace inheritance with the fixed
     // product ACL. This deliberately removes stale explicit ACEs before the allowlist is applied,
@@ -299,6 +316,15 @@ fn reject_reparse_tree(root: &Path) -> anyhow::Result<()> {
         Ok(())
     }
     visit(root)
+}
+
+#[cfg(windows)]
+fn system32_tool(name: &str) -> anyhow::Result<PathBuf> {
+    let path = trusted_absolute_env("SystemRoot")?
+        .join("System32")
+        .join(name);
+    ensure_fixed_tool(&path, name)?;
+    Ok(path)
 }
 
 #[cfg(windows)]
