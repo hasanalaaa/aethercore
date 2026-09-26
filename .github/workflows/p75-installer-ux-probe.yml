@@ -119,9 +119,14 @@ jobs:
           }
           # Installed OR: the launch condition is false at uninstall time; uninstall must still work.
           foreach ($pkg in @('old','p')) {
-            Write-Host "install $pkg.msi exit $(Run msiexec "/i `"$w\$pkg.msi`" /qn")"
-            Write-Host "GATE: $pkg.msi /x with its launch condition false exit=$(Run msiexec "/x `"$w\$pkg.msi`" /qn P75PROBE_REQUIRE=`"`" /l*v `"$env:RUNNER_TEMP\x-$pkg.log`"")"
-            Select-String -Path "$env:RUNNER_TEMP\x-$pkg.log" -Pattern 'P75 probe requirement missing|Removal completed|Product: P75' | Select-Object -First 3 | ForEach-Object { Write-Host "  $($_.Line)" }
+            $msi = Join-Path $w "$pkg.msi"
+            $ilog = Join-Path $env:RUNNER_TEMP "i-$pkg.log"
+            $xlog = Join-Path $env:RUNNER_TEMP "x-$pkg.log"
+            $ic = Run 'msiexec.exe' @('/i', $msi, '/qn', '/l*v', $ilog)
+            Write-Host "install $pkg.msi exit $ic"
+            $xc = Run 'msiexec.exe' @('/x', $msi, '/qn', 'P75PROBE_REQUIRE=""', '/l*v', $xlog)
+            Write-Host "GATE: $pkg.msi /x with its launch condition false exit=$xc"
+            foreach ($l in @($ilog, $xlog)) { if (Test-Path $l) { Select-String -Path $l -Pattern 'P75 probe requirement|Removal completed|Installation completed|MainEngineThread is returning' | ForEach-Object { Write-Host "  $(Split-Path $l -Leaf): $($_.Line.Trim())" } } }
           }
           foreach ($v in @('stock','ours')) {
             $exe = "$w\b-$v.exe"
