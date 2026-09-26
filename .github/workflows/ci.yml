@@ -146,6 +146,10 @@ jobs:
       # not stop on a native command's exit code, hence the explicit check.
       - name: Gate self-tests
         shell: pwsh
+        # The runner's console is cp1252; test_gate_readers.py prints non-ASCII and raised
+        # UnicodeEncodeError there (probe run 36240612616).
+        env:
+          PYTHONUTF8: '1'
         run: |
           foreach ($t in @(
             'scripts/test_gate_contains.py'
