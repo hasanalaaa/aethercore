@@ -122,6 +122,13 @@ pub enum VerifyError {
     SignatureFlagInconsistent,
     /// Signature present but cryptographically invalid over the digest.
     BadSignature,
+    /// The file verifies, but it was not signed by the key the caller trusts (`signer`
+    /// is None when the file is unsigned). Integrity alone proves nothing about WHO
+    /// wrote it: anyone can rebuild the chain and sign it with their own key.
+    UntrustedSigner {
+        signer: Option<String>,
+        trusted: String,
+    },
 }
 
 impl core::fmt::Display for VerifyError {
@@ -154,6 +161,11 @@ impl core::fmt::Display for VerifyError {
                 write!(f, "\"signed\" flag inconsistent with signature presence")
             }
             Self::BadSignature => write!(f, "signature invalid over digest"),
+            Self::UntrustedSigner { signer, trusted } => write!(
+                f,
+                "signer {} is not the trusted key {trusted}",
+                signer.as_deref().unwrap_or("none (unsigned)")
+            ),
         }
     }
 }
@@ -264,12 +276,14 @@ pub fn sign_digest(digest: &str, signing_key: &ed25519_dalek::SigningKey) -> Exp
     }
 }
 
-/// Verifies a signature produced by [`sign_digest`] and returns the existing
-/// typed Phase 29 failure rather than introducing a second crypto error model.
+/// Verifies a signature produced by [`sign_digest`] and returns the signer's
+/// public-key fingerprint (lowercase hex, the `aetherctl keys fingerprint` format).
+/// The key comes from the signed file itself, so a valid signature proves only that
+/// the holder of THAT key signed; whether the key is trusted is the caller's question.
 pub fn verify_digest_signature(
     digest: &str,
     signature: &ExportSignature,
-) -> Result<(), VerifyError> {
+) -> Result<String, VerifyError> {
     use ed25519_dalek::{Signature, VerifyingKey};
     let key_bytes =
         decode_hex_fixed::<32>(&signature.public_key_hex).map_err(|_| VerifyError::BadSignature)?;
@@ -279,7 +293,8 @@ pub fn verify_digest_signature(
     let signature = Signature::from_slice(&sig_bytes).map_err(|_| VerifyError::BadSignature)?;
     use ed25519_dalek::Verifier as _;
     key.verify(digest.as_bytes(), &signature)
-        .map_err(|_| VerifyError::BadSignature)
+        .map_err(|_| VerifyError::BadSignature)?;
+    Ok(hex_encode(&key_bytes))
 }
 
 // ---------------------------------------------------------------------------
@@ -287,8 +302,10 @@ pub fn verify_digest_signature(
 // ---------------------------------------------------------------------------
 
 /// Full offline verification: recomputes every hash and the chain from scratch.
-/// Trusts nothing it cannot recompute.
-pub fn verify_envelope(envelope: &ExportEnvelope) -> Result<(), VerifyError> {
+/// Trusts nothing it cannot recompute. Returns the signer's fingerprint (None when
+/// unsigned). Ok means "intact", not "trusted": pin the signer with
+/// [`verify_envelope_signed_by`].
+pub fn verify_envelope(envelope: &ExportEnvelope) -> Result<Option<String>, VerifyError> {
     if envelope.header.schema != EXPORT_SCHEMA {
         return Err(VerifyError::UnknownSchema(envelope.header.schema.clone()));
     }
@@ -326,10 +343,25 @@ pub fn verify_envelope(envelope: &ExportEnvelope) -> Result<(), VerifyError> {
             expected: expect_digest,
         });
     }
-    if let Some(signature) = &envelope.signature {
-        verify_digest_signature(&envelope.digest, signature)?;
+    envelope
+        .signature
+        .as_ref()
+        .map(|signature| verify_digest_signature(&envelope.digest, signature))
+        .transpose()
+}
+
+/// [`verify_envelope`], then requires the signer to be `trusted_fingerprint` (the
+/// owner's `keys fingerprint`, case-insensitive). An unsigned file never passes.
+pub fn verify_envelope_signed_by(
+    envelope: &ExportEnvelope,
+    trusted_fingerprint: &str,
+) -> Result<String, VerifyError> {
+    let signer = verify_envelope(envelope)?;
+    let trusted = trusted_fingerprint.trim().to_ascii_lowercase();
+    match signer {
+        Some(signer) if signer == trusted => Ok(signer),
+        signer => Err(VerifyError::UntrustedSigner { signer, trusted }),
     }
-    Ok(())
 }
 
 /// Builds a signing key from an explicit 32-byte seed (owner-provided key file).
@@ -392,13 +424,14 @@ mod tests {
         let signing = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
         sign_envelope(&mut env, &signing);
         assert!(env.signed && env.signature.is_some());
-        assert_eq!(verify_envelope(&env), Ok(()));
+        let signer = Some(env.signature.as_ref().unwrap().public_key_hex.clone());
+        assert_eq!(verify_envelope(&env), Ok(signer.clone()));
 
         // Serialization stability: same content → same digest chain.
         let text = serde_json::to_string(&env).unwrap();
         let reparsed = parse_envelope_bytes(text.as_bytes()).unwrap();
         assert_eq!(reparsed, env);
-        assert_eq!(verify_envelope(&reparsed), Ok(()));
+        assert_eq!(verify_envelope(&reparsed), Ok(signer));
     }
 
     #[test]
@@ -462,7 +495,7 @@ mod tests {
         let env = build_envelope(Vec::new(), 5, "empty-fp".into());
         assert_eq!(env.digest, GENESIS_CHAIN);
         assert_eq!(env.header.record_count, 0);
-        assert_eq!(verify_envelope(&env), Ok(()));
+        assert_eq!(verify_envelope(&env), Ok(None));
     }
 
     #[test]
@@ -497,7 +530,7 @@ mod tests {
             env.header.correlation_id.as_deref(),
             Some("018f3f1a-7b9c-7cc3-9c4a-5d6e7f8091a2")
         );
-        assert_eq!(verify_envelope(&env), Ok(()));
+        assert_eq!(verify_envelope(&env), Ok(None));
     }
 
     #[test]
@@ -516,11 +549,58 @@ mod tests {
         let signature = sign_digest("compliance-digest", &key);
         assert_eq!(
             verify_digest_signature("compliance-digest", &signature),
-            Ok(())
+            Ok(signature.public_key_hex.clone())
         );
         assert_eq!(
             verify_digest_signature("tampered-digest", &signature),
             Err(VerifyError::BadSignature)
+        );
+    }
+
+    /// P75 (cli-truth): anyone can edit the records, rebuild the chain and re-sign with
+    /// their OWN key; integrity alone then passes. The verifier must name the signer so
+    /// the caller can pin it, and a pinned verification must refuse the forgery.
+    #[test]
+    fn forged_resigned_export_names_its_signer_and_fails_a_pinned_verification() {
+        let owner = signing_key_from_seed(&[7u8; 32]);
+        let owner_fingerprint = hex_encode(&owner.verifying_key().to_bytes());
+        let mut genuine = build_envelope(sample_records(), 0, "fp".into());
+        sign_envelope(&mut genuine, &owner);
+        assert_eq!(
+            verify_envelope(&genuine),
+            Ok(Some(owner_fingerprint.clone()))
+        );
+        assert_eq!(
+            verify_envelope_signed_by(&genuine, &owner_fingerprint.to_uppercase()),
+            Ok(owner_fingerprint.clone())
+        );
+
+        let attacker = signing_key_from_seed(&[8u8; 32]);
+        let attacker_fingerprint = hex_encode(&attacker.verifying_key().to_bytes());
+        let mut records = sample_records();
+        records[1].2 = serde_json::json!({"domain": "cleanup", "outcome": "Forged"});
+        let mut forged = build_envelope(records, 0, "fp".into());
+        sign_envelope(&mut forged, &attacker);
+        assert_eq!(
+            verify_envelope(&forged),
+            Ok(Some(attacker_fingerprint.clone()))
+        );
+        assert_eq!(
+            verify_envelope_signed_by(&forged, &owner_fingerprint),
+            Err(VerifyError::UntrustedSigner {
+                signer: Some(attacker_fingerprint),
+                trusted: owner_fingerprint.clone(),
+            })
+        );
+
+        let unsigned = build_envelope(sample_records(), 0, "fp".into());
+        assert_eq!(verify_envelope(&unsigned), Ok(None));
+        assert_eq!(
+            verify_envelope_signed_by(&unsigned, &owner_fingerprint),
+            Err(VerifyError::UntrustedSigner {
+                signer: None,
+                trusted: owner_fingerprint,
+            })
         );
     }
 
