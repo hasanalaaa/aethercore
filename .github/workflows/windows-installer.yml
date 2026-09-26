@@ -133,7 +133,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: AetherCoreSetup-windows-unsigned-${{ github.sha }}
           path: setup
