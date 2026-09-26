@@ -322,14 +322,20 @@ impl KeyRotation {
         canonical_json(&copy)
     }
 
-    pub fn authorize(&self, keyring: &TrustedKeyring) -> Result<TrustedKeyring, AuthorityError> {
+    /// `now_epoch` is required: rotation mints new trust, so the authorizing key must be
+    /// inside its own validity window when the rotation is applied.
+    pub fn authorize(
+        &self,
+        keyring: &TrustedKeyring,
+        now_epoch: u64,
+    ) -> Result<TrustedKeyring, AuthorityError> {
         if self.schema != ROTATION_SCHEMA
             || self.authorized_by != self.old_key_id
             || self.new_key.key_id == self.old_key_id
         {
             return Err(AuthorityError::RotationConflict);
         }
-        let old = keyring.active_key(&self.old_key_id, None)?;
+        let old = keyring.active_key(&self.old_key_id, Some(now_epoch))?;
         verify_signature(&self.unsigned_bytes()?, &self.signature_hex, old)?;
         let mut next = keyring.clone();
         if next.keys.iter().any(|k| k.key_id == self.new_key.key_id) {
@@ -1005,8 +1011,40 @@ mod tests {
                 .sign(&rotation.unsigned_bytes().unwrap())
                 .to_bytes(),
         );
-        let next = rotation.authorize(&ring).unwrap();
+        let next = rotation.authorize(&ring, 50).unwrap();
         assert!(next.keys.iter().any(|k| k.key_id == "new"));
+    }
+    /// P75 — an expired key must not authorize a rotation: rotation is the one
+    /// operation that mints new trust, and it ignored the key's validity window.
+    #[test]
+    fn an_expired_key_cannot_authorize_a_rotation() {
+        let (mut old, seed) = key(11, "old");
+        old.not_after_epoch = Some(100);
+        let (new_key, _) = key(12, "new");
+        let ring = TrustedKeyring {
+            schema: KEYRING_SCHEMA.into(),
+            keys: vec![old],
+        };
+        let mut rotation = KeyRotation {
+            schema: ROTATION_SCHEMA.into(),
+            old_key_id: "old".into(),
+            new_key,
+            authorized_by: "old".into(),
+            signature_hex: String::new(),
+        };
+        rotation.signature_hex = hex::encode(
+            SigningKey::from_bytes(&seed)
+                .sign(&rotation.unsigned_bytes().unwrap())
+                .to_bytes(),
+        );
+        assert!(matches!(
+            rotation.authorize(&ring, 200),
+            Err(AuthorityError::RevokedKey(_))
+        ));
+        assert!(
+            rotation.authorize(&ring, 50).is_ok(),
+            "inside its window it still may"
+        );
     }
     #[test]
     fn rollback_cannot_be_reused_for_different_current_version() {
