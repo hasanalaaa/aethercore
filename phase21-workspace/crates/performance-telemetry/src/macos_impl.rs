@@ -337,7 +337,33 @@ fn sample_memory(partial: &mut Vec<CollectorFault>) -> Reading<MemorySample> {
         });
     }
 
-    let available = free.saturating_add(inactive.min(purgeable));
+    // The kernel's own availability figure (what `memory_pressure` prints). Free pages
+    // plus purgeable ones left every page of reclaimable file cache counted as used: the
+    // P75 trial measured 93% load where the kernel said 37%.
+    let mut level: u32 = 0;
+    let mut level_len = size_of::<u32>();
+    let level_ok = unsafe {
+        libc::sysctlbyname(
+            c"kern.memorystatus_level".as_ptr(),
+            std::ptr::addr_of_mut!(level).cast(),
+            &mut level_len,
+            std::ptr::null_mut(),
+            0,
+        )
+    } == 0
+        && level <= 100;
+    let available = if level_ok {
+        memsize / 100 * u64::from(level)
+    } else {
+        partial.push(CollectorFault {
+            collector: "memory.counters".into(),
+            kind: "Degraded".into(),
+            detail: "sysctl(kern.memorystatus_level) unavailable; available memory is free + \
+                     inactive + purgeable pages"
+                .into(),
+        });
+        free.saturating_add(inactive).saturating_add(purgeable)
+    };
     let used = memsize.saturating_sub(available);
     let load_percent = (used * 100).checked_div(memsize).map_or(0, |p| p as u32);
     Reading::from_evidence(
