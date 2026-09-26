@@ -1624,7 +1624,7 @@ export const arCatalog = {
   'common.dismiss': 'تجاهل',
   'policy.bandLabel': 'ممنوع بسياسة',
   'policy.bandDescription': 'العمليات التي يرفضها AetherCore، والقاعدة التي ترفض كلًا منها',
-  'policy.outboundNetwork': 'الاتصال الصادر',
+  'policy.outboundNetwork': 'اتصال بالشبكة لم تطلبه',
   'policy.cloudBackup': 'النسخ السحابي',
   'policy.unsignedDrivers': 'تعريفات غير موقّعة',
   'policy.holdsEyebrow': 'ما يمنعه النظام',

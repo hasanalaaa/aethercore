@@ -1624,7 +1624,7 @@ export const enCatalog = {
   'common.dismiss': 'Dismiss',
   'policy.bandLabel': 'Denied by policy',
   'policy.bandDescription': 'Operations AetherCore refuses, and the rule that refuses each one',
-  'policy.outboundNetwork': 'Outbound network',
+  'policy.outboundNetwork': 'Network use you did not start',
   'policy.cloudBackup': 'Cloud backup',
   'policy.unsignedDrivers': 'Unsigned drivers',
   'policy.holdsEyebrow': 'Policy holds',
