@@ -40,10 +40,8 @@ jobs:
           </Wix>
           '@ | Set-Content "$w\p.wxs"
           (Get-Content "$w\p.wxs" -Raw).Replace('Installed OR (P75PROBE_REQUIRE)', 'P75PROBE_REQUIRE').Replace('P75UxProbe', 'P75UxOld').Replace('7C1B3E1A-5D2E-4E7B-9C0B-2F0F4B1E6A11', '7C1B3E1A-5D2E-4E7B-9C0B-2F0F4B1E6A12').Replace('0B8F6A61-1E0A-4C77-9C7B-3B7E9B6F1A21', '0B8F6A61-1E0A-4C77-9C7B-3B7E9B6F1A22') | Set-Content "$w\old.wxs"
-          Push-Location $w
-          dotnet tool run wix build p.wxs -arch x64 -o p.msi; if ($LASTEXITCODE) { throw 'msi' }
-          dotnet tool run wix build old.wxs -arch x64 -o old.msi; if ($LASTEXITCODE) { throw 'old msi' }
-          Pop-Location
+          dotnet tool run wix build "$w\p.wxs" -arch x64 -bindpath $w -o "$w\p.msi"; if ($LASTEXITCODE) { throw 'msi' }
+          dotnet tool run wix build "$w\old.wxs" -arch x64 -bindpath $w -o "$w\old.msi"; if ($LASTEXITCODE) { throw 'old msi' }
           $theme = (Resolve-Path installer\wix\theme).Path
           foreach ($v in @('stock','ours')) {
             $ba = if ($v -eq 'ours') {
