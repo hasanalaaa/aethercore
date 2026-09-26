@@ -659,8 +659,12 @@ impl UpdateSource {
         match self {
             Self::Offline { path } => {
                 let candidate = Path::new(path);
+                // Any `..` component, relative or absolute: the old test was
+                // `is_absolute() && contains("..")`, which let `../../x` through.
                 if path.is_empty()
-                    || candidate.is_absolute() && path.contains("..")
+                    || candidate
+                        .components()
+                        .any(|part| part == std::path::Component::ParentDir)
                     || path.contains('\0')
                 {
                     return Err(AuthorityError::UnsupportedSource);
@@ -1057,6 +1061,37 @@ mod tests {
         assert_eq!(compare_versions("1.2.0.0", "1.2"), 0);
         assert_eq!(compare_versions("1.2", "1.2.1"), -1);
         assert_eq!(compare_versions("1.10", "1.9.9"), 1);
+    }
+    /// P75 — an offline source may not climb out of where it is resolved from,
+    /// relative or absolute.
+    #[test]
+    fn offline_source_with_a_parent_component_is_refused() {
+        for path in [
+            "../../etc/update.zip",
+            "updates/../../x.zip",
+            "/opt/../etc/x.zip",
+        ] {
+            assert!(
+                UpdateSource::Offline { path: path.into() }
+                    .validate()
+                    .is_err(),
+                "{path}"
+            );
+        }
+        assert!(
+            UpdateSource::Offline {
+                path: "updates/x.zip".into()
+            }
+            .validate()
+            .is_ok()
+        );
+        assert!(
+            UpdateSource::Offline {
+                path: "a..b/x.zip".into()
+            }
+            .validate()
+            .is_ok()
+        );
     }
     #[test]
     fn rollback_cannot_be_reused_for_different_current_version() {
