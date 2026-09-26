@@ -20,28 +20,35 @@ use aethercore_operation_kernel::MutationSupervisor;
 use aethercore_persistence::{CareRunRecord, CareStepRecord, Database};
 
 /// Session consent is in-memory per principal by design: consent that survives a
-/// session restart would not be "one-time session consent".
+/// session restart would not be "one-time session consent". Each grant is bound to
+/// the digest of the plan the owner was shown; a different plan needs a new grant.
 #[derive(Default)]
 pub struct SessionConsentRegistry {
-    granted: Mutex<std::collections::BTreeSet<String>>,
+    granted: Mutex<std::collections::BTreeMap<String, String>>,
 }
 
 impl SessionConsentRegistry {
-    // A poisoned lock here means some other thread panicked while holding a set of principal
-    // keys; the set itself is still consistent, so recovery is the workspace idiom (see every
-    // other `Mutex` in this service) and a panic would take consent down with it. P63.
-    pub fn grant(&self, owner_principal_key: &str) {
+    // A poisoned lock here means some other thread panicked while holding the map; the map
+    // itself is still consistent, so recovery is the workspace idiom (see every other `Mutex`
+    // in this service) and a panic would take consent down with it. P63.
+    pub fn grant(&self, owner_principal_key: &str, plan_digest: &str) {
         self.granted
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(owner_principal_key.to_string());
+            .insert(owner_principal_key.to_string(), plan_digest.to_string());
     }
 
-    pub fn is_granted(&self, owner_principal_key: &str) -> bool {
+    /// The plan digest this owner consented to, if any.
+    pub fn approved_digest(&self, owner_principal_key: &str) -> Option<String> {
         self.granted
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .contains(owner_principal_key)
+            .get(owner_principal_key)
+            .cloned()
+    }
+
+    fn covers(&self, owner_principal_key: &str, plan: &CarePlan) -> bool {
+        self.approved_digest(owner_principal_key).as_deref() == Some(&plan.plan_digest_sha256)
     }
 }
 
@@ -211,22 +218,20 @@ impl JournalTrait for PersistenceJournal {
             .iter()
             .any(|step| step.step_index as usize == step_index);
         if !known {
-            let mut rows: Vec<CareStepRecord> = existing.clone();
-            rows.push(CareStepRecord {
-                run_id: run_id.into(),
-                step_index: step_index as u32,
-                domain_plan_id: domain_plan_id.into(),
-                domain_kind: domain_kind.into(),
-                safety_level,
-                state: state.into(),
-                outcome: String::new(),
-                verification_state: String::new(),
-                failure_message: String::new(),
-                started_unix_ms: now,
-                updated_unix_ms: now,
-            });
             self.db
-                .replace_care_steps(&rows)
+                .insert_care_step(&CareStepRecord {
+                    run_id: run_id.into(),
+                    step_index: step_index as u32,
+                    domain_plan_id: domain_plan_id.into(),
+                    domain_kind: domain_kind.into(),
+                    safety_level,
+                    state: state.into(),
+                    outcome: String::new(),
+                    verification_state: String::new(),
+                    failure_message: String::new(),
+                    started_unix_ms: now,
+                    updated_unix_ms: now,
+                })
                 .map_err(|e| aethercore_care_orchestrator::CareError::Journal(e.to_string()))?;
         } else {
             self.db
@@ -341,6 +346,30 @@ pub(crate) fn is_terminal_plan_state(state: &str) -> bool {
     matches!(state, "Completed" | "Failed" | "RebootPending")
 }
 
+/// Polls a started domain plan until it reports a terminal state or the deadline passes —
+/// whatever each read returns, so a status that errors or vanishes cannot hold the care run
+/// forever. Returns the last status read, if any.
+pub(crate) fn await_terminal<S>(
+    deadline: std::time::Instant,
+    mut status: impl FnMut() -> Option<S>,
+    plan_state: impl Fn(&S) -> &str,
+) -> Option<S> {
+    let mut last = None;
+    loop {
+        if let Some(current) = status() {
+            let done = is_terminal_plan_state(plan_state(&current));
+            last = Some(current);
+            if done {
+                return last;
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            return last;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(DISPATCH_POLL_MS));
+    }
+}
+
 /// Real executor: forwards to the composition-provided [`DomainDispatch`].
 struct ServiceExecutor {
     dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
@@ -352,11 +381,11 @@ impl DomainStepExecutor for ServiceExecutor {
         owner: &str,
         domain_plan_id: &str,
         _domain_kind: &str,
-        _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
+        lease: &aethercore_care_orchestrator::MutationLeaseGuard,
     ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError> {
         let (plan_state, verification_state, failure_key) = self
             .dispatch
-            .start_and_await(owner, domain_plan_id)
+            .start_and_await(owner, domain_plan_id, _domain_kind, lease)
             .map_err(
                 |detail| aethercore_care_orchestrator::CareError::DomainRejected {
                     domain_kind: _domain_kind.to_string(),
@@ -390,8 +419,10 @@ impl DomainStepExecutor for ServiceExecutor {
 
 pub struct CareCoordinator {
     db: Arc<Database>,
+    /// The machine-wide supervisor every domain uses, never a private one.
     supervisor: MutationSupervisor,
-    fence: CommitFence,
+    /// The fence of the run in progress; a cancel reaches only that run.
+    active_run: Mutex<Option<CommitFence>>,
     pub consent: Arc<SessionConsentRegistry>,
     /// Composition-provided dispatch into the real domain coordinators (Part A).
     dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
@@ -401,11 +432,12 @@ impl CareCoordinator {
     pub fn new(
         db: Arc<Database>,
         dispatch: std::sync::Arc<dyn aethercore_care_orchestrator::DomainDispatch>,
+        supervisor: MutationSupervisor,
     ) -> Self {
         Self {
             db,
-            supervisor: MutationSupervisor::new(),
-            fence: CommitFence::new(),
+            supervisor,
+            active_run: Mutex::new(None),
             consent: Arc::new(SessionConsentRegistry::default()),
             dispatch,
         }
@@ -424,20 +456,35 @@ impl CareCoordinator {
         Ok(status_proto(
             "Idle",
             "Preview",
-            self.consent.is_granted(owner_principal_key),
+            self.consent.covers(owner_principal_key, &plan),
             &plan,
             &[],
         ))
     }
 
-    /// Grants one-time session consent for auto-level work.
-    pub fn grant_session_consent(&self, owner_principal_key: &str) {
-        self.consent.grant(owner_principal_key);
+    /// Grants one-time session consent for auto-level work — for the plan composed now,
+    /// which the returned status shows. A different plan later needs a new grant.
+    pub fn grant_session_consent(
+        &self,
+        owner_principal_key: &str,
+    ) -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError> {
+        let plan = compose_plan(&self.db, owner_principal_key)?;
+        self.consent
+            .grant(owner_principal_key, &plan.plan_digest_sha256);
+        Ok(status_proto("Idle", "Preview", true, &plan, &[]))
     }
 
-    /// Cancels an active run at the next step boundary.
+    /// Cancels the run in progress at the next step boundary. With no run in progress
+    /// there is nothing to cancel.
     pub fn cancel(&self) {
-        self.fence.revoke();
+        if let Some(fence) = self
+            .active_run
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+        {
+            fence.revoke();
+        }
     }
 
     /// Runs the composed plan. Requires prior session consent.
@@ -447,6 +494,8 @@ impl CareCoordinator {
         run_id: &str,
     ) -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError> {
         let plan = compose_plan(&self.db, owner_principal_key)?;
+        let fence = CommitFence::new();
+        let _active = ActiveRun::enter(&self.active_run, fence.clone())?;
         let journal = PersistenceJournal {
             db: self.db.clone(),
         };
@@ -458,23 +507,32 @@ impl CareCoordinator {
                 &self.supervisor,
                 &executor,
                 &journal,
-                &self.fence,
+                &fence,
                 owner_principal_key,
                 run_id,
                 &plan,
-                self.consent.is_granted(owner_principal_key),
+                self.consent.approved_digest(owner_principal_key).as_deref(),
             );
         match result {
             Ok(report) => Ok(status_proto(
-                "Completed",
+                if report.stopped_for_consent {
+                    "Cancelled"
+                } else {
+                    "Completed"
+                },
                 "Report",
                 true,
                 &plan,
                 &report.steps,
             )),
             Err(error) => {
-                // Consent refusal before anything ran: surface as awaiting-consent state.
-                if error == aethercore_care_orchestrator::CareError::ConsentRequired {
+                // No consent, or consent to a plan other than this one, before anything
+                // ran: surface the plan as it is now, awaiting consent.
+                if matches!(
+                    error,
+                    aethercore_care_orchestrator::CareError::ConsentRequired
+                        | aethercore_care_orchestrator::CareError::DigestChanged
+                ) {
                     return Ok(status_proto(
                         "AwaitingConsent",
                         "Consent",
@@ -487,6 +545,33 @@ impl CareCoordinator {
                 Err(error)
             }
         }
+    }
+}
+
+/// Marks a care run as in progress for its lifetime, so a cancel can reach it and a
+/// second run is refused while it lasts. Cleared on drop, including on unwind.
+struct ActiveRun<'a>(&'a Mutex<Option<CommitFence>>);
+
+impl<'a> ActiveRun<'a> {
+    fn enter(
+        slot: &'a Mutex<Option<CommitFence>>,
+        fence: CommitFence,
+    ) -> Result<Self, aethercore_care_orchestrator::CareError> {
+        let mut active = slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if active.is_some() {
+            return Err(aethercore_care_orchestrator::CareError::LeaseBusy);
+        }
+        *active = Some(fence);
+        Ok(Self(slot))
+    }
+}
+
+impl Drop for ActiveRun<'_> {
+    fn drop(&mut self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
     }
 }
 
@@ -623,5 +708,185 @@ mod dbt_p46_b33_tests {
             "documents the bug this fix removes: a database that could not \
              answer was reported to the owner as a completed care run"
         );
+    }
+}
+
+#[cfg(test)]
+mod p75_care_consent_tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use aethercore_operation_engine::{CleanupDeleteAction, OperationEngine};
+
+    use super::*;
+
+    // Plan owners are 64-hex principal keys.
+    const OWNER: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+
+    fn test_db() -> (Arc<Database>, std::path::PathBuf) {
+        let path =
+            std::env::temp_dir().join(format!("aethercore-p75-care-{}.db", uuid::Uuid::new_v4()));
+        (Arc::new(Database::open(&path).expect("database")), path)
+    }
+
+    fn seed_cleanup_plan(db: &Arc<Database>, candidate: &str) -> String {
+        OperationEngine::new(db.clone())
+            .create_cleanup_plan(
+                OWNER,
+                1,
+                "scan-1",
+                vec![CleanupDeleteAction {
+                    candidate_id: candidate.into(),
+                    scan_id: "scan-1".into(),
+                    inventory_epoch: 1,
+                    provider: "test".into(),
+                    title: "test".into(),
+                    special_kind: String::new(),
+                    files: Vec::new(),
+                    expected_bytes: 0,
+                }],
+            )
+            .expect("cleanup plan")
+            .id
+    }
+
+    /// Records every plan it is asked to start and reports it verified. While a step
+    /// runs it tries to start an unrelated mutation on the machine-wide supervisor.
+    #[derive(Default)]
+    struct CountingDispatch {
+        started: AtomicU32,
+        machine: MutationSupervisor,
+        others_admitted: AtomicU32,
+    }
+
+    impl DomainDispatch for CountingDispatch {
+        fn start_and_await(
+            &self,
+            owner: &str,
+            domain_plan_id: &str,
+            _domain_kind: &str,
+            lease: &aethercore_care_orchestrator::MutationLeaseGuard,
+        ) -> Result<(String, String, String), String> {
+            self.started.fetch_add(1, Ordering::SeqCst);
+            let step = lease.delegate(
+                aethercore_operation_kernel::MutationWorkload::Cleanup,
+                domain_plan_id,
+            );
+            assert!(step.matches(
+                aethercore_operation_kernel::MutationWorkload::Cleanup,
+                domain_plan_id,
+                owner
+            ));
+            if self
+                .machine
+                .try_acquire(
+                    aethercore_operation_kernel::MutationWorkload::Update,
+                    "update-plan",
+                    "someone-else",
+                )
+                .is_ok()
+            {
+                self.others_admitted.fetch_add(1, Ordering::SeqCst);
+            }
+            Ok(("Completed".into(), "Verified".into(), String::new()))
+        }
+    }
+
+    fn coordinator(db: &Arc<Database>) -> (CareCoordinator, Arc<CountingDispatch>) {
+        let dispatch = Arc::new(CountingDispatch::default());
+        let machine = dispatch.machine.clone();
+        (
+            CareCoordinator::new(db.clone(), dispatch.clone(), machine),
+            dispatch,
+        )
+    }
+
+    #[test]
+    fn care_holds_the_machine_wide_lease() {
+        let (db, path) = test_db();
+        seed_cleanup_plan(&db, "c1");
+        let (care, dispatch) = coordinator(&db);
+        let _ = care.grant_session_consent(OWNER);
+
+        // Another domain owns the machine: care must not start at all.
+        let foreign = dispatch
+            .machine
+            .try_acquire(
+                aethercore_operation_kernel::MutationWorkload::Startup,
+                "startup-plan",
+                OWNER,
+            )
+            .unwrap();
+        assert!(matches!(
+            care.start_run(OWNER, "run-busy"),
+            Err(aethercore_care_orchestrator::CareError::LeaseBusy)
+        ));
+        assert_eq!(dispatch.started.load(Ordering::SeqCst), 0);
+        drop(foreign);
+
+        // While care runs, nothing else may start on the machine.
+        care.start_run(OWNER, "run-free").expect("run");
+        assert_eq!(dispatch.started.load(Ordering::SeqCst), 1);
+        assert_eq!(dispatch.others_admitted.load(Ordering::SeqCst), 0);
+        assert!(!dispatch.machine.is_active(), "released after the run");
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_status_that_never_answers_cannot_hold_the_run_forever() {
+        let started = std::time::Instant::now();
+        let deadline = started + std::time::Duration::from_millis(250);
+        let last: Option<String> = await_terminal(deadline, || None, |s: &String| s.as_str());
+        assert!(last.is_none());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn journaling_one_run_keeps_every_other_runs_steps() {
+        let (db, path) = test_db();
+        let journal = PersistenceJournal { db: db.clone() };
+        for run in ["run-a", "run-b"] {
+            journal.record_run_started(run, OWNER, "d", 1).unwrap();
+            journal
+                .record_step_state(run, 0, "plan", "Cleanup", 0, "Executing")
+                .unwrap();
+        }
+        assert_eq!(
+            db.care_steps_for_run("run-a").unwrap().len(),
+            1,
+            "run-b's first step erased run-a's history"
+        );
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_cancel_does_not_stop_the_next_run() {
+        let (db, path) = test_db();
+        seed_cleanup_plan(&db, "c1");
+        let (care, dispatch) = coordinator(&db);
+        care.cancel(); // no run is active: nothing to cancel
+        let _ = care.grant_session_consent(OWNER);
+        let status = care.start_run(OWNER, "run-after-cancel").expect("run");
+        assert_eq!(dispatch.started.load(Ordering::SeqCst), 1, "{status:?}");
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn consent_covers_only_the_plan_it_was_given_for() {
+        let (db, path) = test_db();
+        seed_cleanup_plan(&db, "c1");
+        let (care, dispatch) = coordinator(&db);
+        let _ = care.grant_session_consent(OWNER);
+        // A new plan appears after the owner consented: the run is no longer the one shown.
+        seed_cleanup_plan(&db, "c2");
+        let status = care.start_run(OWNER, "run-changed");
+        assert_eq!(dispatch.started.load(Ordering::SeqCst), 0, "{status:?}");
+        let status = status.expect("the new plan is shown for consent");
+        assert_eq!(status.state, "AwaitingConsent");
+        assert_eq!(status.steps.len(), 2);
+        drop(db);
+        let _ = std::fs::remove_file(&path);
     }
 }

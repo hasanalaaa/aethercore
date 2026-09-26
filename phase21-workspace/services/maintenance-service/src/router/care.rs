@@ -46,8 +46,10 @@ pub(super) fn get_care_status(call: &Call<'_>) -> Routed {
 pub(super) fn grant_care_session_consent(call: &Call<'_>) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
-    ctx.care.grant_session_consent(principal_key);
-    let status = ctx.care.plan_preview(principal_key).map_err(care_err)?;
+    let status = ctx
+        .care
+        .grant_session_consent(principal_key)
+        .map_err(care_err)?;
     publish(
         ctx,
         principal_key,
