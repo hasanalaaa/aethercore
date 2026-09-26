@@ -1,0 +1,118 @@
+name: P75 installer-ux probe
+on:
+  push:
+    branches: [probe/p75-installer-ux]
+permissions:
+  contents: read
+jobs:
+  theme:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build a stock-theme and a project-theme bundle around one tiny MSI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet tool restore
+          dotnet tool run wix extension add WixToolset.BootstrapperApplications.wixext/6.0.2
+          $w = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'ux')
+          Set-Content "$w\payload.txt" 'probe'
+          @'
+          <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+            <Package Name="P75UxProbe" Manufacturer="P75" Version="1.0.0" UpgradeCode="{7C1B3E1A-5D2E-4E7B-9C0B-2F0F4B1E6A11}" Scope="perMachine">
+              <MediaTemplate EmbedCab="yes" />
+              <Launch Condition="Installed OR (P75PROBE_REQUIRE)" Message="P75 probe requirement missing" />
+              <Property Id="P75PROBE_REQUIRE" Value="1" />
+              <StandardDirectory Id="ProgramFiles64Folder"><Directory Id="D" Name="P75UxProbe">
+                <Component Id="C" Guid="{0B8F6A61-1E0A-4C77-9C7B-3B7E9B6F1A21}"><File Source="payload.txt" /></Component>
+              </Directory></StandardDirectory>
+              <Feature Id="F"><ComponentRef Id="C" /></Feature>
+            </Package>
+          </Wix>
+          '@ | Set-Content "$w\p.wxs"
+          Push-Location $w
+          dotnet tool run wix build p.wxs -arch x64 -o p.msi; if ($LASTEXITCODE) { throw 'msi' }
+          Pop-Location
+          $theme = (Resolve-Path installer\wix\theme).Path
+          foreach ($v in @('stock','ours')) {
+            $ba = if ($v -eq 'ours') {
+              "<bal:WixStandardBootstrapperApplication Theme=`"hyperlinkLicense`" ThemeFile=`"$theme\thm.xml`" LocalizationFile=`"$theme\thm.wxl`" LicenseUrl=`"`" SuppressOptionsUI=`"yes`" /><Payload Name=`"1025\thm.xml`" SourceFile=`"$theme\1025\thm.xml`" Compressed=`"yes`" /><Payload Name=`"1025\thm.wxl`" SourceFile=`"$theme\1025\thm.wxl`" Compressed=`"yes`" />"
+            } else {
+              "<bal:WixStandardBootstrapperApplication Theme=`"hyperlinkLicense`" LicenseUrl=`"`" SuppressOptionsUI=`"yes`" />"
+            }
+            @"
+          <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+            <Bundle Id="P75.Ux.$v" Name="P75Ux$v" Manufacturer="P75" Version="1.0.0">
+              <BootstrapperApplication>$ba</BootstrapperApplication>
+              <Chain><MsiPackage SourceFile="$w\p.msi" Visible="no" /></Chain>
+            </Bundle>
+          </Wix>
+          "@ | Set-Content "$w\b-$v.wxs"
+            dotnet tool run wix build "$w\b-$v.wxs" -arch x64 -ext WixToolset.BootstrapperApplications.wixext -o "$w\b-$v.exe"
+            if ($LASTEXITCODE) { throw "bundle $v" }
+          }
+
+      - name: Measure focus and language on /uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing, System.Windows.Forms
+          $w = Join-Path $env:RUNNER_TEMP 'ux'
+          $shots = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'ux-shots')
+          function Probe($exe, $args, $tag) {
+            $p = Start-Process $exe -ArgumentList $args -PassThru
+            $win = $null
+            for ($i = 0; $i -lt 60 -and -not $win; $i++) {
+              Start-Sleep -Milliseconds 500
+              $p.Refresh()
+              if ($p.MainWindowHandle -ne 0) { $win = [Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle) }
+            }
+            if (-not $win) { Write-Host "GATE: $tag no window"; $p | Stop-Process -Force; return }
+            Start-Sleep -Seconds 3
+            $f = [Windows.Automation.AutomationElement]::FocusedElement
+            Write-Host "RESULT: $tag caption='$($win.Current.Name)' focused='$($f.Current.Name)'"
+            $cond = New-Object Windows.Automation.PropertyCondition ([Windows.Automation.AutomationElement]::ControlTypeProperty), ([Windows.Automation.ControlType]::Button)
+            foreach ($b in $win.FindAll([Windows.Automation.TreeScope]::Descendants, $cond)) {
+              $r = $b.Current.BoundingRectangle
+              if (-not $b.Current.IsOffscreen) { Write-Host "  button '$($b.Current.Name)' x=$([int]$r.X) w=$([int]$r.Width)" }
+            }
+            $r = $win.Current.BoundingRectangle
+            $bmp = New-Object Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
+            [Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
+            $bmp.Save("$shots\$tag.png")
+            $p | Stop-Process -Force
+            return $f.Current.Name
+          }
+          foreach ($v in @('stock','ours')) {
+            $exe = "$w\b-$v.exe"
+            $p = Start-Process $exe -ArgumentList '/quiet' -Wait -PassThru
+            Write-Host "install $v exit $($p.ExitCode)"
+          }
+          $stock = Probe "$w\b-stock.exe" '/uninstall' 'stock-en'
+          $ours = Probe "$w\b-ours.exe" '/uninstall' 'ours-en'
+          $ar = Probe "$w\b-ours.exe" '/uninstall /lang 1025' 'ours-ar'
+          Write-Host "GATE: stock focus=$stock (P71 measured Repair)"
+          Write-Host "GATE: ours focus=$ours (want Uninstall)"
+          Write-Host "GATE: arabic focus=$ar"
+
+          # Installed OR: the MSI's launch condition fails after install; uninstall must still work.
+          $code = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object DisplayName -eq 'P75UxProbe').PSChildName
+          Write-Host "msi product code: $code"
+          $p = Start-Process msiexec -ArgumentList "/x $code /qn P75PROBE_REQUIRE= /l*v $env:RUNNER_TEMP\x.log" -Wait -PassThru
+          Write-Host "GATE: msiexec /x with the launch condition false exit=$($p.ExitCode) (0 wanted)"
+          foreach ($v in @('stock','ours')) { Start-Process "$w\b-$v.exe" -ArgumentList '/uninstall /quiet' -Wait }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-shots
+          path: ${{ runner.temp }}/ux-shots
