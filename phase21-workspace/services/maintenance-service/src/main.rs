@@ -23,6 +23,7 @@ mod composition;
 mod composition;
 #[cfg(windows)]
 mod ctrlc_handler;
+mod data_root;
 #[cfg(any(unix, windows))]
 mod errors;
 mod intelligence;
@@ -73,7 +74,7 @@ fn main() -> Result<()> {
             aethercore_diagnostics::init_console()?;
             return run_console();
         }
-        aethercore_diagnostics::init_json_file(&log_path())?;
+        aethercore_diagnostics::init_json_file(&log_path()?)?;
         return windows_service_host::run();
     }
     // Phase 26 (unix): --foreground runs the identical service loop attached to the
@@ -89,7 +90,7 @@ fn main() -> Result<()> {
                 "usage: aethercore-maintenance-service [--foreground|--daemon] [--data-dir <dir>]"
             )
         }
-        return unix_service::run_unix_service(daemon, &data_path(), &log_path());
+        return unix_service::run_unix_service(daemon, &data_path()?, &log_path()?);
     }
     #[allow(unreachable_code)]
     {
@@ -97,29 +98,18 @@ fn main() -> Result<()> {
     }
 }
 
-fn product_data_root() -> PathBuf {
-    let mut args = std::env::args();
-    while let Some(arg) = args.next() {
-        if arg == "--data-dir"
-            && let Some(value) = args.next()
-            && !value.trim().is_empty()
-        {
-            return PathBuf::from(value);
-        }
-    }
-    if let Ok(v) = std::env::var("AETHERCORE_DATA_DIR") {
-        return PathBuf::from(v);
-    }
-    std::env::var_os("ProgramData")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"))
-        .join(aethercore_product_identity::PRODUCT_NAME)
+fn product_data_root() -> Result<PathBuf> {
+    data_root::resolve(
+        std::env::args(),
+        std::env::var("AETHERCORE_DATA_DIR").ok(),
+        std::env::var_os("ProgramData"),
+    )
 }
-fn data_path() -> PathBuf {
-    product_data_root().join("state").join("aethercore.db")
+fn data_path() -> Result<PathBuf> {
+    Ok(product_data_root()?.join("state").join("aethercore.db"))
 }
-fn log_path() -> PathBuf {
-    product_data_root().join("logs").join("service.jsonl")
+fn log_path() -> Result<PathBuf> {
+    Ok(product_data_root()?.join("logs").join("service.jsonl"))
 }
 
 #[cfg(windows)]
@@ -138,8 +128,8 @@ fn run_server(stop: Arc<AtomicBool>) -> Result<()> {
     if let Err(e) = aethercore_restore_point::initialize_process_com_security() {
         warn!(error=%e,"System Restore COM security unavailable; protected driver installation will be blocked");
     }
-    let root = product_data_root();
-    let context = composition::build(&data_path(), &root).context("compose operation kernel")?;
+    let root = product_data_root()?;
+    let context = composition::build(&data_path()?, &root).context("compose operation kernel")?;
     let _idle_scheduler = match scheduler::start(&context) {
         Ok(handle) => Some(handle),
         Err(error) => {

@@ -49,6 +49,9 @@ fn spawn_service(data_dir: &std::path::Path) -> ServiceProcess {
             "--foreground",
             "--unix-ipc-data-dir",
             data_dir.to_str().expect("utf8 data dir"),
+            // DBT-P60-003: the service's own state, beside the socket, not in the cwd.
+            "--data-dir",
+            data_dir.to_str().expect("utf8 data dir"),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
