@@ -162,7 +162,7 @@ pub fn insights_from_text(text: &str, pack: &TypedEvidencePack) -> Vec<Insight> 
                 }
             }
             let prose = prose.trim();
-            if prose.is_empty() {
+            if prose.is_empty() || !numbers_are_cited(prose, &citations, pack) {
                 return None;
             }
             let confidence = if citations.len() >= 2 {
@@ -177,6 +177,49 @@ pub fn insights_from_text(text: &str, pack: &TypedEvidencePack) -> Vec<Insight> 
                 citations,
                 InsightEngineKind::LocalModel,
             )
+        })
+        .collect()
+}
+
+/// Whether every number the line states is one its cited evidence holds. A 1.5B model
+/// that cites the right pattern with the wrong count (P75 trial: "3 occurrences" citing
+/// a pattern of 5) is not cited by that evidence; the line is dropped like one whose tag
+/// does not resolve.
+fn numbers_are_cited(prose: &str, citations: &[Citation], pack: &TypedEvidencePack) -> bool {
+    let held: Vec<String> = pack
+        .items
+        .iter()
+        .filter(|item| {
+            citations
+                .iter()
+                .any(|citation| citation.evidence_id == item.evidence_id)
+        })
+        .flat_map(|item| numbers_in(&item.detail))
+        .collect();
+    numbers_in(prose).iter().all(|number| held.contains(number))
+}
+
+/// Standalone numbers in `text`: digit runs not glued to a letter, so an id's hex digits
+/// are not counts (a decimal is two runs on both sides of the comparison, so `18.4` is
+/// held by `18.4`), plus the counting words a model writes for small numbers.
+fn numbers_in(text: &str) -> Vec<String> {
+    const WORDS: [&str; 13] = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve",
+    ];
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter_map(|token| {
+            if !token.is_empty() && token.chars().all(|c| c.is_ascii_digit()) {
+                return Some(token.to_string());
+            }
+            let lower = token.to_ascii_lowercase();
+            if lower == "twice" {
+                return Some("2".into());
+            }
+            WORDS
+                .iter()
+                .position(|word| *word == lower)
+                .map(|value| value.to_string())
         })
         .collect()
 }
@@ -686,6 +729,62 @@ mod tests {
         assert_eq!(insights.len(), 1, "{insights:?}");
         assert_eq!(insights[0].explanation, "A plan ran.");
         assert!(insights_from_text("Ghost [E0].\n", &pack()).is_empty());
+    }
+
+    /// P75 trial run: the real model's output over the product-shaped pack
+    /// (`embedded_generation.rs`), measured on this Mac. Every tag resolves, but lines two
+    /// and three swap the counts of the patterns they cite: E7 holds 5 occurrences, E8 holds
+    /// 3. A line whose number its cited evidence does not hold is not cited by it.
+    #[test]
+    fn a_line_whose_numbers_its_evidence_does_not_hold_is_dropped() {
+        let mut pack = TypedEvidencePack::default();
+        for (index, (domain, stage)) in [
+            ("Cleanup", "Completed"),
+            ("Startup", "Completed"),
+            ("WindowsRepair", "RecoveryRequired"),
+            ("Drivers", "Completed"),
+            ("Cleanup", "Completed"),
+            ("Startup", "Failed"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let id = format!("5f0c2a1e-8b7d-4c3a-9e21-00000000000{index}");
+            pack.push(EvidenceItem {
+                evidence_id: id.clone(),
+                surface: EvidenceSurface::MaintenanceHistory,
+                detail: format!("plan {id} domain {domain} stage {stage}"),
+            });
+        }
+        for (id, code, count) in [
+            ("p-dism", "verify-dism", 5),
+            ("p-journal", "journal.transition:Failed", 3),
+        ] {
+            pack.push(EvidenceItem {
+                evidence_id: id.into(),
+                surface: EvidenceSurface::TimelinePattern,
+                detail: format!(
+                    "recurring failure: class operation code {code}, {count} occurrences, recurrence confidence weak"
+                ),
+            });
+        }
+        let measured = "A recurring failure in the startup stage [E6].\n\
+             The maintenance history shows multiple failed operations, including a WindowsRepair operation that requires recovery.3 occurrences of class operation code verify-dism with weak recurrence confidence [E7].\n\
+             There are also three failures related to journal transition: Failed status 5 occurrences and weak recurrence confidence [E8].\n";
+        let insights = insights_from_text(measured, &pack);
+        assert_eq!(insights.len(), 1, "{insights:?}");
+        assert_eq!(
+            insights[0].explanation,
+            "A recurring failure in the startup stage."
+        );
+
+        // The numbers it does hold stand, digits or words, and an id's digits are not a count.
+        let kept = insights_from_text(
+            "verify-dism failed 5 times [E7].\nThe journal failed three times [E8].\nA plan with 0000 in it ran [E1].\n",
+            &pack,
+        );
+        assert_eq!(kept.len(), 2, "{kept:?}");
+        assert_eq!(kept[1].explanation, "The journal failed three times.");
     }
 
     /// A line the token ceiling cut off never finished its claim.
