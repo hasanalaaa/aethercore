@@ -18,6 +18,7 @@ const OWNER: &str = "care-owner";
 fn step(id: &str, kind: &str, safety: CareSafety) -> CareStep {
     CareStep {
         domain_plan_id: id.to_string(),
+        domain_plan_digest: format!("digest-{id}"),
         domain_kind: kind.to_string(),
         safety,
         title_key: "care.step.title".to_string(),

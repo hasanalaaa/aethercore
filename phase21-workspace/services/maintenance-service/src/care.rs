@@ -93,6 +93,7 @@ pub fn compose_plan(
         .filter_map(|plan| {
             classify(plan_kind_of(&plan)).map(|safety| CareStep {
                 domain_plan_id: plan.id.clone(),
+                domain_plan_digest: plan.digest.clone(),
                 domain_kind: plan_kind_of(&plan).to_string(),
                 safety,
                 title_key: format!("care.step.{}", kind_slug(&plan)),
@@ -888,5 +889,40 @@ mod p75_care_consent_tests {
         assert_eq!(status.steps.len(), 2);
         drop(db);
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn plan_with_digest(db: &Database, digest: &str) {
+        db.insert_plan(
+            &aethercore_persistence::PlanRecord {
+                id: "same-id".into(),
+                title: "cleanup".into(),
+                state: "AwaitingAuthorization".into(),
+                digest: digest.into(),
+                risk: "Low".into(),
+                immutable_json: r#"{"actions":[{"kind":"deleteCleanupCandidate"}]}"#.into(),
+                created_unix_ms: 1,
+                updated_unix_ms: 1,
+                owner_principal_key: OWNER.into(),
+            },
+            "test",
+        )
+        .unwrap();
+    }
+
+    /// DBT-P75-045: approving a care plan approves the domain plans' bytes, not their
+    /// names. Two plans with the same id and different content are different care plans.
+    #[test]
+    fn the_care_digest_commits_to_domain_plan_content() {
+        let (one, one_path) = test_db();
+        let (two, two_path) = test_db();
+        plan_with_digest(&one, &"a".repeat(64));
+        plan_with_digest(&two, &"b".repeat(64));
+        let first = compose_plan(&one, OWNER).unwrap();
+        let second = compose_plan(&two, OWNER).unwrap();
+        assert_eq!(first.steps.len(), 1);
+        assert_ne!(first.plan_digest_sha256, second.plan_digest_sha256);
+        drop((one, two));
+        let _ = std::fs::remove_file(&one_path);
+        let _ = std::fs::remove_file(&two_path);
     }
 }

@@ -54,6 +54,9 @@ impl CareSafety {
 pub struct CareStep {
     /// The EXISTING domain plan id (created by cleaner/startup/etc.).
     pub domain_plan_id: String,
+    /// The content digest that plan's own domain sealed it with. The care digest commits
+    /// to it, so approving a care plan approves these bytes, not just these ids.
+    pub domain_plan_digest: String,
     /// Domain kind string exactly as the owning domain reports it.
     pub domain_kind: String,
     pub safety: CareSafety,
@@ -132,6 +135,8 @@ fn digest_of(steps: &[CareStep]) -> String {
     for step in steps {
         hasher.update((step.domain_plan_id.len() as u64).to_le_bytes());
         hasher.update(step.domain_plan_id.as_bytes());
+        hasher.update((step.domain_plan_digest.len() as u64).to_le_bytes());
+        hasher.update(step.domain_plan_digest.as_bytes());
         hasher.update((step.domain_kind.len() as u64).to_le_bytes());
         hasher.update(step.domain_kind.as_bytes());
         hasher.update([step.safety.level() as u8]);

@@ -401,8 +401,10 @@ mod p75_care_dispatch_tests {
                 std::env::temp_dir(),
             )),
         };
+        let domain_plan_digest = engine.get_plan_for_owner(&plan_id, OWNER).unwrap().digest;
         let plan = CarePlan::build(vec![CareStep {
             domain_plan_id: plan_id,
+            domain_plan_digest,
             domain_kind: "Cleanup".into(),
             safety: CareSafety::Auto,
             title_key: "care.step.cleanup".into(),
