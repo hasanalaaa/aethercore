@@ -1217,7 +1217,41 @@ impl UpdateCoordinator {
         self.cleanup_expired();
     }
 
+    /// Resumes a durable execution guard left by a previous service run, or abandons it when its
+    /// staged installer no longer verifies. P75: the error used to propagate out of the
+    /// constructor, so every service start failed until the guard's 2-hour TTL expired. A running
+    /// image cannot be deleted or modified on Windows, so a file that fails verification is not
+    /// executing and holding the machine lease for it protects nothing. A database error still
+    /// propagates: then whether an installer is active is genuinely unknown.
     fn recover_execution_guard(&self) -> Result<(), UpdateEngineError> {
+        match self.resume_execution_guard() {
+            Err(UpdateEngineError::Persistence(e)) => Err(UpdateEngineError::Persistence(e)),
+            Err(_) => self.abandon_execution_guard(),
+            Ok(()) => Ok(()),
+        }
+    }
+
+    fn abandon_execution_guard(&self) -> Result<(), UpdateEngineError> {
+        let Some(record) = self
+            .db
+            .active_update_execution_guard()
+            .map_err(|e| UpdateEngineError::Persistence(e.to_string()))?
+        else {
+            return Ok(());
+        };
+        self.db
+            .clear_update_execution_guard(&record.ticket_id)
+            .map_err(|e| UpdateEngineError::Persistence(e.to_string()))?;
+        self.active.lock().unwrap_or_else(|p| p.into_inner()).take();
+        self.mutate_snapshot(&record.owner_principal_key, |s| {
+            s.state = UpdateState::Failed;
+            s.status_message_key = "update.status.installFailed".into();
+            s.progress_known = false;
+        });
+        Ok(())
+    }
+
+    fn resume_execution_guard(&self) -> Result<(), UpdateEngineError> {
         let Some(record) = self
             .db
             .active_update_execution_guard()
@@ -2085,6 +2119,44 @@ mod tests {
         f.coordinator
             .complete_install(&f.owner, &ticket.ticket_id, 1)
             .unwrap();
+    }
+
+    /// P75: a guard whose staged installer no longer verifies (here: deleted) blocked every
+    /// service start until the guard's 2-hour TTL ran out, because the constructor returned
+    /// the recovery error. A running image cannot be deleted or modified on Windows, so a
+    /// file that fails verification is not executing: the guard is abandoned, the update is
+    /// reported failed, and the service starts.
+    #[test]
+    fn an_unrecoverable_execution_guard_does_not_block_startup() {
+        let f = fixture();
+        let package = f.package.clone();
+        submit(&f, 6, &package, "release-a");
+        upload_all(&f, "release-a", &package);
+        let intent = f
+            .coordinator
+            .begin_install_intent(&f.owner, "release-a")
+            .unwrap();
+        let ticket = f
+            .coordinator
+            .claim_install(&f.owner, &intent.intent_id)
+            .unwrap();
+        fs::remove_file(&ticket.staged_path).unwrap();
+        let recovered_mutation = MutationSupervisor::new();
+        let recovered = UpdateCoordinator::with_dependencies(
+            "1.0.0",
+            22621,
+            f.coordinator.trust.clone(),
+            f.coordinator.staging_root.clone(),
+            f.coordinator.db.clone(),
+            recovered_mutation.clone(),
+            Arc::new(AcceptVerifier),
+        );
+        recovered
+            .recover_execution_guard()
+            .expect("startup must survive a staged installer that no longer verifies");
+        assert!(f.coordinator.db.active_update_execution_guard().unwrap().is_none());
+        assert_eq!(recovered.snapshot(&f.owner).state, UpdateState::Failed);
+        assert!(!recovered_mutation.is_active());
     }
 
     #[test]
