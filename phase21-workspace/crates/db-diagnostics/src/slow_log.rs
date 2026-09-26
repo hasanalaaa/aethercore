@@ -163,7 +163,11 @@ pub fn analyze_mysql_log(path: &str, top: usize) -> Result<DiagnosticReport, Str
         if let Some(rest) = line.strip_prefix("# Query_time:") {
             flush!();
             let mut it = rest.split_whitespace();
-            current_ms = it.next().and_then(|t| t.parse::<f64>().ok());
+            // `Query_time` is in seconds; every aggregate here is milliseconds.
+            current_ms = it
+                .next()
+                .and_then(|t| t.parse::<f64>().ok())
+                .map(|seconds| seconds * 1000.0);
             if let Some(li) = rest.find("Rows_sent:") {
                 let sent: f64 = rest[li + "Rows_sent:".len()..]
                     .split_whitespace()
@@ -236,7 +240,7 @@ fn build_report(
             EvidenceRef {
                 fact: "slowlog.aggregate.count".to_string(),
                 observed: row.count.to_string(),
-                expected_or_threshold: "outlier vs sibling aggregates".to_string(),
+                expected_or_threshold: "occurrences of the top-1 statement".to_string(),
                 source_location: path.to_string(),
             },
             EvidenceRef {

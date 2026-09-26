@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P75 (2026-09-26), lane `telemetry-windows`.
+Last moved: P75 (2026-09-26), lane `db-diagnostics`.
 
 ---
 
@@ -220,6 +220,11 @@ Report: `docs/phase57/P57-REPORT.md`. Raw measurements:
 | `DBT-P75-027` | Crate-level SQL-trigger probes for `cleaner` and `system-repair` need a `rusqlite` dev-dependency (`Cargo.lock` +1 line each) | OPEN — owner: dependency lane | The six probes were run locally with the dev-dependency and removed (table in the lane doc); they can be committed as they are once the dependency lane adds it. Evidence: `docs/phase75/lanes/plan-journal.md`. | any host |
 | `DBT-P75-028` | `stop()` then `start()` inside one sampling interval left two sampler threads running | **CLOSED by P75 lane `telemetry-windows`**, pending integration CI at its final head | `15fbaed`: the ring keeps the running sampler's generation and a stale thread exits. Red-before: `stop_then_start_within_an_interval_leaves_exactly_one_sampler` failed 3/3. Evidence: `docs/phase75/lanes/telemetry-windows.md`. | any host |
 | `DBT-P75-029` | No telemetry collector ran under the collector-runtime timeout its module promised; one hung platform call stalled the sampler forever | **CLOSED by P75 lane `telemetry-windows`**, pending integration CI at its final head | `17a0d8e`: every tick runs under `run_isolated_gated`; a fault publishes every subsystem unavailable and no window. Red-before: `a_hung_collector_becomes_a_timeout_fault_not_a_stalled_sampler` (no snapshot after 15 s). Evidence: `docs/phase75/lanes/telemetry-windows.md`. | any host |
+| `DBT-P75-030` | MySQL slow-log `Query_time` (seconds) was reported as milliseconds | **CLOSED by P75 lane `db-diagnostics`**, pending integration CI at its final head | `f166891`. Red-before and evidence: `docs/phase75/lanes/db-diagnostics.md`. | any host |
+| `DBT-P75-031` | Slow-log evidence claimed an "outlier vs sibling aggregates" comparison that is never computed | **CLOSED by P75 lane `db-diagnostics`**, pending integration CI at its final head | `f166891`. Red-before and evidence: `docs/phase75/lanes/db-diagnostics.md`. | any host |
+| `DBT-P75-032` | PostgreSQL config lint read the first of duplicate settings; the server uses the last | **CLOSED by P75 lane `db-diagnostics`**, pending integration CI at its final head | `6966d93`. Red-before and evidence: `docs/phase75/lanes/db-diagnostics.md`. | any host |
+| `DBT-P75-033` | `synchronous_commit = local` / `remote_write` were reported as synchronous commit off | **CLOSED by P75 lane `db-diagnostics`**, pending integration CI at its final head | `6966d93`. Red-before and evidence: `docs/phase75/lanes/db-diagnostics.md`. | any host |
+| `DBT-P75-034` | MySQL option files: every group linted as server config, inline comments and quotes kept in values, `-`/`_` distinct, a bare `skip-networking` read as off | **CLOSED by P75 lane `db-diagnostics`**, pending integration CI at its final head | `fecef56`. Red-before and evidence: `docs/phase75/lanes/db-diagnostics.md`. | any host |
 ## §2 Recovery posture — measured 2026-09-12
 
 P49 recorded `Gate 0f` as regressed: "there is no `D:` and no
