@@ -472,11 +472,20 @@ pub(crate) fn durable_mutation_released(
     reboot_releases: bool,
 ) -> bool {
     match ctx.engine.get_plan_for_owner(plan_id, owner) {
-        Ok(plan) => {
-            plan.state.is_terminal() || (reboot_releases && plan.state == PlanState::RebootPending)
-        }
+        Ok(plan) => released(plan.state, reboot_releases),
         Err(_) => false,
     }
+}
+
+fn released(state: PlanState, reboot_releases: bool) -> bool {
+    state.is_terminal() || (reboot_releases && state == PlanState::RebootPending)
+}
+
+/// A watcher decides it is done from the status it is about to publish, never from a fresher
+/// engine read: that read can already be terminal while `plan_state` - and the record read with
+/// it - are not, and breaking on it would leave the older status as the last one streamed.
+fn snapshot_released(plan_state: &str, reboot_releases: bool) -> bool {
+    PlanState::parse(plan_state).is_some_and(|state| released(state, reboot_releases))
 }
 
 pub(crate) fn watch_driver_install(ctx: ServiceContext, owner: String, plan_id: String) {
@@ -486,7 +495,7 @@ pub(crate) fn watch_driver_install(ctx: ServiceContext, owner: String, plan_id: 
             thread::sleep(Duration::from_millis(120));
             match ctx.installer.status(&owner, Some(&plan_id)) {
                 Ok(Some(v)) => {
-                    let terminal = durable_mutation_released(&ctx, &owner, &plan_id, true);
+                    let terminal = snapshot_released(&v.plan_state, true);
                     // DBT-P46-B16: {:?} rather than {} so the dedup signature
                     // distinguishes None (never determined) from Some(0) — a
                     // transition between the two is a real change to publish.
@@ -540,7 +549,7 @@ pub(crate) fn watch_repair(ctx: ServiceContext, owner: String, plan_id: String) 
             thread::sleep(Duration::from_millis(120));
             match ctx.repair.status(&owner, Some(&plan_id)) {
                 Ok(Some(v)) => {
-                    let terminal = durable_mutation_released(&ctx, &owner, &plan_id, true);
+                    let terminal = snapshot_released(&v.plan_state, true);
                     let sig = format!(
                         "{}:{}:{}:{}",
                         v.plan_state, v.stage, v.overall_percent, v.detail
@@ -578,7 +587,7 @@ pub(crate) fn watch_cleanup(ctx: ServiceContext, owner: String, plan_id: String)
             thread::sleep(Duration::from_millis(120));
             match ctx.cleaner.status(&owner, Some(&plan_id)) {
                 Ok(Some(v)) => {
-                    let terminal = durable_mutation_released(&ctx, &owner, &plan_id, false);
+                    let terminal = snapshot_released(&v.plan_state, false);
                     let sig = format!(
                         "{}:{}:{}:{}",
                         v.plan_state, v.stage, v.overall_percent, v.detail
@@ -616,7 +625,7 @@ pub(crate) fn watch_startup(ctx: ServiceContext, owner: String, plan_id: String)
             thread::sleep(Duration::from_millis(120));
             match ctx.startup.status(&owner, Some(&plan_id)) {
                 Ok(Some(v)) => {
-                    let terminal = durable_mutation_released(&ctx, &owner, &plan_id, false);
+                    let terminal = snapshot_released(&v.plan_state, false);
                     let sig = format!(
                         "{}:{}:{}:{}",
                         v.plan_state, v.stage, v.overall_percent, v.detail

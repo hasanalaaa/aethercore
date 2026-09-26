@@ -806,7 +806,7 @@ fn care_start_flow(
         });
     }
     // Wrong-digest confirmations are refused BEFORE any consent RPC leaves this process.
-    if !digest.starts_with(answer) {
+    if !digest_confirmed(&digest, answer) {
         return Err(CliError::ConsentRequired {
             message_key: "cli.consent.digestMismatch".to_string(),
         });
@@ -823,4 +823,34 @@ fn care_start_flow(
     care_status_from_payload(&started).ok_or_else(|| CliError::ProtocolViolation {
         detail: "expected CareStatusResponse after start".to_string(),
     })
+}
+
+/// The prompt asks for the first DIGEST_CONFIRM_CHARS characters; anything shorter
+/// (even one matching character) is not the deliberate confirmation it asked for.
+fn digest_confirmed(digest: &str, answer: &str) -> bool {
+    let required = digest.chars().count().min(DIGEST_CONFIRM_CHARS);
+    answer.chars().count() >= required && digest.starts_with(answer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn care_consent_requires_the_full_printed_prefix() {
+        assert!(digest_confirmed(DIGEST, "0123456789abcdef"));
+        assert!(
+            digest_confirmed(DIGEST, DIGEST),
+            "the whole digest is also deliberate"
+        );
+        for short in ["0", "0123", "0123456789abcde"] {
+            assert!(!digest_confirmed(DIGEST, short), "{short:?} must refuse");
+        }
+        assert!(!digest_confirmed(DIGEST, "0123456789abcdeX"));
+        // A digest shorter than the prefix length must be typed in full.
+        assert!(digest_confirmed("abc", "abc"));
+        assert!(!digest_confirmed("abc", "ab"));
+    }
 }

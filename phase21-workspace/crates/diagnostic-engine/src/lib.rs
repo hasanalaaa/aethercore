@@ -383,8 +383,13 @@ impl DiagnosticEngine {
         );
         next.warnings = hardware.warnings.clone();
         let hardware_available = !next.storage.is_empty() || next.memory.is_some();
-        let event_available =
-            !next.events.is_empty() || !next.crashes.is_empty() || next.event_window_days > 0;
+        // The wire snapshot carries no "log read" flag (a failed read still reports the default
+        // window), so the last event read's own conclusion is the record of whether it happened.
+        let event_available = !next
+            .cards
+            .iter()
+            .any(|card| card.card_id == EVENT_EVIDENCE_UNAVAILABLE_CARD)
+            && (!next.events.is_empty() || !next.crashes.is_empty() || next.event_window_days > 0);
         next.cards = build_cards_with_availability(
             &next.storage,
             next.memory.as_ref(),
@@ -482,11 +487,7 @@ impl DiagnosticEngine {
         next.scan_id = Uuid::new_v4().to_string();
         next.started_unix_ms = now;
         next.completed_unix_ms = now;
-        next.event_window_days = if crash.event_window_days == 0 {
-            aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS
-        } else {
-            crash.event_window_days
-        };
+        next.event_window_days = reported_event_window_days(Some(&crash));
         next.events = crash.events.clone();
         next.crashes = crash.crashes.clone();
         next.provider_faults
@@ -503,10 +504,10 @@ impl DiagnosticEngine {
             next.memory.as_ref(),
             &next.events,
             &next.crashes,
-            true,
+            crash.event_log_read,
             next.event_window_days,
         );
-        next.state = passive_state(&next, hardware_available, true);
+        next.state = passive_state(&next, hardware_available, crash.event_log_read);
         let committed = commit_fence.try_commit_checked(|| {
             if token.is_cancelled() {
                 return None;
@@ -578,6 +579,17 @@ impl DiagnosticEngine {
                     })
                     .collect()
             })
+    }
+}
+
+const EVENT_EVIDENCE_UNAVAILABLE_CARD: &str = "memory:whea-unavailable";
+
+/// The window the snapshot states. DBT-P46-B5: an unread Event Log keeps the default window
+/// rather than a bare 0 (the unavailable card, not the window, says nothing was read).
+fn reported_event_window_days(crash: Option<&CrashDiagnosticsSnapshot>) -> u32 {
+    match crash {
+        Some(crash) if crash.event_log_read => crash.event_window_days,
+        _ => aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS,
     }
 }
 
@@ -728,16 +740,7 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         .map(|h| h.storage.clone())
         .unwrap_or_default();
     let memory = hardware.as_ref().and_then(|h| h.memory.clone());
-    let event_window_days = crash
-        .as_ref()
-        .map(|c| {
-            if c.event_window_days == 0 {
-                aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS
-            } else {
-                c.event_window_days
-            }
-        })
-        .unwrap_or(aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS);
+    let event_window_days = reported_event_window_days(crash.as_ref());
     let events = crash.as_ref().map(|c| c.events.clone()).unwrap_or_default();
     let crashes = crash
         .as_ref()
@@ -748,12 +751,12 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         memory.as_ref(),
         &events,
         &crashes,
-        crash.is_some(),
+        crash.as_ref().is_some_and(|c| c.event_log_read),
         event_window_days,
     );
     let state = match (hardware.is_some(), crash.is_some()) {
         (true, true) => {
-            if warnings.is_empty() {
+            if warnings.is_empty() && provider_faults.is_empty() {
                 ScanState::Ready
             } else {
                 ScanState::Partial
@@ -876,7 +879,7 @@ fn build_cards_with_availability(
         .collect::<Vec<_>>();
     if !event_evidence_available {
         cards.push(DiagnosticCard {
-            card_id: "memory:whea-unavailable".into(),
+            card_id: EVENT_EVIDENCE_UNAVAILABLE_CARD.into(),
             domain: "Memory".into(),
             severity: "Unknown".into(),
             confidence: "EvidenceUnavailable".into(),
@@ -1342,6 +1345,99 @@ mod tests {
             !cards.iter().any(|c| c.card_id == "memory:pressure"),
             "unavailable memory telemetry must not become a zero-percent pressure card"
         );
+    }
+
+    fn wait_for_scan(e: &DiagnosticEngine) -> DiagnosticsSnapshot {
+        for _ in 0..100 {
+            if !e.snapshot().state.running() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        e.snapshot()
+    }
+
+    // What the Windows collector returns when EvtQuery fails: Ok, no events, a fault.
+    fn failed_event_log_read() -> CrashDiagnosticsSnapshot {
+        CrashDiagnosticsSnapshot {
+            event_window_days: aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS,
+            provider_faults: vec![CollectorFaultRecord::new(
+                "crash-diagnostics",
+                "eventlog",
+                FaultKind::PermissionDenied,
+                "fault injection",
+            )],
+            warnings: vec!["Windows Event Log collection unavailable: fault injection".into()],
+            ..Default::default()
+        }
+    }
+
+    fn has_card(s: &DiagnosticsSnapshot, id: &str) -> bool {
+        s.cards.iter().any(|c| c.card_id == id)
+    }
+
+    // P75 diagnosis-evidence: a failed Event Log read came back Ok with zero events, and every
+    // path rendered "No logged memory hardware errors ... in the last 30 days".
+    #[test]
+    fn failed_event_log_read_is_unavailable_on_every_path() {
+        let (db, _tmp) = db();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot::default(),
+                c: failed_event_log_read(),
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let s = wait_for_scan(&e);
+        assert!(has_card(&s, "memory:whea-unavailable"), "full scan");
+        assert!(!has_card(&s, "memory:no-logged-errors"), "full scan");
+
+        let s = e
+            .passive_hardware_refresh(OWNER, CancellationToken::new(), CommitFence::new())
+            .unwrap();
+        assert!(has_card(&s, "memory:whea-unavailable"), "hardware refresh");
+        assert!(!has_card(&s, "memory:no-logged-errors"), "hardware refresh");
+
+        let s = e
+            .passive_event_log_refresh(OWNER, CancellationToken::new(), CommitFence::new())
+            .unwrap();
+        assert!(has_card(&s, "memory:whea-unavailable"), "event-log refresh");
+        assert!(
+            !has_card(&s, "memory:no-logged-errors"),
+            "event-log refresh"
+        );
+        drop(e);
+        drop(db);
+    }
+
+    // P75 diagnosis-evidence: the full scan said Ready whenever there was no warning text, even
+    // with provider faults; the passive path already required both to be empty.
+    #[test]
+    fn full_scan_with_provider_faults_is_not_ready() {
+        let (db, _tmp) = db();
+        let mut crashes = CrashDiagnosticsSnapshot {
+            event_log_read: true,
+            event_window_days: aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS,
+            ..Default::default()
+        };
+        crashes.provider_faults.push(CollectorFaultRecord::new(
+            "crash-diagnostics",
+            "minidump.parse",
+            FaultKind::MalformedResponse,
+            "fault injection",
+        ));
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot::default(),
+                c: crashes,
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        assert_eq!(wait_for_scan(&e).state, ScanState::Partial);
+        drop(e);
+        drop(db);
     }
 
     struct PanicHardwareMock;

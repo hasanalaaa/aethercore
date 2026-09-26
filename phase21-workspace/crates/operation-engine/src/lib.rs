@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use aethercore_persistence::{Database, PlanRecord};
+use aethercore_persistence::{Database, PlanJournal, PlanRecord};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -551,6 +551,41 @@ impl OperationEngine {
         next: PlanState,
         detail: &str,
     ) -> Result<PlanView> {
+        self.transition_via(id, expected, next, |now| {
+            self.db
+                .transition_plan(id, expected.as_str(), next.as_str(), detail, now)
+        })
+    }
+
+    /// `transition`, with `journal` committed in the same transaction as the new state. Nothing
+    /// is written unless the state actually moves.
+    pub fn transition_with_journal(
+        &self,
+        id: &str,
+        expected: PlanState,
+        next: PlanState,
+        detail: &str,
+        journal: PlanJournal<'_>,
+    ) -> Result<PlanView> {
+        self.transition_via(id, expected, next, |now| {
+            self.db.transition_plan_with_journal(
+                id,
+                expected.as_str(),
+                next.as_str(),
+                detail,
+                now,
+                journal,
+            )
+        })
+    }
+
+    fn transition_via(
+        &self,
+        id: &str,
+        expected: PlanState,
+        next: PlanState,
+        write: impl FnOnce(i64) -> aethercore_persistence::Result<bool>,
+    ) -> Result<PlanView> {
         if !valid_transition(expected, next) {
             return Err(EngineError::InvalidTransition(
                 expected.as_str().into(),
@@ -567,10 +602,7 @@ impl OperationEngine {
         if expected == PlanState::AwaitingAuthorization && next == PlanState::Preflight {
             return Err(EngineError::AuthorizationRequired);
         }
-        let changed =
-            self.db
-                .transition_plan(id, expected.as_str(), next.as_str(), detail, now_ms())?;
-        if !changed {
+        if !write(now_ms())? {
             return Err(EngineError::InvalidTransition(
                 expected.as_str().into(),
                 next.as_str().into(),
