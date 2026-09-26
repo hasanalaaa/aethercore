@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     thread,
@@ -13,7 +13,8 @@ use aethercore_cleaner::{
 };
 use aethercore_operation_engine::{CleanupDeleteAction, CleanupFileEvidence, OperationEngine};
 use aethercore_operation_kernel::{
-    MutationSupervisor, MutationWorkload, ReadBudgetManager, ReadWorkload,
+    MutationSupervisor, MutationWorkload, ProgressTelemetry, ProgressTelemetryStore,
+    ReadBudgetManager, ReadWorkload,
 };
 use aethercore_persistence::Database;
 
@@ -124,16 +125,15 @@ impl CleanupPlatform for LeaseDenyingPlatform {
     }
 }
 
-/// Poll until the execution has genuinely settled in BOTH places `status()` reads from.
+/// Poll until the plan reaches `state`; the record fields are then already final.
 ///
-/// `plan_state` comes from the operation engine; `mutation_started`, `recovery_required`
-/// and `items` come from the maintenance record in the database, and the two are written
-/// by different statements — `fail_cleanup` transitions the plan to Failed and only then
-/// upserts the record. Waiting on `plan_state` alone and asserting a record field is a
-/// read-before-write race: it is what made
-/// `cleanup_failure_after_deletion_barrier_requires_recovery_review` fail on
-/// `status.recovery_required` in CI run 34763617017 while `mutation_started`, written
-/// earlier by the Executing update, passed.
+/// `plan_state` comes from the operation engine and `mutation_started`, `recovery_required`
+/// and `items` from the maintenance record. The terminal transition commits that record in
+/// the same transaction, and `status()` reads the plan before the record (DBT-P63-012), so
+/// waiting on `plan_state` alone is enough. It was not while `fail_cleanup` transitioned
+/// first and upserted after: that read-before-write race failed
+/// `cleanup_failure_after_deletion_barrier_requires_recovery_review` on
+/// `status.recovery_required` in CI run 34763617017, and this loop had to wait on `stage` too.
 fn wait_terminal(
     cleaner: &CleanupEngine,
     plan_id: &str,
@@ -142,7 +142,7 @@ fn wait_terminal(
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let status = cleaner.status(OWNER, Some(plan_id)).unwrap().unwrap();
-        if status.plan_state == state && status.stage == state {
+        if status.plan_state == state {
             return status;
         }
         if state != "Failed" {
@@ -271,6 +271,68 @@ fn cleanup_failure_after_deletion_barrier_requires_recovery_review() {
     let status = wait_terminal(&cleaner, &plan.id, "Failed");
     assert!(status.mutation_started);
     assert!(status.recovery_required);
+    // DBT-P63-012: the Recovery panel reads recovery records, not the journal flag.
+    let records = db.recovery_records(20).expect("recovery records");
+    assert!(records.iter().any(|r| r.plan_id == plan.id), "{records:?}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// DBT-P63-012: nobody may see Completed before the record that explains it. The observer runs
+/// on the worker at the "Completed" publish, which follows the terminal transition; the
+/// journal used to be written only after it, so this read saw `Verifying` with no completion.
+#[test]
+fn completed_plan_is_never_visible_before_its_completed_journal() {
+    let root = temp_root("completed-journal");
+    std::fs::create_dir_all(&root).expect("root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let observer = {
+        let (db, seen) = (db.clone(), seen.clone());
+        move |t: ProgressTelemetry| {
+            if t.stage == "Completed" {
+                let plan = db.get_plan(&t.plan_id).expect("plan").expect("plan row");
+                let record = db
+                    .get_maintenance_execution(&t.plan_id)
+                    .expect("record")
+                    .expect("record row");
+                seen.lock().expect("seen").push((
+                    plan.state,
+                    record.stage,
+                    record.completed_unix_ms.is_some(),
+                ));
+            }
+        }
+    };
+    let cleaner = CleanupEngine::with_platform_and_telemetry(
+        engine.clone(),
+        db.clone(),
+        Arc::new(FakeCleanupPlatform { fail_delete: false }),
+        ProgressTelemetryStore::with_observer(Arc::new(observer)),
+    );
+
+    start_cleanup_scan(&cleaner, OWNER).expect("scan");
+    let snapshot = wait_scan(&cleaner);
+    let plan = cleaner
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[snapshot.candidates[0].candidate_id.clone()],
+        )
+        .expect("plan");
+    authorize(&engine, &plan.id);
+    start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while seen.lock().expect("seen").is_empty() {
+        assert!(Instant::now() < deadline, "no Completed publish observed");
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        *seen.lock().expect("seen"),
+        vec![("Completed".to_owned(), "Completed".to_owned(), true)]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
