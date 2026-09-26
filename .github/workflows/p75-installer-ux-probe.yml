@@ -69,27 +69,39 @@ jobs:
           $w = Join-Path $env:RUNNER_TEMP 'ux'
           $shots = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'ux-shots')
           function Probe($exe, $arguments, $tag) {
+            # WiX v6 runs the BA in its own process, so the bundle's MainWindowHandle is Burn's
+            # hidden window. Take the focused element and walk up to its top-level window.
             $p = Start-Process $exe -ArgumentList $arguments -PassThru
-            $win = $null
+            $root = [Windows.Automation.AutomationElement]::RootElement
+            $walker = [Windows.Automation.TreeWalker]::ControlViewWalker
+            $win = $null; $f = $null
             for ($i = 0; $i -lt 60 -and -not $win; $i++) {
               Start-Sleep -Milliseconds 500
-              $p.Refresh()
-              if ($p.MainWindowHandle -ne 0) { $win = [Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle) }
+              $f = [Windows.Automation.AutomationElement]::FocusedElement
+              if (-not $f -or $f.Current.ControlType -ne [Windows.Automation.ControlType]::Button) { continue }
+              $e = $f
+              while ($e -and -not ($walker.GetParent($e) -eq $root)) { $e = $walker.GetParent($e) }
+              $win = $e
             }
-            if (-not $win) { Write-Host "GATE: $tag no window"; $p | Stop-Process -Force; return }
-            Start-Sleep -Seconds 3
+            if (-not $win) { Write-Host "GATE: $tag no focused button"; Get-Process | Where-Object StartTime -gt (Get-Date).AddMinutes(-2) | Stop-Process -Force -ErrorAction SilentlyContinue; return }
+            Start-Sleep -Seconds 2
             $f = [Windows.Automation.AutomationElement]::FocusedElement
-            Write-Host "RESULT: $tag caption='$($win.Current.Name)' focused='$($f.Current.Name)'"
-            $cond = New-Object Windows.Automation.PropertyCondition ([Windows.Automation.AutomationElement]::ControlTypeProperty), ([Windows.Automation.ControlType]::Button)
+            Write-Host "RESULT: $tag caption='$($win.Current.Name)' focused='$($f.Current.Name)' pid=$($win.Current.ProcessId)"
+            $cond = New-Object Windows.Automation.PropertyCondition ([Windows.Automation.AutomationElement]::IsOffscreenProperty), $false
             foreach ($b in $win.FindAll([Windows.Automation.TreeScope]::Descendants, $cond)) {
               $r = $b.Current.BoundingRectangle
-              if (-not $b.Current.IsOffscreen) { Write-Host "  button '$($b.Current.Name)' x=$([int]$r.X) w=$([int]$r.Width)" }
+              Write-Host "  $($b.Current.ControlType.ProgrammaticName) '$($b.Current.Name)' x=$([int]$r.X) w=$([int]$r.Width)"
             }
             $r = $win.Current.BoundingRectangle
-            $bmp = New-Object Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
-            [Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
-            $bmp.Save("$shots\$tag.png")
-            $p | Stop-Process -Force
+            Write-Host "  window x=$([int]$r.X) y=$([int]$r.Y) w=$([int]$r.Width) h=$([int]$r.Height)"
+            try {
+              $bmp = New-Object Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
+              [Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
+              $bmp.Save("$shots\$tag.png")
+            } catch { Write-Host "  screenshot failed: $_" }
+            Stop-Process -Id $win.Current.ProcessId -Force -ErrorAction SilentlyContinue
+            $p | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
             return $f.Current.Name
           }
           foreach ($v in @('stock','ours')) {
