@@ -50,6 +50,8 @@ impl aethercore_care_orchestrator::DomainDispatch for FakeDomainDispatch {
         &self,
         _owner_principal_key: &str,
         domain_plan_id: &str,
+        _domain_kind: &str,
+        _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
     ) -> Result<(String, String, String), String> {
         if !self.owned_plans.iter().any(|p| p == domain_plan_id) {
             return Err(format!(
@@ -156,13 +158,13 @@ fn end_to_end_care_run_executes_real_dispatch_and_journals_outcomes() {
             owner: &str,
             domain_plan_id: &str,
             _kind: &str,
-            _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
+            lease: &aethercore_care_orchestrator::MutationLeaseGuard,
         ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError>
         {
             use aethercore_care_orchestrator::DomainDispatch;
             let (state, verification, failure) = self
                 .0
-                .start_and_await(owner, domain_plan_id)
+                .start_and_await(owner, domain_plan_id, _kind, lease)
                 .map_err(
                     |detail| aethercore_care_orchestrator::CareError::DomainRejected {
                         domain_kind: _kind.to_string(),
@@ -199,7 +201,7 @@ fn end_to_end_care_run_executes_real_dispatch_and_journals_outcomes() {
         OWNER,
         "run-e2e",
         &plan,
-        true,
+        Some(plan.plan_digest_sha256.as_str()),
     )
     .expect("end-to-end run");
 
@@ -235,16 +237,18 @@ fn unowned_plan_surfaces_typed_rejection_not_fake_success() {
             owner: &str,
             plan_id: &str,
             kind: &str,
-            _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
+            lease: &aethercore_care_orchestrator::MutationLeaseGuard,
         ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError>
         {
             use aethercore_care_orchestrator::DomainDispatch;
-            self.0.start_and_await(owner, plan_id).map_err(|detail| {
-                aethercore_care_orchestrator::CareError::DomainRejected {
-                    domain_kind: kind.to_string(),
-                    detail,
-                }
-            })?;
+            self.0
+                .start_and_await(owner, plan_id, kind, lease)
+                .map_err(
+                    |detail| aethercore_care_orchestrator::CareError::DomainRejected {
+                        domain_kind: kind.to_string(),
+                        detail,
+                    },
+                )?;
             unreachable!() // guarded above by Err path in this test's fake
         }
     }
@@ -257,7 +261,7 @@ fn unowned_plan_surfaces_typed_rejection_not_fake_success() {
         OWNER,
         "run-ghost",
         &plan,
-        true,
+        Some(plan.plan_digest_sha256.as_str()),
     )
     .expect_err("unowned plan must reject");
     assert!(matches!(
