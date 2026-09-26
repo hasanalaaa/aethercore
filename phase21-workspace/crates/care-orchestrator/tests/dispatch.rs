@@ -51,13 +51,15 @@ impl aethercore_care_orchestrator::DomainDispatch for FakeDomainDispatch {
         &self,
         _owner_principal_key: &str,
         domain_plan_id: &str,
-        _domain_kind: &str,
+        domain_kind: &str,
+        _approved_digest: &str,
         _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-    ) -> Result<(String, String, String), String> {
+    ) -> Result<(String, String, String), aethercore_care_orchestrator::CareError> {
         if !self.owned_plans.iter().any(|p| p == domain_plan_id) {
-            return Err(format!(
-                "plan {domain_plan_id}: no domain coordinator owns this plan"
-            ));
+            return Err(aethercore_care_orchestrator::CareError::DomainRejected {
+                domain_kind: domain_kind.to_string(),
+                detail: format!("plan {domain_plan_id}: no domain coordinator owns this plan"),
+            });
         }
         self.executions.fetch_add(1, Ordering::SeqCst);
         std::thread::sleep(Duration::from_millis(self.latency_ms));
@@ -157,21 +159,18 @@ fn end_to_end_care_run_executes_real_dispatch_and_journals_outcomes() {
         fn execute_step(
             &self,
             owner: &str,
-            domain_plan_id: &str,
-            _kind: &str,
+            step: &CareStep,
             lease: &aethercore_care_orchestrator::MutationLeaseGuard,
         ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError>
         {
             use aethercore_care_orchestrator::DomainDispatch;
-            let (state, verification, failure) = self
-                .0
-                .start_and_await(owner, domain_plan_id, _kind, lease)
-                .map_err(
-                    |detail| aethercore_care_orchestrator::CareError::DomainRejected {
-                        domain_kind: _kind.to_string(),
-                        detail,
-                    },
-                )?;
+            let (state, verification, failure) = self.0.start_and_await(
+                owner,
+                &step.domain_plan_id,
+                &step.domain_kind,
+                &step.domain_plan_digest,
+                lease,
+            )?;
             if state != "Completed" {
                 return Ok((
                     StepOutcome::Failed,
@@ -236,20 +235,18 @@ fn unowned_plan_surfaces_typed_rejection_not_fake_success() {
         fn execute_step(
             &self,
             owner: &str,
-            plan_id: &str,
-            kind: &str,
+            step: &CareStep,
             lease: &aethercore_care_orchestrator::MutationLeaseGuard,
         ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError>
         {
             use aethercore_care_orchestrator::DomainDispatch;
-            self.0
-                .start_and_await(owner, plan_id, kind, lease)
-                .map_err(
-                    |detail| aethercore_care_orchestrator::CareError::DomainRejected {
-                        domain_kind: kind.to_string(),
-                        detail,
-                    },
-                )?;
+            self.0.start_and_await(
+                owner,
+                &step.domain_plan_id,
+                &step.domain_kind,
+                &step.domain_plan_digest,
+                lease,
+            )?;
             unreachable!() // guarded above by Err path in this test's fake
         }
     }

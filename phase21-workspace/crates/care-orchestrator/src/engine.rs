@@ -24,13 +24,14 @@ use crate::model::{CareError, CarePlan, CareSafety, CareStep, CareStepReport, St
 /// orchestrator passes forward the SAME machine-wide lease discipline every domain
 /// already uses, plus the plan digest so a mismatch can be detected before execution.
 pub trait DomainStepExecutor {
-    /// Executes one existing domain plan. Returns (outcome, domain verification state,
-    /// failure message key). Implementations must not invent progress or success.
+    /// Executes one existing domain plan at the content digest the approved care plan
+    /// committed to (`step.domain_plan_digest`). Returns (outcome, domain verification
+    /// state, failure message key), or `CareError::DigestChanged` when the plan's content is
+    /// no longer the approved content. Implementations must not invent progress or success.
     fn execute_step(
         &self,
         owner_principal_key: &str,
-        domain_plan_id: &str,
-        domain_kind: &str,
+        step: &CareStep,
         lease: &MutationLeaseGuard,
     ) -> Result<(StepOutcome, String, String), CareError>;
 }
@@ -43,13 +44,16 @@ pub trait DomainDispatch: Send + Sync {
     /// terminal state or deadline. Returns (plan_state, verification_state, failure_key).
     /// `domain_kind` names the coordinator that owns the plan; the domain's lease is
     /// delegated from `lease`, so the machine stays held by the care run throughout.
+    /// The plan runs only while its content digest equals `approved_digest`; otherwise
+    /// `CareError::DigestChanged`.
     fn start_and_await(
         &self,
         owner_principal_key: &str,
         domain_plan_id: &str,
         domain_kind: &str,
+        approved_digest: &str,
         lease: &MutationLeaseGuard,
-    ) -> Result<(String, String, String), String>;
+    ) -> Result<(String, String, String), CareError>;
 }
 
 /// Handle proving the orchestrator currently owns the machine-wide mutation lease.
@@ -176,12 +180,7 @@ pub fn run_care_plan(
             "Executing",
         )?;
 
-        match executor.execute_step(
-            owner_principal_key,
-            &step.domain_plan_id,
-            &step.domain_kind,
-            &guard,
-        ) {
+        match executor.execute_step(owner_principal_key, step, &guard) {
             Ok((outcome, verification_state, failure_key)) => {
                 if outcome != StepOutcome::VerifiedByDomain && outcome != StepOutcome::Skipped {
                     all_verified = false;
@@ -205,6 +204,27 @@ pub fn run_care_plan(
                     outcome,
                     domain_verification_state: verification_state,
                     failure_message_key: failure_key,
+                });
+            }
+            // The plan's content is no longer what the owner approved: refuse this step
+            // only. The other steps are still the approved bytes.
+            Err(CareError::DigestChanged) => {
+                all_verified = false;
+                journal.record_step_result(
+                    run_id,
+                    index,
+                    "Failed",
+                    StepOutcome::Failed,
+                    "",
+                    DIGEST_CHANGED_KEY,
+                )?;
+                reports.push(CareStepReport {
+                    step_index: index,
+                    domain_plan_id: step.domain_plan_id.clone(),
+                    domain_kind: step.domain_kind.clone(),
+                    outcome: StepOutcome::Failed,
+                    domain_verification_state: String::new(),
+                    failure_message_key: DIGEST_CHANGED_KEY.to_string(),
                 });
             }
             Err(error) => {
@@ -241,6 +261,9 @@ pub fn run_care_plan(
         steps: reports,
     })
 }
+
+/// Message key for a step refused because its plan changed after the care plan was approved.
+pub const DIGEST_CHANGED_KEY: &str = "care.error.digestChanged";
 
 /// Unexecuted review and cancelled steps are cited as Skipped, never hidden.
 fn skipped(index: usize, step: &CareStep) -> CareStepReport {

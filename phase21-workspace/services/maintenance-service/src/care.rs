@@ -397,19 +397,17 @@ impl DomainStepExecutor for ServiceExecutor {
     fn execute_step(
         &self,
         owner: &str,
-        domain_plan_id: &str,
-        _domain_kind: &str,
+        step: &CareStep,
         lease: &aethercore_care_orchestrator::MutationLeaseGuard,
     ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError> {
-        let (plan_state, verification_state, failure_key) = self
-            .dispatch
-            .start_and_await(owner, domain_plan_id, _domain_kind, lease)
-            .map_err(
-                |detail| aethercore_care_orchestrator::CareError::DomainRejected {
-                    domain_kind: _domain_kind.to_string(),
-                    detail,
-                },
-            )?;
+        let domain_plan_id = &step.domain_plan_id;
+        let (plan_state, verification_state, failure_key) = self.dispatch.start_and_await(
+            owner,
+            domain_plan_id,
+            &step.domain_kind,
+            &step.domain_plan_digest,
+            lease,
+        )?;
         if is_terminal_plan_state(&plan_state) && plan_state != "Completed" {
             return Ok((StepOutcome::Failed, verification_state, failure_key));
         }
@@ -429,7 +427,7 @@ impl DomainStepExecutor for ServiceExecutor {
         }
         // Non-terminal after deadline (RebootPending counts as terminal-but-unverified).
         Err(aethercore_care_orchestrator::CareError::DomainRejected {
-            domain_kind: _domain_kind.to_string(),
+            domain_kind: step.domain_kind.clone(),
             detail: format!("plan {domain_plan_id} did not reach a terminal state in time"),
         })
     }
@@ -784,8 +782,9 @@ mod p75_care_consent_tests {
             owner: &str,
             domain_plan_id: &str,
             _domain_kind: &str,
+            _approved_digest: &str,
             lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-        ) -> Result<(String, String, String), String> {
+        ) -> Result<(String, String, String), aethercore_care_orchestrator::CareError> {
             self.started.fetch_add(1, Ordering::SeqCst);
             let step = lease.delegate(
                 aethercore_operation_kernel::MutationWorkload::Cleanup,

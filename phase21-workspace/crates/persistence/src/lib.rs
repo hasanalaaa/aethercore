@@ -687,6 +687,46 @@ impl Database {
         Ok(value.unwrap_or(0))
     }
 
+    /// DBT-P75-045: records a care run's approval of one domain plan as an approved consent
+    /// intent, so the domain's own one-shot barrier (`consume_consent_and_transition`)
+    /// consumes it exactly as it consumes a broker approval. Inserted only while the plan is
+    /// owned by `owner_principal_key`, awaits authorization, and still carries `digest` — the
+    /// content digest the owner approved inside the care plan. Returns whether it was
+    /// inserted. `broker_pid` 0: no broker process approved it; the care approval did.
+    pub fn authorize_care_step(
+        &self,
+        intent_id: &str,
+        plan_id: &str,
+        digest: &str,
+        owner_principal_key: &str,
+        now_ms: i64,
+        expires_ms: i64,
+    ) -> Result<bool> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        let inserted = conn.execute(
+            "INSERT INTO consent_intents(intent_id,plan_id,digest,owner_principal_key,created_unix_ms,expires_unix_ms,approved_unix_ms,consumed_unix_ms,broker_pid) SELECT ?,id,digest,owner_principal_key,?,?,?,NULL,0 FROM plans WHERE id=? AND owner_principal_key=? AND digest=? AND state='AwaitingAuthorization'",
+            params![intent_id,now_ms,expires_ms,now_ms,plan_id,owner_principal_key,digest],
+        )?;
+        Ok(inserted == 1)
+    }
+
+    /// Removes a care step's approval if its domain did not consume it. A consumed one stays
+    /// as the record of what ran.
+    pub fn revoke_care_step(&self, intent_id: &str) -> Result<()> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        conn.execute(
+            "DELETE FROM consent_intents WHERE intent_id=? AND consumed_unix_ms IS NULL",
+            [intent_id],
+        )?;
+        Ok(())
+    }
+
     /// Atomically consumes exactly one approved consent intent and advances the owned plan into
     /// Preflight. If either condition fails, the transaction rolls back and the intent remains
     /// unconsumed. This is the Phase 9 one-shot authorization barrier.
@@ -2361,6 +2401,96 @@ mod tests {
         }
         assert_eq!(db.get_plan(&plan.id).unwrap().unwrap().state, "Draft");
         assert_eq!(db.event_count().unwrap(), 1);
+        drop(db);
+        cleanup_database(&path);
+    }
+
+    /// DBT-P75-045: a care step's approval exists only for the approved content, the owner
+    /// who approved it and a plan still awaiting authorization; the domain barrier consumes it
+    /// once; an unconsumed one can be revoked.
+    #[test]
+    fn a_care_step_authorization_is_bound_to_owner_content_and_state() {
+        let (db, path) = temp_db();
+        let owner = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let plan = PlanRecord {
+            id: "care-plan".into(),
+            title: "Care".into(),
+            state: "AwaitingAuthorization".into(),
+            digest: "approved-digest".into(),
+            risk: "Low".into(),
+            immutable_json: "{}".into(),
+            created_unix_ms: 1,
+            updated_unix_ms: 1,
+            owner_principal_key: owner.into(),
+        };
+        db.insert_plan(&plan, "plan_created").unwrap();
+        let consume = |at| {
+            db.consume_consent_and_transition(
+                &plan.id,
+                owner,
+                "AwaitingAuthorization",
+                "Preflight",
+                "care",
+                at,
+            )
+            .unwrap()
+        };
+
+        assert!(
+            !db.authorize_care_step("i-other", &plan.id, &plan.digest, other, 10, 100)
+                .unwrap()
+        );
+        assert!(
+            !db.authorize_care_step("i-old", &plan.id, "older-digest", owner, 10, 100)
+                .unwrap()
+        );
+        assert!(!consume(20), "nothing was authorized");
+
+        assert!(
+            db.authorize_care_step("i-1", &plan.id, &plan.digest, owner, 10, 100)
+                .unwrap()
+        );
+        db.revoke_care_step("i-1").unwrap();
+        assert!(!consume(20), "a revoked authorization is gone");
+
+        // The content changes after approval: the approved digest authorizes nothing.
+        {
+            let conn = db.connection.lock().unwrap();
+            conn.execute("UPDATE plans SET digest='tampered' WHERE id=?", [&plan.id])
+                .unwrap();
+        }
+        assert!(
+            !db.authorize_care_step("i-2", &plan.id, &plan.digest, owner, 10, 100)
+                .unwrap()
+        );
+        {
+            let conn = db.connection.lock().unwrap();
+            conn.execute(
+                "UPDATE plans SET digest=? WHERE id=?",
+                [&plan.digest, &plan.id],
+            )
+            .unwrap();
+        }
+
+        assert!(
+            db.authorize_care_step("i-3", &plan.id, &plan.digest, owner, 10, 100)
+                .unwrap()
+        );
+        assert!(consume(20), "the domain barrier consumes it");
+        db.revoke_care_step("i-3").unwrap();
+        assert!(
+            db.get_consent_intent("i-3")
+                .unwrap()
+                .unwrap()
+                .consumed_unix_ms
+                .is_some()
+        );
+        assert!(
+            !db.authorize_care_step("i-4", &plan.id, &plan.digest, owner, 30, 100)
+                .unwrap(),
+            "a started plan no longer awaits authorization"
+        );
         drop(db);
         cleanup_database(&path);
     }
