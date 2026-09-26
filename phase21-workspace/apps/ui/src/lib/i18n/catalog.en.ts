@@ -98,6 +98,7 @@ export const enCatalog = {
   'fleet.okScheduleUpdated': 'Schedule updated',
   'fleet.okScheduleRemoved': 'Schedule removed',
   'fleet.okScheduleRunDue': 'Due schedules processed',
+  'fleet.errScheduleRunDue': 'Due schedules ran with failures: {failed} of {attempted} hosts failed.',
   'fleet.confirmScheduleRemove': 'Remove schedule {id}? This cannot be undone.',
   'app.subtitle': 'System intelligence',
   'app.command': 'Command palette',

@@ -100,6 +100,7 @@ export const arCatalog = {
   'fleet.okScheduleUpdated': 'تم تحديث الجدول',
   'fleet.okScheduleRemoved': 'تمت إزالة الجدول',
   'fleet.okScheduleRunDue': 'تمت معالجة الجداول المستحقة',
+  'fleet.errScheduleRunDue': 'نُفّذت الجداول المستحقة مع إخفاقات: فشل {failed} من {attempted} من الأجهزة.',
   'fleet.confirmScheduleRemove': 'إزالة الجدول {id}؟ لا يمكن التراجع.',
   'app.subtitle': 'ذكاء النظام',
   'app.command': 'لوحة الأوامر',

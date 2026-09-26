@@ -439,7 +439,8 @@ cb27aa39857efb1273f3c0cdfed0eb764dbee0bc2ce75d4af10d4d7e8504df92  apps/ui/src/fe
 b3bfe24d9b74e04f9943f8fb99af1d3f538b3fad46c6e93fc9049f166faae838  apps/ui/src/features/diagnostics/controller.ts
 0b0d40df14ca758e43faf607fa67478670a64db77788e4359891884c22b91180  apps/ui/src/features/drivers/DriversPage.svelte
 ca380c0459e632508f656e85fd7668b2fd564b1438b129a570eaeabe22f29680  apps/ui/src/features/drivers/controller.ts
-d78c77ca34d63ea7d0b4491d2bac12e70b7cf1958b0909953b49b36993691573  apps/ui/src/features/fleet/FleetPage.svelte
+048c8518cc9615baa03789cf2f244661f005d59d075cc0b02bc6df0eaf364318  apps/ui/src/features/fleet/FleetPage.svelte
+081abe2776b96a11b4184b6fa04dec82e6e19c3b9dae57721a7fc1ec9a3e22ba  apps/ui/src/features/fleet/run-due.ts
 ec4b6407364644b4a335ec1bf25d06eaf088d1dd51f654e4571f0e8cc32d02d5  apps/ui/src/features/insights/InsightsPanel.svelte
 9e36bbb66b8a18cc5723fa3dfd025bc0525d5722503cf81d0a10c56bf27cbb44  apps/ui/src/features/insights/controller.ts
 2a365d0694921c805936b854cc28793d280953e8740df8c0fc0afa1bc45b3e79  apps/ui/src/features/intelligence/DeepScanPage.svelte
@@ -463,8 +464,8 @@ bbe46e0168a9ea2689d2b40a88ccd3d9dc098aeccfcf91da74e22d627fa1cb32  apps/ui/src/fe
 e68eca0a5dba40b456b45f2fb7de56ee0848781bdc50d1c28895f9663550acc4  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-38ee2b19d579eb0768e9ea558c54fd1471ab9150e36fc65ad9dbdbb8dd14d6d8  apps/ui/src/lib/i18n/catalog.ar.ts
-5336178905007dc7b45c51a30e429a754fa5856f75579a648732db00381a830e  apps/ui/src/lib/i18n/catalog.en.ts
+ba2bc371700483228d6776876457af88401eb1dd230ad9a15944c4143f1e29bf  apps/ui/src/lib/i18n/catalog.ar.ts
+a017d182f2d3944620d9002a828985ff8b946bb3d182aeea262f1d6a90de67ec  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 0ee3fe5ad69f55120691cd13b28c2251bdf53679bd09d591fce58d6d9fee9e86  apps/ui/src/lib/i18n/plurals.ar.ts
 8db63c1165bc2cfad5676da2481ab0ee5b1f5aefd0b6b40a7f6d90f6cae26e2d  apps/ui/src/lib/i18n/plurals.en.ts
@@ -483,6 +484,7 @@ ae40092216d2521405970c8a28bbbe3a0e7baef56fae214b7bd83ef4122b0020  apps/ui/src/pl
 86f1fb3631fa8deb91daad6c4fcc2291f20856e00b59c27299aa131d13266192  apps/ui/src/platform/transport.ts
 e725fb8554170ecba1a1bb8ec91fcc2e4be413c5d318903dccc5ffb1f0bbada7  apps/ui/src/styles.css
 65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5  apps/ui/src/vite-env.d.ts
+54651ceb9e459a62a3e1645034e2df1ae933efe82f69a2ae87cd7ef9fef9de0b  apps/ui/tests/fleet.test.ts
 59e1b489beeb808d961b6e5db7d7d8e965921b6f9ecd92e912914c4c1a05dc7d  apps/ui/tests/navigation.test.ts
 837d1f530f73477ecaa2a7ea1b35793f5f552ccf7b751375cfe90199de686a17  apps/ui/tools/contrast-sweep.mjs
 36804d7fb828312a6e28150a63c011b3516279f06557b923e2b90a9bfdb845c9  apps/ui/tools/layout-sweep.mjs
