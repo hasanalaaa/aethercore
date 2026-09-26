@@ -90,7 +90,13 @@ jobs:
               while ($e -and -not ($walker.GetParent($e) -eq $root)) { $e = $walker.GetParent($e) }
               $win = $e
             }
-            if (-not $win) { Write-Host "GATE: $tag no focused button"; $p.Kill($true); return }
+            if (-not $win) {
+              Write-Host "GATE: $tag no focused button; focused is $($f.Current.ControlType.ProgrammaticName) '$($f.Current.Name)'"
+              $bmp = New-Object Drawing.Bitmap 1024, 768
+              [Drawing.Graphics]::FromImage($bmp).CopyFromScreen(0, 0, 0, 0, $bmp.Size); $bmp.Save("$shots\$tag-nofocus.png")
+              foreach ($top in $root.FindAll([Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition)) { Write-Host "  top-level '$($top.Current.Name)' pid=$($top.Current.ProcessId)" }
+              $p.Kill($true); return
+            }
             Start-Sleep -Seconds 2
             $f = [Windows.Automation.AutomationElement]::FocusedElement
             Write-Host "RESULT: $tag caption='$($win.Current.Name)' focused='$($f.Current.Name)' pid=$($win.Current.ProcessId)"
@@ -102,8 +108,8 @@ jobs:
             $r = $win.Current.BoundingRectangle
             Write-Host "  window x=$([int]$r.X) y=$([int]$r.Y) w=$([int]$r.Width) h=$([int]$r.Height)"
             try {
-              $bmp = New-Object Drawing.Bitmap ([int]$r.Width), ([int]$r.Height)
-              [Drawing.Graphics]::FromImage($bmp).CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, $bmp.Size)
+              $bmp = New-Object Drawing.Bitmap 1024, 768
+              [Drawing.Graphics]::FromImage($bmp).CopyFromScreen(0, 0, 0, 0, $bmp.Size)
               $bmp.Save("$shots\$tag.png")
             } catch { Write-Host "  screenshot failed: $_" }
             Stop-Process -Id $win.Current.ProcessId -Force -ErrorAction SilentlyContinue
@@ -111,23 +117,25 @@ jobs:
             Start-Sleep -Seconds 2
             return $f.Current.Name
           }
-          foreach ($v in @('stock','ours')) {
-            $exe = "$w\b-$v.exe"
-            Write-Host "install $v exit $(Run $exe '/quiet')"
-          }
-          $stock = Probe "$w\b-stock.exe" '/uninstall' 'stock-en'
-          $ours = Probe "$w\b-ours.exe" '/uninstall' 'ours-en'
-          $ar = Probe "$w\b-ours.exe" '/uninstall /lang 1025' 'ours-ar'
-          Write-Host "GATE: stock focus=$stock (P71 measured Repair)"
-          Write-Host "GATE: ours focus=$ours (want Uninstall)"
-          Write-Host "GATE: arabic focus=$ar"
-
           # Installed OR: the launch condition is false at uninstall time; uninstall must still work.
           foreach ($pkg in @('old','p')) {
             Write-Host "install $pkg.msi exit $(Run msiexec "/i `"$w\$pkg.msi`" /qn")"
             Write-Host "GATE: $pkg.msi /x with its launch condition false exit=$(Run msiexec "/x `"$w\$pkg.msi`" /qn P75PROBE_REQUIRE=`"`" /l*v `"$env:RUNNER_TEMP\x-$pkg.log`"")"
             Select-String -Path "$env:RUNNER_TEMP\x-$pkg.log" -Pattern 'P75 probe requirement missing|Removal completed|Product: P75' | Select-Object -First 3 | ForEach-Object { Write-Host "  $($_.Line)" }
           }
+          foreach ($v in @('stock','ours')) {
+            $exe = "$w\b-$v.exe"
+            Write-Host "install $v exit $(Run $exe '/quiet')"
+          }
+          Get-Process | Where-Object { $_.Path -like "$w*" } | ForEach-Object { Write-Host "leftover $($_.Name) $($_.Id)" }
+          $stock = Probe "$w\b-stock.exe" '/uninstall' 'stock-en'
+          $ours = Probe "$w\b-ours.exe" '/uninstall' 'ours-en'
+          $ar = Probe "$w\b-ours.exe" "/uninstall /lang 1025 /log `"$env:RUNNER_TEMP\ar.log`"" 'ours-ar'
+          Get-Content "$env:RUNNER_TEMP\ar.log" -ErrorAction SilentlyContinue | Select-Object -Last 25 | ForEach-Object { Write-Host "  arlog: $_" }
+          Write-Host "GATE: stock focus=$stock (P71 measured Repair)"
+          Write-Host "GATE: ours focus=$ours (want Uninstall)"
+          Write-Host "GATE: arabic focus=$ar"
+
           foreach ($v in @('stock','ours')) { Write-Host "cleanup $v exit $(Run "$w\b-$v.exe" '/uninstall /quiet')" }
 
       - uses: actions/upload-artifact@v4
