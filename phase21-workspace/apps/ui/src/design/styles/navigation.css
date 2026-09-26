@@ -70,7 +70,9 @@
   display:flex; align-items:center; justify-content:center; gap:.35rem;
   padding:.35rem .45rem; text-align:center;
 }
-.locale-button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--ac-type-body); }
+/* P75 trial: these labels are whole instructions ("Use dark theme"); an ellipsis cut them to
+   "Use dark t…" in English and "استخدام الس…" in Arabic. They wrap instead. */
+.locale-button span { overflow-wrap:anywhere; font-size:var(--ac-type-body); line-height:1.2; }
 .locale-button:hover { background:var(--ac-layer-hover); color:var(--ac-text-2); }
 
 .app-service {
@@ -80,7 +82,7 @@
 .status-dot { inline-size:.45rem; block-size:.45rem; border-radius:50%; background:var(--ac-danger); box-shadow:0 0 .6rem rgba(239,154,154,.18); }
 .status-dot.online { background:var(--ac-positive); box-shadow:0 0 .7rem rgba(131,213,178,.35); }
 .service-copy { min-inline-size:0; }
-.service-copy small,.service-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.service-copy small,.service-copy strong { display:block; overflow-wrap:anywhere; }
 .service-copy small { color:var(--ac-text-4); font-size:var(--ac-type-technical); }
 .service-copy strong { margin-block-start:.06rem; color:var(--ac-text-2); font-size:var(--ac-type-technical); font-weight:600; }
 .service-version { color:var(--ac-text-4); font-size:var(--ac-type-technical); font-family:var(--ac-font-mono); direction:ltr; unicode-bidi:isolate; }

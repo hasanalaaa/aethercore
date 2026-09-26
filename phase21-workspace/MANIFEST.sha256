@@ -417,11 +417,11 @@ f036490b8386020b8a80a30d826d7fc9896efbd9dfa84b955915abc436f652e1  apps/ui/src/de
 f05e0af5de56eeded5b33af0f8b8af3cb8ac4b2fdf05c6ec0c8ef8eceae5f766  apps/ui/src/design/signature/contracts.ts
 4eb7a82c81079ba9debacd6efbf8a083622557a21a99ec3abb5a2cb9141676f0  apps/ui/src/design/signature/index.ts
 1ee3183f79c6484c4536a29bf4cb0e80ff2ef7dff52fda734bc571d952f77211  apps/ui/src/design/styles/base.css
-06264893817dbb34589de8d4bddce51e35ae0ed19b14f64febac468eb1e7c076  apps/ui/src/design/styles/feature-layout.css
+781f0febee15833dbfbf03a116a821fb6e5739aee42b8e3e174f5c52f9a03ee9  apps/ui/src/design/styles/feature-layout.css
 0eeb8211a4bbc30fcd8ae3858b5e385259dcfaabc647d852274d6ef0a3817492  apps/ui/src/design/styles/fonts.css
 34a2876b66e7ce71107d5bfbd95f2b58e728bba1cd2290d9403c2c71a385cf94  apps/ui/src/design/styles/materials.css
 eec37c71f08c871f07eb1f89b7a2c42910c1a2b0471ed35f73ef0274697a1b8d  apps/ui/src/design/styles/motion.css
-8016304c25fb6507350adcdd13c1c38bd601aaa410f6611ab47d0b8c4835a662  apps/ui/src/design/styles/navigation.css
+f89fb559ea97c1a165a0c3a503b760bf34fe5ab55117ad338b01072efef33e8e  apps/ui/src/design/styles/navigation.css
 70d35f82309f64a39253039e038aed554e48f621bf115a8f96b181d6b41a7152  apps/ui/src/design/styles/responsive.css
 6f2bf78f7b6055439a138c940ab14d6cdb47bb3fe75e18b68e0745a9897f7ba6  apps/ui/src/design/styles/typography.css
 eee2ed9cf089b9395c212e6f3cb0232d7d3235d6b0ec595306625a5bef20f892  apps/ui/src/dev/layout-fixture.ts
