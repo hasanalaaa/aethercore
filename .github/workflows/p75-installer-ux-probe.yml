@@ -39,8 +39,10 @@ jobs:
             </Package>
           </Wix>
           '@ | Set-Content "$w\p.wxs"
+          (Get-Content "$w\p.wxs" -Raw).Replace('Installed OR (P75PROBE_REQUIRE)', 'P75PROBE_REQUIRE').Replace('P75UxProbe', 'P75UxOld').Replace('7C1B3E1A-5D2E-4E7B-9C0B-2F0F4B1E6A11', '7C1B3E1A-5D2E-4E7B-9C0B-2F0F4B1E6A12').Replace('0B8F6A61-1E0A-4C77-9C7B-3B7E9B6F1A21', '0B8F6A61-1E0A-4C77-9C7B-3B7E9B6F1A22') | Set-Content "$w\old.wxs"
           Push-Location $w
           dotnet tool run wix build p.wxs -arch x64 -o p.msi; if ($LASTEXITCODE) { throw 'msi' }
+          dotnet tool run wix build old.wxs -arch x64 -o old.msi; if ($LASTEXITCODE) { throw 'old msi' }
           Pop-Location
           $theme = (Resolve-Path installer\wix\theme).Path
           foreach ($v in @('stock','ours')) {
@@ -68,8 +70,8 @@ jobs:
           Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing, System.Windows.Forms
           $w = Join-Path $env:RUNNER_TEMP 'ux'
           $shots = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'ux-shots')
-          function Probe($exe, $args, $tag) {
-            $p = Start-Process $exe -ArgumentList $args -PassThru
+          function Probe($exe, $arguments, $tag) {
+            $p = Start-Process $exe -ArgumentList $arguments -PassThru
             $win = $null
             for ($i = 0; $i -lt 60 -and -not $win; $i++) {
               Start-Sleep -Milliseconds 500
@@ -104,11 +106,14 @@ jobs:
           Write-Host "GATE: ours focus=$ours (want Uninstall)"
           Write-Host "GATE: arabic focus=$ar"
 
-          # Installed OR: the MSI's launch condition fails after install; uninstall must still work.
-          $code = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object DisplayName -eq 'P75UxProbe').PSChildName
-          Write-Host "msi product code: $code"
-          $p = Start-Process msiexec -ArgumentList "/x $code /qn P75PROBE_REQUIRE= /l*v $env:RUNNER_TEMP\x.log" -Wait -PassThru
-          Write-Host "GATE: msiexec /x with the launch condition false exit=$($p.ExitCode) (0 wanted)"
+          # Installed OR: the launch condition is false at uninstall time; uninstall must still work.
+          foreach ($pkg in @('old','p')) {
+            $p = Start-Process msiexec -ArgumentList "/i `"$w\$pkg.msi`" /qn" -Wait -PassThru
+            Write-Host "install $pkg.msi exit $($p.ExitCode)"
+            $p = Start-Process msiexec -ArgumentList "/x `"$w\$pkg.msi`" /qn P75PROBE_REQUIRE=`"`" /l*v `"$env:RUNNER_TEMP\x-$pkg.log`"" -Wait -PassThru
+            Write-Host "GATE: $pkg.msi /x with its launch condition false exit=$($p.ExitCode)"
+            Select-String -Path "$env:RUNNER_TEMP\x-$pkg.log" -Pattern 'P75 probe requirement missing|Removal completed|Product: P75' | Select-Object -First 3 | ForEach-Object { Write-Host "  $($_.Line)" }
+          }
           foreach ($v in @('stock','ours')) { Start-Process "$w\b-$v.exe" -ArgumentList '/uninstall /quiet' -Wait }
 
       - uses: actions/upload-artifact@v4
