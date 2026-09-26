@@ -368,6 +368,11 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
     // IS instantaneous and real). Named so a consumer cannot read the zeros
     // as idle devices.
     partial.push(CollectorFault {
+        collector: "storage.activeTime".into(),
+        kind: "Degraded".into(),
+        detail: "not measured on Linux: disk active time (single-sample /proc/diskstats)".into(),
+    });
+    partial.push(CollectorFault {
         collector: "storage.rates".into(),
         kind: "Degraded".into(),
         detail: "not measured on Linux: active time, transfer latency, read/write bytes/sec \

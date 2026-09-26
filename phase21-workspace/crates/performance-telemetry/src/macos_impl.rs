@@ -395,10 +395,6 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
             });
             continue;
         }
-        // Honest proxy only: active_time_bp carries used-capacity basis points (capacity
-        // pressure, NOT device busy time); hardware queue counters do not exist in statfs
-        // and none are invented.
-        let used_bp = (((total.saturating_sub(available)) * BP) / total) as u32;
         let mount = unsafe {
             std::ffi::CStr::from_ptr(fs.f_mntonname.as_ptr())
                 .to_string_lossy()
@@ -407,7 +403,9 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
         out.push(StorageQueueSample {
             device_id: path.to_string_lossy().into_owned(),
             friendly_name: mount,
-            active_time_bp: used_bp,
+            // statfs has no busy time. Used capacity here made a full, idle disk read as a
+            // saturated one (P75 trial); capacity is in total/free below.
+            active_time_bp: 0,
             queue_depth_x100: 0,
             avg_transfer_latency_us: 0,
             read_bytes_per_sec: 0,
@@ -417,9 +415,14 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
         });
     }
     if !out.is_empty() {
-        // §44 1.A: latency/throughput fields are permanently 0 — statfs has no
-        // rate data — while active_time_bp (capacity pressure) IS real. Named
-        // so a consumer cannot mistake the zeros for idle devices.
+        // §44 1.A: active time, latency and throughput are permanently 0 — statfs has
+        // no rate data. Named so a consumer cannot mistake the zeros for idle devices;
+        // active time on its own, because it is the one a busy meter reads.
+        partial.push(CollectorFault {
+            collector: "storage.activeTime".into(),
+            kind: "Degraded".into(),
+            detail: "not measured on macOS: disk active time (statfs exposes capacity only)".into(),
+        });
         partial.push(CollectorFault {
             collector: "storage.rates".into(),
             kind: "Degraded".into(),
