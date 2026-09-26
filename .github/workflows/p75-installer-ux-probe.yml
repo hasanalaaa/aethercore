@@ -136,7 +136,8 @@ jobs:
           $stock = Probe "$w\b-stock.exe" '/uninstall' 'stock-en'
           $ours = Probe "$w\b-ours.exe" '/uninstall' 'ours-en'
           $ar = Probe "$w\b-ours.exe" "/uninstall /lang 1025 /log `"$env:RUNNER_TEMP\ar.log`"" 'ours-ar'
-          Get-Content "$env:RUNNER_TEMP\ar.log" -ErrorAction SilentlyContinue | Select-Object -Last 25 | ForEach-Object { Write-Host "  arlog: $_" }
+          Get-Content "$env:RUNNER_TEMP\ar.log" -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch 'i410: Variable' } | ForEach-Object { Write-Host "  arlog: $_" }
+          Get-ChildItem $env:TEMP -Filter 'P75Uxours*' -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName | Where-Object { $_ -match '\]e\d|rror|ail|heme' } | ForEach-Object { Write-Host "  balog: $_" } }
           Write-Host "GATE: stock focus=$stock (P71 measured Repair)"
           Write-Host "GATE: ours focus=$ours (want Uninstall)"
           Write-Host "GATE: arabic focus=$ar"
