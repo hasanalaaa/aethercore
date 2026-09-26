@@ -19,36 +19,53 @@ use aethercore_contracts::v1;
 use aethercore_operation_kernel::MutationSupervisor;
 use aethercore_persistence::{CareRunRecord, CareStepRecord, Database};
 
-/// Session consent is in-memory per principal by design: consent that survives a
-/// session restart would not be "one-time session consent". Each grant is bound to
-/// the digest of the plan the owner was shown; a different plan needs a new grant.
+/// How long an approval waits for the run it authorizes: the consent broker's per-plan
+/// window (`begin_consent_intent`), so care's single approval never outlasts a broker one.
+const APPROVAL_WINDOW: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// DBT-P75-045: one owner approval of one care plan, for one run. Held in memory per
+/// principal (it must not survive a restart), bound to the digest of the plan the owner was
+/// shown, and taken by the next run whatever that run does — no approval outlives its run.
 #[derive(Default)]
 pub struct SessionConsentRegistry {
-    granted: Mutex<std::collections::BTreeMap<String, String>>,
+    granted: Mutex<std::collections::BTreeMap<String, (String, std::time::Instant)>>,
 }
 
 impl SessionConsentRegistry {
     // A poisoned lock here means some other thread panicked while holding the map; the map
     // itself is still consistent, so recovery is the workspace idiom (see every other `Mutex`
     // in this service) and a panic would take consent down with it. P63.
-    pub fn grant(&self, owner_principal_key: &str, plan_digest: &str) {
+    fn approvals(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::BTreeMap<String, (String, std::time::Instant)>>
+    {
         self.granted
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(owner_principal_key.to_string(), plan_digest.to_string());
     }
 
-    /// The plan digest this owner consented to, if any.
-    pub fn approved_digest(&self, owner_principal_key: &str) -> Option<String> {
-        self.granted
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(owner_principal_key)
-            .cloned()
+    pub fn grant(&self, owner_principal_key: &str, plan_digest: &str) {
+        self.approvals().insert(
+            owner_principal_key.to_string(),
+            (plan_digest.to_string(), std::time::Instant::now()),
+        );
+    }
+
+    /// Removes this owner's approval and returns the plan digest it named, if it is still
+    /// within its window. Called once per run, before the run can act on it.
+    fn take(&self, owner_principal_key: &str) -> Option<String> {
+        self.approvals()
+            .remove(owner_principal_key)
+            .filter(|(_, at)| at.elapsed() <= APPROVAL_WINDOW)
+            .map(|(digest, _)| digest)
     }
 
     fn covers(&self, owner_principal_key: &str, plan: &CarePlan) -> bool {
-        self.approved_digest(owner_principal_key).as_deref() == Some(&plan.plan_digest_sha256)
+        self.approvals()
+            .get(owner_principal_key)
+            .is_some_and(|(digest, at)| {
+                at.elapsed() <= APPROVAL_WINDOW && *digest == plan.plan_digest_sha256
+            })
     }
 }
 
@@ -463,8 +480,9 @@ impl CareCoordinator {
         ))
     }
 
-    /// Grants one-time session consent for auto-level work — for the plan composed now,
-    /// which the returned status shows. A different plan later needs a new grant.
+    /// Records the owner's approval of the plan composed now, which the returned status
+    /// shows: it authorizes that plan's Auto steps for the next run only, within
+    /// `APPROVAL_WINDOW`. A different plan, or a second run, needs a new approval.
     pub fn grant_session_consent(
         &self,
         owner_principal_key: &str,
@@ -488,7 +506,7 @@ impl CareCoordinator {
         }
     }
 
-    /// Runs the composed plan. Requires prior session consent.
+    /// Runs the composed plan under this owner's approval, which the run consumes.
     pub fn start_run(
         &self,
         owner_principal_key: &str,
@@ -497,6 +515,7 @@ impl CareCoordinator {
         let plan = compose_plan(&self.db, owner_principal_key)?;
         let fence = CommitFence::new();
         let _active = ActiveRun::enter(&self.active_run, fence.clone())?;
+        let approved_digest = self.consent.take(owner_principal_key);
         let journal = PersistenceJournal {
             db: self.db.clone(),
         };
@@ -512,7 +531,7 @@ impl CareCoordinator {
                 owner_principal_key,
                 run_id,
                 &plan,
-                self.consent.approved_digest(owner_principal_key).as_deref(),
+                approved_digest.as_deref(),
             );
         match result {
             Ok(report) => Ok(status_proto(
@@ -824,6 +843,8 @@ mod p75_care_consent_tests {
         assert_eq!(dispatch.started.load(Ordering::SeqCst), 0);
         drop(foreign);
 
+        // The refused attempt consumed that approval (DBT-P75-045: one approval, one run).
+        let _ = care.grant_session_consent(OWNER);
         // While care runs, nothing else may start on the machine.
         care.start_run(OWNER, "run-free").expect("run");
         assert_eq!(dispatch.started.load(Ordering::SeqCst), 1);
@@ -887,6 +908,38 @@ mod p75_care_consent_tests {
         let status = status.expect("the new plan is shown for consent");
         assert_eq!(status.state, "AwaitingConsent");
         assert_eq!(status.steps.len(), 2);
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// DBT-P75-045: an approval is single-use. The run it authorized consumes it; a
+    /// second start of the very same plan needs a new approval.
+    #[test]
+    fn a_consumed_approval_cannot_run_twice() {
+        let (db, path) = test_db();
+        seed_cleanup_plan(&db, "c1");
+        let (care, dispatch) = coordinator(&db);
+        let _ = care.grant_session_consent(OWNER);
+        care.start_run(OWNER, "run-once").expect("run");
+        let again = care.start_run(OWNER, "run-twice").expect("status");
+        assert_eq!(again.state, "AwaitingConsent");
+        assert_eq!(dispatch.started.load(Ordering::SeqCst), 1);
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// An approval is bound to the principal that gave it: another owner's approval
+    /// authorizes nothing of this owner's.
+    #[test]
+    fn another_owners_approval_is_rejected() {
+        const OTHER: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        let (db, path) = test_db();
+        seed_cleanup_plan(&db, "c1");
+        let (care, dispatch) = coordinator(&db);
+        let _ = care.grant_session_consent(OTHER);
+        let status = care.start_run(OWNER, "run-other").expect("status");
+        assert_eq!(status.state, "AwaitingConsent");
+        assert_eq!(dispatch.started.load(Ordering::SeqCst), 0);
         drop(db);
         let _ = std::fs::remove_file(&path);
     }
