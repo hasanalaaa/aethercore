@@ -178,6 +178,8 @@ foreach ($module in $routerModules) {
 }
 Reject-Marker 'crates/ipc/src/lib.rs' 'AetherCore\.Maintenance\.v1' 'obsolete connection-per-request pipe endpoint'
 Reject-Marker 'apps/ui/src/App.svelte' 'setInterval\s*\(' 'legacy renderer polling loop'
-Reject-Marker 'crates/contracts/proto/aethercore.proto' '^\s*(message|enum|service)\s+' 'aggregator must not regain monolithic definitions'
+# P75: (?m). Get-Content -Raw is one string, so a bare ^ matched only its first character and
+# a definition on any later line passed.
+Reject-Marker 'crates/contracts/proto/aethercore.proto' '(?m)^\s*(message|enum|service)\s+' 'aggregator must not regain monolithic definitions'
 
 Write-Host "Phase 10 architecture/source audit passed. main.rs=$mainLines lines; router.rs=$routerLines lines + $($routerModules.Count) domain modules." -ForegroundColor Green
