@@ -70,7 +70,7 @@ fn insight_without_citations_cannot_be_constructed() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn dangling_citations_produce_zero_surviving_insights() {
+fn dangling_citations_never_survive_and_the_fallback_serves() {
     struct Fabricator;
     impl LocalReasoner for Fabricator {
         fn load(&mut self, _: &std::path::Path) -> Result<(), String> {
@@ -107,8 +107,65 @@ fn dangling_citations_produce_zero_surviving_insights() {
         .request_insights(&pack, "explain", false)
         .expect("call succeeds");
     assert!(
-        out.is_empty(),
-        "I2: insights with unresolvable citations must be dropped"
+        out.iter().all(|insight| insight
+            .citations
+            .iter()
+            .all(|c| c.evidence_id != "totally-fabricated-id")),
+        "I2: insights with unresolvable citations must be dropped: {out:?}"
+    );
+    // P75: a model whose every insight fails the citation gate has served
+    // nothing, so the rule engine serves this call — it used to return ZERO
+    // insights while `engine_label` read `localModel`, because the fallback
+    // only ran when the model returned no raw candidates at all.
+    assert!(
+        !out.is_empty(),
+        "the fallback must serve when nothing cited survives"
+    );
+    assert!(
+        out.iter()
+            .all(|i| i.engine == InsightEngineKind::RuleFallback
+                && i.citations.iter().all(|c| pack.resolves(c))),
+        "{out:?}"
+    );
+    assert_eq!(selector.engine_label(), "ruleFallback");
+}
+
+/// A model that panics must not hold the single-flight lane forever. The lane
+/// used to be released by a plain store after the call, which a panic skips —
+/// every later request then read `Busy` until the service restarted.
+#[test]
+fn a_panicking_model_releases_the_single_flight_lane() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct PanicsOnce(AtomicBool);
+    impl LocalReasoner for PanicsOnce {
+        fn load(&mut self, _: &std::path::Path) -> Result<(), String> {
+            Ok(())
+        }
+        fn is_loaded(&self) -> bool {
+            true
+        }
+        fn infer(
+            &self,
+            _: &TypedEvidencePack,
+            _: &str,
+            _: Instant,
+        ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
+            if !self.0.swap(true, Ordering::SeqCst) {
+                panic!("the model crashed mid-inference");
+            }
+            Ok(Vec::new())
+        }
+    }
+    let selector = ReasonerSelector::new(Some(Box::new(PanicsOnce(AtomicBool::new(false)))));
+    let crashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        selector.request_insights(&populated_pack(), "", false)
+    }));
+    assert!(crashed.is_err(), "the first call panics");
+    let next = selector.request_insights(&populated_pack(), "", false);
+    assert!(
+        matches!(&next, Ok(insights) if !insights.is_empty()),
+        "the lane must be free after a panic, got {:?}",
+        next.map(|i| i.len())
     );
 }
 
@@ -344,11 +401,24 @@ fn embedded_model_path() -> std::path::PathBuf {
     repo_root().join(aethercore_intelligence_core::EMBEDDED_MODEL_RELATIVE_PATH)
 }
 
+/// DBT-P62-004, as in `embedded_generation.rs`: T1, T4 and T5 each load the 1.5B
+/// model, and since P75 T4 and T5 generate with it. `cargo test` runs them on
+/// parallel threads, and a budget measured under 3x CPU oversubscription on a
+/// 2-vCPU runner is not a measurement of anything the product does.
+static ONE_MODEL_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn one_model_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+    ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// T1 — happy path: real artifact present + hash ok + RAM budget ok → the loader
 /// accepts, the typed startup log line is produced, and a selector built on the
 /// loaded reasoner reports the localModel engine as active.
 #[test]
 fn t1_embedded_artifact_verifies_and_engine_reports_local_model() {
+    let _serialised = one_model_at_a_time();
     let model_path = embedded_model_path();
     assert!(
         model_path.exists(),
@@ -358,8 +428,9 @@ fn t1_embedded_artifact_verifies_and_engine_reports_local_model() {
     aethercore_intelligence_core::verify_model_hash(&model_path, &pinned)
         .expect("shipped artifact must match its pinned sha256");
 
-    // Full startup sequence through the public activation helper (emits the typed log).
-    let label = aethercore_intelligence_core::activate_embedded_reasoner(&repo_root())
+    // Full startup sequence through the public activation helper (the one load
+    // the service performs), which hands back the typed startup log line.
+    let (llama, label) = aethercore_intelligence_core::activate_embedded_reasoner(&repo_root())
         .expect("embedded reasoner activates");
     assert!(
         label.contains("embedded reasoner active")
@@ -369,27 +440,8 @@ fn t1_embedded_artifact_verifies_and_engine_reports_local_model() {
     );
 
     // Selector built with the loaded reasoner reports localModel.
-    struct Loaded(LlamaCppReasoner);
-    impl LocalReasoner for Loaded {
-        fn load(&mut self, p: &std::path::Path) -> Result<(), String> {
-            self.0.load(p)
-        }
-        fn is_loaded(&self) -> bool {
-            self.0.is_loaded()
-        }
-        fn infer(
-            &self,
-            pack: &TypedEvidencePack,
-            q: &str,
-            deadline: Instant,
-        ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
-            self.0.infer(pack, q, deadline)
-        }
-    }
-    let mut llama = LlamaCppReasoner::new();
-    llama.load(&model_path).expect("load");
     assert!(llama.is_loaded());
-    let selector = ReasonerSelector::new(Some(Box::new(Loaded(llama))));
+    let selector = ReasonerSelector::new(Some(Box::new(llama)));
     assert_eq!(
         selector.engine_label(),
         "localModel",
@@ -412,31 +464,51 @@ fn t3_missing_artifact_refuses_and_degrades() {
     );
 }
 
-/// T4 — REAL stack smoke over the genuine artifact: load succeeds and an inference
-/// call returns within INFERENCE_TIMEOUT. Token-level generation is not wired yet
-/// (gated on QD-023-003 perf validation), so the documented pending-generation error
-/// is asserted — never a fabricated insight.
+/// T4 — REAL stack over the genuine artifact: load succeeds and an inference
+/// call returns within INFERENCE_TIMEOUT, never a fabricated insight.
+///
+/// P75: this asserted the documented pending-generation `Err`, because
+/// `infer_embedded` returned one unconditionally. The model now generates, so
+/// what "never a fabricated insight" means is checked on what it produced:
+/// `infer` succeeds, and every insight it returns cites evidence this pack
+/// holds, is labelled as the model's, and is never Strong. An empty vector
+/// (the model's own NO EVIDENCE) is a legitimate answer; a fault is not.
 #[test]
 fn t4_real_stack_inference_contract_over_real_artifact() {
+    let _serialised = one_model_at_a_time();
     let mut llama = LlamaCppReasoner::new();
     llama.load(&embedded_model_path()).expect("artifact loads");
+    let pack = populated_pack();
     let deadline = Instant::now() + aethercore_intelligence_core::INFERENCE_TIMEOUT;
-    let result = llama.infer(&populated_pack(), "explain", deadline);
-    match result {
-        Err(msg) => assert!(
-            msg.contains("generation") || msg.contains("context pool"),
-            "failure must be the documented pending-generation one: {msg}"
-        ),
-        Ok(insights) => {
-            assert!(!insights.is_empty());
-            assert!(insights.iter().all(|i| i.schema_version == 1));
+    // Whether the model finishes inside 10 s is the host's property: on the 2-vCPU
+    // Windows runner it ran out after 29 tokens (CI 36206362980), which is the honest
+    // answer there. macOS (Metal) must finish; every host must stop in time or cite.
+    let insights = match llama.infer(&pack, "explain", deadline) {
+        Ok(insights) => insights,
+        Err(error) => {
+            assert!(
+                !cfg!(target_os = "macos") && error.to_string().contains("deadline exceeded"),
+                "only a deadline may stop the model, and not on macOS: {error}"
+            );
+            assert!(Instant::now() < deadline, "it stopped after its deadline");
+            return;
         }
+    };
+    for insight in &insights {
+        assert_eq!(insight.schema_version, 1);
+        assert_eq!(insight.engine, InsightEngineKind::LocalModel);
+        assert_ne!(insight.confidence, InsightConfidence::Strong);
+        assert!(
+            !insight.citations.is_empty() && insight.citations.iter().all(|c| pack.resolves(c)),
+            "{insight:?}"
+        );
     }
 }
 
 /// T5 — budget: load + inference attempt respect declared time constants.
 #[test]
 fn t5_budget_constants_respected_on_load_and_call() {
+    let _serialised = one_model_at_a_time();
     let started = Instant::now();
     let mut llama = LlamaCppReasoner::new();
     llama.load(&embedded_model_path()).expect("loads");
@@ -448,5 +520,27 @@ fn t5_budget_constants_respected_on_load_and_call() {
     assert!(
         started.elapsed() < aethercore_intelligence_core::INFERENCE_TIMEOUT,
         "load+infer must respect the hard time budget"
+    );
+}
+
+/// P75 — a deadline that has already passed stops the model BEFORE it reads the
+/// prompt. The prompt decode used to run unguarded, and on a slow CPU it is the
+/// longest single step.
+#[test]
+fn t5b_an_expired_deadline_refuses_before_the_prompt_is_read() {
+    let _serialised = one_model_at_a_time();
+    let mut llama = LlamaCppReasoner::new();
+    llama.load(&embedded_model_path()).expect("loads");
+    let called = Instant::now();
+    let result = llama.infer(&populated_pack(), "", called);
+    let error = result.expect_err("an expired deadline cannot produce insights");
+    assert!(
+        error.contains("deadline exceeded after 0 of"),
+        "stopped before the first prompt chunk: {error}"
+    );
+    assert!(
+        called.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        called.elapsed()
     );
 }

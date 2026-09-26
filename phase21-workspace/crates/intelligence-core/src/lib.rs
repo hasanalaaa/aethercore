@@ -18,16 +18,17 @@ pub mod model;
 
 pub use assistant::{
     ASSISTANT_DEADLINE, ASSISTANT_SCHEMA_V1, AssistantEngine, Generated, GenerationBudget,
-    MAX_ANSWER_TOKENS, MAX_QUESTION_CHARS, RefusalReason, StreamingReasoner, TurnOutcome, ground,
-    render_prompt,
+    MAX_ANSWER_TOKENS, MAX_QUESTION_CHARS, MODEL_BUSY, RefusalReason, StreamingReasoner,
+    TurnOutcome, ground, render_prompt,
 };
 pub use engine::{
     DeterministicFallbackReasoner, INFERENCE_TIMEOUT, IntelligenceError, LocalReasoner,
     MAX_MODEL_RAM_BUDGET_BYTES, ReasonerSelector,
 };
 pub use llama::{
-    EMBEDDED_MODEL_RELATIVE_PATH, LlamaCppReasoner, ModelManifestEntry, activate_embedded_reasoner,
-    embedded_model_entry, load_streaming_reasoner, verify_model_hash,
+    EMBEDDED_MODEL_RELATIVE_PATH, INSIGHT_MAX_TOKENS, INSIGHT_SYSTEM_PROMPT, LlamaCppReasoner,
+    ModelManifestEntry, activate_embedded_reasoner, embedded_model_entry, insight_grammar,
+    insights_from_text, verify_model_hash,
 };
 pub use model::{
     Citation, EvidenceItem, EvidenceSurface, INSIGHT_SCHEMA_V1, Insight, InsightConfidence,

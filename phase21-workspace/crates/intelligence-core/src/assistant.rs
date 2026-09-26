@@ -47,6 +47,12 @@ pub const FAULT_MODEL_UNAVAILABLE: &str = "assistant.fault.modelUnavailable";
 pub const FAULT_DEADLINE_EXCEEDED: &str = "assistant.fault.deadlineExceeded";
 pub const FAULT_GENERATION_FAILED: &str = "assistant.fault.generationFailed";
 
+/// The error a reasoner returns when the one embedded model is already
+/// generating for another request (the insight path and the assistant share it).
+/// Not a failure: the turn is refused `Busy`, and an insight degrades to the rule
+/// engine, both at once rather than queued behind a generation.
+pub const MODEL_BUSY: &str = "the embedded model is generating for another request";
+
 /// Why a turn could not be grounded. Never a fault: the product has simply not
 /// measured the thing being asked about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -352,13 +358,9 @@ impl AssistantEngine {
                 detail: "the embedded artifact did not load".into(),
             };
         }
-        if self
-            .in_flight
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
+        let Some(lane) = crate::engine::Lane::acquire(&self.in_flight) else {
             return TurnOutcome::Refused(RefusalReason::Busy);
-        }
+        };
 
         let budget = GenerationBudget::new(cancel);
         let bounded: &str = if question.len() > MAX_QUESTION_CHARS {
@@ -371,9 +373,10 @@ impl AssistantEngine {
             question
         };
         let result = reasoner.generate(pack, bounded, &budget, sink);
-        self.in_flight.store(false, Ordering::SeqCst);
+        drop(lane);
 
         match result {
+            Err(detail) if detail == MODEL_BUSY => TurnOutcome::Refused(RefusalReason::Busy),
             Err(detail) => TurnOutcome::Faulted {
                 fault_key: if budget.expired() {
                     FAULT_DEADLINE_EXCEEDED
@@ -799,6 +802,62 @@ mod tests {
         assert_eq!(
             reasoner.nested.lock().unwrap().clone(),
             Some(TurnOutcome::Refused(RefusalReason::Busy)),
+        );
+    }
+
+    /// The model held by an insight generation is the lane being busy, not a
+    /// generation failure: the user can simply ask again.
+    #[test]
+    fn a_model_busy_with_an_insight_refuses_the_turn_busy() {
+        let engine = engine(Err(MODEL_BUSY.into()));
+        assert_eq!(
+            engine.ask(
+                &pack_of(&["fact-a"]),
+                "q",
+                false,
+                Arc::new(AtomicBool::new(false)),
+                &mut |_| {},
+            ),
+            TurnOutcome::Refused(RefusalReason::Busy),
+        );
+    }
+
+    /// A reasoner that panics must not leave the lane held: every later turn
+    /// would otherwise be refused `Busy` until the service restarted.
+    #[test]
+    fn a_panicking_reasoner_releases_the_lane() {
+        struct PanicsOnce(AtomicBool);
+        impl StreamingReasoner for PanicsOnce {
+            fn is_loaded(&self) -> bool {
+                true
+            }
+            fn generate(
+                &self,
+                _: &TypedEvidencePack,
+                _: &str,
+                _: &GenerationBudget,
+                _: &mut dyn FnMut(&str),
+            ) -> Result<Generated, String> {
+                if !self.0.swap(true, Ordering::SeqCst) {
+                    panic!("llama.cpp aborted mid-turn");
+                }
+                answered("A plan ran [E1].")
+            }
+        }
+        let engine = AssistantEngine::new(Some(Box::new(PanicsOnce(AtomicBool::new(false)))));
+        let ask = || {
+            engine.ask(
+                &pack_of(&["fact-a"]),
+                "q",
+                false,
+                Arc::new(AtomicBool::new(false)),
+                &mut |_| {},
+            )
+        };
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(ask)).is_err());
+        assert!(
+            matches!(ask(), TurnOutcome::Answered { .. }),
+            "the lane must be free after a panic"
         );
     }
 

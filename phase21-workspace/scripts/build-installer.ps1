@@ -139,9 +139,12 @@ foreach ($name in $required) {
     if (-not (Test-Path (Join-Path $Payload $name))) { throw "Missing installer payload: $name" }
 }
 
-function Deterministic-ProductCode([string]$input) {
+# P75: the parameter was named $input, PowerShell's automatic pipeline enumerator, which
+# overwrote it inside the function. Every version got {0F9F349D-01C8-B3C2-7242-83B5D29047C9}
+# (measured in pwsh 7.6 and Windows PowerShell, windows-installer.yml product-code-probe).
+function Deterministic-ProductCode([string]$identity) {
     $namespace = [Text.Encoding]::UTF8.GetBytes('AetherCore/MSI/ProductCode/v1')
-    $value = [Text.Encoding]::UTF8.GetBytes($input)
+    $value = [Text.Encoding]::UTF8.GetBytes($identity)
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $hash = $sha.ComputeHash($namespace + $value) } finally { $sha.Dispose() }
     $bytes = [byte[]]$hash[0..15]

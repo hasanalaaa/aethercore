@@ -1,10 +1,12 @@
 //! Text rendering + the single exit funnel. JSON and text views derive from the SAME
-//! serde_json projection, so the two modes can never disagree. All output is ASCII,
-//! locale-independent (no thousands separators, no platform number formatting).
+//! serde_json projection, so the two modes can never disagree. JSON is locale-neutral;
+//! text is English ASCII, or Arabic labels and messages under `--lang ar` (numbers are
+//! never locale-formatted: no thousands separators, no platform number formatting).
 
 use crate::cli::{Config, OutputMode};
 use crate::envelope;
 use crate::error::CliError;
+use crate::i18n::{self, Lang};
 use std::io::Write as _;
 
 /// Renders an aligned ASCII table.
@@ -52,19 +54,19 @@ pub fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
     out
 }
 
-fn scalar_to_text(value: &serde_json::Value) -> String {
+fn scalar_to_text(lang: Lang, value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Null => "-".to_string(),
         serde_json::Value::Bool(b) => b.to_string(),
         serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::String(s) => i18n::value_text(lang, s),
         serde_json::Value::Array(items) => {
             if items.is_empty() {
                 "[]".to_string()
             } else {
                 items
                     .iter()
-                    .map(scalar_to_text)
+                    .map(|item| scalar_to_text(lang, item))
                     .collect::<Vec<_>>()
                     .join(",")
             }
@@ -73,24 +75,25 @@ fn scalar_to_text(value: &serde_json::Value) -> String {
     }
 }
 
-fn key_value_lines(prefix: &str, value: &serde_json::Value, out: &mut Vec<String>) {
+fn key_value_lines(lang: Lang, prefix: &str, value: &serde_json::Value, out: &mut Vec<String>) {
     match value {
         serde_json::Value::Object(map) => {
             for (key, inner) in map {
+                let key = i18n::field_label(lang, key);
                 let label = if prefix.is_empty() {
-                    key.clone()
+                    key
                 } else {
                     format!("{prefix}.{key}")
                 };
                 match inner {
-                    serde_json::Value::Object(_) => key_value_lines(&label, inner, out),
+                    serde_json::Value::Object(_) => key_value_lines(lang, &label, inner, out),
                     // Arrays of objects render as tables below; scalar arrays inline here.
                     serde_json::Value::Array(items) if is_object_array(items) => {}
-                    other => out.push(format!("{:<34} {}", label, scalar_to_text(other))),
+                    other => out.push(format!("{:<34} {}", label, scalar_to_text(lang, other))),
                 }
             }
         }
-        other => out.push(format!("{:<34} {}", prefix, scalar_to_text(other))),
+        other => out.push(format!("{:<34} {}", prefix, scalar_to_text(lang, other))),
     }
 }
 
@@ -100,7 +103,7 @@ fn is_object_array(items: &[serde_json::Value]) -> bool {
 
 /// Emits one aligned table per array-of-objects section (deterministic column order =
 /// first row's insertion order).
-fn table_sections(value: &serde_json::Value, out: &mut Vec<String>) {
+fn table_sections(lang: Lang, value: &serde_json::Value, out: &mut Vec<String>) {
     let serde_json::Value::Object(map) = value else {
         return;
     };
@@ -123,27 +126,50 @@ fn table_sections(value: &serde_json::Value, out: &mut Vec<String>) {
                     .map(|header| {
                         entry
                             .get(*header)
-                            .map(scalar_to_text)
+                            .map(|cell| scalar_to_text(lang, cell))
                             .unwrap_or_else(|| "-".to_string())
                     })
                     .collect(),
                 _ => Vec::new(),
             })
             .collect();
+        let labels: Vec<String> = headers.iter().map(|h| i18n::field_label(lang, h)).collect();
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         out.push(String::new());
-        out.push(format!("[{key}]"));
-        out.push(table(&headers, &rows));
+        out.push(format!("[{}]", i18n::field_label(lang, key)));
+        out.push(table(&labels, &rows));
     }
 }
 
 /// Human view of a command's data projection: aligned key/value block plus a real
 /// ASCII table for every array section. Deterministic, locale-independent.
-pub fn render_text(command: &str, data: &serde_json::Value) -> String {
+pub fn render_text(lang: Lang, command: &str, data: &serde_json::Value) -> String {
     let mut lines = Vec::new();
     lines.push(format!("== {command} =="));
-    key_value_lines("", data, &mut lines);
-    table_sections(data, &mut lines);
+    // English output predates the catalog and is kept byte-for-byte; Arabic gets the
+    // catalog's one-line outcome where one exists.
+    if lang == Lang::Ar
+        && let Some(outcome) = i18n::outcome_text(lang, command)
+    {
+        lines.push(outcome.to_string());
+    }
+    key_value_lines(lang, "", data, &mut lines);
+    table_sections(lang, data, &mut lines);
     lines.join("\n") + "\n"
+}
+
+/// The text-mode failure line. English keeps its established wording; Arabic leads
+/// with the catalog text and keeps the English reason as the technical detail.
+pub fn error_line(lang: Lang, error: &CliError) -> String {
+    match lang {
+        Lang::En => format!("aetherctl: {} [{}]", error.text_reason(), error.kind()),
+        Lang::Ar => format!(
+            "aetherctl: {} ({}) [{}]",
+            i18n::error_text(lang, error),
+            error.text_reason(),
+            error.kind()
+        ),
+    }
 }
 
 /// THE exit funnel: prints exactly one envelope (JSON) or one text report, returns the
@@ -162,7 +188,7 @@ pub fn finish(config: &Config, command: &str, result: Result<serde_json::Value, 
                     }
                 },
                 OutputMode::Text => {
-                    print!("{}", render_text(command, &data));
+                    print!("{}", render_text(config.lang, command, &data));
                 }
             }
             let _ = std::io::stdout().flush();
@@ -185,10 +211,50 @@ pub fn finish(config: &Config, command: &str, result: Result<serde_json::Value, 
                     }
                 }
             } else {
-                eprintln!("aetherctl: {} [{}]", error.text_reason(), error.kind());
+                eprintln!("{}", error_line(config.lang, &error));
             }
             let _ = std::io::stdout().flush();
             error.exit_code().as_i32()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// English text predates the catalog and must stay byte-for-byte: every field name
+    /// and value below has an Arabic catalog entry, and none may change in English.
+    #[test]
+    fn english_text_is_the_pre_catalog_rendering() {
+        let data = serde_json::json!({
+            "recordCount": 3,
+            "signed": true,
+            "source": "native",
+            "state": "cli.detect.reachable",
+            "items": [{ "platform": "notAvailable", "digest": "ab" }],
+        });
+        let expected = [
+            "== export verify ==".to_string(),
+            format!("{:<34} {}", "recordCount", "3"),
+            format!("{:<34} {}", "signed", "true"),
+            format!("{:<34} {}", "source", "native"),
+            format!("{:<34} {}", "state", "cli.detect.reachable"),
+            String::new(),
+            "[items]".to_string(),
+            // Columns follow the projection's key order (serde_json sorts keys).
+            table(
+                &["digest", "platform"],
+                &[vec!["ab".to_string(), "notAvailable".to_string()]],
+            ),
+        ]
+        .join("\n")
+            + "\n";
+        assert_eq!(render_text(Lang::En, "export verify", &data), expected);
+        let arabic = render_text(Lang::Ar, "export verify", &data);
+        assert!(
+            arabic.contains(i18n::t(Lang::Ar, "label.recordCount")),
+            "{arabic}"
+        );
     }
 }
