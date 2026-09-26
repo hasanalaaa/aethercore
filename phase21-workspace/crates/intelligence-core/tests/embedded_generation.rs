@@ -19,11 +19,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::time::Instant;
 
 use aethercore_intelligence_core::{
     AssistantEngine, EMBEDDED_MODEL_RELATIVE_PATH, EvidenceItem, EvidenceSurface, GenerationBudget,
-    LlamaCppReasoner, LocalReasoner, RefusalReason, StreamingReasoner, TurnOutcome,
-    TypedEvidencePack, embedded_model_entry, verify_model_hash,
+    INFERENCE_TIMEOUT, InsightConfidence, InsightEngineKind, LlamaCppReasoner, LocalReasoner,
+    ReasonerSelector, RefusalReason, StreamingReasoner, TurnOutcome, TypedEvidencePack,
+    embedded_model_entry, verify_model_hash,
 };
 
 /// The workspace root, two levels above this crate.
@@ -80,6 +82,15 @@ fn the_shipped_artifact_is_present_and_matches_its_pinned_hash() {
 /// gets the machine.
 static ONE_MODEL_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// DBT-P62-004 is retired on a MEASURED wall time on the runner, not an exit
+/// code. `eprintln!` is captured by the test harness and shown only on failure,
+/// so a passing run would log nothing; a direct write to the stderr handle is
+/// not captured, and lands in the CI log on every run.
+fn measured(line: &str) {
+    use std::io::Write;
+    let _ = writeln!(std::io::stderr(), "DBT-P62-004 measured: {line}");
+}
+
 /// The one that fails while `DBT-P56-002` is open.
 #[test]
 fn the_embedded_model_generates_tokens_over_an_evidence_pack() {
@@ -95,6 +106,7 @@ fn the_embedded_model_generates_tokens_over_an_evidence_pack() {
 
     let mut streamed: Vec<String> = Vec::new();
     let budget = GenerationBudget::new(Arc::new(AtomicBool::new(false)));
+    let started = Instant::now();
     let generated = reasoner
         .generate(
             &pack(),
@@ -103,6 +115,12 @@ fn the_embedded_model_generates_tokens_over_an_evidence_pack() {
             &mut |accumulated| streamed.push(accumulated.to_owned()),
         )
         .expect("generation must produce text, not a fault");
+    measured(&format!(
+        "assistant generation: {} token(s) in {} ms (deadline {} ms)",
+        generated.tokens,
+        started.elapsed().as_millis(),
+        aethercore_intelligence_core::ASSISTANT_DEADLINE.as_millis()
+    ));
 
     assert!(
         generated.tokens > 0,
@@ -176,6 +194,215 @@ fn loaded_engine() -> AssistantEngine {
     let mut reasoner = LlamaCppReasoner::new();
     reasoner.load(&path).expect("the artifact must load");
     AssistantEngine::new(Some(Box::new(reasoner)))
+}
+
+/// The pack the service actually composes: maintenance rows keyed by plan UUIDs
+/// and timeline patterns keyed by 64-hex semantic identities. Measured on this
+/// shape rather than on `pack()` because prompt length is what a slow CPU pays
+/// for, and a two-item pack of short ids would measure a prompt the product
+/// never sends.
+fn product_shaped_pack() -> TypedEvidencePack {
+    let mut pack = TypedEvidencePack::default();
+    for (index, (domain, stage)) in [
+        ("Cleanup", "Completed"),
+        ("Startup", "Completed"),
+        ("WindowsRepair", "RecoveryRequired"),
+        ("Drivers", "Completed"),
+        ("Cleanup", "Completed"),
+        ("Startup", "Failed"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let id = format!("5f0c2a1e-8b7d-4c3a-9e21-00000000000{index}");
+        pack.push(EvidenceItem {
+            evidence_id: id.clone(),
+            surface: EvidenceSurface::MaintenanceHistory,
+            detail: format!("plan {id} domain {domain} stage {stage}"),
+        });
+    }
+    for (id, code, count) in [
+        (
+            "3c9d0e5a7f1b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d",
+            "verify-dism",
+            5,
+        ),
+        (
+            "e41b7a9c2d5f8e0a3b6c9d2e5f8a1b4c7d0e3f6a9b2c5d8e1f4a7b0c3d6e9f2a",
+            "journal.transition:Failed",
+            3,
+        ),
+    ] {
+        pack.push(EvidenceItem {
+            evidence_id: id.into(),
+            surface: EvidenceSurface::TimelinePattern,
+            detail: format!(
+                "recurring failure: class operation code {code}, {count} occurrences, recurrence confidence weak"
+            ),
+        });
+    }
+    pack
+}
+
+/// P75 — the INSIGHT path over the real model. `DBT-P56-002`'s other half: until
+/// this, `infer_embedded` returned `Err` unconditionally and every insight was
+/// the rule engine's, whatever the badge said.
+///
+/// Served through the selector, because that is the product path: its 10 s
+/// `INFERENCE_TIMEOUT` is the budget the RPC thread runs under, and the desktop
+/// client gives up at 15 s. Prints its wall time so the Windows CI log carries
+/// the `DBT-P62-004` measurement, not only an exit code.
+///
+/// Whether the model fits the budget is a property of the host, not of the code:
+/// CI `36180691145` measured the 2-vCPU Windows runner at `deadline exceeded after
+/// 640 of 927 prompt token(s)`. So every host must answer truthfully (cited, and
+/// badged with the engine that served it); only macOS, where Metal measured
+/// 3 insights in 2583 ms, must be served by the model.
+#[test]
+fn the_real_model_insight_path_is_cited_and_truthfully_badged() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let path = product_root().join(EMBEDDED_MODEL_RELATIVE_PATH);
+    verify_model_hash(&path, &embedded_model_entry()).expect("pinned sha256 must match");
+    let mut reasoner = LlamaCppReasoner::new();
+    reasoner.load(&path).expect("the artifact must load");
+
+    let pack = product_shaped_pack();
+    let question = "what stands out on this machine?";
+
+    // The generation on its own first, for its token count and the text.
+    let started = Instant::now();
+    let generated = reasoner.generate_insight_text(&pack, question, started + INFERENCE_TIMEOUT);
+    let elapsed = started.elapsed().as_millis();
+    match &generated {
+        Ok(g) => measured(&format!(
+            "insight generation: {} token(s) in {elapsed} ms (budget {} ms): {:?}",
+            g.tokens,
+            INFERENCE_TIMEOUT.as_millis(),
+            g.text
+        )),
+        Err(e) => measured(&format!(
+            "insight generation did not fit: {e:?} after {elapsed} ms (budget {} ms)",
+            INFERENCE_TIMEOUT.as_millis()
+        )),
+    }
+    #[cfg(target_os = "macos")]
+    generated.expect("insight generation must fit its budget on macOS");
+
+    // Then the product path, which is what the badge is promised on.
+    let selector = ReasonerSelector::new(Some(Box::new(reasoner)));
+    let started = Instant::now();
+    let insights = selector
+        .request_insights(&pack, question, false)
+        .expect("a loaded model with evidence answers");
+    let wall = started.elapsed();
+    let engine = insights.first().map(|i| i.engine);
+    measured(&format!(
+        "insight via selector: {} insight(s) from {engine:?} in {} ms (budget {} ms)",
+        insights.len(),
+        wall.as_millis(),
+        INFERENCE_TIMEOUT.as_millis()
+    ));
+
+    assert!(
+        !insights.is_empty(),
+        "nothing cited was served: {insights:?}"
+    );
+    for insight in &insights {
+        assert_eq!(
+            Some(insight.engine),
+            engine,
+            "one engine per answer: {insight:?}"
+        );
+        assert!(!insight.citations.is_empty(), "{insight:?}");
+        for citation in &insight.citations {
+            assert!(pack.resolves(citation), "{citation:?} does not resolve");
+        }
+    }
+    match engine {
+        Some(InsightEngineKind::LocalModel) => {
+            assert!(
+                wall < INFERENCE_TIMEOUT,
+                "the model path overran its budget"
+            );
+            for insight in &insights {
+                assert_ne!(
+                    insight.confidence,
+                    InsightConfidence::Strong,
+                    "a model finding is never Strong: {insight:?}"
+                );
+            }
+            assert_eq!(selector.engine_label(), "localModel");
+        }
+        _ => {
+            assert_eq!(selector.engine_label(), "ruleFallback");
+            #[cfg(target_os = "macos")]
+            panic!("served by the rule engine on macOS: {insights:?}");
+        }
+    }
+}
+
+/// P75 — one model, one generation at a time. The service used to load the
+/// artifact twice with two independent busy lanes, so an insight and an
+/// assistant turn could decode at once on a 2-vCPU machine. The two paths now
+/// share one reasoner, and whichever finds it generating gets `MODEL_BUSY` at
+/// once — asked here from INSIDE a running assistant generation, which is the
+/// only moment the question means anything.
+#[test]
+fn an_insight_asked_while_the_assistant_generates_falls_back_at_once() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (reasoner, _label) =
+        aethercore_intelligence_core::activate_embedded_reasoner(&product_root())
+            .expect("the artifact must activate");
+    let selector = ReasonerSelector::new(Some(Box::new(reasoner.clone())));
+    let pack = pack();
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&cancel);
+    let mut during: Option<(
+        Result<Vec<aethercore_intelligence_core::Insight>, String>,
+        _,
+    )> = None;
+    let generated = reasoner
+        .generate(
+            &pack,
+            "what maintenance has run on this machine?",
+            &GenerationBudget::new(cancel),
+            &mut |_| {
+                if during.is_none() {
+                    let asked = Instant::now();
+                    let direct =
+                        LocalReasoner::infer(&reasoner, &pack, "q", asked + INFERENCE_TIMEOUT);
+                    let served = selector.request_insights(&pack, "q", false);
+                    during = Some((direct, (served, asked.elapsed())));
+                    flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            },
+        )
+        .expect("the assistant generation itself runs");
+    assert!(generated.cancelled);
+
+    let (direct, (served, waited)) = during.expect("the sink ran");
+    assert_eq!(
+        direct,
+        Err(aethercore_intelligence_core::MODEL_BUSY.to_owned())
+    );
+    let served = served.expect("the selector serves");
+    assert!(!served.is_empty());
+    assert!(
+        served
+            .iter()
+            .all(|insight| insight.engine == InsightEngineKind::RuleFallback),
+        "{served:?}"
+    );
+    assert_eq!(selector.engine_label(), "ruleFallback");
+    assert!(
+        waited < std::time::Duration::from_secs(1),
+        "the fallback must not queue behind the generation: {waited:?}"
+    );
 }
 
 /// End to end, against the real model: the failure that matters, proven on the

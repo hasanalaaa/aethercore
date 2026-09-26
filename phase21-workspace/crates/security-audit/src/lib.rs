@@ -216,6 +216,28 @@ pub fn run_audit(targets: &[model::AuditTarget]) -> SecurityAuditReport {
 }
 
 /// CVE join lane: verified local DB × read-only census.
+fn unavailable_census_reason(lanes: &[census::CensusLane]) -> Option<String> {
+    if lanes.iter().any(|lane| lane.not_available.is_none()) {
+        return None;
+    }
+    let reasons: Vec<String> = lanes
+        .iter()
+        .filter_map(|lane| {
+            lane.not_available
+                .as_ref()
+                .map(|reason| format!("{}: {}", lane.source.as_str(), reason.summary()))
+        })
+        .collect();
+    Some(format!(
+        "package census unavailable: {}",
+        if reasons.is_empty() {
+            "no census source".to_string()
+        } else {
+            reasons.join("; ")
+        }
+    ))
+}
+
 fn cve_lane() -> (String, LaneReport) {
     // Resolution order: AETHERCORE_VULNDB_DIR (owner-installed DB from
     // `vulndb update --dest`), then the seeded asset BESIDE THE EXECUTABLE (this is
@@ -251,10 +273,19 @@ fn cve_lane() -> (String, LaneReport) {
             );
         }
     };
-    let installed: Vec<vulnjoin::InstalledPackage> = census::census()
-        .into_iter()
-        .flat_map(|l| l.packages)
-        .collect();
+    let census_lanes = census::census();
+    if let Some(reason) = unavailable_census_reason(&census_lanes) {
+        return (
+            "cve".to_string(),
+            LaneReport {
+                lane: "cve".to_string(),
+                status: LaneStatus::not_available(reason),
+                findings: Vec::new(),
+            },
+        );
+    }
+    let installed: Vec<vulnjoin::InstalledPackage> =
+        census_lanes.into_iter().flat_map(|l| l.packages).collect();
     let matches = vulnjoin::join(&installed, &entries);
     let findings: Vec<model::SecFinding> = matches
         .iter()
@@ -367,6 +398,21 @@ mod tests {
                 Confidence::Exact
             )
             .is_none()
+        );
+    }
+
+    #[test]
+    fn unsupported_package_census_cannot_report_zero_cves() {
+        let lanes = [census::CensusLane {
+            source: census::CensusSource::MacosPkgutil,
+            packages: Vec::new(),
+            not_available: Some(census::NotAvailableReason::PlatformAbsent {
+                detail: "unsupported host OS".into(),
+            }),
+        }];
+        assert!(
+            unavailable_census_reason(&lanes)
+                .is_some_and(|reason| reason.contains("unsupported host OS"))
         );
     }
 

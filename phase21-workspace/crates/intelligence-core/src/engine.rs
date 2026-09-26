@@ -286,17 +286,10 @@ impl ReasonerSelector {
         if pack.items.is_empty() {
             return Err(IntelligenceError::EmptyEvidence);
         }
-        // Single-flight CAS: compare_exchange as the lane token.
-        if self
-            .in_flight
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
+        let Some(_lane) = Lane::acquire(&self.in_flight) else {
             return Err(IntelligenceError::Busy);
-        }
-        let result = self.dispatch(pack, question);
-        self.in_flight.store(false, Ordering::SeqCst);
-        result
+        };
+        self.dispatch(pack, question)
     }
 
     fn dispatch(
@@ -306,55 +299,72 @@ impl ReasonerSelector {
     ) -> Result<Vec<Insight>, IntelligenceError> {
         let deadline = std::time::Instant::now() + INFERENCE_TIMEOUT;
 
-        let mut candidates: Vec<Insight> = Vec::new();
-        let mut used_engine = InsightEngineKind::RuleFallback;
-
         if let Some(model) = &self.model_reasoner
             && model.is_loaded()
         {
-            match model.infer(pack, question, deadline) {
-                Ok(mut insights) if !insights.is_empty() => {
-                    candidates.clear();
-                    candidates.append(&mut insights);
-                    used_engine = InsightEngineKind::LocalModel;
-                }
-                _ => {
-                    // Unavailable / unparseable / empty → silent degrade (I3).
-                    candidates.clear();
-                }
+            // Unavailable / busy / unparseable / over budget → silent degrade (I3).
+            let cited = cited_only(
+                pack,
+                model.infer(pack, question, deadline).unwrap_or_default(),
+            );
+            if !cited.is_empty() {
+                return Ok(self.serve(cited, InsightEngineKind::LocalModel));
             }
         }
 
-        if candidates.is_empty() {
-            candidates = self
-                .fallback
+        // P75: decided AFTER the citation gate. It used to run only when the
+        // model returned zero RAW candidates, so a model whose every insight
+        // failed the gate left the user with nothing, recorded as served by the
+        // model. Nothing cited survived, so the model served nothing.
+        let cited = cited_only(
+            pack,
+            self.fallback
                 .infer(pack, question, deadline)
-                .unwrap_or_default();
-            used_engine = InsightEngineKind::RuleFallback;
-        }
+                .unwrap_or_default(),
+        );
+        Ok(self.serve(cited, InsightEngineKind::RuleFallback))
+    }
 
-        // I2 gate: drop anything whose citations do not resolve against THIS pack;
-        // relabel surviving insights with the engine that actually served them.
-        let mut emitted: Vec<Insight> = Vec::new();
-        for mut insight in candidates {
-            let all_resolve =
-                insight.citations.iter().all(|c| pack.resolves(c)) && !insight.citations.is_empty();
-            if !all_resolve || insight.schema_version != crate::model::INSIGHT_SCHEMA_V1 {
-                continue;
-            }
-            insight.engine = used_engine;
-            emitted.push(insight);
-            if emitted.len() >= MAX_INSIGHTS_PER_CALL {
-                break;
-            }
+    /// Labels what is emitted with the engine that actually served it, and
+    /// records that engine for `engine_label`, the renderer badge's source.
+    fn serve(&self, mut insights: Vec<Insight>, engine: InsightEngineKind) -> Vec<Insight> {
+        for insight in &mut insights {
+            insight.engine = engine;
         }
+        self.record(engine);
+        insights
+    }
+}
 
-        if !emitted.is_empty() {
-            self.record(used_engine);
-        } else {
-            // Even zero-insight outcomes count as fallback service when the model failed.
-            self.record(used_engine);
-        }
-        Ok(emitted)
+/// I2 gate: keeps only insights whose citations ALL resolve against THIS pack.
+fn cited_only(pack: &TypedEvidencePack, candidates: Vec<Insight>) -> Vec<Insight> {
+    candidates
+        .into_iter()
+        .filter(|insight| {
+            insight.schema_version == crate::model::INSIGHT_SCHEMA_V1
+                && !insight.citations.is_empty()
+                && insight.citations.iter().all(|c| pack.resolves(c))
+        })
+        .take(MAX_INSIGHTS_PER_CALL)
+        .collect()
+}
+
+/// A held single-flight lane (I4), released on drop. A reasoner that panics
+/// mid-call therefore frees it on unwind; the plain store after the call that
+/// this replaced was skipped by a panic, and every later request read `Busy`
+/// until the service restarted.
+pub(crate) struct Lane<'a>(&'a AtomicBool);
+
+impl<'a> Lane<'a> {
+    pub(crate) fn acquire(flag: &'a AtomicBool) -> Option<Self> {
+        flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()
+            .map(|_| Self(flag))
+    }
+}
+
+impl Drop for Lane<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
     }
 }
