@@ -135,6 +135,10 @@ jobs:
         run: cargo test --locked --workspace
       - name: UI accessibility/type gate
         run: pnpm --dir apps/ui check
+      # P75 ui-truth: pure UI logic (keyboard shortcuts, Fleet run outcomes) under node's own
+      # test runner; no test dependency. Files are listed, not globbed: a missing file fails.
+      - name: UI unit tests
+        run: node --experimental-strip-types --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts
       - name: UI production build
         run: pnpm --dir apps/ui build
       - name: Locked Rust workspace check
