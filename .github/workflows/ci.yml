@@ -141,29 +141,6 @@ jobs:
         run: cargo check --workspace --locked
       - name: Platform-neutral invariants
         run: python scripts/static_validate.py
-      # P75 gate-honesty: the gates' own tests and the PowerShell assertion scanner had no CI
-      # caller, so a broken gate reader or a failing marker was found only by hand. pwsh does
-      # not stop on a native command's exit code, hence the explicit check.
-      - name: Gate self-tests
-        shell: pwsh
-        # The runner's console is cp1252; test_gate_readers.py prints non-ASCII and raised
-        # UnicodeEncodeError there (probe run 36240612616).
-        env:
-          PYTHONUTF8: '1'
-        run: |
-          foreach ($t in @(
-            'scripts/test_gate_contains.py'
-            'scripts/test_gate_module_reader.py'
-            'scripts/test_gate_readers.py'
-            'scripts/test_omega_delivered_set.py'
-            'scripts/test_source_seal.py'
-            'scripts/test_windows_server_support.py'
-            'scripts/test-phase12-localization.py'
-            'scripts/ps_marker_scan.py'
-          )) {
-            python $t
-            if ($LASTEXITCODE -ne 0) { throw "$t exited $LASTEXITCODE" }
-          }
       - name: Enterprise convergence master source/native qualification gate
         shell: pwsh
         run: ./scripts/verify-enterprise.ps1 -SkipOnlineSupplyChain
@@ -198,6 +175,31 @@ jobs:
             ~/.cargo/git/db
             phase21-workspace/target
           key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+  # P75 gate-honesty: the gates' own tests and the PowerShell assertion scanner had no CI
+  # caller, so a broken gate reader or a failing marker was found only by hand. macOS, not
+  # Windows or Linux, measured on throwaway runs: test_gate_readers.py injects unreadable
+  # sources with POSIX semantics that do not hold on Windows (36240659611), and the phase29
+  # chain it exercises shells out to plutil, which Linux lacks (36240919751). All eight pass
+  # on macos-latest (36240971179).
+  gate-self-tests:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Gate self-tests
+        run: |
+          for t in scripts/test_gate_contains.py scripts/test_gate_module_reader.py \
+                   scripts/test_gate_readers.py scripts/test_omega_delivered_set.py \
+                   scripts/test_source_seal.py scripts/test_windows_server_support.py \
+                   scripts/test-phase12-localization.py scripts/ps_marker_scan.py; do
+            echo "== $t"
+            python3 "$t"
+          done
 
   deny-check:
     runs-on: ubuntu-latest
