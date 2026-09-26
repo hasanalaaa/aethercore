@@ -981,8 +981,11 @@ checks["phase8_msi_upgrade_and_os_gate"] = {
     "ok": all(token in product_wxs for token in [
         'UpgradeCode="{45598C77-2C32-5BCE-8510-19C7E51EE3B8}"',
         'MajorUpgrade Schedule="afterInstallInitialize"',
-        'Condition="VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 17763))"',
+        'Condition="Installed OR (VersionNT64 AND ((MsiNTProductType = 1 AND OSCURRENTBUILD &gt;= 22621) OR (MsiNTProductType = 3 AND OSCURRENTBUILD &gt;= 17763)))"',
     ])
+    # P75: a launch condition without "Installed OR" also blocks uninstall and repair.
+    and all(c.startswith("Installed OR ") for c in re.findall(r'<Launch\s+Condition="([^"]*)"', product_wxs))
+    and len(re.findall(r"<Launch\b", product_wxs)) == len(re.findall(r'<Launch\s+Condition="', product_wxs))
     and 'Condition="VersionNT64 AND ((NTProductType = 1 AND WindowsBuildNumber &gt;= 22621) OR (NTProductType = 3 AND WindowsBuildNumber &gt;= 17763))"' in bundle_wxs
     and 'Name="InstallationType"' in product_wxs
     and 'Variable="WindowsInstallationType"' in bundle_wxs

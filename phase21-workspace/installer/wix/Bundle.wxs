@@ -67,13 +67,21 @@
          hyperlinkLicense and an empty LicenseUrl the standard bootstrapper hides
          the link rather than rendering a dead one. This stays empty until the
          owner supplies the text; see docs/phase55/INSTALLER-UI.md. -->
+    <!-- DBT-P55-009 / DBT-P55-008: the theme is the project's own copy of hyperlinkLicense
+         (installer/wix/theme), so that /uninstall focuses Uninstall rather than Repair, and so
+         that Arabic ships: Burn probes <lcid>\thm.xml and <lcid>\thm.wxl before the base
+         files (locutil.cpp LocProbeForFile, WiX v6.0.2), for the UI language or `/lang 1025`. -->
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication
           Theme="hyperlinkLicense"
+          ThemeFile="$(var.ThemeDir)\thm.xml"
+          LocalizationFile="$(var.ThemeDir)\thm.wxl"
           LogoFile="$(var.LogoFile)"
           LicenseUrl=""
           ShowVersion="yes"
           SuppressOptionsUI="yes" />
+      <Payload Name="1025\thm.xml" SourceFile="$(var.ThemeDir)\1025\thm.xml" Compressed="yes" />
+      <Payload Name="1025\thm.wxl" SourceFile="$(var.ThemeDir)\1025\thm.wxl" Compressed="yes" />
     </BootstrapperApplication>
 
     <Variable Name="VcRuntimeVersion" Type="string" Value="" />
