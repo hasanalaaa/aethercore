@@ -180,6 +180,22 @@ fn offline_surface_succeeds_with_no_daemon_present() {
     assert!(envelope["data"]["cpu"]["totalBusyBp"].is_u64());
     assert!(envelope["data"]["memory"]["totalPhysicalBytes"].is_u64());
 
+    // self-check verifies the model where an install puts it, beside the binary. A build
+    // tree has it only under the workspace, so lay it out the way the installer does.
+    let beside = aetherctl_bin()
+        .parent()
+        .unwrap()
+        .join("assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf");
+    if !beside.exists() {
+        let shipped = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf");
+        std::fs::create_dir_all(beside.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(
+            shipped.canonicalize().expect("the model is checked out"),
+            &beside,
+        )
+        .unwrap();
+    }
     let self_check = run_cli(&socket_dir, None, &["self-check"]);
     let envelope = expect_ok_envelope(&self_check, "self-check");
     assert_eq!(envelope["data"]["manifestValid"], true);
