@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P75 (2026-09-26), lane `service-rollback`.
+Last moved: P75 (2026-09-26), lane `update-trust`.
 
 ---
 
@@ -201,6 +201,9 @@ Report: `docs/phase57/P57-REPORT.md`. Raw measurements:
 | `DBT-P75-008` | Windows `.ssh` key material created by an elevated administrator is reported Critical for that user's own ACE | OPEN | The rule trusts the owner, SYSTEM and Administrators; an elevated process's files are owned by `S-1-5-32-544`, so the user's own ACE counts as foreign. Measured on the runner: CI `36181357153` at `8eb928f`. Win32-OpenSSH trusts the account's own SID; fixing this needs the profile SID (for example from the `ProfileList` registry key). Evidence: `docs/phase75/lanes/fs-acl.md`. | Windows runner |
 | `DBT-P75-009` | A major upgrade deleted `%ProgramData%\AetherCore`: the old package's purge ran with `UPGRADINGPRODUCTCODE` set | **CLOSED by P75 lane `service-rollback`**, pending integration CI at its final head | `PurgeMachineData` runs only when `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`. windows-2025: before `36184401229` `GATE: the major upgrade deleted the machine data`; after `36184392149` the marker is kept, `GATE: pass`. Residual: a package built before this fix still purges when it is upgraded away. Evidence: `docs/phase75/lanes/service-rollback.md`. | Windows runner |
 | `DBT-P75-010` | Every build had one ProductCode: `Deterministic-ProductCode([string]$input)` read PowerShell's automatic `$input` | **CLOSED by P75 lane `service-rollback`**, pending integration CI at its final head | The parameter is `$identity`. `product-code-probe`: before `36184401229`, `0.1.10` and `0.1.11` both `{0F9F349D-01C8-B3C2-7242-83B5D29047C9}` in pwsh and Windows PowerShell; after `36184392149`, `{BEC1F014-…}` and `{37B66DE3-…}`, matching an independent Python computation. Consequence (inferred): a machine with the old `{0F9F349D-…}` 0.1.11 must uninstall it before installing a same-version build from this branch. Evidence: `docs/phase75/lanes/service-rollback.md`. | Windows runner |
+| `DBT-P75-035` | An expired release key could authorize a key rotation (`active_key(old, None)` skipped its validity window) | **CLOSED by P75 lane `update-trust`**, pending integration CI at its final head | `c6d2530`: `authorize(keyring, now_epoch)`. Red-before and evidence: `docs/phase75/lanes/update-trust.md`. | any host |
+| `DBT-P75-036` | `compare_versions("1.2", "1.2.0")` was -1, so a re-release of the same version passed as an upgrade | **CLOSED by P75 lane `update-trust`**, pending integration CI at its final head | `bbab01e`: zero-padded components. Red-before and evidence: `docs/phase75/lanes/update-trust.md`. | any host |
+| `DBT-P75-037` | An offline update source rejected `..` only in absolute paths | **CLOSED by P75 lane `update-trust`**, pending integration CI at its final head | `360cd87`: any `ParentDir` component is refused. Red-before and evidence: `docs/phase75/lanes/update-trust.md`. | any host |
 ## §2 Recovery posture — measured 2026-09-12
 
 P49 recorded `Gate 0f` as regressed: "there is no `D:` and no
