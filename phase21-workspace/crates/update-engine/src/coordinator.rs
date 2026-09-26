@@ -2154,7 +2154,13 @@ mod tests {
         recovered
             .recover_execution_guard()
             .expect("startup must survive a staged installer that no longer verifies");
-        assert!(f.coordinator.db.active_update_execution_guard().unwrap().is_none());
+        assert!(
+            f.coordinator
+                .db
+                .active_update_execution_guard()
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(recovered.snapshot(&f.owner).state, UpdateState::Failed);
         assert!(!recovered_mutation.is_active());
     }

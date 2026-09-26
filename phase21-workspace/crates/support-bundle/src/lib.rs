@@ -1318,10 +1318,21 @@ mod tests {
             "driverVersion": "10.1.19.3",
         }));
         let text = serde_json::to_string(&value).unwrap();
-        for leaked in ["Alice", "ALICE-LAPTOP", "192.168.1.23", "fe80::1c2a", "3C-52-82", "3c:52:82", "PF3ABC12"] {
+        for leaked in [
+            "Alice",
+            "ALICE-LAPTOP",
+            "192.168.1.23",
+            "fe80::1c2a",
+            "3C-52-82",
+            "3c:52:82",
+            "PF3ABC12",
+        ] {
             assert!(!text.contains(leaked), "{leaked} leaked: {text}");
         }
-        assert!(text.contains("10.1.19.3"), "a version is not an address: {text}");
+        assert!(
+            text.contains("10.1.19.3"),
+            "a version is not an address: {text}"
+        );
         assert!(r.hardware_serial_redactions >= 3, "{r:?}");
     }
 
