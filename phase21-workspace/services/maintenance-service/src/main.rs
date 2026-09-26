@@ -74,8 +74,16 @@ fn main() -> Result<()> {
             aethercore_diagnostics::init_console()?;
             return run_console();
         }
-        aethercore_diagnostics::init_json_file(&log_path()?)?;
-        return windows_service_host::run();
+        // P75: the log is opened inside the service, after the SCM handler is registered.
+        // Opened here, a failure (an unwritable logs directory) exited before the
+        // dispatcher connected: SCM reported 1053 and nothing recorded why. The service
+        // now reports SERVICE_STOPPED with an exit code instead. The writer rotates while
+        // running (the old one rotated only at startup, so a long-lived service grew one
+        // file without bound), as the unix daemon's already does.
+        let log = log_path()
+            .and_then(|path| aethercore_diagnostics::init_json_file_rotated(&path))
+            .map_err(|error| error.to_string());
+        return windows_service_host::run(log);
     }
     // Phase 26 (unix): --foreground runs the identical service loop attached to the
     // console; --daemon = foreground + structured file logs + PID file. launchd/systemd
@@ -105,6 +113,7 @@ fn product_data_root() -> Result<PathBuf> {
         std::env::var_os("ProgramData"),
     )
 }
+
 fn data_path() -> Result<PathBuf> {
     Ok(product_data_root()?.join("state").join("aethercore.db"))
 }
@@ -120,11 +129,13 @@ fn run_console() -> Result<()> {
         s.store(true, Ordering::SeqCst);
         wake_pipe();
     })?;
-    run_server(stop)
+    run_server(stop, || Ok(()))
 }
 
+/// `ready` runs once the operation kernel is composed, just before the pipe server starts:
+/// the SCM host reports SERVICE_RUNNING there, not before a slow or failing composition.
 #[cfg(windows)]
-fn run_server(stop: Arc<AtomicBool>) -> Result<()> {
+fn run_server(stop: Arc<AtomicBool>, ready: impl FnOnce() -> Result<()>) -> Result<()> {
     if let Err(e) = aethercore_restore_point::initialize_process_com_security() {
         warn!(error=%e,"System Restore COM security unavailable; protected driver installation will be blocked");
     }
@@ -137,6 +148,7 @@ fn run_server(stop: Arc<AtomicBool>) -> Result<()> {
             None
         }
     };
+    ready()?;
     server::run(stop, context)
 }
 
