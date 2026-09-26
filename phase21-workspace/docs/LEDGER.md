@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P75 (2026-09-26), lane `diagnosis-evidence`.
+Last moved: P75 (2026-09-26), lane `telemetry-windows`.
 
 ---
 
@@ -218,6 +218,8 @@ Report: `docs/phase57/P57-REPORT.md`. Raw measurements:
 | `DBT-P75-025` | Stream watchers decided terminality from a second engine read and could stop after publishing a pre-terminal status | **CLOSED by P75 lane `plan-journal`**, pending integration CI at its final head; verification is by construction (no automated test) | `1025a8d`: terminality comes from the snapshot just published. The watchers are threads over a live `ServiceContext`; no test drives them. Evidence: `docs/phase75/lanes/plan-journal.md`. | any host |
 | `DBT-P75-026` | A runtime failure after mutation in `cleaner`/`system-repair` wrote no recovery record | **CLOSED by P75 lane `plan-journal`**, pending integration CI at its final head | `48f342f`, `3ac44d4`: `CleanupInterrupted` / `SystemRepairInterrupted` recovery records in the same transaction, reusing localized EN/AR texts. Red-before: `cleanup_failure_after_deletion_barrier_requires_recovery_review`, `failure_after_barrier_requires_recovery_review`. Evidence: `docs/phase75/lanes/plan-journal.md`. | any host |
 | `DBT-P75-027` | Crate-level SQL-trigger probes for `cleaner` and `system-repair` need a `rusqlite` dev-dependency (`Cargo.lock` +1 line each) | OPEN — owner: dependency lane | The six probes were run locally with the dev-dependency and removed (table in the lane doc); they can be committed as they are once the dependency lane adds it. Evidence: `docs/phase75/lanes/plan-journal.md`. | any host |
+| `DBT-P75-028` | `stop()` then `start()` inside one sampling interval left two sampler threads running | **CLOSED by P75 lane `telemetry-windows`**, pending integration CI at its final head | `15fbaed`: the ring keeps the running sampler's generation and a stale thread exits. Red-before: `stop_then_start_within_an_interval_leaves_exactly_one_sampler` failed 3/3. Evidence: `docs/phase75/lanes/telemetry-windows.md`. | any host |
+| `DBT-P75-029` | No telemetry collector ran under the collector-runtime timeout its module promised; one hung platform call stalled the sampler forever | **CLOSED by P75 lane `telemetry-windows`**, pending integration CI at its final head | `17a0d8e`: every tick runs under `run_isolated_gated`; a fault publishes every subsystem unavailable and no window. Red-before: `a_hung_collector_becomes_a_timeout_fault_not_a_stalled_sampler` (no snapshot after 15 s). Evidence: `docs/phase75/lanes/telemetry-windows.md`. | any host |
 ## §2 Recovery posture — measured 2026-09-12
 
 P49 recorded `Gate 0f` as regressed: "there is no `D:` and no
