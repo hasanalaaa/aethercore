@@ -50,11 +50,12 @@ class SourceReader:
     def read(self, rel: str) -> str:
         path = self.base(rel) / rel
         try:
-            return path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             raise UnreadableSource(
                 f"gate source {rel!r} could not be read at {path}: {exc}"
             ) from None
+        return workflow_code(text) if rel.startswith(".github/workflows/") else text
 
     def read_module(self, rel: str) -> str:
         """`rel` joined with every `*.rs` in the directory Rust names after it.
@@ -77,6 +78,15 @@ class SourceReader:
         for child in sorted(directory.glob("*.rs")):
             parts.append(self.read(str(child.relative_to(base))))
         return "\n".join(parts)
+
+
+def workflow_code(text: str) -> str:
+    """A workflow with its full-line YAML comments blanked (line count kept).
+
+    P75: the wiring checks asked whether a step's text appeared anywhere in the file, so a
+    step commented out with `#` still passed. A comment is not a step.
+    """
+    return "\n".join("" if line.lstrip().startswith("#") else line for line in text.split("\n"))
 
 
 def module_text(workspace: Path, rel: str) -> str:

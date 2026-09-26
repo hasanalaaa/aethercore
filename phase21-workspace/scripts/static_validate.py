@@ -39,7 +39,7 @@ REPO = ROOT.parent
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader, contains, count, position  # noqa: E402
+from gate_reader import SourceReader, contains, count, position, workflow_code  # noqa: E402
 
 _READER = SourceReader(ROOT)
 read = _READER.read
@@ -620,7 +620,7 @@ checks["typed_mutation_surface_only"] = {"ok": not surface_hits, "hits": surface
 
 verify_phase5 = read("scripts/verify-phase5.ps1")
 setup_run = read("scripts/setup-and-run.ps1")
-ci = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+ci = workflow_code((REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
 marker(
     "phase5_windows_gate",
     verify_phase5 + "\n" + setup_run + "\n" + ci,
@@ -817,7 +817,7 @@ audit_ps = (ROOT / "scripts/audit-dependencies.ps1").read_text(encoding="utf-8")
 repro_ps = (ROOT / "scripts/verify-reproducible.ps1").read_text(encoding="utf-8")
 webview_ps = (ROOT / "scripts/fetch-webview2.ps1").read_text(encoding="utf-8")
 fuzz_ps = (ROOT / "scripts/run-ipc-fuzz.ps1").read_text(encoding="utf-8")
-release_ci = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
+release_ci = workflow_code((REPO / ".github/workflows/release.yml").read_text(encoding="utf-8"))
 dotnet_tools = json.loads((ROOT / ".config/dotnet-tools.json").read_text(encoding="utf-8"))
 deny_cfg = tomllib.loads((ROOT / "deny.toml").read_text(encoding="utf-8"))
 root_cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
@@ -1530,8 +1530,8 @@ marker("phase10_all_mutation_telemetry", composition10 + repair10 + cleaner10 + 
 marker("phase10_persistence_migration", persistence9 + migration10, ["0007_phase10_kernel", "idx_maintenance_executions_domain_updated", "idx_plan_executions_stage_updated"])
 verify10 = read("scripts/verify-phase10.ps1")
 audit10 = read("scripts/phase10-architecture-audit.ps1")
-ci10 = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-release10 = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
+ci10 = workflow_code((REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+release10 = workflow_code((REPO / ".github/workflows/release.yml").read_text(encoding="utf-8"))
 marker("phase10_windows_gate", verify10 + audit10, ["verify-phase9.ps1", "phase10-architecture-audit.ps1", "aethercore-operation-kernel", "aethercore-maintenance-service", "aethercore-desktop", "aethercore-system-repair", "aethercore-cleaner", "aethercore-startup-manager", "cargo check --workspace --locked", "pnpm --dir apps/ui build"])
 checks["phase10_ci_release_gate"] = {
     "ok": any(gate in ci10 for gate in ["verify-phase10.ps1 -SkipOnlineSupplyChain", "verify-phase11.ps1 -SkipOnlineSupplyChain", "verify-phase12.ps1 -SkipOnlineSupplyChain", "verify-phase13.ps1 -SkipOnlineSupplyChain", "verify-phase14.ps1 -SkipOnlineSupplyChain", "verify-phase15.ps1 -SkipOnlineSupplyChain", "verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"])
@@ -2017,8 +2017,8 @@ marker("phase16_ga_seal_verify", phase16_verify_seal, ["CheckSignature", "releas
 marker("phase16_master_gate", phase16_verify, ["verify-phase15.ps1", "phase16-ga-audit.ps1", "cargo check --workspace --locked", "static_validate.py"])
 marker("phase16_production_gate", phase16_prod, ["phase16-seal-release.ps1", "verify-ga-seal.ps1", "General Availability release seal: PASS"])
 marker("phase16_honest_ga_boundary", phase16_docs + "\n" + phase16_verify, ["does not constitute GA", "Windows-native", "GA-SEAL.json", "GA-SEAL.p7s"])
-checks["phase16_ci_master_gate"] = {"ok": any(gate in (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8") for gate in ["verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"]) }
-checks["phase16_signed_release_master_gate"] = {"ok": any(gate in (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8") for gate in ["verify-phase16.ps1 -ReleasePackaging -RequireSigning", "verify-enterprise.ps1 -ReleasePackaging -RequireSigning"]) }
+checks["phase16_ci_master_gate"] = {"ok": any(gate in workflow_code((REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")) for gate in ["verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"]) }
+checks["phase16_signed_release_master_gate"] = {"ok": any(gate in workflow_code((REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")) for gate in ["verify-phase16.ps1 -ReleasePackaging -RequireSigning", "verify-enterprise.ps1 -ReleasePackaging -RequireSigning"]) }
 checks["phase16_update_broker_elevation_lifecycle"] = {"ok": "aethercore-update-broker.exe" in (ROOT / "scripts/verify-installer-security.ps1").read_text(encoding="utf-8") and "Update broker PE manifest is not requireAdministrator" in (ROOT / "scripts/verify-installer-security.ps1").read_text(encoding="utf-8")}
 checks["phase16_probe_workspace_member"] = {"ok": "tools/ga-probe" in workspace.get("members", [])}
 
