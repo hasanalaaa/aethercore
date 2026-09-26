@@ -579,12 +579,21 @@ impl SupportBundleEngine {
 }
 
 fn sanitize_value(value: Value) -> (Value, PrivacyReport) {
-    fn walk(value: Value, report: &mut PrivacyReport) -> Value {
+    fn walk(value: Value, report: &mut PrivacyReport, in_version: bool) -> Value {
         match value {
             Value::Object(map) => {
                 let mut out = serde_json::Map::new();
                 for (k, v) in map {
                     let lower = k.to_ascii_lowercase();
+                    // P75: a host name names the machine and usually its user; counted with
+                    // account identifiers because the privacy report's counters are a wire
+                    // contract (SupportPrivacyReport) and have no field of their own for it.
+                    if is_host_key(&lower) {
+                        report.account_identifier_redactions =
+                            report.account_identifier_redactions.saturating_add(1);
+                        out.insert(k, Value::String("<redacted-host>".into()));
+                        continue;
+                    }
                     if is_account_key(&lower) {
                         report.account_identifier_redactions =
                             report.account_identifier_redactions.saturating_add(1);
@@ -597,20 +606,38 @@ fn sanitize_value(value: Value) -> (Value, PrivacyReport) {
                         out.insert(k, Value::String("<redacted-hardware-serial>".into()));
                         continue;
                     }
-                    out.insert(k.clone(), walk(v, report));
+                    let version = lower.contains("version");
+                    out.insert(k.clone(), walk(v, report, version));
                 }
                 Value::Object(out)
             }
-            Value::Array(values) => {
-                Value::Array(values.into_iter().map(|v| walk(v, report)).collect())
-            }
+            Value::Array(values) => Value::Array(
+                values
+                    .into_iter()
+                    .map(|v| walk(v, report, in_version))
+                    .collect(),
+            ),
+            Value::String(s) if in_version => Value::String(s),
             Value::String(s) => Value::String(sanitize_string(&s, report)),
             other => other,
         }
     }
     let mut report = PrivacyReport::default();
-    let value = walk(value, &mut report);
+    let value = walk(value, &mut report, false);
     (value, report)
+}
+fn is_host_key(key: &str) -> bool {
+    matches!(
+        key,
+        "hostname"
+            | "host_name"
+            | "computername"
+            | "computer_name"
+            | "machinename"
+            | "machine_name"
+            | "dnshostname"
+            | "fqdn"
+    )
 }
 fn is_account_key(key: &str) -> bool {
     matches!(
@@ -629,11 +656,9 @@ fn is_account_key(key: &str) -> bool {
             | "session_id"
     )
 }
+/// Any serial (BIOS, disk, baseboard, volume…) and a MAC address: hardware identifiers.
 fn is_serial_key(key: &str) -> bool {
-    matches!(
-        key,
-        "serialnumber" | "serial_number" | "hardwareserial" | "hardware_serial"
-    )
+    key.contains("serial") || matches!(key, "macaddress" | "mac_address" | "mac")
 }
 #[cfg(feature = "fuzzing")]
 pub fn fuzz_sanitize_text(value: &str) -> (String, PrivacyReport) {
@@ -644,7 +669,9 @@ pub fn fuzz_sanitize_text(value: &str) -> (String, PrivacyReport) {
 
 fn sanitize_string(value: &str, report: &mut PrivacyReport) -> String {
     let mut out = value.to_owned();
-    for marker in ["\\Users\\", "/Users/"] {
+    // P75: `\\Users\\` is the same path escaped once more, as it appears in a log line that
+    // itself holds JSON.
+    for marker in ["\\\\Users\\\\", "\\Users\\", "/Users/"] {
         loop {
             let lower = out.to_ascii_lowercase();
             let Some(pos) = lower.find(&marker.to_ascii_lowercase()) else {
@@ -674,7 +701,39 @@ fn sanitize_string(value: &str, report: &mut PrivacyReport) -> String {
         "<redacted-sid>",
         &mut report.account_identifier_redactions,
     );
+    // P75: MAC addresses are hardware identifiers, counted with serials; IP addresses identify
+    // the machine and its network, counted with account identifiers (see is_host_key).
+    out = redact_tokens(
+        &out,
+        |c| c.is_ascii_hexdigit() || matches!(c, ':' | '-'),
+        looks_like_mac,
+        "<redacted-mac>",
+        &mut report.hardware_serial_redactions,
+    );
+    out = redact_tokens(
+        &out,
+        |c| c.is_ascii_hexdigit() || matches!(c, ':' | '.'),
+        looks_like_ip,
+        "<redacted-ip>",
+        &mut report.account_identifier_redactions,
+    );
     out
+}
+fn looks_like_mac(v: &str) -> bool {
+    let groups: Vec<&str> = v.split([':', '-']).collect();
+    groups.len() == 6
+        && groups
+            .iter()
+            .all(|g| g.len() == 2 && g.chars().all(|c| c.is_ascii_hexdigit()))
+        && !(v.contains(':') && v.contains('-'))
+}
+/// A routable address, with or without a port; loopback and unspecified identify nothing.
+fn looks_like_ip(v: &str) -> bool {
+    let ip = v
+        .parse::<std::net::IpAddr>()
+        .ok()
+        .or_else(|| v.parse::<std::net::SocketAddr>().ok().map(|a| a.ip()));
+    ip.is_some_and(|ip| !ip.is_loopback() && !ip.is_unspecified())
 }
 fn redact_tokens(
     value: &str,
@@ -1246,6 +1305,26 @@ mod tests {
         assert!(engine.prepare("owner", &p.preview_id).is_ok());
         let _ = fs::remove_dir_all(root);
     }
+    /// P75 update-trust: identifiers the old sanitizer let through.
+    #[test]
+    fn escaped_paths_hosts_addresses_and_every_serial_are_redacted() {
+        let (value, r) = sanitize_value(serde_json::json!({
+            "log": "open C:\\\\Users\\\\Alice\\\\AppData\\\\x failed",
+            "hostName": "ALICE-LAPTOP",
+            "computerName": "ALICE-LAPTOP",
+            "detail": "peer 192.168.1.23:445 and fe80::1c2a:3bff:fe4d:5e6f refused; nic 3C-52-82-4A-9F-10 up",
+            "biosSerial": "PF3ABC12",
+            "macAddress": "3c:52:82:4a:9f:10",
+            "driverVersion": "10.1.19.3",
+        }));
+        let text = serde_json::to_string(&value).unwrap();
+        for leaked in ["Alice", "ALICE-LAPTOP", "192.168.1.23", "fe80::1c2a", "3C-52-82", "3c:52:82", "PF3ABC12"] {
+            assert!(!text.contains(leaked), "{leaked} leaked: {text}");
+        }
+        assert!(text.contains("10.1.19.3"), "a version is not an address: {text}");
+        assert!(r.hardware_serial_redactions >= 3, "{r:?}");
+    }
+
     #[test]
     fn serial_redaction_is_non_linkable() {
         let (v, r) =
