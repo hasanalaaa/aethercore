@@ -13,7 +13,7 @@ pub fn run(config: &Config, job: OfflineJob) -> i32 {
     let command = command_label(&job);
     match job {
         OfflineJob::Help => {
-            print!("{}", crate::cli::USAGE);
+            print!("{}", crate::cli::usage_text(config.lang));
             crate::exit::ExitCode::Ok.as_i32()
         }
         OfflineJob::ServiceUnits => {

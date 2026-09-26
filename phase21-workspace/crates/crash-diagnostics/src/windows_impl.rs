@@ -29,8 +29,8 @@ use windows::{
 };
 
 use crate::{
-    CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EventEvidence,
-    Result, classify_event,
+    CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EVENT_WINDOW_MS,
+    EventEvidence, Result, assemble_snapshot, classify_event, dump_in_window,
 };
 
 const MAX_EVENTS: usize = 128;
@@ -39,7 +39,6 @@ const MAX_SYSTEM_RENDER_BYTES: usize = 64 * 1024;
 const MAX_USER_RENDER_BYTES: usize = 256 * 1024;
 const MAX_EVENT_PROPERTIES: usize = 256;
 const MAX_EVENT_STRING_UTF16: usize = 16 * 1024;
-const EVENT_WINDOW_MS: u64 = DEFAULT_EVENT_WINDOW_DAYS as u64 * 24 * 60 * 60 * 1000;
 const FILETIME_UNIX_EPOCH_TICKS: u64 = 116_444_736_000_000_000;
 
 static EVENTLOG_GATE: OnceLock<IsolationGate> = OnceLock::new();
@@ -113,7 +112,7 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
     let mut warnings = Vec::new();
     let mut provider_faults = Vec::new();
 
-    let events = match run_isolated_gated_with_token(
+    let event_log = match run_isolated_gated_with_token(
         eventlog_gate(),
         "crash-diagnostics",
         "eventlog",
@@ -124,12 +123,12 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
         Ok((events, event_warnings, event_faults)) => {
             warnings.extend(event_warnings);
             provider_faults.extend(event_faults);
-            events
+            Some(events)
         }
         Err(error) => {
             warnings.push(format!("Windows Event Log collection unavailable: {error}"));
             provider_faults.push(CollectorFaultRecord::from(&error));
-            Vec::new()
+            None
         }
     };
 
@@ -153,13 +152,12 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
         }
     };
 
-    Ok(CrashDiagnosticsSnapshot {
-        event_window_days: DEFAULT_EVENT_WINDOW_DAYS,
-        events,
+    Ok(assemble_snapshot(
+        event_log,
         crashes,
         provider_faults,
         warnings,
-    })
+    ))
 }
 
 fn collector_fault(operation: &'static str, error: CrashError) -> CollectorFault {
@@ -188,14 +186,22 @@ fn checkpoint(control: &CollectorControl, operation: &'static str) -> Result<()>
         })
 }
 
+/// The System-channel XPath for the crash window. Kernel-Power is taken for id 41
+/// only: it is the one id `classify_event` reads, and its routine power-transition
+/// ids would otherwise fill the collector's event cap ahead of WHEA records. It stays
+/// in this file: the phase-6 static gate pins the bounded window to the collector.
+fn event_query(window_ms: u64) -> String {
+    format!(
+        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= {window_ms}]]]"
+    )
+}
+
 fn collect_events(
     control: &CollectorControl,
 ) -> Result<(Vec<EventEvidence>, Vec<String>, Vec<CollectorFaultRecord>)> {
     checkpoint(control, "eventlog.begin")?;
     let channel = w("System");
-    let query = w(&format!(
-        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or Provider[@Name='Microsoft-Windows-Kernel-Power'] or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= {EVENT_WINDOW_MS}]]]"
-    ));
+    let query = w(&event_query(EVENT_WINDOW_MS));
     let result = unsafe {
         EvtQuery(
             None,
@@ -581,6 +587,15 @@ fn collect_minidumps(
             ),
         }
     }
+    let now = std::time::SystemTime::now();
+    let before = entries.len();
+    entries.retain(|(_, modified)| dump_in_window(*modified, now, EVENT_WINDOW_MS));
+    let left_out = before - entries.len();
+    if left_out > 0 {
+        warnings.push(format!(
+            "{left_out} minidump(s) older than {DEFAULT_EVENT_WINDOW_DAYS} days, or without a readable time, were left out."
+        ));
+    }
     entries.sort_by_key(|(_, modified)| std::cmp::Reverse(*modified));
     entries.truncate(MAX_DUMPS);
 
@@ -770,5 +785,15 @@ mod tests {
         );
         let error = checked_render_property_count((MAX_EVENT_PROPERTIES + 1) as u32).unwrap_err();
         assert!(matches!(error, CrashError::MalformedResponse(_)));
+    }
+    #[test]
+    fn only_kernel_power_41_competes_for_the_event_cap() {
+        let q = event_query(EVENT_WINDOW_MS);
+        assert!(
+            q.contains("(Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41)"),
+            "{q}"
+        );
+        assert!(q.contains("Microsoft-Windows-WHEA-Logger"), "{q}");
+        assert!(q.contains(&format!("<= {EVENT_WINDOW_MS}")), "{q}");
     }
 }

@@ -2,9 +2,10 @@
 //!
 //! The sampler is a passive, bounded, ring-buffered pipeline. Design invariants:
 //!
-//! 1. **No observer effect.** The sampling thread sleeps between ticks; every collector runs
-//!    under a timeout via the shared `collector-runtime` isolation gate. A collector that
-//!    misbehaves becomes a typed fault, never a stalled pipeline.
+//! 1. **No observer effect.** The sampling thread sleeps between ticks; every background tick
+//!    runs under a timeout via the shared `collector-runtime` isolation gate. A collector that
+//!    hangs becomes a typed fault, never a stalled pipeline. Direct `PerfPlatform::sample`
+//!    calls are not wrapped; the caller owns their deadline.
 //! 2. **Bounded memory.** The ring holds at most [`MAX_RING_SAMPLES`] samples and each sample
 //!    bounds its own repeated collections (processors, devices, processes).
 //! 3. **Owner-scoped.** Samples belong to one principal key; nothing leaks across owners.
@@ -15,11 +16,12 @@
 use std::collections::VecDeque;
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
 };
 use std::thread;
 use std::time::Duration;
 
+use aethercore_collector_runtime::{DEFAULT_COLLECTOR_TIMEOUT, IsolationGate, run_isolated_gated};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -586,6 +588,44 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 static PUBLISHED_TOTAL: AtomicU64 = AtomicU64::new(0);
 
+/// One sampler tick under the `collector-runtime` watchdog. The platform sleeps
+/// through its measurement window, so the deadline is that window plus the
+/// runtime's shared collector budget.
+fn sample_isolated(
+    gate: &IsolationGate,
+    platform: &Arc<dyn PerfPlatform>,
+    interval: Duration,
+) -> PerfSnapshot {
+    let worker = Arc::clone(platform);
+    match run_isolated_gated(
+        gate,
+        "performance-telemetry",
+        "sample",
+        interval.saturating_add(DEFAULT_COLLECTOR_TIMEOUT),
+        move |_| Ok(worker.sample(interval)),
+    ) {
+        Ok(snapshot) => snapshot.normalized(),
+        Err(fault) => {
+            // Every subsystem is named, so `measured_subsystems()` reads none of
+            // them as measured. No window was measured, so none is published.
+            let unavailable = |collector: &str| CollectorFault {
+                collector: collector.into(),
+                kind: format!("{:?}", fault.kind),
+                detail: fault.detail.clone(),
+            };
+            CollectedSubsystems {
+                cpu: Reading::unavailable(unavailable("cpu")),
+                power: Reading::unavailable(unavailable("power")),
+                memory: Reading::unavailable(unavailable("memory")),
+                storage: Reading::unavailable(unavailable("storage")),
+                gpu: Reading::unavailable(unavailable("gpu")),
+                process_top: Reading::unavailable(unavailable("processTop")),
+            }
+            .into_snapshot(Duration::ZERO)
+        }
+    }
+}
+
 /// Owner-scoped bounded sample ring plus lifecycle for the background sampler thread.
 ///
 /// Concurrency model: one short-lived mutex guards the deque; the worker holds it for a single
@@ -593,9 +633,12 @@ static PUBLISHED_TOTAL: AtomicU64 = AtomicU64::new(0);
 /// because the producer runs at >= 250 ms cadence.
 pub struct PerformanceRing {
     state: Arc<Mutex<RingState>>,
-    active: Arc<AtomicBool>,
-    #[allow(dead_code)]
-    generation: Arc<AtomicU64>,
+    /// Generation of the sampler that may run, `0` when stopped. A sampler thread
+    /// exits as soon as this is not its own generation, so `stop()` + `start()`
+    /// inside one interval cannot leave the old thread running beside the new one
+    /// (a bool could not tell the two apart).
+    running: Arc<AtomicU64>,
+    generation: AtomicU64,
 }
 
 impl Default for PerformanceRing {
@@ -611,13 +654,13 @@ impl PerformanceRing {
                 samples: VecDeque::with_capacity(MAX_RING_SAMPLES),
                 owner_principal_key: String::new(),
             })),
-            active: Arc::new(AtomicBool::new(false)),
-            generation: Arc::new(AtomicU64::new(0)),
+            running: Arc::new(AtomicU64::new(0)),
+            generation: AtomicU64::new(0),
         }
     }
 
     pub fn is_active(&self) -> bool {
-        self.active.load(Ordering::Acquire)
+        self.running.load(Ordering::Acquire) != 0
     }
 
     /// Installs an owner and starts the background sampler. A second concurrent start is
@@ -631,7 +674,13 @@ impl PerformanceRing {
         if owner_principal_key.trim().is_empty() {
             return Err(TelemetryError::NotActive);
         }
-        if self.is_active() {
+        // `+ 1` keeps 0 meaning "stopped". One atomic claim, not a check and a store.
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+        if self
+            .running
+            .compare_exchange(0, generation, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return Err(TelemetryError::AlreadyActive);
         }
         {
@@ -642,19 +691,27 @@ impl PerformanceRing {
         let interval = Duration::from_millis(u64::from(PerfSnapshot::clamped_interval_ms(
             requested_interval_ms,
         )));
-        self.active.store(true, Ordering::Release);
 
-        let active = self.active.clone();
+        let running = self.running.clone();
         let state = self.state.clone();
         let spawned = thread::Builder::new()
             .name("aether-perf-sampler".into())
             .spawn(move || {
-                while active.load(Ordering::Acquire) {
+                // One gate per sampler: while a timed-out tick is still stuck in
+                // the platform, later ticks fault at once instead of stacking
+                // another stuck worker behind it.
+                let gate = IsolationGate::default();
+                while running.load(Ordering::Acquire) == generation {
                     let started = std::time::Instant::now();
-                    let snapshot = platform.sample(interval).normalized();
-                    PUBLISHED_TOTAL.fetch_add(1, Ordering::Relaxed);
+                    let snapshot = sample_isolated(&gate, &platform, interval);
                     {
                         let mut guard = lock(&state);
+                        // Checked under the ring lock: a tick that finishes after
+                        // stop() must not land in the next owner's ring.
+                        if running.load(Ordering::Acquire) != generation {
+                            break;
+                        }
+                        PUBLISHED_TOTAL.fetch_add(1, Ordering::Relaxed);
                         if guard.samples.len() >= MAX_RING_SAMPLES {
                             guard.samples.pop_front();
                         }
@@ -670,14 +727,16 @@ impl PerformanceRing {
                 }
             });
         if spawned.is_err() {
-            self.active.store(false, Ordering::Release);
+            let _ =
+                self.running
+                    .compare_exchange(generation, 0, Ordering::AcqRel, Ordering::Acquire);
             return Err(TelemetryError::NotActive);
         }
         Ok(())
     }
 
     pub fn stop(&self) {
-        self.active.store(false, Ordering::Release);
+        self.running.store(0, Ordering::Release);
     }
 
     /// Pushes one externally produced snapshot (service-driven mode / tests). Enforces the bound;

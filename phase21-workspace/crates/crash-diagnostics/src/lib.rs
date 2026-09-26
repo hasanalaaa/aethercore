@@ -25,6 +25,23 @@ pub type Result<T> = std::result::Result<T, CrashError>;
 
 pub const DEFAULT_EVENT_WINDOW_DAYS: u32 = 30;
 
+/// The crash window in milliseconds.
+pub const EVENT_WINDOW_MS: u64 = DEFAULT_EVENT_WINDOW_DAYS as u64 * 24 * 60 * 60 * 1000;
+
+/// Whether a minidump written at `modified` belongs to the crash window ending `now`.
+/// A dump whose time cannot be read is left out: it cannot be shown as recent. A time
+/// after `now` (clock skew) counts as recent.
+pub fn dump_in_window(
+    modified: Option<std::time::SystemTime>,
+    now: std::time::SystemTime,
+    window_ms: u64,
+) -> bool {
+    modified.is_some_and(|written| {
+        now.duration_since(written)
+            .map_or(true, |age| age.as_millis() <= u128::from(window_ms))
+    })
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EventEvidence {
@@ -61,11 +78,39 @@ pub struct CrashRecord {
 pub struct CrashDiagnosticsSnapshot {
     #[serde(default)]
     pub event_window_days: u32,
+    /// False when the Event Log could not be read: `events` is then empty because nothing was
+    /// read, not because nothing was logged. Defaults to false so a snapshot that does not say
+    /// it read the log never vouches for an empty one.
+    #[serde(default)]
+    pub event_log_read: bool,
     pub events: Vec<EventEvidence>,
     pub crashes: Vec<CrashRecord>,
     #[serde(default)]
     pub provider_faults: Vec<CollectorFaultRecord>,
     pub warnings: Vec<String>,
+}
+
+/// Folds one collection pass into a snapshot. `event_log` is `None` when the Event Log read
+/// failed.
+pub fn assemble_snapshot(
+    event_log: Option<Vec<EventEvidence>>,
+    crashes: Vec<CrashRecord>,
+    provider_faults: Vec<CollectorFaultRecord>,
+    warnings: Vec<String>,
+) -> CrashDiagnosticsSnapshot {
+    let event_log_read = event_log.is_some();
+    CrashDiagnosticsSnapshot {
+        event_window_days: if event_log_read {
+            DEFAULT_EVENT_WINDOW_DAYS
+        } else {
+            0
+        },
+        event_log_read,
+        events: event_log.unwrap_or_default(),
+        crashes,
+        provider_faults,
+        warnings,
+    }
 }
 
 pub fn classify_event(
@@ -150,6 +195,17 @@ pub fn collect_with_cancellation(
 mod tests {
     use super::*;
     #[test]
+    fn minidumps_outside_the_window_or_without_a_time_are_left_out() {
+        use std::time::{Duration, SystemTime};
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+        let day = Duration::from_secs(86_400);
+        assert!(dump_in_window(Some(now - day), now, EVENT_WINDOW_MS));
+        assert!(dump_in_window(Some(now - 30 * day), now, EVENT_WINDOW_MS));
+        assert!(!dump_in_window(Some(now - 31 * day), now, EVENT_WINDOW_MS));
+        assert!(!dump_in_window(None, now, EVENT_WINDOW_MS));
+        assert!(dump_in_window(Some(now + day), now, EVENT_WINDOW_MS));
+    }
+    #[test]
     fn kernel_power_never_claims_root_cause() {
         let e = classify_event("Microsoft-Windows-Kernel-Power", 41, &[], 1);
         assert!(e.detail.contains("does not identify why"));
@@ -175,6 +231,16 @@ mod tests {
             1,
         );
         assert_eq!(e.category, "ProcessorHardwareEvidence");
+    }
+
+    #[test]
+    fn a_failed_event_log_read_is_not_an_empty_one() {
+        let failed = assemble_snapshot(None, Vec::new(), Vec::new(), Vec::new());
+        assert!(!failed.event_log_read);
+        assert_eq!(failed.event_window_days, 0);
+        let empty = assemble_snapshot(Some(Vec::new()), Vec::new(), Vec::new(), Vec::new());
+        assert!(empty.event_log_read);
+        assert_eq!(empty.event_window_days, DEFAULT_EVENT_WINDOW_DAYS);
     }
 
     #[test]

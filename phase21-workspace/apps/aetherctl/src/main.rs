@@ -26,11 +26,19 @@ fn main() {
         Ok(invocation) => invocation,
         Err(failure) => {
             // Usage failures print the typed reason + usage block on stderr and exit 2.
-            eprintln!("aetherctl: {}", failure.message_key());
+            let lang = cli::lang_hint(&args);
+            match lang {
+                i18n::Lang::En => eprintln!("aetherctl: {}", failure.message_key()),
+                i18n::Lang::Ar => eprintln!(
+                    "aetherctl: {} ({})",
+                    i18n::error_text(lang, &failure),
+                    failure.message_key()
+                ),
+            }
             if let Some(detail) = failure.usage_detail() {
                 eprintln!("aetherctl: {detail}");
             }
-            eprint!("{}", cli::USAGE);
+            eprint!("{}", cli::usage_text(lang));
             std::process::exit(exit::ExitCode::Usage.as_i32());
         }
     };
@@ -44,7 +52,6 @@ fn main() {
 }
 
 fn dispatch(invocation: cli::Invocation) -> i32 {
-    let _active_language = invocation.lang;
     match invocation.command {
         cli::Command::Offline(job) => offline::run(&invocation.config, job),
         cli::Command::Service(job) => service_cmds::run(&invocation.config, job),

@@ -98,6 +98,26 @@ JSON OUTPUT
   because --output is itself part of the line being parsed.
 ";
 
+/// The usage block in `lang`: its section headings come from the i18n catalog; the
+/// command synopses stay English because they are what the user types.
+pub fn usage_text(lang: crate::i18n::Lang) -> String {
+    let mut text = USAGE.to_string();
+    for key in crate::i18n::USAGE_HEADINGS {
+        text = text.replace(crate::i18n::en(key), crate::i18n::t(lang, key));
+    }
+    text
+}
+
+/// The language for a line that failed to parse: a `--lang` value anywhere on it,
+/// else `AETHERCORE_LANG`, else English (an unrecognised value falls through too).
+pub fn lang_hint(args: &[String]) -> crate::i18n::Lang {
+    let flag = args
+        .windows(2)
+        .find(|w| w[0] == "--lang")
+        .map(|w| w[1].as_str());
+    crate::i18n::resolve(flag)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
     Text,
@@ -111,6 +131,9 @@ pub struct Config {
     pub timeout: Duration,
     pub output: OutputMode,
     pub no_color: bool,
+    /// Language of human-readable text (--lang > AETHERCORE_LANG > en). JSON output
+    /// is locale-neutral and never reads it.
+    pub lang: crate::i18n::Lang,
 }
 
 impl Default for Config {
@@ -120,6 +143,7 @@ impl Default for Config {
             timeout: Duration::from_millis(10_000),
             output: OutputMode::Text,
             no_color: false,
+            lang: crate::i18n::Lang::En,
         }
     }
 }
@@ -129,8 +153,6 @@ pub struct Invocation {
     pub config: Config,
     pub command: Command,
     pub version_requested: bool,
-    /// Phase 31 (W6): resolved UI language (--lang > AETHERCORE_LANG > en).
-    pub lang: crate::i18n::Lang,
 }
 
 #[derive(Debug, Clone)]
@@ -402,15 +424,13 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
         }
     }
 
+    config.lang = lang_flag.unwrap_or_else(|| crate::i18n::resolve(None));
+
     if version_requested && cursor.peek().is_none() {
         return Ok(Invocation {
             config,
             command: Command::Offline(OfflineJob::About),
             version_requested,
-            lang: crate::i18n::resolve(lang_flag.map(|l| match l {
-                crate::i18n::Lang::Ar => "ar",
-                _ => "en",
-            })),
         });
     }
 
@@ -1222,10 +1242,6 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
         config,
         command,
         version_requested,
-        lang: crate::i18n::resolve(lang_flag.map(|l| match l {
-            crate::i18n::Lang::Ar => "ar",
-            _ => "en",
-        })),
     })
 }
 
