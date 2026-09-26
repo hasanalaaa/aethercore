@@ -989,6 +989,15 @@ checks["phase8_msi_upgrade_and_os_gate"] = {
     and 'InstallCondition="NOT (WindowsInstallationType ~= &quot;Server Core&quot;)"' in bundle_wxs,
     "note": "MSI and Burn admit Windows 11 clients and Windows Server 2019+ member servers; domain controllers remain refused, and Server Core omits the WebView2 prerequisite and desktop feature.",
 }
+# P75 ui-truth: a plain `#[command] fn` runs on Tauri 2's main thread; the fleet commands open
+# SSH sessions with 45 s timeouts and froze the window. Every one must be `#[command(async)]`
+# (or an `async fn`).
+_fleet_commands = re.findall(r"#\[command(\([^)]*\))?\]\s*(async\s+)?fn (fleet_\w+)", desktop)
+checks["p75_fleet_commands_off_main_thread"] = {
+    "ok": len(_fleet_commands) >= 13
+    and all(args == "(async)" or is_async for args, is_async, _ in _fleet_commands),
+    "note": f"{len(_fleet_commands)} fleet_* Tauri commands; each runs off the UI thread.",
+}
 checks["phase8_hardener_fixed_operation_only"] = {
     # DBT-P46-D1 changed HOW this is proven, not what it proves. The hardener
     # used to contain the service name as its own literal; it now imports the
