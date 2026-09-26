@@ -380,7 +380,7 @@ d45645342a5cb961af55b6adea6126c01b40b71d69adb9fad9e1c6f671811723  apps/ui/index.
 37ec9d62023a5a54caeb2389ac334ef857b752077fc447e4977d9bafc38abc66  apps/ui/layout-sweep.html
 541605853a6882fdbec51d6e941a5bee6e0b52408bbe87253b9a1591d8866036  apps/ui/package.json
 63201c04675bbb046c7f54a46ff8ec61e4d388d775c467d4d4ff8d70a0d484ed  apps/ui/src/App.svelte
-de351bc64003fe8d9690d420a440e819d499548e0fbdf161b03955bad29c5d90  apps/ui/src/app/AppShell.svelte
+9e20107e49d14a06cf241f5463929ad645bb4654c0281e754982eba5e43c1b1a  apps/ui/src/app/AppShell.svelte
 78b1992f1322b65a2c9bd0fa7b2ba29775afdd63a1d896c3764a3e05be305476  apps/ui/src/app/PlanDialogs.svelte
 66e991745e25ba239c4972929df13d6e60e407df3c867a9f43f5a23048a13db8  apps/ui/src/app/activity-counter.ts
 3df86f52e8e63c3e3ca1386e8cfa740ead818029b52378bba20888ea67dcfd35  apps/ui/src/app/shell-state.ts
@@ -470,7 +470,7 @@ d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/li
 8db63c1165bc2cfad5676da2481ab0ee5b1f5aefd0b6b40a7f6d90f6cae26e2d  apps/ui/src/lib/i18n/plurals.en.ts
 ba3972510ca9dd84627297c5916b4d1f60a4179a117835eb6c1637d3da7187c1  apps/ui/src/lib/i18n/runtime.ts
 7c4a570e3ad7d6941ea04d2530968855c1a3304c5de1e60da34673cbb4295514  apps/ui/src/lib/i18n/semantic.ts
-4ec4d4743fef7d14ba4befef93cbb68fc469d917846fd68042fe1c5b5de61cef  apps/ui/src/lib/navigation.ts
+84d73a83b469bd1123eda48fb97418b6fd92bd1f89f2bdc1ce3e0bf2c38abd81  apps/ui/src/lib/navigation.ts
 26d83f0783550949512c18217bcc8c4bab0048795bf7cbd7af261ca70a386824  apps/ui/src/lib/policy.ts
 7da035df3efe31b798dcadbb45a181b8531430be3766adae919d4e9141cce1e2  apps/ui/src/lib/window-ux.ts
 1c8a3ea3f918158356e0d8b5abc180ca7d3fa157df15573963c6370436c9a917  apps/ui/src/main.ts
@@ -483,6 +483,7 @@ ae40092216d2521405970c8a28bbbe3a0e7baef56fae214b7bd83ef4122b0020  apps/ui/src/pl
 86f1fb3631fa8deb91daad6c4fcc2291f20856e00b59c27299aa131d13266192  apps/ui/src/platform/transport.ts
 e725fb8554170ecba1a1bb8ec91fcc2e4be413c5d318903dccc5ffb1f0bbada7  apps/ui/src/styles.css
 65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5  apps/ui/src/vite-env.d.ts
+59e1b489beeb808d961b6e5db7d7d8e965921b6f9ecd92e912914c4c1a05dc7d  apps/ui/tests/navigation.test.ts
 837d1f530f73477ecaa2a7ea1b35793f5f552ccf7b751375cfe90199de686a17  apps/ui/tools/contrast-sweep.mjs
 36804d7fb828312a6e28150a63c011b3516279f06557b923e2b90a9bfdb845c9  apps/ui/tools/layout-sweep.mjs
 50ced562c676287c6d66e1d381a834284ca4f6fbaebd9c637fc3c8961d137ce0  apps/ui/tools/measure-density.mjs

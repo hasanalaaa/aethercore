@@ -4,7 +4,7 @@
   import CommandPalette from '../components/CommandPalette.svelte';
   import { FluidPage } from '../design/primitives';
   import { fluidPress } from '../design/motion';
-  import { NAVIGATION, type PageId } from '../lib/navigation';
+  import { NAVIGATION, commandShortcut, navigationShortcut, type PageId } from '../lib/navigation';
   import { localizeOwnedText, t, td } from '../lib/i18n';
   import { initializeWindowUx, type WindowUxCleanup } from '../lib/window-ux';
   import { startKernelSession, type KernelSessionCleanup } from '../platform/kernel-session';
@@ -41,18 +41,16 @@
     if (event.defaultPrevented) return;
     const target = event.target as HTMLElement | null;
     const editing = target?.matches('input, textarea, select, [contenteditable="true"]') ?? false;
-    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'k') {
+    const command = commandShortcut(event);
+    if (command === 'palette') {
       event.preventDefault(); setPaletteOpen(!$shellState.paletteOpen); return;
     }
-    if (!editing && event.ctrlKey && event.shiftKey && /^[0-9FfSs]$/.test(event.key)) {
-      const item = NAVIGATION.find((candidate) => candidate.shortcut.endsWith(`+${event.key.toUpperCase()}`));
-      if (item) { event.preventDefault(); setPage(item.id); }
-      return;
-    }
+    const shortcutPage = editing ? undefined : navigationShortcut(event);
+    if (shortcutPage) { event.preventDefault(); setPage(shortcutPage); return; }
     // P57. `Ctrl+/` opens the drawer and focuses its input — one gesture, from
     // any screen. It is checked before the editing guard on purpose: the point
     // of the shortcut is to reach the assistant from wherever the caret is.
-    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === '/') {
+    if (command === 'assistant') {
       event.preventDefault(); setAssistantOpen(!$shellState.assistantOpen); return;
     }
     if (event.key === 'Escape' && $shellState.paletteOpen) setPaletteOpen(false);
