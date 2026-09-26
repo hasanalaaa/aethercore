@@ -32,6 +32,17 @@ def main() -> int:
     ap.add_argument("--root", type=Path, default=ROOT)
     args = ap.parse_args()
     root = args.root.resolve()
+    code = seal(root)
+    # DBT-P60-002: the workflows that build and gate the product live at the repository root
+    # (GitHub reads them only from there), outside this workspace. They get a seal of their
+    # own, in the same format, at .github/MANIFEST.sha256.
+    github = root.parent / ".github"
+    if code == 0 and github.is_dir():
+        code = seal(github)
+    return code
+
+
+def seal(root: Path) -> int:
     try:
         files = tracked_files(root)
     except SealError as exc:

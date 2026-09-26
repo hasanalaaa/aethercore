@@ -28,7 +28,7 @@ reproduce → change → prove. A behavioural change adds a test that FAILS with
 - Stay inside your lane's file list. If the fix needs a file outside it, stop and report — another lane owns it.
 - Do NOT edit `docs/LEDGER.md`; the lead moves rows at merge time. Write your evidence to `docs/phase75/lanes/<name>.md`: per ledger row — what changed, the proof command and an output excerpt, run ids, the proposed new status cell. Propose new rows as text only; the lead assigns `DBT-P75-NNN` ids.
 - No `Cargo.lock` / `pnpm-lock.yaml` change (only the dependency lane may). Prefer std, an existing dependency, or a local `extern "system"` declaration (the pattern `apps/consent-broker` and `apps/install-hardener` use). If a new dependency is truly unavoidable, stop and report.
-- Never `git add -A` / `git add .`; never glob-run `scripts/*.py`; never force-push; never touch `release/dependency-*` by hand; never hand-edit or hand-merge `MANIFEST.sha256`.
+- Never `git add -A` / `git add .`; never glob-run `scripts/*.py`; never force-push; never touch `release/dependency-*` by hand; never hand-edit or hand-merge `MANIFEST.sha256` or `.github/MANIFEST.sha256`.
 
 ## Traps — each one cost a past phase
 - `#[cfg(windows)]` code: an "unused" import may be live, including via `use super::*` elsewhere. A grep for `use x` does not prove a dependency unused (proc-macros emit `::windows_core::`).
@@ -53,13 +53,13 @@ Notes:
 - On `main`, workspace-wide clippy on macOS already fails in `crates/driver-backup` and `crates/performance-telemetry/src/macos_impl.rs`. Lane `mac-clippy` owns that; other lanes must not fix it, but must add no new findings.
 - The Windows-target clippy works only for crates whose dependency graph has no C build script. It fails on anything that pulls `libsqlite3-sys` (i.e. `persistence` and most crates above it), `llama-cpp-sys-2` (`intelligence-core`) or `system-repair`'s DISM `build.rs` — for those, the Windows CI job is the compile verdict; say so in your report rather than implying it passed.
 
-## Seal — every commit that changes a file under phase21-workspace/
+## Seal — every commit that changes a file under phase21-workspace/ or .github/
 1. `python3 scripts/source_seal.py --json` — every failing path it lists must be a file you changed. If not, stop and report.
 2. `git add <explicit paths>`
 3. `python3 scripts/regenerate-source-manifest.py`
-4. `git add MANIFEST.sha256` (from inside phase21-workspace/)
+4. `git add MANIFEST.sha256` (from inside phase21-workspace/), and `git add ../.github/MANIFEST.sha256` if the commit touches `.github/` (P75 seal-root: the repository root has its own manifest)
 5. `python3 scripts/source_seal.py` must print OK. Then commit.
-Files outside phase21-workspace/ (e.g. `.github/workflows/*`) are not sealed.
+Since P75 seal-root, `.github/**` is sealed too, by `.github/MANIFEST.sha256`: the same steps apply to a commit that changes only a workflow (run them from phase21-workspace/).
 
 ## PR and CI
 - Push `lane/<name>` and open ONE PR to `main` with `gh pr create`. Title: `<type>(<area>): <what> (P75, <ledger ids>)`. Body: what, why, proof; end it with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.

@@ -188,6 +188,55 @@ def case_real_tree_one_byte(tmp: Path) -> None:
     record("the corruption case leaves the tree clean", after == "", f"git status: {after!r}")
 
 
+def repo_fixture(tmp: Path, with_manifest: bool = True) -> Path:
+    """A repository whose sealed workspace `ws/` has a `.github/` beside it, as this one does."""
+    repo = tmp / "repo"
+    (repo / "ws" / "src").mkdir(parents=True)
+    (repo / "ws" / "src" / "a.txt").write_text("alpha\n", encoding="utf-8")
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / ".github" / "workflows" / "ci.yml").write_text("on: push\n", encoding="utf-8")
+    git(repo, "init", "-q")
+    git(repo, "config", "user.email", "test@example.invalid")
+    git(repo, "config", "user.name", "seal test")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "fixture")
+    if with_manifest:
+        subprocess.run(
+            [sys.executable, str(REGEN), "--root", str(repo / "ws")], check=True, capture_output=True
+        )
+    return repo / "ws"
+
+
+def case_repository_root_workflow_change(tmp: Path) -> None:
+    """DBT-P60-002: a workflow at the repository root is sealed like the workspace."""
+    ws = repo_fixture(tmp)
+    code, report = run_seal(ws)
+    clean = code == 0 and report.get("repository_root", {}).get("verified") == 1
+    ci = ws.parent / ".github" / "workflows" / "ci.yml"
+    ci.write_text("on: pull_request\n", encoding="utf-8")
+    code2, report2 = run_seal(ws)
+    root_failed = [f["path"] for f in report2.get("repository_root", {}).get("failed", [])]
+    record(
+        "a changed workflow at the repository root fails the seal",
+        clean and code2 != 0 and report2.get("ok") is False and root_failed == ["workflows/ci.yml"],
+        f"clean exit={code} then exit={code2} root failed={root_failed}",
+    )
+
+
+def case_repository_root_without_manifest(tmp: Path) -> None:
+    ws = repo_fixture(tmp, with_manifest=False)
+    subprocess.run(
+        [sys.executable, str(REGEN), "--root", str(ws)], check=True, capture_output=True
+    )
+    (ws.parent / ".github" / "MANIFEST.sha256").unlink()
+    code, report = run_seal(ws)
+    record(
+        "a .github with no manifest is unevaluated, never passed",
+        code == 2 and report.get("ok") is False,
+        f"exit={code} report={report}",
+    )
+
+
 CASES = [
     case_pristine,
     case_one_byte,
@@ -197,6 +246,8 @@ CASES = [
     case_truncated_manifest,
     case_real_tree,
     case_real_tree_one_byte,
+    case_repository_root_workflow_change,
+    case_repository_root_without_manifest,
 ]
 
 
@@ -208,6 +259,7 @@ def main() -> int:
     # not yet accept, so the generator ignored argv and rewrote the delivered
     # tree's own manifest. Hold the bytes and prove they came back untouched.
     sealed = (ROOT / "MANIFEST.sha256").read_bytes()
+    root_sealed = (ROOT.parent / ".github" / "MANIFEST.sha256").read_bytes()
     for case in CASES:
         with tempfile.TemporaryDirectory() as td:
             try:
@@ -215,9 +267,10 @@ def main() -> int:
             except Exception as exc:  # a crashing case is a failing case, named
                 record(case.__name__, False, f"{type(exc).__name__}: {exc}")
     record(
-        "the run left the delivered manifest untouched",
-        (ROOT / "MANIFEST.sha256").read_bytes() == sealed,
-        "MANIFEST.sha256 was rewritten by a test case",
+        "the run left the delivered manifests untouched",
+        (ROOT / "MANIFEST.sha256").read_bytes() == sealed
+        and (ROOT.parent / ".github" / "MANIFEST.sha256").read_bytes() == root_sealed,
+        "MANIFEST.sha256 or .github/MANIFEST.sha256 was rewritten by a test case",
     )
     passed = sum(1 for _, ok, _ in RESULTS if ok)
     print(f"\n{passed} of {len(RESULTS)} pass")

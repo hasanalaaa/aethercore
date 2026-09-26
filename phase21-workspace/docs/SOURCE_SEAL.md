@@ -124,23 +124,23 @@ seal's set: `verify_manifest`'s deliverable inventory, `cleanliness`, and the
   underlying defect — a service writing a literal Windows path on POSIX — is
   untouched and the row stays open on that.
 
-## The known gap
+## The repository root has its own seal (P75, `DBT-P60-002`)
 
-The seal covers `phase21-workspace/`. It does **not** cover the repository root,
-where P58 moved `.github/workflows/{ci,fuzz,release}.yml` and
-`.github/dependabot.yml` so GitHub would register them. Those four files gate and
-build the product and are sealed by nothing.
+The workspace seal covers `phase21-workspace/`. The files that build and gate the product —
+`.github/workflows/*`, `.github/actions/*`, `.github/dependabot.yml` — live at the
+repository root, where P58 moved them so GitHub would register them, and until P75 they
+were sealed by nothing. (That is also why three manifest entries dangled for two phases:
+they were listed at their old workspace-relative paths.)
 
-This is why three manifest entries dangled for two phases:
-`.github/dependabot.yml`, `.github/workflows/ci.yml` and
-`.github/workflows/release.yml` were listed at their old workspace-relative paths
-and the files were gone.
-
-Widening the seal to the repository root is not a manifest change alone:
-`omega-evidence.py` resolves every manifest path under the workspace and rejects
-anything that escapes it (`path_escape`), and its `tree_state`, `path_within_root`
-and disposable-clone logic all key on the same root. Recorded as a ledger row
-rather than half-done here.
+Widening `MANIFEST.sha256` to the repository root was rejected: `omega-evidence.py`
+resolves every manifest path under the workspace and refuses anything that escapes it
+(`path_escape`), and its `tree_state`, `path_within_root` and disposable-clone logic key on
+the same root. So the root got a second manifest instead: `.github/MANIFEST.sha256`, the
+same format and the same rules (every file git tracks under `.github/`, itself excluded),
+written by the same generator and verified by the same verifier. `source_seal.py` verifies
+the workspace and, when a `.github/` sits beside it, that manifest too; the workspace
+counts in its JSON keep their meaning and the root's result is `repository_root`. A tree
+with a `.github/` and no manifest there is UNEVALUATED (exit 2), never passing.
 
 ## What the 202 conflicts were
 
@@ -174,6 +174,9 @@ python3 scripts/source_seal.py --json           # the full diff, machine-readabl
 python3 scripts/regenerate-source-manifest.py   # re-seal after deliberate edits
 python3 scripts/test_source_seal.py             # prove the verifier can still fail
 ```
+
+The generator writes both manifests, so after an edit under `.github/` stage
+`../.github/MANIFEST.sha256` as well as `MANIFEST.sha256`.
 
 `git add` the new files **before** regenerating. Untracked is out of scope for
 both the generator and the verifier, so a file you forgot to add is not sealed —
