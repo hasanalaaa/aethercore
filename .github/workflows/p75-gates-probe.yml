@@ -1,0 +1,41 @@
+name: P75 gates probe
+on:
+  push:
+    branches: [probe/p75-gates]
+permissions:
+  contents: read
+jobs:
+  gates:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Gate self-tests, exactly as ci.yml runs them
+        shell: pwsh
+        run: |
+          python --version
+          foreach ($t in @(
+            'scripts/test_gate_contains.py'
+            'scripts/test_gate_module_reader.py'
+            'scripts/test_gate_readers.py'
+            'scripts/test_omega_delivered_set.py'
+            'scripts/test_source_seal.py'
+            'scripts/test_windows_server_support.py'
+            'scripts/test-phase12-localization.py'
+            'scripts/ps_marker_scan.py'
+          )) {
+            python $t | Select-Object -Last 3
+            Write-Host "RESULT: $t exit $LASTEXITCODE"
+          }
+      - name: phase10 architecture audit, clean then with a planted definition
+        shell: pwsh
+        run: |
+          & ./scripts/phase10-architecture-audit.ps1 2>&1 | Select-Object -Last 2
+          Write-Host "RESULT: clean tree exit $LASTEXITCODE ok=$?"
+          Add-Content crates/contracts/proto/aethercore.proto "`nmessage PlantedDefinition {}"
+          try { & ./scripts/phase10-architecture-audit.ps1 2>&1 | Select-Object -Last 2; Write-Host "RESULT: planted exit $LASTEXITCODE (no throw)" } catch { Write-Host "RESULT: planted threw: $_" }
