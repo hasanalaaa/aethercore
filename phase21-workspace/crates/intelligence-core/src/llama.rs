@@ -388,7 +388,10 @@ fn step_fits(
     last_step: Option<std::time::Duration>,
     deadline: std::time::Instant,
 ) -> bool {
-    now + last_step.unwrap_or_default() < deadline
+    // ponytail: twice the previous step, because step times vary on a shared 2-vCPU
+    // runner and one step longer than its predecessor overran (CI 36206362980). A
+    // per-phase maximum or a variance estimate is the upgrade if this still overruns.
+    now + last_step.unwrap_or_default() * 2 < deadline
 }
 
 impl LlamaCppReasoner {
@@ -524,7 +527,9 @@ impl LlamaCppReasoner {
         let mut cancelled = false;
         let mut streamed = String::new();
 
-        let mut last_step: Option<std::time::Duration> = None;
+        // The first generated token's estimate is the last prompt chunk's time: a
+        // 128-token chunk costs more than one token, so it errs early, not late.
+        let mut last_step: Option<std::time::Duration> = last_chunk;
         let mut step_started: Option<std::time::Instant> = None;
         while emitted < budget.max_tokens {
             // The three ceilings, checked between tokens. Cancel first: a user
@@ -626,12 +631,9 @@ mod tests {
         let now = std::time::Instant::now();
         let deadline = now + Duration::from_millis(1_000);
         assert!(step_fits(now, None, deadline), "the first chunk starts");
-        assert!(step_fits(now, Some(Duration::from_millis(900)), deadline));
-        assert!(!step_fits(
-            now,
-            Some(Duration::from_millis(1_300)),
-            deadline
-        ));
+        // Room is kept for a step twice as long as the last one.
+        assert!(step_fits(now, Some(Duration::from_millis(400)), deadline));
+        assert!(!step_fits(now, Some(Duration::from_millis(600)), deadline));
         assert!(
             !step_fits(deadline, None, deadline),
             "a passed deadline stops"

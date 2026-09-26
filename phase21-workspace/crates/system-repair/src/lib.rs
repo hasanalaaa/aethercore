@@ -13,7 +13,7 @@ use aethercore_operation_kernel::{
     ReadWorkload,
 };
 use aethercore_persistence::{
-    Database, MaintenanceExecutionRecord, MaintenanceItemRecord, RecoveryRecord,
+    Database, MaintenanceExecutionRecord, MaintenanceItemRecord, PlanJournal, RecoveryRecord,
     RepairRebootResumeRecord, RepairTimelineEventRecord,
 };
 use aethercore_windows_repair_intelligence::{
@@ -715,22 +715,24 @@ impl RepairCoordinator {
         owner_principal_key: &str,
         plan_id: Option<&str>,
     ) -> Result<Option<RepairExecutionStatus>> {
-        let record = match plan_id {
-            Some(id) => {
-                self.engine.get_plan_for_owner(id, owner_principal_key)?;
-                self.db.get_maintenance_execution(id)?
-            }
-            None => self
+        // Plan first, then its journal: a terminal transition commits the journal with it
+        // (DBT-P63-012), so a terminal state read first is never paired with an older record.
+        let plan_id = match plan_id {
+            Some(id) => id.to_owned(),
+            None => match self
                 .db
-                .latest_maintenance_execution_for_owner("SystemRepair", owner_principal_key)?,
+                .latest_maintenance_execution_for_owner("SystemRepair", owner_principal_key)?
+            {
+                Some(record) => record.plan_id,
+                None => return Ok(None),
+            },
         };
-        let Some(record) = record else {
-            return Ok(None);
-        };
-
         let plan = self
             .engine
-            .get_plan_for_owner(&record.plan_id, owner_principal_key)?;
+            .get_plan_for_owner(&plan_id, owner_principal_key)?;
+        let Some(record) = self.db.get_maintenance_execution(&plan_id)? else {
+            return Ok(None);
+        };
         let steps = self
             .db
             .maintenance_items(&record.plan_id)?
@@ -807,47 +809,52 @@ impl RepairCoordinator {
 
             let mutated = matches!(plan.state, PlanState::Executing | PlanState::Verifying);
             let now = now_ms();
-            let _ = self.engine.transition(
+            let record = MaintenanceExecutionRecord {
+                plan_id: plan.id.clone(),
+                domain: "SystemRepair".into(),
+                stage: "Interrupted".into(),
+                detail: if mutated {
+                    "Repair was interrupted after mutation began. AetherCore will not replay DISM/SFC automatically."
+                        .into()
+                } else {
+                    "Repair was interrupted before mutation began. No repair command was replayed."
+                        .into()
+                },
+                mutation_started: mutated,
+                recovery_required: mutated,
+                failure_message: "Service restart interrupted repair".into(),
+                outcome: if mutated {
+                    "FailedAfterMutation".into()
+                } else {
+                    "FailedBeforeMutation".into()
+                },
+                verification_state: if mutated {
+                    "VerificationRequiredAfterFreshAssessment".into()
+                } else {
+                    "NotStarted".into()
+                },
+                started_unix_ms: plan.created_unix_ms,
+                updated_unix_ms: now,
+                completed_unix_ms: Some(now),
+                ..Default::default()
+            };
+            let recovery = RecoveryRecord {
+                plan_id: plan.id.clone(),
+                severity: "Amber".into(),
+                kind: "SystemRepairInterrupted".into(),
+                summary: "System repair needs review".into(),
+                detail: "No repair command was replayed automatically after restart. Review CBS/DISM logs and run a fresh assessment."
+                    .into(),
+                created_unix_ms: now,
+                ..Default::default()
+            };
+            self.engine.transition_with_journal(
                 &plan.id,
                 plan.state,
                 PlanState::Failed,
                 "service restarted during system repair; automatic replay is intentionally disabled",
-            );
-            self.db
-                .upsert_maintenance_execution(&MaintenanceExecutionRecord {
-                    plan_id: plan.id.clone(),
-                    domain: "SystemRepair".into(),
-                    stage: "Interrupted".into(),
-                    detail: if mutated {
-                        "Repair was interrupted after mutation began. AetherCore will not replay DISM/SFC automatically."
-                            .into()
-                    } else {
-                        "Repair was interrupted before mutation began. No repair command was replayed."
-                            .into()
-                    },
-                    mutation_started: mutated,
-                    recovery_required: mutated,
-                    failure_message: "Service restart interrupted repair".into(),
-                    outcome: if mutated { "FailedAfterMutation".into() } else { "FailedBeforeMutation".into() },
-                    verification_state: if mutated { "VerificationRequiredAfterFreshAssessment".into() } else { "NotStarted".into() },
-                    started_unix_ms: plan.created_unix_ms,
-                    updated_unix_ms: now,
-                    completed_unix_ms: Some(now),
-                    ..Default::default()
-                })?;
-
-            if mutated {
-                self.db.add_recovery_record(&RecoveryRecord {
-                    plan_id: plan.id,
-                    severity: "Amber".into(),
-                    kind: "SystemRepairInterrupted".into(),
-                    summary: "System repair needs review".into(),
-                    detail: "No repair command was replayed automatically after restart. Review CBS/DISM logs and run a fresh assessment."
-                        .into(),
-                    created_unix_ms: now,
-                    ..Default::default()
-                })?;
-            }
+                PlanJournal::Maintenance(&record, mutated.then_some(&recovery)),
+            )?;
         }
         Ok(())
     }
@@ -1365,12 +1372,6 @@ fn run_worker(
         return fail_repair(engine, db, plan_id, RepairError::VerificationFailed);
     }
 
-    engine.transition(
-        plan_id,
-        PlanState::Verifying,
-        PlanState::Completed,
-        "Windows integrity repair verified",
-    )?;
     let now = now_ms();
     let mut record = db.get_maintenance_execution(plan_id)?.unwrap_or_default();
     record.stage = "Completed".into();
@@ -1383,7 +1384,13 @@ fn run_worker(
     record.verification_state = "Verified".into();
     record.updated_unix_ms = now;
     record.completed_unix_ms = Some(now);
-    db.upsert_maintenance_execution(&record)?;
+    engine.transition_with_journal(
+        plan_id,
+        PlanState::Verifying,
+        PlanState::Completed,
+        "Windows integrity repair verified",
+        PlanJournal::Maintenance(&record, None),
+    )?;
     timeline_event(
         db,
         owner_principal_key,
@@ -1414,15 +1421,6 @@ fn fail_repair(
     error: RepairError,
 ) -> Result<()> {
     let current = engine.get_plan(plan_id)?;
-    if !current.state.is_terminal() {
-        let _ = engine.transition(
-            plan_id,
-            current.state,
-            PlanState::Failed,
-            "system repair failed",
-        );
-    }
-
     let now = now_ms();
     let mut record = db.get_maintenance_execution(plan_id)?.unwrap_or_default();
     record.plan_id = plan_id.into();
@@ -1446,7 +1444,26 @@ fn fail_repair(
     }
     record.updated_unix_ms = now;
     record.completed_unix_ms = Some(now);
-    db.upsert_maintenance_execution(&record)?;
+    if current.state.is_terminal() {
+        db.upsert_maintenance_execution(&record)?;
+    } else {
+        let recovery = RecoveryRecord {
+            plan_id: plan_id.into(),
+            severity: "Amber".into(),
+            kind: "SystemRepairInterrupted".into(),
+            summary: "System repair needs review".into(),
+            detail: "Repair stopped. No command will be replayed automatically.".into(),
+            created_unix_ms: now,
+            ..Default::default()
+        };
+        engine.transition_with_journal(
+            plan_id,
+            current.state,
+            PlanState::Failed,
+            "system repair failed",
+            PlanJournal::Maintenance(&record, record.recovery_required.then_some(&recovery)),
+        )?;
+    }
     Err(error)
 }
 
