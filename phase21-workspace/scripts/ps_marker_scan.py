@@ -235,6 +235,19 @@ def scan_script(path: Path, workspace: Path) -> Scan:
         body = _body(text, m.end() - 1)
         end = m.end() - 1 + len(body) + 2
         stripped = stripped[: m.start()] + "\n" * text[m.start():end].count("\n") + stripped[end:]
+    # DBT-P65-003: an inline `if (...) { throw }` is an assertion this tool does not evaluate.
+    # It used to be reported as nothing at all; the contract above says skipped = UNMEASURED.
+    # Read before the loops are unrolled, so the line numbers are the file's.
+    previous = ""
+    for lineno, line in enumerate(stripped.splitlines(), 1):
+        code = line.split("#", 1)[0]
+        if re.search(r"\bthrow\b", code) and (
+            re.search(r"\bif\s*\(", code) or re.search(r"\bif\s*\(.*\{\s*$", previous)
+        ):
+            scan.results.append(Result(path.name, "inline-throw", f"line {lineno}", code.strip()[:120],
+                                       "UNMEASURED", "inline if/throw: this tool does not evaluate its condition"))
+        if code.strip():
+            previous = code
     stripped, skipped = expand_loops(stripped)
     scan.skipped.extend(f"{path.name}: {s}" for s in skipped)
 
