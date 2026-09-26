@@ -8,6 +8,7 @@
   import { authorizeAndRepair, closeRepairReview, repairUi } from '../features/repair/controller';
   import { authorizeAndCleanup, cleanupUi, closeCleanupReview } from '../features/cleanup/controller';
   import { authorizeAndStartCare, careUi, closeCareConsent } from '../features/care/controller';
+  import { approvedStepCount } from '../features/care/approval';
   import {
     authorizeAndApplyStartup,
     authorizeAndRestoreStartup,
@@ -32,6 +33,7 @@
   $: startupPlan = $streamState.startupPlan;
   $: restoreEntry = $startupUi.restoreEntry;
   $: restorePlan = $startupUi.restorePlan;
+  $: careShown = $streamState.careStatus;
 </script>
 
 {#if installPlan}
@@ -154,10 +156,17 @@
   <p class="eyebrow">{t('care.eyebrow', locale)}</p>
   <h2 id="care-consent-title">{t('care.consentTitle', locale)}</h2>
   <p class="review-copy">{t('care.consentCopy', locale)}</p>
+  {#if careShown}
+    <p class="review-copy">
+      {t('care.consentApproves', locale, { steps: tp('unit.careStep', locale, approvedStepCount(careShown)) })}
+      <TechnicalText value={shortDigest(careShown.planDigestSha256)} />
+    </p>
+  {/if}
   <ul class="consent-list">
     <li>{t('care.consentBulletScope', locale)}</li>
     <li>{t('care.consentBulletReview', locale)}</li>
-    <li>{t('care.consentBulletSession', locale)}</li>
+    <li>{t('care.consentBulletChanged', locale)}</li>
+    <li>{t('care.consentBulletOnce', locale)}</li>
   </ul>
   <div class="review-actions">
     <Pressable className="secondary" onclick={closeCareConsent} disabled={busy}>{t('common.cancel', locale)}</Pressable>

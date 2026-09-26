@@ -88,6 +88,9 @@
           <span class="kind"><TechnicalText value={step.domainKind} /></span>
           <span class="safety" class:auto={step.safetyLevel <= AUTO_LEVEL}>{safetyLabel(step.safetyLevel)}</span>
           <span class="outcome">{outcomeLabel(step)}</span>
+          {#if step.failureMessageKey && hasMessageKey(step.failureMessageKey)}
+            <span class="failure">{td(step.failureMessageKey, locale)}</span>
+          {/if}
         </li>
       {/each}
     </ol>
@@ -117,6 +120,7 @@
   }
   .care-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     gap: var(--ac-space-4);
     padding: var(--ac-space-3) var(--ac-space-4);
@@ -139,6 +143,11 @@
   .outcome {
     margin-inline-start: auto;
     color: var(--ac-text-3);
+    font-size: var(--ac-type-caption);
+  }
+  .failure {
+    flex-basis: 100%;
+    color: var(--ac-text-2);
     font-size: var(--ac-type-caption);
   }
   .summary {

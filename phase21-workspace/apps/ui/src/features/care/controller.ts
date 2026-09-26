@@ -1,8 +1,9 @@
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import type { CareRunStatus } from '../../lib/contracts';
 import { runBusy, setPage } from '../../app/shell-state';
 import { serviceInvoke } from '../../platform/service-client';
-import { patchStreamState } from '../../platform/stream-state';
+import { patchStreamState, streamState } from '../../platform/stream-state';
+import { afterApproval } from './approval';
 
 /** UI-only dialog state for the session-consent flow. */
 export const careUi = writable({
@@ -33,19 +34,22 @@ export function closeCareConsent(): void {
 }
 
 /**
- * Grants one-time session consent, then starts the run in the same user gesture.
- * The service rejects the run if consent was not granted first.
+ * Approves the plan shown for one run, then starts that run in the same user gesture. The
+ * service approves the plan it composes now; if that is not the plan shown, nothing starts
+ * and the new plan is shown for approval. A refused or failed call is reported by runBusy.
  */
 export async function authorizeAndStartCare(): Promise<void> {
+  const shown = get(streamState).careStatus;
   closeCareConsent();
   await runBusy(async () => {
-    try {
-      await serviceInvoke<CareRunStatus>('grant_care_session_consent');
-      const status = await serviceInvoke<CareRunStatus>('start_care_run');
-      patchStreamState({ careStatus: status });
-    } catch {
-      // Start failures surface through the returned status (Failed + evidence).
+    const granted = await serviceInvoke<CareRunStatus>('grant_care_session_consent');
+    const next = afterApproval(shown, granted);
+    if (!next.start) {
+      patchStreamState({ careStatus: next.status });
+      return;
     }
+    const status = await serviceInvoke<CareRunStatus>('start_care_run');
+    patchStreamState({ careStatus: status });
   });
 }
 
