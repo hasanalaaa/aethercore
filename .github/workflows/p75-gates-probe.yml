@@ -17,6 +17,8 @@ jobs:
           persist-credentials: false
       - name: Gate self-tests, exactly as ci.yml runs them
         shell: pwsh
+        env:
+          PYTHONUTF8: '1'
         run: |
           python --version
           foreach ($t in @(
