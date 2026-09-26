@@ -4,7 +4,10 @@
      the window's vertical axis, and label, hypertext and checkbox text right-aligned
      (SS_RIGHT, LWS_RIGHT, BS_RIGHT|BS_LEFTTEXT). thmutil cannot set WS_EX_LAYOUTRTL on the
      window, so the layout is mirrored by coordinates. Burn loads it for UI language 1025, or
-     with `/lang 1025` (wixstdba ProcessCommandLine; locutil LocProbeForFile). -->
+     with `/lang 1025` (wixstdba ProcessCommandLine; locutil LocProbeForFile).
+     ImageFile is resolved against this file's directory, so the logo, a single payload
+     beside the base theme, is "..\logo.png"; "logo.png" failed to load and the bundle exited
+     0x57 (E_INVALIDARG) before showing a window (measured on windows-2025). -->
 
 
 <Theme xmlns="http://wixtoolset.org/schemas/v4/thmutil">
@@ -14,7 +17,7 @@
     <Font Id="3" Height="-12" Weight="500" Foreground="windowtext" Background="window">Segoe UI</Font>
 
     <Window Width="485" Height="300" HexStyle="100a0000" FontId="0" Caption="#(loc.Caption)">
-        <ImageControl X="-11" Y="11" Width="64" Height="64" ImageFile="logo.png" Visible="yes"/>
+        <ImageControl X="-11" Y="11" Width="64" Height="64" ImageFile="..\logo.png" Visible="yes"/>
         <Label HexStyle="2" X="11" Y="11" Width="-80" Height="64" FontId="1" Visible="yes" DisablePrefix="yes">#(loc.Title)</Label>
 
         <Page Name="Help">
