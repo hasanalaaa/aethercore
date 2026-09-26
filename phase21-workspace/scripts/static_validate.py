@@ -86,8 +86,11 @@ if yaml is not None:
         lambda p: yaml.safe_load(p.read_text(encoding="utf-8")),
     )
 else:
+    # P75: this used to be `"ok": True` with count 0 — a pass for a check that parsed nothing.
+    # It is UNMEASURED: not counted as passing, and named in the summary.
     checks["parse_yaml"] = {
-        "ok": True,
+        "ok": None,
+        "unmeasured": True,
         "count": 0,
         "note": "PyYAML unavailable; Windows CI remains authoritative for workflow syntax.",
     }
@@ -2130,7 +2133,9 @@ def _platform_identity_single_source() -> None:
 _version_single_source()
 _platform_identity_single_source()
 
-all_ok = all(bool(value.get("ok")) for value in checks.values())
+measured = {name: value for name, value in checks.items() if not value.get("unmeasured")}
+unmeasured = sorted(name for name, value in checks.items() if value.get("unmeasured"))
+all_ok = all(bool(value.get("ok")) for value in measured.values())
 report = {
     "phase": "0-16",
     "ok": all_ok,
@@ -2149,5 +2154,5 @@ report = {
 if ARGS.output:
     ARGS.output.parent.mkdir(parents=True, exist_ok=True)
     ARGS.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-print(json.dumps({"ok": all_ok, "checks": len(checks), "failed": [name for name, value in checks.items() if not value.get("ok")]}, indent=2))
+print(json.dumps({"ok": all_ok, "checks": len(checks), "failed": [name for name, value in measured.items() if not value.get("ok")], "unmeasured": unmeasured}, indent=2))
 sys.exit(0 if all_ok else 1)
