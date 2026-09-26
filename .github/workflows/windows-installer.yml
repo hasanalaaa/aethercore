@@ -422,7 +422,8 @@ jobs:
             Get-ChildItem $pdRoot -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object FullName | Add-Content $f
             Get-Content $f | Write-Host
             $summary["${tag}ServiceState"] = "$($q -join '; '); $sid; process alive: $alive; sc stop exit $stopExit"
-            [pscustomobject]@{ state = $q -join '; '; sid = $sid }
+            $stopState = (($stop | Select-String 'STATE') -replace '\s+', ' ').Trim()
+            [pscustomobject]@{ state = $q -join '; '; sid = $sid; stopState = $stopState }
           }
 
           # DBT-P74-001, the rollback on its own. purge-data refuses a reparse point anywhere
@@ -448,6 +449,9 @@ jobs:
             $s = Save-ServiceState 'rollback' $t6
             if ($s.state -notmatch '\bRUNNING\b') { $gate.Add("rolled-back service is not running: $($s.state)") }
             if ($s.sid -notmatch '\bUNRESTRICTED\b') { $gate.Add("rolled-back service SID type is not the hardener's: $($s.sid)") }
+            # P75 (service-host): the status `sc stop` prints is what the service reported when
+            # it accepted the control. It read "4 RUNNING" (run 36184392149): no STOP_PENDING.
+            if ($s.stopState -notmatch 'STOP_PENDING|STOPPED') { $gate.Add("sc stop reported '$($s.stopState)', not STOP_PENDING") }
           } else { $gate.Add('the rollback did not restore the service') }
           [IO.Directory]::Delete($junction.FullName)  # the link only, never its target
 
