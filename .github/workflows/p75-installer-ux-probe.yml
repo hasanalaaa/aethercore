@@ -68,6 +68,13 @@ jobs:
           Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing, System.Windows.Forms
           $w = Join-Path $env:RUNNER_TEMP 'ux'
           $shots = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'ux-shots')
+          # Start-Process's wait switch waits for the whole process tree; a Burn engine can keep one alive.
+          function Run($file, $arguments) {
+            $p = Start-Process $file -ArgumentList $arguments -PassThru
+            $null = $p.Handle
+            if (-not $p.WaitForExit(180000)) { $p.Kill($true); return 'timeout' }
+            $p.ExitCode
+          }
           function Probe($exe, $arguments, $tag) {
             # WiX v6 runs the BA in its own process, so the bundle's MainWindowHandle is Burn's
             # hidden window. Take the focused element and walk up to its top-level window.
@@ -83,7 +90,7 @@ jobs:
               while ($e -and -not ($walker.GetParent($e) -eq $root)) { $e = $walker.GetParent($e) }
               $win = $e
             }
-            if (-not $win) { Write-Host "GATE: $tag no focused button"; Get-Process | Where-Object StartTime -gt (Get-Date).AddMinutes(-2) | Stop-Process -Force -ErrorAction SilentlyContinue; return }
+            if (-not $win) { Write-Host "GATE: $tag no focused button"; $p.Kill($true); return }
             Start-Sleep -Seconds 2
             $f = [Windows.Automation.AutomationElement]::FocusedElement
             Write-Host "RESULT: $tag caption='$($win.Current.Name)' focused='$($f.Current.Name)' pid=$($win.Current.ProcessId)"
@@ -100,14 +107,13 @@ jobs:
               $bmp.Save("$shots\$tag.png")
             } catch { Write-Host "  screenshot failed: $_" }
             Stop-Process -Id $win.Current.ProcessId -Force -ErrorAction SilentlyContinue
-            $p | Stop-Process -Force -ErrorAction SilentlyContinue
+            try { $p.Kill($true) } catch {}
             Start-Sleep -Seconds 2
             return $f.Current.Name
           }
           foreach ($v in @('stock','ours')) {
             $exe = "$w\b-$v.exe"
-            $p = Start-Process $exe -ArgumentList '/quiet' -Wait -PassThru
-            Write-Host "install $v exit $($p.ExitCode)"
+            Write-Host "install $v exit $(Run $exe '/quiet')"
           }
           $stock = Probe "$w\b-stock.exe" '/uninstall' 'stock-en'
           $ours = Probe "$w\b-ours.exe" '/uninstall' 'ours-en'
@@ -118,13 +124,11 @@ jobs:
 
           # Installed OR: the launch condition is false at uninstall time; uninstall must still work.
           foreach ($pkg in @('old','p')) {
-            $p = Start-Process msiexec -ArgumentList "/i `"$w\$pkg.msi`" /qn" -Wait -PassThru
-            Write-Host "install $pkg.msi exit $($p.ExitCode)"
-            $p = Start-Process msiexec -ArgumentList "/x `"$w\$pkg.msi`" /qn P75PROBE_REQUIRE=`"`" /l*v `"$env:RUNNER_TEMP\x-$pkg.log`"" -Wait -PassThru
-            Write-Host "GATE: $pkg.msi /x with its launch condition false exit=$($p.ExitCode)"
+            Write-Host "install $pkg.msi exit $(Run msiexec "/i `"$w\$pkg.msi`" /qn")"
+            Write-Host "GATE: $pkg.msi /x with its launch condition false exit=$(Run msiexec "/x `"$w\$pkg.msi`" /qn P75PROBE_REQUIRE=`"`" /l*v `"$env:RUNNER_TEMP\x-$pkg.log`"")"
             Select-String -Path "$env:RUNNER_TEMP\x-$pkg.log" -Pattern 'P75 probe requirement missing|Removal completed|Product: P75' | Select-Object -First 3 | ForEach-Object { Write-Host "  $($_.Line)" }
           }
-          foreach ($v in @('stock','ours')) { Start-Process "$w\b-$v.exe" -ArgumentList '/uninstall /quiet' -Wait }
+          foreach ($v in @('stock','ours')) { Write-Host "cleanup $v exit $(Run "$w\b-$v.exe" '/uninstall /quiet')" }
 
       - uses: actions/upload-artifact@v4
         if: always()
