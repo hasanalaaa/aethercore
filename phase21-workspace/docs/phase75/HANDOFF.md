@@ -117,3 +117,13 @@ worktrees under `.claude/worktrees/` can be removed.
 **Not started:** Wave 2 `installer-ux`, `care-consent`, `gate-honesty`, `ui-truth`,
 `service-host`, the rest of `update-trust`, `fuzz` (needs seven dependencies → dependency lane),
 `seal-root` (last). `DBT-P74-002`. `docs/phase75/P75-REPORT.md`.
+
+---
+
+# Continuation — third lead session, 2026-09-26 (stopped at the usage limit)
+
+* **Merged:** #39 care-consent → `821163f` (CI `36236690094` green at head `b54c625`). `main`'s push run at `821163f` was **in progress** at the stop — confirm it green before merging anything.
+* **PR open:** #40 installer-ux (head `c87e2b7`, CI `36239971365` in progress); `windows-installer.yml` run `36238831698` on `c6dea9e` gates the chooser focus on the real bundle (check its result; the gate code was proven on probe `36238635638`).
+* **Pushed, no PR yet (merge in this order, each after `git merge origin/main` + ledger rows + reseal):** `lane/ui-truth` (`189fb11`, rows 047–052), `lane/service-host` (`0730ecf`, DBT-P60-003 + SCM host, new row 056; Windows code compiles only in CI), `lane/update-trust-2` (rows 053–055; the download-timeout finding was **disproved** by measurement), `lane/gate-honesty` (rows 057–060, DBT-P65-003), `lane/seal-root` (this branch, DBT-P60-002 — **last**; after it every `.github` edit must stage `.github/MANIFEST.sha256`).
+* Ledger rows for those lanes are written in each lane doc (`docs/phase75/lanes/*.md`) but **not yet moved** in `docs/LEDGER.md`.
+* **Not done:** branch/worktree cleanup (the permission classifier refused `git worktree remove`; the owner must run it), `fuzz` lane, `DBT-P74-002`, `docs/phase75/P75-REPORT.md`. Throwaway probe branches `probe/p75-installer-ux`, `probe/p75-gates` can be deleted with the others.
