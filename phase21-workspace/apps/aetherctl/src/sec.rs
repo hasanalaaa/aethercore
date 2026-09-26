@@ -81,6 +81,18 @@ pub fn run_compliance_audit(
             "--sign and explicit --key <seedfile> must be supplied together".to_string(),
         ));
     }
+    // `both` writes the JSON to --out and the HTML beside it as <name>.html; an --out
+    // that already ends in .html would receive both, the HTML silently replacing the JSON.
+    if format == "both"
+        && std::path::Path::new(out)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+    {
+        return Err(usage_error(format!(
+            "--format both writes the JSON to --out and the HTML beside it as .html; \
+--out '{out}' would receive both (use e.g. report.json)"
+        )));
+    }
 
     let parsed = if targets.is_empty() {
         default_live_targets()
@@ -164,20 +176,26 @@ pub fn verify_compliance_report(file: &str) -> Result<serde_json::Value, CliErro
     })?;
     let report = sec::compliance::parse_report_bytes(&raw).map_err(compliance_error)?;
     sec::compliance::verify_integrity(&report).map_err(compliance_error)?;
+    // The key is read from the report itself: a valid signature says WHO signed, not
+    // that the signer is trusted, so the signer is always shown for the reader to pin.
+    let mut signer_fingerprint = None;
     if let Some(signature) = &report.signature {
         let signature = aethercore_persistence::export::ExportSignature {
             public_key_hex: signature.public_key_hex.clone(),
             signature_hex: signature.signature_hex.clone(),
         };
-        aethercore_persistence::export::verify_digest_signature(&report.digest, &signature)
-            .map_err(|_| CliError::LocalIo {
-                message_key: "sec.signatureMismatch".to_string(),
-                detail: Some("signature mismatch".to_string()),
-            })?;
+        signer_fingerprint = Some(
+            aethercore_persistence::export::verify_digest_signature(&report.digest, &signature)
+                .map_err(|_| CliError::LocalIo {
+                    message_key: "sec.signatureMismatch".to_string(),
+                    detail: Some("signature mismatch".to_string()),
+                })?,
+        );
     }
     Ok(serde_json::json!({
         "verified": true,
         "signed": report.signed,
+        "signerFingerprint": signer_fingerprint,
         "digest": report.digest,
         "profile": report.profile_id,
     }))
@@ -476,27 +494,84 @@ pub fn vulndb_update_from(file: &str, dest_dir: &str) -> Result<serde_json::Valu
     })?;
     let db_path = dest.join("vulndb.json");
     let manifest_path = dest.join("vulndb.manifest.json");
-    std::fs::write(&db_path, &raw).map_err(|e| CliError::LocalIo {
-        message_key: "local.io.write".to_string(),
-        detail: Some(format!("write db: {e}")),
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest).map_err(|e| CliError::LocalIo {
+        message_key: "sec.vulndbManifestWrite".to_string(),
+        detail: Some(format!("serialize manifest: {e}")),
     })?;
-    let pretty = serde_json::to_vec_pretty(&manifest);
-    let wrote = pretty
-        .ok()
-        .map(|bytes| std::fs::write(&manifest_path, bytes));
-    if wrote.is_none() || matches!(wrote, Some(Err(_))) {
-        // Roll back the db copy so no unpinned artifact remains.
-        let _ = std::fs::remove_file(&db_path);
-        return Err(CliError::LocalIo {
+    install_pinned_pair(&raw, &manifest_bytes, &db_path, &manifest_path).map_err(|detail| {
+        CliError::LocalIo {
             message_key: "sec.vulndbManifestWrite".to_string(),
-            detail: Some("manifest serialization/write failed; db copy rolled back".into()),
-        });
-    }
+            detail: Some(detail),
+        }
+    })?;
     Ok(serde_json::json!({
         "installed": true,
         "db": db_path.display().to_string(),
         "manifest": manifest_path.display().to_string(),
     }))
+}
+
+/// Puts a new DB live only together with its manifest. Both are staged and synced
+/// beside the live pair first, so a failed write never touches the live files; the old
+/// DB is moved aside and put back if the swap cannot finish.
+// ponytail: two renames are not one atomic step. A crash between them leaves a DB and
+// a manifest that disagree, which the loader refuses (the CVE lane fails closed, never
+// wrong). A directory swap would close the window but changes the layout it reads.
+fn install_pinned_pair(
+    db: &[u8],
+    manifest: &[u8],
+    db_path: &std::path::Path,
+    manifest_path: &std::path::Path,
+) -> Result<(), String> {
+    use std::fs;
+    fn write_synced(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+        use std::io::Write as _;
+        let mut file = fs::File::create(path)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    }
+    let db_tmp = db_path.with_extension("json.tmp");
+    let manifest_tmp = manifest_path.with_extension("json.tmp");
+    let db_prev = db_path.with_extension("json.prev");
+    let discard_staged = || {
+        let _ = fs::remove_file(&db_tmp);
+        let _ = fs::remove_file(&manifest_tmp);
+    };
+    if let Err(e) = write_synced(&db_tmp, db).and_then(|()| write_synced(&manifest_tmp, manifest)) {
+        discard_staged();
+        return Err(format!("stage db and manifest: {e}; nothing was changed"));
+    }
+    let had_old = db_path.is_file();
+    if had_old && let Err(e) = fs::rename(db_path, &db_prev) {
+        discard_staged();
+        return Err(format!(
+            "set the previous db aside: {e}; nothing was changed"
+        ));
+    }
+    if let Err(e) =
+        fs::rename(&db_tmp, db_path).and_then(|()| fs::rename(&manifest_tmp, manifest_path))
+    {
+        discard_staged();
+        let restored = if had_old {
+            fs::rename(&db_prev, db_path)
+        } else {
+            match fs::remove_file(db_path) {
+                Err(gone) if gone.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                other => other,
+            }
+        };
+        return Err(match restored {
+            Ok(()) => format!("install db and manifest: {e}; the previous database was kept"),
+            Err(r) => format!(
+                "install db and manifest: {e}; restoring the previous database also failed: {r}"
+            ),
+        });
+    }
+    if had_old {
+        // A leftover .prev is inert: the loader reads only vulndb.json + its manifest.
+        let _ = fs::remove_file(&db_prev);
+    }
+    Ok(())
 }
 
 /// Counts DB entries during validation (single parse, shared shape check).
@@ -549,6 +624,14 @@ mod phase33_tests {
             .expect("verify signed report");
         assert_eq!(verified["verified"], true);
         assert_eq!(verified["signed"], true);
+        let owner = aethercore_persistence::export::signing_key_from_seed(&[9_u8; 32]);
+        let owner_hex: String = owner
+            .verifying_key()
+            .to_bytes()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(verified["signerFingerprint"], owner_hex.as_str());
 
         let html = std::fs::read_to_string(signed_path.with_extension("html"))
             .expect("read standalone HTML");
@@ -605,6 +688,7 @@ mod phase33_tests {
         let unsigned_verified = verify_compliance_report(&unsigned_path.display().to_string())
             .expect("verify unsigned integrity");
         assert_eq!(unsigned_verified["signed"], false);
+        assert!(unsigned_verified["signerFingerprint"].is_null());
 
         let signed_report: sec::compliance::ComplianceReport =
             serde_json::from_slice(&std::fs::read(&signed_path).expect("read report first time"))

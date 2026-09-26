@@ -16,7 +16,7 @@ use aethercore_operation_kernel::{
     ReadWorkload,
 };
 use aethercore_persistence::{
-    Database, MaintenanceExecutionRecord, MaintenanceItemRecord, RecoveryRecord,
+    Database, MaintenanceExecutionRecord, MaintenanceItemRecord, PlanJournal, RecoveryRecord,
     StartupChangeRecord,
 };
 use serde::{Deserialize, Serialize};
@@ -768,22 +768,27 @@ impl StartupManager {
         owner_principal_key: &str,
         plan_id: Option<&str>,
     ) -> Result<Option<StartupExecutionStatus>> {
-        let rec = match plan_id {
-            Some(id) => {
-                self.engine.get_plan_for_owner(id, owner_principal_key)?;
-                self.db.get_maintenance_execution(id)?
-            }
-            None => self
+        // Plan first, then its journal: a terminal transition commits the journal with it
+        // (DBT-P63-012), so a terminal state read first is never paired with an older record.
+        let plan_id = match plan_id {
+            Some(id) => id.to_owned(),
+            None => match self
                 .db
-                .latest_maintenance_execution_for_owner(DOMAIN, owner_principal_key)?,
+                .latest_maintenance_execution_for_owner(DOMAIN, owner_principal_key)?
+            {
+                Some(rec) => rec.plan_id,
+                None => return Ok(None),
+            },
         };
-        let Some(rec) = rec else { return Ok(None) };
+        let plan = self
+            .engine
+            .get_plan_for_owner(&plan_id, owner_principal_key)?;
+        let Some(rec) = self.db.get_maintenance_execution(&plan_id)? else {
+            return Ok(None);
+        };
         if rec.domain != DOMAIN {
             return Ok(None);
         }
-        let plan = self
-            .engine
-            .get_plan_for_owner(&rec.plan_id, owner_principal_key)?;
         let action_meta = self
             .engine
             .startup_actions(&rec.plan_id)
@@ -930,14 +935,14 @@ impl StartupManager {
                 execution.failure_message="Startup operation was interrupted. AetherCore will not replay startup mutations automatically.".into();
                 execution.updated_unix_ms = now_ms();
                 execution.completed_unix_ms = Some(execution.updated_unix_ms);
-                self.db.upsert_maintenance_execution(&execution)?;
-                let _ = self.engine.transition(
+                let recovery = RecoveryRecord{plan_id:plan.id.clone(),severity:"Amber".into(),kind:"StartupRecovery".into(),summary:"Startup change interrupted".into(),detail:"AetherCore did not replay the mutation. Review Startup history before restoring or retrying.".into(),created_unix_ms:now_ms(),..Default::default()};
+                self.engine.transition_with_journal(
                     &plan.id,
                     plan.state,
                     PlanState::Failed,
                     "startup mutation interrupted; no replay",
-                );
-                self.db.add_recovery_record(&RecoveryRecord{plan_id:plan.id,severity:"Amber".into(),kind:"StartupRecovery".into(),summary:"Startup change interrupted".into(),detail:"AetherCore did not replay the mutation. Review Startup history before restoring or retrying.".into(),created_unix_ms:now_ms(),..Default::default()})?;
+                    PlanJournal::Maintenance(&execution, Some(&recovery)),
+                )?;
             }
         }
         Ok(())
@@ -1168,11 +1173,26 @@ fn execute_plan_with_telemetry(
             return Err(StartupError::Drift(action.display_name.clone()));
         }
     }
-    engine.transition(
+    let now = now_ms();
+    let mut record = staged_exec(
+        db,
+        plan_id,
+        "Completed",
+        100,
+        "All reviewed startup changes verified",
+        true,
+        false,
+        "",
+    )?;
+    record.current_item_id.clear();
+    record.completed_unix_ms = Some(now);
+    record.updated_unix_ms = now;
+    engine.transition_with_journal(
         plan_id,
         PlanState::Verifying,
         PlanState::Completed,
         "startup changes verified",
+        PlanJournal::Maintenance(&record, None),
     )?;
     publish_progress(
         telemetry,
@@ -1183,23 +1203,6 @@ fn execute_plan_with_telemetry(
         "",
         "All reviewed startup changes verified",
     );
-    let now = now_ms();
-    update_exec(
-        db,
-        plan_id,
-        "Completed",
-        100,
-        "All reviewed startup changes verified",
-        true,
-        false,
-        "",
-    )?;
-    if let Some(mut r) = db.get_maintenance_execution(plan_id)? {
-        r.current_item_id.clear();
-        r.completed_unix_ms = Some(now);
-        r.updated_unix_ms = now;
-        db.upsert_maintenance_execution(&r)?;
-    }
     Ok(())
 }
 
@@ -1214,15 +1217,7 @@ fn fail_execution(
         .get_maintenance_execution(plan_id)?
         .map(|r| r.mutation_started)
         .unwrap_or(false);
-    if !current.state.is_terminal() {
-        let _ = engine.transition(
-            plan_id,
-            current.state,
-            PlanState::Failed,
-            "startup execution failed",
-        );
-    }
-    update_exec(
+    let record = staged_exec(
         db,
         plan_id,
         "Failed",
@@ -1232,16 +1227,29 @@ fn fail_execution(
         mutation,
         message,
     )?;
-    if mutation {
-        db.add_recovery_record(&RecoveryRecord {
-            plan_id: plan_id.into(),
-            severity: "Amber".into(),
-            kind: "StartupRecovery".into(),
-            summary: "Startup change needs review".into(),
-            detail: message.into(),
-            created_unix_ms: now_ms(),
-            ..Default::default()
-        })?;
+    let recovery = RecoveryRecord {
+        plan_id: plan_id.into(),
+        severity: "Amber".into(),
+        kind: "StartupRecovery".into(),
+        summary: "Startup change needs review".into(),
+        detail: message.into(),
+        created_unix_ms: now_ms(),
+        ..Default::default()
+    };
+    let recovery = mutation.then_some(&recovery);
+    if current.state.is_terminal() {
+        db.upsert_maintenance_execution(&record)?;
+        if let Some(recovery) = recovery {
+            db.add_recovery_record(recovery)?;
+        }
+    } else {
+        engine.transition_with_journal(
+            plan_id,
+            current.state,
+            PlanState::Failed,
+            "startup execution failed",
+            PlanJournal::Maintenance(&record, recovery),
+        )?;
     }
     Ok(())
 }
@@ -1257,9 +1265,26 @@ fn update_exec(
     recovery: bool,
     failure: &str,
 ) -> Result<()> {
+    let record = staged_exec(db, plan_id, stage, pct, detail, mutation, recovery, failure)?;
+    db.upsert_maintenance_execution(&record)?;
+    Ok(())
+}
+
+/// The journal `update_exec` would write, without writing it.
+#[allow(clippy::too_many_arguments)]
+fn staged_exec(
+    db: &Database,
+    plan_id: &str,
+    stage: &str,
+    pct: u32,
+    detail: &str,
+    mutation: bool,
+    recovery: bool,
+    failure: &str,
+) -> Result<MaintenanceExecutionRecord> {
     let old = db.get_maintenance_execution(plan_id)?.unwrap_or_default();
     let now = now_ms();
-    db.upsert_maintenance_execution(&MaintenanceExecutionRecord {
+    Ok(MaintenanceExecutionRecord {
         plan_id: plan_id.into(),
         domain: DOMAIN.into(),
         stage: stage.into(),
@@ -1278,8 +1303,7 @@ fn update_exec(
         updated_unix_ms: now,
         completed_unix_ms: old.completed_unix_ms,
         ..old
-    })?;
-    Ok(())
+    })
 }
 
 fn disabled_state(
@@ -1867,6 +1891,55 @@ mod tests {
             }
             _ => panic!("expected service state"),
         }
+    }
+
+    /// DBT-P63-012: nobody may see Completed before the record that explains it. The observer
+    /// runs at the "Completed" publish, which follows the terminal transition; the journal used
+    /// to be finished only after it, so this read saw an `Executing` record with no completion.
+    #[test]
+    fn completed_plan_is_never_visible_before_its_completed_journal() {
+        let (m, p, path) = manager(vec![item("agent", false, false)]);
+        ready(&m);
+        let plan = m
+            .create_plan(
+                OWNER,
+                "s",
+                1,
+                &[StartupDecision {
+                    item_id: "agent".into(),
+                    decision: RecommendationDecision::Disable,
+                }],
+                false,
+            )
+            .unwrap();
+        approve(&m.engine, &plan);
+        m.engine
+            .consume_authorization_and_begin(&plan.id, OWNER, "startup_test_authorized")
+            .unwrap();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let observer = {
+            let (db, seen) = (m.db.clone(), seen.clone());
+            move |t: ProgressTelemetry| {
+                if t.stage == "Completed" {
+                    let plan = db.get_plan(&t.plan_id).unwrap().unwrap();
+                    let record = db.get_maintenance_execution(&t.plan_id).unwrap().unwrap();
+                    seen.lock().unwrap().push((
+                        plan.state,
+                        record.stage,
+                        record.completed_unix_ms.is_some(),
+                    ));
+                }
+            }
+        };
+        let telemetry = ProgressTelemetryStore::with_observer(Arc::new(observer));
+        execute_plan_with_telemetry(&m.engine, &m.db, p.as_ref(), OWNER, &telemetry, &plan.id)
+            .unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![("Completed".to_owned(), "Completed".to_owned(), true)]
+        );
+        drop(m);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

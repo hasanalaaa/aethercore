@@ -34,7 +34,11 @@ fn parse_pg_line(line: &str, loc: &str) -> Option<Directive> {
     })
 }
 
-/// Parses one MySQL-style line (`key = value` or `key` alone, `#`/`;` comments).
+/// Parses one MySQL option line (`key = value` or a bare `key` flag). As MySQL reads
+/// option files: `#`/`;` start a comment line, `#` also ends a value outside quotes, a
+/// value may be quoted, and `-`/`_` are the same in option names (`loose-` is a prefix
+/// that only changes how unknown options are reported). Group headers are handled by
+/// the caller, which keeps only server groups.
 fn parse_my_line(line: &str, loc: &str) -> Option<Directive> {
     let trimmed = line.trim();
     if trimmed.is_empty()
@@ -45,14 +49,48 @@ fn parse_my_line(line: &str, loc: &str) -> Option<Directive> {
         return None;
     }
     let (key, value) = match trimmed.split_once('=') {
-        Some((k, v)) => (k.trim(), v.trim()),
-        None => (trimmed, ""),
+        Some((k, v)) => (k.trim().to_string(), strip_my_value(v)),
+        None => (strip_my_value(trimmed), String::new()),
     };
+    let key = key.to_ascii_lowercase().replace('-', "_");
+    let key = key.strip_prefix("loose_").unwrap_or(&key).to_string();
     Some(Directive {
-        key: key.trim().to_ascii_lowercase(),
-        value: value.to_string(),
+        key,
+        value,
         source_location: loc.to_string(),
     })
+}
+
+/// A value without its trailing `#` comment (outside quotes) and without matching quotes.
+fn strip_my_value(raw: &str) -> String {
+    let mut quote: Option<char> = None;
+    let mut end = raw.len();
+    for (i, c) in raw.char_indices() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), c) if c == q => quote = None,
+            (None, '#') => {
+                end = i;
+                break;
+            }
+            _ => {}
+        }
+    }
+    let value = raw[..end].trim();
+    for q in ['"', '\''] {
+        if let Some(inner) = value.strip_prefix(q).and_then(|v| v.strip_suffix(q)) {
+            return inner.to_string();
+        }
+    }
+    value.to_string()
+}
+
+/// Option groups the MySQL/MariaDB server reads (`[client]`, `[mysqldump]` … are not).
+fn is_server_group(header: &str) -> bool {
+    let name = header.trim().to_ascii_lowercase();
+    matches!(name.as_str(), "mysqld" | "server" | "mariadb" | "mariadbd")
+        || name.starts_with("mysqld-")
+        || name.starts_with("mariadb-")
 }
 
 fn read_capped(path: &std::path::Path) -> Result<String, String> {
@@ -67,36 +105,33 @@ fn read_capped(path: &std::path::Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Collects postgresql.conf + postgresql.auto.conf (auto overrides base), bounded.
+/// Replaces an earlier setting of the same key, or appends: the server keeps the last.
+fn set_last(out: &mut Vec<Directive>, directive: Directive) {
+    match out
+        .iter_mut()
+        .find(|existing| existing.key == directive.key)
+    {
+        Some(existing) => *existing = directive,
+        None => out.push(directive),
+    }
+}
+
+/// Collects postgresql.conf then postgresql.auto.conf, bounded. As in PostgreSQL, the last
+/// setting of a key wins, within a file and across the two, so auto.conf overrides the base.
 pub fn load_postgres_directives(dir: &std::path::Path) -> Result<Vec<Directive>, String> {
     let mut out = Vec::new();
-    let base = dir.join("postgresql.conf");
-    for (i, line) in read_capped(&base)?.lines().enumerate() {
-        if out.len() >= MAX_DIRECTIVES {
-            break;
-        }
-        if let Some(d) = parse_pg_line(line, &format!("{}:{}", base.display(), i + 1)) {
-            out.push(d);
-        }
-    }
     let auto = dir.join("postgresql.auto.conf");
+    let mut files = vec![dir.join("postgresql.conf")];
     if auto.exists() {
-        for (i, line) in read_capped(&auto)?.lines().enumerate() {
+        files.push(auto);
+    }
+    for path in files {
+        for (i, line) in read_capped(&path)?.lines().enumerate() {
             if out.len() >= MAX_DIRECTIVES {
                 break;
             }
-            if let Some(d) = parse_pg_line(line, &format!("{}:{}", auto.display(), i + 1)) {
-                // auto.conf entries override base-file entries with the same key.
-                if let Some(existing) = out
-                    .iter_mut()
-                    .find(|e| e.key == d.key && e.source_location.contains("postgresql.conf"))
-                {
-                    *existing = d;
-                } else if let Some(existing) = out.iter_mut().find(|e| e.key == d.key) {
-                    *existing = d;
-                } else {
-                    out.push(d);
-                }
+            if let Some(d) = parse_pg_line(line, &format!("{}:{}", path.display(), i + 1)) {
+                set_last(&mut out, d);
             }
         }
     }
@@ -119,16 +154,22 @@ pub fn load_mysql_directives(dir: &std::path::Path) -> Result<Vec<Directive>, St
         paths
     };
     for p in paths {
+        // Lines before any group header belong to no group; MySQL rejects them.
+        let mut in_server_group = false;
         for (i, line) in read_capped(&p)?.lines().enumerate() {
             if out.len() >= MAX_DIRECTIVES {
                 break;
             }
+            let trimmed = line.trim();
+            if let Some(header) = trimmed.strip_prefix('[').and_then(|h| h.split_once(']')) {
+                in_server_group = is_server_group(header.0);
+                continue;
+            }
+            if !in_server_group {
+                continue;
+            }
             if let Some(d) = parse_my_line(line, &format!("{}:{}", p.display(), i + 1)) {
-                if let Some(existing) = out.iter_mut().find(|e| e.key == d.key) {
-                    *existing = d; // last wins, like MySQL
-                } else {
-                    out.push(d);
-                }
+                set_last(&mut out, d); // last wins, like MySQL
             }
         }
     }
@@ -177,14 +218,18 @@ pub fn lint_postgres(dir: &std::path::Path) -> Result<(Vec<DbFinding>, Vec<Strin
             findings.push(f);
         }
     }
+    // `local` and `remote_write` still flush the local WAL before a commit returns;
+    // only `off` acknowledges commits that a crash can lose.
     if let Some(d) = get("synchronous_commit")
-        && !boolish(&d.value)
-        && d.value != "remote_apply"
+        && matches!(
+            d.value.to_ascii_lowercase().as_str(),
+            "off" | "false" | "no" | "0"
+        )
     {
         let ev = vec![EvidenceRef {
             fact: "pg.synchronous_commit".into(),
             observed: d.value.clone(),
-            expected_or_threshold: "on|remote_apply".into(),
+            expected_or_threshold: "not off (on|local|remote_write|remote_apply)".into(),
             source_location: d.source_location.clone(),
         }];
         if let Some(f) = DbFinding::try_new(
@@ -292,10 +337,11 @@ pub fn lint_mysql(dir: &std::path::Path) -> Result<(Vec<DbFinding>, Vec<String>)
             findings.push(f);
         }
     }
+    // A bare `skip-networking` is a flag set ON.
     let skip_networking = get("skip_networking")
-        .map(|d| boolish(&d.value))
+        .map(|d| d.value.is_empty() || boolish(&d.value))
         .unwrap_or(false);
-    let bind = get("bind_address").or_else(|| get("bind-address"));
+    let bind = get("bind_address");
     let broad_bind = bind
         .map(|d| d.value == "0.0.0.0" || d.value == "*")
         .unwrap_or(false);

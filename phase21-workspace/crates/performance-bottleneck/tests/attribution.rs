@@ -172,6 +172,34 @@ fn io_saturation_with_slow_transfers_reaches_confirmed() {
 }
 
 #[test]
+fn io_peak_evidence_cites_the_snapshot_that_measured_it() {
+    let start = 1_700_000_000_000;
+    let mut samples: Vec<PerfSnapshot> = (0..5)
+        .map(|index| idle_snapshot(start + index * 1000))
+        .collect();
+    for (index, snap) in samples.iter_mut().enumerate() {
+        snap.storage.push(StorageQueueSample {
+            device_id: "disk0".into(),
+            active_time_bp: if index == 0 { 9_800 } else { 1_000 },
+            ..Default::default()
+        });
+    }
+    let (report, _) = build_window(samples);
+    let finding = report
+        .findings
+        .iter()
+        .find(|f| f.code == "IO_SATURATION")
+        .unwrap();
+    let peak = finding
+        .evidence
+        .iter()
+        .find(|e| e.fact_key == "storage.activeBp.peak")
+        .unwrap();
+    assert_eq!(peak.observed_value, 9_800.0);
+    assert_eq!(peak.observed_unix_ms, start);
+}
+
+#[test]
 fn gpu_bound_links_to_dpc_pressure_when_jitter_is_high() {
     let mut samples: Vec<PerfSnapshot> = (0..8)
         .map(|index| idle_snapshot(1_700_000_000_000 + index * 1000))
@@ -268,14 +296,11 @@ fn hostile_extreme_window_stays_bounded_and_never_panics() {
     assert!(report.findings.len() <= 8);
 }
 
-/// DBT-P46-B21: `analyze` takes the aggregate and the window as two separate
-/// arguments — and `PerformanceService::analyze` fetches them in two separate
-/// ring calls — so a window can legitimately carry no storage sample while the
-/// aggregate says storage was saturated. The peak of an empty collection is not
-/// zero, it is nothing, and IO_SATURATION must not cite a transfer latency no
-/// device ever reported.
+/// `analyze` takes the aggregate and window from two separate ring reads. If
+/// the window contains no storage measurement, it cannot date or corroborate
+/// the aggregate's peak. A root-cause finding must wait for matching evidence.
 #[test]
-fn io_saturation_does_not_cite_a_latency_no_device_reported() {
+fn io_saturation_drops_when_no_device_reported() {
     let aggregate = aethercore_performance_telemetry::WindowAggregate {
         sample_count: 12,
         window_ms: 12_000,
@@ -291,24 +316,7 @@ fn io_saturation_does_not_cite_a_latency_no_device_reported() {
         })
         .collect();
     let report = analyze(&aggregate, &window, 1_700_000_100_000);
-    let finding = report
-        .findings
-        .iter()
-        .find(|finding| finding.code == "IO_SATURATION")
-        .expect("the aggregate reports storage saturation, so the finding stands");
-    assert!(
-        finding
-            .evidence
-            .iter()
-            .all(|ev| ev.fact_key != "storage.transferLatencyUs"),
-        "an unreported latency was cited as evidence: {:?}",
-        finding.evidence
-    );
-    assert_eq!(
-        finding.confidence,
-        Confidence::High,
-        "an unmeasured latency must not upgrade or downgrade confidence"
-    );
+    assert!(report.findings.iter().all(|f| f.code != "IO_SATURATION"));
 }
 
 /// The other half of the same distinction: when devices DO report, the latency
@@ -326,6 +334,7 @@ fn io_saturation_still_cites_a_latency_devices_did_report() {
         .map(|index| PerfSnapshot {
             captured_unix_ms: 1_700_000_000_000 + index * 1_000,
             storage: vec![StorageQueueSample {
+                active_time_bp: thresholds::STORAGE_SATURATION_PEAK_BP,
                 avg_transfer_latency_us: thresholds::TRANSFER_LATENCY_US,
                 ..Default::default()
             }],
@@ -346,4 +355,30 @@ fn io_saturation_still_cites_a_latency_devices_did_report() {
         "a measured latency must still be cited"
     );
     assert_eq!(finding.confidence, Confidence::Confirmed);
+}
+
+/// P75 — one saturated GPU sample in an otherwise idle window is a spike, not the
+/// workload owning the GPU; it used to be reported as the root cause.
+#[test]
+fn a_single_gpu_spike_is_not_a_root_cause() {
+    let samples: Vec<PerfSnapshot> = (0..8)
+        .map(|index| {
+            let mut snap = idle_snapshot(1_700_000_000_000 + index * 1000);
+            snap.gpu.engines.clear();
+            snap.gpu.engines.push(GpuEngineSample {
+                engine_name: "3D".into(),
+                utilization_bp: if index == 3 { 10_000 } else { 1_000 },
+            });
+            snap
+        })
+        .collect();
+    let (report, _) = build_window(samples);
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|f| f.code != "GPU_BOUND_WORKLOAD"),
+        "a single spike became a finding: {:?}",
+        report.findings.iter().map(|f| &f.code).collect::<Vec<_>>()
+    );
 }

@@ -17,7 +17,9 @@ use aethercore_operation_engine::{
 use aethercore_operation_kernel::{
     MutationLease, MutationWorkload, ProgressTelemetry, ProgressTelemetryStore,
 };
-use aethercore_persistence::{Database, ExecutionRecord, InstallItemRecord, RecoveryRecord};
+use aethercore_persistence::{
+    Database, ExecutionRecord, InstallItemRecord, PlanJournal, RecoveryRecord,
+};
 use aethercore_restore_point::RestorePointEvidence;
 use aethercore_windows_pnp::{DeviceVerification, InstalledDriver, normalize_pnp_id};
 use aethercore_windows_update::{ExecutionStage, UpdateIdentity, WuaExecutionResult, WuaProgress};
@@ -350,19 +352,21 @@ impl DriverInstallCoordinator {
         owner_principal_key: &str,
         plan_id: Option<&str>,
     ) -> Result<Option<InstallStatus>> {
-        let execution = match plan_id {
-            Some(id) => {
-                self.engine.get_plan_for_owner(id, owner_principal_key)?;
-                self.db.get_execution(id)?
-            }
-            None => self.db.latest_execution_for_owner(owner_principal_key)?,
-        };
-        let Some(execution) = execution else {
-            return Ok(None);
+        // Plan first, then its journal: a terminal transition commits the journal with it
+        // (DBT-P63-012), so a terminal state read first is never paired with an older record.
+        let plan_id = match plan_id {
+            Some(id) => id.to_owned(),
+            None => match self.db.latest_execution_for_owner(owner_principal_key)? {
+                Some(execution) => execution.plan_id,
+                None => return Ok(None),
+            },
         };
         let plan = self
             .engine
-            .get_plan_for_owner(&execution.plan_id, owner_principal_key)?;
+            .get_plan_for_owner(&plan_id, owner_principal_key)?;
+        let Some(execution) = self.db.get_execution(&plan_id)? else {
+            return Ok(None);
+        };
         let items = self
             .db
             .install_items(&execution.plan_id)?
@@ -474,14 +478,20 @@ impl DriverInstallCoordinator {
                     execution.failure_message = "Service restarted after driver mutation; AetherCore will not replay installation automatically.".into();
                     execution.stage = "RecoveryRequired".into();
                     execution.updated_unix_ms = now_ms();
-                    self.db.upsert_execution(&execution)?;
-                    let _ = self.engine.transition(
+                    let recovery = recovery_record(
+                        &execution,
+                        "warning",
+                        "interrupted-mutation",
+                        "Driver installation was interrupted",
+                        "Installation was not replayed. Review the restore point and exported driver backup before further action.",
+                    );
+                    self.engine.transition_with_journal(
                         &plan.id,
                         plan.state,
                         PlanState::Failed,
                         "interrupted mutation was not replayed",
-                    );
-                    self.add_recovery(&execution, "warning", "interrupted-mutation", "Driver installation was interrupted", "Installation was not replayed. Review the restore point and exported driver backup before further action.")?;
+                        PlanJournal::Driver(&execution, Some(&recovery)),
+                    )?;
                 }
                 PlanState::Preflight | PlanState::Protected => {
                     if let Some(seq) = execution.restore_point_sequence
@@ -703,42 +713,46 @@ impl DriverInstallCoordinator {
                     execution.stage = "FailedAfterMutation".into();
                     execution.updated_unix_ms = now_ms();
                     execution.completed_unix_ms = Some(now_ms());
-                    self.db.upsert_execution(&execution)?;
-                    let _ = self.engine.transition(
-                        plan_id,
-                        PlanState::Executing,
-                        PlanState::Failed,
-                        "WUA failed after driver mutation began",
-                    );
-                    self.add_recovery(
+                    let recovery = recovery_record(
                         &execution,
                         "warning",
                         "install-failure",
                         "Driver installation did not complete cleanly",
                         "A verified restore point and exported driver package evidence were preserved. No automatic rollback was attempted.",
-                    )?;
+                    );
+                    // Ignored on purpose: a missed CAS or failed write leaves the plan
+                    // non-terminal with no journal, and the worker's fail_safely then records
+                    // this same `error` and fails the plan.
+                    let _ = self.engine.transition_with_journal(
+                        plan_id,
+                        PlanState::Executing,
+                        PlanState::Failed,
+                        "WUA failed after driver mutation began",
+                        PlanJournal::Driver(&execution, Some(&recovery)),
+                    );
                 } else {
-                    let current = self.engine.get_plan(plan_id)?.state;
-                    if current == PlanState::Protected {
-                        let _ = self.engine.transition(
-                            plan_id,
-                            PlanState::Protected,
-                            PlanState::Failed,
-                            "WUA failed before mutation",
-                        );
-                    } else if current == PlanState::Preflight {
-                        let _ = self.engine.transition(
-                            plan_id,
-                            PlanState::Preflight,
-                            PlanState::Failed,
-                            "WUA failed before protection/mutation",
-                        );
-                    }
                     execution.failure_message = error.to_string();
                     execution.stage = "FailedBeforeMutation".into();
                     execution.updated_unix_ms = now_ms();
                     execution.completed_unix_ms = Some(now_ms());
-                    self.db.upsert_execution(&execution)?;
+                    let current = self.engine.get_plan(plan_id)?.state;
+                    let detail = match current {
+                        PlanState::Protected => Some("WUA failed before mutation"),
+                        PlanState::Preflight => Some("WUA failed before protection/mutation"),
+                        _ => None,
+                    };
+                    if let Some(detail) = detail {
+                        // Ignored on purpose, as above: fail_safely covers a missed write.
+                        let _ = self.engine.transition_with_journal(
+                            plan_id,
+                            current,
+                            PlanState::Failed,
+                            detail,
+                            PlanJournal::Driver(&execution, None),
+                        );
+                    } else {
+                        self.db.upsert_execution(&execution)?;
+                    }
                 }
                 Err(error)
             }
@@ -1176,26 +1190,32 @@ impl DriverInstallCoordinator {
         if all_healthy {
             execution.stage = "Completed".into();
             execution.detail = "All selected devices passed post-install PnP verification.".into();
-            self.db.upsert_execution(execution)?;
-            self.engine.transition(
+            self.engine.transition_with_journal(
                 plan_id,
                 PlanState::Verifying,
                 PlanState::Completed,
                 "all selected devices verified healthy",
+                PlanJournal::Driver(execution, None),
             )?;
         } else {
             execution.stage = "FailedVerification".into();
             execution.recovery_required = true;
             execution.failure_message =
                 "One or more devices did not pass post-install verification.".into();
-            self.db.upsert_execution(execution)?;
-            self.engine.transition(
+            let recovery = recovery_record(
+                execution,
+                "warning",
+                "verification-failure",
+                "A device needs recovery review",
+                "The installation result or PnP health check failed. The restore point and driver backup evidence were preserved.",
+            );
+            self.engine.transition_with_journal(
                 plan_id,
                 PlanState::Verifying,
                 PlanState::Failed,
                 "post-install device verification failed",
+                PlanJournal::Driver(execution, Some(&recovery)),
             )?;
-            self.add_recovery(execution,"warning","verification-failure","A device needs recovery review","The installation result or PnP health check failed. The restore point and driver backup evidence were preserved.")?;
         }
         Ok(())
     }
@@ -1273,18 +1293,29 @@ impl DriverInstallCoordinator {
         summary: &str,
         detail: &str,
     ) -> Result<()> {
-        self.db.add_recovery_record(&RecoveryRecord {
-            plan_id: r.plan_id.clone(),
-            severity: severity.into(),
-            kind: kind.into(),
-            summary: summary.into(),
-            detail: detail.into(),
-            restore_point_sequence: r.restore_point_sequence,
-            backup_root: r.backup_root.clone(),
-            created_unix_ms: now_ms(),
-            ..Default::default()
-        })?;
+        self.db
+            .add_recovery_record(&recovery_record(r, severity, kind, summary, detail))?;
         Ok(())
+    }
+}
+
+fn recovery_record(
+    r: &ExecutionRecord,
+    severity: &str,
+    kind: &str,
+    summary: &str,
+    detail: &str,
+) -> RecoveryRecord {
+    RecoveryRecord {
+        plan_id: r.plan_id.clone(),
+        severity: severity.into(),
+        kind: kind.into(),
+        summary: summary.into(),
+        detail: detail.into(),
+        restore_point_sequence: r.restore_point_sequence,
+        backup_root: r.backup_root.clone(),
+        created_unix_ms: now_ms(),
+        ..Default::default()
     }
 }
 
