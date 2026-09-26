@@ -565,6 +565,18 @@ fn io_saturation(window: &[PerfSnapshot]) -> Option<RuleOutput> {
         u64::from(thresholds::STORAGE_SATURATION_PEAK_BP),
         peak_at,
     )];
+    // The rule fires on the peak OR the average. When the peak stayed under its threshold,
+    // the average is what fired it and must be cited, or the finding rests on evidence
+    // below its own threshold.
+    if active_peak < u64::from(thresholds::STORAGE_SATURATION_PEAK_BP) {
+        let window_end = readings.last().map_or(peak_at, |(_, at)| *at);
+        evidence_vec.push(evidence(
+            "storage.activeBp.avg",
+            active_avg,
+            u64::from(thresholds::STORAGE_SATURATION_AVG_BP),
+            window_end,
+        ));
+    }
     let slow_transfer = latency_evidence
         .as_ref()
         .is_some_and(|(latency, _)| *latency >= thresholds::TRANSFER_LATENCY_US);
