@@ -67,9 +67,17 @@ export type HealthChannel = {
   history?: number[];
 };
 
-/** The busiest storage device in the sample, or null if none was reported. */
+/**
+ * Whether the provider measured disk active time at all. macOS and Linux do not (single-sample
+ * statfs / diskstats) and say so with a `storage.activeTime` fault; their 0 is not an idle disk.
+ */
+export function diskActiveTimeMeasured(perf: PerfSnapshot): boolean {
+  return !perf.collectorFaults.some((fault) => fault.collector === 'storage.activeTime');
+}
+
+/** The busiest storage device in the sample, or null if none was reported or measured. */
 function busiestDevice(perf: PerfSnapshot) {
-  if (!perf.storage.length) return null;
+  if (!perf.storage.length || !diskActiveTimeMeasured(perf)) return null;
   return perf.storage.reduce((worst, device) => (device.activeTimeBp > worst.activeTimeBp ? device : worst));
 }
 

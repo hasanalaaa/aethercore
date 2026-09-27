@@ -30,6 +30,7 @@
     stopPerfSampling,
   } from './controller';
   import { serviceInvoke } from '../../platform/service-client';
+  import { diskActiveTimeMeasured } from '../overview/instrument';
 
   $: locale = $shellState.locale;
   $: busy = $shellState.busy;
@@ -126,6 +127,7 @@
 
   /** Undefined when no device reported, rather than a peak of zero over nothing. */
   function peakStorage(snapshot: typeof performance): number | undefined {
+    if (!diskActiveTimeMeasured(snapshot)) return undefined;
     const samples = snapshot.storage.map((device) => bpToPercent(device.activeTimeBp)).filter((v): v is number => v !== undefined);
     return samples.length ? Math.max(...samples) : undefined;
   }
