@@ -747,8 +747,13 @@ fn redact_tokens(
     let flush = |token: &mut String, output: &mut String, count: &mut u32| {
         if !token.is_empty() {
             // Punctuation that ends a sentence or a clause is not part of the value
-            // ("Peer 192.168.1.23." — P75 review #49).
-            let value = token.trim_end_matches(['.', ':', '-']);
+            // ("Peer 192.168.1.23." — P75 review #49), but it can be: `fd12:3456::` is a
+            // valid address its colons belong to. So the longest match wins: the whole
+            // token first, then one trailing mark shorter at a time.
+            let mut value = token.as_str();
+            while !value.is_empty() && !predicate(value) && value.ends_with(['.', ':', '-']) {
+                value = &value[..value.len() - 1];
+            }
             if !value.is_empty() && predicate(value) {
                 output.push_str(replacement);
                 output.push_str(&token[value.len()..]);
@@ -1323,6 +1328,21 @@ mod tests {
             "the sentence keeps its period: {text}"
         );
         assert_eq!(report.account_identifier_redactions, 2, "{report:?}");
+    }
+
+    /// P75 review 2 (lib.rs:751): trimming before parsing turned a valid IPv6 ending in `::`
+    /// into an invalid one, so the private address was exported unredacted.
+    #[test]
+    fn an_ipv6_address_ending_in_a_colon_is_still_redacted() {
+        for (line, kept) in [
+            ("Peer fd12:3456::", "Peer <redacted-ip>"),
+            ("Peer fd12:3456::.", "Peer <redacted-ip>."),
+            ("Peer 192.168.1.23.", "Peer <redacted-ip>."),
+            ("Peer ::1.", "Peer ::1."),
+        ] {
+            let mut report = PrivacyReport::default();
+            assert_eq!(sanitize_string(line, &mut report), kept, "{line}");
+        }
     }
 
     #[test]

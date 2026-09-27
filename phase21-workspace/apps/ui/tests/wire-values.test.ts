@@ -99,6 +99,14 @@ test('deep scan headline: a partial scan with no findings is not "Healthy"', asy
   assert.equal(deepScanHeadlineKey(3, 4), 'deepScan.status.action');
 });
 
+// P75 review 2: a scan whose collectors all failed has no findings, so the coordinator's
+// status is Healthy; the scan and its history entry must not say so.
+test('deep scan headline: a failed or cancelled scan is not "Healthy"', async () => {
+  const { deepScanHeadlineKey } = await import('../src/features/intelligence/headline.ts');
+  assert.equal(deepScanHeadlineKey(1, 5), 'deepScan.state.cancelled');
+  assert.equal(deepScanHeadlineKey(1, 6), 'deepScan.state.failed');
+});
+
 test('disk activity a provider says it did not measure reads unmeasured, not 0%', async () => {
   const { healthChannels } = await import('../src/features/overview/instrument.ts');
   const { createInitialStreamState } = await import('../src/platform/stream-state.ts');
