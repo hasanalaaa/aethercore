@@ -16,8 +16,10 @@ message StartCareRunRequest {
 }
 
 message GrantCareSessionConsentRequest {
-  // Explicit one-time session consent for Level 0–1 auto work this session.
-  // Never implied; never persisted beyond the session scope.
+  // P75 (DBT-P75-045): the digest of the care plan the owner was shown. The service
+  // approves only that plan; if the plan it composes now differs, the grant is refused
+  // (DigestChanged) and nothing is approved. Additive field; empty is refused.
+  string plan_digest_sha256 = 1;
 }
 
 message GetCareStatusRequest {}

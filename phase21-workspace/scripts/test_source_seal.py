@@ -237,6 +237,23 @@ def case_repository_root_without_manifest(tmp: Path) -> None:
     )
 
 
+def case_repository_root_github_absent(tmp: Path) -> None:
+    """P75 review (#51, source_seal.py:148): with the workspace intact, a repository root
+    whose .github/ is gone, or is a file, is a failure, not a skipped check."""
+    import shutil
+    ws = repo_fixture(tmp)
+    shutil.rmtree(ws.parent / ".github")
+    code, report = run_seal(ws)
+    absent = code != 0 and report.get("ok") is False
+    (ws.parent / ".github").write_text("not a directory\n", encoding="utf-8")
+    code2, report2 = run_seal(ws)
+    record(
+        "a repository root with no .github directory fails the seal",
+        absent and code2 != 0 and report2.get("ok") is False,
+        f"absent: exit={code} ok={report.get('ok')}; file: exit={code2} ok={report2.get('ok')}",
+    )
+
+
 CASES = [
     case_pristine,
     case_one_byte,
@@ -248,6 +265,7 @@ CASES = [
     case_real_tree_one_byte,
     case_repository_root_workflow_change,
     case_repository_root_without_manifest,
+    case_repository_root_github_absent,
 ]
 
 

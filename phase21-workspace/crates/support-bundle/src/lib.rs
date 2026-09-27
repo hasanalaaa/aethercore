@@ -746,8 +746,12 @@ fn redact_tokens(
     let mut token = String::new();
     let flush = |token: &mut String, output: &mut String, count: &mut u32| {
         if !token.is_empty() {
-            if predicate(token) {
+            // Punctuation that ends a sentence or a clause is not part of the value
+            // ("Peer 192.168.1.23." — P75 review #49).
+            let value = token.trim_end_matches(['.', ':', '-']);
+            if !value.is_empty() && predicate(value) {
                 output.push_str(replacement);
+                output.push_str(&token[value.len()..]);
                 *count = count.saturating_add(1)
             } else {
                 output.push_str(token)
@@ -1306,6 +1310,21 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
     /// P75 update-trust: identifiers the old sanitizer let through.
+    #[test]
+    /// P75 review (#49, lib.rs:715): an address that ends a sentence carries the period into
+    /// the token ("192.168.1.23."), which parses as neither an IP nor a socket address.
+    fn an_address_that_ends_a_sentence_is_still_redacted() {
+        let mut report = PrivacyReport::default();
+        let text = sanitize_string("Peer 192.168.1.23. Retry at 10.0.0.7:8080.", &mut report);
+        assert!(!text.contains("192.168.1.23"), "{text}");
+        assert!(!text.contains("10.0.0.7"), "{text}");
+        assert!(
+            text.contains("<redacted-ip>."),
+            "the sentence keeps its period: {text}"
+        );
+        assert_eq!(report.account_identifier_redactions, 2, "{report:?}");
+    }
+
     #[test]
     fn escaped_paths_hosts_addresses_and_every_serial_are_redacted() {
         let (value, r) = sanitize_value(serde_json::json!({

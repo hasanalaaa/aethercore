@@ -701,6 +701,50 @@ impl OperationEngine {
         Ok((intent, now))
     }
 
+    /// DBT-P75-045: authorizes one domain plan for the care run the owner approved, at the
+    /// content digest that approval committed to. The domain's own start path then consumes
+    /// it through the same one-shot barrier as a broker approval. Returns the authorization's
+    /// id for `revoke_care_step`.
+    pub fn authorize_care_step(
+        &self,
+        id: &str,
+        owner_principal_key: &str,
+        approved_digest: &str,
+    ) -> Result<String> {
+        let plan = self.get_plan_for_owner(id, owner_principal_key)?;
+        if plan.digest != approved_digest {
+            return Err(EngineError::DigestMismatch);
+        }
+        let intent_id = format!("care-{}", Uuid::new_v4());
+        let now = now_ms();
+        // The domain consumes it within the same call; the short expiry bounds what a crash
+        // between authorizing and revoking could leave behind.
+        let expiry = now + 10_000;
+        if !self.db.authorize_care_step(
+            &intent_id,
+            id,
+            approved_digest,
+            owner_principal_key,
+            now,
+            expiry,
+        )? {
+            // Re-read under the insert's own conditions: the content changed, or the plan
+            // no longer awaits authorization.
+            let plan = self.get_plan_for_owner(id, owner_principal_key)?;
+            return Err(if plan.digest != approved_digest {
+                EngineError::DigestMismatch
+            } else {
+                EngineError::AuthorizationRequired
+            });
+        }
+        Ok(intent_id)
+    }
+
+    /// Withdraws a care step's authorization its domain did not consume.
+    pub fn revoke_care_step(&self, intent_id: &str) -> Result<()> {
+        Ok(self.db.revoke_care_step(intent_id)?)
+    }
+
     pub fn consume_authorization_and_begin(
         &self,
         id: &str,

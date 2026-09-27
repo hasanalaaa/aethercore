@@ -18,6 +18,7 @@ const OWNER: &str = "care-owner";
 fn step(id: &str, kind: &str, safety: CareSafety) -> CareStep {
     CareStep {
         domain_plan_id: id.to_string(),
+        domain_plan_digest: format!("digest-{id}"),
         domain_kind: kind.to_string(),
         safety,
         title_key: "care.step.title".to_string(),
@@ -125,10 +126,10 @@ impl aethercore_care_orchestrator::DomainStepExecutor for FakeExecutor {
     fn execute_step(
         &self,
         _owner: &str,
-        domain_plan_id: &str,
-        domain_kind: &str,
+        step: &CareStep,
         _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
     ) -> Result<(StepOutcome, String, String), CareError> {
+        let (domain_plan_id, domain_kind) = (&step.domain_plan_id, &step.domain_kind);
         self.calls.fetch_add(1, Ordering::SeqCst);
         let mut script = self.script.lock().expect("script");
         let outcome = if script.is_empty() {
@@ -521,4 +522,37 @@ fn consent_given_for_another_plan_is_refused() {
     assert_eq!(error, CareError::DigestChanged);
     assert_eq!(executor.calls.load(Ordering::SeqCst), 0);
     assert!(journal.events.lock().unwrap().is_empty());
+}
+
+/// DBT-P75-045: a step whose domain plan content changed after the care plan was approved is
+/// refused with `DigestChanged`; the steps that are still the approved bytes run.
+#[test]
+fn a_step_whose_plan_changed_after_approval_is_refused() {
+    let supervisor = MutationSupervisor::new();
+    let executor = FakeExecutor::scripted(vec![Err(CareError::DigestChanged)]);
+    let journal = MemoryJournal::default();
+    let plan = CarePlan::build(vec![
+        step("clean-plan-1", "Cleanup", CareSafety::Auto),
+        step("clean-plan-2", "Cleanup", CareSafety::Auto),
+    ])
+    .unwrap();
+    let result = run_care_plan(
+        &supervisor,
+        &executor,
+        &journal,
+        &CommitFence::new(),
+        OWNER,
+        "run-changed-step",
+        &plan,
+        approved(&plan),
+    )
+    .expect("one refused step does not fail the run");
+    assert_eq!(executor.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(result.steps[0].outcome, StepOutcome::Failed);
+    assert_eq!(
+        result.steps[0].failure_message_key,
+        aethercore_care_orchestrator::DIGEST_CHANGED_KEY
+    );
+    assert_eq!(result.steps[1].outcome, StepOutcome::VerifiedByDomain);
+    assert!(!result.all_steps_verified);
 }

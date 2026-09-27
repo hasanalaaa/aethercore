@@ -1928,10 +1928,12 @@ async fn get_care_status() -> Result<v1::CareRunStatus, String> {
 }
 
 #[command]
-async fn grant_care_session_consent() -> Result<v1::CareRunStatus, String> {
+async fn grant_care_session_consent(
+    plan_digest_sha256: String,
+) -> Result<v1::CareRunStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let resp = request(request::Payload::GrantCareSessionConsent(
-            v1::GrantCareSessionConsentRequest {},
+            v1::GrantCareSessionConsentRequest { plan_digest_sha256 },
         ))
         .map_err(|e| e.to_string())?;
         extract_care_status(resp)

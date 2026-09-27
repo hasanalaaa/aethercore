@@ -128,6 +128,7 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
     // terminal state.
     let dispatch: Arc<dyn aethercore_care_orchestrator::DomainDispatch> =
         Arc::new(RealDomainDispatch {
+            engine: engine.clone(),
             cleaner: cleaner.clone(),
             startup: startup.clone(),
         });
@@ -211,6 +212,7 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
 // ---------------------------------------------------------------------------
 
 struct RealDomainDispatch {
+    engine: Arc<OperationEngine>,
     cleaner: Arc<CleanupEngine>,
     startup: Arc<StartupManager>,
 }
@@ -237,6 +239,46 @@ impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
     /// Routed by the plan's kind, which care read from the plan itself. A domain's
     /// `status()` cannot route: it answers only for plans that have already started.
     fn start_and_await(
+        &self,
+        owner: &str,
+        plan_id: &str,
+        domain_kind: &str,
+        approved_digest: &str,
+        lease: &aethercore_care_orchestrator::MutationLeaseGuard,
+    ) -> Result<(String, String, String), aethercore_care_orchestrator::CareError> {
+        let rejected = |detail: String| aethercore_care_orchestrator::CareError::DomainRejected {
+            domain_kind: domain_kind.to_string(),
+            detail,
+        };
+        // Review-only kinds (driver install, system repair) never reach dispatch, and are
+        // never authorized by care.
+        if !matches!(domain_kind, "Cleanup" | "Startup") {
+            return Err(rejected(format!(
+                "plan {plan_id}: care cannot run {domain_kind:?} plans"
+            )));
+        }
+        // DBT-P75-045: the owner's care approval becomes this plan's one-shot authorization
+        // only while the plan is still the approved content; the domain consumes it through
+        // its own barrier, and whatever it did not consume is withdrawn on the way out.
+        let intent_id = self
+            .engine
+            .authorize_care_step(plan_id, owner, approved_digest)
+            .map_err(|error| match error {
+                aethercore_operation_engine::EngineError::DigestMismatch => {
+                    aethercore_care_orchestrator::CareError::DigestChanged
+                }
+                other => rejected(other.to_string()),
+            })?;
+        let started = self.start_authorized(owner, plan_id, domain_kind, lease);
+        self.engine
+            .revoke_care_step(&intent_id)
+            .map_err(|error| rejected(format!("withdrawing the step authorization: {error}")))?;
+        started.map_err(rejected)
+    }
+}
+
+impl RealDomainDispatch {
+    fn start_authorized(
         &self,
         owner: &str,
         plan_id: &str,
@@ -279,7 +321,6 @@ impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
                     !s.items.is_empty() && s.items.iter().all(|i| i.result_code == "Verified");
                 Ok(step_result(s.plan_state, verified_if(verified)))
             }
-            // Review-only kinds (driver install, system repair) never reach dispatch.
             other => Err(format!("plan {plan_id}: care cannot run {other:?} plans")),
         }
     }
@@ -353,12 +394,17 @@ mod p75_care_dispatch_tests {
         fn execute_step(
             &self,
             owner: &str,
-            plan_id: &str,
-            kind: &str,
+            step: &CareStep,
             lease: &MutationLeaseGuard,
         ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError>
         {
-            let answer = self.0.start_and_await(owner, plan_id, kind, lease);
+            let answer = self.0.start_and_await(
+                owner,
+                &step.domain_plan_id,
+                &step.domain_kind,
+                &step.domain_plan_digest,
+                lease,
+            );
             *self.1.lock().unwrap() = Some(format!("{answer:?}"));
             Ok((StepOutcome::Failed, String::new(), String::new()))
         }
@@ -394,6 +440,7 @@ mod p75_care_dispatch_tests {
             .expect("plan")
             .id;
         let dispatch = RealDomainDispatch {
+            engine: engine.clone(),
             cleaner: Arc::new(CleanupEngine::new(engine.clone(), db.clone())),
             startup: Arc::new(StartupManager::new(
                 engine.clone(),
@@ -401,8 +448,10 @@ mod p75_care_dispatch_tests {
                 std::env::temp_dir(),
             )),
         };
+        let domain_plan_digest = engine.get_plan_for_owner(&plan_id, OWNER).unwrap().digest;
         let plan = CarePlan::build(vec![CareStep {
             domain_plan_id: plan_id,
+            domain_plan_digest,
             domain_kind: "Cleanup".into(),
             safety: CareSafety::Auto,
             title_key: "care.step.cleanup".into(),
@@ -421,8 +470,135 @@ mod p75_care_dispatch_tests {
         )
         .expect("run");
         let answer = via.1.lock().unwrap().clone().expect("dispatched");
-        // No broker approval exists for this plan, so the cleaner refuses — its own answer.
-        assert!(answer.contains("authorization required"), "{answer}");
+        // Routed by kind, the cleaner answers for the unstarted plan: it ran it under the care
+        // step's authorization (DBT-P75-045) and reports its own terminal state (this empty
+        // candidate fails its own checks).
+        assert!(answer.starts_with("Ok((\"Failed\""), "{answer}");
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn cleanup_plan(engine: &OperationEngine, candidate: &str) -> String {
+        engine
+            .create_cleanup_plan(
+                OWNER,
+                1,
+                "scan-1",
+                vec![CleanupDeleteAction {
+                    candidate_id: candidate.into(),
+                    scan_id: "scan-1".into(),
+                    inventory_epoch: 1,
+                    provider: "test".into(),
+                    title: "test".into(),
+                    special_kind: String::new(),
+                    files: Vec::new(),
+                    expected_bytes: 0,
+                }],
+            )
+            .expect("plan")
+            .id
+    }
+
+    fn real_care(db: &Arc<Database>) -> (crate::care::CareCoordinator, Arc<OperationEngine>) {
+        let engine = Arc::new(OperationEngine::new(db.clone()));
+        let dispatch = Arc::new(RealDomainDispatch {
+            engine: engine.clone(),
+            cleaner: Arc::new(CleanupEngine::new(engine.clone(), db.clone())),
+            startup: Arc::new(StartupManager::new(
+                engine.clone(),
+                db.clone(),
+                std::env::temp_dir(),
+            )),
+        });
+        (
+            crate::care::CareCoordinator::new(
+                db.clone(),
+                dispatch,
+                aethercore_operation_kernel::MutationSupervisor::new(),
+            ),
+            engine,
+        )
+    }
+
+    fn temp_db() -> (Arc<Database>, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!(
+            "aethercore-p75-session-consent-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        (Arc::new(Database::open(&path).expect("database")), path)
+    }
+
+    /// DBT-P75-045: one owner approval of the care plan runs every Auto step through the
+    /// domains' own start path. Before, each domain demanded its own broker approval and
+    /// answered `authorization required`.
+    #[test]
+    fn one_approval_runs_every_auto_step() {
+        let (db, path) = temp_db();
+        let (care, engine) = real_care(&db);
+        let first = cleanup_plan(&engine, "c1");
+        let second = cleanup_plan(&engine, "c2");
+        let shown = care.plan_preview(OWNER).expect("preview");
+        let granted = care
+            .grant_session_consent(OWNER, &shown.plan_digest_sha256)
+            .expect("grant");
+        assert_eq!(granted.plan_digest_sha256, shown.plan_digest_sha256);
+        let status = care.start_run(OWNER, "run-all").expect("run");
+        assert_eq!(status.state, "Completed", "{status:?}");
+        for plan in [&first, &second] {
+            let state = engine.get_plan_for_owner(plan, OWNER).unwrap().state;
+            assert_ne!(
+                state,
+                aethercore_operation_engine::PlanState::AwaitingAuthorization,
+                "{plan} never started: {status:?}"
+            );
+        }
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Review-only work never runs under any consent, and care never authorizes it at the
+    /// domain barrier: the driver plan stays where the owner left it.
+    #[test]
+    fn review_only_work_never_executes_under_care_consent() {
+        let (db, path) = temp_db();
+        let (care, engine) = real_care(&db);
+        let cleanup = cleanup_plan(&engine, "c1");
+        db.insert_plan(
+            &aethercore_persistence::PlanRecord {
+                id: "driver-plan".into(),
+                title: "driver".into(),
+                state: "AwaitingAuthorization".into(),
+                digest: "d".repeat(64),
+                risk: "High".into(),
+                immutable_json: r#"{"actions":[{"kind":"installWindowsDriver"}]}"#.into(),
+                created_unix_ms: 1,
+                updated_unix_ms: 1,
+                owner_principal_key: OWNER.into(),
+            },
+            "test",
+        )
+        .unwrap();
+        let shown = care
+            .plan_preview(OWNER)
+            .expect("preview")
+            .plan_digest_sha256;
+        let _ = care.grant_session_consent(OWNER, &shown).expect("grant");
+        let status = care.start_run(OWNER, "run-review").expect("run");
+        let driver = status
+            .steps
+            .iter()
+            .find(|step| step.domain_plan_id == "driver-plan")
+            .expect("the review step is listed");
+        assert_eq!(driver.state, "Skipped");
+        assert_eq!(
+            db.get_plan("driver-plan").unwrap().unwrap().state,
+            "AwaitingAuthorization"
+        );
+        assert_ne!(
+            engine.get_plan_for_owner(&cleanup, OWNER).unwrap().state,
+            aethercore_operation_engine::PlanState::AwaitingAuthorization,
+            "the auto step ran: {status:?}"
+        );
         drop(db);
         let _ = std::fs::remove_file(&path);
     }

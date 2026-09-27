@@ -452,6 +452,24 @@ const fleetSnapshot = {
   sshAvailable: true,
 };
 
+const careStep = (stepIndex: number, domainKind: string, safetyLevel: number) => ({
+  stepIndex, domainPlanId: `${stepIndex}f3c9a2e-7b1d-4c55-9e0a-${domainKind.length}c1d2e3f4a5b`, domainKind, safetyLevel,
+  state: 'Pending', outcome: 'Pending', domainVerificationState: '', failureMessageKey: '',
+});
+const careStatus = (granted: boolean) => ({
+  runId: '', state: 'Idle', stage: 'Preview', sessionConsentGranted: granted, planDigestSha256: 'c4'.repeat(32),
+  steps: [careStep(0, 'Cleanup', 0), careStep(1, 'Startup', 0), careStep(2, 'DriverInstall', 2)],
+  updatedUnixMs: NOW, summaryKey: granted ? 'care.summary.completed' : 'care.summary.needsConsent',
+});
+const careRun = {
+  ...careStatus(true), state: 'Completed', stage: 'Report',
+  steps: [
+    { ...careStep(0, 'Cleanup', 0), state: 'Completed', outcome: 'VerifiedByDomain', domainVerificationState: 'Verified' },
+    { ...careStep(1, 'Startup', 0), state: 'Failed', outcome: 'Failed', failureMessageKey: 'care.error.digestChanged' },
+    { ...careStep(2, 'DriverInstall', 2), state: 'Skipped', outcome: 'Skipped' },
+  ],
+};
+
 let sequence = 0;
 const event = <K extends UiKernelEvent['kind']>(kind: K, payload: unknown): UiKernelEvent =>
   ({ sequence: ++sequence, emittedUnixMs: NOW, kind, planId: '', payload } as UiKernelEvent);
@@ -515,6 +533,12 @@ const emit = (kernelEvent: UiKernelEvent): void => {
     if (command === 'fleet_schedule_run_due') return { ran: 1, runs: [{ scheduleId: 'nightly-cis', hostsAttempted: 2, hostsOk: 1, hostsFailed: 1, error: null }], error: null };
     if (command.startsWith('fleet_schedule_')) return { ok: true, scheduleId: 'nightly-cis', detail: '' };
     if (command.startsWith('fleet_')) return { ok: true, hostId: String(args?.hostId ?? 'web-01'), detail: '' };
+    // One-Click Care: a plan with two automatic steps and one review-only step, approved and
+    // run as the service does it (DBT-P75-045). Without these the care dialog was never measured.
+    if (command === 'get_care_status' || command === 'grant_care_session_consent') {
+      return careStatus(command === 'grant_care_session_consent');
+    }
+    if (command === 'start_care_run') return careRun;
     if (command === 'get_assistant_pack') return { pack: ASSISTANT_PACK, engineLabel: 'localModel' };
     if (command === 'cancel_assistant_turn') {
       const turnId = String(args?.turnId ?? '');

@@ -136,7 +136,7 @@ mod acl {
     }
 
     /// `dacl == None` is a NULL DACL. Walks in ACL order, as AccessCheck does: a deny
-    /// for the same SID earlier in the list removes the rights it covers.
+    /// earlier in the list for the same SID, or for Everyone, removes the rights it covers.
     pub fn world_writable(dacl: Option<&[Ace]>) -> Option<String> {
         let Some(aces) = dacl else {
             return Some(NULL_DACL.to_string());
@@ -155,9 +155,16 @@ mod acl {
                 }
                 continue;
             }
+            // Authenticated Users and Users are inside Everyone, so a deny for Everyone
+            // reaches them; Anonymous is not in Everyone by default.
+            let covers = |deny: &str| {
+                deny == ace.sid
+                    || (deny == "S-1-1-0"
+                        && matches!(ace.sid.as_str(), "S-1-5-11" | "S-1-5-32-545"))
+            };
             let masked = denied
                 .iter()
-                .filter(|(sid, _)| *sid == ace.sid)
+                .filter(|(sid, _)| covers(sid))
                 .fold(0, |acc, (_, m)| acc | m);
             if rights & !masked != 0 {
                 return Some(shown(ace));
@@ -693,6 +700,24 @@ mod tests {
         // A deny for another SID does not cover Everyone.
         let other = [deny("S-1-5-32-545", 0x6), allow("S-1-1-0", 0x6)];
         assert!(world_writable(Some(&other)).is_some());
+    }
+
+    /// P75 review: every member of Authenticated Users and Users is also in Everyone, so an
+    /// earlier unconditional deny for Everyone removes those rights from their later grants
+    /// too. Anonymous is not in Everyone by default, so its grant stays visible.
+    #[test]
+    fn an_earlier_everyone_deny_covers_the_groups_inside_everyone() {
+        for sid in ["S-1-5-11", "S-1-5-32-545"] {
+            let dacl = [deny("S-1-1-0", 0x6), allow(sid, 0x6)];
+            assert_eq!(world_writable(Some(&dacl)), None, "{sid}");
+        }
+        let anonymous = [deny("S-1-1-0", 0x6), allow("S-1-5-7", 0x6)];
+        assert!(world_writable(Some(&anonymous)).is_some());
+        let partial = [deny("S-1-1-0", 0x2), allow("S-1-5-11", 0x6)];
+        assert!(
+            world_writable(Some(&partial)).is_some(),
+            "0x4 is still granted"
+        );
     }
 
     #[test]

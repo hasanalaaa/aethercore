@@ -382,3 +382,36 @@ fn a_single_gpu_spike_is_not_a_root_cause() {
         report.findings.iter().map(|f| &f.code).collect::<Vec<_>>()
     );
 }
+
+/// P75 trial: a finding fired by the average must cite the average. The rule fires on the
+/// peak OR the average, but cited only the peak, so a report fired by an 80% average read
+/// "peak 80 of threshold 92": evidence below its own threshold, supporting nothing.
+#[test]
+fn io_saturation_fired_by_the_average_cites_the_average() {
+    let mut samples: Vec<PerfSnapshot> = (0..10)
+        .map(|index| idle_snapshot(1_700_000_000_000 + index * 1000))
+        .collect();
+    for snap in &mut samples {
+        snap.storage.push(StorageQueueSample {
+            device_id: "disk0".into(),
+            active_time_bp: 8_000,
+            ..Default::default()
+        });
+    }
+    let (report, _) = build_window(samples);
+    let finding = report
+        .findings
+        .iter()
+        .find(|f| f.code == "IO_SATURATION")
+        .expect("an 80% average saturates");
+    let average = finding
+        .evidence
+        .iter()
+        .find(|e| e.fact_key == "storage.activeBp.avg")
+        .unwrap_or_else(|| panic!("the average fired it: {:?}", finding.evidence));
+    assert_eq!(average.observed_value, 8_000.0);
+    assert_eq!(
+        average.threshold,
+        f64::from(thresholds::STORAGE_SATURATION_AVG_BP)
+    );
+}
