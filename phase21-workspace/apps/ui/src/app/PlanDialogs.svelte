@@ -34,6 +34,7 @@
   $: restoreEntry = $startupUi.restoreEntry;
   $: restorePlan = $startupUi.restorePlan;
   $: careShown = $streamState.careStatus;
+  $: careAutoSteps = careShown ? careShown.steps.filter((step) => step.safetyLevel <= 0) : [];
 </script>
 
 {#if installPlan}
@@ -162,7 +163,7 @@
       <TechnicalText value={shortDigest(careShown.planDigestSha256)} />
     </p>
     <ol class="consent-list">
-      {#each careShown.steps.filter((step) => step.safetyLevel <= 0) as step (step.stepIndex)}
+      {#each careAutoSteps as step (step.stepIndex)}
         <li>{localizePlanKind(step.domainKind, locale)} · <TechnicalText value={step.domainPlanId.slice(0, 8)} /></li>
       {/each}
     </ol>
