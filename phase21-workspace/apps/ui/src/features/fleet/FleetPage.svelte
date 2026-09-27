@@ -15,6 +15,7 @@
   import { fluidPress } from '../../design/motion';
   import { hasMessageKey, t, td } from '../../lib/i18n';
   import { EmptyState } from '../../design/signature';
+  import { runDueOutcome, type RunDueResult } from './run-due';
 
   type FleetHostRow = {
     hostId: string;
@@ -258,25 +259,43 @@
     scheduleFormOpen = true; scheduleEditId = schedule.scheduleId; scheduleId = schedule.scheduleId; scheduleScope = schedule.scope.join(','); scheduleProfile = schedule.profileId; scheduleEveryHours = schedule.cadence.startsWith('every_hours:') ? schedule.cadence.split(':')[1] : '24'; scheduleEnabled = schedule.enabled;
   }
 
+  // P75: a rejected invoke used to escape these three handlers, so a failure showed nothing.
   async function saveSchedule(): Promise<void> {
     const id = scheduleId.trim();
     if (!id) { notify(false, t('fleet.errScheduleRequired', locale)); return; }
     const command = scheduleEditId ? 'fleet_schedule_update' : 'fleet_schedule_add';
-    const result = await uiTransport.invoke<ScheduleActionResult>(command, { input: { scheduleId: id, scope: scheduleScope.split(',').map((item) => item.trim()).filter(Boolean), profileId: scheduleProfile, everyHours: Number(scheduleEveryHours) || 24, enabled: scheduleEnabled } });
-    notify(result.ok, result.ok ? t(scheduleEditId ? 'fleet.okScheduleUpdated' : 'fleet.okScheduleAdded', locale) : result.detail);
-    if (result.ok) { resetScheduleForm(); await refresh(); }
+    try {
+      const result = await uiTransport.invoke<ScheduleActionResult>(command, { input: { scheduleId: id, scope: scheduleScope.split(',').map((item) => item.trim()).filter(Boolean), profileId: scheduleProfile, everyHours: Number(scheduleEveryHours) || 24, enabled: scheduleEnabled } });
+      notify(result.ok, result.ok ? t(scheduleEditId ? 'fleet.okScheduleUpdated' : 'fleet.okScheduleAdded', locale) : result.detail);
+      if (result.ok) { resetScheduleForm(); await refresh(); }
+    } catch (error) {
+      notify(false, String(error));
+    }
   }
 
   async function removeSchedule(schedule: FleetScheduleRow): Promise<void> {
     if (!window.confirm(t('fleet.confirmScheduleRemove', locale, { id: schedule.scheduleId }))) return;
-    const result = await uiTransport.invoke<ScheduleActionResult>('fleet_schedule_remove', { scheduleId: schedule.scheduleId, confirm: true });
-    notify(result.ok, result.ok ? t('fleet.okScheduleRemoved', locale) : result.detail);
-    if (result.ok) await refresh();
+    try {
+      const result = await uiTransport.invoke<ScheduleActionResult>('fleet_schedule_remove', { scheduleId: schedule.scheduleId, confirm: true });
+      notify(result.ok, result.ok ? t('fleet.okScheduleRemoved', locale) : result.detail);
+      if (result.ok) await refresh();
+    } catch (error) {
+      notify(false, String(error));
+    }
   }
 
   async function runDueSchedules(): Promise<void> {
-    const result = await uiTransport.invoke<{ ran: number; runs: unknown[] }>('fleet_schedule_run_due');
-    notify(true, `${t('fleet.okScheduleRunDue', locale)} (${result.ran})`);
+    try {
+      const outcome = runDueOutcome(await uiTransport.invoke<RunDueResult>('fleet_schedule_run_due'));
+      notify(
+        outcome.ok,
+        outcome.ok
+          ? t('fleet.okScheduleRunDue', locale)
+          : t('fleet.errScheduleRunDue', locale, { failed: String(outcome.failed), attempted: String(outcome.attempted) }) + (outcome.detail ? ` ${outcome.detail}` : ''),
+      );
+    } catch (error) {
+      notify(false, String(error));
+    }
     await refresh();
   }
 

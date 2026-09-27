@@ -3,8 +3,12 @@ import type { MessageKey } from './i18n';
 /**
  * The rules AetherCore refuses under, and the single place they are written down.
  *
- * These are constitutional, not runtime state: the product is air-gapped by
- * construction, keeps residency on the device, and installs no unsigned driver.
+ * These are constitutional, not runtime state: the product opens no network
+ * connection the user did not start, keeps residency on the device, and installs
+ * no unsigned driver. P75: the band used to say "Denied by policy: Outbound
+ * network", which was false — an update check and Fleet do connect, on the
+ * user's action. What is refused is network use at rest (no-egress lane: the
+ * passive driver scan reads the local cache only).
  * They are always in force, which is why the policy band is persistent rather
  * than something that appears after a refusal. A user should learn what the
  * product will not do before they ask it to.
