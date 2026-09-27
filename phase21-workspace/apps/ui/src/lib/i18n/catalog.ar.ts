@@ -838,6 +838,7 @@ export const arCatalog = {
   'hardware.triageTitle': 'ما الذي يستحق الانتباه',
   'crash.triageEyebrow': 'بطاقات الفرز',
   'crash.triageTitle': 'خطوات تالية آمنة',
+  'crash.triageEmpty': 'لم ينتج آخر جمع أي بطاقة فرز للأعطال أو العتاد.',
   'crash.historyEyebrow': 'السجل المحلي',
   'crash.historyTitle': 'لقطات التشخيص الحديثة',
   'crash.historyCounts': '{cards} · {warnings}',

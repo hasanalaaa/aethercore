@@ -836,6 +836,7 @@ export const enCatalog = {
   'hardware.triageTitle': 'What deserves attention',
   'crash.triageEyebrow': 'TRIAGE CARDS',
   'crash.triageTitle': 'Safe next steps',
+  'crash.triageEmpty': 'The last collection produced no crash or hardware triage card.',
   'crash.historyEyebrow': 'LOCAL HISTORY',
   'crash.historyTitle': 'Recent diagnostic snapshots',
   'crash.historyCounts': '{cards} · {warnings}',

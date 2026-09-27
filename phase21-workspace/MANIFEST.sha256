@@ -417,7 +417,7 @@ f036490b8386020b8a80a30d826d7fc9896efbd9dfa84b955915abc436f652e1  apps/ui/src/de
 f05e0af5de56eeded5b33af0f8b8af3cb8ac4b2fdf05c6ec0c8ef8eceae5f766  apps/ui/src/design/signature/contracts.ts
 4eb7a82c81079ba9debacd6efbf8a083622557a21a99ec3abb5a2cb9141676f0  apps/ui/src/design/signature/index.ts
 1ee3183f79c6484c4536a29bf4cb0e80ff2ef7dff52fda734bc571d952f77211  apps/ui/src/design/styles/base.css
-ca6903c02bcfd609fed09a276196aafb78802ead775dd22bfc1291817ec5b9fd  apps/ui/src/design/styles/feature-layout.css
+cd6308292eb349adc3347c40d0d6eee9d5ce0e98db82984ae97c3407fd38efa9  apps/ui/src/design/styles/feature-layout.css
 0eeb8211a4bbc30fcd8ae3858b5e385259dcfaabc647d852274d6ef0a3817492  apps/ui/src/design/styles/fonts.css
 34a2876b66e7ce71107d5bfbd95f2b58e728bba1cd2290d9403c2c71a385cf94  apps/ui/src/design/styles/materials.css
 eec37c71f08c871f07eb1f89b7a2c42910c1a2b0471ed35f73ef0274697a1b8d  apps/ui/src/design/styles/motion.css
@@ -433,7 +433,7 @@ eee2ed9cf089b9395c212e6f3cb0232d7d3235d6b0ec595306625a5bef20f892  apps/ui/src/de
 e969ca9fcb5d14b0c1bba482810000fc09b847342dd94e1605579ad772e57179  apps/ui/src/features/care/controller.ts
 9f84b19ee567b431fb8ab387a557f6ef3d1bafe97b53ab87ba4e8f5f46e47995  apps/ui/src/features/cleanup/CleanupPage.svelte
 5bf669667854c15a7f51917977aea62632b28cd397034f64a5c24bff0be117fc  apps/ui/src/features/cleanup/controller.ts
-cb27aa39857efb1273f3c0cdfed0eb764dbee0bc2ce75d4af10d4d7e8504df92  apps/ui/src/features/diagnostics/CrashPage.svelte
+6ec82e1573ca893661f30b82a1e603bd7d48a646b3f7ab3f9e912fa17ffe8a3a  apps/ui/src/features/diagnostics/CrashPage.svelte
 87dce9d85dfbcba193c151d6575c6f51dce929deefc777649b81cd43fc7a155f  apps/ui/src/features/diagnostics/HardwarePage.svelte
 95993ee97090465187989143bdb17f541da8aba8f0ebcb7f3d97c8b18ee9e000  apps/ui/src/features/diagnostics/ProviderFaultsPanel.svelte
 b3bfe24d9b74e04f9943f8fb99af1d3f538b3fad46c6e93fc9049f166faae838  apps/ui/src/features/diagnostics/controller.ts
@@ -447,7 +447,7 @@ ec4b6407364644b4a335ec1bf25d06eaf088d1dd51f654e4571f0e8cc32d02d5  apps/ui/src/fe
 2d4c49294ff83ecfdfaff2830cb6ed542a0ae1c8431bbdf96ef1cca519e327e4  apps/ui/src/features/intelligence/FindingCard.svelte
 5d06b9ceb4b20b0b1ca37a263bbcd086372f278e523e1a949cf0dbfea09e064c  apps/ui/src/features/intelligence/controller.ts
 14cbb9e94b6ef61c09bdd3972765c6c9be52a10f89ff9d0666ef368805abd641  apps/ui/src/features/intelligence/headline.ts
-7e6a7440f4d5a0792404e0a516986751281ba8517e3fde545b1b1babf527af5b  apps/ui/src/features/overview/OverviewPage.svelte
+7910f204d8115e5dd9f3aa7be713b90298807c3d05667e18119c7477290804a0  apps/ui/src/features/overview/OverviewPage.svelte
 69edd67ce08d8ae75a4812003173cbe124c590b1f47a892c633dff37ccfaa829  apps/ui/src/features/overview/controller.ts
 9feb719f33745cdf44594c2c7442f0f1cc83e335348c38b6f57635cdf20855bc  apps/ui/src/features/overview/instrument.ts
 f5706c685decc057ca163898765713b68fbbb01eccd5bc34963208c961d5e2a3  apps/ui/src/features/performance/PerformancePage.svelte
@@ -465,8 +465,8 @@ bbe46e0168a9ea2689d2b40a88ccd3d9dc098aeccfcf91da74e22d627fa1cb32  apps/ui/src/fe
 e68eca0a5dba40b456b45f2fb7de56ee0848781bdc50d1c28895f9663550acc4  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-9fced0fd24729ed2c88e31dc68c232dbe9160db2eabad1443d51fab49de8ca87  apps/ui/src/lib/i18n/catalog.ar.ts
-f5af31e0d2ca60414d50f673ecdedb2a2106c6e05d7ce658d03f761926f766cb  apps/ui/src/lib/i18n/catalog.en.ts
+d737fb2fb1499bf3d3d78ce0d52588954d11118917635163fbfa6e13f86afcca  apps/ui/src/lib/i18n/catalog.ar.ts
+294dc3477c93b9288de06f04fb930721d31cd24e7efbb1f770e4d7babe900e12  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 861d75f3596e142099802c67260c936723dcab045446c37bfd2c257d0e2339cd  apps/ui/src/lib/i18n/plurals.ar.ts
 132a089d249f086435a2c391863187ee056386bebc40c126354a954c64016c71  apps/ui/src/lib/i18n/plurals.en.ts

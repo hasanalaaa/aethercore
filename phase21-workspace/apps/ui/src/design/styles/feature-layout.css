@@ -2421,6 +2421,8 @@ header .sub {
   padding-inline-start:14px
 }
 
+.crash-triage .triage-empty { margin:0; color:var(--ac-text-3); font-size:var(--ac-type-body); }
+
 .bugcheck span {
   font-size:var(--ac-type-body);
   color: var(--ac-text-4)}
