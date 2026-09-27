@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use aethercore_contracts::v1;
 use aethercore_intelligence_core::{
-    EvidenceItem, EvidenceSurface, LlamaCppReasoner, ReasonerSelector, TypedEvidencePack,
+    EvidenceItem, EvidenceSurface, LlamaCppReasoner, Locale, ReasonerSelector, TypedEvidencePack,
 };
 use aethercore_persistence::Database;
 use aethercore_timeline_intelligence::RecurrenceConfidence;
@@ -229,6 +229,7 @@ impl IntelligenceCoordinator {
         owner_principal_key: &str,
         mutation_or_care_active: bool,
         question: &str,
+        locale: Locale,
     ) -> Result<v1::InsightsResponse, String> {
         let pack = compose_evidence_pack(self.db.as_ref(), owner_principal_key);
 
@@ -242,7 +243,7 @@ impl IntelligenceCoordinator {
 
         let insights = self
             .selector
-            .request_insights(&pack, question, mutation_or_care_active)
+            .request_insights(&pack, question, locale, mutation_or_care_active)
             .map_err(|error| error.to_string())?;
 
         // Convert typed domain insights to wire structs (same vocabulary, I1).
@@ -428,7 +429,7 @@ mod tests {
             pack.items
         );
         let insights = ReasonerSelector::new(None)
-            .request_insights(&pack, "", false)
+            .request_insights(&pack, "", Locale::En, false)
             .unwrap_or_default();
         assert!(
             !insights

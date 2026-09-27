@@ -21,6 +21,7 @@
  */
 import { get, writable } from 'svelte/store';
 import type { AssistantEvidenceRef, AssistantPackResponse, AssistantTurn } from '../../lib/contracts';
+import type { Locale } from '../../lib/i18n/runtime';
 import { serviceInvoke } from '../../platform/service-client';
 import { streamState } from '../../platform/stream-state';
 
@@ -204,7 +205,7 @@ export async function loadAssistantPack(): Promise<void> {
  * model (no evidence, a mutation holding the lease, no model) or a STREAMING
  * turn whose frames arrive on the kernel stream.
  */
-export async function askAssistant(question: string): Promise<void> {
+export async function askAssistant(question: string, locale: Locale): Promise<void> {
   const text = question.trim();
   if (!text || get(assistantState).inFlight) return;
   const turnId = newTurnId();
@@ -214,7 +215,7 @@ export async function askAssistant(question: string): Promise<void> {
     inFlight: turnId,
   }));
   try {
-    const turn = await serviceInvoke<AssistantTurn>('ask_assistant', { turnId, question: text });
+    const turn = await serviceInvoke<AssistantTurn>('ask_assistant', { turnId, question: text, locale });
     assistantState.update((state) => replaceTurn(state, turn));
   } catch (error) {
     // A transport failure is a FAULT, not an empty answer and not a silent

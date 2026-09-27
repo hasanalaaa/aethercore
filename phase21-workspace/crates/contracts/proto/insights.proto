@@ -35,6 +35,9 @@ message RequestInsightRequest {
   string question_key = 1;
   // Optional free-form local question. It remains advisory-only and is answered from the bounded evidence pack.
   string question = 2;
+  // P76 (DBT-P75-052): the language insight prose is written in, "en" or "ar".
+  // Empty is "en"; any other value is refused as an invalid request.
+  string locale = 3;
 }
 
 message DismissInsightRequest {

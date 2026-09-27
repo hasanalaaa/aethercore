@@ -204,10 +204,16 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
             })
         }
         ServiceJob::InsightsExplain { question_key } => {
+            // The prose is in the language the rest of the output is in.
+            let locale = match config.lang {
+                crate::i18n::Lang::En => "en",
+                crate::i18n::Lang::Ar => "ar",
+            };
             let payload = require_ok(client.call(request::Payload::RequestInsight(
                 aethercore_contracts::v1::RequestInsightRequest {
                     question_key,
                     question: String::new(),
+                    locale: locale.to_string(),
                 },
             ))?)?;
             insights_value(&payload).ok_or_else(|| CliError::ProtocolViolation {

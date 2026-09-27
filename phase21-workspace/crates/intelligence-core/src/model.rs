@@ -114,6 +114,27 @@ impl Insight {
     }
 }
 
+/// The language the reader asked for (DBT-P75-052). It selects the language of
+/// the prose; tags, the `NO EVIDENCE` token and every gate are the same in both.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Locale {
+    #[default]
+    En,
+    Ar,
+}
+
+impl Locale {
+    /// The wire value: empty is the default `en` (clients that predate the field
+    /// send nothing); anything else unknown is `None`, for the caller to refuse.
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "" | "en" => Some(Self::En),
+            "ar" => Some(Self::Ar),
+            _ => None,
+        }
+    }
+}
+
 /// Bounded, read-only evidence pack assembled from PUBLIC read APIs of existing
 /// domains (I1/I4). Items are pre-typed structured data — never raw attacker
 /// controlled prose (threat-model mitigation, see docs/phase23/ARCHITECTURE.md).

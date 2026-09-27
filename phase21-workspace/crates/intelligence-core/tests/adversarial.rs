@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use aethercore_intelligence_core::{
     Citation, DeterministicFallbackReasoner, EvidenceItem, EvidenceSurface, InsightConfidence,
-    InsightEngineKind, LlamaCppReasoner, LocalReasoner, MAX_EVIDENCE_ITEMS, MAX_INSIGHTS_PER_CALL,
-    ModelManifestEntry, ReasonerSelector, TypedEvidencePack,
+    InsightEngineKind, LlamaCppReasoner, LocalReasoner, Locale, MAX_EVIDENCE_ITEMS,
+    MAX_INSIGHTS_PER_CALL, ModelManifestEntry, ReasonerSelector, TypedEvidencePack,
 };
 
 fn item(id: &str, surface: EvidenceSurface) -> EvidenceItem {
@@ -83,6 +83,7 @@ fn dangling_citations_never_survive_and_the_fallback_serves() {
             &self,
             _pack: &TypedEvidencePack,
             _q: &str,
+            _locale: Locale,
             _deadline: Instant,
         ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
             // Hostile model output citing evidence that does not exist.
@@ -104,7 +105,7 @@ fn dangling_citations_never_survive_and_the_fallback_serves() {
     let selector = ReasonerSelector::new(Some(Box::new(Fabricator)));
     let pack = populated_pack();
     let out = selector
-        .request_insights(&pack, "explain", false)
+        .request_insights(&pack, "explain", Locale::En, false)
         .expect("call succeeds");
     assert!(
         out.iter().all(|insight| insight
@@ -148,6 +149,7 @@ fn a_panicking_model_releases_the_single_flight_lane() {
             &self,
             _: &TypedEvidencePack,
             _: &str,
+            _locale: Locale,
             _: Instant,
         ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
             if !self.0.swap(true, Ordering::SeqCst) {
@@ -158,10 +160,10 @@ fn a_panicking_model_releases_the_single_flight_lane() {
     }
     let selector = ReasonerSelector::new(Some(Box::new(PanicsOnce(AtomicBool::new(false)))));
     let crashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        selector.request_insights(&populated_pack(), "", false)
+        selector.request_insights(&populated_pack(), "", Locale::En, false)
     }));
     assert!(crashed.is_err(), "the first call panics");
-    let next = selector.request_insights(&populated_pack(), "", false);
+    let next = selector.request_insights(&populated_pack(), "", Locale::En, false);
     assert!(
         matches!(&next, Ok(insights) if !insights.is_empty()),
         "the lane must be free after a panic, got {:?}",
@@ -176,13 +178,17 @@ fn stale_citations_after_pack_change_are_dropped() {
     pack.push(item("pattern-live", EvidenceSurface::TimelinePattern));
 
     // First call resolves against the current pack.
-    let first = selector.request_insights(&pack, "", false).expect("ok");
+    let first = selector
+        .request_insights(&pack, "", Locale::En, false)
+        .expect("ok");
     assert!(!first.is_empty());
 
     // A STALE pack (pattern removed) no longer resolves the pattern citation.
     let mut stale = TypedEvidencePack::default();
     stale.push(item("bottleneck-1", EvidenceSurface::BottleneckReport));
-    let second = selector.request_insights(&stale, "", false).expect("ok");
+    let second = selector
+        .request_insights(&stale, "", Locale::En, false)
+        .expect("ok");
     assert!(
         second.iter().all(|insight| insight
             .citations
@@ -210,6 +216,7 @@ fn unavailable_model_degrades_silently_to_fallback() {
             &self,
             _: &TypedEvidencePack,
             _: &str,
+            _locale: Locale,
             _: Instant,
         ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
             Err("not loaded".into())
@@ -217,7 +224,7 @@ fn unavailable_model_degrades_silently_to_fallback() {
     }
     let selector = ReasonerSelector::new(Some(Box::new(BrokenModel)));
     let out = selector
-        .request_insights(&populated_pack(), "", false)
+        .request_insights(&populated_pack(), "", Locale::En, false)
         .expect("fallback serves instead of erroring");
     assert!(!out.is_empty(), "fallback produced advisory summaries");
     assert!(
@@ -232,9 +239,29 @@ fn fallback_is_deterministic_for_identical_packs() {
     let reasoner = DeterministicFallbackReasoner::new();
     let pack = populated_pack();
     let deadline = Instant::now() + Duration::from_secs(5);
-    let a = reasoner.infer(&pack, "", deadline).unwrap();
-    let b = reasoner.infer(&pack, "", deadline).unwrap();
+    let a = reasoner.infer(&pack, "", Locale::En, deadline).unwrap();
+    let b = reasoner.infer(&pack, "", Locale::En, deadline).unwrap();
     assert_eq!(a, b, "identical input → byte-identical insights");
+}
+
+/// DBT-P75-052: the rule engine writes its prose in the requested language, over the
+/// same citations, in both locales.
+#[test]
+fn fallback_writes_in_the_requested_locale() {
+    let reasoner = DeterministicFallbackReasoner::new();
+    let pack = populated_pack();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let en = reasoner.infer(&pack, "", Locale::En, deadline).unwrap();
+    let ar = reasoner.infer(&pack, "", Locale::Ar, deadline).unwrap();
+    assert!(!en.is_empty());
+    assert_eq!(en.len(), ar.len());
+    let arabic = |text: &str| text.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c));
+    for (en, ar) in en.iter().zip(&ar) {
+        assert!(!arabic(&en.explanation), "{}", en.explanation);
+        assert!(arabic(&ar.explanation), "{}", ar.explanation);
+        assert_eq!(en.summary_key, ar.summary_key);
+        assert_eq!(en.citations, ar.citations);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +272,7 @@ fn fallback_is_deterministic_for_identical_packs() {
 fn inference_refuses_while_mutation_or_care_run_is_active() {
     let selector = ReasonerSelector::new(None);
     let err = selector
-        .request_insights(&populated_pack(), "", true)
+        .request_insights(&populated_pack(), "", Locale::En, true)
         .expect_err("observer-effect guard");
     assert!(matches!(
         err,
@@ -271,6 +298,7 @@ fn single_in_flight_lane_rejects_second_request() {
             &self,
             _: &TypedEvidencePack,
             _: &str,
+            _locale: Locale,
             _: Instant,
         ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
             std::thread::sleep(Duration::from_millis(150));
@@ -282,11 +310,11 @@ fn single_in_flight_lane_rejects_second_request() {
     let t1 = std::thread::spawn(move || {
         let mut pack = populated_pack();
         pack.push(item("bottleneck-slow", EvidenceSurface::BottleneckReport));
-        s2.request_insights(&pack, "", false)
+        s2.request_insights(&pack, "", Locale::En, false)
     });
     std::thread::sleep(Duration::from_millis(20));
     // Second request while the first holds the lane → Busy (typed), never queued.
-    let second = selector.request_insights(&populated_pack(), "", false);
+    let second = selector.request_insights(&populated_pack(), "", Locale::En, false);
     match second {
         Err(aethercore_intelligence_core::IntelligenceError::Busy) => {}
         other => panic!(
@@ -319,7 +347,9 @@ fn evidence_pack_enforces_bounds() {
 
     // Insight emission respects the per-call cap.
     let selector = ReasonerSelector::new(None);
-    let out = selector.request_insights(&pack, "", false).expect("ok");
+    let out = selector
+        .request_insights(&pack, "", Locale::En, false)
+        .expect("ok");
     assert!(out.len() <= MAX_INSIGHTS_PER_CALL);
 }
 
@@ -368,7 +398,7 @@ fn tampered_model_artifact_is_refused_and_fallback_engages() {
     let selector = ReasonerSelector::new(None);
     assert!(
         !selector
-            .request_insights(&populated_pack(), "", false)
+            .request_insights(&populated_pack(), "", Locale::En, false)
             .unwrap()
             .is_empty()
     );
@@ -483,7 +513,7 @@ fn t4_real_stack_inference_contract_over_real_artifact() {
     // Whether the model finishes inside 10 s is the host's property: on the 2-vCPU
     // Windows runner it ran out after 29 tokens (CI 36206362980), which is the honest
     // answer there. macOS (Metal) must finish; every host must stop in time or cite.
-    let insights = match llama.infer(&pack, "explain", deadline) {
+    let insights = match llama.infer(&pack, "explain", Locale::En, deadline) {
         Ok(insights) => insights,
         Err(error) => {
             assert!(
@@ -515,6 +545,7 @@ fn t5_budget_constants_respected_on_load_and_call() {
     let _ = llama.infer(
         &populated_pack(),
         "",
+        Locale::En,
         started + aethercore_intelligence_core::INFERENCE_TIMEOUT,
     );
     assert!(
@@ -532,7 +563,7 @@ fn t5b_an_expired_deadline_refuses_before_the_prompt_is_read() {
     let mut llama = LlamaCppReasoner::new();
     llama.load(&embedded_model_path()).expect("loads");
     let called = Instant::now();
-    let result = llama.infer(&populated_pack(), "", called);
+    let result = llama.infer(&populated_pack(), "", Locale::En, called);
     let error = result.expect_err("an expired deadline cannot produce insights");
     assert!(
         error.contains("deadline exceeded after 0 of"),

@@ -23,6 +23,13 @@ pub(super) fn request_insight(call: &Call<'_>, v: v1::RequestInsightRequest) -> 
     let request_context = call.request_context;
     let principal_key = &call.principal_key;
     request_context.checkpoint().map_err(err)?;
+    let Some(locale) = aethercore_intelligence_core::Locale::from_wire(&v.locale) else {
+        return Err(ServiceError::invalid(
+            "intelligence",
+            "insight.invalid.locale",
+            "insight.invalid.locale",
+        ));
+    };
     // Observer-effect guard: no inference while any mutation or care run holds
     // the machine-wide lease. Kernel state is the single source of truth.
     let mutation_active = ctx.kernel.mutations().is_active();
@@ -34,6 +41,7 @@ pub(super) fn request_insight(call: &Call<'_>, v: v1::RequestInsightRequest) -> 
         } else {
             &v.question
         },
+        locale,
     ) {
         Ok(response) => {
             publish(

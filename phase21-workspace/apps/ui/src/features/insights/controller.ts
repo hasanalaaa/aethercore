@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import type { InsightsResponse } from '../../lib/contracts';
+import type { Locale } from '../../lib/i18n/runtime';
 import { serviceInvoke } from '../../platform/service-client';
 import { patchStreamState } from '../../platform/stream-state';
 
@@ -14,12 +15,12 @@ export const insightsUi = writable({
  * Cancellation on dismiss is inherent: the response only lands if the panel is
  * still open, because the stream slice is overwritten on next open.
  */
-export async function requestInsights(questionKey = 'explain', question = ''): Promise<boolean> {
+export async function requestInsights(locale: Locale, questionKey = 'explain', question = ''): Promise<boolean> {
   let alreadyLoading = false;
   insightsUi.update((s) => { alreadyLoading = s.loading; return alreadyLoading ? s : { ...s, loading: true, error: false }; });
   if (alreadyLoading) return false;
   try {
-    const response = await serviceInvoke<InsightsResponse>('request_insight', { questionKey, question });
+    const response = await serviceInvoke<InsightsResponse>('request_insight', { questionKey, question, locale });
     patchStreamState({ insights: response });
     return true;
   } catch {

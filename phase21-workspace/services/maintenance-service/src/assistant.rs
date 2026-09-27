@@ -131,6 +131,7 @@ impl AssistantCoordinator {
         owner: &str,
         turn_id: &str,
         question: &str,
+        locale: aethercore_intelligence_core::Locale,
         mutation_active: bool,
         events: EventBus,
     ) -> v1::AssistantTurn {
@@ -187,6 +188,7 @@ impl AssistantCoordinator {
                 let outcome = engine.ask(
                     &pack_for_worker,
                     &question,
+                    locale,
                     false,
                     Arc::clone(&flag),
                     &mut sink,
