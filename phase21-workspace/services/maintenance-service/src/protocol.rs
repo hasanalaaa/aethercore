@@ -943,6 +943,7 @@ pub(crate) fn support_preview_proto(
             account_identifier_redactions: v.privacy.account_identifier_redactions,
             hardware_serial_redactions: v.privacy.hardware_serial_redactions,
             email_redactions: v.privacy.email_redactions,
+            network_identifier_redactions: v.privacy.network_identifier_redactions,
         }),
         estimated_size_bytes: v.estimated_size_bytes,
     }
