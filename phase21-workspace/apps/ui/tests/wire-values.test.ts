@@ -49,11 +49,25 @@ test('repair evidence count agrees with its number in Arabic', () => {
   assert.equal(tp('unit.evidenceItem', 'en', 1), '1 evidence item');
 });
 
-test('insight summary keys the service sends are in the catalog', async () => {
-  const { hasMessageKey } = await import('../src/lib/i18n/index.ts');
-  // crates/intelligence-core: llama.rs (model insights) and engine.rs (rule engine)
-  for (const key of ['insight.summary.observation', 'insight.summary.securityPosture', 'insight.summary.bottleneck', 'insight.summary.recurrence', 'insight.summary.repairState']) {
-    assert.ok(hasMessageKey(key), key);
+test('every insight key the model and rule paths emit resolves in both catalogs', async () => {
+  // P75 review (#29): llama.rs emitted insight.summary.observation, which neither catalog had,
+  // so every model insight showed its raw key. Read the keys from the Rust sources themselves,
+  // so a key added there without a label fails here.
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { enCatalog } = await import('../src/lib/i18n/catalog.en.ts');
+  const { arCatalog } = await import('../src/lib/i18n/catalog.ar.ts');
+  const roots = ['../../../crates/intelligence-core/src', '../../../services/maintenance-service/src'].map((r) => join(import.meta.dirname, r));
+  const keys = new Set<string>();
+  for (const root of roots) {
+    for (const file of readdirSync(root).filter((f) => f.endsWith('.rs'))) {
+      for (const m of readFileSync(join(root, file), 'utf8').matchAll(/"(insight\.[a-zA-Z.]+)"/g)) keys.add(m[1]);
+    }
+  }
+  assert.ok(keys.has('insight.summary.observation'), [...keys].join(', '));
+  for (const key of keys) {
+    assert.ok(key in enCatalog, `EN lacks ${key}`);
+    assert.ok(key in arCatalog, `AR lacks ${key}`);
   }
 });
 
