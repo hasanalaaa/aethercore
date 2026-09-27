@@ -452,7 +452,7 @@ open_pipe_body = section(ipc_windows, "fn open_pipe", "// Count limits")
 # ZR-019: connection retry is restricted to documented transient namespace states. Access-denied,
 # invalid-access and other open failures are terminal instead of being hidden behind the retry loop.
 check("ipc_client_retries_only_absent_or_busy_pipe", has(ipc_windows, "fn retryable_pipe_open_error", "ERROR_FILE_NOT_FOUND", "ERROR_PIPE_BUSY") and has(open_pipe_body, "Err(error) if retryable_pipe_open_error(&error)=>last=Some(error)", "Err(error)=>return Err(IpcError::Io(error))"))
-check("ipc_untrusted_server_fails_without_identity_retry", has(open_pipe_body, "Ok(file)=>{", "verify_connected_server(&file, &pipe_name)?;", "return Ok(file)") and "Ok(file)=>match verify_connected_server" not in open_pipe_body)
+check("ipc_untrusted_server_fails_without_identity_retry", has(open_pipe_body, "Ok(file)=>{", "verify_connected_server(&file, &pipe_name)?;", "return Ok(file)") and not contains(open_pipe_body, "Ok(file)=>match verify_connected_server"))
 check("ipc_nonretryable_open_errors_have_regression", has(ipc_windows, "pipe_open_retry_policy_retries_only_absence_or_busy_conditions", "ERROR_FILE_NOT_FOUND.0 as i32", "ERROR_PIPE_BUSY.0 as i32", "assert!(!retryable_pipe_open_error"))
 
 # ZR-020: replace the predictable Global mutex with an installer-provisioned byte-range lock

@@ -177,7 +177,9 @@ check("ipc_client_shutdown_is_nonblocking_and_cancellable", has(ipc_win, "fn shu
 check("ipc_disconnect_notification_is_at_most_once", has(ipc_win, "fn notify_disconnect_once", "disconnect_notified", "writer_disconnect", "disconnect_notification_is_at_most_once_across_reader_and_writer_paths"))
 
 # Update-engine publication and state-machine reentrancy.
-check("update_observer_never_emits_state_reference", "self.emit(owner,&state.snapshot)" not in update)
+# P75: `not contains`, not `not in`: rustfmt writes `self.emit(owner, &state.snapshot)`, so the
+# raw token could never match and the check passed whatever the code said.
+check("update_observer_never_emits_state_reference", not contains(update, "self.emit(owner,&state.snapshot)"))
 check("update_observer_regression_present", has(update, "observer_publication_never_runs_while_state_mutex_is_held", "states.try_lock().is_ok()"))
 check("update_upload_registry_is_per_upload", has(update, "struct UploadState", "records:HashMap<String,Arc<Mutex<UploadRecord>>>", "owner_upload:HashMap<String,String>", "starting_owners:HashSet<String>"))
 write_stage = section(update, "pub fn write_stage_chunk", "pub fn finalize_stage_upload")
@@ -203,7 +205,9 @@ check("support_pending_counts_against_global_quota", has(support, "bundles.ready
 check("support_reservation_regressions", has(support, "preparation_reservations_count_against_global_quota_before_archive_io", "preparation_reservation_is_linearized_per_owner"))
 check("support_test_lifecycle_discards_after_read", has(support, "engine.discard(\"owner\",&ready.bundle_id).unwrap()"))
 check("support_runtime_metrics_are_owner_scoped", "metrics_for_owner(owner)" in support_service and ".events().metrics()" not in support_service)
-check("support_still_redacts_principal_and_serial_keys", has(support, "ownerprincipalkey", "usersid", "serialnumber", "<redacted-hardware-serial>", "<redacted-sid>", "<redacted-email>"))
+# P75 (DBT-P75-054): serials are recognised by `key.contains("serial")` (BIOS, disk, baseboard,
+# volume...), which covers the exact `serialnumber` spelling this check used to look for.
+check("support_still_redacts_principal_and_serial_keys", has(support, "ownerprincipalkey", "usersid", 'key.contains("serial")', "<redacted-hardware-serial>", "<redacted-sid>", "<redacted-email>"))
 check("support_no_raw_minidump_eventlog_authority", all(token not in support_service for token in ["MEMORY.DMP", "Minidump", "EvtExportLog", "EventLog XML"]))
 
 # Event-stream backpressure observability without cross-principal leakage.
