@@ -40,7 +40,7 @@ pub fn command_label(job: &ServiceJob) -> String {
         ServiceJob::CareStatus => "care status".to_string(),
         ServiceJob::CareStart { .. } => "care start".to_string(),
         ServiceJob::CareCancel => "care cancel".to_string(),
-        ServiceJob::CareConsentGrant => "care consent-grant".to_string(),
+        ServiceJob::CareConsentGrant { .. } => "care consent-grant".to_string(),
         ServiceJob::InsightsList => "insights list".to_string(),
         ServiceJob::InsightsExplain { .. } => "insights explain".to_string(),
         ServiceJob::InsightsDismiss { .. } => "insights dismiss".to_string(),
@@ -189,13 +189,15 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
             Ok(care_status_from_payload(&payload)
                 .unwrap_or_else(|| serde_json::json!({ "cancelled": true })))
         }
-        ServiceJob::CareConsentGrant => {
+        ServiceJob::CareConsentGrant { plan_digest } => {
             require_ok(client.call(request::Payload::GrantCareSessionConsent(
-                aethercore_contracts::v1::GrantCareSessionConsentRequest {},
+                aethercore_contracts::v1::GrantCareSessionConsentRequest {
+                    plan_digest_sha256: plan_digest,
+                },
             ))?)?;
             Ok(serde_json::json!({
                 "granted": true,
-                "scope": "this maintenance-service session",
+                "scope": "the next care run of the plan shown, within 120 s",
             }))
         }
         ServiceJob::InsightsList => {
@@ -633,6 +635,7 @@ fn care_status_object(status: &aethercore_contracts::v1::CareRunStatus) -> serde
                 "state": step.state,
                 "outcome": step.outcome,
                 "domainVerificationState": step.domain_verification_state,
+                "failureMessageKey": step.failure_message_key,
             })
         })
         .collect();
@@ -791,7 +794,10 @@ fn care_start_flow(
 
     let prefix: String = digest.chars().take(DIGEST_CONFIRM_CHARS).collect();
     println!("care plan digest: {digest}");
-    println!("One-click care will run safety-level 0-1 auto steps under session consent.");
+    println!(
+        "Consenting approves the automatic steps of this plan, as they are now, for this one run. \
+         Review-only steps never run; a step whose plan changes before it runs is refused."
+    );
     print!("Type the digest prefix ({prefix}) to consent, anything else refuses [default N]: ");
     let _ = std::io::stdout().flush();
 
@@ -814,15 +820,29 @@ fn care_start_flow(
 
     // Step 3: grant on THIS connection, then start on the SAME connection so the
     // service-side per-principal session registry sees both from one principal.
-    require_ok(client.call(request::Payload::GrantCareSessionConsent(
-        aethercore_contracts::v1::GrantCareSessionConsentRequest {},
+    let granted = require_ok(client.call(request::Payload::GrantCareSessionConsent(
+        aethercore_contracts::v1::GrantCareSessionConsentRequest {
+            plan_digest_sha256: digest.clone(),
+        },
     ))?)?;
+    // DBT-P75-045: the service approves the plan it composes at grant time. If that is not
+    // the plan whose digest was just confirmed, nothing starts.
+    if !granted_plan_is_confirmed(&digest, &granted) {
+        return Err(CliError::ConsentRequired {
+            message_key: "cli.care.planChanged".to_string(),
+        });
+    }
     let started = require_ok(client.call(request::Payload::StartCareRun(
         aethercore_contracts::v1::StartCareRunRequest {},
     ))?)?;
     care_status_from_payload(&started).ok_or_else(|| CliError::ProtocolViolation {
         detail: "expected CareStatusResponse after start".to_string(),
     })
+}
+
+fn granted_plan_is_confirmed(confirmed: &str, granted: &Option<response::Payload>) -> bool {
+    care_status_from_payload(granted)
+        .is_some_and(|status| status["planDigestSha256"].as_str() == Some(confirmed))
 }
 
 /// The prompt asks for the first DIGEST_CONFIRM_CHARS characters; anything shorter
@@ -852,5 +872,25 @@ mod tests {
         // A digest shorter than the prefix length must be typed in full.
         assert!(digest_confirmed("abc", "abc"));
         assert!(!digest_confirmed("abc", "ab"));
+    }
+
+    fn granted(digest: &str) -> Option<response::Payload> {
+        Some(response::Payload::CareStatus(
+            aethercore_contracts::v1::CareStatusResponse {
+                status: Some(aethercore_contracts::v1::CareRunStatus {
+                    plan_digest_sha256: digest.to_string(),
+                    ..Default::default()
+                }),
+            },
+        ))
+    }
+
+    /// DBT-P75-045: a start follows the grant only when the service approved the plan whose
+    /// digest the owner confirmed.
+    #[test]
+    fn care_starts_only_the_plan_that_was_confirmed() {
+        assert!(granted_plan_is_confirmed(DIGEST, &granted(DIGEST)));
+        assert!(!granted_plan_is_confirmed(DIGEST, &granted("ffff")));
+        assert!(!granted_plan_is_confirmed(DIGEST, &None));
     }
 }

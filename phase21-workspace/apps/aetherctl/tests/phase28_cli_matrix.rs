@@ -612,7 +612,21 @@ fn consent_adversarial_refusals_are_typed_and_grant_is_visible() {
 
     // (e) The explicit consent act itself: `care consent-grant` over THIS principal
     //     connection; the registry becomes visible to subsequent status queries.
-    let grant = cli(&["care", "consent-grant"], None);
+    //     The grant names the plan `care status` showed (P75, DBT-P75-045); without it the
+    //     verb is a usage error, and a digest that is not the current plan is refused.
+    let bare = cli(&["care", "consent-grant"], None);
+    assert_eq!(bare.status, 2, "{}", bare.stdout);
+    let stale = cli(
+        &["care", "consent-grant", "--plan-digest", "deadbeef"],
+        None,
+    );
+    assert_ne!(stale.status, 0, "{}", stale.stdout);
+    let shown = cli(&["care", "status"], None);
+    let shown = expect_ok_envelope(&shown, "care status")["data"]["planDigestSha256"]
+        .as_str()
+        .expect("care status prints the plan digest")
+        .to_string();
+    let grant = cli(&["care", "consent-grant", "--plan-digest", &shown], None);
     let envelope = expect_ok_envelope(&grant, "care consent-grant");
     assert_eq!(envelope["data"]["granted"], true);
     let after = cli(&["care", "status"], None);

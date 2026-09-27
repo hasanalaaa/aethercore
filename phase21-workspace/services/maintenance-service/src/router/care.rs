@@ -14,6 +14,15 @@ fn care_err(error: aethercore_care_orchestrator::CareError) -> ServiceError {
                 error.to_string(),
             )
         }
+        // The plan changed between what the owner was shown and what would be approved.
+        aethercore_care_orchestrator::CareError::DigestChanged => ServiceError::new(
+            6,
+            v1::ErrorCode::Conflict,
+            "care",
+            "care.error.planChanged",
+            error.to_string(),
+            false,
+        ),
         other => ServiceError::new(
             6,
             v1::ErrorCode::Conflict,
@@ -43,12 +52,12 @@ pub(super) fn get_care_status(call: &Call<'_>) -> Routed {
     )))
 }
 
-pub(super) fn grant_care_session_consent(call: &Call<'_>) -> Routed {
+pub(super) fn grant_consent(call: &Call<'_>, v: v1::GrantCareSessionConsentRequest) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
     let status = ctx
         .care
-        .grant_session_consent(principal_key)
+        .grant_session_consent(principal_key, &v.plan_digest_sha256)
         .map_err(care_err)?;
     publish(
         ctx,
