@@ -127,3 +127,44 @@ worktrees under `.claude/worktrees/` can be removed.
 * **Pushed, no PR yet (merge in this order, each after `git merge origin/main` + ledger rows + reseal):** `lane/ui-truth` (`189fb11`, rows 047–052), `lane/service-host` (`0730ecf`, DBT-P60-003 + SCM host, new row 056; Windows code compiles only in CI), `lane/update-trust-2` (rows 053–055; the download-timeout finding was **disproved** by measurement), `lane/gate-honesty` (rows 057–060, DBT-P65-003), `lane/seal-root` (this branch, DBT-P60-002 — **last**; after it every `.github` edit must stage `.github/MANIFEST.sha256`).
 * Ledger rows for those lanes are written in each lane doc (`docs/phase75/lanes/*.md`) but **not yet moved** in `docs/LEDGER.md`.
 * **Not done:** branch/worktree cleanup (the permission classifier refused `git worktree remove`; the owner must run it), `fuzz` lane, `DBT-P74-002`, `docs/phase75/P75-REPORT.md`. Throwaway probe branches `probe/p75-installer-ux`, `probe/p75-gates` can be deleted with the others.
+
+---
+
+# Continuation — fourth lead session, 2026-09-27
+
+Worked from fresh `origin` worktrees under the session scratchpad (the owner's checkout was not
+used). Merge order, one lane at a time, each after `git merge origin/main` + ledger rows +
+reseal: `ui-truth` → `service-host` → `update-trust-2` → `gate-honesty` → `seal-root` →
+`care-session-consent` → `cli-trial` → `telemetry-trial` → `insight-grounding` → `ui-trial` →
+`windows-smoke`.
+
+* **Merged:** #47 ui-truth → `41ea21d` (PR CI `36273802164` green at `c5b2fa0`; `main` push run
+  `36277040057` green at `41ea21d`). `main` was green at `7ee0673` (run `36273313540`) before it.
+* **PR open:** #48 service-host (head `23436e9`: CI `36289024493`, `windows-installer.yml`
+  `36289024176` for the STOP_PENDING gate). First Windows compile of its code: CI
+  `36275749129` green. Rows: `DBT-P60-003` closed, `DBT-P75-056` new.
+* **update-trust-2:** `cargo fmt` fix pushed (`2aa98f1`; CI `36275750869` had failed only on
+  formatting). **gate-honesty:** dispatched CI `36275752421` green at `8923c18`.
+* **DBT-P75-045 (owner decision: hardened session consent)** — `lane/care-session-consent`
+  (from `main` `7ee0673`, pushed, no PR yet): `c654b3a` care digest commits to each domain
+  plan's content digest; `b677f3b` one approval, one run, one owner, 120 s; `f07f2a2` the
+  approval becomes a per-step authorization at the domain barrier
+  (`consume_consent_and_transition`, unchanged) only at the approved digest, else
+  `DigestChanged` for that step; `902a479` aetherctl starts only the confirmed plan;
+  `fda2d3d`, `c07b1e0` UI copy/dialog; `be0c75b` empty plan says nothing is due.
+  Red-before evidence in the commit messages.
+* **Part 3 trial run (working list: scratch `trial/DEFECTS.md`)** — fixes pushed, no PRs yet:
+  `lane/cli-trial` (`ec0da48` doctor collects on first use, `f977660` e2e self-check layout,
+  `32d7da2` Arabic field labels), `lane/telemetry-trial` (`783179a` macOS active time is not
+  capacity, `3e72aaa` macOS memory load from `kern.memorystatus_level`, `91b51ee`
+  IO_SATURATION cites the average that fired it), `lane/insight-grounding` (`dd9bcbb` drop a
+  model insight whose numbers its evidence does not hold), `lane/ui-trial` (branched from
+  `c5b2fa0`: wire-true fixture, labels for real wire values, deep-scan partial headline, disk
+  activity unmeasured, layout fixes), `lane/windows-smoke` (from the care lane: installed-
+  product smoke in `bundle-log-acl-probe` + `crates/ipc/examples/care_smoke.rs`; runs
+  `36289311454`, and red-before on main+smoke `36289309971`, branch `probe/p75-smoke-red`).
+* **Recorded, not fixed:** `phase27-adversarial-audit.py` p27-wirefreeze and
+  `phase19-windows-repair-audit.py` P19-PLAN-002 fail on `main` and have no CI caller
+  (stale phase-scoped expected values: owner to retire or re-baseline); macOS/Linux fault
+  rates and per-core arrays (Wave 3); insight "recurring" wording on one failure (not
+  mechanically checkable).
