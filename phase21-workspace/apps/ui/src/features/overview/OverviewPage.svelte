@@ -51,7 +51,7 @@
   import { openCareConsent } from '../care/controller';
   import { authorizeDriverPlan, startDriverInstall } from '../drivers/controller';
   import { shortDigest } from '../shared';
-  import { localizePlanKind, localizeRisk, localizeState, t, td, tp } from '../../lib/i18n';
+  import { formatNumber, localizePlanKind, localizeRisk, localizeState, t, td, tp } from '../../lib/i18n';
   import { TechnicalText } from '../../design/primitives';
   import { EmptyState, EvidenceChip, citedOnly } from '../../design/signature';
   import { actionItems, headroom, headroomEvidence, headroomLabel, healthChannels, samplingNote, telemetryTiles, type ActionItem } from './instrument';
@@ -301,7 +301,7 @@
     </div>
     {#if snapshot.activePlan}
       <div class="plan-title"><strong>{localizePlanKind(snapshot.activePlan.kind,locale)}</strong><span>{localizeState(snapshot.activePlan.state,locale)}</span></div>
-      <div class="meta"><span>{t('common.digest',locale)} <code>{shortDigest(snapshot.activePlan.digest)}</code></span><span>{t('overview.events',locale,{count:snapshot.journalEventCount})}</span></div>
+      <div class="meta"><span>{t('common.digest',locale)} <code>{shortDigest(snapshot.activePlan.digest)}</code></span><span>{t('overview.events',locale,{count:formatNumber(snapshot.journalEventCount,locale)})}</span></div>
       <div class="actions">
         {#if snapshot.activePlan.kind === 'Startup'}<button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={() => setPage('startup')}>{t('overview.openStartup',locale)}</button>
         {:else if snapshot.activePlan.kind === 'SystemRepair'}<button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={() => setPage('repair')}>{t('overview.openRepair',locale)}</button>

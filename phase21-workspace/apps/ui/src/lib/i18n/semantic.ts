@@ -1,5 +1,5 @@
 import type { DriverCandidate, DriverDevice } from '../contracts';
-import { hasMessageKey, t, td, type Locale, type MessageKey } from './runtime';
+import { hasMessageKey, t, td, tp, type Locale, type MessageKey } from './runtime';
 
 const stateKeys: Record<string, MessageKey> = {
   Queued:'state.Queued', Interrupted:'state.Interrupted', Attention:'state.Attention', BackedUp:'state.BackedUp', BackingUpDrivers:'state.BackingUpDrivers', BackupNotApplicable:'state.BackupNotApplicable', Downloading:'state.Downloading', FailedAfterMutation:'state.FailedAfterMutation', FailedBeforeMutation:'state.FailedBeforeMutation', FailedSafe:'state.FailedSafe', FailedVerification:'state.FailedVerification', Installed:'state.Installed', Installing:'state.Installing', Verified:'state.Verified',
@@ -11,7 +11,7 @@ const stateKeys: Record<string, MessageKey> = {
   AppliedRecovered: 'state.AppliedRecovered', NoChange: 'state.NoChange', Restored: 'state.Completed',
 };
 const riskKeys: Record<string, MessageKey> = { Low:'risk.Low', Medium:'risk.Medium', High:'risk.High', Amber:'risk.Amber' };
-const severityKeys: Record<string, MessageKey> = { Normal:'severity.Normal', Info:'severity.Info', Attention:'severity.Attention', ActionRequired:'severity.ActionRequired', Warning:'severity.Warning', warning:'severity.Warning', Unknown:'severity.Unknown' };
+const severityKeys: Record<string, MessageKey> = { Amber:'severity.Amber', Normal:'severity.Normal', Info:'severity.Info', Attention:'severity.Attention', ActionRequired:'severity.ActionRequired', Warning:'severity.Warning', warning:'severity.Warning', Unknown:'severity.Unknown' };
 const confidenceKeys: Record<string, MessageKey> = {
   HighEvidence:'confidence.HighEvidence', 'HighEvidence/RootCauseUnknown':'confidence.HighEvidence/RootCauseUnknown',
   'EventHigh/CauseLow':'confidence.EventHigh/CauseLow', EventOnly:'confidence.EventOnly', High:'confidence.High', Medium:'confidence.Medium', Low:'confidence.Low',
@@ -36,7 +36,11 @@ export function localizeDirection(value: string, locale: Locale): string { retur
 export function localizeDomain(value: string, locale: Locale): string { return domainKeys[value] ? td(domainKeys[value], locale) : value; }
 export function localizeRecommendation(value: string, locale: Locale): string { return recommendationKeys[value] ? td(recommendationKeys[value], locale) : value; }
 export function localizePlanKind(value: string, locale: Locale): string { return planKindKeys[value] ? td(planKindKeys[value], locale) : value; }
-export function localizeMatchQuality(value: string, locale: Locale): string { const key = ({ 'Hardware ID':'drivers.match.Hardware ID', 'Compatible ID':'drivers.match.Compatible ID' } as const)[value as 'Hardware ID'|'Compatible ID']; return key ? td(key, locale) : value; }
+export function localizeMatchQuality(value: string, locale: Locale): string { const key = `drivers.match.${value}`; return hasMessageKey(key) ? td(key, locale) : value; }
+/** A driver-authority RecommendationReason code; an unknown code stays the code, as evidence. */
+export function localizeRecommendationReason(code: string, locale: Locale): string { const key = `drivers.reason.${code}`; return hasMessageKey(key) ? td(key, locale) : code; }
+/** A repair FactState as protocol.rs writes it (lowerCamel). */
+export function localizeFactState(value: string, locale: Locale): string { const key = `repair.fact.${value}`; return hasMessageKey(key) ? td(key, locale) : value; }
 
 const exactOwnedText: Record<string, MessageKey> = {
   'Startup change needs review':'startup.failure',
@@ -313,7 +317,7 @@ export function localizeHealthStatus(value: string, locale: Locale): string {
 }
 
 export function localizeStartupScope(value: string, locale: Locale): string {
-  const map: Record<string, MessageKey> = { 'Machine service':'tech.startup.scopeMachineService', 'Scheduled task':'tech.startup.scopeScheduledTask', 'Current user':'common.currentUser', 'All users':'common.allUsers' };
+  const map: Record<string, MessageKey> = { 'Machine service':'tech.startup.scopeMachineService', 'Scheduled task':'tech.startup.scopeScheduledTask', 'Current user':'common.currentUser', 'All users':'common.allUsers', Machine:'tech.startup.scopeMachine', User:'tech.startup.scopeUser' };
   return map[value] ? td(map[value], locale) : value;
 }
 
@@ -340,7 +344,9 @@ export function driverTargetLabel(candidate: DriverCandidate, locale: Locale): s
 }
 export function driverTargetEvidence(candidate: DriverCandidate, locale: Locale): string {
   if (candidate.targetVersion && candidate.targetVersionSource === 'TitleHeuristic') return t('drivers.target.parsedTitle',locale);
-  if (candidate.targetVersion) return candidate.targetVersionSource || t('drivers.target.metadata',locale);
+  if (candidate.targetVersion && candidate.targetVersionSource === 'WuaMetadata') return t('drivers.target.wuaMetadata',locale);
+  if (candidate.targetVersion && candidate.targetVersionSource === 'ProviderMetadata') return t('drivers.target.providerMetadata',locale);
+  if (candidate.targetVersion) return t('drivers.target.metadata',locale);
   return t('drivers.target.notExposed',locale);
 }
 export function localizeProviderFaultKind(kindCode: number, locale: Locale): string {
@@ -358,3 +364,11 @@ export function localizeProviderFaultKind(kindCode: number, locale: Locale): str
   return td(keys[kindCode] ?? 'diagnostics.providerFaults.kind.unspecified', locale);
 }
 
+
+/** A Fleet schedule cadence as the desktop writes it: `every_hours:N` or `daily_at_utc_hour:H`. */
+export function localizeFleetCadence(cadence: string, locale: Locale): string {
+  const [kind, value] = cadence.split(':');
+  if (kind === 'every_hours' && Number(value) > 0) return t('fleet.cadence.everyHours', locale, { hours: tp('unit.hour', locale, Number(value)) });
+  if (kind === 'daily_at_utc_hour' && value) return t('fleet.cadence.dailyUtc', locale, { hour: value });
+  return cadence;
+}

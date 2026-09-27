@@ -12,6 +12,8 @@ export const enPlurals = {
   'unit.warning': { one: '{count} warning', other: '{count} warnings' },
   'unit.occurrence': { one: '{count} occurrence', other: '{count} occurrences' },
   'unit.careStep': { one: '{count} care step', other: '{count} care steps' },
+  'unit.hour': { one: '{count} hour', other: '{count} hours' },
+  'unit.evidenceItem': { one: '{count} evidence item', other: '{count} evidence items' },
   'unit.insight': { one: '{count} insight', other: '{count} insights' },
   'unit.channel': { one: '{count} channel', other: '{count} channels' },
   'unit.event': { one: '{count} event', other: '{count} events' },

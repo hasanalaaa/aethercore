@@ -85,12 +85,12 @@ function candidate(i: number): DriverCandidate {
     provider: 'Windows Update',
     manufacturer: 'Intel Corporation',
     driverClass: 'Net',
-    matchQuality: 'Exact',
+    matchQuality: i % 2 ? 'Hardware ID' : 'Vendor family',
     driverDateIso: '2026-01-22',
     minDownloadBytes: 41_500_000,
     maxDownloadBytes: 58_200_000,
     targetVersion: '23.60.2.5',
-    targetVersionSource: 'DriverPackageMetadata',
+    targetVersionSource: i % 2 ? 'WuaMetadata' : 'ProviderMetadata',
     // The service decides selectable from executable() && WindowsManaged, and
     // derives selection_policy from it (driver-hub/src/lib.rs:945-955). The
     // fixture previously marked every candidate selectable with a
@@ -99,7 +99,7 @@ function candidate(i: number): DriverCandidate {
     selectable: i % 3 !== 2,
     selectedByDefault: i === 1,
     recommended: i === 1,
-    recommendationReasons: ['NewerThanInstalled', 'SignedByVendor'],
+    recommendationReasons: ['WINDOWS_APPLICABLE', 'EXACT_HARDWARE_ID_MATCH'],
     trustState: 'Trusted',
     applicability: 'Applicable',
     authorityType: 'WindowsUpdate',
@@ -160,10 +160,10 @@ const startupSnapshot: StartupSnapshot = {
   summary: { total: 63, registry: 28, startupFolders: 6, scheduledTasks: 21, services: 8, protected: 14, manageable: 49, highImpact: 7 },
   items: [0, 1, 2, 3, 4, 5].map((i) => fill<StartupItem>({
     itemId: `startup-${i}`,
-    kind: i % 2 ? 'ScheduledTask' : 'Registry',
-    scope: i % 3 === 0 ? 'Machine' : 'User',
+    kind: i % 2 ? 'ScheduledTask' : 'RegistryRun',
+    scope: i % 2 ? 'Scheduled task' : i % 3 === 0 ? 'Machine' : 'User',
     displayName: 'Adobe Creative Cloud Desktop Application Startup Helper',
-    publisher: 'Adobe Inc.',
+    publisher: i === 1 ? 'Windows / security' : 'Third-party / unknown',
     command: 'C:\\Program Files\\Adobe\\Adobe Creative Cloud\\ACC\\Creative Cloud Helper.exe --startup',
     source: 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run',
     enabled: i !== 3,
@@ -171,9 +171,9 @@ const startupSnapshot: StartupSnapshot = {
     protected: i === 1,
     protectionReason: i === 1 ? 'SystemCritical' : '',
     impact: i < 2 ? 'High' : 'Medium',
-    confidence: 'Measured',
-    evidenceDetail: 'Observed adding 1.9 s to the last five sign-in traces.',
-    recommendation: i < 2 ? 'Disable' : 'KeepEnabled',
+    confidence: 'InsufficientEvidence',
+    evidenceDetail: 'Runs at user logon; no directly correlated boot-duration evidence was found by this inventory provider.',
+    recommendation: i === 1 ? 'Keep enabled' : 'Review',
     serviceChange: false,
   })),
 };
@@ -187,14 +187,14 @@ const diagnostics: DiagnosticsSnapshot = {
   memory: fill<MemoryTelemetry>({
     totalPhysicalBytes: 34_359_738_368, availablePhysicalBytes: 9_663_676_416,
     memoryLoadPercent: 72, pressureLabel: 'Elevated',
-    pressureExplanation: 'Available memory stayed under 30% for most of the observation window.',
+    pressureExplanation: 'Windows currently reports 72% physical-memory load. This is resource pressure, not a RAM hardware-health verdict.',
   }),
   storage: [0, 1].map((i) => fill<StorageTelemetry>({
     deviceId: `\\\\.\\PHYSICALDRIVE${i}`,
     friendlyName: 'Samsung SSD 990 PRO with Heatsink 2TB NVMe M.2',
     firmwareVersion: '4B2QJXD7', serialNumber: 'S6Z1NJ0T512345X', busType: 'NVMe', mediaType: 'SSD',
     sizeBytes: 2_000_398_934_016, windowsHealthStatus: 'Healthy', operationalStatus: ['OK'],
-    severity: i ? 'Attention' : 'Healthy',
+    severity: i ? 'Attention' : 'Normal',
     summary: 'Wear and error counters stay inside the manufacturer envelope.',
     reasons: ['PercentageUsed 4%', 'AvailableSpare 100%'],
     sourceNotes: ['NVMe SMART/Health log page 0x02'],
@@ -207,19 +207,19 @@ const diagnostics: DiagnosticsSnapshot = {
   })),
   events: [0, 1, 2].map((i) => fill<HardwareEvent>({
     eventId: 41 + i, provider: 'Microsoft-Windows-Kernel-Power', recordedUnixMs: NOW - i * 86_400_000,
-    category: 'Power', severity: i === 0 ? 'Critical' : 'Warning', confidence: 'Reported',
-    summary: 'The system rebooted without cleanly shutting down first.',
-    detail: 'Kernel-Power 41 (63) — BugcheckCode 0, PowerButtonTimestamp 0.',
+    category: 'UnexpectedShutdown', severity: 'Attention', confidence: 'EventHigh/CauseLow',
+    summary: 'Windows recorded an unexpected shutdown or restart.',
+    detail: 'Kernel-Power Event 41 confirms an unclean shutdown; by itself it does not identify why power was lost or the system crashed.',
   })),
   crashes: [0, 1].map((i) => fill<CrashRecord>({
     crashId: `crash-${i}`, recordedUnixMs: NOW - i * 172_800_000, hasBugcheckCode: true,
     bugcheckCode: 26, bugcheckHex: '0x0000001A', parameters: ['0x41792', '0xFFFFF', '0x0', '0x0'],
     dumpFile: 'C:\\Windows\\Minidump\\041426-11250-01.dmp', dumpSizeBytes: 1_048_576,
-    source: 'Minidump', confidence: 'Measured', summary: 'MEMORY_MANAGEMENT',
+    source: 'Minidump', confidence: 'HeaderEvidence', summary: 'A Windows kernel dump is present with bugcheck header metadata. Full driver/module attribution requires symbol-assisted dump analysis.',
   })),
   cards: [0, 1].map((i) => fill<DiagnosticCard>({
-    cardId: `card-${i}`, domain: i ? 'Storage' : 'Memory', severity: i ? 'Attention' : 'Informational',
-    confidence: 'Measured', title: 'Memory pressure stayed elevated across the observation window',
+    cardId: `card-${i}`, domain: i ? 'Crash' : 'Memory', severity: i ? 'Attention' : 'Info',
+    confidence: i ? 'EventHigh/CauseLow' : 'CurrentOSMetric', title: 'Memory pressure stayed elevated across the observation window',
     summary: 'Three of the last five sessions held available memory under 15%.',
     evidence: ['MemoryLoad 72%', 'HardFaults/sec 480'], actions: [],
   })),
@@ -240,16 +240,16 @@ const repairAssessment: RepairAssessment = {
   intelligence: fill({
     schema: 'repair.v1', observationId: 'obs-1', machineStateFingerprint: 'a1b2c3d4e5f6',
     facts: [0, 1].map((i) => fill({
-      id: `fact-${i}`, domain: 'ComponentStore', state: 'Degraded', resource: 'C:\\Windows\\WinSxS',
-      evidenceCode: 'CBS_E_STORE_CORRUPT', technicalCode: '0x800F081F', confidence: 'Measured',
+      id: `fact-${i}`, domain: i ? 'systemFiles' : 'componentStore', state: i ? 'healthy' : 'corruptionDetected', resource: 'C:\\Windows\\WinSxS',
+      evidenceCode: 'CBS_E_STORE_CORRUPT', technicalCode: '0x800F081F', confidence: 'high',
       detail: 'Two payload files are missing from the component store.', observedUnixMs: NOW,
     })),
     diagnoses: [fill({
-      id: 'diag-1', code: 'COMPONENT_STORE_PAYLOAD_MISSING', role: 'RootCause', domain: 'ComponentStore',
-      confidence: 'Strong', scope: 'System', evidenceIds: ['fact-0', 'fact-1'],
+      id: 'diag-1', code: 'COMPONENT_STORE_CORRUPTION', role: 'rootCause', domain: 'componentStore',
+      confidence: 'high', scope: 'System', evidenceIds: ['fact-0', 'fact-1'],
       uncertainty: 'Payload source availability is not known until restore runs.', ruleVersion: '3',
     })],
-    recovery: { systemRestore: 'Enabled', restorePointCreation: 'Available', winRe: 'Enabled', journalRecovery: 'Available', driverRollback: 'Available' },
+    recovery: { systemRestore: 'active', restorePointCreation: 'active', winRe: 'disabled', journalRecovery: 'available', driverRollback: 'unknown' },
     graph: fill({ schema: 'graph.v1', valid: true, invalidReason: '', nodes: [], deterministicOrder: [], digestSha256: 'ab'.repeat(32) }),
   }),
 };
@@ -283,7 +283,7 @@ const insights: InsightsResponse = {
     // returns. A fixture without it renders a control that cannot work.
     id: 'insight-0',
     schemaVersion: 1,
-    summaryKey: 'insight.storageLatency',
+    summaryKey: 'insight.summary.observation',
     explanation: 'Storage latency rose on the same days the component store reported missing payloads. The two observations share a window but the direction of cause is not established.',
     confidence: 'Moderate',
     citations: [{ evidenceId: 'fact-0', surface: 'repairDiagnosis' }, { evidenceId: 'tl-0', surface: 'timelinePattern' }],
@@ -293,7 +293,7 @@ const insights: InsightsResponse = {
 
 const snapshot: Omit<Snapshot, 'connected'> = {
   serviceVersion: '0.1.0-fixture',
-  health: 'Healthy',
+  health: 'Platform ready',
   serverTimeUnixMs: NOW,
   journalEventCount: 12_480,
   activePlan: null,
@@ -441,6 +441,17 @@ function assistantTurn(turnId: string, over: Partial<AssistantTurn>): AssistantT
   };
 }
 
+const fleetSnapshot = {
+  hosts: [
+    { hostId: 'web-01', displayName: 'Web front end (production, eu-central-1)', hostname: 'web-01.internal.example.net', port: 22, username: 'ops', enabled: true, trusted: true, fingerprint: 'SHA256:8Q1v2mXz0p7cM1kq9zF3YtB4nU6wR5sL0eH2dJ7aK9g', keyType: 'ssh-ed25519', tags: ['prod', 'web'] },
+    { hostId: 'db-02', displayName: 'db-02', hostname: '10.20.30.42', port: 2222, username: 'root', enabled: true, trusted: false, fingerprint: null, keyType: null, tags: [] },
+  ],
+  schedules: [{ scheduleId: 'nightly-cis', scope: ['prod'], profileId: 'cis-l1', enabled: true, cadence: 'every_hours:24', nextRunUnixMs: NOW + 3_600_000, lastResult: { outcomeSummary: '1 of 2 hosts passed', hostsAttempted: 2, hostsOk: 1, hostsFailed: 1 } }],
+  scheduleCount: 1,
+  schedulesError: null,
+  sshAvailable: true,
+};
+
 const careStep = (stepIndex: number, domainKind: string, safetyLevel: number) => ({
   stepIndex, domainPlanId: `${stepIndex}f3c9a2e-7b1d-4c55-9e0a-${domainKind.length}c1d2e3f4a5b`, domainKind, safetyLevel,
   state: 'Pending', outcome: 'Pending', domainVerificationState: '', failureMessageKey: '',
@@ -475,7 +486,7 @@ const STREAM: readonly UiKernelEvent[] = [
   event('insights', insights),
   event('deepScanSnapshot', deepScan),
   event('plan', plan),
-  event('recoveryHistory', { entries: [fill({ seq: 1, planId: plan.id, severity: 'Informational', kind: 'RestorePoint', summary: 'Restore point created before the cleanup plan ran.', detail: 'Sequence 42', restorePointSequence: 42, backupRoot: 'C:\\ProgramData\\AetherCore\\backup\\042', createdUnixMs: NOW })] }),
+  event('recoveryHistory', { entries: [fill({ seq: 1, planId: plan.id, severity: 'Amber', kind: 'CleanupInterrupted', summary: 'Restore point created before the cleanup plan ran.', detail: 'Sequence 42', restorePointSequence: 42, backupRoot: 'C:\\ProgramData\\AetherCore\\backup\\042', createdUnixMs: NOW })] }),
   event('startupHistory', { entries: [fill({ changeId: 'ch-1', originChangeId: '', planId: plan.id, itemId: 'startup-0', kind: 'Registry', displayName: 'Adobe Creative Cloud Desktop Application Startup Helper', direction: 'Disable', state: 'Applied', detail: '', createdUnixMs: NOW, updatedUnixMs: NOW, restoredUnixMs: 0, restorable: true })] }),
   event('diagnosticsHistory', { entries: [fill({ scanId: 'diag-fixture-1', state: 'Ready', collectedUnixMs: NOW, warningCount: 1, cardCount: 2 })] }),
 ];
@@ -513,6 +524,15 @@ const emit = (kernelEvent: UiKernelEvent): void => {
     // blindness this fixture exists to remove.
     if (command === 'get_platform_capabilities') return platformCapabilities;
     if (command === 'get_engine_source') return { source: 'native', platform: 'windows' };
+    // Fleet talks to the desktop, not the service (apps/desktop/src/main.rs fleet_*). `{}` for
+    // these threw inside FleetPage ("reading 'length'"), so the page was never measured.
+    if (command === 'fleet_snapshot') return fleetSnapshot;
+    if (command === 'fleet_probe' || command === 'fleet_audit' || command === 'fleet_compliance') {
+      return { hostId: String(args?.hostId ?? 'web-01'), operation: command.slice(6), outcome: 'not_verified', detail: 'host key is not in the trust store', stdout: null, stderr: null };
+    }
+    if (command === 'fleet_schedule_run_due') return { ran: 1, runs: [{ scheduleId: 'nightly-cis', hostsAttempted: 2, hostsOk: 1, hostsFailed: 1, error: null }], error: null };
+    if (command.startsWith('fleet_schedule_')) return { ok: true, scheduleId: 'nightly-cis', detail: '' };
+    if (command.startsWith('fleet_')) return { ok: true, hostId: String(args?.hostId ?? 'web-01'), detail: '' };
     // One-Click Care: a plan with two automatic steps and one review-only step, approved and
     // run as the service does it (DBT-P75-045). Without these the care dialog was never measured.
     if (command === 'get_care_status' || command === 'grant_care_session_consent') {

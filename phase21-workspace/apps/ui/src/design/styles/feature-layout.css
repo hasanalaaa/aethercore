@@ -470,6 +470,11 @@ header .sub {
   text-overflow:ellipsis
 }
 
+/* P75 trial: a device name is left-to-right technical text. Truncated inside a right-to-left
+   line, the ellipsis ate its beginning ("… 160MHz Wireless Network Adapter (Gig+)"), the
+   part that names the device. Laid out left to right and right-aligned, it keeps the name. */
+[dir="rtl"] .device-identity strong { direction:ltr; text-align:end; }
+
 .device-identity p {
   font-size:var(--ac-type-body);
   color: var(--ac-text-3);
@@ -2406,10 +2411,17 @@ header .sub {
   font-size:var(--ac-type-technical);
   color: var(--ac-text-4)}
 
+/* One reading per line: label, code, confidence. The code renders as an inline <code>, so
+   without a grid the three ran together as "Bugcheck0x0000001AMeasured" (P75 trial). */
 .bugcheck {
+  display:grid;
+  align-content:start;
+  gap:3px;
   border-inline-start: 1px solid var(--ac-edge);
   padding-inline-start:14px
 }
+
+.crash-triage .triage-empty { margin:0; color:var(--ac-text-3); font-size:var(--ac-type-body); }
 
 .bugcheck span {
   font-size:var(--ac-type-body);
