@@ -86,11 +86,23 @@ fn audit_windows_profiles() -> FirewallStatus {
     FirewallStatus::WindowsProfiles { profiles }
 }
 
+/// The local (non-policy) key of a profile. Group Policy names the private profile
+/// `PrivateProfile`; the local FirewallPolicy key is `StandardProfile` (measured on
+/// windows-2025, probe 36329924609: DomainProfile, StandardProfile, PublicProfile).
+#[cfg(any(windows, test))]
+fn local_profile_key(name: &str) -> &str {
+    match name {
+        "PrivateProfile" => "StandardProfile",
+        other => other,
+    }
+}
+
 #[cfg(windows)]
 fn read_windows_profile(name: &str) -> WindowsProfile {
     let policy = format!("SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\{name}");
     let local = format!(
-        "SYSTEM\\CurrentControlSet\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\{name}"
+        "SYSTEM\\CurrentControlSet\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\{}",
+        local_profile_key(name)
     );
     let selected = match registry_dword(&policy, "EnableFirewall") {
         Ok(Some(value)) => (Some(value), format!("HKLM\\{policy}\\EnableFirewall")),
@@ -227,6 +239,19 @@ mod tests {
     #[cfg(windows)]
     use super::*;
 
+    /// P75 review (#28, firewall.rs:92): the private profile's local key is StandardProfile;
+    /// reading `FirewallPolicy\PrivateProfile` found nothing and reported an enabled
+    /// firewall as unavailable.
+    #[test]
+    fn the_private_profile_is_read_from_its_local_standard_profile_key() {
+        assert_eq!(
+            super::local_profile_key("PrivateProfile"),
+            "StandardProfile"
+        );
+        assert_eq!(super::local_profile_key("DomainProfile"), "DomainProfile");
+        assert_eq!(super::local_profile_key("PublicProfile"), "PublicProfile");
+    }
+
     #[cfg(windows)]
     #[test]
     fn firewall_evidence_names_windows_registry_profile_values() {
@@ -241,6 +266,11 @@ mod tests {
                         .find(|profile| profile.name == name)
                         .unwrap();
                     assert!(profile.source.contains("EnableFirewall"), "{profile:?}");
+                    // No Group Policy on the runner: every value is the local one, and the
+                    // runner has all three local keys (probe 36329924609).
+                    if !profile.source.contains("Policies") {
+                        assert!(profile.configured_enabled.is_some(), "{profile:?}");
+                    }
                 }
                 let finding = firewall_findings(&FirewallStatus::WindowsProfiles { profiles })
                     .expect("registry values become evidence");
