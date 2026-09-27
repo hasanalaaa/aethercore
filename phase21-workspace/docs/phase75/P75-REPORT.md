@@ -137,6 +137,7 @@ catalog (`-083`, test reads the keys from the Rust sources); #28 Everyone deny b
 Authenticated Users allow (`-084`); #28 private firewall profile path (`-085`, measured on the
 runner); #33 telemetry owner race (`-086`, deterministic test seam); #49 an address ending a
 sentence (`-087`).
+Independent review 2 (`AUDIT/P75-REVIEW-2.md`, PRs #53–#55): three findings, each red before its fix on lane `windows-smoke-final` (`58ae32d`): #55 a Failed/Cancelled scan headlined Healthy (`-088`); #53 `fd12:3456::` exported unredacted, a regression of `-087` (`-089`); #54 `thirteen` and `5.5` passed the insight number gate (`-090`); follow-up `-091` open.
 
 ## 4. Gates at the final tree (AMBITION §6)
 Run on this lane's tree after merging `main` at `f4fb820` (the Rust gates at `00f210f`,
