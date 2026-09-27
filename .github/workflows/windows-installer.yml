@@ -114,6 +114,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # P75 trial: the client the probe's smoke section drives One-Click Care with, over the
+      # installed service's named pipe (crates/ipc/examples/care_smoke.rs). Not shipped.
+      - name: Build the care smoke client
+        shell: pwsh
+        run: cargo build --release --locked -p aethercore-ipc --example care_smoke
+
+      - name: Upload the care smoke client
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-smoke-${{ github.sha }}
+          path: phase21-workspace/target/release/examples/care_smoke.exe
+          if-no-files-found: error
+          retention-days: 14
+
   # DBT-P49-003 (P73). Installs the candidate on the runner and measures where the
   # Burn logs land and who can touch them. Access is measured by opening each log
   # with CreateFileW as a real non-admin account, so it is not inferred from the
@@ -137,6 +151,11 @@ jobs:
         with:
           name: AetherCoreSetup-windows-unsigned-${{ github.sha }}
           path: setup
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: care-smoke-${{ github.sha }}
+          path: smoke
 
       - name: Measure bundle log placement and access
         shell: pwsh
@@ -352,6 +371,37 @@ jobs:
             if ($granted) { $gate.Add("data root DACL holds an ACE for the non-admin: $($granted.FileSystemRights -join ', ')") }
           }
           Write-Host "owner: $($summary.pdRootOwner); non-admin: $($summary.pdRootNonAdmin)"
+
+          # P75 trial run: the installed product, used. The service must come up; the read-only
+          # verbs must answer through the installed aetherctl; One-Click Care must run end to end
+          # under one approval (care_smoke.exe). Each is a gate.
+          Section 'Smoke: service, read-only verbs, One-Click Care'
+          $deadline = (Get-Date).AddSeconds(150)
+          do { $state = ((sc.exe query AetherCoreMaintenance | Select-String 'STATE') -replace '\s+', ' ').Trim(); if ($state -match 'RUNNING') { break }; Start-Sleep 2 } while ((Get-Date) -lt $deadline)
+          $summary.smokeService = $state
+          Write-Host "service: $state"
+          if ($state -notmatch 'RUNNING') { $gate.Add("the installed service is not RUNNING within 150 s: $state") }
+          $ctl = Join-Path $env:ProgramFiles 'AetherCore\aetherctl.exe'
+          if (-not (Test-Path $ctl)) { $gate.Add("aetherctl.exe is not installed at $ctl") } else {
+            $verbs = @('capabilities', 'engine-source', 'self-check', 'doctor', 'perf start', 'perf snapshot', 'perf report', 'perf stop', 'scan start', 'scan status', 'care status', 'insights list', 'timeline page', 'timeline patterns')
+            $smokeLog = Join-Path $ev 'smoke-aetherctl.txt'
+            foreach ($verb in $verbs) {
+              $out = & $ctl --output json --timeout-ms 60000 @($verb -split ' ') 2>&1
+              $exit = $LASTEXITCODE
+              "=== aetherctl $verb (exit $exit)`n$($out -join "`n")" | Add-Content $smokeLog
+              $okJson = ($out -join '') -match '"ok":true'
+              Write-Host "aetherctl ${verb}: exit $exit ok=$okJson"
+              if ($exit -ne 0 -or -not $okJson) { $gate.Add("aetherctl $verb exit $exit ok=$okJson") }
+            }
+          }
+          $smoke = @(Get-ChildItem smoke -Recurse -Filter 'care_smoke.exe')
+          if ($smoke.Count -ne 1) { $gate.Add("expected one care_smoke.exe, found $($smoke.Count)") } else {
+            $out = & $smoke[0].FullName 2>&1
+            $exit = $LASTEXITCODE
+            $out | Tee-Object (Join-Path $ev 'smoke-care.txt') | Write-Host
+            $summary.smokeCare = "exit $exit; " + (($out | Select-String '^SMOKE:') -join ' | ')
+            if ($exit -ne 0) { $gate.Add("One-Click Care smoke exit ${exit}: $(($out | Select-String 'SMOKE: FAIL') -join ' ')") }
+          }
 
           # P75 (DBT-P55-009, DBT-P55-008). `setup.exe /uninstall` at full display, exactly as
           # Add/Remove Programs runs it, stops at the chooser after Detect: nothing is planned or
