@@ -186,7 +186,8 @@ fn offline_surface_succeeds_with_no_daemon_present() {
         .parent()
         .unwrap()
         .join("assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf");
-    if !beside.exists() {
+    let laid_out = !beside.exists();
+    if laid_out {
         let shipped = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf");
         std::fs::create_dir_all(beside.parent().unwrap()).unwrap();
@@ -202,6 +203,11 @@ fn offline_surface_succeeds_with_no_daemon_present() {
     assert_eq!(envelope["data"]["loaded"], false);
     let artifacts = envelope["data"]["artifacts"].as_array().unwrap();
     assert!(artifacts.iter().all(|a| a["sha256Match"] == true));
+    // Only for this assertion: a model beside the target's service binary makes every other
+    // test that spawns the daemon load it (tens of seconds in a debug build).
+    if laid_out {
+        let _ = std::fs::remove_file(&beside);
+    }
 
     let detect = run_cli(&socket_dir, None, &["service", "detect"]);
     let envelope = expect_ok_envelope(&detect, "service detect");
