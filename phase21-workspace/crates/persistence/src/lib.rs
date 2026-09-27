@@ -1214,23 +1214,17 @@ impl Database {
             .map_err(Into::into)
     }
 
-    /// Replaces all step rows for a run inside one transaction. Steps are written
-    /// before the run starts and updated in place; full replacement keeps the
-    /// journal consistent with the authoritative in-memory plan.
-    pub fn replace_care_steps(&self, steps: &[CareStepRecord]) -> Result<()> {
-        let mut conn = self
+    /// Journals a step the first time it runs. Keyed by (run_id, step_index), so no
+    /// other run's history is touched.
+    pub fn insert_care_step(&self, s: &CareStepRecord) -> Result<()> {
+        let conn = self
             .connection
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        tx.execute("DELETE FROM care_steps", [])?;
-        for s in steps {
-            tx.execute(
-                "INSERT INTO care_steps(run_id,step_index,domain_plan_id,domain_kind,safety_level,state,outcome,verification_state,failure_message,started_unix_ms,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                params![s.run_id,s.step_index,s.domain_plan_id,s.domain_kind,s.safety_level,s.state,s.outcome,s.verification_state,s.failure_message,s.started_unix_ms,s.updated_unix_ms],
-            )?;
-        }
-        tx.commit()?;
+        conn.execute(
+            "INSERT INTO care_steps(run_id,step_index,domain_plan_id,domain_kind,safety_level,state,outcome,verification_state,failure_message,started_unix_ms,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            params![s.run_id,s.step_index,s.domain_plan_id,s.domain_kind,s.safety_level,s.state,s.outcome,s.verification_state,s.failure_message,s.started_unix_ms,s.updated_unix_ms],
+        )?;
         Ok(())
     }
 

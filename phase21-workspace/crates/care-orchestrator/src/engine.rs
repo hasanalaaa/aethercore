@@ -15,7 +15,7 @@
 use aethercore_collector_runtime::CommitFence;
 use aethercore_operation_kernel::{MutationSupervisor, MutationWorkload};
 
-use crate::model::{CareError, CarePlan, CareStepReport, StepOutcome};
+use crate::model::{CareError, CarePlan, CareSafety, CareStep, CareStepReport, StepOutcome};
 
 /// Drives ONE existing domain plan through its own start path. Implemented by the
 /// service layer over the real coordinators; tests implement it with fakes.
@@ -41,10 +41,14 @@ pub trait DomainStepExecutor {
 pub trait DomainDispatch: Send + Sync {
     /// Starts ONE existing domain plan behind its own safety rules and polls until a
     /// terminal state or deadline. Returns (plan_state, verification_state, failure_key).
+    /// `domain_kind` names the coordinator that owns the plan; the domain's lease is
+    /// delegated from `lease`, so the machine stays held by the care run throughout.
     fn start_and_await(
         &self,
         owner_principal_key: &str,
         domain_plan_id: &str,
+        domain_kind: &str,
+        lease: &MutationLeaseGuard,
     ) -> Result<(String, String, String), String>;
 }
 
@@ -52,7 +56,18 @@ pub trait DomainDispatch: Send + Sync {
 /// Holding it is required for any `execute_step` call. The inner lease releases on
 /// drop; the guard type exists so executors cannot fabricate one.
 pub struct MutationLeaseGuard {
-    _inner: aethercore_operation_kernel::MutationLease,
+    inner: aethercore_operation_kernel::MutationLease,
+}
+
+impl MutationLeaseGuard {
+    /// The lease one domain step runs under; see `MutationLease::delegate`.
+    pub fn delegate(
+        &self,
+        workload: MutationWorkload,
+        domain_plan_id: &str,
+    ) -> aethercore_operation_kernel::MutationLease {
+        self.inner.delegate(workload, domain_plan_id)
+    }
 }
 
 /// Journal hooks the engine calls at every durable transition. The service layer
@@ -99,10 +114,12 @@ pub struct CareRunResult {
     pub steps: Vec<CareStepReport>,
 }
 
-/// Runs an approved care plan to completion.
+/// Runs an approved care plan to completion. Only `Auto` steps are executed; review
+/// steps are reported as `Skipped` and never reach a domain.
 ///
-/// `consent_granted` must come from the service layer's per-session consent record —
-/// the orchestrator never treats absence of refusal as consent (product invariant 6).
+/// `approved_digest` is the plan digest the owner's session consent was given for —
+/// the orchestrator never treats absence of refusal as consent (product invariant 6),
+/// and consent to one plan is not consent to a different one.
 #[allow(clippy::too_many_arguments)]
 pub fn run_care_plan(
     supervisor: &MutationSupervisor,
@@ -112,17 +129,19 @@ pub fn run_care_plan(
     owner_principal_key: &str,
     run_id: &str,
     plan: &CarePlan,
-    consent_granted: bool,
+    approved_digest: Option<&str>,
 ) -> Result<CareRunResult, CareError> {
-    if !consent_granted {
-        return Err(CareError::ConsentRequired);
+    match approved_digest {
+        None => return Err(CareError::ConsentRequired),
+        Some(digest) if digest != plan.plan_digest_sha256 => return Err(CareError::DigestChanged),
+        Some(_) => {}
     }
 
     // Single-flight across ALL mutations: acquire before anything else happens.
     let lease = supervisor
         .try_acquire(MutationWorkload::OneClickCare, run_id, owner_principal_key)
         .map_err(|_| CareError::LeaseBusy)?;
-    let guard = MutationLeaseGuard { _inner: lease };
+    let guard = MutationLeaseGuard { inner: lease };
 
     journal.record_run_started(
         run_id,
@@ -137,10 +156,15 @@ pub fn run_care_plan(
     let mut stopped_for_consent = false;
 
     for (index, step) in plan.steps.iter().enumerate() {
+        if step.safety != CareSafety::Auto {
+            reports.push(skipped(index, step));
+            continue;
+        }
         // A revoked fence means the owner cancelled mid-run: stop cleanly.
-        if !fence.is_valid() {
+        if stopped_for_consent || !fence.is_valid() {
             stopped_for_consent = true;
-            break;
+            reports.push(skipped(index, step));
+            continue;
         }
 
         journal.record_step_state(
@@ -201,19 +225,6 @@ pub fn run_care_plan(
         }
     }
 
-    // Remaining unexecuted review/auto steps are cited as Skipped, never hidden.
-    let executed = reports.len();
-    for (index, step) in plan.steps.iter().enumerate().skip(executed) {
-        reports.push(CareStepReport {
-            step_index: index,
-            domain_plan_id: step.domain_plan_id.clone(),
-            domain_kind: step.domain_kind.clone(),
-            outcome: StepOutcome::Skipped,
-            domain_verification_state: String::new(),
-            failure_message_key: String::new(),
-        });
-    }
-
     let detail = if stopped_for_consent {
         "care.status.stoppedForConsent"
     } else if all_verified {
@@ -229,4 +240,16 @@ pub fn run_care_plan(
         stopped_for_consent,
         steps: reports,
     })
+}
+
+/// Unexecuted review and cancelled steps are cited as Skipped, never hidden.
+fn skipped(index: usize, step: &CareStep) -> CareStepReport {
+    CareStepReport {
+        step_index: index,
+        domain_plan_id: step.domain_plan_id.clone(),
+        domain_kind: step.domain_kind.clone(),
+        outcome: StepOutcome::Skipped,
+        domain_verification_state: String::new(),
+        failure_message_key: String::new(),
+    }
 }

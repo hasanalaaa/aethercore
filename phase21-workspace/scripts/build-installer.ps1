@@ -224,10 +224,12 @@ if (-not $MsiOnly) {
                "SOURCE.json records $expectedLogoHash, found $actualLogoHash. DBT-P49-002.")
     }
     $logo = (Resolve-Path $logo).Path
+    # DBT-P55-008/009: the bundle's own theme (English base plus 1025\ Arabic, RTL).
+    $theme = (Resolve-Path (Join-Path $Root 'installer\wix\theme')).Path
 
     & dotnet tool run wix build installer\wix\Bundle.wxs -arch x64 `
         -ext WixToolset.Util.wixext -ext WixToolset.BootstrapperApplications.wixext `
-        -o $bundle -d "ProductVersion=$Version" -d "MsiPath=$msi" -d "WebView2Bootstrapper=$webview" -d "VcRedist=$vcredist" -d "LogoFile=$logo"
+        -o $bundle -d "ProductVersion=$Version" -d "MsiPath=$msi" -d "WebView2Bootstrapper=$webview" -d "VcRedist=$vcredist" -d "LogoFile=$logo" -d "ThemeDir=$theme"
     if ($LASTEXITCODE -ne 0) { throw 'AetherCore bootstrapper bundle build failed.' }
     Write-Host "Bundle built: $bundle" -ForegroundColor Green
 }

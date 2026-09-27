@@ -78,8 +78,14 @@ impl Default for MutationSupervisor {
 }
 
 pub struct MutationLease {
+    hold: Arc<MachineHold>,
+    snapshot: MutationLeaseSnapshot,
+}
+
+/// The machine-wide slot a lease occupies. Shared by a lease and its delegates, so the slot is
+/// released only when the last of them drops.
+struct MachineHold {
     supervisor: MutationSupervisor,
-    lease_id: String,
     snapshot: MutationLeaseSnapshot,
 }
 
@@ -134,8 +140,10 @@ impl MutationSupervisor {
         }
 
         Ok(MutationLease {
-            supervisor: self.clone(),
-            lease_id: snapshot.lease_id.clone(),
+            hold: Arc::new(MachineHold {
+                supervisor: self.clone(),
+                snapshot: snapshot.clone(),
+            }),
             snapshot,
         })
     }
@@ -177,9 +185,24 @@ impl MutationLease {
             && self.snapshot.plan_id == plan_id
             && self.snapshot.owner_principal_key == owner_principal_key
     }
+
+    /// A lease for one step of a composite workload (One-Click Care), for the same owner. The
+    /// machine stays held until this lease and every delegate have dropped, so no other mutation
+    /// can start between or underneath the steps, and a step that outlives its orchestrator
+    /// still holds the machine.
+    pub fn delegate(&self, workload: MutationWorkload, plan_id: &str) -> MutationLease {
+        MutationLease {
+            hold: self.hold.clone(),
+            snapshot: MutationLeaseSnapshot {
+                workload,
+                plan_id: plan_id.to_owned(),
+                ..self.snapshot.clone()
+            },
+        }
+    }
 }
 
-impl Drop for MutationLease {
+impl Drop for MachineHold {
     fn drop(&mut self) {
         let released = {
             let mut active = self
@@ -189,7 +212,7 @@ impl Drop for MutationLease {
                 .unwrap_or_else(|p| p.into_inner());
             if active
                 .as_ref()
-                .is_some_and(|value| value.lease_id == self.lease_id)
+                .is_some_and(|value| value.lease_id == self.snapshot.lease_id)
             {
                 active.take()
             } else {
@@ -379,6 +402,26 @@ mod tests {
         assert!(!lease.matches(MutationWorkload::Cleanup, "plan-a", "owner-a"));
         assert!(!lease.matches(MutationWorkload::DriverInstall, "plan-b", "owner-a"));
         assert!(!lease.matches(MutationWorkload::DriverInstall, "plan-a", "owner-b"));
+    }
+
+    #[test]
+    fn a_delegate_holds_the_machine_until_every_holder_drops() {
+        let supervisor = MutationSupervisor::new();
+        let care = supervisor
+            .try_acquire(MutationWorkload::OneClickCare, "care-run", "owner-a")
+            .unwrap();
+        let step = care.delegate(MutationWorkload::Cleanup, "plan-a");
+        assert!(step.matches(MutationWorkload::Cleanup, "plan-a", "owner-a"));
+        assert!(!step.matches(MutationWorkload::Cleanup, "plan-a", "owner-b"));
+        drop(care);
+        assert!(supervisor.is_active(), "the step still mutates");
+        assert!(
+            supervisor
+                .try_acquire(MutationWorkload::Startup, "plan-b", "owner-b")
+                .is_err()
+        );
+        drop(step);
+        assert!(!supervisor.is_active());
     }
 
     #[test]

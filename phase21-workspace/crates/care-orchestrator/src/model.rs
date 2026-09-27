@@ -65,8 +65,9 @@ pub struct CareStep {
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CarePlan {
-    /// Steps ordered by (safety level descending for review visibility, then
-    /// domain_kind, then domain_plan_id) — a total order over stable content.
+    /// Steps ordered by (safety level ascending, so auto work comes first and review
+    /// work is listed after it, then domain_kind, then domain_plan_id) — a total
+    /// order over stable content.
     pub steps: Vec<CareStep>,
     /// Deterministic digest over the sorted step content.
     pub plan_digest_sha256: String,
@@ -90,15 +91,15 @@ impl CarePlan {
             return None;
         }
         // Total order: auto-level work first (review items are listed after), then
-        // kind, then plan id. Levels sort descending so review-only items surface last.
+        // kind, then plan id.
         unique.sort_by(|a, b| {
             (
-                std::cmp::Reverse(a.safety.level()),
+                a.safety.level(),
                 a.domain_kind.as_str(),
                 a.domain_plan_id.as_str(),
             )
                 .cmp(&(
-                    std::cmp::Reverse(b.safety.level()),
+                    b.safety.level(),
                     b.domain_kind.as_str(),
                     b.domain_plan_id.as_str(),
                 ))

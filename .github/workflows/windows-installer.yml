@@ -353,6 +353,48 @@ jobs:
           }
           Write-Host "owner: $($summary.pdRootOwner); non-admin: $($summary.pdRootNonAdmin)"
 
+          # P75 (DBT-P55-009, DBT-P55-008). `setup.exe /uninstall` at full display, exactly as
+          # Add/Remove Programs runs it, stops at the chooser after Detect: nothing is planned or
+          # applied until a button is pressed (P71, WixStandardBootstrapperApplication.cpp
+          # OnDetectComplete). The focused button must be Uninstall, in English and with
+          # /lang 1025 (the bundle's Arabic theme). WiX v6 runs the BA in its own process, so the
+          # window is found from the focused element, not from the engine's MainWindowHandle.
+          Section 'Uninstall chooser focus'
+          Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+          function Get-ChooserFocus([string[]]$argv) {
+            $p = Start-Process -FilePath $setup -ArgumentList $argv -PassThru
+            $null = $p.Handle
+            $root = [Windows.Automation.AutomationElement]::RootElement
+            $walker = [Windows.Automation.TreeWalker]::ControlViewWalker
+            $win = $null; $f = $null
+            try {
+              for ($i = 0; $i -lt 120 -and -not $win; $i++) {
+                Start-Sleep -Milliseconds 500
+                $f = [Windows.Automation.AutomationElement]::FocusedElement
+                if (-not $f -or $f.Current.ControlType -ne [Windows.Automation.ControlType]::Button) { continue }
+                $e = $f
+                while ($e -and -not ($walker.GetParent($e) -eq $root)) { $e = $walker.GetParent($e) }
+                $win = $e
+              }
+              if (-not $win) { return [ordered]@{ caption = ''; focused = '(no focused button in 60 s)' } }
+              Start-Sleep -Seconds 2
+              $f = [Windows.Automation.AutomationElement]::FocusedElement
+              [ordered]@{ caption = $win.Current.Name; focused = $f.Current.Name; baPid = $win.Current.ProcessId }
+            } finally {
+              if ($win) { Stop-Process -Id $win.Current.ProcessId -Force -ErrorAction SilentlyContinue }
+              try { $p.Kill($true) } catch {}
+              $null = $p.WaitForExit(30000)
+            }
+          }
+          $focusEn = Get-ChooserFocus '/uninstall'
+          $focusAr = Get-ChooserFocus '/uninstall', '/lang', '1025'
+          $summary.chooserFocus = "en: $($focusEn | ConvertTo-Json -Compress); ar: $($focusAr | ConvertTo-Json -Compress)"
+          Write-Host $summary.chooserFocus
+          if ($focusEn.focused -ne 'Uninstall') { $gate.Add("uninstall chooser focused '$($focusEn.focused)', not Uninstall") }
+          if ($focusAr.focused -ne 'إزالة التثبيت') { $gate.Add("Arabic uninstall chooser focused '$($focusAr.focused)', not the Arabic Uninstall") }
+          if (-not $focusAr.caption.StartsWith('إعداد')) { $gate.Add("Arabic caption is '$($focusAr.caption)'") }
+          if (-not (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'AetherCore')) { $gate.Add('the chooser probe removed AetherCore') }
+
           Section 'Uninstall'
           $t2 = Get-Date
           $code = Invoke-Setup '/uninstall', '/quiet', '/norestart'
