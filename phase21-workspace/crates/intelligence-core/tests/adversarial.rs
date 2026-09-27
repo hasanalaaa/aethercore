@@ -575,3 +575,65 @@ fn t5b_an_expired_deadline_refuses_before_the_prompt_is_read() {
         called.elapsed()
     );
 }
+
+/// P76 DBT-P75-078: the service hands out clones of one model before it loads, so it
+/// can accept IPC at once. Until the load resolves, a request that needs the model
+/// answers loading: the selector does not serve the rule engine under a label that
+/// reads as if the model were absent, and the assistant does not fault "unavailable".
+/// Red before: an unloaded reasoner read `ruleFallback` and was served by the rules.
+#[test]
+fn a_model_still_loading_answers_loading_until_its_load_resolves() {
+    use aethercore_intelligence_core::{
+        AssistantEngine, IntelligenceError, TurnOutcome, assistant::FAULT_MODEL_LOADING,
+        assistant::FAULT_MODEL_UNAVAILABLE,
+    };
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let model = LlamaCppReasoner::new();
+    let selector = ReasonerSelector::new(Some(Box::new(model.clone())));
+    let engine = AssistantEngine::new(Some(Box::new(model.clone())));
+    let ask = |engine: &AssistantEngine| {
+        engine.ask(
+            &populated_pack(),
+            "what ran?",
+            Locale::En,
+            false,
+            Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+    };
+
+    assert!(model.is_loading());
+    assert_eq!(selector.engine_label(), "loading");
+    assert!(matches!(
+        selector.request_insights(&populated_pack(), "", Locale::En, false),
+        Err(IntelligenceError::ModelLoading)
+    ));
+    assert_eq!(engine.engine_label(), "loading");
+    assert!(matches!(
+        ask(&engine),
+        TurnOutcome::Faulted { fault_key, .. } if fault_key == FAULT_MODEL_LOADING
+    ));
+
+    // A load that fails resolves every clone: the rules serve, the assistant says why.
+    let empty = tempfile::tempdir().expect("tmp");
+    assert!(model.activate(empty.path()).is_err());
+    assert!(!model.is_loading());
+    let served = selector
+        .request_insights(&populated_pack(), "", Locale::En, false)
+        .expect("the rule engine serves");
+    assert!(
+        served
+            .iter()
+            .all(|i| i.engine == InsightEngineKind::RuleFallback)
+    );
+    assert_eq!(selector.engine_label(), "ruleFallback");
+    assert_eq!(engine.engine_label(), "disabled");
+    assert!(matches!(
+        ask(&engine),
+        TurnOutcome::Faulted { fault_key, .. } if fault_key == FAULT_MODEL_UNAVAILABLE
+    ));
+    // The slot resolves once.
+    assert!(model.activate(empty.path()).is_err());
+}

@@ -185,6 +185,7 @@
   function faultBody(turn: AssistantTurn): string {
     switch (turn.faultKey) {
       case 'assistant.fault.modelUnavailable': return t('assistant.fault.modelUnavailable', locale);
+      case 'assistant.fault.modelLoading': return t('assistant.fault.modelLoading', locale);
       case 'assistant.fault.deadlineExceeded': return t('assistant.fault.deadlineExceeded', locale);
       case 'assistant.fault.transport': return t('assistant.fault.transport', locale);
       default: return t('assistant.fault.generationFailed', locale);
@@ -215,7 +216,9 @@
       <span class="assistant-engine">
         <!-- What the engine IS. It never becomes `ruleFallback` because a
              generation failed — that is a FAULTED turn with a reason. -->
-        {#if state.engineLabel && state.engineLabel !== 'localModel'}
+        {#if state.engineLabel === 'loading'}
+          {t('assistant.engineLoading', locale)}
+        {:else if state.engineLabel && state.engineLabel !== 'localModel'}
           {t('assistant.engineDisabled', locale)}
         {:else}
           <TechnicalText value={state.engineLabel || '—'} />
