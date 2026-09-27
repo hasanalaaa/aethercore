@@ -3,7 +3,7 @@
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { LocalizedOwnedText, Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
-  import { localizeOwnedText, localizeState, t } from '../../lib/i18n';
+  import { localizeFactState, localizeOwnedText, localizeState, t, tp } from '../../lib/i18n';
   import { openRepairReview, repairActive, repairUi, reviewSystemRepair, setIncludeDiskScan, startRepairAssessment } from './controller';
   import { shortDigest, stageTone } from '../shared';
 
@@ -81,7 +81,7 @@
 
   {#if intelligence.diagnoses.length}
     <section class="repair-diagnosis-panel">
-      <div class="section-heading"><div><p class="eyebrow">{t('repair.diagnosisEyebrow',locale)}</p><h2>{t('repair.diagnosisTitle',locale)}</h2></div><span>{t('repair.evidenceCount',locale,{count:intelligence.facts.length})}</span></div>
+      <div class="section-heading"><div><p class="eyebrow">{t('repair.diagnosisEyebrow',locale)}</p><h2>{t('repair.diagnosisTitle',locale)}</h2></div><span>{t('repair.evidenceCount',locale,{items:tp('unit.evidenceItem',locale,intelligence.facts.length)})}</span></div>
       <div class="repair-diagnosis-list">
         {#each intelligence.diagnoses as diagnosis (diagnosis.id)}
           <article>
@@ -97,10 +97,10 @@
   <section class="recovery-readiness-card">
     <div><h3>{t('repair.recoveryTitle',locale)}</h3></div>
     <div class="recovery-facts">
-      <div><span>{t('repair.systemRestore',locale)}</span><strong>{localizeState(recovery?.systemRestore ?? 'unknown',locale)}</strong></div>
-      <div><span>{t('repair.restorePoint',locale)}</span><strong>{localizeState(recovery?.restorePointCreation ?? 'unknown',locale)}</strong></div>
-      <div><span>{t('repair.winre',locale)}</span><strong>{localizeState(recovery?.winRe ?? 'unknown',locale)}</strong></div>
-      <div><span>{t('repair.journalRecovery',locale)}</span><strong>{localizeState(recovery?.journalRecovery ?? 'unknown',locale)}</strong></div>
+      <div><span>{t('repair.systemRestore',locale)}</span><strong>{localizeFactState(recovery?.systemRestore ?? 'unknown',locale)}</strong></div>
+      <div><span>{t('repair.restorePoint',locale)}</span><strong>{localizeFactState(recovery?.restorePointCreation ?? 'unknown',locale)}</strong></div>
+      <div><span>{t('repair.winre',locale)}</span><strong>{localizeFactState(recovery?.winRe ?? 'unknown',locale)}</strong></div>
+      <div><span>{t('repair.journalRecovery',locale)}</span><strong>{localizeFactState(recovery?.journalRecovery ?? 'unknown',locale)}</strong></div>
     </div>
   </section>
 {/if}

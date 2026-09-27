@@ -57,6 +57,8 @@
 <section class="diagnostic-cards crash-triage"><div class="panel-head"><div><p class="eyebrow">{t('crash.triageEyebrow',locale)}</p><h3>{t('crash.triageTitle',locale)}</h3></div></div>
   {#each diagnostics.cards.filter((card) => card.domain === 'Crash' || card.domain === 'Hardware') as card (card.cardId)}
     <article class="triage-card"><div class="triage-head"><div><span>{localizeDomain(card.domain,locale)}</span><h4><LocalizedOwnedText value={card.title} {locale}/></h4></div><em>{localizeSeverity(card.severity,locale)} · {localizeConfidence(card.confidence,locale)}</em></div><LocalizedOwnedText value={card.summary} {locale} as="p"/>{#if card.evidence.length}<ul>{#each card.evidence as evidence}<li><LocalizedOwnedText value={evidence} {locale}/></li>{/each}</ul>{/if}<div class="guided-actions">{#each card.actions as action}<span class="guided-action"><LocalizedOwnedText value={action} {locale}/></span>{/each}</div></article>
+  {:else}
+    <p class="triage-empty">{t('crash.triageEmpty',locale)}</p>
   {/each}
 </section>
 

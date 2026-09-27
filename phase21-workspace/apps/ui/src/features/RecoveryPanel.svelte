@@ -14,7 +14,7 @@
     {#each recoveryEntries as entry (entry.seq)}
       {@const summary = localizeOwnedText(entry.summary,locale)}
       {@const detail = localizeOwnedText(entry.detail,locale)}
-      <div class="recovery-row"><span class:warning={entry.severity === 'warning'}>◇</span><div>
+      <div class="recovery-row"><span class:warning={entry.severity === 'warning' || entry.severity === 'Amber'}>◇</span><div>
         {#if summary.localized}<strong>{summary.text}</strong>{:else}<strong><TechnicalText value={entry.summary}/></strong>{/if}
         {#if detail.localized}<p>{detail.text}</p>{:else}<p><TechnicalText value={entry.detail}/></p>{/if}
         <small>{formatWhen(entry.createdUnixMs,locale)} · {localizeKind(entry.kind,locale)} · {localizeSeverity(entry.severity,locale)}</small>
