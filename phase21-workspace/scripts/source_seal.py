@@ -134,6 +134,14 @@ def verify(root: Path) -> dict:
     }
 
 
+def repository_root_of(root: Path) -> Path | None:
+    """The top level of the git repository `root` is tracked in, or None."""
+    proc = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], cwd=root, capture_output=True, text=True
+    )
+    return Path(proc.stdout.strip()).resolve() if proc.returncode == 0 else None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", type=Path, default=ROOT)
@@ -149,6 +157,17 @@ def main() -> int:
             root_result = verify(github)
             result["repository_root"] = root_result
             result["ok"] = result["ok"] and root_result["ok"]
+        elif repository_root_of(args.root) == args.root.resolve().parent:
+            # P75 review (#51): the workspace sits inside a repository whose root must carry
+            # .github/; its absence (or a file in its place) is a failure, never a skip.
+            result["repository_root"] = {
+                "root": str(github),
+                "tracked": 0,
+                "verified": 0,
+                "failed": [{"path": ".github", "reason": "missing" if not github.exists() else "not-a-directory"}],
+                "ok": False,
+            }
+            result["ok"] = False
     except SealError as exc:
         if args.json:
             print(json.dumps({"schema": "aethercore.source-seal.v1", "ok": False, "error": str(exc)}))
