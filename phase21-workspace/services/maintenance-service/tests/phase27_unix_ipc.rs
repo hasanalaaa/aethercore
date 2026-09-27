@@ -146,6 +146,22 @@ fn engine_source_request() -> Request {
     }
 }
 
+fn insight_request(locale: &str) -> Request {
+    Request {
+        header: Some(RequestHeader {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: format!("gd-insight-{locale:0>8}"),
+        }),
+        payload: Some(aethercore_contracts::v1::request::Payload::RequestInsight(
+            v1::RequestInsightRequest {
+                question_key: "explain".into(),
+                question: String::new(),
+                locale: locale.into(),
+            },
+        )),
+    }
+}
+
 fn exchange(session: &mut aethercore_ipc::UnixSocketSession, frame: &ClientFrame) -> ServerFrame {
     use prost::Message as _;
     session
@@ -255,6 +271,28 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
             }
         }
         other => panic!("expected Response frame, got {other:?}"),
+    }
+
+    // P76 DBT-P75-052: the locale field over the real socket. "ar" and the empty
+    // default are served; a value the service does not speak is refused, not
+    // silently answered in English.
+    for (locale, served) in [("ar", true), ("", true), ("en", true), ("fr", false)] {
+        let reply = exchange(&mut session, &session_request(insight_request(locale)));
+        match reply.payload {
+            Some(server_frame::Payload::Response(response)) if served => {
+                assert_eq!(response.status_code, 0, "{locale:?}: {response:?}");
+                assert!(matches!(
+                    response.payload,
+                    Some(v1::response::Payload::InsightsResponse(_))
+                ));
+            }
+            Some(server_frame::Payload::Response(response)) => {
+                let error = response.error.expect("a refusal carries its error");
+                assert_eq!(error.message_key, "insight.invalid.locale", "{error:?}");
+                assert_eq!(error.code, v1::ErrorCode::InvalidRequest as i32);
+            }
+            other => panic!("expected Response frame, got {other:?}"),
+        }
     }
 
     drop(session);

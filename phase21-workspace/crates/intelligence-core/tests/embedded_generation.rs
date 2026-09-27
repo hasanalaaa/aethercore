@@ -24,7 +24,7 @@ use std::time::Instant;
 use aethercore_intelligence_core::{
     AssistantEngine, EMBEDDED_MODEL_RELATIVE_PATH, EvidenceItem, EvidenceSurface, GenerationBudget,
     INFERENCE_TIMEOUT, InsightConfidence, InsightEngineKind, LlamaCppReasoner, LocalReasoner,
-    ReasonerSelector, RefusalReason, StreamingReasoner, TurnOutcome, TypedEvidencePack,
+    Locale, ReasonerSelector, RefusalReason, StreamingReasoner, TurnOutcome, TypedEvidencePack,
     embedded_model_entry, verify_model_hash,
 };
 
@@ -111,6 +111,7 @@ fn the_embedded_model_generates_tokens_over_an_evidence_pack() {
         .generate(
             &pack(),
             "what maintenance has run on this machine?",
+            Locale::En,
             &budget,
             &mut |accumulated| streamed.push(accumulated.to_owned()),
         )
@@ -171,6 +172,7 @@ fn cancelling_the_real_loop_stops_generation_early() {
         .generate(
             &pack(),
             "what maintenance has run on this machine?",
+            Locale::En,
             &budget,
             &mut |_| {
                 callbacks += 1;
@@ -273,7 +275,8 @@ fn the_real_model_insight_path_is_cited_and_truthfully_badged() {
 
     // The generation on its own first, for its token count and the text.
     let started = Instant::now();
-    let generated = reasoner.generate_insight_text(&pack, question, started + INFERENCE_TIMEOUT);
+    let generated =
+        reasoner.generate_insight_text(&pack, question, Locale::En, started + INFERENCE_TIMEOUT);
     let elapsed = started.elapsed().as_millis();
     match &generated {
         Ok(g) => measured(&format!(
@@ -294,7 +297,7 @@ fn the_real_model_insight_path_is_cited_and_truthfully_badged() {
     let selector = ReasonerSelector::new(Some(Box::new(reasoner)));
     let started = Instant::now();
     let insights = selector
-        .request_insights(&pack, question, false)
+        .request_insights(&pack, question, Locale::En, false)
         .expect("a loaded model with evidence answers");
     let wall = started.elapsed();
     let engine = insights.first().map(|i| i.engine);
@@ -370,13 +373,19 @@ fn an_insight_asked_while_the_assistant_generates_falls_back_at_once() {
         .generate(
             &pack,
             "what maintenance has run on this machine?",
+            Locale::En,
             &GenerationBudget::new(cancel),
             &mut |_| {
                 if during.is_none() {
                     let asked = Instant::now();
-                    let direct =
-                        LocalReasoner::infer(&reasoner, &pack, "q", asked + INFERENCE_TIMEOUT);
-                    let served = selector.request_insights(&pack, "q", false);
+                    let direct = LocalReasoner::infer(
+                        &reasoner,
+                        &pack,
+                        "q",
+                        Locale::En,
+                        asked + INFERENCE_TIMEOUT,
+                    );
+                    let served = selector.request_insights(&pack, "q", Locale::En, false);
                     during = Some((direct, (served, asked.elapsed())));
                     flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 }
@@ -422,6 +431,7 @@ fn the_real_model_refuses_a_question_its_evidence_cannot_answer() {
     let outcome = engine.ask(
         &pack(),
         "what is the capital of France?",
+        Locale::En,
         false,
         Arc::new(AtomicBool::new(false)),
         &mut |_| {},
@@ -463,6 +473,7 @@ fn the_real_model_answers_a_question_its_evidence_covers_and_cites_it() {
     let outcome = engine.ask(
         &pack,
         "what maintenance has run on this machine?",
+        Locale::En,
         false,
         Arc::new(AtomicBool::new(false)),
         &mut |_| {},
@@ -489,5 +500,89 @@ fn the_real_model_answers_a_question_its_evidence_covers_and_cites_it() {
             assert!(answer.contains("[E"), "no inline marker in {answer:?}");
         }
         other => panic!("expected a grounded answer, got {other:?}"),
+    }
+}
+
+fn has_arabic(text: &str) -> bool {
+    text.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c))
+}
+
+/// DBT-P75-052: asked in Arabic, the real model answers in Arabic, under the same
+/// citation gate. The English test above is the other locale; its answer holds no
+/// Arabic because nothing asked for it.
+#[test]
+fn the_real_model_answers_in_arabic_when_arabic_is_requested() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let engine = loaded_engine();
+    let pack = pack();
+    let started = Instant::now();
+    let outcome = engine.ask(
+        &pack,
+        "ما الصيانة التي جرت على هذا الجهاز؟",
+        Locale::Ar,
+        false,
+        Arc::new(AtomicBool::new(false)),
+        &mut |_| {},
+    );
+    measured(&format!(
+        "arabic assistant turn in {} ms: {outcome:?}",
+        started.elapsed().as_millis()
+    ));
+    if stopped_honestly_by_a_slow_host(&outcome) {
+        return;
+    }
+    match outcome {
+        TurnOutcome::Answered {
+            answer, citations, ..
+        } => {
+            assert!(has_arabic(&answer), "not Arabic: {answer:?}");
+            assert!(!citations.is_empty(), "an answer must cite: {answer:?}");
+            for citation in &citations {
+                assert!(pack.resolves(citation), "{citation:?} does not resolve");
+            }
+        }
+        other => panic!("expected a grounded Arabic answer, got {other:?}"),
+    }
+}
+
+/// The insight path in Arabic, on the real model: every line it keeps is Arabic and
+/// cited. A slow host may stop at its deadline, as t4 states.
+#[test]
+fn the_real_model_writes_insights_in_arabic_when_arabic_is_requested() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let path = product_root().join(EMBEDDED_MODEL_RELATIVE_PATH);
+    verify_model_hash(&path, &embedded_model_entry()).expect("pinned sha256 must match");
+    let mut reasoner = LlamaCppReasoner::new();
+    reasoner.load(&path).expect("the artifact must load");
+    let pack = product_shaped_pack();
+    let started = Instant::now();
+    let deadline = started + INFERENCE_TIMEOUT;
+    let result = reasoner.generate_insight_text(&pack, "explain", Locale::Ar, deadline);
+    measured(&format!(
+        "arabic insight generation in {} ms: {result:?}",
+        started.elapsed().as_millis()
+    ));
+    let insights = match result {
+        Ok(generated) => aethercore_intelligence_core::insights_from_text(&generated.text, &pack),
+        Err(error) => {
+            assert!(
+                !cfg!(target_os = "macos") && error.contains("deadline exceeded"),
+                "only a deadline may stop the model, and not on macOS: {error}"
+            );
+            return;
+        }
+    };
+    #[cfg(target_os = "macos")]
+    assert!(!insights.is_empty(), "no Arabic line survived the gates");
+    for insight in &insights {
+        assert!(has_arabic(&insight.explanation), "{insight:?}");
+        assert!(
+            insight.citations.iter().all(|c| pack.resolves(c)),
+            "{insight:?}"
+        );
     }
 }

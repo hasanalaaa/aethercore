@@ -1990,13 +1990,16 @@ async fn list_insights() -> Result<v1::InsightsResponse, String> {
 async fn request_insight(
     question_key: String,
     question: Option<String>,
+    locale: Option<String>,
 ) -> Result<v1::InsightsResponse, String> {
     let question = question.unwrap_or_default();
+    let locale = locale.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         let resp = request(request::Payload::RequestInsight(
             v1::RequestInsightRequest {
                 question_key,
                 question,
+                locale,
             },
         ))
         .map_err(|e| e.to_string())?;
@@ -2021,11 +2024,17 @@ fn extract_assistant_turn(resp: v1::Response) -> Result<v1::AssistantTurn, Strin
 }
 
 #[command]
-async fn ask_assistant(turn_id: String, question: String) -> Result<v1::AssistantTurn, String> {
+async fn ask_assistant(
+    turn_id: String,
+    question: String,
+    locale: Option<String>,
+) -> Result<v1::AssistantTurn, String> {
+    let locale = locale.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         let resp = request(request::Payload::AskAssistant(v1::AskAssistantRequest {
             turn_id,
             question,
+            locale,
         }))
         .map_err(|e| e.to_string())?;
         extract_assistant_turn(resp)

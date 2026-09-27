@@ -67,6 +67,8 @@ pub struct PrivacyReport {
     pub account_identifier_redactions: u32,
     pub hardware_serial_redactions: u32,
     pub email_redactions: u32,
+    /// Host names, IP addresses and MAC addresses (P76, DBT-P75-055).
+    pub network_identifier_redactions: u32,
 }
 impl PrivacyReport {
     fn add(&mut self, other: &Self) {
@@ -80,6 +82,9 @@ impl PrivacyReport {
             .hardware_serial_redactions
             .saturating_add(other.hardware_serial_redactions);
         self.email_redactions = self.email_redactions.saturating_add(other.email_redactions);
+        self.network_identifier_redactions = self
+            .network_identifier_redactions
+            .saturating_add(other.network_identifier_redactions);
     }
 }
 
@@ -585,13 +590,17 @@ fn sanitize_value(value: Value) -> (Value, PrivacyReport) {
                 let mut out = serde_json::Map::new();
                 for (k, v) in map {
                     let lower = k.to_ascii_lowercase();
-                    // P75: a host name names the machine and usually its user; counted with
-                    // account identifiers because the privacy report's counters are a wire
-                    // contract (SupportPrivacyReport) and have no field of their own for it.
+                    // A host name names the machine and usually its user.
                     if is_host_key(&lower) {
-                        report.account_identifier_redactions =
-                            report.account_identifier_redactions.saturating_add(1);
+                        report.network_identifier_redactions =
+                            report.network_identifier_redactions.saturating_add(1);
                         out.insert(k, Value::String("<redacted-host>".into()));
+                        continue;
+                    }
+                    if is_mac_key(&lower) {
+                        report.network_identifier_redactions =
+                            report.network_identifier_redactions.saturating_add(1);
+                        out.insert(k, Value::String("<redacted-hardware-serial>".into()));
                         continue;
                     }
                     if is_account_key(&lower) {
@@ -658,7 +667,10 @@ fn is_account_key(key: &str) -> bool {
 }
 /// Any serial (BIOS, disk, baseboard, volume…) and a MAC address: hardware identifiers.
 fn is_serial_key(key: &str) -> bool {
-    key.contains("serial") || matches!(key, "macaddress" | "mac_address" | "mac")
+    key.contains("serial")
+}
+fn is_mac_key(key: &str) -> bool {
+    matches!(key, "macaddress" | "mac_address" | "mac")
 }
 #[cfg(feature = "fuzzing")]
 pub fn fuzz_sanitize_text(value: &str) -> (String, PrivacyReport) {
@@ -701,21 +713,20 @@ fn sanitize_string(value: &str, report: &mut PrivacyReport) -> String {
         "<redacted-sid>",
         &mut report.account_identifier_redactions,
     );
-    // P75: MAC addresses are hardware identifiers, counted with serials; IP addresses identify
-    // the machine and its network, counted with account identifiers (see is_host_key).
+    // MAC and IP addresses identify the machine and its network (see is_host_key).
     out = redact_tokens(
         &out,
         |c| c.is_ascii_hexdigit() || matches!(c, ':' | '-'),
         looks_like_mac,
         "<redacted-mac>",
-        &mut report.hardware_serial_redactions,
+        &mut report.network_identifier_redactions,
     );
     out = redact_tokens(
         &out,
         |c| c.is_ascii_hexdigit() || matches!(c, ':' | '.'),
         looks_like_ip,
         "<redacted-ip>",
-        &mut report.account_identifier_redactions,
+        &mut report.network_identifier_redactions,
     );
     out
 }
@@ -1327,7 +1338,8 @@ mod tests {
             text.contains("<redacted-ip>."),
             "the sentence keeps its period: {text}"
         );
-        assert_eq!(report.account_identifier_redactions, 2, "{report:?}");
+        assert_eq!(report.network_identifier_redactions, 2, "{report:?}");
+        assert_eq!(report.account_identifier_redactions, 0, "{report:?}");
     }
 
     /// P75 review 2 (lib.rs:751): trimming before parsing turned a valid IPv6 ending in `::`
@@ -1372,7 +1384,11 @@ mod tests {
             text.contains("10.1.19.3"),
             "a version is not an address: {text}"
         );
-        assert!(r.hardware_serial_redactions >= 3, "{r:?}");
+        // P76 DBT-P75-055: hosts, addresses and MACs have a counter of their own; the
+        // serial counter holds only the serial.
+        assert_eq!(r.hardware_serial_redactions, 1, "{r:?}");
+        assert_eq!(r.account_identifier_redactions, 0, "{r:?}");
+        assert_eq!(r.network_identifier_redactions, 6, "{r:?}");
     }
 
     #[test]

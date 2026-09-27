@@ -83,7 +83,7 @@
   async function askLocal(): Promise<void> {
     const text = question.trim();
     if (!text) return;
-    if (await requestInsights('chat', text)) question = '';
+    if (await requestInsights(locale, 'chat', text)) question = '';
   }
 
   /**
@@ -115,7 +115,7 @@
         <Pressable className="primary" type="submit" disabled={loading || !question.trim()}>{t('insight.sendLocal', locale)}</Pressable>
       </form>
       <Pressable className="ghost" onclick={refreshInsights}>{t('common.refresh', locale)}</Pressable>
-      <Pressable className="primary" onclick={() => requestInsights('explain')} disabled={loading}>
+      <Pressable className="primary" onclick={() => requestInsights(locale, 'explain')} disabled={loading}>
         {loading ? t('insight.thinking', locale) : t('insight.explainThis', locale)}
       </Pressable>
       <Pressable className="ghost" ariaLabel={t('insight.clearInsights', locale)} onclick={onDismiss}>✕</Pressable>

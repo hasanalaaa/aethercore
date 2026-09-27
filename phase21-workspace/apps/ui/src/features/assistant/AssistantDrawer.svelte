@@ -105,7 +105,7 @@
     const question = draft.trim();
     if (!question || inFlight) return;
     draft = '';
-    await askAssistant(question);
+    await askAssistant(question, locale);
   }
 
   /**

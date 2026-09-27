@@ -32,5 +32,5 @@ pub use llama::{
 };
 pub use model::{
     Citation, EvidenceItem, EvidenceSurface, INSIGHT_SCHEMA_V1, Insight, InsightConfidence,
-    InsightEngineKind, MAX_EVIDENCE_ITEMS, MAX_INSIGHTS_PER_CALL, TypedEvidencePack,
+    InsightEngineKind, Locale, MAX_EVIDENCE_ITEMS, MAX_INSIGHTS_PER_CALL, TypedEvidencePack,
 };

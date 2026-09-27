@@ -16,6 +16,9 @@ message SupportPrivacyReport {
   uint32 account_identifier_redactions = 2;
   uint32 hardware_serial_redactions = 3;
   uint32 email_redactions = 4;
+  // P76 (DBT-P75-055): host names, IP addresses and MAC addresses, which were
+  // counted with account identifiers and hardware serials.
+  uint32 network_identifier_redactions = 5;
 }
 message SupportPreviewSection { string file_name = 1; string display_key = 2; uint64 size_bytes = 3; }
 message SupportBundlePreview {

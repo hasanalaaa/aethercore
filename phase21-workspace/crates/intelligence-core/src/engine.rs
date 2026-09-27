@@ -12,8 +12,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::model::{
-    Citation, EvidenceItem, Insight, InsightConfidence, InsightEngineKind, MAX_INSIGHTS_PER_CALL,
-    TypedEvidencePack,
+    Citation, EvidenceItem, Insight, InsightConfidence, InsightEngineKind, Locale,
+    MAX_INSIGHTS_PER_CALL, TypedEvidencePack,
 };
 
 /// Hard inference ceiling (I4). The model path must return inside this budget or the
@@ -42,11 +42,13 @@ pub enum IntelligenceError {
 pub trait LocalReasoner: Send + Sync {
     fn load(&mut self, model_path: &std::path::Path) -> Result<(), String>;
     fn is_loaded(&self) -> bool;
-    /// Returns raw candidate insights; the ENGINE enforces citations before emission.
+    /// Returns raw candidate insights, their prose in `locale`; the ENGINE enforces
+    /// citations before emission.
     fn infer(
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: Locale,
         deadline: std::time::Instant,
     ) -> Result<Vec<Insight>, String>;
 }
@@ -86,9 +88,14 @@ impl LocalReasoner for DeterministicFallbackReasoner {
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: Locale,
         _deadline: std::time::Instant,
     ) -> Result<Vec<Insight>, String> {
         let _ = question; // fallback summarizes; it does not answer open questions
+        let in_locale = |en: String, ar: String| match locale {
+            Locale::En => en,
+            Locale::Ar => ar,
+        };
         let mut out = Vec::new();
 
         // Rule 1: dominant bottleneck role summary.
@@ -106,10 +113,17 @@ impl LocalReasoner for DeterministicFallbackReasoner {
             let anchor = bottleneck_ids[0];
             if let Some(insight) = Insight::build(
                 "insight.summary.bottleneck",
-                format!(
-                    "{} performance finding(s) reported; primary: {}.",
-                    bottleneck_ids.len(),
-                    anchor.evidence_id
+                in_locale(
+                    format!(
+                        "{} performance finding(s) reported; primary: {}.",
+                        bottleneck_ids.len(),
+                        anchor.evidence_id
+                    ),
+                    format!(
+                        "عدد نتائج الأداء المُبلَّغ عنها: {}؛ أبرزها: {}.",
+                        bottleneck_ids.len(),
+                        anchor.evidence_id
+                    ),
                 ),
                 InsightConfidence::Moderate,
                 bottleneck_ids
@@ -135,9 +149,15 @@ impl LocalReasoner for DeterministicFallbackReasoner {
         if !repair_items.is_empty()
             && let Some(insight) = Insight::build(
                 "insight.summary.repairState",
-                format!(
-                    "{} repair diagnosis entr(ies) present with their own verification states.",
-                    repair_items.len()
+                in_locale(
+                    format!(
+                        "{} repair diagnosis entr(ies) present with their own verification states.",
+                        repair_items.len()
+                    ),
+                    format!(
+                        "عدد تشخيصات الإصلاح الموجودة: {}، ولكلٍّ منها حالة تحقق خاصة به.",
+                        repair_items.len()
+                    ),
                 ),
                 InsightConfidence::Weak,
                 repair_items
@@ -163,9 +183,15 @@ impl LocalReasoner for DeterministicFallbackReasoner {
         if !pattern_items.is_empty()
             && let Some(insight) = Insight::build(
                 "insight.summary.recurrence",
-                format!(
-                    "{} recurring pattern(s) detected by timeline intelligence with full evidence matrices.",
-                    pattern_items.len()
+                in_locale(
+                    format!(
+                        "{} recurring pattern(s) detected by timeline intelligence with full evidence matrices.",
+                        pattern_items.len()
+                    ),
+                    format!(
+                        "عدد الأنماط المتكررة التي رصدها تحليل السجل الزمني: {}، مع مصفوفات أدلتها كاملة.",
+                        pattern_items.len()
+                    ),
                 ),
                 InsightConfidence::Strong,
                 pattern_items
@@ -193,9 +219,15 @@ impl LocalReasoner for DeterministicFallbackReasoner {
         if !security_items.is_empty()
             && let Some(insight) = Insight::build(
                 "insight.summary.securityPosture",
-                format!(
-                    "{} security finding(s) in the current posture snapshot; review the cited evidence.",
-                    security_items.len()
+                in_locale(
+                    format!(
+                        "{} security finding(s) in the current posture snapshot; review the cited evidence.",
+                        security_items.len()
+                    ),
+                    format!(
+                        "عدد النتائج الأمنية في لقطة الوضع الحالية: {}؛ راجع الأدلة المذكورة.",
+                        security_items.len()
+                    ),
                 ),
                 InsightConfidence::Moderate,
                 security_items
@@ -278,6 +310,7 @@ impl ReasonerSelector {
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: Locale,
         mutation_active: bool,
     ) -> Result<Vec<Insight>, IntelligenceError> {
         if mutation_active {
@@ -289,13 +322,14 @@ impl ReasonerSelector {
         let Some(_lane) = Lane::acquire(&self.in_flight) else {
             return Err(IntelligenceError::Busy);
         };
-        self.dispatch(pack, question)
+        self.dispatch(pack, question, locale)
     }
 
     fn dispatch(
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: Locale,
     ) -> Result<Vec<Insight>, IntelligenceError> {
         let deadline = std::time::Instant::now() + INFERENCE_TIMEOUT;
 
@@ -305,7 +339,9 @@ impl ReasonerSelector {
             // Unavailable / busy / unparseable / over budget → silent degrade (I3).
             let cited = cited_only(
                 pack,
-                model.infer(pack, question, deadline).unwrap_or_default(),
+                model
+                    .infer(pack, question, locale, deadline)
+                    .unwrap_or_default(),
             );
             if !cited.is_empty() {
                 return Ok(self.serve(cited, InsightEngineKind::LocalModel));
@@ -319,7 +355,7 @@ impl ReasonerSelector {
         let cited = cited_only(
             pack,
             self.fallback
-                .infer(pack, question, deadline)
+                .infer(pack, question, locale, deadline)
                 .unwrap_or_default(),
         );
         Ok(self.serve(cited, InsightEngineKind::RuleFallback))

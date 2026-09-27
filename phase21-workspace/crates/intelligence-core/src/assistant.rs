@@ -26,7 +26,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::model::{Citation, TypedEvidencePack};
+use crate::model::{Citation, Locale, TypedEvidencePack};
 
 /// Longest question accepted. Validated at the wire boundary; restated here so
 /// the engine cannot be driven past it by a caller that forgot.
@@ -129,13 +129,14 @@ pub struct Generated {
 /// fallback summarises a pack and cannot answer a question.
 pub trait StreamingReasoner: Send + Sync {
     fn is_loaded(&self) -> bool;
-    /// Generates an answer to `question` over `pack`, calling `sink` with the
-    /// ACCUMULATED text after each token so a renderer never has to reassemble
-    /// fragments. Errors are real failures, never "no answer".
+    /// Generates an answer to `question` over `pack`, in `locale`, calling `sink`
+    /// with the ACCUMULATED text after each token so a renderer never has to
+    /// reassemble fragments. Errors are real failures, never "no answer".
     fn generate(
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: Locale,
         budget: &GenerationBudget,
         sink: &mut dyn FnMut(&str),
     ) -> Result<Generated, String>;
@@ -155,6 +156,24 @@ Example QUESTION: what has been happening?\n\
 Example ANSWER: A startup plan completed [E1]. A disk event has recurred twice [E2].\n\n\
 If the EVIDENCE block does not answer the question, reply with exactly NO EVIDENCE and nothing \
 else.";
+
+/// The rule appended to a system prompt when the reader asked for Arabic
+/// (DBT-P75-052). Everything a gate reads stays as it is: the tags, the refusal
+/// token, and numbers in the digits the number gate reads.
+pub const ARABIC_RULE: &str = "\n\nThe reader reads Arabic: write every sentence in Arabic. Keep \
+each evidence tag exactly as written, for example [E1]. Write every number with the digits 0-9. \
+NO EVIDENCE stays in English.\n\
+Example ANSWER in Arabic:\n\
+اكتملت خطة صيانة لبدء التشغيل [E1].\n\
+تكرر حدث في القرص [E2].";
+
+/// `system` with the language rule for `locale`; English is the prompt as written.
+pub fn system_prompt_in(system: &str, locale: Locale) -> String {
+    match locale {
+        Locale::En => system.to_owned(),
+        Locale::Ar => format!("{system}{ARABIC_RULE}"),
+    }
+}
 
 /// The evidence block and the question — the user turn.
 ///
@@ -332,6 +351,7 @@ impl AssistantEngine {
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: Locale,
         mutation_active: bool,
         cancel: Arc<AtomicBool>,
         sink: &mut dyn FnMut(&str),
@@ -372,7 +392,7 @@ impl AssistantEngine {
         } else {
             question
         };
-        let result = reasoner.generate(pack, bounded, &budget, sink);
+        let result = reasoner.generate(pack, bounded, locale, &budget, sink);
         drop(lane);
 
         match result {
@@ -432,6 +452,7 @@ mod tests {
             &self,
             _pack: &TypedEvidencePack,
             _question: &str,
+            _locale: Locale,
             _budget: &GenerationBudget,
             sink: &mut dyn FnMut(&str),
         ) -> Result<Generated, String> {
@@ -469,6 +490,7 @@ mod tests {
         let outcome = engine.ask(
             &pack_of(&["fact-a"]),
             "why is my pc slow?",
+            Locale::En,
             false,
             Arc::new(AtomicBool::new(false)),
             &mut |_| {},
@@ -484,6 +506,7 @@ mod tests {
         let outcome = engine.ask(
             &pack_of(&["fact-a"]),
             "is my disk ok?",
+            Locale::En,
             false,
             Arc::new(AtomicBool::new(false)),
             &mut |_| {},
@@ -503,6 +526,7 @@ mod tests {
         let outcome = engine.ask(
             &pack_of(&["fact-a", "fact-b"]),
             "what ran?",
+            Locale::En,
             false,
             Arc::new(AtomicBool::new(false)),
             &mut |_| {},
@@ -544,6 +568,7 @@ mod tests {
         let outcome = engine.ask(
             &pack_of(&["fact-a"]),
             "anything?",
+            Locale::En,
             false,
             Arc::new(AtomicBool::new(false)),
             &mut |_| {},
@@ -567,6 +592,7 @@ mod tests {
         match engine.ask(
             &pack_of(&["fact-a"]),
             "q",
+            Locale::En,
             false,
             Arc::new(AtomicBool::new(false)),
             &mut |_| {},
@@ -592,6 +618,7 @@ mod tests {
                 &self,
                 _: &TypedEvidencePack,
                 _: &str,
+                _locale: Locale,
                 _: &GenerationBudget,
                 _: &mut dyn FnMut(&str),
             ) -> Result<Generated, String> {
@@ -603,6 +630,7 @@ mod tests {
             engine.ask(
                 &TypedEvidencePack::default(),
                 "why is my pc slow?",
+                Locale::En,
                 false,
                 Arc::new(AtomicBool::new(false)),
                 &mut |_| {},
@@ -618,6 +646,7 @@ mod tests {
             engine.ask(
                 &pack_of(&["fact-a"]),
                 "q",
+                Locale::En,
                 true,
                 Arc::new(AtomicBool::new(false)),
                 &mut |_| {},
@@ -641,6 +670,7 @@ mod tests {
             engine.ask(
                 &pack_of(&["fact-a"]),
                 "q",
+                Locale::En,
                 false,
                 Arc::new(AtomicBool::new(false)),
                 &mut |_| {},
@@ -666,6 +696,7 @@ mod tests {
                 &self,
                 _: &TypedEvidencePack,
                 _: &str,
+                _locale: Locale,
                 budget: &GenerationBudget,
                 sink: &mut dyn FnMut(&str),
             ) -> Result<Generated, String> {
@@ -708,6 +739,7 @@ mod tests {
         let outcome = engine.ask(
             &pack_of(&["fact-a"]),
             "q",
+            Locale::En,
             false,
             cancel,
             &mut |accumulated| {
@@ -744,6 +776,7 @@ mod tests {
                 &self,
                 pack: &TypedEvidencePack,
                 _: &str,
+                _locale: Locale,
                 _: &GenerationBudget,
                 _: &mut dyn FnMut(&str),
             ) -> Result<Generated, String> {
@@ -753,6 +786,7 @@ mod tests {
                     let outcome = engine.ask(
                         pack,
                         "second",
+                        Locale::En,
                         false,
                         Arc::new(AtomicBool::new(false)),
                         &mut |_| {},
@@ -780,10 +814,11 @@ mod tests {
                 &self,
                 pack: &TypedEvidencePack,
                 question: &str,
+                locale: Locale,
                 budget: &GenerationBudget,
                 sink: &mut dyn FnMut(&str),
             ) -> Result<Generated, String> {
-                self.0.generate(pack, question, budget, sink)
+                self.0.generate(pack, question, locale, budget, sink)
             }
         }
         let engine = Arc::new(AssistantEngine::new(Some(Box::new(Proxy(Arc::clone(
@@ -794,6 +829,7 @@ mod tests {
         let outcome = engine.ask(
             &pack_of(&["fact-a"]),
             "first",
+            Locale::En,
             false,
             Arc::new(AtomicBool::new(false)),
             &mut |_| {},
@@ -814,6 +850,7 @@ mod tests {
             engine.ask(
                 &pack_of(&["fact-a"]),
                 "q",
+                Locale::En,
                 false,
                 Arc::new(AtomicBool::new(false)),
                 &mut |_| {},
@@ -835,6 +872,7 @@ mod tests {
                 &self,
                 _: &TypedEvidencePack,
                 _: &str,
+                _locale: Locale,
                 _: &GenerationBudget,
                 _: &mut dyn FnMut(&str),
             ) -> Result<Generated, String> {
@@ -849,6 +887,7 @@ mod tests {
             engine.ask(
                 &pack_of(&["fact-a"]),
                 "q",
+                Locale::En,
                 false,
                 Arc::new(AtomicBool::new(false)),
                 &mut |_| {},
@@ -907,6 +946,7 @@ mod tests {
                 &self,
                 _: &TypedEvidencePack,
                 question: &str,
+                _locale: Locale,
                 _: &GenerationBudget,
                 _: &mut dyn FnMut(&str),
             ) -> Result<Generated, String> {
@@ -926,6 +966,7 @@ mod tests {
             engine.ask(
                 &pack_of(&["fact-a"]),
                 &question,
+                Locale::En,
                 false,
                 Arc::new(AtomicBool::new(false)),
                 &mut |_| {},

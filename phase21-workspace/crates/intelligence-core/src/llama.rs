@@ -206,7 +206,9 @@ fn numbers_are_cited(prose: &str, citations: &[Citation], pack: &TypedEvidencePa
 /// Standalone numbers in `text`: digit runs not glued to a letter, so an id's hex digits
 /// are not counts, a decimal as one number (`5.5` is not held by `5`), plus the counting
 /// words a model writes for small numbers. `None` when `text` writes a number as a word
-/// this cannot read ("thirteen", "twenty-five", "hundreds").
+/// this cannot read ("thirteen", "twenty-five", "hundreds"), in digits other than 0-9
+/// ("٣"), or as an Arabic number word ("ثلاث"): an Arabic line states its numbers in
+/// digits, as its prompt asks, or it is dropped (DBT-P75-052).
 fn numbers_in(text: &str) -> Option<Vec<String>> {
     const WORDS: [&str; 13] = [
         "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
@@ -234,8 +236,69 @@ fn numbers_in(text: &str) -> Option<Vec<String>> {
         "billion",
         "dozen",
     ];
+    // Arabic number words, whole tokens, after the attached conjunction or preposition
+    // (و ب ل ف) and the article are stripped.
+    const ARABIC_UNREAD: [&str; 40] = [
+        "صفر",
+        "واحد",
+        "واحدة",
+        "اثنان",
+        "اثنين",
+        "اثنتان",
+        "اثنتين",
+        "مرتان",
+        "مرتين",
+        "ثلاث",
+        "ثلاثة",
+        "أربع",
+        "أربعة",
+        "اربع",
+        "اربعة",
+        "خمس",
+        "خمسة",
+        "ست",
+        "ستة",
+        "سبع",
+        "سبعة",
+        "ثمان",
+        "ثماني",
+        "ثمانية",
+        "تسع",
+        "تسعة",
+        "عشر",
+        "عشرة",
+        "عشرون",
+        "عشرين",
+        "مئة",
+        "مائة",
+        "مئات",
+        "ألف",
+        "الف",
+        "آلاف",
+        "مليون",
+        "ملايين",
+        "مليار",
+        "عشرات",
+    ];
+    if text.chars().any(|c| c.is_numeric() && !c.is_ascii_digit()) {
+        return None;
+    }
     let mut numbers = Vec::new();
     for token in text.split(|c: char| !c.is_alphanumeric() && c != '.') {
+        let mut stem = token.trim_matches('.');
+        for prefix in ["و", "ف", "ب", "ل"] {
+            stem = stem
+                .strip_prefix(prefix)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(stem);
+        }
+        let stem = stem
+            .strip_prefix("ال")
+            .filter(|s| !s.is_empty())
+            .unwrap_or(stem);
+        if ARABIC_UNREAD.contains(&token.trim_matches('.')) || ARABIC_UNREAD.contains(&stem) {
+            return None;
+        }
         let token = token.trim_matches('.');
         if !token.is_empty() && token.chars().all(|c| c.is_ascii_digit() || c == '.') {
             numbers.push(token.to_string());
@@ -317,6 +380,7 @@ impl LlamaCppReasoner {
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: crate::model::Locale,
         deadline: std::time::Instant,
     ) -> Result<crate::assistant::Generated, String> {
         // DBT-P46-B23: an empty pack would ask the model the question with NO
@@ -325,7 +389,7 @@ impl LlamaCppReasoner {
             return Err("an empty evidence pack has nothing to cite".into());
         }
         let prompt = chat_prompt(
-            INSIGHT_SYSTEM_PROMPT,
+            &crate::assistant::system_prompt_in(INSIGHT_SYSTEM_PROMPT, locale),
             &crate::assistant::render_user_message(pack, question),
         );
         if prompt.len() > Self::MAX_PROMPT_CHARS {
@@ -408,9 +472,10 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: crate::model::Locale,
         deadline: std::time::Instant,
     ) -> Result<Vec<Insight>, String> {
-        let generated = self.generate_insight_text(pack, question, deadline)?;
+        let generated = self.generate_insight_text(pack, question, locale, deadline)?;
         Ok(insights_from_text(&generated.text, pack))
     }
 }
@@ -429,6 +494,7 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
         &self,
         pack: &TypedEvidencePack,
         question: &str,
+        locale: crate::model::Locale,
         budget: &GenerationBudget,
         sink: &mut dyn FnMut(&str),
     ) -> Result<crate::assistant::Generated, String> {
@@ -438,7 +504,7 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
         // back into the answer ("Mark every claim with the tag of the evidence
         // it rests on: NO EVIDENCE") and kept writing past its conclusion.
         let prompt = chat_prompt(
-            crate::assistant::SYSTEM_PROMPT,
+            &crate::assistant::system_prompt_in(crate::assistant::SYSTEM_PROMPT, locale),
             &crate::assistant::render_user_message(pack, question),
         );
         if prompt.len() > Self::MAX_PROMPT_CHARS {
@@ -849,6 +915,43 @@ mod tests {
             insights_from_text("There were 5 occurrences [E1].\n", &pack).len(),
             1
         );
+    }
+
+    /// DBT-P75-052: an Arabic line states its numbers in 0-9 digits or is dropped. The
+    /// English word list cannot read "ثلاث" or "٣", and without this they passed unchecked.
+    #[test]
+    fn an_arabic_number_the_gate_cannot_check_is_not_cited() {
+        let mut pack = TypedEvidencePack::default();
+        pack.push(EvidenceItem {
+            evidence_id: "p-dism".into(),
+            surface: EvidenceSurface::TimelinePattern,
+            detail: "recurring failure: class operation code verify-dism, 5 occurrences".into(),
+        });
+        for line in [
+            "فشلت العملية ثلاث مرات [E1].\n",
+            "فشلت العملية بثلاث محاولات [E1].\n",
+            "فشلت العملية ٥ مرات [E1].\n",
+            "تكرر الفشل مرتين [E1].\n",
+            "تكرر الفشل عشرات المرات [E1].\n",
+        ] {
+            assert!(insights_from_text(line, &pack).is_empty(), "{line}");
+        }
+        let kept = insights_from_text("فشلت العملية 5 مرات [E1].\n", &pack);
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        assert!(insights_from_text("فشلت العملية 3 مرات [E1].\n", &pack).is_empty());
+    }
+
+    /// The Arabic prompt is the English one plus the language rule; English is unchanged.
+    #[test]
+    fn the_prompt_asks_for_the_requested_language() {
+        use crate::model::Locale;
+        let en = crate::assistant::system_prompt_in(INSIGHT_SYSTEM_PROMPT, Locale::En);
+        let ar = crate::assistant::system_prompt_in(INSIGHT_SYSTEM_PROMPT, Locale::Ar);
+        assert_eq!(en, INSIGHT_SYSTEM_PROMPT);
+        assert!(!en.contains("Arabic"));
+        assert!(ar.starts_with(INSIGHT_SYSTEM_PROMPT));
+        assert!(ar.contains("write every sentence in Arabic"), "{ar}");
+        assert!(ar.contains("digits 0-9") && ar.contains("NO EVIDENCE stays in English"));
     }
 
     /// A line the token ceiling cut off never finished its claim.

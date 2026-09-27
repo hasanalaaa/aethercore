@@ -13,6 +13,13 @@ pub(super) fn ask_assistant(call: &Call<'_>, v: v1::AskAssistantRequest) -> Rout
     if let Err(key) = crate::assistant::validate(&v.turn_id, &v.question) {
         return Err(ServiceError::invalid("assistant", key, key));
     }
+    let Some(locale) = aethercore_intelligence_core::Locale::from_wire(&v.locale) else {
+        return Err(ServiceError::invalid(
+            "assistant",
+            "assistant.invalid.locale",
+            "assistant.invalid.locale",
+        ));
+    };
     // Observer-effect guard: no inference while any mutation or care
     // run holds the machine-wide lease. Kernel state is the single
     // source of truth, exactly as the insight path reads it.
@@ -21,6 +28,7 @@ pub(super) fn ask_assistant(call: &Call<'_>, v: v1::AskAssistantRequest) -> Rout
         principal_key,
         &v.turn_id,
         &v.question,
+        locale,
         mutation_active,
         ctx.kernel.events().clone(),
     );

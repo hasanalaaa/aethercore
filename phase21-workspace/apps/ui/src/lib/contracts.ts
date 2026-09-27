@@ -301,7 +301,7 @@ export type SchedulerEvent = { workload:string; state:number; reason:string; cha
 
 export type UpdateRelease = { releaseId:string; version:string; channel:number; publishedUnixMs:number; notesMessageKey:string; minimumWindowsBuild:number; sizeBytes:number; sha256:string; packageKind:number };
 export type UpdateSnapshot = { state:number; channel:number; currentVersion:string; latestRelease:UpdateRelease|null; stagedRelease:UpdateRelease|null; progressKnown:boolean; overallPercent:number; bytesCompleted:number; bytesTotal:number; statusMessageKey:string; checkedUnixMs:number; updatedUnixMs:number };
-export type SupportPrivacyReport = { userPathRedactions:number; accountIdentifierRedactions:number; hardwareSerialRedactions:number; emailRedactions:number };
+export type SupportPrivacyReport = { userPathRedactions:number; accountIdentifierRedactions:number; hardwareSerialRedactions:number; emailRedactions:number; networkIdentifierRedactions:number };
 export type SupportPreviewSection = { fileName:string; displayKey:string; sizeBytes:number };
 export type SupportBundlePreview = { previewId:string; expiresUnixMs:number; sections:SupportPreviewSection[]; privacy:SupportPrivacyReport|null; estimatedSizeBytes:number };
 export type SupportBundleEvent = { state:number; previewId:string; bundleId:string; sizeBytes:number; sha256:string; changedUnixMs:number };

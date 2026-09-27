@@ -11,7 +11,7 @@
   $: update=$streamState.updateSnapshot;
   $: preview=$systemCareUi.supportPreview;
   $: busy=$shellState.busy;
-  $: redactions=preview?.privacy ? preview.privacy.userPathRedactions+preview.privacy.accountIdentifierRedactions+preview.privacy.hardwareSerialRedactions+preview.privacy.emailRedactions : 0;
+  $: redactions=preview?.privacy ? preview.privacy.userPathRedactions+preview.privacy.accountIdentifierRedactions+preview.privacy.hardwareSerialRedactions+preview.privacy.emailRedactions+preview.privacy.networkIdentifierRedactions : 0;
   function msg(key:string,fallback:'update.status.unknown'|'support.section.unknown'):string{return hasMessageKey(key)?td(key,locale):t(fallback,locale)}
 </script>
 
