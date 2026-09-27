@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P75 (2026-09-27), lane `seal-root`.
+Last moved: P75 (2026-09-27), lane `telemetry-trial`.
 
 ---
 
@@ -251,6 +251,12 @@ Report: `docs/phase57/P57-REPORT.md`. Raw measurements:
 | `DBT-P75-058` | Every CI-wiring check asked whether a step's text appeared anywhere in the workflow, so a step disabled with `#` passed | **CLOSED by P75 lane `gate-honesty`**, pending integration CI at its final head | `3d5d19a`: full-line YAML comments are blanked for `.github/workflows/*`; `run: ./scripts/verify-enterprise.ps1` commented out → 8 checks fail (before: all 8 passed). Evidence: `docs/phase75/lanes/gate-honesty.md`. | any host |
 | `DBT-P75-059` | `static_validate.py` `parse_yaml` without PyYAML returned `{"ok": true, "count": 0}`: a pass that parsed nothing | **CLOSED by P75 lane `gate-honesty`**, pending integration CI at its final head | `a404c56`: UNMEASURED, out of the verdict and named in the summary (`"unmeasured": ["parse_yaml"]` on this Mac). Evidence: `docs/phase75/lanes/gate-honesty.md`. | any host |
 | `DBT-P75-060` | The gates' own tests and `ps_marker_scan.py` had no CI caller | **CLOSED by P75 lane `gate-honesty`**, pending integration CI at its final head | `0c1d264`, `0474008`, `df815d2`: a `gate-self-tests` job runs all eight on `macos-latest` (Windows breaks the unreadable-source injection and cp1252 output, runs `36240612616`, `36240659611`; Linux lacks `plutil`, `36240919751`; macOS 8/8, `36240971179`). Evidence: `docs/phase75/lanes/gate-honesty.md`. | macos-latest |
+| `DBT-P75-063` | `aetherctl doctor` on a service that had not collected diagnostics failed with exit 5 (`diagnostics.stateUnavailable`) | **CLOSED by P75 lane `cli-trial`**, pending integration CI at its final head | `ec0da48`: doctor runs the read-only collection and reports within `--timeout-ms`; red-before `doctor_on_a_fresh_service_collects_and_reports`: `left: 5, right: 0`. Evidence: `docs/phase75/lanes/cli-trial.md`. | any host |
+| `DBT-P75-064` | The aetherctl e2e suite (`--features aetherctl/e2e`, no CI caller) failed on `main`: `self-check` verifies the model beside the binary, which a build tree lacks | **CLOSED by P75 lane `cli-trial`**, pending integration CI at its final head | `f977660`, `c690fbb`: the test lays the model out for its assertion and removes it after (left in place it made daemon-spawning tests load it). 6/7 → 7/7. Evidence: `docs/phase75/lanes/cli-trial.md`. | any host |
+| `DBT-P75-065` | `aetherctl --lang ar` printed nearly every label in English (7 of 114 printed fields had a label) | **CLOSED by P75 lane `cli-trial`**, pending integration CI at its final head | `32d7da2`: an Arabic label for every printed field; English text unchanged; red-before lists 107 fields. Evidence: `docs/phase75/lanes/cli-trial.md`. | any host |
+| `DBT-P75-066` | macOS published used disk capacity as disk active time (9043 bp on a 90%-full volume), so Disk activity read 90% and IO_SATURATION fired (high, rootCause) on an idle disk | **CLOSED by P75 lane `telemetry-trial`**, pending integration CI at its final head | `783179a`: active time 0 with a `storage.activeTime` fault (macOS and Linux); red-before `left: 9071, right: 0`. Evidence: `docs/phase75/lanes/telemetry-trial.md`. | macOS |
+| `DBT-P75-067` | macOS memory load read 98% (free + min(inactive, purgeable)) while the kernel reported 64% free | **CLOSED by P75 lane `telemetry-trial`**, pending integration CI at its final head | `3e72aaa`: load from `kern.memorystatus_level`; red-before "published 93% load, the kernel says 37%". Evidence: `docs/phase75/lanes/telemetry-trial.md`. | macOS |
+| `DBT-P75-068` | IO_SATURATION fired by the average cited only the peak, which was under its own threshold | **CLOSED by P75 lane `telemetry-trial`**, pending integration CI at its final head | `91b51ee`: the average is cited when it fired the rule; red-before test. Evidence: `docs/phase75/lanes/telemetry-trial.md`. | any host |
 ## §2 Recovery posture — measured 2026-09-12
 
 P49 recorded `Gate 0f` as regressed: "there is no `D:` and no
