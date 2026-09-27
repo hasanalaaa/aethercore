@@ -39,7 +39,7 @@ REPO = ROOT.parent
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader, contains, count, position  # noqa: E402
+from gate_reader import SourceReader, contains, count, position, workflow_code  # noqa: E402
 
 _READER = SourceReader(ROOT)
 read = _READER.read
@@ -86,8 +86,11 @@ if yaml is not None:
         lambda p: yaml.safe_load(p.read_text(encoding="utf-8")),
     )
 else:
+    # P75: this used to be `"ok": True` with count 0 — a pass for a check that parsed nothing.
+    # It is UNMEASURED: not counted as passing, and named in the summary.
     checks["parse_yaml"] = {
-        "ok": True,
+        "ok": None,
+        "unmeasured": True,
         "count": 0,
         "note": "PyYAML unavailable; Windows CI remains authoritative for workflow syntax.",
     }
@@ -620,7 +623,7 @@ checks["typed_mutation_surface_only"] = {"ok": not surface_hits, "hits": surface
 
 verify_phase5 = read("scripts/verify-phase5.ps1")
 setup_run = read("scripts/setup-and-run.ps1")
-ci = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+ci = workflow_code((REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
 marker(
     "phase5_windows_gate",
     verify_phase5 + "\n" + setup_run + "\n" + ci,
@@ -817,7 +820,7 @@ audit_ps = (ROOT / "scripts/audit-dependencies.ps1").read_text(encoding="utf-8")
 repro_ps = (ROOT / "scripts/verify-reproducible.ps1").read_text(encoding="utf-8")
 webview_ps = (ROOT / "scripts/fetch-webview2.ps1").read_text(encoding="utf-8")
 fuzz_ps = (ROOT / "scripts/run-ipc-fuzz.ps1").read_text(encoding="utf-8")
-release_ci = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
+release_ci = workflow_code((REPO / ".github/workflows/release.yml").read_text(encoding="utf-8"))
 dotnet_tools = json.loads((ROOT / ".config/dotnet-tools.json").read_text(encoding="utf-8"))
 deny_cfg = tomllib.loads((ROOT / "deny.toml").read_text(encoding="utf-8"))
 root_cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
@@ -1542,8 +1545,8 @@ marker("phase10_all_mutation_telemetry", composition10 + repair10 + cleaner10 + 
 marker("phase10_persistence_migration", persistence9 + migration10, ["0007_phase10_kernel", "idx_maintenance_executions_domain_updated", "idx_plan_executions_stage_updated"])
 verify10 = read("scripts/verify-phase10.ps1")
 audit10 = read("scripts/phase10-architecture-audit.ps1")
-ci10 = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-release10 = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
+ci10 = workflow_code((REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+release10 = workflow_code((REPO / ".github/workflows/release.yml").read_text(encoding="utf-8"))
 marker("phase10_windows_gate", verify10 + audit10, ["verify-phase9.ps1", "phase10-architecture-audit.ps1", "aethercore-operation-kernel", "aethercore-maintenance-service", "aethercore-desktop", "aethercore-system-repair", "aethercore-cleaner", "aethercore-startup-manager", "cargo check --workspace --locked", "pnpm --dir apps/ui build"])
 checks["phase10_ci_release_gate"] = {
     "ok": any(gate in ci10 for gate in ["verify-phase10.ps1 -SkipOnlineSupplyChain", "verify-phase11.ps1 -SkipOnlineSupplyChain", "verify-phase12.ps1 -SkipOnlineSupplyChain", "verify-phase13.ps1 -SkipOnlineSupplyChain", "verify-phase14.ps1 -SkipOnlineSupplyChain", "verify-phase15.ps1 -SkipOnlineSupplyChain", "verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"])
@@ -1850,9 +1853,9 @@ marker("phase13_nested_fault_persistence", diag13, ["provider_faults.extend(h.pr
 marker("phase13_provider_fault_contract", proto13 + protocol13, ["enum ProviderFaultKind", "message ProviderFaultInfo", "repeated ProviderFaultInfo provider_faults = 13", "provider_fault_kind_code", "v1::ProviderFaultInfo"])
 phase13_fault_ui = read("apps/ui/src/features/diagnostics/ProviderFaultsPanel.svelte")
 marker("phase13_localized_fault_ui", phase13_fault_ui + semantic12 + en12 + ar12, ["localizeProviderFaultKind", "diagnostics.providerFaults.kind.timeout", "diagnostics.providerFaults.kind.malformedResponse", "TechnicalText"])
-checks["phase13_raw_fault_detail_not_user_visible"] = {"ok": "fault.detail" not in phase13_fault_ui}
-checks["phase13_fault_records_share_bounded_constructor"] = {"ok": "CollectorFaultRecord {" not in crash_win13 and "impl CollectorFaultRecord" in runtime13 and "ProviderFaultRecord{provider:\"diagnostic-engine\"" not in diag13 and "ProviderFaultRecord{provider:\"diagnostic-journal\"" not in diag13}
-checks["phase13_diagnostic_persistence_not_silent"] = {"ok": "let _=inner.db.save_diagnostic_snapshot" not in diag13 and "diagnostic-journal" in diag13 and "snapshot.persist" in diag13 and "ScanState::Partial" in diag13 and "DiagnosticError::Internal" in (ROOT / "services/maintenance-service/src/errors.rs").read_text(encoding="utf-8")}
+checks["phase13_raw_fault_detail_not_user_visible"] = {"ok": not contains(phase13_fault_ui, "fault.detail")}
+checks["phase13_fault_records_share_bounded_constructor"] = {"ok": not contains(crash_win13, "CollectorFaultRecord {") and "impl CollectorFaultRecord" in runtime13 and not contains(diag13, "ProviderFaultRecord{provider:\"diagnostic-engine\"") and not contains(diag13, "ProviderFaultRecord{provider:\"diagnostic-journal\"")}
+checks["phase13_diagnostic_persistence_not_silent"] = {"ok": not contains(diag13, "let _=inner.db.save_diagnostic_snapshot") and "diagnostic-journal" in diag13 and "snapshot.persist" in diag13 and "ScanState::Partial" in diag13 and "DiagnosticError::Internal" in (ROOT / "services/maintenance-service/src/errors.rs").read_text(encoding="utf-8")}
 marker("phase13_fault_injection_gate", fault13, ["aethercore-collector-runtime", "aethercore-hardware-telemetry", "aethercore-crash-diagnostics", "aethercore-diagnostic-engine", "LiveReadOnly", "render_property_count_is_rejected_before_allocation_when_pathological", "nvme_parser_accepts_vendor_tail_without_reading_past_standard_prefix"])
 marker("phase13_event_alignment_and_handle_bounds", crash_win13, ["align_of::<EVT_VARIANT>()", "align_of::<u16>()", "Take ownership of every non-null handle", "EvtNext reported more event handles than the bounded output array", "EvtNext returned null, sparse, or trailing handles inconsistent with its reported count"])
 marker("phase13_protocol_overlap_guard", hardware13, ["minimum_data_offset", "protocol payload overlapped the protocol-specific metadata header"])
@@ -2029,8 +2032,8 @@ marker("phase16_ga_seal_verify", phase16_verify_seal, ["CheckSignature", "releas
 marker("phase16_master_gate", phase16_verify, ["verify-phase15.ps1", "phase16-ga-audit.ps1", "cargo check --workspace --locked", "static_validate.py"])
 marker("phase16_production_gate", phase16_prod, ["phase16-seal-release.ps1", "verify-ga-seal.ps1", "General Availability release seal: PASS"])
 marker("phase16_honest_ga_boundary", phase16_docs + "\n" + phase16_verify, ["does not constitute GA", "Windows-native", "GA-SEAL.json", "GA-SEAL.p7s"])
-checks["phase16_ci_master_gate"] = {"ok": any(gate in (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8") for gate in ["verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"]) }
-checks["phase16_signed_release_master_gate"] = {"ok": any(gate in (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8") for gate in ["verify-phase16.ps1 -ReleasePackaging -RequireSigning", "verify-enterprise.ps1 -ReleasePackaging -RequireSigning"]) }
+checks["phase16_ci_master_gate"] = {"ok": any(gate in workflow_code((REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")) for gate in ["verify-phase16.ps1 -SkipOnlineSupplyChain", "verify-enterprise.ps1 -SkipOnlineSupplyChain"]) }
+checks["phase16_signed_release_master_gate"] = {"ok": any(gate in workflow_code((REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")) for gate in ["verify-phase16.ps1 -ReleasePackaging -RequireSigning", "verify-enterprise.ps1 -ReleasePackaging -RequireSigning"]) }
 checks["phase16_update_broker_elevation_lifecycle"] = {"ok": "aethercore-update-broker.exe" in (ROOT / "scripts/verify-installer-security.ps1").read_text(encoding="utf-8") and "Update broker PE manifest is not requireAdministrator" in (ROOT / "scripts/verify-installer-security.ps1").read_text(encoding="utf-8")}
 checks["phase16_probe_workspace_member"] = {"ok": "tools/ga-probe" in workspace.get("members", [])}
 
@@ -2142,7 +2145,9 @@ def _platform_identity_single_source() -> None:
 _version_single_source()
 _platform_identity_single_source()
 
-all_ok = all(bool(value.get("ok")) for value in checks.values())
+measured = {name: value for name, value in checks.items() if not value.get("unmeasured")}
+unmeasured = sorted(name for name, value in checks.items() if value.get("unmeasured"))
+all_ok = all(bool(value.get("ok")) for value in measured.values())
 report = {
     "phase": "0-16",
     "ok": all_ok,
@@ -2161,5 +2166,5 @@ report = {
 if ARGS.output:
     ARGS.output.parent.mkdir(parents=True, exist_ok=True)
     ARGS.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-print(json.dumps({"ok": all_ok, "checks": len(checks), "failed": [name for name, value in checks.items() if not value.get("ok")]}, indent=2))
+print(json.dumps({"ok": all_ok, "checks": len(checks), "failed": [name for name, value in measured.items() if not value.get("ok")], "unmeasured": unmeasured}, indent=2))
 sys.exit(0 if all_ok else 1)
