@@ -205,7 +205,9 @@ check("support_pending_counts_against_global_quota", has(support, "bundles.ready
 check("support_reservation_regressions", has(support, "preparation_reservations_count_against_global_quota_before_archive_io", "preparation_reservation_is_linearized_per_owner"))
 check("support_test_lifecycle_discards_after_read", has(support, "engine.discard(\"owner\",&ready.bundle_id).unwrap()"))
 check("support_runtime_metrics_are_owner_scoped", "metrics_for_owner(owner)" in support_service and ".events().metrics()" not in support_service)
-check("support_still_redacts_principal_and_serial_keys", has(support, "ownerprincipalkey", "usersid", "serialnumber", "<redacted-hardware-serial>", "<redacted-sid>", "<redacted-email>"))
+# P75 (DBT-P75-054): serials are recognised by `key.contains("serial")` (BIOS, disk, baseboard,
+# volume...), which covers the exact `serialnumber` spelling this check used to look for.
+check("support_still_redacts_principal_and_serial_keys", has(support, "ownerprincipalkey", "usersid", 'key.contains("serial")', "<redacted-hardware-serial>", "<redacted-sid>", "<redacted-email>"))
 check("support_no_raw_minidump_eventlog_authority", all(token not in support_service for token in ["MEMORY.DMP", "Minidump", "EvtExportLog", "EventLog XML"]))
 
 # Event-stream backpressure observability without cross-principal leakage.
