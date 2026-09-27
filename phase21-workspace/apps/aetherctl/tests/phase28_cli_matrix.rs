@@ -180,12 +180,34 @@ fn offline_surface_succeeds_with_no_daemon_present() {
     assert!(envelope["data"]["cpu"]["totalBusyBp"].is_u64());
     assert!(envelope["data"]["memory"]["totalPhysicalBytes"].is_u64());
 
+    // self-check verifies the model where an install puts it, beside the binary. A build
+    // tree has it only under the workspace, so lay it out the way the installer does.
+    let beside = aetherctl_bin()
+        .parent()
+        .unwrap()
+        .join("assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf");
+    let laid_out = !beside.exists();
+    if laid_out {
+        let shipped = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/models/qwen2.5-1.5b-instruct-q4_k_m.gguf");
+        std::fs::create_dir_all(beside.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(
+            shipped.canonicalize().expect("the model is checked out"),
+            &beside,
+        )
+        .unwrap();
+    }
     let self_check = run_cli(&socket_dir, None, &["self-check"]);
     let envelope = expect_ok_envelope(&self_check, "self-check");
     assert_eq!(envelope["data"]["manifestValid"], true);
     assert_eq!(envelope["data"]["loaded"], false);
     let artifacts = envelope["data"]["artifacts"].as_array().unwrap();
     assert!(artifacts.iter().all(|a| a["sha256Match"] == true));
+    // Only for this assertion: a model beside the target's service binary makes every other
+    // test that spawns the daemon load it (tens of seconds in a debug build).
+    if laid_out {
+        let _ = std::fs::remove_file(&beside);
+    }
 
     let detect = run_cli(&socket_dir, None, &["service", "detect"]);
     let envelope = expect_ok_envelope(&detect, "service detect");
@@ -344,6 +366,23 @@ fn service_backed_command_matrix_round_trips_over_real_uds() {
 // ---------------------------------------------------------------------------
 // kill -9 → stale detection + next-daemon rebind
 // ---------------------------------------------------------------------------
+
+/// P75 trial: `doctor` is the "one-shot health report" the help names, so on a service
+/// that has not collected diagnostics yet it collects them (read-only) and reports,
+/// instead of failing with diagnostics.stateUnavailable (exit 5) on first use.
+#[test]
+#[cfg(unix)]
+fn doctor_on_a_fresh_service_collects_and_reports() {
+    let root = fresh_root("doctor");
+    let mut daemon = spawn_daemon(&root, false);
+    let _socket_path = wait_for_socket_line(&mut daemon);
+    let doctor = run_cli(&root.join("ipc"), Some(&root), &["doctor"]);
+    let envelope = expect_ok_envelope(&doctor, "doctor");
+    assert!(envelope["data"]["scanId"].is_string(), "{}", doctor.stdout);
+    assert_ne!(envelope["data"]["state"], "Collecting", "{}", doctor.stdout);
+    drop(daemon);
+    let _ = std::fs::remove_dir_all(&root);
+}
 
 #[test]
 #[cfg(unix)]
@@ -612,7 +651,21 @@ fn consent_adversarial_refusals_are_typed_and_grant_is_visible() {
 
     // (e) The explicit consent act itself: `care consent-grant` over THIS principal
     //     connection; the registry becomes visible to subsequent status queries.
-    let grant = cli(&["care", "consent-grant"], None);
+    //     The grant names the plan `care status` showed (P75, DBT-P75-045); without it the
+    //     verb is a usage error, and a digest that is not the current plan is refused.
+    let bare = cli(&["care", "consent-grant"], None);
+    assert_eq!(bare.status, 2, "{}", bare.stdout);
+    let stale = cli(
+        &["care", "consent-grant", "--plan-digest", "deadbeef"],
+        None,
+    );
+    assert_ne!(stale.status, 0, "{}", stale.stdout);
+    let shown = cli(&["care", "status"], None);
+    let shown = expect_ok_envelope(&shown, "care status")["data"]["planDigestSha256"]
+        .as_str()
+        .expect("care status prints the plan digest")
+        .to_string();
+    let grant = cli(&["care", "consent-grant", "--plan-digest", &shown], None);
     let envelope = expect_ok_envelope(&grant, "care consent-grant");
     assert_eq!(envelope["data"]["granted"], true);
     let after = cli(&["care", "status"], None);

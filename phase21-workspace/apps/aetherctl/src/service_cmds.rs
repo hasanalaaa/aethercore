@@ -40,7 +40,7 @@ pub fn command_label(job: &ServiceJob) -> String {
         ServiceJob::CareStatus => "care status".to_string(),
         ServiceJob::CareStart { .. } => "care start".to_string(),
         ServiceJob::CareCancel => "care cancel".to_string(),
-        ServiceJob::CareConsentGrant => "care consent-grant".to_string(),
+        ServiceJob::CareConsentGrant { .. } => "care consent-grant".to_string(),
         ServiceJob::InsightsList => "insights list".to_string(),
         ServiceJob::InsightsExplain { .. } => "insights explain".to_string(),
         ServiceJob::InsightsDismiss { .. } => "insights dismiss".to_string(),
@@ -85,12 +85,7 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
     }
     let mut client = ServiceClient::connect(config)?;
     match job {
-        ServiceJob::Doctor => {
-            let payload = require_ok(client.call(request::Payload::GetDiagnosticsSnapshot(
-                aethercore_contracts::v1::GetDiagnosticsSnapshotRequest {},
-            ))?)?;
-            doctor_value(&payload)
-        }
+        ServiceJob::Doctor => doctor(config, &mut client),
         ServiceJob::PerfStart { interval_ms } => {
             require_ok(client.call(request::Payload::StartPerfSampling(
                 aethercore_contracts::v1::StartPerfSamplingRequest { interval_ms },
@@ -189,13 +184,15 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
             Ok(care_status_from_payload(&payload)
                 .unwrap_or_else(|| serde_json::json!({ "cancelled": true })))
         }
-        ServiceJob::CareConsentGrant => {
+        ServiceJob::CareConsentGrant { plan_digest } => {
             require_ok(client.call(request::Payload::GrantCareSessionConsent(
-                aethercore_contracts::v1::GrantCareSessionConsentRequest {},
+                aethercore_contracts::v1::GrantCareSessionConsentRequest {
+                    plan_digest_sha256: plan_digest,
+                },
             ))?)?;
             Ok(serde_json::json!({
                 "granted": true,
-                "scope": "this maintenance-service session",
+                "scope": "the next care run of the plan shown, within 120 s",
             }))
         }
         ServiceJob::InsightsList => {
@@ -297,6 +294,42 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
 
 /// Maps non-zero service answers to the typed rejection (exit 5) carrying the
 /// SERVICE's own message key — the CLI invents nothing.
+/// The one-shot health report. A service that has not collected diagnostics yet answers
+/// diagnostics.stateUnavailable; doctor then collects them (a read-only scan) and reports
+/// once the collection settles, within --timeout-ms.
+fn doctor(config: &Config, client: &mut ServiceClient) -> Result<serde_json::Value, CliError> {
+    let read = |client: &mut ServiceClient| {
+        client.call(request::Payload::GetDiagnosticsSnapshot(
+            aethercore_contracts::v1::GetDiagnosticsSnapshotRequest {},
+        ))
+    };
+    let first = read(client)?;
+    if first.status_code == 0
+        || first.error_message_key.as_deref() != Some("diagnostics.stateUnavailable")
+    {
+        return doctor_value(&require_ok(first)?);
+    }
+    require_ok(client.call(request::Payload::StartDiagnosticsScan(
+        aethercore_contracts::v1::StartDiagnosticsScanRequest {},
+    ))?)?;
+    let deadline = std::time::Instant::now() + config.timeout;
+    loop {
+        let payload = require_ok(read(client)?)?;
+        let collecting = matches!(
+            &payload,
+            Some(response::Payload::DiagnosticsSnapshot(value))
+                if value.snapshot.as_ref().is_some_and(|s| s.state == "Collecting")
+        );
+        if !collecting {
+            return doctor_value(&payload);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(CliError::Timeout);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
 fn require_ok(outcome: CallOutcome) -> Result<Option<response::Payload>, CliError> {
     if outcome.status_code != 0 {
         return Err(CliError::Rejected {
@@ -633,6 +666,7 @@ fn care_status_object(status: &aethercore_contracts::v1::CareRunStatus) -> serde
                 "state": step.state,
                 "outcome": step.outcome,
                 "domainVerificationState": step.domain_verification_state,
+                "failureMessageKey": step.failure_message_key,
             })
         })
         .collect();
@@ -791,7 +825,10 @@ fn care_start_flow(
 
     let prefix: String = digest.chars().take(DIGEST_CONFIRM_CHARS).collect();
     println!("care plan digest: {digest}");
-    println!("One-click care will run safety-level 0-1 auto steps under session consent.");
+    println!(
+        "Consenting approves the automatic steps of this plan, as they are now, for this one run. \
+         Review-only steps never run; a step whose plan changes before it runs is refused."
+    );
     print!("Type the digest prefix ({prefix}) to consent, anything else refuses [default N]: ");
     let _ = std::io::stdout().flush();
 
@@ -814,15 +851,29 @@ fn care_start_flow(
 
     // Step 3: grant on THIS connection, then start on the SAME connection so the
     // service-side per-principal session registry sees both from one principal.
-    require_ok(client.call(request::Payload::GrantCareSessionConsent(
-        aethercore_contracts::v1::GrantCareSessionConsentRequest {},
+    let granted = require_ok(client.call(request::Payload::GrantCareSessionConsent(
+        aethercore_contracts::v1::GrantCareSessionConsentRequest {
+            plan_digest_sha256: digest.clone(),
+        },
     ))?)?;
+    // DBT-P75-045: the service approves the plan it composes at grant time. If that is not
+    // the plan whose digest was just confirmed, nothing starts.
+    if !granted_plan_is_confirmed(&digest, &granted) {
+        return Err(CliError::ConsentRequired {
+            message_key: "cli.care.planChanged".to_string(),
+        });
+    }
     let started = require_ok(client.call(request::Payload::StartCareRun(
         aethercore_contracts::v1::StartCareRunRequest {},
     ))?)?;
     care_status_from_payload(&started).ok_or_else(|| CliError::ProtocolViolation {
         detail: "expected CareStatusResponse after start".to_string(),
     })
+}
+
+fn granted_plan_is_confirmed(confirmed: &str, granted: &Option<response::Payload>) -> bool {
+    care_status_from_payload(granted)
+        .is_some_and(|status| status["planDigestSha256"].as_str() == Some(confirmed))
 }
 
 /// The prompt asks for the first DIGEST_CONFIRM_CHARS characters; anything shorter
@@ -852,5 +903,25 @@ mod tests {
         // A digest shorter than the prefix length must be typed in full.
         assert!(digest_confirmed("abc", "abc"));
         assert!(!digest_confirmed("abc", "ab"));
+    }
+
+    fn granted(digest: &str) -> Option<response::Payload> {
+        Some(response::Payload::CareStatus(
+            aethercore_contracts::v1::CareStatusResponse {
+                status: Some(aethercore_contracts::v1::CareRunStatus {
+                    plan_digest_sha256: digest.to_string(),
+                    ..Default::default()
+                }),
+            },
+        ))
+    }
+
+    /// DBT-P75-045: a start follows the grant only when the service approved the plan whose
+    /// digest the owner confirmed.
+    #[test]
+    fn care_starts_only_the_plan_that_was_confirmed() {
+        assert!(granted_plan_is_confirmed(DIGEST, &granted(DIGEST)));
+        assert!(!granted_plan_is_confirmed(DIGEST, &granted("ffff")));
+        assert!(!granted_plan_is_confirmed(DIGEST, &None));
     }
 }

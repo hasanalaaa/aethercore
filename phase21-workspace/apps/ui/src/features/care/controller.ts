@@ -1,8 +1,9 @@
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import type { CareRunStatus } from '../../lib/contracts';
 import { runBusy, setPage } from '../../app/shell-state';
 import { serviceInvoke } from '../../platform/service-client';
-import { patchStreamState } from '../../platform/stream-state';
+import { patchStreamState, streamState } from '../../platform/stream-state';
+import { afterApproval, isPlanChanged } from './approval';
 
 /** UI-only dialog state for the session-consent flow. */
 export const careUi = writable({
@@ -12,19 +13,18 @@ export const careUi = writable({
 /** Pulls the current care status (also the deterministic plan preview). */
 export async function loadCareStatus(): Promise<void> {
   await runBusy(async () => {
-    setPage('overview');
-    try {
-      const status = await serviceInvoke<CareRunStatus>('get_care_status');
-      patchStreamState({ careStatus: status });
-    } catch {
-      // Offline is a normal early state; the section simply stays idle.
-      patchStreamState({ careStatus: null });
-    }
+    patchStreamState({ careStatus: await serviceInvoke<CareRunStatus>('get_care_status') });
   });
 }
 
-/** Opens the explicit consent dialog. Nothing runs until the owner confirms. */
-export function openCareConsent(): void {
+/**
+ * Opens the approval dialog on the plan as the service composes it now, so the owner approves
+ * a plan they are shown. Nothing runs until the owner confirms.
+ */
+export async function openCareConsent(): Promise<void> {
+  const shown = await runBusy(() => serviceInvoke<CareRunStatus>('get_care_status'));
+  if (!shown) return;
+  patchStreamState({ careStatus: shown });
   careUi.update((state) => ({ ...state, consentDialogOpen: true }));
 }
 
@@ -33,19 +33,35 @@ export function closeCareConsent(): void {
 }
 
 /**
- * Grants one-time session consent, then starts the run in the same user gesture.
- * The service rejects the run if consent was not granted first.
+ * Approves the plan shown for one run, then starts that run in the same user gesture. The
+ * grant names the plan shown and the service refuses it if the plan has changed since; then
+ * nothing starts and the new plan is shown for approval. A refused or failed call is reported by runBusy.
  */
 export async function authorizeAndStartCare(): Promise<void> {
+  const shown = get(streamState).careStatus;
   closeCareConsent();
   await runBusy(async () => {
+    let granted: CareRunStatus;
     try {
-      await serviceInvoke<CareRunStatus>('grant_care_session_consent');
-      const status = await serviceInvoke<CareRunStatus>('start_care_run');
-      patchStreamState({ careStatus: status });
-    } catch {
-      // Start failures surface through the returned status (Failed + evidence).
+      // The grant names the plan shown; the service approves nothing if it has changed.
+      granted = await serviceInvoke<CareRunStatus>('grant_care_session_consent', { planDigestSha256: shown?.planDigestSha256 ?? '' });
+    } catch (error) {
+      if (!isPlanChanged(error)) throw error;
+      const current = await serviceInvoke<CareRunStatus>('get_care_status');
+      patchStreamState({ careStatus: { ...current, state: 'AwaitingConsent', summaryKey: 'care.summary.planChanged' } });
+      setPage('activity');
+      return;
     }
+    const next = afterApproval(shown, granted);
+    if (!next.start) {
+      patchStreamState({ careStatus: next.status });
+      setPage('activity');
+      return;
+    }
+    const status = await serviceInvoke<CareRunStatus>('start_care_run');
+    patchStreamState({ careStatus: status });
+    // The report lives in the care panel on the Activity page (§51.3), not where the click was.
+    setPage('activity');
   });
 }
 
