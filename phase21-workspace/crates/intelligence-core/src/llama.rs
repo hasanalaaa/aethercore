@@ -7,7 +7,9 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use crate::assistant::{GenerationBudget, MODEL_BUSY};
+use crate::assistant::GenerationBudget;
+#[cfg(feature = "embedded-model")]
+use crate::assistant::MODEL_BUSY;
 use crate::engine::LocalReasoner;
 use crate::model::{Citation, Insight, InsightConfidence, InsightEngineKind, TypedEvidencePack};
 use sha2::Digest;
@@ -242,6 +244,9 @@ fn chat_prompt(system: &str, user: &str) -> String {
 /// the gate held returns [`MODEL_BUSY`] at once — an insight then degrades to the
 /// rule engine, an assistant turn is refused `Busy`.
 #[derive(Clone)]
+// Without the embedded model there is nothing to decode with, so the handle and the gate
+// exist only to keep one type across both builds.
+#[cfg_attr(not(feature = "embedded-model"), allow(dead_code))]
 pub struct LlamaCppReasoner {
     loaded: bool,
     /// Handle text kept opaque; the binding types are feature-internal.
@@ -437,6 +442,9 @@ fn step_fits(
     now + last_step.unwrap_or_default() * 2 < deadline
 }
 
+// The decoder needs the model the feature links; without the feature the reasoner is the
+// honest "not loaded" fallback above (P75 review #36: this attribute had moved to step_fits).
+#[cfg(feature = "embedded-model")]
 impl LlamaCppReasoner {
     /// Context window for one generation. The prompt is bounded at 8,192 CHARS,
     /// well under 2,048 tokens for this tokenizer, and an answer at 512 tokens —
@@ -668,6 +676,7 @@ mod tests {
 
     /// P75 — a decode step (prompt chunk or token) that would end past the deadline does not
     /// start; stopping only once it had passed overshot by 1.4 s (DBT-P62-004).
+    #[cfg(feature = "embedded-model")]
     #[test]
     fn a_decode_step_that_would_end_past_the_deadline_does_not_start() {
         use std::time::Duration;
