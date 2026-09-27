@@ -325,13 +325,13 @@ fn chat_prompt(system: &str, user: &str) -> String {
 
 /// LlamaCpp-backed reasoner — the PERMANENT default engine when the artifact verifies.
 ///
-/// `Clone` shares, it does not copy: every clone holds the same model slot and
-/// the same generation gate. The slot is resolved once, by whichever clone loads
-/// it, so a service can hand clones out, start serving, and load in the
-/// background (P76, DBT-P75-078); until then every clone reads loading. Generation is serialised through that gate with a
-/// TRY-lock, so the insight path and the assistant never decode at once on the
-/// user's machine and neither ever queues behind the other: the one that finds
-/// the gate held returns [`MODEL_BUSY`] at once — an insight then degrades to the
+/// `Clone` shares, it does not copy: every clone holds the same model slot and the same
+/// generation gate. The slot is resolved once, by whichever clone loads it, so a
+/// service can hand clones out, start serving, and load in the background (P76,
+/// DBT-P75-078); until then every clone reads loading. Generation is serialised through
+/// that gate with a TRY-lock, so the insight path and the assistant never decode at
+/// once on the user's machine and neither ever queues behind the other: the one that
+/// finds the gate held returns [`MODEL_BUSY`] at once — an insight then degrades to the
 /// rule engine, an assistant turn is refused `Busy`.
 #[derive(Clone)]
 // Without the embedded model there is nothing to decode with, so the handle and the gate
