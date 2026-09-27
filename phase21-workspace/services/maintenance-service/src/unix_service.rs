@@ -68,7 +68,7 @@ pub fn run_unix_service(
         signal_hook::flag::register(signal_hook::consts::SIGTERM, stop_for_signal)
             .context("register SIGTERM handler")?;
     }
-    let root = super::product_data_root();
+    let root = super::product_data_root()?;
     let context =
         super::composition::build(data_path, &root).context("compose operation kernel")?;
     // Integration-test rendezvous override + machine-readable socket announcement.
