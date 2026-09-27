@@ -539,8 +539,8 @@ AUDIT_SOURCES = {
     "scripts/enterprise-adversarial-audit.py",
     "scripts/phase21-adversarial-audit.py",
     "scripts/phase18-driver-authority-audit.py",
-    "scripts/phase18_1-driver-truth-audit.py",
-    "scripts/phase19-windows-repair-audit.py",
+    "retired-audits/phase18_1-driver-truth-audit.py",
+    "retired-audits/phase19-windows-repair-audit.py",
 }
 # `node_modules`, `target` and `dist` are fetched or generated, not delivered: 8 of the 13
 # hits were upstream `.d.ts` files. `source_seal.py` draws the same line at git-tracked.

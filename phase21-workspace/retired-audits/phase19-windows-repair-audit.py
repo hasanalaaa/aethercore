@@ -20,7 +20,8 @@ checks=[]
 # and treats ANY new file in it as a source mutation, so a `__pycache__`
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Retired to retired-audits/ in P76; the shared reader stays in scripts/.
+sys.path.insert(0, str(ROOT / "scripts"))
 from gate_reader import SourceReader  # noqa: E402
 
 text = SourceReader(ROOT).read
