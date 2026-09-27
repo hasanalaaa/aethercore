@@ -196,34 +196,70 @@ fn numbers_are_cited(prose: &str, citations: &[Citation], pack: &TypedEvidencePa
                 .iter()
                 .any(|citation| citation.evidence_id == item.evidence_id)
         })
-        .flat_map(|item| numbers_in(&item.detail))
+        // Evidence the gate cannot read holds nothing: fewer held numbers only drop more lines.
+        .flat_map(|item| numbers_in(&item.detail).unwrap_or_default())
         .collect();
-    numbers_in(prose).iter().all(|number| held.contains(number))
+    // A number the gate cannot read cannot be checked, so the line is not cited (fail closed).
+    numbers_in(prose).is_some_and(|numbers| numbers.iter().all(|number| held.contains(number)))
 }
 
 /// Standalone numbers in `text`: digit runs not glued to a letter, so an id's hex digits
-/// are not counts (a decimal is two runs on both sides of the comparison, so `18.4` is
-/// held by `18.4`), plus the counting words a model writes for small numbers.
-fn numbers_in(text: &str) -> Vec<String> {
+/// are not counts, a decimal as one number (`5.5` is not held by `5`), plus the counting
+/// words a model writes for small numbers. `None` when `text` writes a number as a word
+/// this cannot read ("thirteen", "twenty-five", "hundreds").
+fn numbers_in(text: &str) -> Option<Vec<String>> {
     const WORDS: [&str; 13] = [
         "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
         "eleven", "twelve",
     ];
-    text.split(|c: char| !c.is_alphanumeric())
-        .filter_map(|token| {
-            if !token.is_empty() && token.chars().all(|c| c.is_ascii_digit()) {
-                return Some(token.to_string());
+    const UNREAD: [&str; 20] = [
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
+        "twenty",
+        "thirty",
+        "forty",
+        "fifty",
+        "sixty",
+        "seventy",
+        "eighty",
+        "ninety",
+        "hundred",
+        "thousand",
+        "million",
+        "billion",
+        "dozen",
+    ];
+    let mut numbers = Vec::new();
+    for token in text.split(|c: char| !c.is_alphanumeric() && c != '.') {
+        let token = token.trim_matches('.');
+        if !token.is_empty() && token.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            numbers.push(token.to_string());
+            continue;
+        }
+        // A dot inside a word is not a decimal point ("recovery.3 occurrences").
+        for word in token.split('.') {
+            if !word.is_empty() && word.chars().all(|c| c.is_ascii_digit()) {
+                numbers.push(word.to_string());
+                continue;
             }
-            let lower = token.to_ascii_lowercase();
+            let lower = word.to_ascii_lowercase();
+            let singular = lower.strip_suffix('s').unwrap_or(&lower);
+            if UNREAD.contains(&lower.as_str()) || UNREAD.contains(&singular) {
+                return None;
+            }
             if lower == "twice" {
-                return Some("2".into());
+                numbers.push("2".into());
+            } else if let Some(value) = WORDS.iter().position(|w| *w == lower) {
+                numbers.push(value.to_string());
             }
-            WORDS
-                .iter()
-                .position(|word| *word == lower)
-                .map(|value| value.to_string())
-        })
-        .collect()
+        }
+    }
+    Some(numbers)
 }
 
 /// A system turn and a user turn in Qwen's own chat template. `str_to_token`
@@ -794,6 +830,25 @@ mod tests {
         );
         assert_eq!(kept.len(), 2, "{kept:?}");
         assert_eq!(kept[1].explanation, "The journal failed three times.");
+    }
+
+    /// P75 review 2 (llama.rs:212): a number word the gate cannot read yielded no number and
+    /// passed, and a decimal split into digit runs each held by an integer.
+    #[test]
+    fn a_number_the_gate_cannot_check_is_not_cited() {
+        let mut pack = TypedEvidencePack::default();
+        pack.push(EvidenceItem {
+            evidence_id: "p-dism".into(),
+            surface: EvidenceSurface::TimelinePattern,
+            detail: "recurring failure: class operation code verify-dism, 5 occurrences".into(),
+        });
+        assert!(insights_from_text("There were thirteen occurrences [E1].\n", &pack).is_empty());
+        assert!(insights_from_text("There were twenty-five occurrences [E1].\n", &pack).is_empty());
+        assert!(insights_from_text("There were 5.5 occurrences [E1].\n", &pack).is_empty());
+        assert_eq!(
+            insights_from_text("There were 5 occurrences [E1].\n", &pack).len(),
+            1
+        );
     }
 
     /// A line the token ceiling cut off never finished its claim.

@@ -177,3 +177,21 @@ reseal: `ui-truth` → `service-host` → `update-trust-2` → `gate-honesty` �
   audits CI's PowerShell chain calls; `phase30` and `sigma-master` fail identically on main
   here, no pwsh). UI tests needing `--import ./tests/resolve-ts.mjs` (ui-trial) and
   `tests/care.test.ts` (care) must be added to ci.yml's UI-test step when those lanes merge.
+
+## Fourth session — final state (2026-09-27)
+
+* **Merged, each with `main` green at its merge sha:** #47–#55 and the `windows-smoke` lane
+  (the PR carrying this file). Table with every PR and `main` CI run id:
+  `P75-REPORT.md` §1. P75's work is on `main`; nothing is left on a lane branch.
+* **DBT-P75-045** closed by hardened session consent (#52); the independent review's eight
+  findings (`AUDIT/P75-REVIEW.md`, untracked in the owner's checkout) are `DBT-P75-080`…`087`,
+  all reproduced red before their fixes, none dropped.
+* **Open, owner's call:** `DBT-P75-052` and `-055` (wire-contract changes), `-077` (stale
+  audits with no CI caller, red on `main`), `-078` (macOS service waits for the model),
+  Wave 3 providers parity, `fuzz`
+  (needs the dependency lane), `DBT-P74-002`.
+* **Cleanup the owner must approve (not done):** remote branches `probe/p75-*` (8),
+  `rescue/fs-acl-p75`, every `wip/*` (7), `lane/service-rollback-before`,
+  `lane/windows-smoke` (superseded by `lane/windows-smoke-final`), `docs/p75-handoff-2`, and
+  the merged `lane/*` branches;
+  local worktrees under `.claude/worktrees/` and the session scratchpad.
