@@ -143,6 +143,10 @@ jobs:
         run: pnpm --dir apps/ui build
       - name: Locked Rust workspace check
         run: cargo check --workspace --locked
+      # P75 review (#36): the build without the embedded model (the feature-off fallback)
+      # stopped compiling and nothing noticed. A new check, not a relaxed one.
+      - name: Intelligence core builds without the embedded model
+        run: cargo check -p aethercore-intelligence-core --no-default-features --locked
       - name: Platform-neutral invariants
         run: python scripts/static_validate.py
       - name: Enterprise convergence master source/native qualification gate
