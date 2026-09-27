@@ -1,0 +1,15 @@
+name: probe firewall path
+on:
+  push:
+    branches: [probe/p75-firewall-path]
+jobs:
+  probe:
+    runs-on: windows-2025
+    steps:
+      - name: Local firewall profile keys and EnableFirewall values
+        shell: pwsh
+        run: |
+          $base = 'HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy'
+          Get-ChildItem $base | ForEach-Object { $v = (Get-ItemProperty $_.PSPath -Name EnableFirewall -ErrorAction SilentlyContinue).EnableFirewall; "PROBE: $($_.PSChildName) EnableFirewall=$v" }
+          foreach ($n in 'DomainProfile','PrivateProfile','PublicProfile') { "PROBE: policy $n exists=$(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\$n")" }
+          Get-NetFirewallProfile | ForEach-Object { "PROBE: NetFirewallProfile $($_.Name) Enabled=$($_.Enabled)" }
