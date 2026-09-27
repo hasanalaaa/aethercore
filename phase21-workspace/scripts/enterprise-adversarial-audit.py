@@ -177,7 +177,9 @@ check("ipc_client_shutdown_is_nonblocking_and_cancellable", has(ipc_win, "fn shu
 check("ipc_disconnect_notification_is_at_most_once", has(ipc_win, "fn notify_disconnect_once", "disconnect_notified", "writer_disconnect", "disconnect_notification_is_at_most_once_across_reader_and_writer_paths"))
 
 # Update-engine publication and state-machine reentrancy.
-check("update_observer_never_emits_state_reference", "self.emit(owner,&state.snapshot)" not in update)
+# P75: `not contains`, not `not in`: rustfmt writes `self.emit(owner, &state.snapshot)`, so the
+# raw token could never match and the check passed whatever the code said.
+check("update_observer_never_emits_state_reference", not contains(update, "self.emit(owner,&state.snapshot)"))
 check("update_observer_regression_present", has(update, "observer_publication_never_runs_while_state_mutex_is_held", "states.try_lock().is_ok()"))
 check("update_upload_registry_is_per_upload", has(update, "struct UploadState", "records:HashMap<String,Arc<Mutex<UploadRecord>>>", "owner_upload:HashMap<String,String>", "starting_owners:HashSet<String>"))
 write_stage = section(update, "pub fn write_stage_chunk", "pub fn finalize_stage_upload")
