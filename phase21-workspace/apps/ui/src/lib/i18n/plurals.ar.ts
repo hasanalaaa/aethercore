@@ -15,6 +15,8 @@ export const arPlurals = {
   'unit.warning': { zero: 'لا تحذيرات', one: 'تحذير واحد', two: 'تحذيران', few: '{count} تحذيرات', many: '{count} تحذيرًا', other: '{count} تحذير' },
   'unit.occurrence': { zero: 'لا تكرارات', one: 'تكرار واحد', two: 'تكراران', few: '{count} تكرارات', many: '{count} تكرارًا', other: '{count} تكرار' },
   'unit.careStep': { zero: 'لا خطوات عناية', one: 'خطوة عناية واحدة', two: 'خطوتا عناية', few: '{count} خطوات عناية', many: '{count} خطوة عناية', other: '{count} خطوة عناية' },
+  'unit.hour': { zero: '0 ساعة', one: 'ساعة', two: 'ساعتين', few: '{count} ساعات', many: '{count} ساعة', other: '{count} ساعة' },
+  'unit.evidenceItem': { zero: 'لا عناصر دليل', one: 'عنصر دليل واحد', two: 'عنصرا دليل', few: '{count} عناصر دليل', many: '{count} عنصر دليل', other: '{count} عنصر دليل' },
   'unit.insight': { zero: 'لا استشرافات', one: 'استشراف واحد', two: 'استشرافان', few: '{count} استشرافات', many: '{count} استشرافًا', other: '{count} استشراف' },
   'unit.channel': { zero: 'لا قنوات', one: 'قناة واحدة', two: 'قناتان', few: '{count} قنوات', many: '{count} قناةً', other: '{count} قناة' },
   'unit.event': { zero: 'لا أحداث', one: 'حدث واحد', two: 'حدثان', few: '{count} أحداث', many: '{count} حدثًا', other: '{count} حدث' },

@@ -13,7 +13,7 @@
   import { shellState } from '../../app/shell-state';
   import { TechnicalText, Pressable } from '../../design/primitives';
   import { fluidPress } from '../../design/motion';
-  import { hasMessageKey, t, td } from '../../lib/i18n';
+  import { hasMessageKey, localizeFleetCadence, t, td } from '../../lib/i18n';
   import { EmptyState } from '../../design/signature';
   import { runDueOutcome, type RunDueResult } from './run-due';
 
@@ -479,8 +479,8 @@
       <div class="schedule-list">
         {#each snapshot.schedules as schedule (schedule.scheduleId)}
           <article class="schedule-row">
-            <div><strong><TechnicalText value={schedule.scheduleId} /></strong><small>{schedule.scope.join(', ') || t('fleet.scopeAll', locale)} · {schedule.profileId} · {schedule.cadence}</small></div>
-            <div class="fleet-card-state"><em class:ok={schedule.enabled} class:warn={!schedule.enabled}>{schedule.enabled ? t('fleet.stateEnabled', locale) : t('fleet.stateDisabled', locale)}</em>{#if schedule.lastResult}<small>{schedule.lastResult.outcomeSummary}</small>{/if}</div>
+            <div><strong><TechnicalText value={schedule.scheduleId} /></strong><small>{schedule.scope.join(', ') || t('fleet.scopeAll', locale)} · {schedule.profileId} · {localizeFleetCadence(schedule.cadence, locale)}</small></div>
+            <div class="fleet-card-state"><em class:ok={schedule.enabled} class:warn={!schedule.enabled}>{schedule.enabled ? t('fleet.stateEnabled', locale) : t('fleet.stateDisabled', locale)}</em>{#if schedule.lastResult}<small>{t('fleet.lastResult', locale, { ok: schedule.lastResult.hostsOk, attempted: schedule.lastResult.hostsAttempted })}</small>{/if}</div>
             <div class="fleet-card-actions"><button use:fluidPress={{ pressedScale: 0.985 }} onclick={() => openScheduleEdit(schedule)}>{t('fleet.actionEdit', locale)}</button><button use:fluidPress={{ pressedScale: 0.985 }} class="danger" onclick={() => removeSchedule(schedule)}>{t('fleet.actionScheduleRemove', locale)}</button></div>
           </article>
         {/each}
