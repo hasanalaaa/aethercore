@@ -140,19 +140,19 @@ sentence (`-087`).
 Independent review 2 (`AUDIT/P75-REVIEW-2.md`, PRs #53–#55): three findings, each red before its fix on lane `windows-smoke-final` (`58ae32d`): #55 a Failed/Cancelled scan headlined Healthy (`-088`); #53 `fd12:3456::` exported unredacted, a regression of `-087` (`-089`); #54 `thirteen` and `5.5` passed the insight number gate (`-090`); follow-up `-091` open.
 
 ## 4. Gates at the final tree (AMBITION §6)
-Run on this lane's tree after merging `main` at `f4fb820` (the Rust gates at `00f210f`,
-whose Rust and scripts are identical: #55 changed only `apps/ui`, `ci.yml` and docs), on this
-Mac with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0`:
+Run on this lane's tree at `771cfb8` (after merging `main` at `f4fb820` and the independent
+review 2 fixes `58ae32d`), on this Mac with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0`:
 
 | command | result |
 |---|---|
 | `cargo fmt --all -- --check` | exit 0 |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
-| `cargo test --workspace --locked` | exit 0 — 142 test binaries, 755 passed, 0 failed, 1 ignored |
+| `cargo test --workspace --locked` | exit 0 — 142 test binaries, 757 passed, 0 failed, 1 ignored |
 | `python3 scripts/static_validate.py` | exit 0 — `"ok": true`, 348 checks, 0 failed, 1 unmeasured (`parse_yaml`: PyYAML is not installed here; CI parses the workflows) |
 | `python3 scripts/test_gate_readers.py` | exit 0 — "all 14 readers fail closed" |
 | `python3 scripts/ps_marker_scan.py` | exit 0 — 81 scripts, 321 assertions, 0 failed, **90 UNMEASURED** (inline `if (…) { throw }` conditions and expression arguments the scanner does not evaluate; listed in its output, none counted as passing) |
-| UI unit tests (ci.yml's command) | exit 0 — 28 tests, 28 pass |
+| UI unit tests (ci.yml's command) | exit 0 — 29 tests, 29 pass |
+| `cargo check -p aethercore-intelligence-core --no-default-features --locked` | exit 0 |
 | `pnpm --dir apps/ui build` | exit 0 |
 | `python3 scripts/source_seal.py --json` | `"ok": true` — 1545 of 1545 tracked files verified; `.github`: 7 of 7 |
 
