@@ -141,6 +141,14 @@ def main() -> int:
     args = ap.parse_args()
     try:
         result = verify(args.root)
+        # DBT-P60-002: the repository root's .github/ has its own manifest, verified with the
+        # same rules. Reported beside the workspace result, so the workspace's counts keep
+        # their meaning for every reader of this JSON.
+        github = args.root.resolve().parent / ".github"
+        if github.is_dir():
+            root_result = verify(github)
+            result["repository_root"] = root_result
+            result["ok"] = result["ok"] and root_result["ok"]
     except SealError as exc:
         if args.json:
             print(json.dumps({"schema": "aethercore.source-seal.v1", "ok": False, "error": str(exc)}))
@@ -149,18 +157,22 @@ def main() -> int:
         return 2
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
-    elif result["ok"]:
-        print(f"Source seal: OK - {result['verified']} of {result['tracked']} tracked files verified")
     else:
-        print(
-            f"Source seal: FAILED - {result['verified']} of {result['tracked']} tracked files "
-            f"verified, {len(result['failed'])} problems",
-            file=sys.stderr,
-        )
-        for entry in result["failed"][:32]:
-            print(f"  {entry['reason']:12} {entry['path']}", file=sys.stderr)
-        if len(result["failed"]) > 32:
-            print(f"  ... and {len(result['failed']) - 32} more", file=sys.stderr)
+        root_result = result.get("repository_root")
+        failed = result["failed"] + [
+            dict(entry, path=f".github/{entry['path']}") for entry in (root_result or {}).get("failed", [])
+        ]
+        counts = f"{result['verified']} of {result['tracked']} tracked files verified"
+        if root_result:
+            counts += f"; .github: {root_result['verified']} of {root_result['tracked']}"
+        if result["ok"]:
+            print(f"Source seal: OK - {counts}")
+        else:
+            print(f"Source seal: FAILED - {counts}, {len(failed)} problems", file=sys.stderr)
+            for entry in failed[:32]:
+                print(f"  {entry['reason']:12} {entry['path']}", file=sys.stderr)
+            if len(failed) > 32:
+                print(f"  ... and {len(failed) - 32} more", file=sys.stderr)
     return 0 if result["ok"] else 1
 
 
