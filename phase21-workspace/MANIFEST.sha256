@@ -464,8 +464,8 @@ bbe46e0168a9ea2689d2b40a88ccd3d9dc098aeccfcf91da74e22d627fa1cb32  apps/ui/src/fe
 e68eca0a5dba40b456b45f2fb7de56ee0848781bdc50d1c28895f9663550acc4  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-3a5b22414f4be9de6495dbff2f0d014502bdbfa63640ba7189441542920f1528  apps/ui/src/lib/i18n/catalog.ar.ts
-2d09371c7c0c5192aef2dc509162499f6a408fd616ddb33eb9dc43a5632d3deb  apps/ui/src/lib/i18n/catalog.en.ts
+4e778402a980cc2af756bc162ae175dd077ed94dfcd61e9fe45d04f9f968c0fc  apps/ui/src/lib/i18n/catalog.ar.ts
+adba680de3a21c7ccaf68989f637dcfdd3b34b68dd7ac118f17b7cbee4b89863  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 0ee3fe5ad69f55120691cd13b28c2251bdf53679bd09d591fce58d6d9fee9e86  apps/ui/src/lib/i18n/plurals.ar.ts
 8db63c1165bc2cfad5676da2481ab0ee5b1f5aefd0b6b40a7f6d90f6cae26e2d  apps/ui/src/lib/i18n/plurals.en.ts
@@ -1465,7 +1465,7 @@ e73a841a01a60a19618503cd053728ce8d9c6dc13fe2790e1be245ec64110509  scripts/zenith
 fc412175b7b1d0a8681c7d3cc571a3383693de9b7b72121a1a94285c4d55f8f5  scripts/zenith-recursive-audit.py
 e430e25111467daf259b7b88c9bc01ad16c6b3fad08db67032dbefd076b5f1b8  services/maintenance-service/Cargo.toml
 cfe266f3c3a7ed9486202620f50611531dec79aac0f3d90a08ec109fa511e72d  services/maintenance-service/src/assistant.rs
-61b5227e81d0490dbb6723aceb7794d9eba3e694738d2e96cc661be2f3824894  services/maintenance-service/src/care.rs
+6695693a76fbd75048e188491040d51491747a1388455fc69c5a7527ceb44ba1  services/maintenance-service/src/care.rs
 30c10c2b4c2adec702e6a166f5157c973be502407285e5627370ec499db69139  services/maintenance-service/src/composition.rs
 404c58def2cd4a1ef16cbe81aaeb0d5e84df8470baa2b49dddebfa24c5f0a43a  services/maintenance-service/src/ctrlc_handler.rs
 0bbd1cfbe4f6b9f585e5b5f30e265bc6afe6d9f9f0339383536dc0f7a221ab55  services/maintenance-service/src/errors.rs

@@ -1583,6 +1583,7 @@ export const arCatalog = {
   'care.outcome.unverified': 'اكتملت دون تحقق',
   'care.outcome.failed': 'فشلت',
   'care.summary.needsConsent': 'وافق على هذه الخطة قبل تشغيل أي شيء.',
+  'care.summary.nothingDue': 'لا شيء مستحق: لا توجد خطة من فحوصاتك بانتظار التنفيذ.',
   'care.summary.failed': 'توقفت التشغيلة عند فشل؛ كل خطوة أعلاه تستشهد بما حدث.',
   'care.summary.cancelled': 'أُلغيت. الخطوات التي تحقق منها تحتفظ بأدلتها.',
   'care.summary.completed': 'انتهت التشغيلة. كل خطوة تستشهد بنتيجتها الخاصة.',

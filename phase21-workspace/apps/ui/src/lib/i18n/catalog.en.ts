@@ -1583,6 +1583,7 @@ export const enCatalog = {
   'care.outcome.unverified': 'Completed, not verified',
   'care.outcome.failed': 'Failed',
   'care.summary.needsConsent': 'Approve this plan before anything runs.',
+  'care.summary.nothingDue': 'Nothing is due: no plan from your scans is waiting.',
   'care.summary.failed': 'The run stopped on a failure; every step above cites what happened.',
   'care.summary.cancelled': 'Cancelled. Steps already verified keep their evidence.',
   'care.summary.completed': 'Run finished. Each step cites its own outcome.',

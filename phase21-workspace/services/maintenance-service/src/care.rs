@@ -638,7 +638,9 @@ pub(crate) fn status_proto(
                 .unwrap_or_default(),
         });
     }
-    let summary_key = if !consent_granted && state == "Idle" {
+    let summary_key = if plan.steps.is_empty() && matches!(state, "Idle" | "AwaitingConsent") {
+        "care.summary.nothingDue"
+    } else if !consent_granted && state == "Idle" {
         "care.summary.needsConsent"
     } else {
         match state {
@@ -907,6 +909,19 @@ mod p75_care_consent_tests {
         let status = status.expect("the new plan is shown for consent");
         assert_eq!(status.state, "AwaitingConsent");
         assert_eq!(status.steps.len(), 2);
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// P75 trial: with nothing due, the preview asked the owner to approve ("Approve this
+    /// plan before anything runs") a plan with no steps.
+    #[test]
+    fn an_empty_plan_says_nothing_is_due_not_approve_it() {
+        let (db, path) = test_db();
+        let (care, _) = coordinator(&db);
+        let status = care.plan_preview(OWNER).expect("preview");
+        assert!(status.steps.is_empty());
+        assert_eq!(status.summary_key, "care.summary.nothingDue");
         drop(db);
         let _ = std::fs::remove_file(&path);
     }
