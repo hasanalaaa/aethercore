@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Arabic strings for installer/wix/theme/1025/thm.xml. The string ids are those of WiX
+     v6.0.2's HyperlinkTheme.wxl (src/ext/Bal/stdbas/Resources), which installer/wix/theme/thm.wxl
+     carries in English. Burn loads this file when the UI language is 1025 (locutil.cpp
+     LocProbeForFile: <base>\<langid>\thm.wxl). -->
+<WixLocalization Culture="ar-sa" Language="1025" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+  <String Id="Caption" Value="إعداد [WixBundleName]" />
+  <String Id="Title" Value="[WixBundleName]" />
+  <String Id="CheckingForUpdatesLabel" Value="جارٍ البحث عن تحديثات" />
+  <String Id="UpdateButton" Value="&amp;التحديث إلى الإصدار [WixStdBAUpdateAvailable]" />
+  <String Id="InstallHeader" Value="مرحبًا" />
+  <String Id="InstallMessage" Value="سيثبّت الإعداد [WixBundleName] على هذا الكمبيوتر. انقر «تثبيت» للمتابعة أو «إلغاء» للخروج." />
+  <String Id="InstallMessageOptions" Value="سيثبّت الإعداد [WixBundleName] على هذا الكمبيوتر. انقر «تثبيت» للمتابعة، أو «خيارات» لضبط التثبيت، أو «إلغاء» للخروج." />
+  <String Id="InstallVersion" Value="الإصدار [WixBundleVersion]" />
+  <String Id="ConfirmCancelMessage" Value="هل تريد الإلغاء فعلًا؟" />
+  <String Id="ExecuteUpgradeRelatedBundleMessage" Value="الإصدار السابق" />
+  <String Id="HelpHeader" Value="مساعدة الإعداد" />
+  <String Id="HelpText" Value="/install | /repair | /uninstall | /layout [directory] - للتثبيت أو الإصلاح أو إزالة التثبيت،&#xA;   أو لإنشاء نسخة محلية كاملة من الحزمة في المجلد. التثبيت هو الافتراضي.&#xA;&#xA;/passive | /quiet - واجهة مصغّرة بلا أسئلة، أو بلا واجهة ولا أسئلة.&#xA;   افتراضيًا تُعرض الواجهة وكل الأسئلة.&#xA;&#xA;/norestart - يمنع أي إعادة تشغيل. افتراضيًا تسأل الواجهة قبل إعادة التشغيل.&#xA;/log log.txt - يكتب السجل في ملف محدد. افتراضيًا يُكتب السجل في %WINDIR%\Temp." />
+  <String Id="HelpCloseButton" Value="&amp;إغلاق" />
+  <String Id="InstallLicenseLinkText" Value="&lt;a href=&quot;#&quot;&gt;شروط ترخيص&lt;/a&gt; [WixBundleName]." />
+  <String Id="InstallAcceptCheckbox" Value="&amp;أوافق على شروط الترخيص وأحكامه" />
+  <String Id="InstallOptionsButton" Value="&amp;خيارات" />
+  <String Id="InstallInstallButton" Value="&amp;تثبيت" />
+  <String Id="InstallCancelButton" Value="إ&amp;لغاء" />
+  <String Id="OptionsHeader" Value="خيارات الإعداد" />
+  <String Id="OptionsLocationLabel" Value="موقع التثبيت:" />
+  <String Id="OptionsBrowseButton" Value="&amp;استعراض" />
+  <String Id="OptionsOkButton" Value="&amp;موافق" />
+  <String Id="OptionsCancelButton" Value="إ&amp;لغاء" />
+  <String Id="ProgressHeader" Value="تقدّم الإعداد" />
+  <String Id="ProgressLabel" Value="جارٍ المعالجة:" />
+  <String Id="OverallProgressPackageText" Value="جارٍ التهيئة..." />
+  <String Id="ProgressCancelButton" Value="إ&amp;لغاء" />
+  <String Id="ModifyHeader" Value="تعديل الإعداد" />
+  <String Id="ModifyRepairButton" Value="إ&amp;صلاح" />
+  <String Id="ModifyUninstallButton" Value="إ&amp;زالة التثبيت" />
+  <String Id="ModifyCancelButton" Value="إ&amp;لغاء" />
+  <String Id="SuccessHeader" Value="اكتمل الإعداد بنجاح" />
+  <String Id="SuccessCacheHeader" Value="اكتمل التخزين المؤقت بنجاح" />
+  <String Id="SuccessInstallHeader" Value="اكتمل التثبيت بنجاح" />
+  <String Id="SuccessLayoutHeader" Value="اكتمل إنشاء النسخة المحلية بنجاح" />
+  <String Id="SuccessModifyHeader" Value="اكتمل التعديل بنجاح" />
+  <String Id="SuccessRepairHeader" Value="اكتمل الإصلاح بنجاح" />
+  <String Id="SuccessUninstallHeader" Value="اكتملت إزالة التثبيت بنجاح" />
+  <String Id="SuccessUnsafeUninstallHeader" Value="اكتملت إزالة التثبيت بنجاح" />
+  <String Id="SuccessLaunchButton" Value="&amp;تشغيل" />
+  <String Id="SuccessRestartText" Value="يجب إعادة تشغيل الكمبيوتر قبل استخدام البرنامج." />
+  <String Id="SuccessUninstallRestartText" Value="يجب إعادة تشغيل الكمبيوتر لإكمال إزالة البرنامج." />
+  <String Id="SuccessRestartButton" Value="إعادة ال&amp;تشغيل" />
+  <String Id="SuccessCloseButton" Value="&amp;إغلاق" />
+  <String Id="FailureHeader" Value="فشل الإعداد" />
+  <String Id="FailureCacheHeader" Value="فشل التخزين المؤقت" />
+  <String Id="FailureInstallHeader" Value="فشل الإعداد" />
+  <String Id="FailureLayoutHeader" Value="فشل إنشاء النسخة المحلية" />
+  <String Id="FailureModifyHeader" Value="فشل التعديل" />
+  <String Id="FailureRepairHeader" Value="فشل الإصلاح" />
+  <String Id="FailureUninstallHeader" Value="فشلت إزالة التثبيت" />
+  <String Id="FailureUnsafeUninstallHeader" Value="فشلت إزالة التثبيت" />
+  <String Id="FailureHyperlinkLogText" Value="تسببت مشكلة أو أكثر في فشل الإعداد. أصلح المشكلات ثم أعد تشغيل الإعداد. لمزيد من المعلومات راجع &lt;a href=&quot;#&quot;&gt;ملف السجل&lt;/a&gt;." />
+  <String Id="FailureRestartText" Value="يجب إعادة تشغيل الكمبيوتر لإكمال التراجع عن تثبيت البرنامج." />
+  <String Id="FailureRestartButton" Value="إعادة ال&amp;تشغيل" />
+  <String Id="FailureCloseButton" Value="&amp;إغلاق" />
+  <String Id="FilesInUseTitle" Value="ملفات قيد الاستخدام" />
+  <String Id="FilesInUseLabel" Value="التطبيقات التالية تستخدم ملفات يجب تحديثها:" />
+  <String Id="FilesInUseNetfxCloseRadioButton" Value="إ&amp;غلاق التطبيقات." />
+  <String Id="FilesInUseCloseRadioButton" Value="إ&amp;غلاق التطبيقات ومحاولة إعادة تشغيلها." />
+  <String Id="FilesInUseDontCloseRadioButton" Value="&amp;عدم إغلاق التطبيقات. ستلزم إعادة تشغيل الكمبيوتر." />
+  <String Id="FilesInUseRetryButton" Value="إعادة ال&amp;محاولة" />
+  <String Id="FilesInUseIgnoreButton" Value="&amp;تجاهل" />
+  <String Id="FilesInUseExitButton" Value="&amp;خروج" />
+</WixLocalization>

@@ -65,6 +65,8 @@
   let input: HTMLTextAreaElement | undefined;
   let transcriptEl: HTMLDivElement | undefined;
   let wasOpen = false;
+  /** Where focus was when the drawer opened; it goes back there on close (P75). */
+  let returnFocus: HTMLElement | null = null;
 
   $: state = $assistantState;
   $: inFlight = state.inFlight !== '';
@@ -73,10 +75,16 @@
   /** `Ctrl+/` opens AND focuses the input — the shortcut is the whole entry. */
   $: if (open && !wasOpen) {
     wasOpen = true;
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     void loadAssistantPack();
     tick().then(() => input?.focus());
   }
-  $: if (!open && wasOpen) wasOpen = false;
+  $: if (!open && wasOpen) {
+    wasOpen = false;
+    const target = returnFocus;
+    returnFocus = null;
+    if (target?.isConnected) tick().then(() => target.focus());
+  }
 
   /** The newest turn is the one being read. Follows the stream while it grows. */
   $: if (state.transcript.length && transcriptEl) void scrollToLatest();
@@ -156,6 +164,24 @@
    * string: a fault with no reason on screen is the empty answer this feature
    * is forbidden to produce.
    */
+  /**
+   * What a screen reader hears when a turn settles: the outcome and its text, once. Streaming
+   * tokens are not announced — a provisional answer is not an answer (P75: nothing was announced
+   * at all, so a non-visual user never learned the answer had arrived).
+   */
+  function announcement(entry: (typeof state.transcript)[number] | undefined): string {
+    if (!entry || entry.kind === 'question') return '';
+    const turn = entry.turn;
+    if (turn.state === TURN_ANSWERED) {
+      const text = segmentAnswer(turn).map((segment) => (segment.kind === 'text' ? segment.text : '')).join('');
+      return `${t('assistant.answered', locale)}: ${text}`;
+    }
+    if (turn.state === TURN_REFUSED) return `${t('common.notCollected', locale)}: ${refusalBody(turn)}`;
+    if (turn.state === TURN_FAULTED) return `${t('assistant.faulted', locale)}: ${faultBody(turn)}`;
+    if (turn.state === TURN_CANCELLED) return t('assistant.cancelled', locale);
+    return '';
+  }
+
   function faultBody(turn: AssistantTurn): string {
     switch (turn.faultKey) {
       case 'assistant.fault.modelUnavailable': return t('assistant.fault.modelUnavailable', locale);
@@ -206,6 +232,7 @@
       </button>
     </header>
 
+    <p class="sr-only" role="status" aria-live="polite">{announcement(state.transcript.at(-1))}</p>
     <div class="assistant-transcript" bind:this={transcriptEl} tabindex="-1">
       {#if state.transcript.length === 0}
         {#if state.packRead && counts.length}
