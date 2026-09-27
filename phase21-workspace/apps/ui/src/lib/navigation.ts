@@ -49,3 +49,28 @@ export const NAVIGATION_GROUPS: readonly { id: NavigationGroup; labelKey: Messag
   { id: 'history', labelKey: 'nav.group.history' },
   { id: 'system', labelKey: 'nav.group.system' },
 ] as const;
+
+/** The keyboard fields a navigation shortcut is decided from. */
+export type ShortcutKeys = Pick<KeyboardEvent, 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey' | 'key' | 'code'>;
+
+/**
+ * The page a `Ctrl+Shift+<key>` press navigates to, if any. Read from `code`, the physical key:
+ * with Shift held `key` is "!" for Digit1 on a US layout, and a letter of another script on an
+ * Arabic one, so matching `key` made every digit shortcut dead (P75). Ctrl+Alt is AltGr on
+ * Windows and is never navigation.
+ */
+export function navigationShortcut(event: ShortcutKeys): PageId | undefined {
+  if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey) return undefined;
+  const physical = /^(?:Digit|Key)([0-9A-Z])$/.exec(event.code)?.[1];
+  if (!physical) return undefined;
+  return NAVIGATION.find((candidate) => candidate.shortcut === `Ctrl+Shift+${physical}`)?.id;
+}
+
+/** `Ctrl+K` opens the command palette, `Ctrl+/` the assistant. Physical keys, for the same
+ * reason as `navigationShortcut`: on an Arabic layout K types "ن" and / types "ظ". */
+export function commandShortcut(event: ShortcutKeys): 'palette' | 'assistant' | undefined {
+  if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return undefined;
+  if (event.code === 'KeyK') return 'palette';
+  if (event.code === 'Slash') return 'assistant';
+  return undefined;
+}
