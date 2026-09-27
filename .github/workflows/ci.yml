@@ -138,7 +138,7 @@ jobs:
       # P75 ui-truth: pure UI logic (keyboard shortcuts, Fleet run outcomes) under node's own
       # test runner; no test dependency. Files are listed, not globbed: a missing file fails.
       - name: UI unit tests
-        run: node --experimental-strip-types --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts
+        run: node --experimental-strip-types --import ./apps/ui/tests/resolve-ts.mjs --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts apps/ui/tests/wire-values.test.ts
       - name: UI production build
         run: pnpm --dir apps/ui build
       - name: Locked Rust workspace check
@@ -179,6 +179,31 @@ jobs:
             ~/.cargo/git/db
             phase21-workspace/target
           key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+  # P75 gate-honesty: the gates' own tests and the PowerShell assertion scanner had no CI
+  # caller, so a broken gate reader or a failing marker was found only by hand. macOS, not
+  # Windows or Linux, measured on throwaway runs: test_gate_readers.py injects unreadable
+  # sources with POSIX semantics that do not hold on Windows (36240659611), and the phase29
+  # chain it exercises shells out to plutil, which Linux lacks (36240919751). All eight pass
+  # on macos-latest (36240971179).
+  gate-self-tests:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Gate self-tests
+        run: |
+          for t in scripts/test_gate_contains.py scripts/test_gate_module_reader.py \
+                   scripts/test_gate_readers.py scripts/test_omega_delivered_set.py \
+                   scripts/test_source_seal.py scripts/test_windows_server_support.py \
+                   scripts/test-phase12-localization.py scripts/ps_marker_scan.py; do
+            echo "== $t"
+            python3 "$t"
+          done
 
   deny-check:
     runs-on: ubuntu-latest
