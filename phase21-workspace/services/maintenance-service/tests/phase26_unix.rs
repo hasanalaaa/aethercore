@@ -20,6 +20,9 @@ fn foreground_run_prints_honest_capability_matrix() {
     let mut child = Command::new(bin)
         .arg("--foreground")
         .env("AETHERCORE_IPC_ROOT", &ipc_root)
+        // DBT-P60-003: without a data directory the service used to write its database
+        // under a relative `C:\ProgramData` in the working directory; it now refuses.
+        .env("AETHERCORE_DATA_DIR", ipc_root.join("data"))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()

@@ -2239,7 +2239,10 @@ fn ui_schedule(schedule: &aethercore_fleet::FleetSchedule) -> UiFleetSchedule {
     }
 }
 
-#[command]
+// P75 ui-truth: every fleet_* command is `#[command(async)]`. A plain `#[command] fn` runs
+// on the main thread in Tauri 2, and these open SSH sessions with 45 s timeouts: the window
+// froze for the whole call. `async` on a synchronous fn runs it on Tauri's thread pool.
+#[command(async)]
 fn fleet_snapshot() -> UiFleetSnapshot {
     let inventory = load_fleet_inventory();
     let hosts = inventory
@@ -2323,7 +2326,7 @@ struct UiAddHost {
     tags: Vec<String>,
 }
 
-#[command]
+#[command(async)]
 fn fleet_add_host(input: UiAddHost) -> UiFleetActionResult {
     let auth = match (input.auth_kind.as_str(), input.auth_path.as_deref()) {
         ("agent", _) => aethercore_fleet::AuthReference::Agent,
@@ -2380,7 +2383,7 @@ struct UiEditHost {
     tags: Option<Vec<String>>,
 }
 
-#[command]
+#[command(async)]
 fn fleet_edit_host(input: UiEditHost) -> UiFleetActionResult {
     let mut inventory = load_fleet_inventory();
     {
@@ -2418,7 +2421,7 @@ fn fleet_edit_host(input: UiEditHost) -> UiFleetActionResult {
     }
 }
 
-#[command]
+#[command(async)]
 fn fleet_remove_host(host_id: String, confirm: bool) -> UiFleetActionResult {
     if !confirm {
         return fleet_action_error(&host_id, "explicit confirmation required");
@@ -2465,7 +2468,7 @@ struct UiTrustInput {
     authorized_fingerprint: String,
 }
 
-#[command]
+#[command(async)]
 fn fleet_trust_host(input: UiTrustInput) -> UiFleetActionResult {
     let mut inventory = load_fleet_inventory();
     let host = match inventory.get(&input.host_id) {
@@ -2513,7 +2516,7 @@ fn fleet_trust_host(input: UiTrustInput) -> UiFleetActionResult {
     }
 }
 
-#[command]
+#[command(async)]
 fn fleet_untrust_host(host_id: String) -> UiFleetActionResult {
     let mut inventory = load_fleet_inventory();
     if let Some(host) = inventory.get_mut(&host_id) {
@@ -2618,7 +2621,7 @@ fn fleet_trust_store_checked() -> Result<aethercore_fleet::TrustStore, String> {
         .map_err(|error| format!("open fleet trust store: {error}"))
 }
 
-#[command]
+#[command(async)]
 fn fleet_probe(host_id: String) -> UiFleetRemoteResult {
     fleet_remote_operation(
         &host_id,
@@ -2627,7 +2630,7 @@ fn fleet_probe(host_id: String) -> UiFleetRemoteResult {
     )
 }
 
-#[command]
+#[command(async)]
 fn fleet_audit(host_id: String) -> UiFleetRemoteResult {
     fleet_remote_operation(
         &host_id,
@@ -2638,7 +2641,7 @@ fn fleet_audit(host_id: String) -> UiFleetRemoteResult {
     )
 }
 
-#[command]
+#[command(async)]
 fn fleet_compliance(host_id: String, profile_id: String) -> UiFleetRemoteResult {
     let profile: &'static str = match profile_id.as_str() {
         "cis-l1" => "cis-l1",
@@ -2715,7 +2718,7 @@ struct UiScheduleActionResult {
     detail: String,
 }
 
-#[command]
+#[command(async)]
 fn fleet_schedule_add(input: UiScheduleInput) -> UiScheduleActionResult {
     let schedule = match aethercore_fleet::FleetSchedule::new(
         &input.schedule_id,
@@ -2770,7 +2773,7 @@ fn fleet_schedule_add(input: UiScheduleInput) -> UiScheduleActionResult {
     }
 }
 
-#[command]
+#[command(async)]
 fn fleet_schedule_update(input: UiScheduleInput) -> UiScheduleActionResult {
     let mut schedules = match load_fleet_schedules() {
         Ok(schedules) => schedules,
@@ -2828,7 +2831,7 @@ fn fleet_schedule_update(input: UiScheduleInput) -> UiScheduleActionResult {
     }
 }
 
-#[command]
+#[command(async)]
 fn fleet_schedule_remove(schedule_id: String, confirm: bool) -> UiScheduleActionResult {
     if !confirm {
         return UiScheduleActionResult {
@@ -2910,7 +2913,7 @@ impl aethercore_fleet::SchedulerStore for DesktopScheduleStore {
     }
 }
 
-#[command]
+#[command(async)]
 fn fleet_schedule_run_due() -> serde_json::Value {
     let schedules = match load_fleet_schedules() {
         Ok(schedules) => schedules,
