@@ -168,3 +168,12 @@ reseal: `ui-truth` → `service-host` → `update-trust-2` → `gate-honesty` �
   (stale phase-scoped expected values: owner to retire or re-baseline); macOS/Linux fault
   rates and per-core arrays (Wave 3); insight "recurring" wording on one failure (not
   mechanically checkable).
+* **Update (same session, later):** #48 service-host → `9f46bd0` (PR CI `36289024493`,
+  installer `36289024176` STOP_PENDING green; main push `36291484445` green). #49
+  update-trust-2 → `acec25b` (PR CI `36292776315` after a gate fix `6c93cf5`; main push
+  `36295466077`). #50 gate-honesty open (head after merging `acec25b`). `lane/seal-root` and
+  `lane/care-session-consent` are pre-merged with `acec25b` (ledger rows written); re-merge
+  after each PR lands. Local pre-push check: session scratch `ci-audits.sh` (the python
+  audits CI's PowerShell chain calls; `phase30` and `sigma-master` fail identically on main
+  here, no pwsh). UI tests needing `--import ./tests/resolve-ts.mjs` (ui-trial) and
+  `tests/care.test.ts` (care) must be added to ci.yml's UI-test step when those lanes merge.
