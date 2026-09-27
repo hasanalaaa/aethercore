@@ -10,3 +10,13 @@ Found by driving every aetherctl verb against the unix maintenance service on th
 | `DBT-P75-065` | `32d7da2` | `aetherctl --lang ar doctor` | every label English (7 of 114 printed fields had a catalog label) | Arabic label for every printed field; English text unchanged | `every_printed_field_has_an_arabic_label_and_english_is_unchanged`: 107 fields listed |
 
 Local proof: `cargo test -p aetherctl --bins` 36/36; the e2e suite 7/7; `cargo clippy -p aetherctl --all-targets -D warnings` clean; `phase28-adversarial-audit.py`: its own checks PASS, exit 1 from the nested `p27-wirefreeze` checks (identical on `origin/main`, `DBT-P75-077`).
+
+## P75 independent review — findings fixed in this lane (`DBT-P75-080`, `-084`…`-087`)
+
+Each was reproduced before it was fixed (red-before in the commit message): `dd9e479` seal
+fail-open with `.github/` absent (#51); `1993b29` Everyone deny before an Authenticated Users
+allow (#28); `e00995d` the private firewall profile's local key is StandardProfile (#28,
+measured on windows-2025, probe `36329924609`); `3d31883` a superseded telemetry start
+overwriting the live owner (#33); `0e1a44f` an address ending a sentence (#49).
+Recorded open: `DBT-P75-077` stale audits red on `main` with no CI caller; `DBT-P75-078`
+~16 s without IPC at macOS start (Metal init).
