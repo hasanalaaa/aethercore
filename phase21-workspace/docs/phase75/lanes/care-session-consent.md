@@ -23,3 +23,15 @@ Red-before on `7ee0673` (`cargo test -p aethercore-maintenance-service --bins --
 - step refusal and barrier binding: `a_step_whose_plan_changed_after_approval_is_refused`, `a_care_step_authorization_is_bound_to_owner_content_and_state` (new API).
 
 Also in this lane (trial run): `DBT-P75-061` the approval dialog opened with no plan loaded and the run from Overview showed nothing (`c07b1e0`); `DBT-P75-062` an empty plan asked for approval (`be0c75b`).
+
+## P75 independent review, finding #39 (`DBT-P75-081`)
+
+The review found the preview-to-grant gap this lane had closed only in the clients: the grant
+RPC carried no digest, so the service approved whatever it composed at grant time. Now
+`GrantCareSessionConsentRequest.plan_digest_sha256` (additive proto field) carries the digest
+the owner was shown and the service refuses `DigestChanged` / `care.error.planChanged`,
+approving nothing, when the plan composed now differs (or the digest is empty). Red-before on
+#52's head: `a_grant_for_a_plan_that_changed_since_the_preview_authorizes_nothing` — the plan
+added after the preview ran (`left: 2, right: 0`). CLI: `care consent-grant` requires
+`--plan-digest <digest from care status>` (a CLI contract change for scripts that granted
+blind); `care start` sends the digest it had the owner retype.

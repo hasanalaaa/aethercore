@@ -1598,6 +1598,7 @@ export const enCatalog = {
   'care.consentBulletOnce': 'The approval is used up by this run, expires after 2 minutes if unused, and you can cancel mid-run.',
   'care.summary.planChanged': 'The plan changed before it could start. Review it below and approve it again.',
   'care.error.digestChanged': 'Refused: this plan changed after you approved it.',
+  'care.error.planChanged': 'The plan changed after it was shown. Review it and approve it again.',
   'care.error.domainFailure': 'Failed its own domain checks.',
   'care.consentAuthorize': 'Approve & Start',
 

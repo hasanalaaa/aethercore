@@ -36,3 +36,9 @@ test('one approval covers the automatic steps only', () => {
   assert.equal(approvedStepCount(status('aa', [0, 2, 0])), 2);
   assert.equal(approvedStepCount(null), 0);
 });
+
+test('the service refusing a changed plan is shown as a new plan, other failures are not', async () => {
+  const { isPlanChanged } = await import('../src/features/care/approval.ts');
+  assert.equal(isPlanChanged('care.error.planChanged'), true);
+  assert.equal(isPlanChanged(new Error('care.error.startFailed')), false);
+});

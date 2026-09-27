@@ -538,7 +538,9 @@ mod p75_care_dispatch_tests {
         let first = cleanup_plan(&engine, "c1");
         let second = cleanup_plan(&engine, "c2");
         let shown = care.plan_preview(OWNER).expect("preview");
-        let granted = care.grant_session_consent(OWNER).expect("grant");
+        let granted = care
+            .grant_session_consent(OWNER, &shown.plan_digest_sha256)
+            .expect("grant");
         assert_eq!(granted.plan_digest_sha256, shown.plan_digest_sha256);
         let status = care.start_run(OWNER, "run-all").expect("run");
         assert_eq!(status.state, "Completed", "{status:?}");
@@ -576,7 +578,11 @@ mod p75_care_dispatch_tests {
             "test",
         )
         .unwrap();
-        let _ = care.grant_session_consent(OWNER).expect("grant");
+        let shown = care
+            .plan_preview(OWNER)
+            .expect("preview")
+            .plan_digest_sha256;
+        let _ = care.grant_session_consent(OWNER, &shown).expect("grant");
         let status = care.start_run(OWNER, "run-review").expect("run");
         let driver = status
             .steps

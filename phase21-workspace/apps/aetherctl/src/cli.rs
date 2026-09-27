@@ -49,7 +49,7 @@ SERVICE COMMANDS (require the maintenance-service endpoint):
   perf      start [--interval-ms <n>] | stop | snapshot | report
   optimize  plan [--findings <id,id,...>] | start [--plan-id <id>] | status [--plan-id <id>]
   timeline  page [--size <n>] [--before <seq>] | patterns
-  care      status | start [--non-interactive] | cancel | consent-grant
+  care      status | start [--non-interactive] | cancel | consent-grant --plan-digest <d>
   insights  list | explain [--question <key>] | dismiss --insight-id <id>
   scan      start | cancel --scan-id <id> | status | history [--limit <n>]
 
@@ -281,7 +281,9 @@ pub enum ServiceJob {
         non_interactive: bool,
     },
     CareCancel,
-    CareConsentGrant,
+    CareConsentGrant {
+        plan_digest: String,
+    },
     InsightsList,
     InsightsExplain {
         question_key: String,
@@ -1123,7 +1125,27 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                     Command::Service(ServiceJob::CareStart { non_interactive })
                 }
                 "cancel" => Command::Service(ServiceJob::CareCancel),
-                "consent-grant" => Command::Service(ServiceJob::CareConsentGrant),
+                "consent-grant" => {
+                    // The grant names the plan the owner saw (`care status` prints its digest);
+                    // the service approves nothing if the plan changed since (DBT-P75-045).
+                    let mut plan_digest: Option<String> = None;
+                    while let Some(flag) = cursor.next() {
+                        match flag.as_str() {
+                            "--plan-digest" => {
+                                plan_digest = Some(cursor.value_after("--plan-digest")?)
+                            }
+                            other => return Err(unknown_flag(other)),
+                        }
+                    }
+                    let plan_digest = plan_digest.ok_or_else(|| {
+                        usage(
+                            "cli.usage.planDigestRequired",
+                            "care consent-grant requires --plan-digest <digest from care status>"
+                                .to_string(),
+                        )
+                    })?;
+                    Command::Service(ServiceJob::CareConsentGrant { plan_digest })
+                }
                 other => {
                     return Err(usage(
                         "cli.usage.unknownSubcommand",

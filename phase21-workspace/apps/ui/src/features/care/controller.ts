@@ -3,7 +3,7 @@ import type { CareRunStatus } from '../../lib/contracts';
 import { runBusy, setPage } from '../../app/shell-state';
 import { serviceInvoke } from '../../platform/service-client';
 import { patchStreamState, streamState } from '../../platform/stream-state';
-import { afterApproval } from './approval';
+import { afterApproval, isPlanChanged } from './approval';
 
 /** UI-only dialog state for the session-consent flow. */
 export const careUi = writable({
@@ -34,14 +34,24 @@ export function closeCareConsent(): void {
 
 /**
  * Approves the plan shown for one run, then starts that run in the same user gesture. The
- * service approves the plan it composes now; if that is not the plan shown, nothing starts
- * and the new plan is shown for approval. A refused or failed call is reported by runBusy.
+ * grant names the plan shown and the service refuses it if the plan has changed since; then
+ * nothing starts and the new plan is shown for approval. A refused or failed call is reported by runBusy.
  */
 export async function authorizeAndStartCare(): Promise<void> {
   const shown = get(streamState).careStatus;
   closeCareConsent();
   await runBusy(async () => {
-    const granted = await serviceInvoke<CareRunStatus>('grant_care_session_consent');
+    let granted: CareRunStatus;
+    try {
+      // The grant names the plan shown; the service approves nothing if it has changed.
+      granted = await serviceInvoke<CareRunStatus>('grant_care_session_consent', { planDigestSha256: shown?.planDigestSha256 ?? '' });
+    } catch (error) {
+      if (!isPlanChanged(error)) throw error;
+      const current = await serviceInvoke<CareRunStatus>('get_care_status');
+      patchStreamState({ careStatus: { ...current, state: 'AwaitingConsent', summaryKey: 'care.summary.planChanged' } });
+      setPage('activity');
+      return;
+    }
     const next = afterApproval(shown, granted);
     if (!next.start) {
       patchStreamState({ careStatus: next.status });

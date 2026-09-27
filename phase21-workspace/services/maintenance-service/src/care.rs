@@ -478,14 +478,20 @@ impl CareCoordinator {
         ))
     }
 
-    /// Records the owner's approval of the plan composed now, which the returned status
-    /// shows: it authorizes that plan's Auto steps for the next run only, within
-    /// `APPROVAL_WINDOW`. A different plan, or a second run, needs a new approval.
+    /// Records the owner's approval of the plan they were shown (`shown_digest`), if it is
+    /// still the plan composed now: it authorizes that plan's Auto steps for the next run
+    /// only, within `APPROVAL_WINDOW`. A different plan, or a second run, needs a new approval.
     pub fn grant_session_consent(
         &self,
         owner_principal_key: &str,
+        shown_digest: &str,
     ) -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError> {
         let plan = compose_plan(&self.db, owner_principal_key)?;
+        // The approval names the plan the owner was shown. If the plan composed now is a
+        // different one (another session added or removed work), nothing is approved.
+        if shown_digest.is_empty() || shown_digest != plan.plan_digest_sha256 {
+            return Err(aethercore_care_orchestrator::CareError::DigestChanged);
+        }
         self.consent
             .grant(owner_principal_key, &plan.plan_digest_sha256);
         Ok(status_proto("Idle", "Preview", true, &plan, &[]))
@@ -812,6 +818,15 @@ mod p75_care_consent_tests {
         }
     }
 
+    /// The owner approves the plan they are shown.
+    fn approve(
+        care: &CareCoordinator,
+        owner: &str,
+    ) -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError> {
+        let shown = care.plan_preview(owner)?.plan_digest_sha256;
+        care.grant_session_consent(owner, &shown)
+    }
+
     fn coordinator(db: &Arc<Database>) -> (CareCoordinator, Arc<CountingDispatch>) {
         let dispatch = Arc::new(CountingDispatch::default());
         let machine = dispatch.machine.clone();
@@ -826,7 +841,7 @@ mod p75_care_consent_tests {
         let (db, path) = test_db();
         seed_cleanup_plan(&db, "c1");
         let (care, dispatch) = coordinator(&db);
-        let _ = care.grant_session_consent(OWNER);
+        let _ = approve(&care, OWNER);
 
         // Another domain owns the machine: care must not start at all.
         let foreign = dispatch
@@ -845,7 +860,7 @@ mod p75_care_consent_tests {
         drop(foreign);
 
         // The refused attempt consumed that approval (DBT-P75-045: one approval, one run).
-        let _ = care.grant_session_consent(OWNER);
+        let _ = approve(&care, OWNER);
         // While care runs, nothing else may start on the machine.
         care.start_run(OWNER, "run-free").expect("run");
         assert_eq!(dispatch.started.load(Ordering::SeqCst), 1);
@@ -889,7 +904,7 @@ mod p75_care_consent_tests {
         seed_cleanup_plan(&db, "c1");
         let (care, dispatch) = coordinator(&db);
         care.cancel(); // no run is active: nothing to cancel
-        let _ = care.grant_session_consent(OWNER);
+        let _ = approve(&care, OWNER);
         let status = care.start_run(OWNER, "run-after-cancel").expect("run");
         assert_eq!(dispatch.started.load(Ordering::SeqCst), 1, "{status:?}");
         drop(db);
@@ -901,7 +916,7 @@ mod p75_care_consent_tests {
         let (db, path) = test_db();
         seed_cleanup_plan(&db, "c1");
         let (care, dispatch) = coordinator(&db);
-        let _ = care.grant_session_consent(OWNER);
+        let _ = approve(&care, OWNER);
         // A new plan appears after the owner consented: the run is no longer the one shown.
         seed_cleanup_plan(&db, "c2");
         let status = care.start_run(OWNER, "run-changed");
@@ -926,6 +941,35 @@ mod p75_care_consent_tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// P75 review (#39, care.rs:471): the owner previews plan A; another session adds plan B
+    /// before the grant. The grant names A, so it approves nothing: the service refuses with
+    /// DigestChanged and a start runs nothing.
+    #[test]
+    fn a_grant_for_a_plan_that_changed_since_the_preview_authorizes_nothing() {
+        let (db, path) = test_db();
+        seed_cleanup_plan(&db, "c1");
+        let (care, dispatch) = coordinator(&db);
+        let shown = care
+            .plan_preview(OWNER)
+            .expect("preview")
+            .plan_digest_sha256;
+        seed_cleanup_plan(&db, "c2");
+        assert_eq!(
+            care.grant_session_consent(OWNER, &shown).err(),
+            Some(aethercore_care_orchestrator::CareError::DigestChanged)
+        );
+        assert_eq!(
+            care.grant_session_consent(OWNER, "").err(),
+            Some(aethercore_care_orchestrator::CareError::DigestChanged),
+            "a grant that names no plan approves none"
+        );
+        let status = care.start_run(OWNER, "run-after-preview").expect("status");
+        assert_eq!(status.state, "AwaitingConsent");
+        assert_eq!(dispatch.started.load(Ordering::SeqCst), 0, "{status:?}");
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// DBT-P75-045: an approval is single-use. The run it authorized consumes it; a
     /// second start of the very same plan needs a new approval.
     #[test]
@@ -933,7 +977,7 @@ mod p75_care_consent_tests {
         let (db, path) = test_db();
         seed_cleanup_plan(&db, "c1");
         let (care, dispatch) = coordinator(&db);
-        let _ = care.grant_session_consent(OWNER);
+        let _ = approve(&care, OWNER);
         care.start_run(OWNER, "run-once").expect("run");
         let again = care.start_run(OWNER, "run-twice").expect("status");
         assert_eq!(again.state, "AwaitingConsent");
@@ -950,7 +994,7 @@ mod p75_care_consent_tests {
         let (db, path) = test_db();
         seed_cleanup_plan(&db, "c1");
         let (care, dispatch) = coordinator(&db);
-        let _ = care.grant_session_consent(OTHER);
+        let _ = approve(&care, OTHER);
         let status = care.start_run(OWNER, "run-other").expect("status");
         assert_eq!(status.state, "AwaitingConsent");
         assert_eq!(dispatch.started.load(Ordering::SeqCst), 0);

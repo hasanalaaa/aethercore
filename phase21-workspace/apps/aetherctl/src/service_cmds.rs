@@ -40,7 +40,7 @@ pub fn command_label(job: &ServiceJob) -> String {
         ServiceJob::CareStatus => "care status".to_string(),
         ServiceJob::CareStart { .. } => "care start".to_string(),
         ServiceJob::CareCancel => "care cancel".to_string(),
-        ServiceJob::CareConsentGrant => "care consent-grant".to_string(),
+        ServiceJob::CareConsentGrant { .. } => "care consent-grant".to_string(),
         ServiceJob::InsightsList => "insights list".to_string(),
         ServiceJob::InsightsExplain { .. } => "insights explain".to_string(),
         ServiceJob::InsightsDismiss { .. } => "insights dismiss".to_string(),
@@ -189,9 +189,11 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
             Ok(care_status_from_payload(&payload)
                 .unwrap_or_else(|| serde_json::json!({ "cancelled": true })))
         }
-        ServiceJob::CareConsentGrant => {
+        ServiceJob::CareConsentGrant { plan_digest } => {
             require_ok(client.call(request::Payload::GrantCareSessionConsent(
-                aethercore_contracts::v1::GrantCareSessionConsentRequest {},
+                aethercore_contracts::v1::GrantCareSessionConsentRequest {
+                    plan_digest_sha256: plan_digest,
+                },
             ))?)?;
             Ok(serde_json::json!({
                 "granted": true,
@@ -819,7 +821,9 @@ fn care_start_flow(
     // Step 3: grant on THIS connection, then start on the SAME connection so the
     // service-side per-principal session registry sees both from one principal.
     let granted = require_ok(client.call(request::Payload::GrantCareSessionConsent(
-        aethercore_contracts::v1::GrantCareSessionConsentRequest {},
+        aethercore_contracts::v1::GrantCareSessionConsentRequest {
+            plan_digest_sha256: digest.clone(),
+        },
     ))?)?;
     // DBT-P75-045: the service approves the plan it composes at grant time. If that is not
     // the plan whose digest was just confirmed, nothing starts.

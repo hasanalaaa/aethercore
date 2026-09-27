@@ -1598,6 +1598,7 @@ export const arCatalog = {
   'care.consentBulletOnce': 'تُستهلك الموافقة بهذه التشغيلة، وتنتهي بعد دقيقتين إن لم تُستخدم، ويمكنك الإلغاء أثناء التشغيل.',
   'care.summary.planChanged': 'تغيّرت الخطة قبل أن تبدأ. راجعها أدناه ووافق عليها مجدداً.',
   'care.error.digestChanged': 'رُفضت: تغيّرت هذه الخطة بعد موافقتك.',
+  'care.error.planChanged': 'تغيّرت الخطة بعد عرضها. راجعها ووافق عليها مجدداً.',
   'care.error.domainFailure': 'فشلت في فحوص نطاقها الخاص.',
   'care.consentAuthorize': 'موافقة وبدء',
 

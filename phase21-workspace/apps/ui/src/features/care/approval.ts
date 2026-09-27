@@ -19,3 +19,12 @@ export function afterApproval(shown: CareRunStatus | null, granted: CareRunStatu
 export function approvedStepCount(status: CareRunStatus | null): number {
   return status ? status.steps.filter((step) => step.safetyLevel <= 0).length : 0;
 }
+
+/**
+ * The service refuses a grant whose plan changed since the owner saw it (DBT-P75-045, P75
+ * review #39): the desktop surfaces the refusal as its message key. That is not a failure to
+ * report; it is a new plan to show.
+ */
+export function isPlanChanged(error: unknown): boolean {
+  return String(error).includes('care.error.planChanged');
+}
