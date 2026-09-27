@@ -201,11 +201,7 @@ fn sample_memory() -> Reading<MemorySample> {
     let available = available_kib.min(info.mem_total_kib).saturating_mul(KIB);
     let used = total.saturating_sub(available);
     let swap_total = info.swap_total_kib.saturating_mul(KIB);
-    let load_percent = if total > 0 {
-        ((used * 100) / total) as u32
-    } else {
-        0
-    };
+    let load_percent = used.saturating_mul(100).checked_div(total).unwrap_or(0) as u32;
     Reading::from_evidence(
         Some(MemorySample {
             total_physical_bytes: total,
@@ -331,6 +327,9 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
         });
     }
     let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
+    // The statvfs fields are u64 on 64-bit Linux and u32 on 32-bit Linux; the
+    // conversions are no-ops only on the first.
+    #[allow(clippy::useless_conversion)]
     let (root_total, root_available) =
         if unsafe { libc::statvfs(c"/".as_ptr(), std::ptr::addr_of_mut!(vfs)) } == 0 {
             let block = u64::from(vfs.f_frsize.max(1));
@@ -407,10 +406,10 @@ pub(crate) fn scan_thermal_zones() -> Vec<u64> {
         .collect();
     paths.sort();
     for zone in paths {
-        if let Ok(content) = std::fs::read_to_string(zone.join("temp")) {
-            if let Ok(milli_c) = content.trim().parse::<u64>() {
-                zones.push(milli_c);
-            }
+        if let Ok(content) = std::fs::read_to_string(zone.join("temp"))
+            && let Ok(milli_c) = content.trim().parse::<u64>()
+        {
+            zones.push(milli_c);
         }
     }
     zones

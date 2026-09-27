@@ -209,6 +209,25 @@ jobs:
             python3 "$t"
           done
 
+  # P76 DBT-P75-001: the Linux telemetry provider is compiled only for Linux, so the
+  # Windows job's clippy never read it and five findings sat in it. One crate, not the
+  # workspace: the desktop app needs WebKitGTK to build here, and that is not this gate.
+  linux-provider-clippy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component clippy
+          rustup override set 1.97.1
+      - name: Linux telemetry provider clippy
+        run: cargo clippy -p aethercore-performance-telemetry --lib --locked -- -D warnings
+
   deny-check:
     runs-on: ubuntu-latest
     steps:
