@@ -142,9 +142,12 @@ mod smoke {
         if auto == 0 {
             return Err("the care plan has no automatic step".into());
         }
+        // The grant names the plan shown; the service approves nothing if it has changed.
         let granted = care(call(
             &client,
-            Req::GrantCareSessionConsent(Default::default()),
+            Req::GrantCareSessionConsent(v1::GrantCareSessionConsentRequest {
+                plan_digest_sha256: shown.plan_digest_sha256.clone(),
+            }),
         )?)?;
         if granted.plan_digest_sha256 != shown.plan_digest_sha256 {
             return Err("the approval named a plan other than the one shown".into());
@@ -182,6 +185,22 @@ mod smoke {
                 return Err(format!(
                     "step {} refused for authorization",
                     step.domain_plan_id
+                ));
+            }
+        }
+        // A grant naming a plan that is not the one composed now approves nothing.
+        match call(
+            &client,
+            Req::GrantCareSessionConsent(v1::GrantCareSessionConsentRequest {
+                plan_digest_sha256: "0".repeat(64),
+            }),
+        ) {
+            Err(error) if error.contains("care.error.planChanged") => {
+                println!("SMOKE: a grant for a plan never shown was refused")
+            }
+            other => {
+                return Err(format!(
+                    "a grant for a plan never shown was not refused: {other:?}"
                 ));
             }
         }
