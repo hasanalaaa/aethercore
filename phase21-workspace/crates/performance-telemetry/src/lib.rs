@@ -683,8 +683,15 @@ impl PerformanceRing {
         {
             return Err(TelemetryError::AlreadyActive);
         }
+        #[cfg(test)]
+        between_claim_and_install::run();
         {
             let mut state = lock(&self.state);
+            // A stop() and a newer start() may have run since the claim; that start owns the
+            // ring now, and this one must not install its owner over it (P75 review #33).
+            if self.running.load(Ordering::Acquire) != generation {
+                return Err(TelemetryError::AlreadyActive);
+            }
             state.owner_principal_key = owner_principal_key.to_owned();
             state.samples.clear();
         }
@@ -876,4 +883,48 @@ impl PerformanceRing {
 
 pub fn published_total() -> u64 {
     PUBLISHED_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Test seam: runs, on the starting thread, between claiming a generation and installing the
+/// owner — the window the P75 review (#33) found unguarded.
+#[cfg(test)]
+mod between_claim_and_install {
+    use std::cell::RefCell;
+    thread_local!(static HOOK: RefCell<Option<Box<dyn FnOnce()>>> = RefCell::new(None));
+    pub fn set(hook: impl FnOnce() + 'static) {
+        HOOK.with(|h| *h.borrow_mut() = Some(Box::new(hook)));
+    }
+    pub fn run() {
+        if let Some(hook) = HOOK.with(|h| h.borrow_mut().take()) {
+            hook();
+        }
+    }
+}
+
+#[cfg(test)]
+mod p75_review_owner_race {
+    use super::*;
+
+    /// P75 review (#33, lib.rs:678): start A claims its generation; before it installs its
+    /// owner, stop() and start B run and install B. A must not then overwrite the owner of the
+    /// ring B's live sampler publishes into.
+    #[test]
+    fn a_superseded_start_does_not_install_its_owner_over_the_live_one() {
+        let ring = Arc::new(PerformanceRing::new());
+        let platform: Arc<dyn PerfPlatform> = Arc::new(SyntheticPerfPlatform::new());
+        let (inner_ring, inner_platform) = (ring.clone(), platform.clone());
+        between_claim_and_install::set(move || {
+            inner_ring.stop();
+            inner_ring
+                .start(inner_platform, "owner-b", 250)
+                .expect("B starts once A is stopped");
+        });
+        let _ = ring.start(platform, "owner-a", 250);
+        assert!(ring.is_active(), "B's sampler is the live one");
+        assert!(
+            ring.ensure_owner("owner-b"),
+            "the live sampler's ring belongs to B"
+        );
+        ring.stop();
+    }
 }
