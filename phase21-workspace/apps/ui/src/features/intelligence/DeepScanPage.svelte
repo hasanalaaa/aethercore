@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { deepScanHeadlineKey } from './headline';
   import { onMount } from 'svelte';
   import { MaterialSurface, Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
   import { fluidPress } from '../../design/motion/fluid-press';
@@ -75,9 +76,8 @@
     const key:MessageKey = value === 2 ? 'deepScan.state.scanning' : value === 3 ? 'deepScan.state.completed' : value === 4 ? 'deepScan.state.partial' : value === 5 ? 'deepScan.state.cancelled' : value === 6 ? 'deepScan.state.failed' : 'deepScan.state.idle';
     return td(key,current);
   }
-  function statusLabel(value:number,current:Locale):string {
-    const key:MessageKey = value === 4 ? 'deepScan.status.critical' : value === 3 ? 'deepScan.status.action' : value === 2 ? 'deepScan.status.attention' : 'deepScan.status.healthy';
-    return td(key,current);
+  function statusLabel(value:number,state:number,current:Locale):string {
+    return td(deepScanHeadlineKey(value,state),current);
   }
   function collectorStateLabel(value:number,current:Locale):string {
     const key:MessageKey = value === 4 ? 'deepScan.collector.warning' : value === 5 ? 'deepScan.collector.unavailable' : value === 6 ? 'deepScan.collector.permissionDenied' : value === 7 ? 'deepScan.collector.timedOut' : value === 8 ? 'deepScan.collector.cancelled' : 'deepScan.collector.failed';
@@ -103,9 +103,9 @@
 </header>
 
 <MaterialSurface level="base" className="scan-hero">
-  <div class="status-emblem" class:scanning aria-hidden="true"><span>{scanning ? '◌' : scan.status === 1 ? '✓' : '!'}</span></div>
+  <div class="status-emblem" class:scanning aria-hidden="true"><span>{scanning ? '◌' : scan.status === 1 && scan.state === 3 ? '✓' : '!'}</span></div>
   <div class="scan-hero-copy">
-    <h2>{scan.scanId ? statusLabel(scan.status, locale) : t('common.notCollected', locale)}</h2>
+    <h2>{scan.scanId ? statusLabel(scan.status, scan.state, locale) : t('common.notCollected', locale)}</h2>
     <!-- The scan's own state, as a reading. It used to be a sentence telling the
          reader to press the button beside it. -->
     {#if scan.scanId}<span class="scan-hero-state"><TechnicalText value={stateLabel(scan.state, locale)} /></span>{/if}
@@ -202,7 +202,7 @@
       <summary>{t('deepScan.history',locale)}</summary>
       <div class="history-list">
         {#each $streamState.deepScanHistory as entry (entry.scanId)}
-          <div><strong>{statusLabel(entry.status,locale)}</strong><span>{formatDateTime(entry.completedUnixMs,locale)}</span><span>{t('deepScan.historyFindingCount',locale,{count:formatNumber(entry.findingCount,locale)})}</span></div>
+          <div><strong>{statusLabel(entry.status,entry.state,locale)}</strong><span>{formatDateTime(entry.completedUnixMs,locale)}</span><span>{t('deepScan.historyFindingCount',locale,{count:formatNumber(entry.findingCount,locale)})}</span></div>
         {/each}
       </div>
     </details>

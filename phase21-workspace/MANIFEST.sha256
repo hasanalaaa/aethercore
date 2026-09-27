@@ -443,9 +443,10 @@ fd21f26f980de873e0d974566357dd9fb52de62578fcc338200700a8b6592871  apps/ui/src/fe
 081abe2776b96a11b4184b6fa04dec82e6e19c3b9dae57721a7fc1ec9a3e22ba  apps/ui/src/features/fleet/run-due.ts
 ec4b6407364644b4a335ec1bf25d06eaf088d1dd51f654e4571f0e8cc32d02d5  apps/ui/src/features/insights/InsightsPanel.svelte
 9e36bbb66b8a18cc5723fa3dfd025bc0525d5722503cf81d0a10c56bf27cbb44  apps/ui/src/features/insights/controller.ts
-2a365d0694921c805936b854cc28793d280953e8740df8c0fc0afa1bc45b3e79  apps/ui/src/features/intelligence/DeepScanPage.svelte
+96747187e2f96347b8f0943fa34e8e20ef79543169b41ce74ee0cffa3ffc3906  apps/ui/src/features/intelligence/DeepScanPage.svelte
 2d4c49294ff83ecfdfaff2830cb6ed542a0ae1c8431bbdf96ef1cca519e327e4  apps/ui/src/features/intelligence/FindingCard.svelte
 5d06b9ceb4b20b0b1ca37a263bbcd086372f278e523e1a949cf0dbfea09e064c  apps/ui/src/features/intelligence/controller.ts
+14cbb9e94b6ef61c09bdd3972765c6c9be52a10f89ff9d0666ef368805abd641  apps/ui/src/features/intelligence/headline.ts
 7e6a7440f4d5a0792404e0a516986751281ba8517e3fde545b1b1babf527af5b  apps/ui/src/features/overview/OverviewPage.svelte
 69edd67ce08d8ae75a4812003173cbe124c590b1f47a892c633dff37ccfaa829  apps/ui/src/features/overview/controller.ts
 eebfb1659f06e78af66e80da2c43937bb0d144e2a194cdb74f0fa12e9b9c0233  apps/ui/src/features/overview/instrument.ts
@@ -464,8 +465,8 @@ bbe46e0168a9ea2689d2b40a88ccd3d9dc098aeccfcf91da74e22d627fa1cb32  apps/ui/src/fe
 e68eca0a5dba40b456b45f2fb7de56ee0848781bdc50d1c28895f9663550acc4  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-ca095e2242c1bb5bc10ce26a6bad52ceccded129bfe1f1dbfb70d232d5f0af1a  apps/ui/src/lib/i18n/catalog.ar.ts
-ce0c3c2d28ed8b63f10e6c68d20b959122f1d8b945aa3eeb9f145da1f6448e21  apps/ui/src/lib/i18n/catalog.en.ts
+9fced0fd24729ed2c88e31dc68c232dbe9160db2eabad1443d51fab49de8ca87  apps/ui/src/lib/i18n/catalog.ar.ts
+f5af31e0d2ca60414d50f673ecdedb2a2106c6e05d7ce658d03f761926f766cb  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 861d75f3596e142099802c67260c936723dcab045446c37bfd2c257d0e2339cd  apps/ui/src/lib/i18n/plurals.ar.ts
 132a089d249f086435a2c391863187ee056386bebc40c126354a954c64016c71  apps/ui/src/lib/i18n/plurals.en.ts
@@ -487,7 +488,7 @@ e725fb8554170ecba1a1bb8ec91fcc2e4be413c5d318903dccc5ffb1f0bbada7  apps/ui/src/st
 54651ceb9e459a62a3e1645034e2df1ae933efe82f69a2ae87cd7ef9fef9de0b  apps/ui/tests/fleet.test.ts
 59e1b489beeb808d961b6e5db7d7d8e965921b6f9ecd92e912914c4c1a05dc7d  apps/ui/tests/navigation.test.ts
 ad27fd90c77735a5d42b830cb5c054712f94b6196fe611cdb2c62cdfb3803ee4  apps/ui/tests/resolve-ts.mjs
-892e71e50a9c912c2e7c37723520399303d21e220b27a8b722b5afb7e597f4c7  apps/ui/tests/wire-values.test.ts
+a021d914861685b345201b176460341ad2baa3cdc84e63e8f34a8847229ec55b  apps/ui/tests/wire-values.test.ts
 837d1f530f73477ecaa2a7ea1b35793f5f552ccf7b751375cfe90199de686a17  apps/ui/tools/contrast-sweep.mjs
 36804d7fb828312a6e28150a63c011b3516279f06557b923e2b90a9bfdb845c9  apps/ui/tools/layout-sweep.mjs
 50ced562c676287c6d66e1d381a834284ca4f6fbaebd9c637fc3c8961d137ce0  apps/ui/tools/measure-density.mjs

@@ -1256,6 +1256,7 @@ export const arCatalog = {
   'deepScan.state.failed': 'الفحص غير متاح',
   'deepScan.status.healthy': 'سليم',
   'deepScan.status.attention': 'يوصى بالانتباه',
+  'deepScan.status.partialClear': 'لا نتائج فيما أمكن فحصه',
   'deepScan.status.action': 'إجراء مطلوب',
   'deepScan.status.critical': 'حرج',
   'deepScan.severity.informational': 'معلوماتي',

@@ -77,3 +77,21 @@ test('recovery record severities: "Amber" (cleaner, startup, repair) and "warnin
   for (const severity of ['Amber', 'warning']) assert.match(localizeSeverity(severity, 'ar'), arabic, severity);
 });
 
+test('deep scan headline: a partial scan with no findings is not "Healthy"', async () => {
+  const { deepScanHeadlineKey } = await import('../src/features/intelligence/headline.ts');
+  assert.equal(deepScanHeadlineKey(1, 4), 'deepScan.status.partialClear');
+  assert.equal(deepScanHeadlineKey(1, 3), 'deepScan.status.healthy');
+  assert.equal(deepScanHeadlineKey(0, 3), 'common.unknown');
+  assert.equal(deepScanHeadlineKey(3, 4), 'deepScan.status.action');
+});
+
+test('disk activity a provider says it did not measure reads unmeasured, not 0%', async () => {
+  const { healthChannels } = await import('../src/features/overview/instrument.ts');
+  const { createInitialStreamState } = await import('../src/platform/stream-state.ts');
+  const base = { ...createInitialStreamState().performance, capturedUnixMs: 1 };
+  const device = { deviceId: '/', friendlyName: '/', activeTimeBp: 0, queueDepthX100: 0, avgTransferLatencyUs: 0, readBytesPerSec: 0, writeBytesPerSec: 0, totalSpaceBytes: 1, freeSpaceBytes: 1 };
+  const macos = { ...base, storage: [device], collectorFaults: [{ collector: 'storage.activeTime', kind: 'Degraded', detail: 'not measured on macOS' }] };
+  assert.equal(healthChannels(macos as never, 'en').find((c) => c.id === 'disk')?.pct, undefined);
+  const windows = { ...base, storage: [{ ...device, activeTimeBp: 0 }], collectorFaults: [] };
+  assert.equal(healthChannels(windows as never, 'en').find((c) => c.id === 'disk')?.pct, 0, 'a measured idle disk is 0');
+});

@@ -1254,6 +1254,7 @@ export const enCatalog = {
   'deepScan.state.failed': 'Scan unavailable',
   'deepScan.status.healthy': 'Healthy',
   'deepScan.status.attention': 'Attention Recommended',
+  'deepScan.status.partialClear': 'No findings in what could be checked',
   'deepScan.status.action': 'Action Required',
   'deepScan.status.critical': 'Critical',
   'deepScan.severity.informational': 'Informational',
