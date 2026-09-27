@@ -85,12 +85,7 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
     }
     let mut client = ServiceClient::connect(config)?;
     match job {
-        ServiceJob::Doctor => {
-            let payload = require_ok(client.call(request::Payload::GetDiagnosticsSnapshot(
-                aethercore_contracts::v1::GetDiagnosticsSnapshotRequest {},
-            ))?)?;
-            doctor_value(&payload)
-        }
+        ServiceJob::Doctor => doctor(config, &mut client),
         ServiceJob::PerfStart { interval_ms } => {
             require_ok(client.call(request::Payload::StartPerfSampling(
                 aethercore_contracts::v1::StartPerfSamplingRequest { interval_ms },
@@ -299,6 +294,42 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
 
 /// Maps non-zero service answers to the typed rejection (exit 5) carrying the
 /// SERVICE's own message key — the CLI invents nothing.
+/// The one-shot health report. A service that has not collected diagnostics yet answers
+/// diagnostics.stateUnavailable; doctor then collects them (a read-only scan) and reports
+/// once the collection settles, within --timeout-ms.
+fn doctor(config: &Config, client: &mut ServiceClient) -> Result<serde_json::Value, CliError> {
+    let read = |client: &mut ServiceClient| {
+        client.call(request::Payload::GetDiagnosticsSnapshot(
+            aethercore_contracts::v1::GetDiagnosticsSnapshotRequest {},
+        ))
+    };
+    let first = read(client)?;
+    if first.status_code == 0
+        || first.error_message_key.as_deref() != Some("diagnostics.stateUnavailable")
+    {
+        return doctor_value(&require_ok(first)?);
+    }
+    require_ok(client.call(request::Payload::StartDiagnosticsScan(
+        aethercore_contracts::v1::StartDiagnosticsScanRequest {},
+    ))?)?;
+    let deadline = std::time::Instant::now() + config.timeout;
+    loop {
+        let payload = require_ok(read(client)?)?;
+        let collecting = matches!(
+            &payload,
+            Some(response::Payload::DiagnosticsSnapshot(value))
+                if value.snapshot.as_ref().is_some_and(|s| s.state == "Collecting")
+        );
+        if !collecting {
+            return doctor_value(&payload);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(CliError::Timeout);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
 fn require_ok(outcome: CallOutcome) -> Result<Option<response::Payload>, CliError> {
     if outcome.status_code != 0 {
         return Err(CliError::Rejected {
