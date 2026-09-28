@@ -570,7 +570,10 @@ mod p75_care_dispatch_tests {
         let shown = care.plan_preview(OWNER).expect("preview");
         care.grant_session_consent(OWNER, &shown.plan_digest_sha256)
             .expect("grant");
-        care.start_run(OWNER, "run-timeline").expect("run");
+        let status = care.start_run(OWNER, "run-timeline").expect("run");
+        // The report names the run it is about: a client finds it on the timeline by this id
+        // (care_smoke.rs does). It was empty.
+        assert_eq!(status.run_id, "run-timeline");
         let (page, _) = crate::timeline::TimelineCoordinator::new(db.clone())
             .page_for_owner(OWNER, 100, 0)
             .expect("page");
