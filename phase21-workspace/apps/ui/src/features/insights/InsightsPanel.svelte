@@ -35,6 +35,7 @@
   $: response = $streamState.insights;
   $: loading = $insightsUi.loading;
   $: error = $insightsUi.error;
+  $: modelLoading = $insightsUi.modelLoading || engineLabel === 'loading';
   $: engineLabel = response?.engineLabel ?? 'ruleFallback';
 
   function surfaceLabel(surface: string): string {
@@ -105,7 +106,7 @@
       <p class="insight-badge">
         <span class="insight-badge-dot" class:model={engineLabel === 'localModel'}></span>
         {t('insight.badgeAdvisory', locale)} · {t('insight.badgeLocal', locale)} · {t('insight.badgeOffline', locale)}
-        · {td(engineLabel === 'localModel' ? 'insight.engine.localModel' : 'insight.engine.ruleFallback', locale)}
+        · {td(engineLabel === 'localModel' ? 'insight.engine.localModel' : engineLabel === 'loading' ? 'insight.engine.loading' : 'insight.engine.ruleFallback', locale)}
       </p>
     </div>
     <div class="insight-actions">
@@ -125,7 +126,7 @@
   {#if loading}
     <div class="ac-progress" role="progressbar" aria-label={t('insight.thinking', locale)}><span></span></div>
   {:else if error}
-    <EmptyState title={t('common.tryAgain', locale)} body={t('insight.empty', locale)} />
+    <EmptyState title={t('common.tryAgain', locale)} body={t(modelLoading ? 'insight.modelLoading' : 'insight.empty', locale)} />
   {:else if insights.length === 0}
     <EmptyState title={t('common.notCollected', locale)} body={t('insight.empty', locale)} />
   {:else}

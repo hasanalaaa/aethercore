@@ -142,18 +142,19 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
         kernel.mutations().clone(),
     ));
 
-    // Phase 23: Embedded Local Intelligence — advisory-only, air-gapped, ephemeral.
-    // Default build ships the deterministic fallback engine; the on-device model path
-    // activates only with --features local-model + hash-pinned artifact (I5).
-    let mut intelligence_core = crate::intelligence::IntelligenceCoordinator::new(db.clone(), None);
-    // Phase 23.1: the embedded model is the PERMANENT default engine — verify + load at
-    // every service start; fallback engages ONLY on runtime faults (I3).
-    let assistant_reasoner = intelligence_core
-        .activate_embedded_default(product_dir.as_path())
-        .map(|reasoner| {
-            Box::new(reasoner) as Box<dyn aethercore_intelligence_core::StreamingReasoner>
-        });
-    let intelligence_core = Arc::new(intelligence_core);
+    // Phase 23.1: the embedded model is the PERMANENT default engine — verified and
+    // loaded at every service start; fallback engages ONLY on runtime faults (I3).
+    // P76 (DBT-P75-078): loaded in the background. The two paths hold clones of one
+    // unresolved model, so the service accepts IPC at once; until the load resolves,
+    // a request that needs the model answers loading (engine label `loading`).
+    let model = aethercore_intelligence_core::LlamaCppReasoner::new();
+    crate::intelligence::load_in_background(model.clone(), product_dir.clone());
+    let intelligence_core = Arc::new(crate::intelligence::IntelligenceCoordinator::new(
+        db.clone(),
+        Some(Box::new(model.clone())),
+    ));
+    let assistant_reasoner: Option<Box<dyn aethercore_intelligence_core::StreamingReasoner>> =
+        Some(Box::new(model));
 
     // Phase 56/P75: the grounded assistant answers from the SAME evidence pack
     // and a clone of the SAME loaded model the insight path uses. The clones

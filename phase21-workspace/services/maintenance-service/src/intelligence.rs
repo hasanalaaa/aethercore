@@ -14,16 +14,35 @@ use std::sync::{Arc, Mutex};
 
 use aethercore_contracts::v1;
 use aethercore_intelligence_core::{
-    EvidenceItem, EvidenceSurface, LlamaCppReasoner, Locale, ReasonerSelector, TypedEvidencePack,
+    EvidenceItem, EvidenceSurface, IntelligenceError, LlamaCppReasoner, Locale, ReasonerSelector,
+    TypedEvidencePack,
 };
 use aethercore_persistence::Database;
 use aethercore_timeline_intelligence::RecurrenceConfidence;
 
-/// True when the embedded model verified and loaded at startup. When false, the panel
-/// shows the honest degraded-mode chip (ruleFallback) until the fault clears (I3) —
-/// in the packaged product this is a defect condition, not a supported mode.
-pub static EMBEDDED_ENGINE_ACTIVE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+/// Verifies and loads the embedded model into `model`'s shared slot on its own
+/// thread, so composition returns and IPC binds first (P76, DBT-P75-078). Every
+/// clone reads loading until this resolves the slot, loaded or failed; a failure
+/// is a defect logged loudly while insights degrade to ruleFallback (I3).
+pub fn load_in_background(model: LlamaCppReasoner, product_root: std::path::PathBuf) {
+    let load = move |model: LlamaCppReasoner, root: std::path::PathBuf| match model.activate(&root)
+    {
+        Ok(label) => eprintln!("{label}"),
+        Err(e) => eprintln!(
+            "intelligence-core: embedded reasoner unavailable ({e}); degraded to rule fallback — defect"
+        ),
+    };
+    let (inline, root) = (model.clone(), product_root.clone());
+    if let Err(e) = std::thread::Builder::new()
+        .name("aether-model-load".into())
+        .spawn(move || load(model, product_root))
+    {
+        // Loading inline is slower to serve, but a slot left unresolved would read
+        // loading forever.
+        eprintln!("intelligence-core: model load thread did not start ({e}); loading inline");
+        load(inline, root);
+    }
+}
 
 /// Session-scoped insight registry. Entries live only for this process lifetime;
 /// dismissal removes them. No persistence layer involvement anywhere.
@@ -181,33 +200,6 @@ impl IntelligenceCoordinator {
         }
     }
 
-    /// Phase 23.1 startup sequence (M2): locate artifact → sha256 vs pinned+manifest →
-    /// RAM budget → load within budget → typed log line. The embedded reasoner is the
-    /// PERMANENT default; failure here is a defect logged loudly while insights degrade
-    /// to ruleFallback (I3).
-    pub fn activate_embedded_default(
-        &mut self,
-        product_root: &std::path::Path,
-    ) -> Option<LlamaCppReasoner> {
-        use std::sync::atomic::Ordering;
-        match aethercore_intelligence_core::activate_embedded_reasoner(product_root) {
-            Ok((reasoner, label)) => {
-                // Both clones hold the same model and generation gate.
-                self.selector = Arc::new(ReasonerSelector::new(Some(Box::new(reasoner.clone()))));
-                EMBEDDED_ENGINE_ACTIVE.store(true, Ordering::SeqCst);
-                eprintln!("{label}");
-                Some(reasoner)
-            }
-            Err(e) => {
-                eprintln!(
-                    "intelligence-core: embedded reasoner unavailable ({e}); degraded to rule fallback — defect"
-                );
-                EMBEDDED_ENGINE_ACTIVE.store(false, Ordering::SeqCst);
-                None
-            }
-        }
-    }
-
     pub fn engine_label(&self) -> &'static str {
         self.selector.engine_label()
     }
@@ -230,7 +222,7 @@ impl IntelligenceCoordinator {
         mutation_or_care_active: bool,
         question: &str,
         locale: Locale,
-    ) -> Result<v1::InsightsResponse, String> {
+    ) -> Result<v1::InsightsResponse, IntelligenceError> {
         let pack = compose_evidence_pack(self.db.as_ref(), owner_principal_key);
 
         // Empty evidence → typed empty response; no inference call is made.
@@ -241,10 +233,9 @@ impl IntelligenceCoordinator {
             });
         }
 
-        let insights = self
-            .selector
-            .request_insights(&pack, question, locale, mutation_or_care_active)
-            .map_err(|error| error.to_string())?;
+        let insights =
+            self.selector
+                .request_insights(&pack, question, locale, mutation_or_care_active)?;
 
         // Convert typed domain insights to wire structs (same vocabulary, I1).
         let wire: Vec<v1::Insight> = insights

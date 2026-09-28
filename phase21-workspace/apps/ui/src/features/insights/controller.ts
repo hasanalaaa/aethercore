@@ -8,6 +8,8 @@ import { patchStreamState } from '../../platform/stream-state';
 export const insightsUi = writable({
   loading: false,
   error: false,
+  /** The service answered that the on-device model is still loading (DBT-P75-078). */
+  modelLoading: false,
 });
 
 /**
@@ -17,14 +19,14 @@ export const insightsUi = writable({
  */
 export async function requestInsights(locale: Locale, questionKey = 'explain', question = ''): Promise<boolean> {
   let alreadyLoading = false;
-  insightsUi.update((s) => { alreadyLoading = s.loading; return alreadyLoading ? s : { ...s, loading: true, error: false }; });
+  insightsUi.update((s) => { alreadyLoading = s.loading; return alreadyLoading ? s : { ...s, loading: true, error: false, modelLoading: false }; });
   if (alreadyLoading) return false;
   try {
     const response = await serviceInvoke<InsightsResponse>('request_insight', { questionKey, question, locale });
     patchStreamState({ insights: response });
     return true;
-  } catch {
-    insightsUi.update((s) => ({ ...s, error: true }));
+  } catch (error) {
+    insightsUi.update((s) => ({ ...s, error: true, modelLoading: String(error).includes('insight.error.modelLoading') }));
     return false;
   } finally {
     insightsUi.update((s) => ({ ...s, loading: false }));

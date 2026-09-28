@@ -33,7 +33,7 @@ struct ServiceProcess {
     child: Child,
     stdout: BufReader<std::process::ChildStdout>,
     #[allow(dead_code)]
-    stderr: std::process::ChildStderr,
+    stderr: Option<std::process::ChildStderr>,
 }
 
 impl Drop for ServiceProcess {
@@ -62,7 +62,7 @@ fn spawn_service(data_dir: &std::path::Path) -> ServiceProcess {
     ServiceProcess {
         child,
         stdout: BufReader::new(stdout),
-        stderr,
+        stderr: Some(stderr),
     }
 }
 
@@ -316,4 +316,104 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
         .expect("reconnect after restart");
     let hello2 = exchange(&mut session2, &hello_frame());
     matches!(hello2.payload, Some(server_frame::Payload::Hello(_)));
+}
+
+fn list_insights_label(session: &mut aethercore_ipc::UnixSocketSession) -> String {
+    let request = Request {
+        header: Some(RequestHeader {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "gd-list-insights01".into(),
+        }),
+        payload: Some(aethercore_contracts::v1::request::Payload::ListInsights(
+            v1::ListInsightsRequest {},
+        )),
+    };
+    match exchange(session, &session_request(request)).payload {
+        Some(server_frame::Payload::Response(response)) => match response.payload {
+            Some(v1::response::Payload::InsightsResponse(insights)) => insights.engine_label,
+            other => panic!("expected InsightsResponse, got {other:?}"),
+        },
+        other => panic!("expected Response frame, got {other:?}"),
+    }
+}
+
+/// P76 DBT-P75-078: the service accepts IPC before the embedded model loads, answers
+/// `loading` while it does, and serves the model once it has. The service is run from a
+/// directory that holds the real artifact beside it (a hard link to the binary, so its
+/// product root is that directory). Red before: the socket appeared only after the load
+/// (16.42 s on this Mac, release), and the first answer already read `localModel`.
+#[test]
+#[cfg(target_os = "macos")]
+fn the_socket_is_served_while_the_model_loads() {
+    let model = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(aethercore_intelligence_core::EMBEDDED_MODEL_RELATIVE_PATH);
+    assert!(
+        model.exists(),
+        "the embedded model is not in the tree at {}",
+        model.display()
+    );
+    let temp = std::path::PathBuf::from(format!("/tmp/axt-ld-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp);
+    let models = temp.join("bin/assets/models");
+    std::fs::create_dir_all(&models).unwrap();
+    std::os::unix::fs::symlink(
+        model.canonicalize().unwrap(),
+        models.join(model.file_name().unwrap()),
+    )
+    .unwrap();
+    let binary = temp.join("bin").join(service_bin().file_name().unwrap());
+    std::fs::hard_link(service_bin(), &binary).expect("hard link the service binary");
+    let data = temp.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+
+    let started = std::time::Instant::now();
+    let mut child = Command::new(&binary)
+        .args([
+            "--foreground",
+            "--unix-ipc-data-dir",
+            data.to_str().unwrap(),
+            "--data-dir",
+        ])
+        .arg(&data)
+        .stdout(Stdio::piped())
+        // llama.cpp logs its load to stderr; an undrained pipe would block the loader.
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn maintenance service");
+    let mut service = ServiceProcess {
+        stdout: BufReader::new(child.stdout.take().unwrap()),
+        stderr: None,
+        child,
+    };
+    let socket = wait_for_socket_line(&mut service);
+    let bound = started.elapsed();
+    let mut session =
+        aethercore_ipc::UnixSocketSession::connect(std::path::Path::new(&socket)).expect("connect");
+    assert!(matches!(
+        exchange(&mut session, &hello_frame()).payload,
+        Some(server_frame::Payload::Hello(_))
+    ));
+    let first = list_insights_label(&mut session);
+    let mut label = first.clone();
+    let deadline = std::time::Instant::now() + Duration::from_secs(300);
+    while label == "loading" && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(500));
+        label = list_insights_label(&mut session);
+    }
+    let loaded = started.elapsed();
+    eprintln!(
+        "DBT-P75-078 measured: socket after {} ms, first label {first:?}, {label:?} after {} ms",
+        bound.as_millis(),
+        loaded.as_millis()
+    );
+    assert_eq!(
+        first, "loading",
+        "the socket was served only after the model loaded"
+    );
+    assert_eq!(label, "localModel", "the model never finished loading");
+    assert!(bound < loaded);
+    drop(session);
+    drop(service);
+    let _ = std::fs::remove_dir_all(&temp);
 }
