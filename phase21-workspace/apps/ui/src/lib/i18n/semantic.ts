@@ -46,6 +46,32 @@ export function describeTimelineEntry(entry: { domain: string; code: string }, l
   if ((m = entry.code.match(/^scan\.completed:findings=(\d+)$/))) return t('timeline.code.scan', locale, { count: m[1] });
   return entry.code;
 }
+// P76 (DBT-P76-004, -005): ids the service emits and the UI printed raw. The lists are
+// the Rust sources' own (`localized-text.test.ts` reads them); an id missing here reads as a
+// generic label, never as the id.
+const collectorKeys: Record<string, MessageKey> = {
+  cpu:'perf.collector.cpu', 'cpu.counters':'perf.collector.cpu.counters', gpu:'perf.collector.gpu', memory:'perf.collector.memory',
+  'memory.counters':'perf.collector.memory.counters', power:'perf.collector.power', 'power.temperature':'perf.collector.power.temperature',
+  processTop:'perf.collector.processTop', storage:'perf.collector.storage', 'storage.activeTime':'perf.collector.storage.activeTime',
+  'storage.rates':'perf.collector.storage.rates', thermalPower:'perf.collector.thermalPower',
+};
+const collectorFaultKeys: Record<string, MessageKey> = {
+  Unavailable:'perf.fault.Unavailable', ProviderFailure:'perf.fault.ProviderFailure', Timeout:'perf.fault.Timeout', Cancelled:'perf.fault.Cancelled',
+  PermissionDenied:'perf.fault.PermissionDenied', Degraded:'perf.fault.Degraded', NotCollected:'perf.fault.NotCollected',
+  MalformedResponse:'perf.fault.MalformedResponse', Io:'perf.fault.Io', Internal:'perf.fault.Internal',
+};
+const cleanupProviderKeys: Record<string, MessageKey> = {
+  WindowsTemp:'cleanup.provider.WindowsTemp', UserTemp:'cleanup.provider.UserTemp', ShaderCache:'cleanup.provider.ShaderCache',
+  WER:'cleanup.provider.WER', CrashDumps:'cleanup.provider.CrashDumps',
+};
+const storageCounterKeys: Record<string, MessageKey> = {
+  'uncorrected read error count':'tech.storage.counter.readErrors', 'uncorrected write error count':'tech.storage.counter.writeErrors',
+  'NVMe critical-warning flags':'tech.storage.counter.nvmeCritical', 'NVMe media/data-integrity error count':'tech.storage.counter.nvmeMedia',
+};
+export function localizeCollector(value: string, locale: Locale): string { return td(collectorKeys[value] ?? 'perf.collector.unknown', locale); }
+export function localizeCollectorFault(value: string, locale: Locale): string { return collectorFaultKeys[value] ? td(collectorFaultKeys[value], locale) : td('perf.fault.Internal', locale); }
+export function localizeCleanupProvider(value: string, locale: Locale): string { return td(cleanupProviderKeys[value] ?? 'cleanup.provider.unknown', locale); }
+export function localizeCleanupKind(value: string, locale: Locale): string { return value === 'Files' ? td('cleanup.kind.Files', locale) : value; }
 
 export function localizeState(value: string, locale: Locale): string { return stateKeys[value] ? td(stateKeys[value], locale) : value; }
 export function localizeRisk(value: string, locale: Locale): string { return riskKeys[value] ? td(riskKeys[value], locale) : value; }
@@ -260,6 +286,8 @@ export function localizeOwnedText(value: string, locale: Locale): LocalizedOwned
     const key = ({read:'tech.storage.latencyRead',write:'tech.storage.latencyWrite',flush:'tech.storage.latencyFlush'} as const)[m[1] as 'read'|'write'|'flush'];
     return { text:td(key,locale), localized:true };
   }
+  if ((m = value.match(/^Windows reports this disk healthy; (\d+) SMART\/reliability counter\(s\) were not reported and could not be independently checked\.$/))) return { text:t('tech.storage.healthyUnreported',locale,{count:m[1]}),localized:true };
+  if ((m = value.match(/^(.+): not reported$/)) && storageCounterKeys[m[1]]) return { text:t('tech.storage.notReported',locale,{name:td(storageCounterKeys[m[1]],locale)}),localized:true };
   if ((m = value.match(/^Windows currently reports (\d+)% physical-memory load\. This is resource pressure, not a RAM hardware-health verdict\.$/))) return { text:t('tech.memory.pressure',locale,{load:m[1]}),localized:true };
   if ((m = value.match(/^(\d+) WHEA event\(s\) contained memory-related hardware-error evidence in the last (\d+) days\.$/))) return { text:t('tech.card.memoryErrorsSummary',locale,{count:m[1],days:m[2]}),localized:true };
   if ((m = value.match(/^No memory-related WHEA evidence was found in the last (\d+) days\. This does not prove RAM is fault-free\.$/))) return { text:t('tech.card.noMemoryErrorsSummary',locale,{days:m[1]}),localized:true };
@@ -271,7 +299,7 @@ export function localizeOwnedText(value: string, locale: Locale): LocalizedOwned
   if ((m = value.match(/^(.+) — storage reliability$/))) return { text:t('tech.card.storageTitle',locale,{device:m[1]}),localized:true };
   if ((m = value.match(/^(.+) temporary files$/))) return { text:t('tech.cleanup.userTempTitle',locale,{name:m[1]}),localized:true };
   if ((m = value.match(/^(.+) Direct3D shader cache$/))) return { text:t('tech.cleanup.shaderTitle',locale,{name:m[1]}),localized:true };
-  if ((m = value.match(/^(.+) provider completed$/))) return { text:t('tech.cleanup.providerCompleted',locale,{provider:m[1]}),localized:true };
+  if ((m = value.match(/^(.+) provider completed$/))) return { text:t('tech.cleanup.providerCompleted',locale,{provider:localizeCleanupProvider(m[1],locale)}),localized:true };
   if ((m = value.match(/^(.+); skipped (\d+) bytes that changed, were locked, or failed validation$/))) {
     const detail=localizeOwnedText(m[1],locale).text;
     return { text:t('tech.cleanup.itemResult',locale,{detail,bytes:m[2]}),localized:true };
