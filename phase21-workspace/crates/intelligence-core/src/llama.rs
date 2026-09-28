@@ -5,12 +5,11 @@
 //! is ONLY automatic runtime fault-handling (I3), never a supported configuration.
 
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::assistant::GenerationBudget;
 #[cfg(feature = "embedded-model")]
 use crate::assistant::MODEL_BUSY;
-use crate::engine::LocalReasoner;
 use crate::model::{Citation, Insight, InsightConfidence, InsightEngineKind, TypedEvidencePack};
 use sha2::Digest;
 
@@ -80,18 +79,8 @@ pub fn embedded_model_entry() -> ModelManifestEntry {
 pub fn activate_embedded_reasoner(
     product_root: &Path,
 ) -> Result<(LlamaCppReasoner, String), String> {
-    let model_path = product_root.join(EMBEDDED_MODEL_RELATIVE_PATH);
-    let pinned = embedded_model_entry();
-    verify_model_hash(&model_path, &pinned)?;
-    let mut reasoner = LlamaCppReasoner::new();
-    reasoner.load(&model_path)?;
-    if !reasoner.is_loaded() {
-        return Err("loader returned success but model is not loaded".into());
-    }
-    let label = format!(
-        "intelligence-core: embedded reasoner active (model={}, sha256 ok)",
-        pinned.file_name.trim_end_matches(".gguf")
-    );
+    let reasoner = LlamaCppReasoner::new();
+    let label = reasoner.activate(product_root)?;
     Ok((reasoner, label))
 }
 
@@ -336,20 +325,22 @@ fn chat_prompt(system: &str, user: &str) -> String {
 
 /// LlamaCpp-backed reasoner — the PERMANENT default engine when the artifact verifies.
 ///
-/// `Clone` shares, it does not copy: every clone holds the same loaded model and
-/// the same generation gate. Generation is serialised through that gate with a
-/// TRY-lock, so the insight path and the assistant never decode at once on the
-/// user's machine and neither ever queues behind the other: the one that finds
-/// the gate held returns [`MODEL_BUSY`] at once — an insight then degrades to the
+/// `Clone` shares, it does not copy: every clone holds the same model slot and the same
+/// generation gate. The slot is resolved once, by whichever clone loads it, so a
+/// service can hand clones out, start serving, and load in the background (P76,
+/// DBT-P75-078); until then every clone reads loading. Generation is serialised through
+/// that gate with a TRY-lock, so the insight path and the assistant never decode at
+/// once on the user's machine and neither ever queues behind the other: the one that
+/// finds the gate held returns [`MODEL_BUSY`] at once — an insight then degrades to the
 /// rule engine, an assistant turn is refused `Busy`.
 #[derive(Clone)]
 // Without the embedded model there is nothing to decode with, so the handle and the gate
 // exist only to keep one type across both builds.
 #[cfg_attr(not(feature = "embedded-model"), allow(dead_code))]
 pub struct LlamaCppReasoner {
-    loaded: bool,
-    /// Handle text kept opaque; the binding types are feature-internal.
-    backend: Option<Arc<LlamaBackendHandle>>,
+    /// Unset while loading; `Err` when verification or the load failed. The
+    /// binding types stay feature-internal.
+    slot: Arc<OnceLock<Result<Arc<LlamaBackendHandle>, String>>>,
     gate: Arc<Mutex<()>>,
 }
 
@@ -367,10 +358,38 @@ impl LlamaCppReasoner {
 
     pub fn new() -> Self {
         Self {
-            loaded: false,
-            backend: None,
+            slot: Arc::new(OnceLock::new()),
             gate: Arc::new(Mutex::new(())),
         }
+    }
+
+    /// Full startup sequence (M2) into this reasoner's shared slot: locate →
+    /// sha256 vs pinned+manifest → RAM budget → load within budget. Resolves the
+    /// slot either way, so no clone reads loading after it returns. Returns the
+    /// typed startup log line.
+    pub fn activate(&self, product_root: &Path) -> Result<String, String> {
+        let model_path = product_root.join(EMBEDDED_MODEL_RELATIVE_PATH);
+        let pinned = embedded_model_entry();
+        let loaded = verify_model_hash(&model_path, &pinned).and_then(|()| load_model(&model_path));
+        self.resolve(loaded)?;
+        Ok(format!(
+            "intelligence-core: embedded reasoner active (model={}, sha256 ok)",
+            pinned.file_name.trim_end_matches(".gguf")
+        ))
+    }
+
+    /// Whether the model is still being loaded: nothing has resolved the slot yet.
+    pub fn is_loading(&self) -> bool {
+        self.slot.get().is_none()
+    }
+
+    fn resolve(&self, loaded: Result<LlamaBackendHandle, String>) -> Result<(), String> {
+        let loaded = loaded.map(Arc::new);
+        let reply = loaded.as_ref().map(|_| ()).map_err(Clone::clone);
+        self.slot
+            .set(loaded)
+            .map_err(|_| "the model slot was already resolved".to_string())?;
+        reply
     }
 
     /// The insight generation itself, exposed so a test can read its token
@@ -428,40 +447,15 @@ impl Default for LlamaCppReasoner {
 #[cfg_attr(not(feature = "embedded-model"), allow(unused))]
 impl crate::engine::LocalReasoner for LlamaCppReasoner {
     fn load(&mut self, model_path: &Path) -> Result<(), String> {
-        #[cfg(feature = "embedded-model")]
-        {
-            let model = llama_cpp_2::model::LlamaModel::load_from_file(
-                backend_global()?,
-                model_path,
-                &llama_cpp_2::model::params::LlamaModelParams::default(),
-            )
-            .map_err(|e| format!("gguf load failed: {e}"))?;
-
-            // Context creation at load proves the artifact loads into a working
-            // window; each generation builds its own context from the shared model.
-            let backend = backend_global()?;
-            let ctx_params = llama_cpp_2::context::params::LlamaContextParams::default()
-                .with_n_ctx(std::num::NonZeroU32::new(2048))
-                .with_n_batch(256);
-            {
-                let _ctx = model
-                    .new_context(backend, ctx_params)
-                    .map_err(|e| format!("context init failed: {e}"))?;
-            }
-
-            self.backend = Some(Arc::new(LlamaBackendHandle { model }));
-            self.loaded = true;
-            Ok(())
-        }
-        #[cfg(not(feature = "embedded-model"))]
-        {
-            let _ = model_path;
-            Err("embedded-model feature not compiled".into())
-        }
+        self.resolve(load_model(model_path))
     }
 
     fn is_loaded(&self) -> bool {
-        self.loaded
+        matches!(self.slot.get(), Some(Ok(_)))
+    }
+
+    fn is_loading(&self) -> bool {
+        LlamaCppReasoner::is_loading(self)
     }
 
     /// P75 — `DBT-P56-002`'s other half. This returned `Err` unconditionally
@@ -487,7 +481,11 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
 /// each time you ask is not one.
 impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
     fn is_loaded(&self) -> bool {
-        self.loaded
+        matches!(self.slot.get(), Some(Ok(_)))
+    }
+
+    fn is_loading(&self) -> bool {
+        LlamaCppReasoner::is_loading(self)
     }
 
     fn generate(
@@ -524,6 +522,31 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
             Err("embedded-model feature not compiled".into())
         }
     }
+}
+
+/// Loads the gguf and proves it opens a working context; each generation builds
+/// its own context from the shared model.
+#[cfg(feature = "embedded-model")]
+fn load_model(model_path: &Path) -> Result<LlamaBackendHandle, String> {
+    let model = llama_cpp_2::model::LlamaModel::load_from_file(
+        backend_global()?,
+        model_path,
+        &llama_cpp_2::model::params::LlamaModelParams::default(),
+    )
+    .map_err(|e| format!("gguf load failed: {e}"))?;
+    let ctx_params = llama_cpp_2::context::params::LlamaContextParams::default()
+        .with_n_ctx(std::num::NonZeroU32::new(2048))
+        .with_n_batch(256);
+    model
+        .new_context(backend_global()?, ctx_params)
+        .map_err(|e| format!("context init failed: {e}"))?;
+    Ok(LlamaBackendHandle { model })
+}
+
+#[cfg(not(feature = "embedded-model"))]
+fn load_model(model_path: &Path) -> Result<LlamaBackendHandle, String> {
+    let _ = model_path;
+    Err("embedded-model feature not compiled".into())
 }
 
 #[cfg(feature = "embedded-model")]
@@ -577,7 +600,9 @@ impl LlamaCppReasoner {
         use llama_cpp_2::model::AddBos;
         use llama_cpp_2::sampling::LlamaSampler;
 
-        let handle = self.backend.as_ref().ok_or("model not loaded")?;
+        let Some(Ok(handle)) = self.slot.get() else {
+            return Err("model not loaded".into());
+        };
         let _held = match self.gate.try_lock() {
             Ok(held) => held,
             // A panic mid-generation poisons the gate. The model is read-only

@@ -243,7 +243,7 @@ export type Insight = {
   engine:'localModel'|'ruleFallback'
 };
 export type InsightsResponse = {
-  engineLabel:'localModel'|'ruleFallback'|'disabled'; insights:Insight[]
+  engineLabel:'localModel'|'ruleFallback'|'disabled'|'loading'; insights:Insight[]
 };
 
 type KernelEvent<K extends string, P> = { sequence:number; emittedUnixMs:number; kind:K; planId:string; payload:P };

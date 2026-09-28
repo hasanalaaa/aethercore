@@ -53,12 +53,23 @@ pub(super) fn request_insight(call: &Call<'_>, v: v1::RequestInsightRequest) -> 
             );
             Ok(Some(response::Payload::InsightsResponse(response)))
         }
+        // P76 DBT-P75-078: the model is loading after a service start; retry shortly.
+        Err(e @ aethercore_intelligence_core::IntelligenceError::ModelLoading) => {
+            Err(ServiceError::new(
+                6,
+                v1::ErrorCode::Busy,
+                "intelligence",
+                "insight.error.modelLoading",
+                e.to_string(),
+                true,
+            ))
+        }
         Err(e) => Err(ServiceError::new(
             6,
             v1::ErrorCode::Busy,
             "intelligence",
             "insight.error.busy",
-            e,
+            e.to_string(),
             false,
         )),
     }
