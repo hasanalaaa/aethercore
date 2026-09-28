@@ -49,14 +49,27 @@
     <AppIcon name="search" size={16}/><span>{t('app.command', locale)}</span><kbd>Ctrl K</kbd>
   </button>
 
-  <!-- P57: the assistant, reachable without the keyboard. It sits beside the
-       command trigger because both are shell-wide overlays rather than places
-       to navigate to — the drawer is not a screen and must not read as one. -->
-  <button use:fluidPress={{ pressedScale: 0.985 }} class="command-trigger assistant-trigger" type="button" onclick={onOpenAssistant} aria-label={t('assistant.open', locale)} aria-keyshortcuts="Control+/" aria-haspopup="dialog" aria-expanded={assistantOpen}>
-    <AppIcon name="assistant" size={16}/><span>{t('assistant.open', locale)}</span><kbd>Ctrl /</kbd>
-  </button>
-
   <nav aria-label={t('app.primaryNavigation', locale)}>
+    <!-- P76 (DBT-P76-010): the assistant was a search-box-styled button beside the
+         command palette, and a tester going screen by screen through the rail never
+         found it. It is now the rail's first entry, labelled like every other one.
+         It still opens the drawer rather than a page: the drawer answers about the
+         screen you are on. -->
+    <button
+      type="button"
+      use:fluidPress={{ pressedScale: 0.992 }}
+      class="app-nav-item assistant-nav-item"
+      class:active={assistantOpen}
+      aria-haspopup="dialog"
+      aria-expanded={assistantOpen}
+      aria-keyshortcuts="Control+/"
+      aria-label={`${t('nav.assistant', locale)} — ${t('nav.assistantDescription', locale)}`}
+      title={`${t('nav.assistantDescription', locale)} · Ctrl /`}
+      onclick={onOpenAssistant}
+    >
+      <span class="nav-icon"><AppIcon name="assistant" size={16}/></span>
+      <span class="nav-copy"><strong>{t('nav.assistant', locale)}</strong></span>
+    </button>
     {#each NAVIGATION_GROUPS as group}
       <div class="nav-group">
         <h2>{td(group.labelKey, locale)}</h2>
