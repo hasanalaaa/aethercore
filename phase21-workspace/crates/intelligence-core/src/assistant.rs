@@ -44,6 +44,8 @@ pub const ASSISTANT_SCHEMA_V1: u32 = 1;
 
 /// Fault keys. Message keys, never prose — the renderer owns the words.
 pub const FAULT_MODEL_UNAVAILABLE: &str = "assistant.fault.modelUnavailable";
+/// The model is still loading after a service start (P76, DBT-P75-078).
+pub const FAULT_MODEL_LOADING: &str = "assistant.fault.modelLoading";
 pub const FAULT_DEADLINE_EXCEEDED: &str = "assistant.fault.deadlineExceeded";
 pub const FAULT_GENERATION_FAILED: &str = "assistant.fault.generationFailed";
 
@@ -129,6 +131,10 @@ pub struct Generated {
 /// fallback summarises a pack and cannot answer a question.
 pub trait StreamingReasoner: Send + Sync {
     fn is_loaded(&self) -> bool;
+    /// Whether the model is still loading; a turn then faults loading, not unavailable.
+    fn is_loading(&self) -> bool {
+        false
+    }
     /// Generates an answer to `question` over `pack`, in `locale`, calling `sink`
     /// with the ACCUMULATED text after each token so a renderer never has to
     /// reassemble fragments. Errors are real failures, never "no answer".
@@ -341,6 +347,7 @@ impl AssistantEngine {
     pub fn engine_label(&self) -> &'static str {
         match self.reasoner.as_ref() {
             Some(reasoner) if reasoner.is_loaded() => "localModel",
+            Some(reasoner) if reasoner.is_loading() => "loading",
             _ => "disabled",
         }
     }
@@ -372,6 +379,12 @@ impl AssistantEngine {
                 detail: "no reasoner is loaded".into(),
             };
         };
+        if reasoner.is_loading() {
+            return TurnOutcome::Faulted {
+                fault_key: FAULT_MODEL_LOADING,
+                detail: "the embedded model is still loading".into(),
+            };
+        }
         if !reasoner.is_loaded() {
             return TurnOutcome::Faulted {
                 fault_key: FAULT_MODEL_UNAVAILABLE,

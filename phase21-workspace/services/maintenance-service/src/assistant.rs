@@ -147,6 +147,14 @@ impl AssistantCoordinator {
         if pack.items.is_empty() {
             return refused(turn_id, label, RefusalReason::NoEvidence, &pack);
         }
+        if label == "loading" {
+            return faulted(
+                turn_id,
+                label,
+                aethercore_intelligence_core::assistant::FAULT_MODEL_LOADING,
+                &pack,
+            );
+        }
         if label != "localModel" {
             return faulted(
                 turn_id,
