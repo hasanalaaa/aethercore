@@ -538,17 +538,23 @@ impl CareCoordinator {
                 approved_digest.as_deref(),
             );
         match result {
-            Ok(report) => Ok(status_proto(
-                if report.stopped_for_consent {
-                    "Cancelled"
-                } else {
-                    "Completed"
-                },
-                "Report",
-                true,
-                &plan,
-                &report.steps,
-            )),
+            Ok(report) => {
+                let mut status = status_proto(
+                    if report.stopped_for_consent {
+                        "Cancelled"
+                    } else {
+                        "Completed"
+                    },
+                    "Report",
+                    true,
+                    &plan,
+                    &report.steps,
+                );
+                // The report names the run it is about (P76): it was always empty, so a
+                // client could not find this run on the timeline or in the care journal.
+                status.run_id = run_id.to_string();
+                Ok(status)
+            }
             Err(error) => {
                 // No consent, or consent to a plan other than this one, before anything
                 // ran: surface the plan as it is now, awaiting consent.

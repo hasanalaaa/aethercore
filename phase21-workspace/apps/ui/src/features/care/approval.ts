@@ -1,4 +1,4 @@
-import type { CareRunStatus } from '../../lib/contracts';
+import type { CareRunStatus, CleanupSnapshot } from '../../lib/contracts';
 
 /**
  * DBT-P75-045: the service approves the care plan it composes when the owner clicks, and that
@@ -27,4 +27,17 @@ export function approvedStepCount(status: CareRunStatus | null): number {
  */
 export function isPlanChanged(error: unknown): boolean {
   return String(error).includes('care.error.planChanged');
+}
+
+export type CareEmptyReason = { kind: 'noScan' } | { kind: 'nothingEligible'; optIn: string[] } | { kind: 'noPlan' };
+
+/**
+ * P76 (DBT-P76-008): why a care plan has no steps, from the cleanup scan care draws on. Care
+ * runs only the default, automatic categories; the rest need the owner's explicit opt-in in
+ * Deep Clean, and are listed by title so the panel can say so.
+ */
+export function careEmptyReason(scan: CleanupSnapshot): CareEmptyReason {
+  if (scan.state !== 'Ready') return { kind: 'noScan' };
+  if (scan.candidates.some((c) => c.selectedByDefault && !c.requiresExplicitConfirmation)) return { kind: 'noPlan' };
+  return { kind: 'nothingEligible', optIn: scan.candidates.filter((c) => c.requiresExplicitConfirmation).map((c) => c.title) };
 }

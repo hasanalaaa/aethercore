@@ -42,3 +42,25 @@ test('the service refusing a changed plan is shown as a new plan, other failures
   assert.equal(isPlanChanged('care.error.planChanged'), true);
   assert.equal(isPlanChanged(new Error('care.error.startFailed')), false);
 });
+
+// P76 DBT-P76-008 (the owner's Windows install): with the one default cleanup category empty,
+// care found nothing to run (chosen=0) and the panel said "Run a domain scan first" — after a
+// scan. It now says which of three things is true.
+test('an empty care plan says why: no scan, nothing eligible (and what needs opt-in), or no plan yet', async () => {
+  const { careEmptyReason } = await import('../src/features/care/approval.ts');
+  const candidate = (title: string, byDefault: boolean) => ({
+    candidateId: title, provider: 'x', title, description: '', reclaimableBytes: 1, fileCount: 1,
+    selectedByDefault: byDefault, requiresExplicitConfirmation: !byDefault, truncated: false, specialKind: 'Files',
+  });
+  const snapshot = (state: string, candidates: ReturnType<typeof candidate>[]) => ({
+    scanId: 's', state, inventoryEpoch: 1, startedUnixMs: 1, completedUnixMs: 2, errorMessage: '',
+    totalReclaimableBytes: 0, totalFileCount: 0, candidates, warnings: [],
+  });
+  assert.deepEqual(careEmptyReason(snapshot('Idle', [])), { kind: 'noScan' });
+  assert.deepEqual(
+    careEmptyReason(snapshot('Ready', [candidate('Alice temporary files', false), candidate('Windows minidumps', false)])),
+    { kind: 'nothingEligible', optIn: ['Alice temporary files', 'Windows minidumps'] },
+  );
+  assert.deepEqual(careEmptyReason(snapshot('Ready', [])), { kind: 'nothingEligible', optIn: [] });
+  assert.deepEqual(careEmptyReason(snapshot('Ready', [candidate('Windows temporary files', true)])), { kind: 'noPlan' });
+});
