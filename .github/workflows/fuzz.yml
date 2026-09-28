@@ -17,8 +17,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # P76 DBT-P58-004: all twelve targets in fuzz/fuzz_targets/, as fuzz/Cargo.toml declares.
         target: [export_envelope_parse, pg_conf_parse, mysql_conf_parse,
-                 pg_slow_log_parse, mysql_slow_log_parse]
+                 pg_slow_log_parse, mysql_slow_log_parse, ipc_frame, operation_state,
+                 pii_redaction, scheduler_eligibility, support_archive, update_manifest,
+                 windows_multisz]
     steps:
       - uses: actions/checkout@v4
 

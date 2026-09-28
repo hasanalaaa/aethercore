@@ -22,6 +22,13 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 aethercore-db-diagnostics = { path = "../crates/db-diagnostics" }
 aethercore-persistence = { path = "../crates/persistence" }
+# P76 DBT-P58-004: the crates the other seven targets exercise.
+aethercore-ipc = { path = "../crates/ipc" }
+aethercore-operation-engine = { path = "../crates/operation-engine" }
+aethercore-support-bundle = { path = "../crates/support-bundle", features = ["fuzzing"] }
+aethercore-idle-scheduler = { path = "../crates/idle-scheduler" }
+aethercore-update-engine = { path = "../crates/update-engine", features = ["fuzzing"] }
+aethercore-windows-pnp = { path = "../crates/windows-pnp" }
 
 [[bin]]
 name = "export_envelope_parse"
@@ -54,6 +61,55 @@ bench = false
 [[bin]]
 name = "mysql_slow_log_parse"
 path = "fuzz_targets/mysql_slow_log_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ipc_frame"
+path = "fuzz_targets/ipc_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "operation_state"
+path = "fuzz_targets/operation_state.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pii_redaction"
+path = "fuzz_targets/pii_redaction.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scheduler_eligibility"
+path = "fuzz_targets/scheduler_eligibility.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "support_archive"
+path = "fuzz_targets/support_archive.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "update_manifest"
+path = "fuzz_targets/update_manifest.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "windows_multisz"
+path = "fuzz_targets/windows_multisz.rs"
 test = false
 doc = false
 bench = false
