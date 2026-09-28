@@ -53,7 +53,7 @@ export type AssistantState = {
   inFlight: string;
   /** What the assistant may draw on right now, read without starting a turn. */
   pack: readonly AssistantEvidenceRef[];
-  /** localModel | ruleFallback | disabled | '' before the pack has been read. */
+  /** localModel | loading | disabled | '' before the pack has been read. */
   engineLabel: string;
   /** Whether `pack` has been read at all — `[]` before and `[]` after differ. */
   packRead: boolean;

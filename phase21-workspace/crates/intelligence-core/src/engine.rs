@@ -35,6 +35,8 @@ pub enum IntelligenceError {
     EmptyEvidence,
     #[error("model runtime unavailable: {0}")]
     ModelUnavailable(String),
+    #[error("the on-device model is still loading")]
+    ModelLoading,
 }
 
 /// The reasoner contract (B1). Implementations: LlamaCppReasoner (feature-gated) and
@@ -42,6 +44,11 @@ pub enum IntelligenceError {
 pub trait LocalReasoner: Send + Sync {
     fn load(&mut self, model_path: &std::path::Path) -> Result<(), String>;
     fn is_loaded(&self) -> bool;
+    /// Whether the model is still loading; a request that needs it then answers
+    /// loading rather than being served by the rule engine.
+    fn is_loading(&self) -> bool {
+        false
+    }
     /// Returns raw candidate insights, their prose in `locale`; the ENGINE enforces
     /// citations before emission.
     fn infer(
@@ -280,6 +287,9 @@ impl ReasonerSelector {
     }
 
     pub fn engine_label(&self) -> &'static str {
+        if self.model_loading() {
+            return "loading";
+        }
         let health = self.health.lock().unwrap_or_else(|p| p.into_inner());
         match health.last_mode {
             Some(InsightEngineKind::LocalModel) => "localModel",
@@ -319,10 +329,17 @@ impl ReasonerSelector {
         if pack.items.is_empty() {
             return Err(IntelligenceError::EmptyEvidence);
         }
+        if self.model_loading() {
+            return Err(IntelligenceError::ModelLoading);
+        }
         let Some(_lane) = Lane::acquire(&self.in_flight) else {
             return Err(IntelligenceError::Busy);
         };
         self.dispatch(pack, question, locale)
+    }
+
+    fn model_loading(&self) -> bool {
+        self.model_reasoner.as_ref().is_some_and(|r| r.is_loading())
     }
 
     fn dispatch(

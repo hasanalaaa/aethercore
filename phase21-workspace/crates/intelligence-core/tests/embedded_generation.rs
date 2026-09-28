@@ -586,3 +586,42 @@ fn the_real_model_writes_insights_in_arabic_when_arabic_is_requested() {
         );
     }
 }
+
+/// P76 DBT-P75-078: a clone taken BEFORE the model loads, on another thread, sees the
+/// loaded model afterwards and generates with it — what the service's background load
+/// relies on.
+#[test]
+fn a_clone_taken_before_the_background_load_generates_after_it() {
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let model = LlamaCppReasoner::new();
+    let engine = AssistantEngine::new(Some(Box::new(model.clone())));
+    assert_eq!(engine.engine_label(), "loading");
+    let loader = model.clone();
+    let started = Instant::now();
+    let label = std::thread::spawn(move || loader.activate(&product_root()))
+        .join()
+        .expect("the load thread does not panic")
+        .expect("the artifact must verify and load");
+    measured(&format!(
+        "background load: {} ms ({label})",
+        started.elapsed().as_millis()
+    ));
+    assert_eq!(engine.engine_label(), "localModel");
+    let outcome = engine.ask(
+        &pack(),
+        "what maintenance has run on this machine?",
+        Locale::En,
+        false,
+        Arc::new(AtomicBool::new(false)),
+        &mut |_| {},
+    );
+    if stopped_honestly_by_a_slow_host(&outcome) {
+        return;
+    }
+    assert!(
+        matches!(outcome, TurnOutcome::Answered { .. }),
+        "{outcome:?}"
+    );
+}

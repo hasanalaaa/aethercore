@@ -399,3 +399,106 @@ fn cleanup_snapshot_is_principal_bound() {
     ));
     let _ = std::fs::remove_dir_all(root);
 }
+
+// P76 DBT-P75-027: the crate-level SQL probes P75 ran and could not commit (they need this
+// dev-dependency). Triggers installed from a second connection on the test database watch
+// the real coordinator: what the journal says at the instant the plan turns terminal, and
+// what is left when the journal write itself fails.
+const FLIP_PROBE: &str =
+    "CREATE TABLE probe(stage TEXT, recovery_required INTEGER, completed INTEGER);
+     CREATE TRIGGER probe_flip AFTER UPDATE OF state ON plans
+     WHEN NEW.state IN ('Failed','Completed') BEGIN
+       INSERT INTO probe SELECT stage, recovery_required, completed_unix_ms IS NOT NULL
+       FROM maintenance_executions WHERE plan_id = NEW.id;
+     END;";
+const JOURNAL_ABORT: &str =
+    "CREATE TRIGGER probe_abort_insert BEFORE INSERT ON maintenance_executions
+     WHEN NEW.stage IN ('Failed','Completed') BEGIN SELECT RAISE(ABORT, 'probe'); END;
+     CREATE TRIGGER probe_abort_update BEFORE UPDATE ON maintenance_executions
+     WHEN NEW.stage IN ('Failed','Completed') BEGIN SELECT RAISE(ABORT, 'probe'); END;";
+
+/// Runs one cleanup to its end with `probe` installed; returns the plan id.
+fn probed_cleanup(
+    label: &str,
+    fail_delete: bool,
+    probe: &str,
+) -> (std::path::PathBuf, Arc<Database>, CleanupEngine, String) {
+    let root = temp_root(label);
+    std::fs::create_dir_all(&root).expect("root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    rusqlite::Connection::open(root.join("state.db"))
+        .expect("probe connection")
+        .execute_batch(probe)
+        .expect("install probe");
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let cleaner = CleanupEngine::with_platform(
+        engine.clone(),
+        db.clone(),
+        Arc::new(FakeCleanupPlatform { fail_delete }),
+    );
+    start_cleanup_scan(&cleaner, OWNER).expect("scan");
+    let snapshot = wait_scan(&cleaner);
+    let plan = cleaner
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[snapshot.candidates[0].candidate_id.clone()],
+        )
+        .expect("plan");
+    authorize(&engine, &plan.id);
+    start_cleanup(&cleaner, OWNER, &plan.id).expect("start");
+    (root, db, cleaner, plan.id)
+}
+
+fn probe_rows(root: &std::path::Path) -> Vec<(String, i64, bool)> {
+    let conn = rusqlite::Connection::open(root.join("state.db")).expect("probe connection");
+    let mut stmt = conn.prepare("SELECT * FROM probe").expect("probe query");
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .expect("probe rows")
+        .map(|row| row.expect("probe row"))
+        .collect()
+}
+
+#[test]
+fn sql_probe_a_failed_cleanup_is_journaled_at_the_instant_it_turns_terminal() {
+    let (root, _db, cleaner, plan) = probed_cleanup("probe-failed", true, FLIP_PROBE);
+    wait_terminal(&cleaner, &plan, "Failed");
+    assert_eq!(probe_rows(&root), vec![("Failed".to_owned(), 1, true)]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn sql_probe_a_completed_cleanup_is_journaled_at_the_instant_it_turns_terminal() {
+    let (root, _db, cleaner, plan) = probed_cleanup("probe-completed", false, FLIP_PROBE);
+    wait_terminal(&cleaner, &plan, "Completed");
+    assert_eq!(probe_rows(&root), vec![("Completed".to_owned(), 0, true)]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A journal write that fails leaves the plan non-terminal, where recovery finds it and
+/// records that deletion had begun.
+#[test]
+fn sql_probe_a_cleanup_whose_journal_write_fails_stays_recoverable() {
+    let (root, db, cleaner, plan) = probed_cleanup("probe-abort", true, JOURNAL_ABORT);
+    // The unprobed failure reaches Failed in milliseconds (the test above); two seconds is
+    // the window in which this one would have, had the aborted journal not stopped it.
+    let window = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < window {
+        let status = cleaner.status(OWNER, Some(&plan)).unwrap().unwrap();
+        assert_ne!(
+            status.plan_state, "Failed",
+            "plan Failed is terminal although its journal was never written"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    let state = db.get_plan(&plan).expect("plan").expect("row").state;
+    assert!(
+        matches!(state.as_str(), "Executing" | "Verifying"),
+        "{state}"
+    );
+    cleaner.recover_incomplete().expect("recovery");
+    let records = db.recovery_records(20).expect("recovery records");
+    assert!(records.iter().any(|r| r.plan_id == plan), "{records:?}");
+    let _ = std::fs::remove_dir_all(root);
+}
