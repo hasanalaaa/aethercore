@@ -48,6 +48,17 @@ jobs:
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
           rustup override set 1.97.1
+      # P76 DBT-P76-009: bootstrap.ps1 is the one script a fresh machine starts under
+      # Windows PowerShell 5.1 (it then installs pwsh and re-runs itself there), so 5.1 must
+      # be able to parse it.
+      - name: bootstrap.ps1 parses under Windows PowerShell 5.1
+        shell: powershell
+        working-directory: phase21-workspace
+        run: |
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/bootstrap.ps1'), [ref]$null, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { Write-Host $_ }; exit 1 }
+          Write-Host "PowerShell $($PSVersionTable.PSVersion) parses bootstrap.ps1"
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22.16.0
@@ -204,7 +215,8 @@ jobs:
           for t in scripts/test_gate_contains.py scripts/test_gate_module_reader.py \
                    scripts/test_gate_readers.py scripts/test_omega_delivered_set.py \
                    scripts/test_source_seal.py scripts/test_windows_server_support.py \
-                   scripts/test-phase12-localization.py scripts/ps_marker_scan.py; do
+                   scripts/test-phase12-localization.py scripts/ps_marker_scan.py \
+                   scripts/test_bootstrap_pwsh.py; do
             echo "== $t"
             python3 "$t"
           done
