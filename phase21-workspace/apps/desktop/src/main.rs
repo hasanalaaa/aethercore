@@ -644,6 +644,19 @@ async fn get_repair_assessment() -> Result<v1::RepairAssessmentSnapshot, String>
 }
 
 #[command]
+async fn cancel_repair_assessment() -> Result<v1::RepairAssessmentSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let resp = request(request::Payload::CancelRepairAssessment(
+            v1::CancelRepairAssessmentRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        extract_repair_assessment(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
 async fn create_system_repair_plan(
     assessment_id: String,
     run_disk_scan: bool,
@@ -3047,6 +3060,7 @@ fn main() {
             get_recovery_history,
             start_repair_assessment,
             get_repair_assessment,
+            cancel_repair_assessment,
             create_system_repair_plan,
             start_system_repair,
             get_system_repair_status,

@@ -1,7 +1,10 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use std::{
-    sync::{Arc, Mutex, RwLock},
+    sync::{
+        Arc, Mutex, RwLock,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
 };
 
@@ -31,6 +34,8 @@ pub enum RepairError {
     UnsupportedPlatform,
     #[error("repair assessment is already running")]
     Busy,
+    #[error("repair assessment was cancelled")]
+    Cancelled,
     #[error("repair assessment is not ready")]
     AssessmentNotReady,
     #[error("repair assessment is stale")]
@@ -74,6 +79,8 @@ pub enum RepairAssessmentState {
     Scanning,
     Ready,
     Failed,
+    /// The owner stopped it (P76, DBT-P76-007).
+    Cancelled,
 }
 
 impl RepairAssessmentState {
@@ -83,6 +90,7 @@ impl RepairAssessmentState {
             Self::Scanning => "Scanning",
             Self::Ready => "Ready",
             Self::Failed => "Failed",
+            Self::Cancelled => "Cancelled",
         }
     }
 }
@@ -111,6 +119,8 @@ pub struct RepairAssessment {
     pub checks: Vec<RepairCheck>,
     /// Phase 19 typed diagnosis/repair graph; absent only while idle/scanning/failed.
     pub intelligence: Option<RepairIntelligenceSnapshot>,
+    /// The check running now, while scanning; empty otherwise (P76, DBT-P76-007).
+    pub current_check_id: String,
 }
 
 impl Default for RepairAssessment {
@@ -124,8 +134,16 @@ impl Default for RepairAssessment {
             system_volume: String::new(),
             checks: Vec::new(),
             intelligence: None,
+            current_check_id: String::new(),
         }
     }
+}
+
+/// What an assessment reports while it runs (P76, DBT-P76-007): each check as it starts
+/// and as it finishes, so a slow DISM or SFC reads as progress rather than a hang.
+pub enum AssessStep<'a> {
+    Started(&'a str),
+    Finished(&'a RepairCheck),
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -157,7 +175,13 @@ pub struct RepairExecutionStatus {
 }
 
 pub trait RepairPlatform: Send + Sync + 'static {
-    fn assess(&self) -> Result<(String, Vec<RepairCheck>)>;
+    /// Runs the read-only checks, reporting each through `progress`, and stops with
+    /// [`RepairError::Cancelled`] once `cancel` is raised.
+    fn assess(
+        &self,
+        cancel: &Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> Result<(String, Vec<RepairCheck>)>;
     fn repair(
         &self,
         action: &SystemRepairAction,
@@ -221,7 +245,11 @@ struct WindowsRepairPlatform;
 
 #[cfg(not(windows))]
 impl RepairPlatform for WindowsRepairPlatform {
-    fn assess(&self) -> Result<(String, Vec<RepairCheck>)> {
+    fn assess(
+        &self,
+        _cancel: &Arc<AtomicBool>,
+        _progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> Result<(String, Vec<RepairCheck>)> {
         Err(RepairError::UnsupportedPlatform)
     }
 
@@ -249,6 +277,8 @@ pub struct RepairCoordinator {
     platform: Arc<dyn RepairPlatform>,
     assessment: Arc<RwLock<RepairAssessment>>,
     assessment_owner: Arc<RwLock<String>>,
+    /// Raised by [`RepairCoordinator::cancel_assessment`]; reset when one starts.
+    assessment_cancel: Arc<AtomicBool>,
     running: Arc<Mutex<Option<String>>>,
     telemetry: ProgressTelemetryStore,
 }
@@ -291,6 +321,7 @@ impl RepairCoordinator {
             platform,
             assessment: Arc::new(RwLock::new(RepairAssessment::default())),
             assessment_owner: Arc::new(RwLock::new(String::new())),
+            assessment_cancel: Arc::new(AtomicBool::new(false)),
             running: Arc::new(Mutex::new(None)),
             telemetry,
         }
@@ -333,18 +364,46 @@ impl RepairCoordinator {
             }
             *owner = owner_principal_key.to_owned();
             *current = initial.clone();
+            self.assessment_cancel.store(false, Ordering::SeqCst);
         }
 
         let state = self.assessment.clone();
         let platform = self.platform.clone();
         let db = self.db.clone();
+        let cancel = self.assessment_cancel.clone();
         let owner_for_worker = owner_principal_key.to_owned();
         if let Err(error) = thread::Builder::new()
             .name("aether-repair-assessment".into())
             .spawn(move || {
                 let _read_budget_lease = read_budget_lease;
+                // Each check lands in the snapshot as it finishes, so a slow one reads as
+                // "running: <check>, N done" rather than as a hang (P76, DBT-P76-007).
+                let mut progress = |step: AssessStep<'_>| {
+                    let mut guard = state.write().unwrap_or_else(|p| p.into_inner());
+                    if guard.assessment_id != assessment_id {
+                        return;
+                    }
+                    match step {
+                        AssessStep::Started(id) => guard.current_check_id = id.to_owned(),
+                        AssessStep::Finished(check) => {
+                            guard.checks.push(check.clone());
+                            guard.current_check_id.clear();
+                        }
+                    }
+                };
+                // A panic here used to kill the worker and leave the state Scanning for the
+                // life of the service, refusing every later assessment as Busy.
+                let assessed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    platform.assess(&cancel, &mut progress)
+                }))
+                .unwrap_or_else(|_| {
+                    Err(RepairError::Command(
+                        "the repair assessment stopped unexpectedly".into(),
+                    ))
+                });
+                // Taken when the checks finished, not when they started.
                 let completed = now_ms();
-                let next = match platform.assess() {
+                let next = match assessed {
                     Ok((system_volume, checks)) => {
                         let intelligence = build_intelligence(&assessment_id, &checks);
                         // Reboot resume is deliberately a workflow marker, not mutation authority.
@@ -394,17 +453,27 @@ impl RepairCoordinator {
                             system_volume,
                             checks,
                             intelligence: Some(intelligence),
+                            current_check_id: String::new(),
                         }
                     }
                     Err(error) => RepairAssessment {
                         assessment_id,
-                        state: RepairAssessmentState::Failed,
+                        state: if matches!(error, RepairError::Cancelled) {
+                            RepairAssessmentState::Cancelled
+                        } else {
+                            RepairAssessmentState::Failed
+                        },
                         started_unix_ms: started,
                         completed_unix_ms: completed,
                         error_message: error.to_string(),
                         system_volume: String::new(),
-                        checks: Vec::new(),
+                        // What finished before the stop is kept: it was measured.
+                        checks: state
+                            .read()
+                            .map(|current| current.checks.clone())
+                            .unwrap_or_default(),
                         intelligence: None,
+                        current_check_id: String::new(),
                     },
                 };
                 if let Ok(mut guard) = state.write() {
@@ -421,6 +490,17 @@ impl RepairCoordinator {
             return Err(RepairError::Command(detail));
         }
         Ok(initial)
+    }
+
+    /// Stops the owner's running assessment (P76, DBT-P76-007). The running check is
+    /// abandoned — every assessment check is read-only — and the checks already finished
+    /// stay in the snapshot. Returns the snapshot; not running is not an error.
+    pub fn cancel_assessment(&self, owner_principal_key: &str) -> Result<RepairAssessment> {
+        let current = self.assessment_for_owner(owner_principal_key)?;
+        if current.state == RepairAssessmentState::Scanning {
+            self.assessment_cancel.store(true, Ordering::SeqCst);
+        }
+        Ok(current)
     }
 
     fn assessment(&self) -> RepairAssessment {

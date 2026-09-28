@@ -143,6 +143,7 @@ export function createInitialStreamState(): StreamState {
       systemVolume: '',
       checks: [],
       intelligence: null,
+      currentCheckId: '',
     },
     repairPlan: null,
     repairStatus: null,

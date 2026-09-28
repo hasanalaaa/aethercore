@@ -72,7 +72,9 @@ export type RecoveryReadiness = { systemRestore:string; restorePointCreation:str
 export type RepairIntelligence = { schema:string; observationId:string; machineStateFingerprint:string; facts:RepairFact[]; diagnoses:RepairDiagnosis[]; recovery:RecoveryReadiness; graph:RepairGraph };
 export type RepairAssessment = {
     assessmentId:string; state:string; startedUnixMs:number; completedUnixMs:number; errorMessage:string;
-    systemVolume:string; checks:RepairCheck[]; intelligence:RepairIntelligence|null
+    systemVolume:string; checks:RepairCheck[]; intelligence:RepairIntelligence|null;
+    /** The check running now while Scanning (P76). */
+    currentCheckId:string
   };
 export type SystemRepairStatus = {
     planId:string; planState:string; stage:string; progressKnown:boolean; overallPercent:number;

@@ -20,6 +20,16 @@ export async function startRepairAssessment(): Promise<void> {
   });
 }
 
+/** P76 (DBT-P76-007): stops a running assessment; the checks already finished are kept. */
+export async function cancelRepairAssessment(): Promise<void> {
+  try {
+    const repairAssessment = await serviceInvoke<RepairAssessment>('cancel_repair_assessment');
+    patchStreamState({ repairAssessment });
+  } catch {
+    /* the stream still carries the running assessment; the next event settles it */
+  }
+}
+
 export async function reviewSystemRepair(): Promise<void> {
   const { repairAssessment } = get(streamState);
   if (repairAssessment.state !== 'Ready' || !repairAssessment.assessmentId) return;

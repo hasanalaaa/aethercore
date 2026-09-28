@@ -92,13 +92,12 @@ pub fn handle_request(
                 drivers::get_driver_install_status(call, v)
             }
             request::Payload::GetRecoveryHistory(v) => drivers::get_recovery_history(call, v),
-            request::Payload::StartRepairAssessment(_) => repair::start_repair_assessment(call),
-            request::Payload::GetRepairAssessment(_) => repair::get_repair_assessment(call),
-            request::Payload::CreateSystemRepairPlan(v) => {
-                repair::create_system_repair_plan(call, v)
-            }
-            request::Payload::StartSystemRepair(v) => repair::start_system_repair(call, v),
-            request::Payload::GetSystemRepairStatus(v) => repair::get_system_repair_status(call, v),
+            payload @ (request::Payload::StartRepairAssessment(_)
+            | request::Payload::GetRepairAssessment(_)
+            | request::Payload::CancelRepairAssessment(_)
+            | request::Payload::CreateSystemRepairPlan(_)
+            | request::Payload::StartSystemRepair(_)
+            | request::Payload::GetSystemRepairStatus(_)) => repair::route(call, payload),
             request::Payload::StartCleanupScan(_) => cleanup::start_cleanup_scan(call),
             request::Payload::GetCleanupSnapshot(_) => cleanup::get_cleanup_snapshot(call),
             request::Payload::CreateCleanupPlan(v) => cleanup::create_cleanup_plan(call, v),
