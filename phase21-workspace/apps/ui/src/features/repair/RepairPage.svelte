@@ -3,8 +3,8 @@
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { LocalizedOwnedText, Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
-  import { localizeFactState, localizeOwnedText, localizeState, t, tp } from '../../lib/i18n';
-  import { openRepairReview, repairActive, repairUi, reviewSystemRepair, setIncludeDiskScan, startRepairAssessment } from './controller';
+  import { formatDateTime, hasMessageKey, localizeFactState, localizeOwnedText, localizeState, t, td, tp } from '../../lib/i18n';
+  import { cancelRepairAssessment, openRepairReview, repairActive, repairUi, reviewSystemRepair, setIncludeDiskScan, startRepairAssessment } from './controller';
   import { shortDigest, stageTone } from '../shared';
 
   $: snapshot = $streamState.snapshot;
@@ -32,6 +32,15 @@
     return 'unknown';
   }
   function diagnosisFor(domain:string) { return intelligence?.diagnoses.find((item) => item.domain === domain); }
+
+  // P76 (DBT-P76-007): an assessment runs DISM ScanHealth, SFC and CHKDSK one after another
+  // and can take many minutes; the page says which check is running, since when, and lets
+  // the owner stop it. A start time, not a ticking clock: the renderer does not poll.
+  function checkLabel(id: string): string {
+    if (!id) return t('repair.check.starting', locale);
+    const key = `repair.check.${id}`;
+    return hasMessageKey(key) ? td(key, locale) : id;
+  }
 </script>
 
 <header>
@@ -52,13 +61,17 @@
   <div class="phase4-hero-copy">
     <div class:ready={repairAssessment.state === 'Ready' && attentionFacts === 0} class:scanning={repairAssessment.state === 'Scanning'} class:attention={attentionFacts > 0} class="scan-orb"><span>{repairAssessment.state === 'Ready' ? (attentionFacts ? '!' : '✓') : repairAssessment.state === 'Failed' ? '!' : '◇'}</span></div>
     <div>
-      <h2>{repairAssessment.state === 'Idle' ? t('repair.hero.idle', locale) : repairAssessment.state === 'Scanning' ? t('repair.hero.scanning', locale) : repairAssessment.state === 'Ready' ? (attentionFacts ? t('repair.hero.attention', locale) : t('repair.hero.healthy', locale)) : t('repair.hero.failed', locale)}</h2>
+      <h2>{repairAssessment.state === 'Idle' ? t('repair.hero.idle', locale) : repairAssessment.state === 'Scanning' ? t('repair.hero.scanning', locale) : repairAssessment.state === 'Ready' ? (attentionFacts ? t('repair.hero.attention', locale) : t('repair.hero.healthy', locale)) : repairAssessment.state === 'Cancelled' ? t('repair.hero.cancelled', locale) : t('repair.hero.failed', locale)}</h2>
       <!-- The reading: how many conditions need review, and how many checks
            reported healthy. The two paragraphs it replaces promised that
            AetherCore would only recommend supported repairs and would not count
            unknown checks as healthy — the first is the policy band's sentence,
            and the second is why the healthy count is stated separately. -->
-      {#if repairAssessment.errorMessage}
+      {#if repairAssessment.state === 'Scanning'}
+        <p class="hero-reading">{t('repair.progress', locale, { check: checkLabel(repairAssessment.currentCheckId), done: repairAssessment.checks.length, started: formatDateTime(repairAssessment.startedUnixMs, locale) })}</p>
+        <p>{t('repair.slowNote', locale)}</p>
+        <Pressable className="ghost-action" onclick={cancelRepairAssessment}>{t('repair.cancel', locale)}</Pressable>
+      {:else if repairAssessment.errorMessage}
         <LocalizedOwnedText value={repairAssessment.errorMessage} {locale} as="p"/>
       {:else if repairAssessment.state === 'Ready'}
         <span class="hero-reading"><TechnicalText value={`${attentionFacts} · ${t('repair.needsReview', locale)}   ${healthyFacts} · ${t('repair.health.healthy', locale)}`}/></span>

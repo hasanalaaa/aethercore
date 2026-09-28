@@ -5,6 +5,9 @@ import "common.proto";
 
 message StartRepairAssessmentRequest {}
 message GetRepairAssessmentRequest {}
+// P76 (DBT-P76-007): stops the caller's running assessment; every assessment check is
+// read-only. Answers with the assessment snapshot.
+message CancelRepairAssessmentRequest {}
 message CreateSystemRepairPlanRequest { string assessment_id = 1; bool run_disk_scan = 2; }
 message StartSystemRepairRequest { string plan_id = 1; }
 message GetSystemRepairStatusRequest { string plan_id = 1; }
@@ -87,6 +90,9 @@ message RepairAssessmentSnapshot {
   repeated RepairCheckInfo checks = 7;
   DiscoveryState state_code = 8;
   RepairIntelligenceInfo intelligence = 9;
+  // P76 (DBT-P76-007): the check running now while state is Scanning; checks finished so
+  // far are already in `checks`.
+  string current_check_id = 10;
 }
 message SystemRepairStatus {
   string plan_id = 1;

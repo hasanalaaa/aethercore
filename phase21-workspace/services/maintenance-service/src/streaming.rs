@@ -329,7 +329,13 @@ pub(crate) fn watch_repair_assessment(ctx: ServiceContext, owner: String) {
                 v.state,
                 aethercore_system_repair::RepairAssessmentState::Scanning
             );
-            let sig = format!("{:?}:{}:{}", v.state, v.checks.len(), v.completed_unix_ms);
+            let sig = format!(
+                "{:?}:{}:{}:{}",
+                v.state,
+                v.checks.len(),
+                v.current_check_id,
+                v.completed_unix_ms
+            );
             if sig != last {
                 last = sig;
                 publish(

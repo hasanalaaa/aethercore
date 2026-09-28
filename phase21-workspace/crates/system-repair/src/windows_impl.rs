@@ -4,12 +4,14 @@ use std::{
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
 };
 
 use super::{
-    RepairCheck, RepairError, RepairPlatform, Result, dism_api::check_online_image_health,
+    AssessStep, RepairCheck, RepairError, RepairPlatform, Result,
+    dism_api::{check_online_image_health, check_online_image_health_cancellable},
 };
 use aethercore_operation_engine::SystemRepairAction;
 use aethercore_windows_foundation::{MachineMutationGuard, OwnedServiceHandle};
@@ -36,56 +38,101 @@ struct ServicingGuard {
 }
 
 impl RepairPlatform for WindowsRepairPlatform {
-    fn assess(&self) -> Result<(String, Vec<RepairCheck>)> {
+    fn assess(
+        &self,
+        cancel: &std::sync::Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> Result<(String, Vec<RepairCheck>)> {
         let root = system_root()?;
         let volume = system_volume()?;
         let system32 = root.join("System32");
 
         // A failing collector becomes Unknown evidence for its own domain. It does not make
         // Windows globally broken and it does not fabricate a repair candidate.
+        // DISM ScanHealth and SFC /verifyonly each take minutes on a real machine, run one
+        // after the other, and are read-only: each is reported as it starts and finishes,
+        // and a cancel stops the running one (P76, DBT-P76-007).
         let mut checks = Vec::new();
-        checks.push(probe_or_unknown(
-            "dism-scan",
-            "Component store",
-            "%WINDIR%\\Logs\\DISM\\dism.log",
-            || check_online_image_health(true, "dism-scan", "Component store"),
-        ));
-        checks.push(probe_or_unknown(
-            "sfc-verify",
-            "Protected system files",
-            "%WINDIR%\\Logs\\CBS\\CBS.log",
-            || {
-                run_sfc(
-                    &system32.join("sfc.exe"),
-                    &["/verifyonly"],
-                    "sfc-verify",
-                    "Protected system files",
-                    &root,
-                )
-            },
-        ));
-        checks.push(servicing_state_check());
-        let update = update_health_check();
-        let update_failed = update.result_code == "UpdateFailure";
-        checks.push(update);
-        if update_failed {
-            checks.push(required_update_service_check());
+        let mut step =
+            |checks: &mut Vec<RepairCheck>, id: &str, run: &mut dyn FnMut() -> RepairCheck| {
+                if cancel.load(Ordering::SeqCst) {
+                    return Err(RepairError::Cancelled);
+                }
+                progress(AssessStep::Started(id));
+                let check = run();
+                if cancel.load(Ordering::SeqCst) {
+                    return Err(RepairError::Cancelled);
+                }
+                progress(AssessStep::Finished(&check));
+                checks.push(check);
+                Ok(())
+            };
+        step(&mut checks, "dism-scan", &mut || {
+            probe_or_unknown(
+                "dism-scan",
+                "Component store",
+                "%WINDIR%\\Logs\\DISM\\dism.log",
+                || {
+                    check_online_image_health_cancellable(
+                        true,
+                        "dism-scan",
+                        "Component store",
+                        cancel,
+                    )
+                },
+            )
+        })?;
+        step(&mut checks, "sfc-verify", &mut || {
+            probe_or_unknown(
+                "sfc-verify",
+                "Protected system files",
+                "%WINDIR%\\Logs\\CBS\\CBS.log",
+                || {
+                    run_sfc(
+                        &system32.join("sfc.exe"),
+                        &["/verifyonly"],
+                        "sfc-verify",
+                        "Protected system files",
+                        &root,
+                        Some(&**cancel),
+                    )
+                },
+            )
+        })?;
+        step(&mut checks, "servicing-state", &mut servicing_state_check)?;
+        step(&mut checks, "update-health", &mut update_health_check)?;
+        if checks
+            .last()
+            .is_some_and(|check| check.result_code == "UpdateFailure")
+        {
+            step(
+                &mut checks,
+                "required-update-service",
+                &mut required_update_service_check,
+            )?;
         }
-        checks.push(probe_or_unknown(
-            "disk-scan",
-            "System volume online scan",
-            "Event Viewer → Application → Chkdsk",
-            || {
-                run_chkdsk_scan(
-                    &system32.join("chkdsk.exe"),
-                    &volume,
-                    "disk-scan",
-                    "System volume online scan",
-                )
-            },
-        ));
-        checks.push(winre_presence_check(&system32));
-        checks.push(restore_readiness_check(&root));
+        step(&mut checks, "disk-scan", &mut || {
+            probe_or_unknown(
+                "disk-scan",
+                "System volume online scan",
+                "Event Viewer → Application → Chkdsk",
+                || {
+                    run_chkdsk_scan(
+                        &system32.join("chkdsk.exe"),
+                        &volume,
+                        "disk-scan",
+                        "System volume online scan",
+                        Some(&**cancel),
+                    )
+                },
+            )
+        })?;
+        step(&mut checks, "winre-presence", &mut || {
+            winre_presence_check(&system32)
+        })?;
+        step(&mut checks, "restore-readiness", &mut || {
+            restore_readiness_check(&root)
+        })?;
 
         Ok((volume, checks))
     }
@@ -151,6 +198,7 @@ impl RepairPlatform for WindowsRepairPlatform {
                 "sfc-repair",
                 "System File Checker repair",
                 &root,
+                None,
             )?);
         }
         if action.run_disk_scan {
@@ -160,6 +208,7 @@ impl RepairPlatform for WindowsRepairPlatform {
                 &volume,
                 "disk-scan",
                 "System volume online scan",
+                None,
             )?);
         }
         Ok(())
@@ -182,6 +231,7 @@ impl RepairPlatform for WindowsRepairPlatform {
                 "verify-sfc",
                 "Verify protected system files",
                 &root,
+                None,
             )?);
         }
         if action.run_disk_scan {
@@ -191,6 +241,7 @@ impl RepairPlatform for WindowsRepairPlatform {
                 &volume,
                 "verify-disk",
                 "Verify system volume",
+                None,
             )?);
         }
         if action
@@ -385,6 +436,7 @@ fn run_dism_restore(exe: &Path) -> Result<RepairCheck> {
         "DISM RestoreHealth",
         "%WINDIR%\\Logs\\DISM\\dism.log",
         &[0],
+        None,
     ) {
         Ok(mut check) => {
             check.result_code = "MutationSucceeded".into();
@@ -398,7 +450,14 @@ fn run_dism_restore(exe: &Path) -> Result<RepairCheck> {
     }
 }
 
-fn run_sfc(exe: &Path, args: &[&str], id: &str, title: &str, root: &Path) -> Result<RepairCheck> {
+fn run_sfc(
+    exe: &Path,
+    args: &[&str],
+    id: &str,
+    title: &str,
+    root: &Path,
+    cancel: Option<&AtomicBool>,
+) -> Result<RepairCheck> {
     let mut check = run_with_accepted_codes(
         exe,
         args,
@@ -406,6 +465,7 @@ fn run_sfc(exe: &Path, args: &[&str], id: &str, title: &str, root: &Path) -> Res
         title,
         "%WINDIR%\\Logs\\CBS\\CBS.log",
         &[0, 1, 2],
+        cancel,
     )?;
 
     // Do not infer integrity state from localized console prose. SFC's console output is retained
@@ -504,7 +564,13 @@ fn parse_recent_cbs_sr(path: &Path) -> CbsIntegrityEvidence {
     CbsIntegrityEvidence::NoViolation
 }
 
-fn run_chkdsk_scan(exe: &Path, volume: &str, id: &str, title: &str) -> Result<RepairCheck> {
+fn run_chkdsk_scan(
+    exe: &Path,
+    volume: &str,
+    id: &str,
+    title: &str,
+    cancel: Option<&AtomicBool>,
+) -> Result<RepairCheck> {
     let mut check = run_with_accepted_codes(
         exe,
         &[volume, "/scan"],
@@ -512,6 +578,7 @@ fn run_chkdsk_scan(exe: &Path, volume: &str, id: &str, title: &str) -> Result<Re
         title,
         "Event Viewer → Application → Chkdsk",
         &[0, 1, 2, 3],
+        cancel,
     )?;
     if check.exit_code == 0 {
         check.stage = "Completed".into();
@@ -564,6 +631,8 @@ fn run_with_accepted_codes(
     title: &str,
     log_hint: &str,
     accepted_codes: &[i32],
+    // Only for read-only checks: a mutating command is never killed part-way.
+    cancel: Option<&AtomicBool>,
 ) -> Result<RepairCheck> {
     if !exe.is_absolute() || !exe.is_file() {
         return Err(RepairError::Command(format!(
@@ -624,6 +693,13 @@ fn run_with_accepted_codes(
             let _ = stdout_thread.join();
             let _ = stderr_thread.join();
             return Err(RepairError::Command(format!("{title} timed out")));
+        }
+        if cancel.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+            return Err(RepairError::Cancelled);
         }
         thread::sleep(Duration::from_millis(500));
     };

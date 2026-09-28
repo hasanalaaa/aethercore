@@ -286,9 +286,8 @@ impl From<RepairError> for ServiceError {
             }
             RepairError::AssessmentNotReady
             | RepairError::StaleAssessment
-            | RepairError::RebootPending => {
-                Self::conflict("repair", "repair.stateConflict", detail)
-            }
+            | RepairError::RebootPending
+            | RepairError::Cancelled => Self::conflict("repair", "repair.stateConflict", detail),
             RepairError::UnsupportedPlatform
             | RepairError::Command(_)
             | RepairError::Persistence(_)

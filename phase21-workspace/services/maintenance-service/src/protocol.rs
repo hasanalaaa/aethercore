@@ -387,6 +387,7 @@ pub(crate) fn repair_assessment_proto(v: RepairAssessment) -> v1::RepairAssessme
         checks: v.checks.into_iter().map(repair_check_proto).collect(),
         state_code,
         intelligence,
+        current_check_id: v.current_check_id,
     }
 }
 

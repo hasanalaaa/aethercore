@@ -2,6 +2,20 @@
 
 use super::*;
 
+/// The system-repair requests. Routed here as one arm so the dispatcher stays within its
+/// line ratchet as the domain grows (P76 added the cancel).
+pub(super) fn route(call: &Call<'_>, payload: request::Payload) -> Routed {
+    match payload {
+        request::Payload::StartRepairAssessment(_) => start_repair_assessment(call),
+        request::Payload::GetRepairAssessment(_) => get_repair_assessment(call),
+        request::Payload::CancelRepairAssessment(_) => cancel_repair_assessment(call),
+        request::Payload::CreateSystemRepairPlan(v) => create_system_repair_plan(call, v),
+        request::Payload::StartSystemRepair(v) => start_system_repair(call, v),
+        request::Payload::GetSystemRepairStatus(v) => get_system_repair_status(call, v),
+        other => Err(format!("not a system-repair request: {other:?}").into()),
+    }
+}
+
 pub(super) fn start_repair_assessment(call: &Call<'_>) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
@@ -39,6 +53,20 @@ pub(super) fn get_repair_assessment(call: &Call<'_>) -> Routed {
                 ctx.repair
                     .assessment_for_owner(principal_key)
                     .map_err(err)?,
+            )),
+        },
+    )))
+}
+
+/// P76 (DBT-P76-007): the owner stops a running assessment. The watcher started with it
+/// publishes the Cancelled snapshot when the worker stops.
+pub(super) fn cancel_repair_assessment(call: &Call<'_>) -> Routed {
+    let ctx = call.ctx;
+    let principal_key = &call.principal_key;
+    Ok(Some(response::Payload::RepairAssessment(
+        v1::RepairAssessmentResponse {
+            assessment: Some(repair_assessment_proto(
+                ctx.repair.cancel_assessment(principal_key).map_err(err)?,
             )),
         },
     )))

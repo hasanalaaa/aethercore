@@ -10,7 +10,7 @@ use aethercore_operation_kernel::{
 };
 use aethercore_persistence::Database;
 use aethercore_system_repair::{
-    RepairAssessmentState, RepairCheck, RepairCoordinator, RepairError, RepairPlatform,
+    AssessStep, RepairAssessmentState, RepairCheck, RepairCoordinator, RepairError, RepairPlatform,
 };
 
 fn wait_terminal(
@@ -87,7 +87,11 @@ impl FakeRepairPlatform {
 }
 
 impl RepairPlatform for FakeRepairPlatform {
-    fn assess(&self) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
+    fn assess(
+        &self,
+        _cancel: &Arc<std::sync::atomic::AtomicBool>,
+        _progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
         self.event("assess");
         Ok((
             "C:".into(),
@@ -436,5 +440,144 @@ fn sql_probe_a_repair_whose_journal_write_fails_stays_recoverable() {
     coordinator.recover_incomplete().expect("recovery");
     let records = db.recovery_records(20).expect("recovery records");
     assert!(records.iter().any(|r| r.plan_id == plan), "{records:?}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// P76 DBT-P76-007: an assessment whose platform panics. The worker used to die and leave
+/// the state Scanning for the life of the service, refusing every later start as Busy.
+struct PanickingAssessment;
+
+impl RepairPlatform for PanickingAssessment {
+    fn assess(
+        &self,
+        _cancel: &Arc<std::sync::atomic::AtomicBool>,
+        _progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
+        panic!("a check blew up")
+    }
+    fn repair(
+        &self,
+        _: &SystemRepairAction,
+        _: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        Ok(())
+    }
+    fn verify(
+        &self,
+        _: &SystemRepairAction,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn an_assessment_whose_platform_panics_fails_instead_of_staying_assessing() {
+    let root = temp_root("assess-panic");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let coordinator = RepairCoordinator::with_platform(engine, db, Arc::new(PanickingAssessment));
+    start_assessment(&coordinator, OWNER).expect("start");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let state = loop {
+        let current = coordinator.assessment_for_owner(OWNER).expect("snapshot");
+        if current.state != RepairAssessmentState::Scanning || Instant::now() > deadline {
+            break current;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(state.state, RepairAssessmentState::Failed, "{state:?}");
+    assert!(state.completed_unix_ms >= state.started_unix_ms);
+    // And the next assessment is not refused as Busy.
+    start_assessment(&coordinator, OWNER).expect("a new assessment starts");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A slow assessment: one check finishes, the next runs until cancelled.
+struct SlowAssessment;
+
+impl RepairPlatform for SlowAssessment {
+    fn assess(
+        &self,
+        cancel: &Arc<std::sync::atomic::AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
+        let done = RepairCheck {
+            id: "dism-scan".into(),
+            title: "Component store".into(),
+            stage: "Completed".into(),
+            result_code: "ComponentStoreHealthy".into(),
+            ..RepairCheck::default()
+        };
+        progress(AssessStep::Started("dism-scan"));
+        progress(AssessStep::Finished(&done));
+        progress(AssessStep::Started("sfc-verify"));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            assert!(Instant::now() < deadline, "never cancelled");
+            thread::sleep(Duration::from_millis(10));
+        }
+        Err(RepairError::Cancelled)
+    }
+    fn repair(
+        &self,
+        _: &SystemRepairAction,
+        _: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        Ok(())
+    }
+    fn verify(
+        &self,
+        _: &SystemRepairAction,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        Ok(())
+    }
+}
+
+/// P76 DBT-P76-007: "Assessing…" for 10+ minutes on the owner's install gave no sign of
+/// life. The snapshot now carries each finished check and the one running, and the owner
+/// can stop it, keeping what was measured.
+#[test]
+fn a_running_assessment_shows_its_progress_and_can_be_cancelled() {
+    let root = temp_root("assess-cancel");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let coordinator = RepairCoordinator::with_platform(engine, db, Arc::new(SlowAssessment));
+    start_assessment(&coordinator, OWNER).expect("start");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let running = loop {
+        let current = coordinator.assessment_for_owner(OWNER).expect("snapshot");
+        if current.current_check_id == "sfc-verify" || Instant::now() > deadline {
+            break current;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(running.state, RepairAssessmentState::Scanning);
+    assert_eq!(running.current_check_id, "sfc-verify", "{running:?}");
+    assert_eq!(running.checks.len(), 1);
+    assert_eq!(running.checks[0].id, "dism-scan");
+
+    coordinator.cancel_assessment(OWNER).expect("cancel");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let stopped = loop {
+        let current = coordinator.assessment_for_owner(OWNER).expect("snapshot");
+        if current.state != RepairAssessmentState::Scanning || Instant::now() > deadline {
+            break current;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(
+        stopped.state,
+        RepairAssessmentState::Cancelled,
+        "{stopped:?}"
+    );
+    assert_eq!(stopped.checks.len(), 1, "what was measured is kept");
+    assert!(stopped.current_check_id.is_empty());
+    assert!(coordinator.cancel_assessment("someone-else").is_err());
     let _ = std::fs::remove_dir_all(root);
 }

@@ -116,6 +116,8 @@ message Request {
     // Phase 57: the drawer's empty state — read the pack without a turn
     // (additive; next free tag).
     GetAssistantPackRequest get_assistant_pack = 94;
+    // P76 (DBT-P76-007).
+    CancelRepairAssessmentRequest cancel_repair_assessment = 95;
   }
 }
 message Response {
