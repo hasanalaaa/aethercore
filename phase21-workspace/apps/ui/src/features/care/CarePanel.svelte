@@ -18,7 +18,7 @@
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { Pressable, TechnicalText } from '../../design/primitives';
-  import { localizePlanKind, t, td, hasMessageKey } from '../../lib/i18n';
+  import { localizeOwnedText, localizePlanKind, t, td, hasMessageKey } from '../../lib/i18n';
   import type { MessageKey } from '../../lib/i18n';
   import type { CareStepReport } from '../../lib/contracts';
   import { EmptyState } from '../../design/signature';
@@ -27,9 +27,14 @@
     loadCareStatus,
     openCareConsent,
   } from './controller';
+  import { careEmptyReason } from './approval';
 
   $: locale = $shellState.locale;
   $: care = $streamState.careStatus;
+  $: emptyReason = careEmptyReason($streamState.cleanupSnapshot);
+  $: optInList = emptyReason.kind === 'nothingEligible'
+    ? emptyReason.optIn.map((title) => localizeOwnedText(title, locale).text).join(locale === 'ar' ? '، ' : ', ')
+    : '';
 
   // The panel shows the plan as the service composes it; an unloaded plan is not an empty one.
   onMount(() => {
@@ -80,7 +85,14 @@
   </div>
 
   {#if !care || care.steps.length === 0}
-    <EmptyState title={t('common.notCollected', locale)} body={t('care.empty', locale)} />
+    {#if emptyReason.kind === 'nothingEligible'}
+      <EmptyState title={t('common.notCollected', locale)} body={t('care.empty.nothingEligible', locale)} />
+      {#if optInList}<p class="summary">{t('care.empty.optIn', locale, { list: optInList })}</p>{/if}
+    {:else if emptyReason.kind === 'noPlan'}
+      <EmptyState title={t('common.notCollected', locale)} body={t('care.empty.noPlan', locale)} />
+    {:else}
+      <EmptyState title={t('common.notCollected', locale)} body={t('care.empty', locale)} />
+    {/if}
   {:else}
     {#if care.planDigestSha256}
       <p class="digest">

@@ -86,7 +86,12 @@ fn timeline_page_proto(
     page_size: usize,
     before_index: usize,
 ) -> v1::TimelineResponse {
-    let end = before_index.min(timeline.events.len());
+    // 0 is the newest page (timeline.proto, and what every client sends). It was taken as
+    // the end index, so the newest page was always empty (P76, DBT-P76-006).
+    let end = match before_index {
+        0 => timeline.events.len(),
+        index => index.min(timeline.events.len()),
+    };
     let start = end.saturating_sub(page_size);
     let entries: Vec<v1::TimelineEntry> = timeline.events[start..end]
         .iter()

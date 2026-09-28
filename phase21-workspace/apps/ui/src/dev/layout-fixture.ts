@@ -138,17 +138,25 @@ const cleanupSnapshot: CleanupSnapshot = {
   completedUnixMs: NOW,
   totalReclaimableBytes: 42_884_901_888,
   totalFileCount: 184_209,
-  candidates: [0, 1, 2, 3, 4].map((i) => fill<CleanupCandidate>({
+  // P76: the Windows provider's own categories, titles and descriptions
+  // (crates/cleaner/src/windows_impl.rs), so the Arabic sweep shows what users see.
+  candidates: [
+    ['WindowsTemp', 'Windows temporary files', 'Temporary files older than 48 hours under the Windows temp root.', true],
+    ['UserTemp', 'Alice temporary files', 'Profile-specific temp files older than seven days. Because the service cannot infer that this is the interactive caller’s profile, this category requires explicit review.', false],
+    ['ShaderCache', 'Alice Direct3D shader cache', 'Profile-specific rebuildable Direct3D cache files older than 72 hours. This category requires explicit review.', false],
+    ['WER', 'Windows Error Reporting archives', 'Archived Windows Error Reporting files. Keep these when diagnosing crashes.', false],
+    ['CrashDumps', 'Windows minidumps', 'Windows crash minidumps. Keep these when diagnosing BSODs.', false],
+  ].map(([provider, title, description, selected], i) => fill<CleanupCandidate>({
     candidateId: `cleanup-${i}`,
-    provider: 'WindowsComponentStore',
-    title: 'Windows Update delivery optimization cache and superseded component store payloads',
-    description: 'Files Windows can rebuild on demand. Removing them frees space without changing configuration.',
+    provider: provider as string,
+    title: title as string,
+    description: description as string,
     reclaimableBytes: 8_589_934_592 / (i + 1),
     fileCount: 24_000 - i * 1_200,
-    selectedByDefault: i < 2,
-    requiresExplicitConfirmation: i === 4,
+    selectedByDefault: selected as boolean,
+    requiresExplicitConfirmation: !selected,
     truncated: false,
-    specialKind: '',
+    specialKind: 'Files',
   })),
 };
 
@@ -195,8 +203,14 @@ const diagnostics: DiagnosticsSnapshot = {
     firmwareVersion: '4B2QJXD7', serialNumber: 'S6Z1NJ0T512345X', busType: 'NVMe', mediaType: 'SSD',
     sizeBytes: 2_000_398_934_016, windowsHealthStatus: 'Healthy', operationalStatus: ['OK'],
     severity: i ? 'Attention' : 'Normal',
-    summary: 'Wear and error counters stay inside the manufacturer envelope.',
-    reasons: ['PercentageUsed 4%', 'AvailableSpare 100%'],
+    // P76: what crates/hardware-telemetry emits for a disk Windows calls healthy whose
+    // counters the device did not report (the owner's install showed it in English).
+    summary: i
+      ? 'One or more reported storage reliability indicators deserve review.'
+      : 'Windows reports this disk healthy; 2 SMART/reliability counter(s) were not reported and could not be independently checked.',
+    reasons: i
+      ? ['Windows reports a maximum read latency above 10 seconds in the storage reliability counters.']
+      : ['uncorrected read error count: not reported', 'uncorrected write error count: not reported'],
     sourceNotes: ['NVMe SMART/Health log page 0x02'],
     reliability: fill<StorageReliability>({
       hasTemperature: true, temperatureC: 44, hasWear: true, wearPercentUsed: 4,
@@ -264,13 +278,23 @@ const performance: PerfSnapshot = {
   storage: [fill({ deviceId: '\\\\.\\PHYSICALDRIVE0', friendlyName: 'Samsung SSD 990 PRO with Heatsink 2TB NVMe M.2', activeTimeBp: 3_400, queueDepthX100: 210, avgTransferLatencyUs: 940, readBytesPerSec: 184_549_376, writeBytesPerSec: 52_428_800, totalSpaceBytes: 2_000_000_000_000, freeSpaceBytes: 1_200_000_000_000 })],
   gpu: fill({ adapterId: 'gpu-0', adapterName: 'NVIDIA GeForce RTX 4070 Laptop GPU', dedicatedUsedBytes: 5_368_709_120, dedicatedTotalBytes: 8_589_934_592, sharedUsedBytes: 1_073_741_824, engines: [fill({ engineName: '3D', utilizationBp: 6_200 }), fill({ engineName: 'VideoDecode', utilizationBp: 1_100 })], frametimeJitterUs: 2_400, compositorLagDetected: true }),
   processTop: [0, 1, 2, 3, 4].map((i) => fill({ pid: 4_000 + i, name: 'Microsoft.SharePoint.SyncEngine.Host.exe', cpuBusyBp: 1_800 - i * 240, readBytesPerSec: 10_485_760, writeBytesPerSec: 4_194_304, workingSetBytes: 1_073_741_824 })),
-  collectorFaults: [fill({ collector: 'GpuEngineCounters', kind: 'Unavailable', detail: 'Counter set not present on this adapter.' })],
+  // P76: ids the Windows provider emits (the owner's install showed these two raw).
+  collectorFaults: [
+    fill({ collector: 'processTop', kind: 'NotCollected', detail: 'Per-process CPU requires a second sample.' }),
+    fill({ collector: 'power.temperature', kind: 'Degraded', detail: 'ACPI thermal zones not exposed.' }),
+  ],
 };
 
 const timelinePage: TimelineResponse = {
-  entries: [0, 1, 2, 3].map((i) => fill({
-    sourceId: `tl-${i}`, class: 'TIMELINE_EVENT_CLASS_OPERATION', domain: 'Cleanup', code: 'CLEANUP_COMPLETED',
-    outcome: i === 2 ? 'TIMELINE_OUTCOME_FAILED' : 'TIMELINE_OUTCOME_SUCCEEDED',
+  // P76: the codes crates/timeline-intelligence/src/ingest.rs emits (a care run, the cleanup
+  // it executed, a journal transition, a deep scan), outcome Neutral where ingest says so.
+  entries: ([
+    ['care-run:run-1', 'TIMELINE_EVENT_CLASS_OPERATION', 'oneClickCare', 'care.run:Completed', 'TIMELINE_OUTCOME_NEUTRAL'],
+    ['execution:plan-1', 'TIMELINE_EVENT_CLASS_OPERATION', 'Cleanup', 'execution.outcome:Completed', 'TIMELINE_OUTCOME_NEUTRAL'],
+    ['journal:42', 'TIMELINE_EVENT_CLASS_OPERATION', 'operationJournal', 'journal.transition:Failed', 'TIMELINE_OUTCOME_FAILED'],
+    ['scan:scan-1', 'TIMELINE_EVENT_CLASS_FINDING', 'deepScan', 'scan.completed:findings=2', 'TIMELINE_OUTCOME_FAILED'],
+  ] as const).map(([sourceId, cls, domain, code, outcome], i) => fill({
+    sourceId, class: cls, domain, code, outcome,
     observedUnixMs: NOW - i * 43_200_000, semanticIdentitySha256: 'cd'.repeat(32),
   })),
   hasMore: false, nextBeforeSequence: 0, digestSha256: 'ef'.repeat(32), duplicatesCollapsed: 2,

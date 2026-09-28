@@ -557,6 +557,60 @@ mod p75_care_dispatch_tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// P76 DBT-P76-006 (the owner's Windows install): the Activity timeline stayed empty
+    /// after a One-Click Care run that deleted files, even after Refresh. Two causes, both
+    /// here: `before_sequence = 0` — the proto's "newest page", and what every client
+    /// sends — was sliced as the END index, so the newest page was always empty; and the
+    /// care run itself was never ingested, only its domain plan's journal.
+    #[test]
+    fn a_care_run_and_its_cleanup_are_on_the_newest_timeline_page() {
+        let (db, path) = temp_db();
+        let (care, engine) = real_care(&db);
+        let plan = cleanup_plan(&engine, "c1");
+        let shown = care.plan_preview(OWNER).expect("preview");
+        care.grant_session_consent(OWNER, &shown.plan_digest_sha256)
+            .expect("grant");
+        let status = care.start_run(OWNER, "run-timeline").expect("run");
+        // The report names the run it is about: a client finds it on the timeline by this id
+        // (care_smoke.rs does). It was empty.
+        assert_eq!(status.run_id, "run-timeline");
+        let (page, _) = crate::timeline::TimelineCoordinator::new(db.clone())
+            .page_for_owner(OWNER, 100, 0)
+            .expect("page");
+        let sources: Vec<&str> = page.entries.iter().map(|e| e.source_id.as_str()).collect();
+        assert!(
+            sources.contains(&format!("execution:{plan}").as_str()),
+            "the cleanup the care run executed is not on the page: {sources:?}"
+        );
+        let run = page
+            .entries
+            .iter()
+            .find(|e| e.source_id == "care-run:run-timeline")
+            .unwrap_or_else(|| panic!("the care run is not on the page: {sources:?}"));
+        assert_eq!(run.domain, "oneClickCare");
+        assert!(run.code.starts_with("care.run:"), "{}", run.code);
+        // This empty candidate fails the cleaner's own checks, so the run finished with a
+        // failed step: both entries must say so. The cleaner writes its result to `stage`
+        // and leaves `outcome` empty, which read as a neutral "execution.outcome:".
+        let execution = page
+            .entries
+            .iter()
+            .find(|e| e.source_id == format!("execution:{plan}"))
+            .unwrap();
+        assert_eq!(execution.code, "execution.outcome:Failed");
+        assert_eq!(
+            execution.outcome,
+            aethercore_contracts::v1::TimelineOutcome::Failed as i32
+        );
+        assert_eq!(
+            run.outcome,
+            aethercore_contracts::v1::TimelineOutcome::Failed as i32,
+            "{run:?}"
+        );
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// Review-only work never runs under any consent, and care never authorizes it at the
     /// domain barrier: the driver plan stays where the owner left it.
     #[test]
