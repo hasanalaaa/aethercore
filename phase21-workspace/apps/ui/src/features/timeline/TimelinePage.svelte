@@ -14,11 +14,12 @@
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { Pressable, TechnicalText } from '../../design/primitives';
-  import { formatDateTime, t, td } from '../../lib/i18n';
+  import { describeTimelineEntry, formatDateTime, t, td } from '../../lib/i18n';
   import type { MessageKey } from '../../lib/i18n';
   import {
     loadRecurrencePatterns,
     loadTimeline,
+    timelineUi,
   } from './controller';
 
   $: locale = $shellState.locale;
@@ -76,7 +77,7 @@
           <span class="when"><TechnicalText value={formatTime(entry.observedUnixMs)} /></span>
           <span class="what">
             {td(classKey(entry.class), locale)}
-            <TechnicalText value={entry.code} />
+            <span title={entry.code}>{describeTimelineEntry(entry, locale)}</span>
           </span>
           <span class="state">{td(outcomeKey(entry.outcome), locale)}</span>
         </li>
@@ -86,6 +87,8 @@
       {t('timeline.digest', locale)}
       <TechnicalText value={page.digestSha256.slice(0, 16)} />
     </p>
+  {:else if $timelineUi.readFailed}
+    <p class="empty">{t('timeline.readFailed', locale)}</p>
   {:else}
     <p class="empty">{t('timeline.empty', locale)}</p>
   {/if}

@@ -188,6 +188,32 @@ mod smoke {
                 ));
             }
         }
+        // P76 DBT-P76-006: the run and the cleanup it executed are on the newest timeline page
+        // (0 = newest). On the owner's install the page stayed empty after a real run.
+        let page = match call(
+            &client,
+            Req::GetTimelinePage(v1::GetTimelinePageRequest {
+                page_size: 100,
+                before_sequence: 0,
+            }),
+        )? {
+            Some(Resp::TimelinePage(page)) => page,
+            other => return Err(format!("expected a timeline page, got {other:?}")),
+        };
+        let run_entry = format!("care-run:{}", report.run_id);
+        let executions = page
+            .entries
+            .iter()
+            .filter(|e| e.source_id.starts_with("execution:"))
+            .count();
+        println!(
+            "SMOKE: timeline entries={} care run={} executions={executions}",
+            page.entries.len(),
+            page.entries.iter().any(|e| e.source_id == run_entry)
+        );
+        if !page.entries.iter().any(|e| e.source_id == run_entry) || executions == 0 {
+            return Err("the care run is not on the timeline".into());
+        }
         // A grant naming a plan that is not the one composed now approves nothing.
         match call(
             &client,

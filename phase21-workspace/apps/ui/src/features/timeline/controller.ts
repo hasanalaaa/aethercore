@@ -10,6 +10,8 @@ export const TIMELINE_PAGE_SIZE = 100;
 /** UI-only selection state for the recurrence inspector. */
 export const timelineUi = writable({
   selectedPatternIdentity: '' as string,
+  /** The last read failed: said as such, not shown as an empty timeline (P76). */
+  readFailed: false,
 });
 
 /** Fetches the newest timeline page and mirrors it into the stream-state slice. */
@@ -22,10 +24,13 @@ export async function loadTimeline(): Promise<TimelineResponse | null> {
         beforeSequence: 0,
       });
       patchStreamState({ timelinePage: page });
+      timelineUi.update((ui) => ({ ...ui, readFailed: false }));
       fetched = page;
     } catch {
-      // Offline / not yet hydrated is a normal early state, not an error dialog.
+      // Not an error dialog, but not "nothing recorded" either: that is a claim about
+      // the history, and a failed read has not seen it.
       patchStreamState({ timelinePage: null });
+      timelineUi.update((ui) => ({ ...ui, readFailed: true }));
       fetched = null;
     }
   });
