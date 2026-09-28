@@ -20,3 +20,7 @@ uuid.workspace = true
 [target.'cfg(windows)'.dependencies]
 aethercore-windows-foundation = { path = "../windows-foundation" }
 windows.workspace = true
+
+[dev-dependencies]
+# P76 DBT-P75-027: the SQL probes in tests/coordinator.rs open the test database directly.
+rusqlite.workspace = true

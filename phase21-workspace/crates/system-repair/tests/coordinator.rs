@@ -337,3 +337,104 @@ fn repair_assessment_is_principal_bound() {
     ));
     let _ = std::fs::remove_dir_all(root);
 }
+
+// P76 DBT-P75-027: the crate-level SQL probes P75 ran and could not commit (they need this
+// dev-dependency). Triggers installed from a second connection on the test database watch
+// the real coordinator: what the journal says at the instant the plan turns terminal, and
+// what is left when the journal write itself fails.
+const FLIP_PROBE: &str =
+    "CREATE TABLE probe(stage TEXT, recovery_required INTEGER, completed INTEGER);
+     CREATE TRIGGER probe_flip AFTER UPDATE OF state ON plans
+     WHEN NEW.state IN ('Failed','Completed') BEGIN
+       INSERT INTO probe SELECT stage, recovery_required, completed_unix_ms IS NOT NULL
+       FROM maintenance_executions WHERE plan_id = NEW.id;
+     END;";
+const JOURNAL_ABORT: &str =
+    "CREATE TRIGGER probe_abort_insert BEFORE INSERT ON maintenance_executions
+     WHEN NEW.stage IN ('Failed','Completed') BEGIN SELECT RAISE(ABORT, 'probe'); END;
+     CREATE TRIGGER probe_abort_update BEFORE UPDATE ON maintenance_executions
+     WHEN NEW.stage IN ('Failed','Completed') BEGIN SELECT RAISE(ABORT, 'probe'); END;";
+
+/// Runs one repair to its end with `probe` installed; returns the plan id.
+fn probed_repair(
+    label: &str,
+    fail_after_mutation: bool,
+    probe: &str,
+) -> (std::path::PathBuf, Arc<Database>, RepairCoordinator, String) {
+    let root = temp_root(label);
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    rusqlite::Connection::open(root.join("state.db"))
+        .expect("probe connection")
+        .execute_batch(probe)
+        .expect("install probe");
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let coordinator = RepairCoordinator::with_platform(
+        engine.clone(),
+        db.clone(),
+        Arc::new(FakeRepairPlatform {
+            fail_before_mutation: false,
+            fail_after_mutation,
+            events: Mutex::new(Vec::new()),
+        }),
+    );
+    start_assessment(&coordinator, OWNER).expect("start assessment");
+    let assessment_id = wait_assessment(&coordinator);
+    let plan = coordinator
+        .create_plan(OWNER, &assessment_id, false)
+        .expect("plan");
+    authorize(&engine, &plan.id);
+    start_repair(&coordinator, OWNER, &plan.id).expect("start");
+    (root, db, coordinator, plan.id)
+}
+
+fn probe_rows(root: &std::path::Path) -> Vec<(String, i64, bool)> {
+    let conn = rusqlite::Connection::open(root.join("state.db")).expect("probe connection");
+    let mut stmt = conn.prepare("SELECT * FROM probe").expect("probe query");
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .expect("probe rows")
+        .map(|row| row.expect("probe row"))
+        .collect()
+}
+
+#[test]
+fn sql_probe_a_failed_repair_is_journaled_at_the_instant_it_turns_terminal() {
+    let (root, _db, coordinator, plan) = probed_repair("probe-failed", true, FLIP_PROBE);
+    wait_terminal(&coordinator, &plan, "Failed");
+    assert_eq!(probe_rows(&root), vec![("Failed".to_owned(), 1, true)]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn sql_probe_a_completed_repair_is_journaled_at_the_instant_it_turns_terminal() {
+    let (root, _db, coordinator, plan) = probed_repair("probe-completed", false, FLIP_PROBE);
+    wait_terminal(&coordinator, &plan, "Completed");
+    assert_eq!(probe_rows(&root), vec![("Completed".to_owned(), 0, true)]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A journal write that fails leaves the plan non-terminal, where recovery finds it.
+#[test]
+fn sql_probe_a_repair_whose_journal_write_fails_stays_recoverable() {
+    let (root, db, coordinator, plan) = probed_repair("probe-abort", true, JOURNAL_ABORT);
+    // The unprobed failure reaches Failed in milliseconds (the test above); two seconds is
+    // the window in which this one would have, had the aborted journal not stopped it.
+    let window = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < window {
+        let status = coordinator.status(OWNER, Some(&plan)).unwrap().unwrap();
+        assert_ne!(
+            status.plan_state, "Failed",
+            "plan Failed is terminal although its journal was never written"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    let state = db.get_plan(&plan).expect("plan").expect("row").state;
+    assert!(
+        matches!(state.as_str(), "Executing" | "Verifying"),
+        "{state}"
+    );
+    coordinator.recover_incomplete().expect("recovery");
+    let records = db.recovery_records(20).expect("recovery records");
+    assert!(records.iter().any(|r| r.plan_id == plan), "{records:?}");
+    let _ = std::fs::remove_dir_all(root);
+}
