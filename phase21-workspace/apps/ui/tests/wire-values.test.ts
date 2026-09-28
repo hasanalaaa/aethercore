@@ -107,6 +107,14 @@ test('deep scan headline: a failed or cancelled scan is not "Healthy"', async ()
   assert.equal(deepScanHeadlineKey(1, 6), 'deepScan.state.failed');
 });
 
+// P76 DBT-P75-091: a scan still running has no findings yet, so its status reads Healthy;
+// the headline says it is scanning, not a verdict on what has not been checked.
+test('deep scan headline: a running scan is not "Healthy"', async () => {
+  const { deepScanHeadlineKey } = await import('../src/features/intelligence/headline.ts');
+  assert.equal(deepScanHeadlineKey(1, 2), 'deepScan.state.scanning');
+  assert.equal(deepScanHeadlineKey(2, 2), 'deepScan.status.attention', 'a finding already made is shown');
+});
+
 test('disk activity a provider says it did not measure reads unmeasured, not 0%', async () => {
   const { healthChannels } = await import('../src/features/overview/instrument.ts');
   const { createInitialStreamState } = await import('../src/platform/stream-state.ts');
