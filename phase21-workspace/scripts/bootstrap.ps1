@@ -3,6 +3,31 @@ param([switch]$InstallPrerequisites,[switch]$RefreshDependencyFreeze)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
+# P76 (DBT-P76-009): the build scripts need PowerShell 7 (.NET path APIs that Windows
+# PowerShell 5.1's framework lacks), and this file is the one entry a fresh machine starts
+# under 5.1. It makes sure pwsh exists, then re-runs itself there, so everything below runs
+# on 7.
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
+        if (-not $InstallPrerequisites) {
+            Write-Host 'Missing prerequisites: PowerShell 7 (pwsh)' -ForegroundColor Yellow
+            Write-Host 'Re-run with -InstallPrerequisites to install supported dependencies.'
+            exit 2
+        }
+        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'winget is required for automated prerequisite installation.' }
+        Write-Host 'Installing Microsoft.PowerShell...' -ForegroundColor Cyan
+        & winget install --id Microsoft.PowerShell --exact --accept-source-agreements --accept-package-agreements
+        if ($LASTEXITCODE -ne 0) { throw 'winget failed installing Microsoft.PowerShell' }
+        $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+        if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { throw 'PowerShell 7 was installed but pwsh is not on PATH in this session; open a new terminal and run bootstrap again.' }
+    }
+    $forward = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+    if ($InstallPrerequisites) { $forward += '-InstallPrerequisites' }
+    if ($RefreshDependencyFreeze) { $forward += '-RefreshDependencyFreeze' }
+    & pwsh @forward
+    exit $LASTEXITCODE
+}
+
 function Has($cmd) { return [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
 function Install-Winget($id, $extra = @()) {
     if (-not (Has winget)) { throw 'winget is required for automated prerequisite installation.' }
