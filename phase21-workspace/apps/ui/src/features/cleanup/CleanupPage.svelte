@@ -3,7 +3,7 @@
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { LocalizedOwnedText, Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
-  import { localizeOwnedText, localizeState, t, tp } from '../../lib/i18n';
+  import { localizeCleanupKind, localizeCleanupProvider, localizeOwnedText, localizeState, t, tp } from '../../lib/i18n';
   import { cleanupActive, cleanupUi, openCleanupReview, reviewCleanup, selectedCleanupBytes, selectedCleanupCandidates, startCleanupScan, toggleCleanup } from './controller';
   import { formatBytes, shortDigest, stageTone } from '../shared';
   import { EmptyState } from '../../design/signature';
@@ -46,7 +46,7 @@
         <div class="cleanup-copy">
           <div><LocalizedOwnedText value={candidate.title} {locale} as="strong"/>{#if candidate.requiresExplicitConfirmation}<em>{t('cleanup.explicitOptIn',locale)}</em>{/if}{#if candidate.truncated}<em class="warn-tag">{t('cleanup.scanCapped',locale)}</em>{/if}</div>
           <LocalizedOwnedText value={candidate.description} {locale} as="p"/>
-          <small><TechnicalText value={candidate.provider}/> · {tp('unit.file',locale,candidate.fileCount)}{#if candidate.specialKind} · <TechnicalText value={candidate.specialKind}/>{/if}</small>
+          <small>{localizeCleanupProvider(candidate.provider,locale)} · {tp('unit.file',locale,candidate.fileCount)}{#if candidate.specialKind} · {localizeCleanupKind(candidate.specialKind,locale)}{/if}</small>
         </div>
         <div class="cleanup-size"><strong>{formatBytes(candidate.reclaimableBytes,locale)}</strong><small>{candidate.selectedByDefault ? t('cleanup.safeDefault',locale) : t('cleanup.notDefault',locale)}</small></div>
       </label>

@@ -19,7 +19,7 @@
   import { applyPerformanceWindow, streamState } from '../../platform/stream-state';
   import { Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
   import { EmptyState } from '../../design/signature';
-  import { t, td, tp, hasMessageKey } from '../../lib/i18n';
+  import { t, td, tp, hasMessageKey, localizeCollector, localizeCollectorFault } from '../../lib/i18n';
   import {
     analyzeBottlenecks,
     closeOptimizationReview,
@@ -181,7 +181,7 @@
   <section class="warning-strip"><span>◇</span>
     <div><strong>{t('perf.degradedCollectors', locale)}</strong>
       {#each performance.collectorFaults as fault}
-        <p><TechnicalText value={fault.collector}/> · {hasMessageKey(`perf.fault.${fault.kind}`) ? td(`perf.fault.${fault.kind}` as never, locale) : fault.kind}</p>
+        <p>{localizeCollector(fault.collector, locale)} · {localizeCollectorFault(fault.kind, locale)}</p>
       {/each}
     </div>
   </section>
