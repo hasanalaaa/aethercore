@@ -15,8 +15,8 @@
 //! - deep scans with warnings or unavailable collectors become `Finding` events.
 
 use aethercore_persistence::{
-    Database, IntelligenceScanRecord, MaintenanceExecutionRecord, RepairTimelineEventRecord,
-    SupportJournalEventRecord,
+    CareRunRecord, Database, IntelligenceScanRecord, MaintenanceExecutionRecord,
+    RepairTimelineEventRecord, SupportJournalEventRecord,
 };
 
 use crate::model::{EventClass, Outcome, TimelineEvent};
@@ -63,14 +63,42 @@ pub fn journal_event(record: &SupportJournalEventRecord) -> TimelineEvent {
 /// otherwise its last update — never wall-clock time at mapping.
 pub fn maintenance_execution(record: &MaintenanceExecutionRecord) -> TimelineEvent {
     let observed = record.completed_unix_ms.unwrap_or(record.updated_unix_ms);
-    let failed = failed_outcome(&record.outcome);
-    let code = format!("execution.outcome:{}", record.outcome);
+    // Only system repair writes `outcome`; the other domains leave it empty and put their
+    // terminal result in `stage`, so a failed cleanup read as a neutral
+    // "execution.outcome:" (P76, DBT-P76-006).
+    let result = if record.outcome.is_empty() {
+        &record.stage
+    } else {
+        &record.outcome
+    };
+    let failed = failed_outcome(result);
+    let code = format!("execution.outcome:{result}");
     TimelineEvent::new(
         format!("execution:{}", record.plan_id),
         EventClass::Operation,
         &record.domain,
         &code,
         if failed {
+            Outcome::Failed
+        } else {
+            Outcome::Neutral
+        },
+        observed,
+    )
+}
+
+/// Maps one One-Click Care run to an operation event (P76, DBT-P76-006). The run is
+/// what the owner started; its domain plans appear on their own as executions.
+pub fn care_run(record: &CareRunRecord) -> TimelineEvent {
+    let observed = record.completed_unix_ms.unwrap_or(record.updated_unix_ms);
+    let code = format!("care.run:{}", record.state);
+    TimelineEvent::new(
+        format!("care-run:{}", record.run_id),
+        EventClass::Operation,
+        "oneClickCare",
+        &code,
+        // A run that finished with failed steps is `Completed` with this detail.
+        if failed_state(&record.state) || record.detail == "care.status.completedWithFailures" {
             Outcome::Failed
         } else {
             Outcome::Neutral
@@ -162,7 +190,12 @@ pub fn ingest_owner_history_with_watermark(
         );
     }
 
-    // 4. Deep-scan history (bounded per persistence retention).
+    // 4. One-Click Care runs.
+    for record in db.care_runs_for_owner(owner_principal_key, INGEST_READ_LIMIT)? {
+        push_if_fresh(&mut candidates, care_run(&record), watermark_unix_ms);
+    }
+
+    // 5. Deep-scan history (bounded per persistence retention).
     for record in db.intelligence_scans_for_owner(owner_principal_key, 100)? {
         push_if_fresh(
             &mut candidates,

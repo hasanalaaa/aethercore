@@ -268,9 +268,15 @@ const performance: PerfSnapshot = {
 };
 
 const timelinePage: TimelineResponse = {
-  entries: [0, 1, 2, 3].map((i) => fill({
-    sourceId: `tl-${i}`, class: 'TIMELINE_EVENT_CLASS_OPERATION', domain: 'Cleanup', code: 'CLEANUP_COMPLETED',
-    outcome: i === 2 ? 'TIMELINE_OUTCOME_FAILED' : 'TIMELINE_OUTCOME_SUCCEEDED',
+  // P76: the codes crates/timeline-intelligence/src/ingest.rs emits (a care run, the cleanup
+  // it executed, a journal transition, a deep scan), outcome Neutral where ingest says so.
+  entries: ([
+    ['care-run:run-1', 'TIMELINE_EVENT_CLASS_OPERATION', 'oneClickCare', 'care.run:Completed', 'TIMELINE_OUTCOME_NEUTRAL'],
+    ['execution:plan-1', 'TIMELINE_EVENT_CLASS_OPERATION', 'Cleanup', 'execution.outcome:Completed', 'TIMELINE_OUTCOME_NEUTRAL'],
+    ['journal:42', 'TIMELINE_EVENT_CLASS_OPERATION', 'operationJournal', 'journal.transition:Failed', 'TIMELINE_OUTCOME_FAILED'],
+    ['scan:scan-1', 'TIMELINE_EVENT_CLASS_FINDING', 'deepScan', 'scan.completed:findings=2', 'TIMELINE_OUTCOME_FAILED'],
+  ] as const).map(([sourceId, cls, domain, code, outcome], i) => fill({
+    sourceId, class: cls, domain, code, outcome,
     observedUnixMs: NOW - i * 43_200_000, semanticIdentitySha256: 'cd'.repeat(32),
   })),
   hasMore: false, nextBeforeSequence: 0, digestSha256: 'ef'.repeat(32), duplicatesCollapsed: 2,

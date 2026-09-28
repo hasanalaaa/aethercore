@@ -9,6 +9,8 @@ const stateKeys: Record<string, MessageKey> = {
   Protected: 'state.Protected', Executing: 'state.Executing', Verifying: 'state.Verifying', RebootPending: 'state.RebootPending',
   Completed: 'state.Completed', RecoveryRequired: 'state.RecoveryRequired', Prepared: 'state.Prepared', Applied: 'state.Applied',
   AppliedRecovered: 'state.AppliedRecovered', NoChange: 'state.NoChange', Restored: 'state.Completed',
+  Draft: 'state.Draft', ReadyForReview: 'state.ReadyForReview', Resuming: 'state.Resuming', Cancelled: 'state.Cancelled',
+  Succeeded: 'state.Succeeded', Pending: 'state.Pending', Running: 'state.Running', AwaitingConsent: 'state.AwaitingConsent',
 };
 const riskKeys: Record<string, MessageKey> = { Low:'risk.Low', Medium:'risk.Medium', High:'risk.High', Amber:'risk.Amber' };
 const severityKeys: Record<string, MessageKey> = { Amber:'severity.Amber', Normal:'severity.Normal', Info:'severity.Info', Attention:'severity.Attention', ActionRequired:'severity.ActionRequired', Warning:'severity.Warning', warning:'severity.Warning', Unknown:'severity.Unknown' };
@@ -25,6 +27,25 @@ const directionKeys: Record<string, MessageKey> = { Disable:'direction.Disable',
 const domainKeys: Record<string, MessageKey> = { Storage:'domain.Storage', Memory:'domain.Memory', Hardware:'domain.Hardware', Crash:'domain.Crash' };
 const recommendationKeys: Record<string, MessageKey> = { Review:'recommendation.Review', 'Keep enabled':'recommendation.Keep enabled' };
 const planKindKeys: Record<string, MessageKey> = { DriverInstall:'planKind.DriverInstall', SystemRepair:'planKind.SystemRepair', Cleanup:'planKind.Cleanup', Startup:'planKind.Startup' };
+
+// P76 (DBT-P76-006): the timeline printed its entry codes raw — never seen while the newest
+// page was always empty. Each code family ingest.rs emits reads as a sentence; an unknown
+// code is still shown as itself (repair events carry their own action ids).
+const timelineDomainKeys: Record<string, MessageKey> = {
+  Cleanup:'planKind.Cleanup', Startup:'planKind.Startup', SystemRepair:'planKind.SystemRepair', WindowsRepair:'planKind.SystemRepair',
+  DriverInstall:'planKind.DriverInstall', oneClickCare:'timeline.domain.oneClickCare',
+};
+export function describeTimelineEntry(entry: { domain: string; code: string }, locale: Locale): string {
+  let m: RegExpMatchArray | null;
+  if ((m = entry.code.match(/^journal\.transition:(.+)$/))) return t('timeline.code.transition', locale, { state: localizeState(m[1], locale) });
+  if ((m = entry.code.match(/^execution\.outcome:(.+)$/))) {
+    const domain = timelineDomainKeys[entry.domain] ? td(timelineDomainKeys[entry.domain], locale) : entry.domain;
+    return t('timeline.code.execution', locale, { domain, result: localizeState(m[1], locale) });
+  }
+  if ((m = entry.code.match(/^care\.run:(.+)$/))) return t('timeline.code.careRun', locale, { state: localizeState(m[1], locale) });
+  if ((m = entry.code.match(/^scan\.completed:findings=(\d+)$/))) return t('timeline.code.scan', locale, { count: m[1] });
+  return entry.code;
+}
 
 export function localizeState(value: string, locale: Locale): string { return stateKeys[value] ? td(stateKeys[value], locale) : value; }
 export function localizeRisk(value: string, locale: Locale): string { return riskKeys[value] ? td(riskKeys[value], locale) : value; }
