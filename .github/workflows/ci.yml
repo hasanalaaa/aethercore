@@ -324,3 +324,55 @@ jobs:
         run: cargo install cargo-deny --locked
       - name: cargo deny check
         run: cargo deny check advisories bans licenses sources
+
+  # P77-03: the Arabic leak gate. It drives Chrome over DevTools against the fixture and reads the
+  # rendered document - text and accessible attributes - so an English sentence, a raw id or an unknown
+  # enum value that reaches an Arabic reader fails here instead of in the owner's install. macOS because
+  # macos-latest carries Chrome and nothing in this gate needs Windows; the Windows job keeps the
+  # Windows work.
+  ui-leak-gate:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.16.0
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.22.0
+      - name: Frozen dependency restore
+        run: pnpm --dir apps/ui install --frozen-lockfile
+      - name: Start the fixture server
+        run: |
+          nohup pnpm --dir apps/ui exec vite --mode fixture --host 127.0.0.1 --port 1420 > "$RUNNER_TEMP/vite.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/vite.pid"
+          for attempt in $(seq 1 60); do
+            curl -sf http://127.0.0.1:1420/layout-fixture.html > /dev/null && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/vite.log"
+          exit 1
+      # The wire-true fixture, in Arabic: any product sentence with no translation is a failure.
+      - name: Leak gate - real fixture data
+        run: node apps/ui/tools/layout-sweep.mjs --leaks clean --pages deepScan,repair,cleanup,startup,hardware,drivers,crash,performance,activity --locales ar --themes dark --widths 1280 --out "$RUNNER_TEMP/leaks"
+      # Sentinels in prose, enum values and ids: none may be visible, and every page must show a local
+      # fallback (so the injected fields were rendered), and the kept disk name must survive.
+      - name: Leak gate - injected sentinels
+        run: node apps/ui/tools/layout-sweep.mjs --leaks inject --pages deepScan,repair,cleanup,startup,hardware --locales ar --themes dark --widths 1280 --out "$RUNNER_TEMP/leaks"
+      # The gate must be able to fail: a leak planted in a label, an attribute and an Arabic sentence
+      # has to be found, or the step fails.
+      - name: Negative controls - a planted leak is found
+        run: |
+          for kind in text attr arg; do
+            node apps/ui/tools/layout-sweep.mjs --leaks inject --plant "$kind" --pages hardware --locales ar --themes dark --widths 1280 --out "$RUNNER_TEMP/leaks"
+          done
+      - name: Layout sweep - the pages the fixture fills
+        run: node apps/ui/tools/layout-sweep.mjs --pages deepScan,repair,cleanup,startup,hardware --widths 1280,960,720 --locales en,ar --themes dark,light --out "$RUNNER_TEMP/sweep"
+      - name: Stop the fixture server
+        if: always()
+        run: kill "$(cat "$RUNNER_TEMP/vite.pid")" 2>/dev/null || true
