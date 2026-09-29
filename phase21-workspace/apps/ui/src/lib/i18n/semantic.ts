@@ -167,6 +167,7 @@ const exactOwnedText: Record<string, MessageKey> = {
   "Windows Update Agent reports that a restart is required before another installation can safely begin.":'tech.update.rebootPending',
   "Windows Update Agent discovery completed successfully, but the pending-update count could not be read; the reported 0 is not a measurement.":'tech.update.countUnavailable',
   "Windows Update Agent is only available on Windows":'tech.update.windowsOnly',
+  "Windows Update Agent answered from its local cache, which lists no pending updates; this does not show that Windows is up to date.":'tech.update.localCacheEmpty',
   "Windows Recovery Environment":'tech.recovery.winreTitle',
   "REAgentC is available, but Phase 19 does not infer enabled/disabled WinRE state from localized console prose. Live state qualification remains pending on Windows.":'tech.recovery.winreUnverified',
   "The supported REAgentC executable was not found at the trusted System32 path; recovery state is unknown, not assumed unavailable.":'tech.recovery.winreMissing',
@@ -446,6 +447,7 @@ export function localizeOwnedText(value: string, locale: Locale, options: { data
   if ((m = value.match(/^bound driver changed since scan: (.+)$/))) return { text:t('tech.driver.install.boundDriverChanged',locale,{instanceId:m[1]}),localized:true };
   if ((m = value.match(/^device problem state changed since scan: (.+)$/))) return { text:t('tech.driver.install.problemStateChanged',locale,{instanceId:m[1]}),localized:true };
   if ((m = value.match(/^WUA did not return a per-update result for (.+) revision (\d+)$/))) return { text:t('tech.driver.install.wuaMissingResult',locale,{updateId:m[1],revision:m[2]}),localized:true };
+  if ((m = value.match(/^Windows Update Agent answered from its local cache: (\d+) pending update\(s\) are known locally; this is not a check for newer updates\.$/))) return { text:t('tech.update.localCacheCount',locale,{count:m[1]}),localized:true };
   if ((m = value.match(/^(.+) event (\d+)$/))) return { text:t('tech.card.eventEvidence',locale,{provider:m[1],id:m[2]}),localized:true };
   for (const [pattern, key, args] of fleetOwnedText) {
     const m = value.match(pattern);

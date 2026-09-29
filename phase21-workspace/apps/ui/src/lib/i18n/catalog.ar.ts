@@ -848,6 +848,8 @@ export const arCatalog = {
   'tech.startup.observationOnly': 'إدخال بدء التشغيل هذا كبير جدًا بحيث لا يمكن تغييره بأمان، فيُعرض للمراقبة فقط.',
   'tech.support.bundleNote': 'حزمة دعم كاشفة للعبث أنشأها تثبيت AetherCore هذا. ليست شهادة من الشركة المصنّعة أو من العتاد.',
   'tech.update.discoveryErrors': 'انتهى بحث تحديث Windows بأخطاء؛ قد تكون النتائج ناقصة.',
+  'tech.update.localCacheEmpty': 'أجاب عامل تحديث Windows من ذاكرته المحلية التي لا تسرد أي تحديثات معلّقة؛ وهذا لا يثبت أن Windows محدَّث.',
+  'tech.update.localCacheCount': 'أجاب عامل تحديث Windows من ذاكرته المحلية: يوجد {count} من التحديثات المعلّقة المعروفة محليًا؛ وهذا ليس فحصًا لتحديثات أحدث.',
   'tech.repair.sourceMissing': 'تعذّر على Windows العثور على ملفات المصدر اللازمة لإصلاح مخزن المكوّنات (HRESULT 0x800F081F).',
   'tech.update.servicingIdle': 'لا يُبلغ نظام صيانة Windows عن مثبّت نشط ولا عن إعادة تشغيل مطلوبة قبل التثبيت.',
   'tech.startup.protectedTargets': 'أهداف بدء التشغيل الخاصة بـ Windows والأمان محمية.',

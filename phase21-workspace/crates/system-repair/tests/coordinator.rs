@@ -581,3 +581,77 @@ fn a_running_assessment_shows_its_progress_and_can_be_cancelled() {
     assert!(coordinator.cancel_assessment("someone-else").is_err());
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// P78-01: the completion time is taken when the checks end, not when they start. An assessment
+/// that took time reported `completed == started`, so a slow scan looked instant and "last checked"
+/// was wrong by the length of the scan.
+struct TimedAssessment {
+    ended_unix_ms: Arc<std::sync::atomic::AtomicI64>,
+}
+
+impl RepairPlatform for TimedAssessment {
+    fn assess(
+        &self,
+        _cancel: &Arc<std::sync::atomic::AtomicBool>,
+        _progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
+        thread::sleep(Duration::from_millis(80));
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_millis() as i64;
+        self.ended_unix_ms
+            .store(now, std::sync::atomic::Ordering::SeqCst);
+        Ok(("C:".into(), Vec::new()))
+    }
+    fn repair(
+        &self,
+        _: &SystemRepairAction,
+        _: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        Ok(())
+    }
+    fn verify(
+        &self,
+        _: &SystemRepairAction,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn an_assessment_completes_after_its_measurement_ended() {
+    let root = temp_root("assess-completed");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let ended = Arc::new(std::sync::atomic::AtomicI64::new(0));
+    let platform = Arc::new(TimedAssessment {
+        ended_unix_ms: ended.clone(),
+    });
+    let coordinator = RepairCoordinator::with_platform(engine, db, platform);
+    start_assessment(&coordinator, OWNER).expect("start");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let state = loop {
+        let current = coordinator.assessment_for_owner(OWNER).expect("snapshot");
+        if current.state != RepairAssessmentState::Scanning || Instant::now() > deadline {
+            break current;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(state.state, RepairAssessmentState::Ready, "{state:?}");
+    let ended = ended.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(ended > 0, "the platform never finished");
+    assert!(
+        state.completed_unix_ms >= ended,
+        "completed {} is before the measurement ended {ended}",
+        state.completed_unix_ms
+    );
+    assert!(
+        state.completed_unix_ms - state.started_unix_ms >= 80,
+        "{state:?}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
