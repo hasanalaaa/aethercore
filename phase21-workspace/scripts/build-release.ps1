@@ -66,6 +66,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Svelte/TypeScript validation failed.' }
 & pnpm --dir apps/ui build
 if ($LASTEXITCODE -ne 0) { throw 'UI production build failed.' }
 
+# Where cargo puts the build. A self-hosted runner keeps its build tree outside the checkout
+# (CARGO_TARGET_DIR), so the copy below must follow it. Read before verify-reproducible.ps1
+# below, which sets and then removes that variable for its own double build.
+$CargoTarget = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $Root 'target' }
 & cargo build --locked --release -p aethercore-maintenance-service -p aethercore-consent-broker -p aethercore-update-broker -p aethercore-install-hardener -p aetherctl
 if ($LASTEXITCODE -ne 0) { throw 'Native privileged component build failed.' }
 Push-Location (Join-Path $Root 'apps\desktop')
@@ -76,7 +80,7 @@ try {
 } finally { Pop-Location }
 
 foreach ($name in @('aethercore-desktop.exe','aethercore-maintenance-service.exe','aethercore-consent-broker.exe','aethercore-update-broker.exe','aethercore-install-hardener.exe','aetherctl.exe')) {
-    Copy-Item (Join-Path $Root "target\release\$name") (Join-Path $Payload $name) -Force
+    Copy-Item (Join-Path $CargoTarget "release\$name") (Join-Path $Payload $name) -Force
 }
 
 if ($RequireSigning -and -not $UpdateTrustPath) { throw 'Signed Phase 15 release packaging requires -UpdateTrustPath (or the protected AETHERCORE_UPDATE_TRUST_PATH passed by verify-phase15.ps1).' }

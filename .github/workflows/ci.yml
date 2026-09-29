@@ -38,11 +38,27 @@ defaults:
 
 jobs:
   windows:
-    runs-on: windows-2025
+    # P76: the job runs on the owner's own Windows PC (a self-hosted runner) only when the
+    # repository variable WINDOWS_RUNNER is 'self' - unset it and every run goes back to
+    # windows-2025 with no code change - and only for code that is already trusted: a push, or
+    # a pull request from a branch of this repository that Dependabot did not open. A fork's
+    # pull request, Dependabot's, a manual dispatch and everything else stay on GitHub.
+    runs-on: ${{ (vars.WINDOWS_RUNNER == 'self' && github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))) && fromJSON('["self-hosted","Windows","X64","aether-win"]') || 'windows-2025' }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      # P76: on the PC the build tree persists between runs instead of going through
+      # actions/cache. It sits beside the runner, OUTSIDE the checkout, so the checkout's clean
+      # cannot wipe it and no gate or seal ever sees it.
+      - name: Persistent build tree (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $dir = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) 'cache\target'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          "CARGO_TARGET_DIR=$dir" | Add-Content -Path $env:GITHUB_ENV
+          Write-Host "CARGO_TARGET_DIR=$dir"
       - name: Install pinned Rust toolchain
         shell: pwsh
         run: |
@@ -63,8 +79,18 @@ jobs:
         with:
           node-version: 22.16.0
           package-manager-cache: false
+      # P76: a no-op where that exact version is already installed (the owner's PC), so the job
+      # never rewrites a global npm prefix that is not the runner's own.
       - name: Install pinned pnpm
-        run: npm install --global pnpm@11.22.0
+        shell: pwsh
+        run: |
+          Set-Location $env:RUNNER_TEMP
+          if ((Get-Command pnpm -ErrorAction SilentlyContinue) -and ((pnpm --version) -eq '11.22.0')) {
+            Write-Host 'pnpm 11.22.0 is already installed'
+          } else {
+            npm install --global pnpm@11.22.0
+            if ($LASTEXITCODE -ne 0) { throw 'pnpm install failed' }
+          }
       - uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: 8.0.x
@@ -86,6 +112,7 @@ jobs:
       # failure later in the job cannot prevent a save that has already happened.
       - name: Restore Windows ADK Deployment Tools
         id: adk-cache
+        if: runner.environment != 'self-hosted'
         uses: actions/cache/restore@v6
         with:
           path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
@@ -96,7 +123,7 @@ jobs:
       # windows-installer.yml rather than copied - see the action's own header.
       - uses: ./.github/actions/install-windows-adk
       - name: Save Windows ADK Deployment Tools
-        if: steps.adk-cache.outputs.cache-hit != 'true'
+        if: runner.environment != 'self-hosted' && steps.adk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
@@ -125,6 +152,7 @@ jobs:
       # on run 34827684392, which is less than a cache round-trip would cost.
       - name: Restore Rust build cache
         id: cargo-cache
+        if: runner.environment != 'self-hosted'
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -185,7 +213,7 @@ jobs:
       # tree behind for the next one. Skipped on an exact key hit -- there is
       # nothing new to store when Cargo.lock has not moved.
       - name: Save Rust build cache
-        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
+        if: always() && runner.environment != 'self-hosted' && steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
