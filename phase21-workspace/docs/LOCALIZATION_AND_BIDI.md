@@ -75,3 +75,27 @@ Phase 12 must fail verification for any of the following:
 - reintroduction of secret/challenge parameters into the UAC broker.
 
 The platform-neutral audits are `scripts/phase12-localization-audit.py`, `scripts/test-phase12-localization.py`, `scripts/phase12-i18n-tests.cjs`, and `scripts/static_validate.py`. `scripts/verify-phase12.ps1` remains the authoritative Windows build/runtime/localization gate.
+
+## The rendered-DOM leak gate (P77-03)
+
+Key parity does not prove the product reads the same in both languages, so the `ui-leak-gate` job in
+`ci.yml` reads the rendered Arabic DOM. `apps/ui/tools/layout-sweep.mjs --leaks` drives Chrome over
+DevTools against the fixture (`layout-fixture.html`) and scans every text node and the accessible
+attributes (`aria-label`, `aria-description`, `aria-valuetext`, `title`, `placeholder`, `alt`, `value`):
+
+- `--leaks clean` replays the wire-true fixture and fails on any product sentence that fell back to
+  "Details unavailable" (`text.unavailable`), and names each one from the boundary's own console report.
+- `--leaks inject` loads the fixture with `?inject=leak`, which swaps prose, enum values and ids for
+  `LEAKSENTINEL` strings. It fails if a sentinel is visible, if a page shows no local fallback (the
+  injected fields were never rendered, so the check would have proved nothing), or if the disk name the
+  fixture keeps as data disappears.
+- `--plant text|attr|arg` is the gate's own negative control: it plants a sentinel in a label, an
+  attribute or an Arabic sentence and passes only if the scan finds it.
+
+What may be Latin is decided at the source, not by the gate: a device name, a path, a version, a number
+and a bare technical code are data (`TechnicalText`, or a `data` caller of `LocalizedOwnedText`), and
+what the app writes is a key or a sentence with a row in `semantic.ts`. The fixture's strings are the ones the
+Rust sources emit; `wire-values.test.ts` also reads the sentence-like literals of the UI-feeding crates and
+fails on one with no Arabic rendering. What the gate cannot prove: the language of a name the device
+sends, and any sentence the fixture and those literals do not contain.
+

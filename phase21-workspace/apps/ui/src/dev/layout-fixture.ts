@@ -21,10 +21,12 @@ import type {
   HardwareEvent,
   InsightsResponse,
   MemoryTelemetry,
+  PcCollectorStatus,
   PcEvidenceRef,
   PcFinding,
   PerfSnapshot,
   Plan,
+  ProviderFault,
   RepairAssessment,
   Snapshot,
   StartupItem,
@@ -177,7 +179,7 @@ const startupSnapshot: StartupSnapshot = {
     enabled: i !== 3,
     manageable: i !== 1,
     protected: i === 1,
-    protectionReason: i === 1 ? 'SystemCritical' : '',
+    protectionReason: i === 1 ? 'Windows/security startup targets are protected.' : '',
     impact: i < 2 ? 'High' : 'Medium',
     confidence: 'InsufficientEvidence',
     evidenceDetail: 'Runs at user logon; no directly correlated boot-duration evidence was found by this inventory provider.',
@@ -211,7 +213,7 @@ const diagnostics: DiagnosticsSnapshot = {
     reasons: i
       ? ['Windows reports a maximum read latency above 10 seconds in the storage reliability counters.']
       : ['uncorrected read error count: not reported', 'uncorrected write error count: not reported'],
-    sourceNotes: ['NVMe SMART/Health log page 0x02'],
+    sourceNotes: ['NVMe SMART/Health log via IOCTL_STORAGE_QUERY_PROPERTY'],
     reliability: fill<StorageReliability>({
       hasTemperature: true, temperatureC: 44, hasWear: true, wearPercentUsed: 4,
       hasPowerOnHours: true, powerOnHours: 6_214, hasNvmeAvailableSpare: true, nvmeAvailableSparePercent: 100,
@@ -233,9 +235,9 @@ const diagnostics: DiagnosticsSnapshot = {
   })),
   cards: [0, 1].map((i) => fill<DiagnosticCard>({
     cardId: `card-${i}`, domain: i ? 'Crash' : 'Memory', severity: i ? 'Attention' : 'Info',
-    confidence: i ? 'EventHigh/CauseLow' : 'CurrentOSMetric', title: 'Memory pressure stayed elevated across the observation window',
-    summary: 'Three of the last five sessions held available memory under 15%.',
-    evidence: ['MemoryLoad 72%', 'HardFaults/sec 480'], actions: [],
+    confidence: i ? 'EventHigh/CauseLow' : 'CurrentOSMetric', title: 'Memory-related hardware errors were logged',
+    summary: '3 WHEA event(s) contained memory-related hardware-error evidence in the last 30 days.',
+    evidence: ['Available physical memory: 9663676416 of 34359738368 bytes', 'Bugcheck: 0x0000009F'], actions: [],
   })),
   providerFaults: [fill({ provider: 'MSStorageDriver_FailurePredictStatus', operation: 'Query', kind: 'AccessDenied', kindCode: 5, detail: 'WMI namespace requires elevation.' })],
 };
@@ -246,9 +248,11 @@ const repairAssessment: RepairAssessment = {
   state: 'Ready',
   completedUnixMs: NOW,
   systemVolume: 'C:',
-  checks: ['DISM /ScanHealth', 'SFC /VerifyOnly', 'CHKDSK /scan'].map((title, i) => fill({
+  checks: ['Component store quick check', 'Protected system files', 'System volume online scan'].map((title, i) => fill({
     id: `check-${i}`, title, stage: 'Completed', resultCode: i === 1 ? 'IntegrityViolationsFound' : 'NoErrors',
-    exitCode: 0, detail: 'Windows Resource Protection found integrity violations in the component store.',
+    exitCode: 0, detail: i === 1
+      ? 'Recent CBS [SR] evidence indicates unresolved protected-file integrity work is required.'
+      : 'Recent CBS [SR] evidence contains no unresolved protected-file integrity violation for this check window.',
     logHint: 'C:\\Windows\\Logs\\CBS\\CBS.log',
   })),
   intelligence: fill({
@@ -261,7 +265,7 @@ const repairAssessment: RepairAssessment = {
     diagnoses: [fill({
       id: 'diag-1', code: 'COMPONENT_STORE_CORRUPTION', role: 'rootCause', domain: 'componentStore',
       confidence: 'high', scope: 'System', evidenceIds: ['fact-0', 'fact-1'],
-      uncertainty: 'Payload source availability is not known until restore runs.', ruleVersion: '3',
+      uncertainty: 'Windows could not locate the source files required for component-store repair (HRESULT 0x800F081F).', ruleVersion: '3',
     })],
     recovery: { systemRestore: 'active', restorePointCreation: 'active', winRe: 'disabled', journalRecovery: 'available', driverRollback: 'unknown' },
     graph: fill({ schema: 'graph.v1', valid: true, invalidReason: '', nodes: [], deterministicOrder: [], digestSha256: 'ab'.repeat(32) }),
@@ -495,6 +499,37 @@ const careRun = {
 };
 
 let sequence = 0;
+/*
+ * P77-03: `?inject=leak` swaps owned prose, enum values and ids for sentinels, and gives one disk a
+ * name the gate must keep. `tools/layout-sweep.mjs --leaks inject` then reads the rendered Arabic DOM,
+ * text and accessible attributes alike: a sentinel that appears is a leak, and a page that shows none
+ * of the local fallbacks proves the field was never rendered, so the check would have passed on nothing.
+ */
+const LEAK = 'LEAKSENTINEL';
+function injectLeaks(): void {
+  cleanupSnapshot.errorMessage = `Hardware telemetry: ${LEAK} cleanup`;
+  cleanupSnapshot.warnings = [`Storage telemetry unavailable: ${LEAK} warning`];
+  cleanupSnapshot.candidates[3].title = `${LEAK} title`;
+  cleanupSnapshot.candidates[4].description = `${LEAK} description`;
+  startupSnapshot.errorMessage = `preflight rejected: ${LEAK} startup`;
+  // A sentinel is mixed-case prose in a `detail` slot: an all-caps token looks like a technical code, and a
+  // name slot (`Service: <name>`) shows data on purpose, so neither would be a leak.
+  startupSnapshot.warnings = [`Restart recovery could not inspect target: ${LEAK}Detail`, `${LEAK} warning`];
+  Object.assign(startupSnapshot.items[2], { evidenceDetail: `${LEAK} evidence`, confidence: `${LEAK}Confidence` });
+  Object.assign(startupSnapshot.items[3], { impact: `${LEAK}Impact`, recommendation: `${LEAK}Recommendation` });
+  Object.assign(startupSnapshot.items[4], { kind: `${LEAK}Kind`, scope: `${LEAK}Scope` });
+  diagnostics.warnings = [`Hardware telemetry: ${LEAK} warning`, `Crash diagnostics: ${LEAK}Detail`];
+  diagnostics.storage[0].summary = `${LEAK} summary`;
+  diagnostics.storage[0].reasons = [`${LEAK} reason`];
+  diagnostics.storage[1].friendlyName = 'LEAKDATA Samsung 980'; // data: the gate requires it to stay
+  diagnostics.providerFaults = [fill<ProviderFault>({ provider: 'leaksentinel-provider', operation: `${LEAK}op`, kindCode: 6, detail: `${LEAK} detail` })];
+  repairAssessment.errorMessage = `preflight rejected: ${LEAK} repair`;
+  Object.assign(repairAssessment.checks[0], { title: `${LEAK} check`, stage: `${LEAK}Stage`, detail: `${LEAK} detail` });
+  deepScan.warnings = [`${LEAK} warning`];
+  deepScan.collectors = [fill<PcCollectorStatus>({ id: `${LEAK}collector`, state: 5 }), fill<PcCollectorStatus>({ id: 'drivers', state: 4 })];
+}
+if (new URLSearchParams(location.search).get('inject') === 'leak') injectLeaks();
+
 const event = <K extends UiKernelEvent['kind']>(kind: K, payload: unknown): UiKernelEvent =>
   ({ sequence: ++sequence, emittedUnixMs: NOW, kind, planId: '', payload } as UiKernelEvent);
 
@@ -510,7 +545,7 @@ const STREAM: readonly UiKernelEvent[] = [
   event('insights', insights),
   event('deepScanSnapshot', deepScan),
   event('plan', plan),
-  event('recoveryHistory', { entries: [fill({ seq: 1, planId: plan.id, severity: 'Amber', kind: 'CleanupInterrupted', summary: 'Restore point created before the cleanup plan ran.', detail: 'Sequence 42', restorePointSequence: 42, backupRoot: 'C:\\ProgramData\\AetherCore\\backup\\042', createdUnixMs: NOW })] }),
+  event('recoveryHistory', { entries: [fill({ seq: 1, planId: plan.id, severity: 'Amber', kind: 'CleanupInterrupted', summary: 'Cleanup was interrupted after deletion began', detail: 'AetherCore did not replay deletion after restart. Run a fresh cleanup scan before any further action.', restorePointSequence: 42, backupRoot: 'C:\\ProgramData\\AetherCore\\backup\\042', createdUnixMs: NOW })] }),
   event('startupHistory', { entries: [fill({ changeId: 'ch-1', originChangeId: '', planId: plan.id, itemId: 'startup-0', kind: 'Registry', displayName: 'Adobe Creative Cloud Desktop Application Startup Helper', direction: 'Disable', state: 'Applied', detail: '', createdUnixMs: NOW, updatedUnixMs: NOW, restoredUnixMs: 0, restorable: true })] }),
   event('diagnosticsHistory', { entries: [fill({ scanId: 'diag-fixture-1', state: 'Ready', collectedUnixMs: NOW, warningCount: 1, cardCount: 2 })] }),
 ];
