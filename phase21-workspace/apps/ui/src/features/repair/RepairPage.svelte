@@ -4,8 +4,10 @@
   import { streamState } from '../../platform/stream-state';
   import { LocalizedOwnedText, Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
   import { formatDateTime, hasMessageKey, localizeFactState, localizeOwnedText, localizeState, t, td, tp } from '../../lib/i18n';
+  import { onDestroy } from 'svelte';
   import { cancelRepairAssessment, openRepairReview, repairActive, repairUi, reviewSystemRepair, setIncludeDiskScan, startRepairAssessment } from './controller';
   import { shortDigest, stageTone } from '../shared';
+  import { elapsedLabel } from './settle';
 
   $: snapshot = $streamState.snapshot;
   $: repairAssessment = $streamState.repairAssessment;
@@ -36,6 +38,11 @@
   // P76 (DBT-P76-007): an assessment runs DISM ScanHealth, SFC and CHKDSK one after another
   // and can take many minutes; the page says which check is running, since when, and lets
   // the owner stop it. A start time, not a ticking clock: the renderer does not poll.
+  // The elapsed time is a clock outside the live region (role=timer is not announced): the screen
+  // reader hears the check change, not every second.
+  let now = Date.now();
+  const tick = setInterval(() => { if (repairAssessment.state === 'Scanning') now = Date.now(); }, 1000);
+  onDestroy(() => clearInterval(tick));
   function checkLabel(id: string): string {
     if (!id) return t('repair.check.starting', locale);
     const key = `repair.check.${id}`;
@@ -68,9 +75,15 @@
            unknown checks as healthy — the first is the policy band's sentence,
            and the second is why the healthy count is stated separately. -->
       {#if repairAssessment.state === 'Scanning'}
-        <p class="hero-reading">{t('repair.progress', locale, { check: checkLabel(repairAssessment.currentCheckId), done: repairAssessment.checks.length, started: formatDateTime(repairAssessment.startedUnixMs, locale) })}</p>
-        <p>{t('repair.slowNote', locale)}</p>
-        <Pressable className="ghost-action" onclick={cancelRepairAssessment}>{t('repair.cancel', locale)}</Pressable>
+        {#if snapshot.connected}
+          <p class="hero-reading">{t('repair.progress', locale, { check: checkLabel(repairAssessment.currentCheckId), done: repairAssessment.checks.length, started: formatDateTime(repairAssessment.startedUnixMs, locale) })}</p>
+          <p role="timer" aria-live="off">{t('repair.elapsed', locale, { elapsed: elapsedLabel(repairAssessment.startedUnixMs, now) })}</p>
+          <p>{t('repair.slowNote', locale)}</p>
+          <Pressable className="ghost-action" onclick={cancelRepairAssessment}>{t('repair.cancel', locale)}</Pressable>
+        {:else}
+          <!-- Offline the screen knows nothing new; it does not say the assessment stopped. -->
+          <p class="hero-reading">{t('repair.disconnected', locale)}</p>
+        {/if}
       {:else if repairAssessment.errorMessage}
         <LocalizedOwnedText value={repairAssessment.errorMessage} {locale} as="p"/>
       {:else if repairAssessment.state === 'Ready'}

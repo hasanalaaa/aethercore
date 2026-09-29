@@ -20,3 +20,55 @@ test('every assessment check the Windows provider reports has an English and an 
     assert.match(td(key as never, 'ar'), arabic, key);
   }
 });
+
+// P78-04: the assessment screen must not be put back on "Assessing" by a late answer, must say when
+// the connection is gone instead of pretending, and must show how long it has been running.
+import { settleAssessment, elapsedLabel } from '../src/features/repair/settle.ts';
+import type { RepairAssessment } from '../src/lib/contracts.ts';
+
+const assessment = (assessmentId: string, state: RepairAssessment['state']): RepairAssessment =>
+  ({ assessmentId, state, startedUnixMs: 1, completedUnixMs: 0, errorMessage: '', systemVolume: '', checks: [], currentCheckId: '' }) as unknown as RepairAssessment;
+
+test('a late start or cancel answer never puts a finished assessment back on Scanning', () => {
+  const finished = assessment('a1', 'Ready');
+  assert.equal(settleAssessment(finished, assessment('a1', 'Scanning')), finished, 'the event stream already said Ready');
+  const stopped = assessment('a1', 'Cancelled');
+  assert.equal(settleAssessment(stopped, assessment('a1', 'Scanning')), stopped);
+  const failed = assessment('a1', 'Failed');
+  assert.equal(settleAssessment(failed, assessment('a1', 'Scanning')), failed);
+});
+
+test('an answer that is news still replaces what the screen holds', () => {
+  const running = assessment('a1', 'Scanning');
+  const answer = assessment('a1', 'Scanning');
+  assert.equal(settleAssessment(running, answer), answer, 'the same assessment, still scanning: the answer is as good');
+  const next = assessment('a2', 'Scanning');
+  assert.equal(settleAssessment(assessment('a1', 'Ready'), next), next, 'a new assessment replaces the finished one');
+  assert.equal(settleAssessment(assessment('', 'Idle'), next), next);
+  const done = assessment('a1', 'Ready');
+  assert.equal(settleAssessment(running, done), done, 'a terminal answer replaces Scanning');
+});
+
+test('the elapsed time reads as m:ss or h:mm:ss and is empty when the start is unknown', () => {
+  assert.equal(elapsedLabel(1000, 1000), '0:00');
+  assert.equal(elapsedLabel(0, 5000), '', 'a start of 0 is unknown, not 1970');
+  assert.equal(elapsedLabel(1000, 66_000), '1:05');
+  assert.equal(elapsedLabel(1000, 3_726_000), '1:02:05');
+  assert.equal(elapsedLabel(9000, 1000), '0:00', 'a clock behind the start never shows a negative time');
+});
+
+test('the screen says when the connection is lost, and the cancel names its assessment', () => {
+  for (const key of ['repair.disconnected', 'repair.elapsed']) {
+    assert.ok(hasMessageKey(key), key);
+    assert.match(td(key as never, 'ar', { elapsed: '1:05' } as never), arabic, key);
+  }
+  const page = readFileSync(new URL('../src/features/repair/RepairPage.svelte', import.meta.url), 'utf8');
+  const connected = page.slice(page.indexOf("{#if repairAssessment.state === 'Scanning'}"), page.indexOf('{:else if repairAssessment.errorMessage}'));
+  assert.ok(connected.includes('repair.disconnected'), 'a lost connection is not said on the assessment screen');
+  assert.ok(connected.indexOf('snapshot.connected') < connected.indexOf('cancelRepairAssessment'), 'the stop button is offered while offline');
+  const controller = readFileSync(new URL('../src/features/repair/controller.ts', import.meta.url), 'utf8');
+  assert.ok(/cancel_repair_assessment',\s*\{\s*assessmentId/.test(controller), 'the cancel does not carry the assessment id');
+  const desktop = readFileSync(new URL('../../desktop/src/main.rs', import.meta.url), 'utf8');
+  const command = desktop.slice(desktop.indexOf('async fn cancel_repair_assessment'), desktop.indexOf('async fn create_system_repair_plan'));
+  assert.ok(command.includes('assessment_id: String') && command.includes('CancelRepairAssessmentRequest { assessment_id'), 'the desktop drops the assessment id');
+});

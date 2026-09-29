@@ -491,6 +491,8 @@ export const enCatalog = {
   'repair.progress': 'Running: {check} · {done} finished · started {started}',
   'repair.slowNote': 'DISM and SFC each read the whole system and can take several minutes. You can stop the assessment; every check is read-only.',
   'repair.cancel': 'Stop assessment',
+  'repair.elapsed': 'Running for {elapsed}',
+  'repair.disconnected': 'The connection to the AetherCore service was lost. The assessment may still be running; this page updates when the connection returns.',
   'repair.check.dism-scan': 'Component store (DISM ScanHealth)',
   'repair.check.sfc-verify': 'Protected system files (SFC)',
   'repair.check.servicing-state': 'Servicing state',

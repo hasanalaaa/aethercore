@@ -4,6 +4,7 @@ import { currentShellState, runBusy, setPage } from '../../app/shell-state';
 import { refreshServiceSnapshot } from '../../platform/snapshot';
 import { serviceInvoke } from '../../platform/service-client';
 import { patchStreamState, streamState } from '../../platform/stream-state';
+import { settleAssessment } from './settle';
 
 export const repairUi = writable({ includeDiskScan: true, planDiskScan: null as boolean | null, reviewOpen: false });
 
@@ -15,16 +16,18 @@ export async function startRepairAssessment(): Promise<void> {
   setPage('repair');
   await runBusy(async () => {
     patchStreamState({ repairPlan: null, repairStatus: null });
-    const repairAssessment = await serviceInvoke<RepairAssessment>('start_repair_assessment');
-    patchStreamState({ repairAssessment });
+    const answer = await serviceInvoke<RepairAssessment>('start_repair_assessment');
+    streamState.update((state) => ({ ...state, repairAssessment: settleAssessment(state.repairAssessment, answer) }));
   });
 }
 
-/** P76 (DBT-P76-007): stops a running assessment; the checks already finished are kept. */
+/** P76 (DBT-P76-007): stops a running assessment; the checks already finished are kept. It names the
+ *  assessment on screen (P78-03), so a click that arrives late cannot stop a newer one. */
 export async function cancelRepairAssessment(): Promise<void> {
   try {
-    const repairAssessment = await serviceInvoke<RepairAssessment>('cancel_repair_assessment');
-    patchStreamState({ repairAssessment });
+    const { assessmentId } = get(streamState).repairAssessment;
+    const answer = await serviceInvoke<RepairAssessment>('cancel_repair_assessment', { assessmentId });
+    streamState.update((state) => ({ ...state, repairAssessment: settleAssessment(state.repairAssessment, answer) }));
   } catch {
     /* the stream still carries the running assessment; the next event settles it */
   }
