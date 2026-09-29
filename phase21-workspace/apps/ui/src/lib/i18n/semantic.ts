@@ -15,7 +15,7 @@ function reportDropped(value: string): void {
 }
 // A bare technical code (an HRESULT, an error number, an UPPER_SNAKE name) is data, not prose.
 // An identifier has no space and a separator or a digit in it (`MSFT_StorageReliabilityCounter`); a bare word does not qualify.
-const technicalCode = /^(?:0x[0-9A-Fa-f]+|-?\d+|[A-Z][A-Z0-9_]{2,}(?:\.[A-Za-z0-9_]+)*|(?=[^\s]*[_.\d])[A-Za-z][A-Za-z0-9_.-]*)$/;
+const technicalCode = /^(?:0x[0-9A-Fa-f]+|-?\d+|[A-Z][A-Z0-9_]{2,}(?:\.[A-Za-z0-9_]+)*|(?=[^\s]*(?:[A-Za-z0-9][_.][A-Za-z0-9]|\d))[A-Za-z][A-Za-z0-9_.-]*[A-Za-z0-9])$/;
 
 const stateKeys: Record<string, MessageKey> = {
   Queued:'state.Queued', Interrupted:'state.Interrupted', Attention:'state.Attention', BackedUp:'state.BackedUp', BackingUpDrivers:'state.BackingUpDrivers', BackupNotApplicable:'state.BackupNotApplicable', Downloading:'state.Downloading', FailedAfterMutation:'state.FailedAfterMutation', FailedBeforeMutation:'state.FailedBeforeMutation', FailedSafe:'state.FailedSafe', FailedVerification:'state.FailedVerification', Installed:'state.Installed', Installing:'state.Installing', Verified:'state.Verified',

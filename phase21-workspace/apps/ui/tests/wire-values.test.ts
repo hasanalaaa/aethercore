@@ -287,6 +287,8 @@ test('an identifier stays data, a bare word does not, and a dropped sentence is 
   assert.equal(localizeOwnedText('MSFT_StorageReliabilityCounter', 'ar').text, 'MSFT_StorageReliabilityCounter');
   assert.equal(localizeOwnedText('0x8024402C', 'ar').text, '0x8024402C');
   assert.equal(localizeOwnedText('Timeout', 'ar').text, fallback, 'a bare English word is prose, not an identifier');
+  assert.equal(localizeOwnedText('Failed.', 'ar').text, fallback, 'a bare word with a full stop is prose');
+  assert.equal(localizeOwnedText('Windows.Update.Client', 'ar').text, 'Windows.Update.Client', 'a dotted name is an identifier');
   const { mock } = await import('node:test');
   const warn = mock.method(console, 'warn', () => {});
   try {
