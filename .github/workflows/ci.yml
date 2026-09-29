@@ -188,7 +188,36 @@ jobs:
       # REAL shipped .gguf - a mock cannot prove llama.cpp is linked or that a
       # token comes out - and asserts its absence loudly rather than skipping.
       # The artifact is gitignored, so the job has to fetch it.
+      # P76: on the owner's PC the model (1.1 GB, gitignored, so the checkout's clean deletes it
+      # every run) is kept beside the runner and put back before the fetch action, which still
+      # checks its size and sha256 - a stale or altered copy fails there, it is not trusted. Only
+      # the first run on a fresh PC downloads it; that download over a home connection ended
+      # in an EOF after eleven minutes on the runner's first attempt.
+      - name: Restore the embedded model from the persistent cache (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $entry = (Get-Content assets/models/models.manifest.json -Raw | ConvertFrom-Json).artifacts[0]
+          $cached = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) "cache\models\$($entry.fileName)"
+          if (Test-Path $cached) {
+            Copy-Item $cached (Join-Path assets/models $entry.fileName) -Force
+            Write-Host "restored $cached"
+          } else {
+            Write-Host "no cached model at $cached; the fetch step downloads it"
+          }
       - uses: ./.github/actions/fetch-embedded-model
+      - name: Keep the verified embedded model (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $entry = (Get-Content assets/models/models.manifest.json -Raw | ConvertFrom-Json).artifacts[0]
+          $cache = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) 'cache\models'
+          $cached = Join-Path $cache $entry.fileName
+          if (-not (Test-Path $cached)) {
+            New-Item -ItemType Directory -Force -Path $cache | Out-Null
+            Copy-Item (Join-Path assets/models $entry.fileName) $cached
+            Write-Host "kept $cached"
+          }
       - name: Rust unit/integration tests
         run: cargo test --locked --workspace
       - name: UI accessibility/type gate
