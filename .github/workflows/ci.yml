@@ -68,6 +68,7 @@ jobs:
       # Windows PowerShell 5.1 (it then installs pwsh and re-runs itself there), so 5.1 must
       # be able to parse it.
       - name: bootstrap.ps1 parses under Windows PowerShell 5.1
+        if: runner.environment != 'self-hosted'
         shell: powershell
         working-directory: phase21-workspace
         run: |
@@ -75,6 +76,24 @@ jobs:
           [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/bootstrap.ps1'), [ref]$null, [ref]$errors)
           if ($errors) { $errors | ForEach-Object { Write-Host $_ }; exit 1 }
           Write-Host "PowerShell $($PSVersionTable.PSVersion) parses bootstrap.ps1"
+      # P76: the same check, for the owner's PC. Windows PowerShell's execution policy there is
+      # Restricted, and `shell: powershell` runs a step as a temporary .ps1 file, which that
+      # policy refuses. Parsing needs no file: the identical script is handed to powershell.exe
+      # as an encoded command from a pwsh step.
+      - name: bootstrap.ps1 parses under Windows PowerShell 5.1 (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        working-directory: phase21-workspace
+        run: |
+          $check = @'
+          $ProgressPreference = 'SilentlyContinue'
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/bootstrap.ps1'), [ref]$null, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { Write-Host $_ }; exit 1 }
+          Write-Host ('PowerShell ' + $PSVersionTable.PSVersion + ' parses bootstrap.ps1')
+          '@
+          powershell -NoProfile -NonInteractive -Command $check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22.16.0
