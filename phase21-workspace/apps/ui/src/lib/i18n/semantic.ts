@@ -80,6 +80,22 @@ export function localizeCollectorFault(value: string, locale: Locale): string { 
 export function localizeCleanupProvider(value: string, locale: Locale): string { return td(cleanupProviderKeys[value] ?? 'cleanup.provider.unknown', locale); }
 export function localizeCleanupKind(value: string, locale: Locale): string { return value === 'Files' ? td('cleanup.kind.Files', locale) : value ? unknownLabel(locale) : ''; }
 
+// P77-02: ids the diagnostics engine puts on screen, named for the reader. The collector ids are the
+// coordinator's task table plus `updates` and `recovery`; the providers are the ones that report a
+// `CollectorFault`. `wire-values.test.ts` reads both lists from the Rust sources. An id nobody named
+// reads as a generic source, never as the id; the id stays in the local snapshot.
+const scanCollectorKeys: Record<string, MessageKey> = {
+  drivers:'deepScan.collectorName.drivers', windows:'deepScan.collectorName.windows', diagnostics:'deepScan.collectorName.diagnostics',
+  startup:'deepScan.collectorName.startup', cleanup:'deepScan.collectorName.cleanup', updates:'deepScan.collectorName.updates', recovery:'deepScan.collectorName.recovery',
+};
+const faultProviderKeys: Record<string, MessageKey> = {
+  'hardware-telemetry':'diagnostics.providerFaults.provider.hardwareTelemetry', 'crash-diagnostics':'diagnostics.providerFaults.provider.crashDiagnostics',
+  'diagnostic-engine':'diagnostics.providerFaults.provider.diagnosticEngine', 'diagnostic-journal':'diagnostics.providerFaults.provider.diagnosticJournal',
+  'idle-scheduler':'diagnostics.providerFaults.provider.idleScheduler',
+};
+export function localizeScanCollector(id: string, locale: Locale): string { return td(scanCollectorKeys[id] ?? 'source.unknown', locale); }
+export function localizeFaultProvider(id: string, locale: Locale): string { return td(faultProviderKeys[id] ?? 'source.unknown', locale); }
+
 export function localizeState(value: string, locale: Locale): string { return stateKeys[value] ? td(stateKeys[value], locale) : unknownLabel(locale); }
 export function localizeRisk(value: string, locale: Locale): string { return riskKeys[value] ? td(riskKeys[value], locale) : unknownLabel(locale); }
 export function localizeSeverity(value: string, locale: Locale): string { return severityKeys[value] ? td(severityKeys[value], locale) : unknownLabel(locale); }

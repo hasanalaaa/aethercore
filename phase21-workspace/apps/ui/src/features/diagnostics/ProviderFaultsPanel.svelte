@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { ProviderFault } from '../../lib/contracts';
   import type { Locale } from '../../lib/i18n/runtime';
-  import { localizeProviderFaultKind, t } from '../../lib/i18n';
-  import { TechnicalText } from '../../design/primitives';
+  import { localizeFaultProvider, localizeProviderFaultKind, t } from '../../lib/i18n';
 
   export let faults: ProviderFault[] = [];
   export let locale: Locale;
@@ -20,7 +19,7 @@
       {#each faults as fault, index (`${fault.provider}:${fault.operation}:${fault.kindCode}:${index}`)}
         <article class="provider-fault-row">
           <span class="fault-kind">{localizeProviderFaultKind(fault.kindCode, locale)}</span>
-          <span class="fault-technical"><TechnicalText value={fault.provider}/> · <TechnicalText value={fault.operation}/></span>
+          <span class="fault-technical">{localizeFaultProvider(fault.provider, locale)}</span>
         </article>
       {/each}
     </div>

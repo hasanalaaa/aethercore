@@ -4,7 +4,7 @@
   import { MaterialSurface, Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
   import { fluidPress } from '../../design/motion/fluid-press';
   import FindingCard from './FindingCard.svelte';
-  import { formatDateTime, formatNumber, hasMessageKey, t, td, type Locale, type MessageKey } from '../../lib/i18n';
+  import { formatDateTime, formatNumber, hasMessageKey, localizeScanCollector, t, td, type Locale, type MessageKey } from '../../lib/i18n';
   import { streamState } from '../../platform/stream-state';
   import { shellState } from '../../app/shell-state';
   import { cancelDeepScan, refreshDeepScanHistory, startDeepScan } from './controller';
@@ -156,7 +156,7 @@
     <MaterialSurface level="structural" className="limitation-card">
       <strong>{t('deepScan.diagnosticLimitations',locale)}</strong>
       <ul>
-        {#each limitedCollectors as collector}<li><TechnicalText value={collector.id}/><span> — {collectorStateLabel(collector.state,locale)}</span></li>{/each}
+        {#each limitedCollectors as collector}<li>{localizeScanCollector(collector.id,locale)}<span> —{collectorStateLabel(collector.state,locale)}</span></li>{/each}
         {#if hasContinuityLimitation}<li>{t('deepScan.continuityLimitation',locale)}</li>{/if}
       </ul>
     </MaterialSurface>
