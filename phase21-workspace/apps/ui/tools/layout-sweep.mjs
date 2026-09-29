@@ -15,9 +15,18 @@
  *   node tools/layout-sweep.mjs --out ../../output/sweep
  *   node tools/layout-sweep.mjs --widths 1280,1024,960 --locales en,ar
  *
+ * `--leaks clean|inject` is the Arabic leak gate (P77-03). It reads the rendered document, text and
+ * accessible attributes alike, instead of measuring layout. `clean` replays the wire-true fixture and
+ * fails on any product sentence that fell back to "Details unavailable". `inject` loads the fixture
+ * with `?inject=leak` (sentinels in prose, enum values and ids) and fails if a sentinel is visible, if a
+ * page shows no local fallback at all (the field was never rendered), or if the kept disk name is gone.
+ * `--plant text|attr|arg` (with inject) plants a sentinel in a label, an attribute or an Arabic sentence
+ * and passes only if the scan finds it: a negative control for the gate itself.
+ *
  * Requires a running dev server (npm run dev) and Google Chrome.
  */
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -30,7 +39,7 @@ function parseArgs(argv) {
   // design port ran `themes: ['dark']`, so no light artifact was ever produced
   // and nobody saw that feature-layout.css paints dark surfaces the light theme
   // never overrides — near-black text on near-black cards (DBT-P47-001).
-  const args = { widths: [1280, 1024, 960], locales: ['en', 'ar'], themes: ['dark', 'light'], out: 'output/sweep', base: 'http://127.0.0.1:1420', pages: ['overview'], entry: 'layout-fixture.html' };
+  const args = { widths: [1280, 1024, 960], locales: ['en', 'ar'], themes: ['dark', 'light'], out: 'output/sweep', base: 'http://127.0.0.1:1420', pages: ['overview'], entry: 'layout-fixture.html', leaks: 'off', plant: '' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.replace(/^--/, '');
     const value = argv[i + 1];
@@ -216,9 +225,54 @@ const MEASURE = `(() => {
   };
 })()`;
 
+/** The Arabic catalog's own words for the fallbacks, so the gate never hardcodes a translation. */
+const arCatalog = readFileSync(new URL('../src/lib/i18n/catalog.ar.ts', import.meta.url), 'utf8');
+function catalogText(key) {
+  const found = arCatalog.match(new RegExp(`'${key.replace(/\./g, '\\.')}': '([^']+)'`));
+  if (!found) throw new Error(`catalog.ar.ts has no ${key}`);
+  return found[1];
+}
+
+/**
+ * Every sentinel in the rendered document, text and accessible attributes alike, plus how often each
+ * local fallback is on screen. Reads the DOM the user gets, not the sources that produced it.
+ */
+const leakScan = (needles) => `(() => {
+  const sentinel = /LEAKSENTINEL/;
+  const hits = [];
+  let seen = '';
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const tag = node.parentElement?.tagName;
+    if (tag === 'SCRIPT' || tag === 'STYLE') continue;
+    seen += node.nodeValue + '\\n';
+    if (sentinel.test(node.nodeValue)) hits.push({ where: 'text', in: (tag || '').toLowerCase(), sample: node.nodeValue.trim().slice(0, 80) });
+  }
+  for (const element of document.querySelectorAll('*')) {
+    for (const name of ['aria-label', 'aria-description', 'aria-valuetext', 'aria-placeholder', 'title', 'placeholder', 'alt', 'value']) {
+      const value = element.getAttribute(name);
+      if (!value) continue;
+      seen += value + '\\n';
+      if (sentinel.test(value)) hits.push({ where: 'attribute ' + name, in: element.tagName.toLowerCase(), sample: value.slice(0, 80) });
+    }
+  }
+  if (sentinel.test(document.title)) hits.push({ where: 'title', in: 'head', sample: document.title });
+  const count = (needle) => seen.split(needle).length - 1;
+  return { hits, counts: ${JSON.stringify(needles)}.map((needle) => count(needle)), data: count('LEAKDATA') };
+})()`;
+
+/** Negative controls: a leak planted where a label, an attribute and an argument would carry one. */
+const PLANTS = {
+  text: `(() => { const span = document.createElement('span'); span.textContent = 'LEAKSENTINEL-plant-text'; document.querySelector('main').appendChild(span); })()`,
+  attr: `(() => { document.querySelector('main button, main a, main [role]').setAttribute('aria-label', 'تنبيه LEAKSENTINEL-plant-attr'); })()`,
+  arg: `(() => { document.querySelector('main li, main p').textContent = 'تعذّر إكمال LEAKSENTINEL-plant-arg في هذه الخطوة'; })()`,
+};
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = resolve(args.out);
+  const entry = args.leaks === 'inject' ? `${args.entry}?inject=leak` : args.entry;
+  const leakResults = [];
   await mkdir(outDir, { recursive: true });
 
   const profile = join(tmpdir(), `aethercore-sweep-${process.pid}`);
@@ -235,6 +289,15 @@ async function main() {
     cdp = await connect(port);
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
+    // The display boundary logs each product sentence it replaced for lack of a translation (P77-03);
+    // the leak gate names them instead of only counting the fallbacks.
+    const dropped = [];
+    cdp.on('Runtime.consoleAPICalled', (event) => {
+      const [first, ...rest] = event.args ?? [];
+      if (event.type === 'warning' && String(first?.value ?? '').startsWith('[AetherCore] text with no translation')) {
+        dropped.push(rest.map((arg) => arg.value).join(' '));
+      }
+    });
 
     for (const page of args.pages) {
       for (const locale of args.locales) {
@@ -245,13 +308,14 @@ async function main() {
             });
             // Preferences are read from storage during boot, so they must be set
             // before the document that reads them is created.
-            await cdp.send('Page.navigate', { url: `${args.base}/${args.entry}` });
+            await cdp.send('Page.navigate', { url: `${args.base}/${entry}` });
             await settle(cdp);
             await evaluate(cdp, `(() => {
               localStorage.setItem('aethercore.locale', ${JSON.stringify(locale)});
               localStorage.setItem('aethercore.theme', ${JSON.stringify(theme)});
             })()`);
-            await cdp.send('Page.navigate', { url: `${args.base}/${args.entry}` });
+            dropped.length = 0;
+            await cdp.send('Page.navigate', { url: `${args.base}/${entry}` });
             await settle(cdp);
             // Navigate the way a user does, by pressing the rail button, so the
             // measured page is one the app actually routed to.
@@ -265,6 +329,31 @@ async function main() {
             if (!reached) throw new Error(`could not route to page "${page}"`);
             await settle(cdp);
 
+            if (args.leaks !== 'off') {
+              // English shows English prose on purpose; the gate is about what Arabic readers are handed.
+              if (locale !== 'ar') continue;
+              if (args.plant) await evaluate(cdp, PLANTS[args.plant] ?? (() => { throw new Error(`unknown --plant ${args.plant}`); })());
+              const unavailable = catalogText('text.unavailable');
+              const fallbacks = [unavailable, catalogText('common.unknown'), catalogText('source.unknown')];
+              const scan = await evaluate(cdp, leakScan(fallbacks));
+              const shown = scan.counts.reduce((a, b) => a + b, 0);
+              const problems = [];
+              if (args.plant) {
+                if (!scan.hits.length) problems.push(`the gate is blind to a planted ${args.plant} leak`);
+              } else {
+                if (scan.hits.length) problems.push(`${scan.hits.length} sentinel(s) visible`);
+                if (args.leaks === 'clean' && scan.counts[0]) problems.push(`${scan.counts[0]} product sentence(s) fell back to "${unavailable}"`);
+                if (args.leaks === 'inject' && !shown) problems.push('no local fallback on screen: the injected fields were never rendered');
+                if (args.leaks === 'inject' && page === 'hardware' && !scan.data) problems.push('the disk name the gate must keep is gone');
+              }
+              const ok = !problems.length;
+              const name = `leaks-${args.leaks}${args.plant ? `-plant-${args.plant}` : ''}-${page}-${width}-${locale}-${theme}`;
+              console.log(`${ok ? 'PASS' : 'FAIL'}  ${name.padEnd(44)} sentinels=${scan.hits.length} fallbacks=${shown} data=${scan.data}${ok ? '' : `  ← ${problems.join('; ')}`}`);
+              for (const hit of scan.hits.slice(0, 6)) console.log(`        ${hit.where} in <${hit.in}>: "${hit.sample}"`);
+              for (const sentence of [...new Set(dropped)].slice(0, 12)) console.log(`        no Arabic for: "${sentence}"`);
+              leakResults.push({ name, ok });
+              continue;
+            }
             const measured = await evaluate(cdp, MEASURE);
             const name = `${page}-${width}-${locale}-${theme}`;
             const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
@@ -286,13 +375,20 @@ async function main() {
         }
       }
     }
-    await writeFile(join(outDir, 'sweep.json'), JSON.stringify(results, null, 2));
+    if (args.leaks === 'off') await writeFile(join(outDir, 'sweep.json'), JSON.stringify(results, null, 2));
   } finally {
     cdp?.close();
     chrome.kill();
     await rm(profile, { recursive: true, force: true }).catch(() => {});
   }
 
+  if (args.leaks !== 'off') {
+    const bad = leakResults.filter((r) => !r.ok);
+    console.log(`\n${leakResults.length - bad.length}/${leakResults.length} leak checks pass`);
+    // No result at all is a failure: a page that could not be reached must not read as a pass.
+    process.exitCode = leakResults.length && !bad.length ? 0 : 1;
+    return;
+  }
   const failed = results.filter((r) => r.overflowX !== 0 || r.overlapCount !== 0 || r.clippedCount !== 0);
   console.log(`\n${results.length - failed.length}/${results.length} pass · artifacts in ${outDir}`);
   process.exitCode = failed.length ? 1 : 0;

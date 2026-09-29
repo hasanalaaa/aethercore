@@ -1852,7 +1852,10 @@ marker("phase13_top_level_scan_panic_guard", diag13, ["catch_unwind(AssertUnwind
 marker("phase13_nested_fault_persistence", diag13, ["provider_faults.extend(h.provider_faults", "provider_faults.extend(c.provider_faults", "nested_provider_faults_are_preserved_in_the_diagnostic_snapshot"])
 marker("phase13_provider_fault_contract", proto13 + protocol13, ["enum ProviderFaultKind", "message ProviderFaultInfo", "repeated ProviderFaultInfo provider_faults = 13", "provider_fault_kind_code", "v1::ProviderFaultInfo"])
 phase13_fault_ui = read("apps/ui/src/features/diagnostics/ProviderFaultsPanel.svelte")
-marker("phase13_localized_fault_ui", phase13_fault_ui + semantic12 + en12 + ar12, ["localizeProviderFaultKind", "diagnostics.providerFaults.kind.timeout", "diagnostics.providerFaults.kind.malformedResponse", "TechnicalText"])
+# P77-02: the panel used to print `fault.provider` and `fault.operation` as TechnicalText; it now names the provider
+# (`localizeFaultProvider`) and prints neither id, so the marker that pinned the old markup pins the new invariant.
+marker("phase13_localized_fault_ui", phase13_fault_ui + semantic12 + en12 + ar12, ["localizeProviderFaultKind", "localizeFaultProvider", "diagnostics.providerFaults.kind.timeout", "diagnostics.providerFaults.kind.malformedResponse"])
+checks["phase13_fault_ids_not_user_visible"] = {"ok": not re.search(r'fault\.operation|(?<!localizeFaultProvider\()fault\.provider|<TechnicalText', re.sub(r'\{#each[^\n]*\n', '', phase13_fault_ui))}
 checks["phase13_raw_fault_detail_not_user_visible"] = {"ok": not contains(phase13_fault_ui, "fault.detail")}
 checks["phase13_fault_records_share_bounded_constructor"] = {"ok": not contains(crash_win13, "CollectorFaultRecord {") and "impl CollectorFaultRecord" in runtime13 and not contains(diag13, "ProviderFaultRecord{provider:\"diagnostic-engine\"") and not contains(diag13, "ProviderFaultRecord{provider:\"diagnostic-journal\"")}
 checks["phase13_diagnostic_persistence_not_silent"] = {"ok": not contains(diag13, "let _=inner.db.save_diagnostic_snapshot") and "diagnostic-journal" in diag13 and "snapshot.persist" in diag13 and "ScanState::Partial" in diag13 and "DiagnosticError::Internal" in (ROOT / "services/maintenance-service/src/errors.rs").read_text(encoding="utf-8")}
