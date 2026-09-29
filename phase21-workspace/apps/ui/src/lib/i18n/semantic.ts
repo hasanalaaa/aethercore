@@ -5,6 +5,18 @@ import { hasMessageKey, t, td, tp, type Locale, type MessageKey } from './runtim
 // "Unknown" in both languages, and a backend sentence it does not know reads as the unavailable
 // text in Arabic; neither is pasted into the visible label. The raw value stays in the local log.
 const unknownLabel = (locale: Locale): string => td('common.unknown', locale);
+
+// P77-04A: a failed service call, as the key the catalogs can say. A key the app knows is kept as it is
+// (pages test for `care.error.planChanged` and `insight.error.modelLoading` with .includes()); a
+// transport or OS failure reads as a class, never as the OS's sentence, which may be in any language.
+export function serviceErrorKey(error: unknown): string {
+  const text = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+  for (const token of text.match(/[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_-]+)+/g) ?? []) if (hasMessageKey(token)) return token;
+  if (/timed? ?out|timeout/i.test(text)) return 'service.error.timeout';
+  if (/access is denied|permission denied|not permitted|forbidden/i.test(text)) return 'service.error.denied';
+  if (/connect to maintenance service|os error (?:2|3|53|231)\b|cannot find the file|no such file|pipe|refused|unreachable|not running|unavailable outside the desktop runtime/i.test(text)) return 'service.error.unreachable';
+  return 'service.error.failed';
+}
 // A bare technical code (an HRESULT, an error number, an UPPER_SNAKE name) is data, not prose.
 const technicalCode = /^(?:0x[0-9A-Fa-f]+|-?\d+|[A-Z][A-Z0-9_]{2,}(?:\.[A-Za-z0-9_]+)*)$/;
 
