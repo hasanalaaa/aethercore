@@ -300,3 +300,46 @@ test('an identifier stays data, a bare word does not, and a dropped sentence is 
     warn.mock.restore();
   }
 });
+
+// P77-04A: the service's errors reach the reader as keys the catalogs can say, and a transport
+// failure is classified instead of pasted. The keys are read from the service's Rust sources, so
+// a key added there without a label fails here.
+test('every message key the service emits resolves in both catalogs', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { enCatalog } = await import('../src/lib/i18n/catalog.en.ts');
+  const { arCatalog } = await import('../src/lib/i18n/catalog.ar.ts');
+  const root = join(import.meta.dirname, '../../../services/maintenance-service/src');
+  const shape = /"([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_-]+)+)"/g;
+  const emitted = new Set<string>();
+  for (const file of readdirSync(root, { recursive: true }) as string[]) {
+    if (!file.endsWith('.rs')) continue;
+    const text = readFileSync(join(root, file), 'utf8');
+    for (const call of text.matchAll(/ServiceError::[a-z_]+\(([^;]*?)\)/gs)) {
+      for (const key of call[1].matchAll(shape)) if (!/\.(rs|json|toml|proto)$/.test(key[1])) emitted.add(key[1]);
+    }
+    if (file.endsWith('errors.rs')) for (const key of text.matchAll(shape)) if (!/\.(rs|json|toml|proto)$/.test(key[1])) emitted.add(key[1]);
+  }
+  assert.ok(emitted.size > 60, `read only ${emitted.size} keys; the extraction is broken`);
+  const missing = [...emitted].filter((key) => !(key in enCatalog && key in arCatalog)).sort();
+  assert.deepEqual(missing, [], `the service emits keys neither catalog can say: ${missing.join(', ')}`);
+});
+
+test('a transport failure is classified, a known key is kept, and raw text is never the answer', () => {
+  const key = names.serviceErrorKey;
+  // What the pages test with .includes() must survive.
+  assert.equal(key('care.error.planChanged'), 'care.error.planChanged');
+  assert.equal(key('Error: insight.error.modelLoading'), 'insight.error.modelLoading');
+  // Transport and OS failures read as a class, not as the OS's sentence.
+  assert.equal(key('connect to maintenance service: The system cannot find the file specified. (os error 2)'), 'service.error.unreachable');
+  assert.equal(key('request timed out after 30s'), 'service.error.timeout');
+  assert.equal(key('Access is denied. (os error 5)'), 'service.error.denied');
+  // Anything else is a generic failure; the raw text stays in the local log, not on screen.
+  assert.equal(key('Backend exploded'), 'service.error.failed');
+  assert.equal(key(''), 'service.error.failed');
+  for (const classified of ['service.error.unreachable', 'service.error.timeout', 'service.error.denied', 'service.error.failed']) {
+    assert.equal(names.hasMessageKey(classified), true, classified);
+    assert.match(names.td(classified as never, 'ar'), arabic, classified);
+    assert.notEqual(names.td(classified as never, 'en'), names.td(classified as never, 'ar'), classified);
+  }
+});
