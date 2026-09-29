@@ -8,6 +8,7 @@ import {
   localizePlanKind, localizeRecommendation, localizeRecommendationReason, localizeRisk, localizeSeverity,
   localizeStartupScope, localizeState, td, tp,
 } from '../src/lib/i18n/index.ts';
+import * as names from '../src/lib/i18n/index.ts';
 
 const arabic = /[؀-ۿ]/;
 
@@ -196,4 +197,61 @@ test('a caller that shows data opts out of the fallback, and only then', () => {
   assert.ok(!closed.text.includes('Vendor App'), closed.text);
   // Known product patterns still translate for a data caller.
   assert.match(localizeOwnedText('Service: wuauserv', 'ar', { data: true }).text, arabic);
+});
+
+// P77-02: the ids the diagnostics engine puts on screen - deep-scan collectors and provider
+// faults - are named for the reader in both languages. An id nobody named reads as a generic
+// source, never as itself. The ids are read from the Rust sources, so a new one fails here.
+test('every deep-scan collector id the coordinator emits is named in both languages', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const coordinator = readFileSync(join(import.meta.dirname, '../../../crates/pc-intelligence/src/coordinator.rs'), 'utf8');
+  const emitted = new Set([
+    ...[...coordinator.matchAll(/\(\s*"([a-z]+)",\s*vec!\[/g)].map((m) => m[1]), // the two task batches
+    ...[...coordinator.matchAll(/id: "([a-z]+)"\.into\(\)/g)].map((m) => m[1]), // updates, recovery
+  ]);
+  assert.deepEqual([...emitted].sort(), ['cleanup', 'diagnostics', 'drivers', 'recovery', 'startup', 'updates', 'windows']);
+  for (const id of emitted) {
+    const en = names.localizeScanCollector(id, 'en');
+    const ar = names.localizeScanCollector(id, 'ar');
+    assert.notEqual(en, id, id);
+    assert.match(ar, arabic, id);
+    assert.ok(!ar.includes(id), `${id} → ${ar}`);
+  }
+  const generic = names.localizeScanCollector('zzFutureCollector', 'ar');
+  assert.match(generic, arabic);
+  assert.ok(!generic.includes('zzFutureCollector'), generic);
+});
+
+test('every provider that reports a fault is named in both languages', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const providers = new Set<string>();
+  for (const crate of ['hardware-telemetry', 'crash-diagnostics', 'diagnostic-engine', 'idle-scheduler']) {
+    const root = join(import.meta.dirname, '../../../crates', crate, 'src');
+    for (const file of readdirSync(root, { recursive: true }) as string[]) {
+      if (!file.endsWith('.rs')) continue;
+      const text = readFileSync(join(root, file), 'utf8');
+      for (const m of text.matchAll(/CollectorFault::(?:new|cancelled|timeout)\(\s*"([a-z-]+)"/g)) providers.add(m[1]);
+    }
+  }
+  for (const known of ['hardware-telemetry', 'crash-diagnostics', 'diagnostic-engine', 'idle-scheduler']) {
+    assert.ok(providers.has(known), `${known} is no longer read from the sources: ${[...providers]}`);
+  }
+  for (const id of providers) {
+    const ar = names.localizeFaultProvider(id, 'ar');
+    assert.notEqual(names.localizeFaultProvider(id, 'en'), id, id);
+    assert.match(ar, arabic, id);
+    assert.ok(!ar.includes(id), `${id} → ${ar}`);
+  }
+  assert.ok(!names.localizeFaultProvider('zz-future-provider', 'ar').includes('zz-future-provider'));
+});
+
+test('the deep-scan and provider-fault views do not print collector or provider ids', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const page = readFileSync(join(import.meta.dirname, '../src/features/intelligence/DeepScanPage.svelte'), 'utf8');
+  const panel = readFileSync(join(import.meta.dirname, '../src/features/diagnostics/ProviderFaultsPanel.svelte'), 'utf8');
+  assert.doesNotMatch(page, /<TechnicalText value=\{collector\.id\}/, 'the deep scan prints a collector id as its heading');
+  assert.doesNotMatch(panel, /<TechnicalText value=\{fault\.(provider|operation)\}/, 'the fault panel prints a provider or operation id');
 });
