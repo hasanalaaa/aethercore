@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import argparse, json, sys
+import argparse, json, re, sys
 
 ROOT = Path(__file__).resolve().parents[1]
 PARSER = argparse.ArgumentParser()
@@ -127,7 +127,7 @@ check('diagnostic_persistence_failure_is_visible', 'let _=inner.db.save_diagnost
 check('provider_fault_contract', has(proto, 'enum ProviderFaultKind', 'message ProviderFaultInfo', 'repeated ProviderFaultInfo provider_faults = 13'))
 check('provider_fault_service_mapping', has(protocol, 'provider_faults:v.provider_faults', 'provider_fault_kind_code', 'v1::ProviderFaultInfo'))
 check('provider_fault_ui_contract', has(contracts, 'export type ProviderFault', 'providerFaults:ProviderFault[]') and 'providerFaults: []' in stream)
-check('provider_fault_localized_ui', has(fault_ui, 'localizeProviderFaultKind', '<TechnicalText value={fault.provider}', '<TechnicalText value={fault.operation}') and 'ProviderFaultsPanel' in hardware_ui and 'ProviderFaultsPanel' in crash_ui)
+check('provider_fault_localized_ui', has(fault_ui, 'localizeProviderFaultKind', 'localizeFaultProvider') and not re.search(r'fault\.operation|(?<!localizeFaultProvider\()fault\.provider|<TechnicalText', re.sub(r'\{#each[^\n]*\n', '', fault_ui)) and 'ProviderFaultsPanel' in hardware_ui and 'ProviderFaultsPanel' in crash_ui)
 check('provider_fault_raw_detail_not_rendered', 'fault.detail' not in fault_ui and '{fault.detail}' not in (hardware_ui + crash_ui))
 check('provider_fault_catalog_parity_surface', has(en, 'diagnostics.providerFaults.title', 'diagnostics.providerFaults.kind.timeout', 'diagnostics.providerFaults.kind.malformedResponse') and has(ar, 'diagnostics.providerFaults.title', 'diagnostics.providerFaults.kind.timeout', 'diagnostics.providerFaults.kind.malformedResponse') and 'localizeProviderFaultKind' in semantic)
 
