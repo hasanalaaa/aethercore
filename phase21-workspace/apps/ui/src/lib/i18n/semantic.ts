@@ -306,6 +306,35 @@ const exactOwnedText: Record<string, MessageKey> = {
   'AetherCore did not replay deletion after restart. Run a fresh cleanup scan before any further action.':'tech.recovery.cleanupDetail',
 };
 
+// P77-04B: the fleet crate's and the desktop's own sentences, matched by their shape. The payload a
+// sentence carries is dropped (it may be prose); only a schedule's id and the fleet's size are shown.
+// `fleet.test.ts` reads every message from the Rust sources, so a new one without a row fails there.
+type FleetRow = readonly [RegExp, MessageKey, ((m: RegExpMatchArray, locale: Locale) => Record<string, string>)?];
+const fleetOwnedText: readonly FleetRow[] = [
+  [/^malformed host id: /, 'fleet.errMalformedHostId'], [/^malformed hostname: /, 'fleet.errMalformedHostname'],
+  [/^malformed username: /, 'fleet.errMalformedUsername'], [/^malformed port: /, 'fleet.errMalformedPort'],
+  [/^malformed fingerprint: /, 'fleet.errMalformedFingerprint'], [/^malformed display name: /, 'fleet.errMalformedDisplayName'],
+  [/^malformed identity path: /, 'fleet.errMalformedIdentityPath'], [/^duplicate host id: /, 'fleet.errDuplicateHostId'],
+  [/^duplicate identity username@hostname:port: /, 'fleet.errDuplicateIdentity'], [/^schema mismatch: /, 'fleet.errSchemaMismatch'],
+  [/^fleet inventory full: (\d+) hosts is the configured maximum$/, 'fleet.errInventoryFull', (m) => ({ max: m[1] })],
+  [/^malformed inventory: /, 'fleet.errMalformedInventory'], [/^malformed schedule: /, 'fleet.errMalformedSchedule'],
+  [/^duplicate schedule id(?::|$)/, 'fleet.errDuplicateSchedule'], [/^schedule is disabled$/, 'fleet.errScheduleDisabled'],
+  [/^schedule is already running/, 'fleet.errScheduleRunning'], [/^schedule is not due$/, 'fleet.errScheduleNotDue'],
+  [/^no hosts selected$/, 'fleet.errNoHostsSelected'], [/^concurrency must be /, 'fleet.errConcurrency'],
+  [/^malformed host key material$/, 'fleet.errKeyMaterial'], [/^unsupported host key type: /, 'fleet.errKeyType'],
+  [/^fingerprint\/public-key binding failed: /, 'fleet.errKeyBinding'],
+  [/^private key material rejected at trust boundary$/, 'fleet.errPrivateKeyRejected'], [/^trust store I\/O: /, 'fleet.errTrustStoreIo'],
+  [/^ssh binary not available on this host$/, 'fleet.errSshMissing'], [/^invalid operation requested: /, 'fleet.errInvalidOperation'],
+  [/^transport I\/O: /, 'fleet.errTransportIo'], [/^AetherCore-owned known_hosts store is required$/, 'fleet.errKnownHostsRequired'],
+  [/^AetherCore-owned known_hosts store is missing$/, 'fleet.errKnownHostsMissing'],
+  [/^no enabled schedule is due at this instant$/, 'fleet.errNothingDue'],
+  [/^schedule (\S+) failed: (.+)$/s, 'fleet.errScheduleFailed', (m, locale) => ({ id: m[1], detail: localizeOwnedText(m[2], locale).text })],
+  [/^auth kind requires key\|cert with a path reference$/, 'fleet.errAuthKind'], [/^unknown host id$/, 'fleet.errUnknownHost'],
+  [/^explicit confirmation required$/, 'fleet.errConfirmation'], [/^unsupported compliance profile$/, 'fleet.errComplianceProfile'],
+  [/^unknown schedule id$/, 'fleet.errUnknownSchedule'], [/^schedules at .+ (?:could not be read|are unreadable) \(/, 'fleet.errSchedulesUnreadable'],
+  [/^open fleet trust store: /, 'fleet.errTrustStoreOpen'],
+];
+
 export type LocalizedOwnedText = { text: string; localized: boolean };
 /** `data: true` is for a caller that shows a value the user's machine wrote (a command, a path): an
     unknown one is shown isolated as data instead of being replaced. Prose never is. */
@@ -392,6 +421,11 @@ export function localizeOwnedText(value: string, locale: Locale, options: { data
   if ((m = value.match(/^device problem state changed since scan: (.+)$/))) return { text:t('tech.driver.install.problemStateChanged',locale,{instanceId:m[1]}),localized:true };
   if ((m = value.match(/^WUA did not return a per-update result for (.+) revision (\d+)$/))) return { text:t('tech.driver.install.wuaMissingResult',locale,{updateId:m[1],revision:m[2]}),localized:true };
   if ((m = value.match(/^(.+) event (\d+)$/))) return { text:t('tech.card.eventEvidence',locale,{provider:m[1],id:m[2]}),localized:true };
+  for (const [pattern, key, args] of fleetOwnedText) {
+    const m = value.match(pattern);
+    // `t` types the variables per key; each row's `args` supplies exactly its key's variables.
+    if (m) return { text: t(key as never, locale, args?.(m, locale) as never), localized: true };
+  }
   if (options.data || technicalCode.test(value)) return { text: value, localized: false };
   return { text: td('text.unavailable', locale), localized: true };
 }
