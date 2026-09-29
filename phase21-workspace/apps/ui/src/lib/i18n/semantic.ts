@@ -1,6 +1,13 @@
 import type { DriverCandidate, DriverDevice } from '../contracts';
 import { hasMessageKey, t, td, tp, type Locale, type MessageKey } from './runtime';
 
+// P77-01: the display boundary fails closed. An enum value or id the app does not know reads as
+// "Unknown" in both languages, and a backend sentence it does not know reads as the unavailable
+// text in Arabic; neither is pasted into the visible label. The raw value stays in the local log.
+const unknownLabel = (locale: Locale): string => td('common.unknown', locale);
+// A bare technical code (an HRESULT, an error number, an UPPER_SNAKE name) is data, not prose.
+const technicalCode = /^(?:0x[0-9A-Fa-f]+|-?\d+|[A-Z][A-Z0-9_]{2,}(?:\.[A-Za-z0-9_]+)*)$/;
+
 const stateKeys: Record<string, MessageKey> = {
   Queued:'state.Queued', Interrupted:'state.Interrupted', Attention:'state.Attention', BackedUp:'state.BackedUp', BackingUpDrivers:'state.BackingUpDrivers', BackupNotApplicable:'state.BackupNotApplicable', Downloading:'state.Downloading', FailedAfterMutation:'state.FailedAfterMutation', FailedBeforeMutation:'state.FailedBeforeMutation', FailedSafe:'state.FailedSafe', FailedVerification:'state.FailedVerification', Installed:'state.Installed', Installing:'state.Installing', Verified:'state.Verified',
   Idle: 'state.Idle', Scanning: 'state.Scanning', InventoryScanning: 'state.InventoryScanning',
@@ -71,23 +78,23 @@ const storageCounterKeys: Record<string, MessageKey> = {
 export function localizeCollector(value: string, locale: Locale): string { return td(collectorKeys[value] ?? 'perf.collector.unknown', locale); }
 export function localizeCollectorFault(value: string, locale: Locale): string { return collectorFaultKeys[value] ? td(collectorFaultKeys[value], locale) : td('perf.fault.Internal', locale); }
 export function localizeCleanupProvider(value: string, locale: Locale): string { return td(cleanupProviderKeys[value] ?? 'cleanup.provider.unknown', locale); }
-export function localizeCleanupKind(value: string, locale: Locale): string { return value === 'Files' ? td('cleanup.kind.Files', locale) : value; }
+export function localizeCleanupKind(value: string, locale: Locale): string { return value === 'Files' ? td('cleanup.kind.Files', locale) : value ? unknownLabel(locale) : ''; }
 
-export function localizeState(value: string, locale: Locale): string { return stateKeys[value] ? td(stateKeys[value], locale) : value; }
-export function localizeRisk(value: string, locale: Locale): string { return riskKeys[value] ? td(riskKeys[value], locale) : value; }
-export function localizeSeverity(value: string, locale: Locale): string { return severityKeys[value] ? td(severityKeys[value], locale) : value; }
-export function localizeConfidence(value: string, locale: Locale): string { return confidenceKeys[value] ? td(confidenceKeys[value], locale) : value; }
-export function localizeImpact(value: string, locale: Locale): string { return impactKeys[value] ? td(impactKeys[value], locale) : value; }
-export function localizeKind(value: string, locale: Locale): string { return kindKeys[value] ? td(kindKeys[value], locale) : value; }
-export function localizeDirection(value: string, locale: Locale): string { return directionKeys[value] ? td(directionKeys[value], locale) : value; }
-export function localizeDomain(value: string, locale: Locale): string { return domainKeys[value] ? td(domainKeys[value], locale) : value; }
-export function localizeRecommendation(value: string, locale: Locale): string { return recommendationKeys[value] ? td(recommendationKeys[value], locale) : value; }
-export function localizePlanKind(value: string, locale: Locale): string { return planKindKeys[value] ? td(planKindKeys[value], locale) : value; }
-export function localizeMatchQuality(value: string, locale: Locale): string { const key = `drivers.match.${value}`; return hasMessageKey(key) ? td(key, locale) : value; }
-/** A driver-authority RecommendationReason code; an unknown code stays the code, as evidence. */
-export function localizeRecommendationReason(code: string, locale: Locale): string { const key = `drivers.reason.${code}`; return hasMessageKey(key) ? td(key, locale) : code; }
+export function localizeState(value: string, locale: Locale): string { return stateKeys[value] ? td(stateKeys[value], locale) : unknownLabel(locale); }
+export function localizeRisk(value: string, locale: Locale): string { return riskKeys[value] ? td(riskKeys[value], locale) : unknownLabel(locale); }
+export function localizeSeverity(value: string, locale: Locale): string { return severityKeys[value] ? td(severityKeys[value], locale) : unknownLabel(locale); }
+export function localizeConfidence(value: string, locale: Locale): string { return confidenceKeys[value] ? td(confidenceKeys[value], locale) : unknownLabel(locale); }
+export function localizeImpact(value: string, locale: Locale): string { return impactKeys[value] ? td(impactKeys[value], locale) : unknownLabel(locale); }
+export function localizeKind(value: string, locale: Locale): string { return kindKeys[value] ? td(kindKeys[value], locale) : unknownLabel(locale); }
+export function localizeDirection(value: string, locale: Locale): string { return directionKeys[value] ? td(directionKeys[value], locale) : unknownLabel(locale); }
+export function localizeDomain(value: string, locale: Locale): string { return domainKeys[value] ? td(domainKeys[value], locale) : unknownLabel(locale); }
+export function localizeRecommendation(value: string, locale: Locale): string { return recommendationKeys[value] ? td(recommendationKeys[value], locale) : unknownLabel(locale); }
+export function localizePlanKind(value: string, locale: Locale): string { return planKindKeys[value] ? td(planKindKeys[value], locale) : unknownLabel(locale); }
+export function localizeMatchQuality(value: string, locale: Locale): string { const key = `drivers.match.${value}`; return hasMessageKey(key) ? td(key, locale) : unknownLabel(locale); }
+/** A driver-authority RecommendationReason code; an unknown code reads as "Unknown" (the code stays in the local log). */
+export function localizeRecommendationReason(code: string, locale: Locale): string { const key = `drivers.reason.${code}`; return hasMessageKey(key) ? td(key, locale) : unknownLabel(locale); }
 /** A repair FactState as protocol.rs writes it (lowerCamel). */
-export function localizeFactState(value: string, locale: Locale): string { const key = `repair.fact.${value}`; return hasMessageKey(key) ? td(key, locale) : value; }
+export function localizeFactState(value: string, locale: Locale): string { const key = `repair.fact.${value}`; return hasMessageKey(key) ? td(key, locale) : unknownLabel(locale); }
 
 const exactOwnedText: Record<string, MessageKey> = {
   'Startup change needs review':'startup.failure',
@@ -272,9 +279,14 @@ const exactOwnedText: Record<string, MessageKey> = {
 };
 
 export type LocalizedOwnedText = { text: string; localized: boolean };
-export function localizeOwnedText(value: string, locale: Locale): LocalizedOwnedText {
+/** `data: true` is for a caller that shows a value the user's machine wrote (a command, a path): an
+    unknown one is shown isolated as data instead of being replaced. Prose never is. */
+export function localizeOwnedText(value: string, locale: Locale, options: { data?: boolean } = {}): LocalizedOwnedText {
   if (hasMessageKey(value)) return { text: td(value, locale), localized: true };
   if (!value || locale === 'en') return { text: value, localized: true };
+  // A `detail` placeholder is prose from a backend or the OS: what the app knows translates, a bare
+  // code stays, and the rest reads as the unavailable text rather than entering the sentence.
+  const prose = (detail: string): string => (technicalCode.test(detail) ? detail : localizeOwnedText(detail, locale).text);
   const exact = exactOwnedText[value];
   if (exact) return { text: td(exact, locale), localized: true };
   let m: RegExpMatchArray | null;
@@ -305,43 +317,43 @@ export function localizeOwnedText(value: string, locale: Locale): LocalizedOwned
     return { text:t('tech.cleanup.itemResult',locale,{detail,bytes:m[2]}),localized:true };
   }
   if ((m = value.match(/^CHKDSK \/scan reported exit code (\d+)\. This phase does not run \/f or force an offline repair\. (.+)$/))) {
-    return { text:t('tech.repair.chkdskAttention',locale,{code:m[1],detail:m[2]}),localized:true };
+    return { text:t('tech.repair.chkdskAttention',locale,{code:m[1],detail:prose(m[2])}),localized:true };
   }
   if (value === 'Diagnostic history persistence was unavailable; this scan remains visible in memory but was not added to durable history.') return { text:t('tech.warning.diagnosticPersistence',locale),localized:true };
   if (value === 'Diagnostic scan could not start because its worker thread was unavailable.') return { text:t('tech.warning.diagnosticSpawn',locale),localized:true };
-  if ((m = value.match(/^Hardware telemetry: (.+)$/))) return { text:t('tech.warning.hardwarePrefix',locale,{detail:m[1]}),localized:true };
-  if ((m = value.match(/^Crash diagnostics: (.+)$/))) return { text:t('tech.warning.crashPrefix',locale,{detail:m[1]}),localized:true };
-  if ((m = value.match(/^Storage telemetry unavailable: (.+)$/))) return { text:t('tech.warning.storageUnavailable',locale,{detail:m[1]}),localized:true };
-  if ((m = value.match(/^Windows Event Log evidence unavailable: (.+)$/))) return { text:t('tech.warning.eventLogUnavailable',locale,{detail:m[1]}),localized:true };
-  if ((m = value.match(/^Windows Event Log collection unavailable: (.+)$/))) return { text:t('tech.warning.eventLogUnavailable',locale,{detail:m[1]}),localized:true };
-  if ((m = value.match(/^Minidump metadata unavailable: (.+)$/))) return { text:t('tech.warning.minidumpUnavailable',locale,{detail:m[1]}),localized:true };
-  if ((m = value.match(/^MSFT_StorageReliabilityCounter was unavailable: (.+)$/))) return { text:t('tech.storage.reliabilityUnavailable',locale,{detail:m[1]}),localized:true };
+  if ((m = value.match(/^Hardware telemetry: (.+)$/))) return { text:t('tech.warning.hardwarePrefix',locale,{detail:prose(m[1])}),localized:true };
+  if ((m = value.match(/^Crash diagnostics: (.+)$/))) return { text:t('tech.warning.crashPrefix',locale,{detail:prose(m[1])}),localized:true };
+  if ((m = value.match(/^Storage telemetry unavailable: (.+)$/))) return { text:t('tech.warning.storageUnavailable',locale,{detail:prose(m[1])}),localized:true };
+  if ((m = value.match(/^Windows Event Log evidence unavailable: (.+)$/))) return { text:t('tech.warning.eventLogUnavailable',locale,{detail:prose(m[1])}),localized:true };
+  if ((m = value.match(/^Windows Event Log collection unavailable: (.+)$/))) return { text:t('tech.warning.eventLogUnavailable',locale,{detail:prose(m[1])}),localized:true };
+  if ((m = value.match(/^Minidump metadata unavailable: (.+)$/))) return { text:t('tech.warning.minidumpUnavailable',locale,{detail:prose(m[1])}),localized:true };
+  if ((m = value.match(/^MSFT_StorageReliabilityCounter was unavailable: (.+)$/))) return { text:t('tech.storage.reliabilityUnavailable',locale,{detail:prose(m[1])}),localized:true };
   if ((m = value.match(/^Service: (.+)$/))) return { text:t('tech.startup.serviceSource',locale,{name:m[1]}),localized:true };
-  if ((m = value.match(/^Restart recovery could not inspect target: (.+)$/))) return { text:t('tech.startup.recoveryInspectFailed',locale,{detail:m[1]}),localized:true };
+  if ((m = value.match(/^Restart recovery could not inspect target: (.+)$/))) return { text:t('tech.startup.recoveryInspectFailed',locale,{detail:prose(m[1])}),localized:true };
   if ((m = value.match(/^Restored by startup change (.+)\.$/))) return { text:t('tech.startup.restoredBy',locale,{changeId:m[1]}),localized:true };
   if ((m = value.match(/^(Disable|Restore): (.+)$/))) return { text:t('tech.startup.actionProgress',locale,{direction:localizeDirection(m[1],locale),name:m[2]}),localized:true };
   if ((m = value.match(/^(Disable|Restore) (RegistryRun|RegistryRunOnce|StartupFolder|ScheduledTask|Service)$/))) return { text:t('tech.startup.itemDetail',locale,{direction:localizeDirection(m[1],locale),kind:localizeKind(m[2],locale)}),localized:true };
-  if ((m = value.match(/^PnP inventory failed: (.+)$/))) return { text:t('tech.driver.pnpInventoryFailed',locale,{detail:m[1]}),localized:true };
-  if ((m = value.match(/^Windows Update discovery unavailable: (.+)$/))) return { text:t('tech.driver.discoveryUnavailable',locale,{detail:m[1]}),localized:true };
+  if ((m = value.match(/^PnP inventory failed: (.+)$/))) return { text:t('tech.driver.pnpInventoryFailed',locale,{detail:prose(m[1])}),localized:true };
+  if ((m = value.match(/^Windows Update discovery unavailable: (.+)$/))) return { text:t('tech.driver.discoveryUnavailable',locale,{detail:prose(m[1])}),localized:true };
   if ((m = value.match(/^Windows Update search did not complete successfully: (.+)$/))) return { text:t('tech.driver.searchFailed',locale,{code:m[1]}),localized:true };
-  if ((m = value.match(/^WUA item (\d+) could not be read: (.+)$/))) return { text:t('tech.driver.wuaItemRead',locale,{index:m[1],detail:m[2]}),localized:true };
+  if ((m = value.match(/^WUA item (\d+) could not be read: (.+)$/))) return { text:t('tech.driver.wuaItemRead',locale,{index:m[1],detail:prose(m[2])}),localized:true };
   if ((m = value.match(/^WUA item (\d+) reported Type=Driver but did not expose IWindowsDriverUpdate$/))) return { text:t('tech.driver.wuaNoDriverInterface',locale,{index:m[1]}),localized:true };
-  if ((m = value.match(/^WUA driver item (\d+) metadata was rejected: (.+)$/))) return { text:t('tech.driver.wuaDriverMetadata',locale,{index:m[1],detail:m[2]}),localized:true };
-  if ((m = value.match(/^WUA item (\d+) entry (\d+) could not be read: (.+)$/))) return { text:t('tech.driver.wuaEntryRead',locale,{index:m[1],entry:m[2],detail:m[3]}),localized:true };
-  if ((m = value.match(/^WUA item (\d+) entry (\d+) metadata was rejected: (.+)$/))) return { text:t('tech.driver.wuaEntryMetadata',locale,{index:m[1],entry:m[2],detail:m[3]}),localized:true };
-  if ((m = value.match(/^WUA item (\d+) driver-entry count could not be read: (.+)$/))) return { text:t('tech.driver.wuaEntryCount',locale,{index:m[1],detail:m[2]}),localized:true };
-  if ((m = value.match(/^WUA item (\d+) exposed IWindowsDriverUpdate4 but its entry collection could not be read: (.+)$/))) return { text:t('tech.driver.wuaEntryCollection',locale,{index:m[1],detail:m[2]}),localized:true };
-  if ((m = value.match(/^WUA driver item (\d+) applicability metadata was rejected: (.+)$/))) return { text:t('tech.driver.wuaApplicability',locale,{index:m[1],detail:m[2]}),localized:true };
-  if ((m = value.match(/^driver download failed: (.+)$/i))) return { text:t('tech.driver.downloadFailed',locale,{detail:m[1]}),localized:true };
-  if ((m = value.match(/^download failed for selected update (\d+): (.+)$/i))) return { text:t('tech.driver.selectedDownloadFailed',locale,{index:m[1],detail:m[2]}),localized:true };
-  if ((m = value.match(/^WUA pre-install revalidation was not complete: (.+)$/))) return { text:t('tech.driver.revalidationFailed',locale,{detail:m[1]}),localized:true };
+  if ((m = value.match(/^WUA driver item (\d+) metadata was rejected: (.+)$/))) return { text:t('tech.driver.wuaDriverMetadata',locale,{index:m[1],detail:prose(m[2])}),localized:true };
+  if ((m = value.match(/^WUA item (\d+) entry (\d+) could not be read: (.+)$/))) return { text:t('tech.driver.wuaEntryRead',locale,{index:m[1],entry:m[2],detail:prose(m[3])}),localized:true };
+  if ((m = value.match(/^WUA item (\d+) entry (\d+) metadata was rejected: (.+)$/))) return { text:t('tech.driver.wuaEntryMetadata',locale,{index:m[1],entry:m[2],detail:prose(m[3])}),localized:true };
+  if ((m = value.match(/^WUA item (\d+) driver-entry count could not be read: (.+)$/))) return { text:t('tech.driver.wuaEntryCount',locale,{index:m[1],detail:prose(m[2])}),localized:true };
+  if ((m = value.match(/^WUA item (\d+) exposed IWindowsDriverUpdate4 but its entry collection could not be read: (.+)$/))) return { text:t('tech.driver.wuaEntryCollection',locale,{index:m[1],detail:prose(m[2])}),localized:true };
+  if ((m = value.match(/^WUA driver item (\d+) applicability metadata was rejected: (.+)$/))) return { text:t('tech.driver.wuaApplicability',locale,{index:m[1],detail:prose(m[2])}),localized:true };
+  if ((m = value.match(/^driver download failed: (.+)$/i))) return { text:t('tech.driver.downloadFailed',locale,{detail:prose(m[1])}),localized:true };
+  if ((m = value.match(/^download failed for selected update (\d+): (.+)$/i))) return { text:t('tech.driver.selectedDownloadFailed',locale,{index:m[1],detail:prose(m[2])}),localized:true };
+  if ((m = value.match(/^WUA pre-install revalidation was not complete: (.+)$/))) return { text:t('tech.driver.revalidationFailed',locale,{detail:prose(m[1])}),localized:true };
   if ((m = value.match(/^Exported (\d+) files before mutation\.$/))) return { text:t('tech.driver.install.exportedFiles',locale,{count:m[1]}),localized:true };
   if ((m = value.match(/^Downloaded (\d+) of (\d+) bytes\.$/))) return { text:t('tech.driver.install.downloaded',locale,{downloaded:m[1],total:m[2]}),localized:true };
-  if ((m = value.match(/^(.+) System Restore transaction close failed: (.+)$/))) { const base=localizeOwnedText(m[1],locale).text; return { text:`${base} ${t('tech.driver.install.restoreCloseFailed',locale,{detail:m[2]})}`,localized:true }; }
+  if ((m = value.match(/^(.+) System Restore transaction close failed: (.+)$/))) { const base=localizeOwnedText(m[1],locale).text; return { text:`${base} ${t('tech.driver.install.restoreCloseFailed',locale,{detail:prose(m[2])})}`,localized:true }; }
   if ((m = value.match(/^preflight rejected: (.+)$/))) { const detail=localizeOwnedText(m[1],locale).text; return { text:t('tech.driver.install.preflightPrefix',locale,{detail}),localized:true }; }
-  if ((m = value.match(/^system protection failed: (.+)$/))) return { text:t('tech.driver.install.protectionPrefix',locale,{detail:m[1]}),localized:true };
+  if ((m = value.match(/^system protection failed: (.+)$/))) return { text:t('tech.driver.install.protectionPrefix',locale,{detail:prose(m[1])}),localized:true };
   if ((m = value.match(/^Windows Update execution failed: (.+)$/))) { const detail=localizeOwnedText(m[1],locale).text; return { text:t('tech.driver.install.executionPrefix',locale,{detail}),localized:true }; }
-  if ((m = value.match(/^post-install verification failed: (.+)$/))) return { text:t('tech.driver.install.verificationPrefix',locale,{detail:m[1]}),localized:true };
+  if ((m = value.match(/^post-install verification failed: (.+)$/))) return { text:t('tech.driver.install.verificationPrefix',locale,{detail:prose(m[1])}),localized:true };
   if ((m = value.match(/^protected class (.+)$/))) return { text:t('tech.driver.install.protectedClass',locale,{className:m[1]}),localized:true };
   if ((m = value.match(/^device disappeared: (.+)$/))) return { text:t('tech.driver.install.deviceDisappeared',locale,{instanceId:m[1]}),localized:true };
   if ((m = value.match(/^device is no longer present: (.+)$/))) return { text:t('tech.driver.install.deviceNotPresent',locale,{instanceId:m[1]}),localized:true };
@@ -352,22 +364,23 @@ export function localizeOwnedText(value: string, locale: Locale): LocalizedOwned
   if ((m = value.match(/^device problem state changed since scan: (.+)$/))) return { text:t('tech.driver.install.problemStateChanged',locale,{instanceId:m[1]}),localized:true };
   if ((m = value.match(/^WUA did not return a per-update result for (.+) revision (\d+)$/))) return { text:t('tech.driver.install.wuaMissingResult',locale,{updateId:m[1],revision:m[2]}),localized:true };
   if ((m = value.match(/^(.+) event (\d+)$/))) return { text:t('tech.card.eventEvidence',locale,{provider:m[1],id:m[2]}),localized:true };
-  return { text: value, localized: false };
+  if (options.data || technicalCode.test(value)) return { text: value, localized: false };
+  return { text: td('text.unavailable', locale), localized: true };
 }
 
 export function localizeMemoryPressure(value: string, locale: Locale): string {
   const map: Record<string, MessageKey> = { Normal:'tech.memory.pressureNormal', Elevated:'tech.memory.pressureElevated', High:'tech.memory.pressureHigh' };
-  return map[value] ? td(map[value],locale) : value;
+  return map[value] ? td(map[value],locale) : unknownLabel(locale);
 }
 
 export function localizeHealthStatus(value: string, locale: Locale): string {
   const map: Record<string, MessageKey> = { Healthy:'health.Healthy', Warning:'health.Warning', Unhealthy:'health.Unhealthy', Unknown:'health.Unknown' };
-  return map[value] ? td(map[value], locale) : value;
+  return map[value] ? td(map[value], locale) : unknownLabel(locale);
 }
 
 export function localizeStartupScope(value: string, locale: Locale): string {
   const map: Record<string, MessageKey> = { 'Machine service':'tech.startup.scopeMachineService', 'Scheduled task':'tech.startup.scopeScheduledTask', 'Current user':'common.currentUser', 'All users':'common.allUsers', Machine:'tech.startup.scopeMachine', User:'tech.startup.scopeUser' };
-  return map[value] ? td(map[value], locale) : value;
+  return map[value] ? td(map[value], locale) : unknownLabel(locale);
 }
 
 export function localizePublisher(value: string, locale: Locale): string {
@@ -419,5 +432,5 @@ export function localizeFleetCadence(cadence: string, locale: Locale): string {
   const [kind, value] = cadence.split(':');
   if (kind === 'every_hours' && Number(value) > 0) return t('fleet.cadence.everyHours', locale, { hours: tp('unit.hour', locale, Number(value)) });
   if (kind === 'daily_at_utc_hour' && value) return t('fleet.cadence.dailyUtc', locale, { hour: value });
-  return cadence;
+  return unknownLabel(locale);
 }

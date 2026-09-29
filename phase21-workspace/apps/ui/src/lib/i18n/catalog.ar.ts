@@ -182,6 +182,7 @@ export const arCatalog = {
   'common.notCollected': 'لم يُجمع بعد',
   'common.none': 'لا يوجد',
   'common.unknown': 'غير معروف',
+  'text.unavailable': 'التفاصيل غير متاحة',
   'common.protected': 'محمي',
   'common.crossed': 'تم تجاوزه',
   'common.required': 'مطلوب',

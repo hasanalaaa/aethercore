@@ -77,7 +77,7 @@
       <article class:protected={item.protected} class="startup-card">
         <div class="startup-main">
           <div class="startup-title"><strong><TechnicalText value={item.displayName}/></strong><span>{localizeKind(item.kind,locale)}</span>{#if item.protected}<em>{t('startup.protected',locale)}</em>{/if}</div>
-          <p><LocalizedOwnedText value={item.command || item.source} {locale}/></p>
+          <p><LocalizedOwnedText value={item.command || item.source} {locale} data/></p>
           <small>{localizeStartupScope(item.scope,locale)} · {localizePublisher(item.publisher,locale)} · <LocalizedOwnedText value={item.evidenceDetail} {locale}/></small>
           {#if item.protectionReason}<div class="startup-protection"><LocalizedOwnedText value={item.protectionReason} {locale}/></div>{/if}
         </div>
