@@ -202,6 +202,19 @@ A release directory contains:
 
 Validates source and creates an **unsigned** packaging candidate. It is useful for proving packaging buildability but is not a production release.
 
+#### Where the `windows` job runs (P76)
+
+On GitHub's `windows-2025` by default. It runs on the owner's own Windows 11 PC, the self-hosted runner `aether-win` (labels `self-hosted, Windows, X64, aether-win`), only when **both** hold:
+
+- the repository variable `WINDOWS_RUNNER` is `self` — the kill-switch: delete it (`gh variable delete WINDOWS_RUNNER`) and every run goes back to `windows-2025` with no code change; and
+- the event is a `push`, or a `pull_request` whose head repository is this repository and which neither Dependabot's account nor Dependabot's PR author opened.
+
+A fork's pull request, a Dependabot update, `workflow_dispatch` and every other event stay on GitHub. This is one `runs-on` expression, not a second job. `windows-installer.yml`, `gate-self-tests`, the Linux job and `fuzz.yml` are unchanged: the installer probe installs and uninstalls the product, which must never happen on the PC where it is installed.
+
+What differs on the PC, each step gated on `runner.environment`: the ADK and Rust `actions/cache` steps are skipped, and the build tree persists in `C:\actions-runner\cache\target` (`CARGO_TARGET_DIR`, outside the checkout so its clean cannot wipe it and no gate or seal sees it — `build-release.ps1` and `build-cli-archive.ps1` read that variable); the ADK action still short-circuits on the ADK already installed; `pnpm` is installed only when `11.22.0` is not already present; the 1.1 GB embedded model, which the checkout's clean deletes every run, is kept in `C:\actions-runner\cache\models` and put back before `fetch-embedded-model`, which still verifies its size and sha256 (only the first run on a fresh PC downloads it); and the `bootstrap.ps1` Windows PowerShell 5.1 parse check runs through `powershell -Command`, because that shell's execution policy on the PC refuses the temporary script file GitHub's `shell: powershell` uses. The checkout keeps the committed bytes (`.gitattributes`: `* -text`), whatever `core.autocrlf` says.
+
+The PC must be **on and logged in** — the runner starts from a scheduled task at logon and stops with its console window. If it is off, a job waits in the queue and does not fall back to GitHub; unset the variable. A Windows Update restart or closing the runner's window ends a job in progress. The runner is admin: the tests use the isolated development pipe (`AETHERCORE_DEV_PIPE_TOKEN`), unnamed kernel objects and temp directories, and the live probes are `#[ignore]`, so nothing in this job touches the installed service.
+
 ### Protected signing workflow
 
 Runs on the dedicated self-hosted signing runner, requires approved dependency locks, audits dependencies, generates SBOMs, signs all required layers, verifies the Phase 9 principal/consent/filesystem/release-closure gates, and uploads the signed candidate for controlled release review.

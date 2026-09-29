@@ -38,11 +38,27 @@ defaults:
 
 jobs:
   windows:
-    runs-on: windows-2025
+    # P76: the job runs on the owner's own Windows PC (a self-hosted runner) only when the
+    # repository variable WINDOWS_RUNNER is 'self' - unset it and every run goes back to
+    # windows-2025 with no code change - and only for code that is already trusted: a push, or
+    # a pull request from a branch of this repository that Dependabot did not open. A fork's
+    # pull request, Dependabot's, a manual dispatch and everything else stay on GitHub.
+    runs-on: ${{ (vars.WINDOWS_RUNNER == 'self' && github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))) && fromJSON('["self-hosted","Windows","X64","aether-win"]') || 'windows-2025' }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      # P76: on the PC the build tree persists between runs instead of going through
+      # actions/cache. It sits beside the runner, OUTSIDE the checkout, so the checkout's clean
+      # cannot wipe it and no gate or seal ever sees it.
+      - name: Persistent build tree (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $dir = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) 'cache\target'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          "CARGO_TARGET_DIR=$dir" | Add-Content -Path $env:GITHUB_ENV
+          Write-Host "CARGO_TARGET_DIR=$dir"
       - name: Install pinned Rust toolchain
         shell: pwsh
         run: |
@@ -52,6 +68,7 @@ jobs:
       # Windows PowerShell 5.1 (it then installs pwsh and re-runs itself there), so 5.1 must
       # be able to parse it.
       - name: bootstrap.ps1 parses under Windows PowerShell 5.1
+        if: runner.environment != 'self-hosted'
         shell: powershell
         working-directory: phase21-workspace
         run: |
@@ -59,12 +76,40 @@ jobs:
           [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/bootstrap.ps1'), [ref]$null, [ref]$errors)
           if ($errors) { $errors | ForEach-Object { Write-Host $_ }; exit 1 }
           Write-Host "PowerShell $($PSVersionTable.PSVersion) parses bootstrap.ps1"
+      # P76: the same check, for the owner's PC. Windows PowerShell's execution policy there is
+      # Restricted, and `shell: powershell` runs a step as a temporary .ps1 file, which that
+      # policy refuses. Parsing needs no file: the identical script is handed to powershell.exe
+      # as an encoded command from a pwsh step.
+      - name: bootstrap.ps1 parses under Windows PowerShell 5.1 (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        working-directory: phase21-workspace
+        run: |
+          $check = @'
+          $ProgressPreference = 'SilentlyContinue'
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/bootstrap.ps1'), [ref]$null, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { Write-Host $_ }; exit 1 }
+          Write-Host ('PowerShell ' + $PSVersionTable.PSVersion + ' parses bootstrap.ps1')
+          '@
+          powershell -NoProfile -NonInteractive -Command $check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22.16.0
           package-manager-cache: false
+      # P76: a no-op where that exact version is already installed (the owner's PC), so the job
+      # never rewrites a global npm prefix that is not the runner's own.
       - name: Install pinned pnpm
-        run: npm install --global pnpm@11.22.0
+        shell: pwsh
+        run: |
+          Set-Location $env:RUNNER_TEMP
+          if ((Get-Command pnpm -ErrorAction SilentlyContinue) -and ((pnpm --version) -eq '11.22.0')) {
+            Write-Host 'pnpm 11.22.0 is already installed'
+          } else {
+            npm install --global pnpm@11.22.0
+            if ($LASTEXITCODE -ne 0) { throw 'pnpm install failed' }
+          }
       - uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: 8.0.x
@@ -86,6 +131,7 @@ jobs:
       # failure later in the job cannot prevent a save that has already happened.
       - name: Restore Windows ADK Deployment Tools
         id: adk-cache
+        if: runner.environment != 'self-hosted'
         uses: actions/cache/restore@v6
         with:
           path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
@@ -96,7 +142,7 @@ jobs:
       # windows-installer.yml rather than copied - see the action's own header.
       - uses: ./.github/actions/install-windows-adk
       - name: Save Windows ADK Deployment Tools
-        if: steps.adk-cache.outputs.cache-hit != 'true'
+        if: runner.environment != 'self-hosted' && steps.adk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
@@ -125,6 +171,7 @@ jobs:
       # on run 34827684392, which is less than a cache round-trip would cost.
       - name: Restore Rust build cache
         id: cargo-cache
+        if: runner.environment != 'self-hosted'
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -141,7 +188,36 @@ jobs:
       # REAL shipped .gguf - a mock cannot prove llama.cpp is linked or that a
       # token comes out - and asserts its absence loudly rather than skipping.
       # The artifact is gitignored, so the job has to fetch it.
+      # P76: on the owner's PC the model (1.1 GB, gitignored, so the checkout's clean deletes it
+      # every run) is kept beside the runner and put back before the fetch action, which still
+      # checks its size and sha256 - a stale or altered copy fails there, it is not trusted. Only
+      # the first run on a fresh PC downloads it; that download over a home connection ended
+      # in an EOF after eleven minutes on the runner's first attempt.
+      - name: Restore the embedded model from the persistent cache (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $entry = (Get-Content assets/models/models.manifest.json -Raw | ConvertFrom-Json).artifacts[0]
+          $cached = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) "cache\models\$($entry.fileName)"
+          if (Test-Path $cached) {
+            Copy-Item $cached (Join-Path assets/models $entry.fileName) -Force
+            Write-Host "restored $cached"
+          } else {
+            Write-Host "no cached model at $cached; the fetch step downloads it"
+          }
       - uses: ./.github/actions/fetch-embedded-model
+      - name: Keep the verified embedded model (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $entry = (Get-Content assets/models/models.manifest.json -Raw | ConvertFrom-Json).artifacts[0]
+          $cache = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) 'cache\models'
+          $cached = Join-Path $cache $entry.fileName
+          if (-not (Test-Path $cached)) {
+            New-Item -ItemType Directory -Force -Path $cache | Out-Null
+            Copy-Item (Join-Path assets/models $entry.fileName) $cached
+            Write-Host "kept $cached"
+          }
       - name: Rust unit/integration tests
         run: cargo test --locked --workspace
       - name: UI accessibility/type gate
@@ -185,7 +261,7 @@ jobs:
       # tree behind for the next one. Skipped on an exact key hit -- there is
       # nothing new to store when Cargo.lock has not moved.
       - name: Save Rust build cache
-        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
+        if: always() && runner.environment != 'self-hosted' && steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |

@@ -34,7 +34,8 @@ $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 
 $target = if ($Arch -eq 'arm64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
-$exe = Join-Path $Root "target\release\aetherctl.exe"
+$cargoTarget = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $Root 'target' }
+$exe = Join-Path $cargoTarget "release\aetherctl.exe"
 if (-not (Test-Path $exe)) { throw "aetherctl.exe not built. Run: cargo build --release -p aetherctl (target $target)" }
 
 $name  = "aetherctl-$Version-windows-$Arch"
