@@ -1,7 +1,7 @@
 use aethercore_windows_foundation::ComApartment;
 use windows::{
     Win32::{
-        Foundation::{DECIMAL, VARIANT_BOOL, VARIANT_FALSE, VARIANT_TRUE},
+        Foundation::{DECIMAL, VARIANT_FALSE, VARIANT_TRUE},
         System::{
             Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
             UpdateAgent::{
@@ -56,7 +56,9 @@ pub fn probe_update_health() -> UpdateHealthProbe {
         Ok(value) => value,
         Err(error) => return update_probe_error(error),
     };
-    if let Err(error) = unsafe { searcher.SetOnline(VARIANT_BOOL(-1)) } {
+    // P78-01: the health probe answers from the agent's local cache. Opening the repair page does not
+    // ask AetherCore to contact Microsoft Update; that belongs to driver discovery, behind its own scope.
+    if let Err(error) = unsafe { searcher.SetOnline(VARIANT_FALSE) } {
         return update_probe_error(error);
     }
     let criteria = BSTR::from("IsInstalled=0 and IsHidden=0");
@@ -83,7 +85,8 @@ pub fn probe_update_health() -> UpdateHealthProbe {
     let count = counted.unwrap_or(0);
     if result_code == orcSucceeded {
         match counted {
-            Some(count) => UpdateHealthProbe { result_code:"UpdateHealthy".into(), hresult:0, pending_update_count:count, detail:format!("Windows Update Agent discovery completed successfully; pending applicable updates: {count}.") },
+            Some(0) => UpdateHealthProbe { result_code:"UpdateHealthy".into(), hresult:0, pending_update_count:0, detail:"Windows Update Agent answered from its local cache, which lists no pending updates; this does not show that Windows is up to date.".into() },
+            Some(count) => UpdateHealthProbe { result_code:"UpdateHealthy".into(), hresult:0, pending_update_count:count, detail:format!("Windows Update Agent answered from its local cache: {count} pending update(s) are known locally; this is not a check for newer updates.") },
             None => UpdateHealthProbe { result_code:"UpdateHealthy".into(), hresult:0, pending_update_count:0, detail:"Windows Update Agent discovery completed successfully, but the pending-update count could not be read; the reported 0 is not a measurement.".into() },
         }
     } else if result_code == orcSucceededWithErrors {
