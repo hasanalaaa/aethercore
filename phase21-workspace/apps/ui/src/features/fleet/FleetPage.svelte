@@ -11,9 +11,9 @@
   import { onMount } from 'svelte';
   import { uiTransport } from '../../platform/transport';
   import { shellState } from '../../app/shell-state';
-  import { TechnicalText, Pressable } from '../../design/primitives';
+  import { LocalizedOwnedText, TechnicalText, Pressable } from '../../design/primitives';
   import { fluidPress } from '../../design/motion';
-  import { hasMessageKey, localizeFleetCadence, t, td } from '../../lib/i18n';
+  import { hasMessageKey, localizeFleetCadence, localizeOwnedText, serviceErrorKey, t, td } from '../../lib/i18n';
   import { EmptyState } from '../../design/signature';
   import { runDueOutcome, type RunDueResult } from './run-due';
 
@@ -101,11 +101,15 @@
       snapshot = await uiTransport.invoke<FleetSnapshot>('fleet_snapshot');
       loadError = null;
     } catch (error) {
-      loadError = String(error);
+      loadError = serviceErrorKey(error);
     }
   }
 
   onMount(refresh);
+
+  // What a failed call or a result carries is a message key or a sentence from the backend; either way
+  // it reads through the closed boundary, never as the raw text.
+  function owned(text: string): string { return localizeOwnedText(text, locale).text; }
 
   function notify(ok: boolean, text: string): void {
     notice = { ok, text };
@@ -118,11 +122,11 @@
     busy = true;
     try {
       const result = await uiTransport.invoke<ActionResult>(command, args);
-      notify(result.ok, result.ok ? okText : result.detail);
+      notify(result.ok, result.ok ? okText : owned(result.detail));
       if (result.ok) await refresh();
       return result;
     } catch (error) {
-      notify(false, String(error));
+      notify(false, owned(serviceErrorKey(error)));
       return null;
     } finally {
       busy = false;
@@ -234,7 +238,7 @@
       const result = await uiTransport.invoke<RemoteResult>(command, args);
       remoteResults = { ...remoteResults, [host.hostId]: result };
     } catch (error) {
-      remoteResults = { ...remoteResults, [host.hostId]: { hostId: host.hostId, operation, outcome: 'failed', detail: String(error), stdout: null, stderr: null } };
+      remoteResults = { ...remoteResults, [host.hostId]: { hostId: host.hostId, operation, outcome: 'failed', detail: serviceErrorKey(error), stdout: null, stderr: null } };
     } finally {
       remoteBusy = '';
     }
@@ -266,10 +270,10 @@
     const command = scheduleEditId ? 'fleet_schedule_update' : 'fleet_schedule_add';
     try {
       const result = await uiTransport.invoke<ScheduleActionResult>(command, { input: { scheduleId: id, scope: scheduleScope.split(',').map((item) => item.trim()).filter(Boolean), profileId: scheduleProfile, everyHours: Number(scheduleEveryHours) || 24, enabled: scheduleEnabled } });
-      notify(result.ok, result.ok ? t(scheduleEditId ? 'fleet.okScheduleUpdated' : 'fleet.okScheduleAdded', locale) : result.detail);
+      notify(result.ok, result.ok ? t(scheduleEditId ? 'fleet.okScheduleUpdated' : 'fleet.okScheduleAdded', locale) : owned(result.detail));
       if (result.ok) { resetScheduleForm(); await refresh(); }
     } catch (error) {
-      notify(false, String(error));
+      notify(false, owned(serviceErrorKey(error)));
     }
   }
 
@@ -277,10 +281,10 @@
     if (!window.confirm(t('fleet.confirmScheduleRemove', locale, { id: schedule.scheduleId }))) return;
     try {
       const result = await uiTransport.invoke<ScheduleActionResult>('fleet_schedule_remove', { scheduleId: schedule.scheduleId, confirm: true });
-      notify(result.ok, result.ok ? t('fleet.okScheduleRemoved', locale) : result.detail);
+      notify(result.ok, result.ok ? t('fleet.okScheduleRemoved', locale) : owned(result.detail));
       if (result.ok) await refresh();
     } catch (error) {
-      notify(false, String(error));
+      notify(false, owned(serviceErrorKey(error)));
     }
   }
 
@@ -291,10 +295,10 @@
         outcome.ok,
         outcome.ok
           ? t('fleet.okScheduleRunDue', locale)
-          : t('fleet.errScheduleRunDue', locale, { failed: String(outcome.failed), attempted: String(outcome.attempted) }) + (outcome.detail ? ` ${outcome.detail}` : ''),
+          : t('fleet.errScheduleRunDue', locale, { failed: String(outcome.failed), attempted: String(outcome.attempted) }) + (outcome.detail ? ` ${owned(outcome.detail)}` : ''),
       );
     } catch (error) {
-      notify(false, String(error));
+      notify(false, owned(serviceErrorKey(error)));
     }
     await refresh();
   }
@@ -328,7 +332,7 @@
 {#if loadError}
   <section class="panel fleet-error" role="alert">
     <strong>{t('fleet.loadFailed', locale)}</strong>
-    <TechnicalText value={loadError} />
+    <LocalizedOwnedText value={loadError} {locale} />
   </section>
 {:else if snapshot}
   <section class="hardware-summary fleet-summary">
@@ -444,7 +448,7 @@
           {#if remote}
             <div class="remote-result" class:ok={resultTone(remote.outcome) === 'ok'} class:warn={resultTone(remote.outcome) === 'warn'} class:error={resultTone(remote.outcome) === 'error'} role="status">
               <strong>{remote.operation}: {resultLabel(remote.outcome)}</strong>
-              {#if remote.detail}<span>{remote.detail}</span>{/if}
+              {#if remote.detail}<span><LocalizedOwnedText value={remote.detail} {locale} /></span>{/if}
               {#if remote.stdout}<pre dir="ltr">{remote.stdout}</pre>{/if}
               {#if remote.stderr}<pre dir="ltr">{remote.stderr}</pre>{/if}
             </div>
