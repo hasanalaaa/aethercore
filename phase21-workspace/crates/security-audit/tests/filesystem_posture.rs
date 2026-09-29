@@ -86,7 +86,13 @@ fn make_private(path: &Path, dir: bool) {
     chmod(path, if dir { 0o700 } else { 0o600 });
     #[cfg(windows)]
     {
-        let _ = dir;
+        // A private directory hands its grants to what is created inside it. Without
+        // (OI)(CI) a file made there inherits nothing, and Windows fills the gap with the
+        // creator's default DACL - which, in any ordinary interactive session, holds an ACE
+        // for the logon SID (S-1-5-5-0-x, FILE_GENERIC_READ|EXECUTE). That ACE made the key
+        // "over-permissive" on the owner's own PC while GitHub's runner account has none
+        // (P76, DBT-P76-013).
+        let inherit = if dir { "(OI)(CI)" } else { "" };
         let user_sid = current_user_sid();
         let status = std::process::Command::new("icacls")
             .arg(path)
@@ -97,8 +103,11 @@ fn make_private(path: &Path, dir: bool) {
         let status = std::process::Command::new("icacls")
             .arg(path)
             .arg("/grant:r")
-            .arg(format!("*{user_sid}:(F)"))
-            .args(["*S-1-5-18:(F)", "*S-1-5-32-544:(F)"])
+            .arg(format!("*{user_sid}:{inherit}(F)"))
+            .args([
+                format!("*S-1-5-18:{inherit}(F)"),
+                format!("*S-1-5-32-544:{inherit}(F)"),
+            ])
             .status()
             .expect("icacls runs");
         assert!(status.success(), "icacls private grants failed");
