@@ -333,11 +333,41 @@ mod p75_care_dispatch_tests {
         CarePlan, CareSafety, CareStep, DomainDispatch, DomainStepExecutor, MutationLeaseGuard,
         StepOutcome,
     };
+    use aethercore_cleaner::{
+        CleanerError, CleanupCandidate, CleanupMutationLease, CleanupPlatform,
+    };
     use aethercore_operation_engine::CleanupDeleteAction;
 
     use super::*;
 
     const OWNER: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+
+    /// A cleaner platform that touches nothing on the machine: its cleanup always ends
+    /// `Failed`, and it holds no machine-wide boundary. These tests used the real Windows
+    /// platform, whose cleanup ended `Failed` only because the installer-provisioned lock file
+    /// under ProgramData is absent on a machine without the product — and which took the LIVE
+    /// lock file, shared with the installed service, on a machine that has it (P76,
+    /// DBT-P76-011; the same reasoning as DBT-P61-002 in `cleaner/tests/coordinator.rs`).
+    struct FailingCleanupPlatform;
+
+    impl CleanupPlatform for FailingCleanupPlatform {
+        fn scan(&self) -> aethercore_cleaner::Result<Vec<CleanupCandidate>> {
+            Ok(Vec::new())
+        }
+
+        fn delete_action(
+            &self,
+            _action: &CleanupDeleteAction,
+        ) -> aethercore_cleaner::Result<(u64, u64, String)> {
+            Err(CleanerError::Safety(
+                "injected: this cleanup always fails".into(),
+            ))
+        }
+
+        fn acquire_mutation_lease(&self) -> aethercore_cleaner::Result<CleanupMutationLease> {
+            Ok(Box::new(()))
+        }
+    }
 
     struct Via<'a>(&'a RealDomainDispatch, std::sync::Mutex<Option<String>>);
 
@@ -442,7 +472,11 @@ mod p75_care_dispatch_tests {
             .id;
         let dispatch = RealDomainDispatch {
             engine: engine.clone(),
-            cleaner: Arc::new(CleanupEngine::new(engine.clone(), db.clone())),
+            cleaner: Arc::new(CleanupEngine::with_platform(
+                engine.clone(),
+                db.clone(),
+                Arc::new(FailingCleanupPlatform),
+            )),
             startup: Arc::new(StartupManager::new(
                 engine.clone(),
                 db.clone(),
@@ -472,8 +506,8 @@ mod p75_care_dispatch_tests {
         .expect("run");
         let answer = via.1.lock().unwrap().clone().expect("dispatched");
         // Routed by kind, the cleaner answers for the unstarted plan: it ran it under the care
-        // step's authorization (DBT-P75-045) and reports its own terminal state (this empty
-        // candidate fails its own checks).
+        // step's authorization (DBT-P75-045) and reports its own terminal state (the injected
+        // platform's cleanup fails).
         assert!(answer.starts_with("Ok((\"Failed\""), "{answer}");
         drop(db);
         let _ = std::fs::remove_file(&path);
@@ -504,7 +538,11 @@ mod p75_care_dispatch_tests {
         let engine = Arc::new(OperationEngine::new(db.clone()));
         let dispatch = Arc::new(RealDomainDispatch {
             engine: engine.clone(),
-            cleaner: Arc::new(CleanupEngine::new(engine.clone(), db.clone())),
+            cleaner: Arc::new(CleanupEngine::with_platform(
+                engine.clone(),
+                db.clone(),
+                Arc::new(FailingCleanupPlatform),
+            )),
             startup: Arc::new(StartupManager::new(
                 engine.clone(),
                 db.clone(),
@@ -589,8 +627,8 @@ mod p75_care_dispatch_tests {
             .unwrap_or_else(|| panic!("the care run is not on the page: {sources:?}"));
         assert_eq!(run.domain, "oneClickCare");
         assert!(run.code.starts_with("care.run:"), "{}", run.code);
-        // This empty candidate fails the cleaner's own checks, so the run finished with a
-        // failed step: both entries must say so. The cleaner writes its result to `stage`
+        // The injected platform's cleanup fails, so the run finished with a failed step: both
+        // entries must say so. The cleaner writes its result to `stage`
         // and leaves `outcome` empty, which read as a neutral "execution.outcome:".
         let execution = page
             .entries
