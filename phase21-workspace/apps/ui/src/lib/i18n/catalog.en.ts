@@ -846,6 +846,8 @@ export const enCatalog = {
   'tech.startup.observationOnly': 'This startup entry is too large to change safely, so it is shown for observation only.',
   'tech.support.bundleNote': 'A tamper-evident support bundle made by this AetherCore installation. It is not a vendor or hardware attestation.',
   'tech.update.discoveryErrors': 'The Windows Update search finished with errors; the results may be incomplete.',
+  'tech.update.localCacheEmpty': 'Windows Update Agent answered from its local cache, which lists no pending updates; this does not show that Windows is up to date.',
+  'tech.update.localCacheCount': 'Windows Update Agent answered from its local cache: {count} pending update(s) are known locally; this is not a check for newer updates.',
   'tech.repair.sourceMissing': 'Windows could not find the source files needed to repair the component store (HRESULT 0x800F081F).',
   'tech.update.servicingIdle': 'Windows servicing reports no active installer and no restart required before installing.',
   'tech.startup.protectedTargets': 'Windows and security startup targets are protected.',

@@ -343,3 +343,24 @@ test('a transport failure is classified, a known key is kept, and raw text is ne
     assert.notEqual(names.td(classified as never, 'en'), names.td(classified as never, 'ar'), classified);
   }
 });
+
+// P78-01: the Windows Update health probe now answers from the local cache and says so. Its detail is
+// composed with format!, which the Rust scan above cannot see, so the sentences are read out of the
+// source here: a reworded sentence that loses its Arabic rendering fails on the next run.
+test('the update health probe sentences read in Arabic', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const source = readFileSync(join(import.meta.dirname, '../../../crates/windows-update/src/windows_impl.rs'), 'utf8');
+  const empty = 'Windows Update Agent answered from its local cache, which lists no pending updates; this does not show that Windows is up to date.';
+  const counted = (n: number) => `Windows Update Agent answered from its local cache: ${n} pending update(s) are known locally; this is not a check for newer updates.`;
+  assert.ok(source.includes(empty), 'the source no longer says the empty-cache sentence this test pins');
+  assert.ok(source.includes(counted(0).replace('0', '{count}')), 'the source no longer says the counted sentence this test pins');
+  const fallback = td('text.unavailable', 'ar');
+  for (const sentence of [empty, counted(1), counted(12)]) {
+    const shown = localizeOwnedText(sentence, 'ar').text;
+    assert.notEqual(shown, fallback, sentence);
+    assert.match(shown, arabic, sentence);
+    assert.ok(!shown.includes('cache'), shown);
+  }
+  assert.match(localizeOwnedText(counted(12), 'ar').text, /12/);
+});
