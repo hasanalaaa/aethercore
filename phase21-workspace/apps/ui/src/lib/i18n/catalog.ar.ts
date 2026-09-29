@@ -836,6 +836,7 @@ export const arCatalog = {
   'tech.recovery.cleanupDetail': 'لم يُعد AetherCore تنفيذ الحذف بعد إعادة التشغيل. شغّل فحص تنظيف جديدًا قبل أي إجراء لاحق.',
   'tech.warning.diagnosticWorker': 'توقف فحص التشخيص لأن عاملًا داخليًا فشل.',
   'tech.repair.mutationBoundary': 'تم تجاوز نقطة اللاعودة: بدأت التغييرات.',
+  'tech.repair.cancelledBeforeChange': 'أُلغي الإصلاح قبل إجراء أي تغيير.',
   'tech.repair.checkTimedOut': 'لم ينتهِ هذا الفحص في الوقت المناسب فأُوقف؛ نتيجته غير معروفة.',
   'tech.repair.checkStillRunning': 'محاولة سابقة لهذا الفحص ما زالت تعمل، فلم يبدأ من جديد؛ نتيجته غير معروفة.',
   'tech.repair.checkNoAnswer': 'توقف هذا الفحص دون أن يعطي نتيجة؛ نتيجته غير معروفة.',

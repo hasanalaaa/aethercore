@@ -316,6 +316,7 @@ const exactOwnedText: Record<string, MessageKey> = {
   'AetherCore did not replay deletion after restart. Run a fresh cleanup scan before any further action.':'tech.recovery.cleanupDetail',
   'Diagnostic scan stopped because an internal worker boundary failed.':'tech.warning.diagnosticWorker',
   'Durable mutation boundary crossed.':'tech.repair.mutationBoundary',
+  'the repair was cancelled before any change was made':'tech.repair.cancelledBeforeChange',
   'This check did not finish in time and was stopped; its result is unknown.':'tech.repair.checkTimedOut',
   'An earlier attempt at this check is still running, so it was not started again; its result is unknown.':'tech.repair.checkStillRunning',
   'This check stopped without an answer; its result is unknown.':'tech.repair.checkNoAnswer',

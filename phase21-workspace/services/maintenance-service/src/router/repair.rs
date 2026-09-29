@@ -8,7 +8,8 @@ pub(super) fn route(call: &Call<'_>, payload: request::Payload) -> Routed {
     match payload {
         request::Payload::StartRepairAssessment(_) => start_repair_assessment(call),
         request::Payload::GetRepairAssessment(_) => get_repair_assessment(call),
-        request::Payload::CancelRepairAssessment(_) => cancel_repair_assessment(call),
+        request::Payload::CancelRepairAssessment(v) => cancel_repair_assessment(call, v),
+        request::Payload::CancelSystemRepair(v) => cancel_system_repair(call, v),
         request::Payload::CreateSystemRepairPlan(v) => create_system_repair_plan(call, v),
         request::Payload::StartSystemRepair(v) => start_system_repair(call, v),
         request::Payload::GetSystemRepairStatus(v) => get_system_repair_status(call, v),
@@ -60,14 +61,34 @@ pub(super) fn get_repair_assessment(call: &Call<'_>) -> Routed {
 
 /// P76 (DBT-P76-007): the owner stops a running assessment. The watcher started with it
 /// publishes the Cancelled snapshot when the worker stops.
-pub(super) fn cancel_repair_assessment(call: &Call<'_>) -> Routed {
+pub(super) fn cancel_repair_assessment(
+    call: &Call<'_>,
+    v: v1::CancelRepairAssessmentRequest,
+) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
     Ok(Some(response::Payload::RepairAssessment(
         v1::RepairAssessmentResponse {
             assessment: Some(repair_assessment_proto(
-                ctx.repair.cancel_assessment(principal_key).map_err(err)?,
+                ctx.repair
+                    .cancel_assessment(principal_key, &v.assessment_id)
+                    .map_err(err)?,
             )),
+        },
+    )))
+}
+
+/// P78-03 (D3): the owner asks a running repair not to cross its mutation barrier.
+pub(super) fn cancel_system_repair(call: &Call<'_>, v: v1::CancelSystemRepairRequest) -> Routed {
+    let ctx = call.ctx;
+    let principal_key = &call.principal_key;
+    let status = ctx
+        .repair
+        .cancel_repair(principal_key, &v.plan_id)
+        .map_err(err)?;
+    Ok(Some(response::Payload::SystemRepairStatus(
+        v1::SystemRepairStatusResponse {
+            status: status.map(repair_status_proto),
         },
     )))
 }

@@ -36,6 +36,8 @@ pub enum RepairError {
     Busy,
     #[error("repair assessment was cancelled")]
     Cancelled,
+    #[error("the repair was cancelled before any change was made")]
+    RepairCancelled,
     #[error("repair assessment is not ready")]
     AssessmentNotReady,
     #[error("repair assessment is stale")]
@@ -282,6 +284,9 @@ pub struct RepairCoordinator {
     /// Raised by [`RepairCoordinator::cancel_assessment`]; reset when one starts.
     assessment_cancel: Arc<AtomicBool>,
     running: Arc<Mutex<Option<String>>>,
+    /// Raised by [`RepairCoordinator::cancel_repair`] for the running plan; reset when one starts,
+    /// under the `running` lock, so a cancel for one plan cannot reach the next.
+    repair_cancel: Arc<AtomicBool>,
     telemetry: ProgressTelemetryStore,
 }
 
@@ -325,6 +330,7 @@ impl RepairCoordinator {
             assessment_owner: Arc::new(RwLock::new(String::new())),
             assessment_cancel: Arc::new(AtomicBool::new(false)),
             running: Arc::new(Mutex::new(None)),
+            repair_cancel: Arc::new(AtomicBool::new(false)),
             telemetry,
         }
     }
@@ -497,12 +503,51 @@ impl RepairCoordinator {
     /// Stops the owner's running assessment (P76, DBT-P76-007). The running check is
     /// abandoned — every assessment check is read-only — and the checks already finished
     /// stay in the snapshot. Returns the snapshot; not running is not an error.
-    pub fn cancel_assessment(&self, owner_principal_key: &str) -> Result<RepairAssessment> {
-        let current = self.assessment_for_owner(owner_principal_key)?;
-        if current.state == RepairAssessmentState::Scanning {
+    ///
+    /// P78-03: `assessment_id` names what to stop. An id from an older assessment stops nothing
+    /// (it must not cancel the one that replaced it), empty means the current one, and asking
+    /// again is safe. The read lock is held while the flag is raised, so a start cannot slip in
+    /// between the check and the store.
+    pub fn cancel_assessment(
+        &self,
+        owner_principal_key: &str,
+        assessment_id: &str,
+    ) -> Result<RepairAssessment> {
+        let owner = self
+            .assessment_owner
+            .read()
+            .map_err(|_| RepairError::Busy)?;
+        if owner.as_str() != owner_principal_key {
+            return Err(RepairError::OwnershipMismatch);
+        }
+        let current = self.assessment();
+        if current.state == RepairAssessmentState::Scanning
+            && (assessment_id.is_empty() || assessment_id == current.assessment_id)
+        {
             self.assessment_cancel.store(true, Ordering::SeqCst);
         }
         Ok(current)
+    }
+
+    /// P78-03: asks the owner's running repair plan not to cross the mutation barrier. Before the
+    /// barrier the repair stops with nothing changed; after it this stops nothing, because the
+    /// running tool cannot be stopped yet (P85) and a repair reported as cancelled while it runs
+    /// would be a guess. Another owner's or an unknown plan is refused; a plan that is not the
+    /// running one is left as it is, so an older plan's id cannot cancel the one that replaced it.
+    pub fn cancel_repair(
+        &self,
+        owner_principal_key: &str,
+        plan_id: &str,
+    ) -> Result<Option<RepairExecutionStatus>> {
+        self.engine
+            .get_plan_for_owner(plan_id, owner_principal_key)?;
+        {
+            let running = self.running.lock().map_err(|_| RepairError::Busy)?;
+            if running.as_deref() == Some(plan_id) {
+                self.repair_cancel.store(true, Ordering::SeqCst);
+            }
+        }
+        self.status(owner_principal_key, Some(plan_id))
     }
 
     fn assessment(&self) -> RepairAssessment {
@@ -689,6 +734,7 @@ impl RepairCoordinator {
                 return Err(RepairError::AlreadyRunning);
             }
             *running = Some(plan_id.to_owned());
+            self.repair_cancel.store(false, Ordering::SeqCst);
         }
 
         if let Err(error) = self.engine.consume_authorization_and_begin(
@@ -756,6 +802,7 @@ impl RepairCoordinator {
         let db = self.db.clone();
         let platform = self.platform.clone();
         let running = self.running.clone();
+        let cancel = self.repair_cancel.clone();
         let telemetry = self.telemetry.clone();
         let owner = owner_principal_key.to_owned();
         let id = plan_id.to_owned();
@@ -763,9 +810,15 @@ impl RepairCoordinator {
             .name("aether-system-repair-worker".into())
             .spawn(move || {
                 let _mutation_lease = mutation_lease;
-                if let Err(error) =
-                    run_worker(&engine, &db, platform.as_ref(), &owner, &telemetry, &id)
-                {
+                if let Err(error) = run_worker(
+                    &engine,
+                    &db,
+                    platform.as_ref(),
+                    &owner,
+                    &telemetry,
+                    &id,
+                    &cancel,
+                ) {
                     let _ = fail_repair(&engine, &db, &id, error);
                 }
                 telemetry.clear_for_owner(&owner, &id);
@@ -1232,6 +1285,7 @@ fn run_worker(
     owner_principal_key: &str,
     telemetry: &ProgressTelemetryStore,
     plan_id: &str,
+    cancel: &AtomicBool,
 ) -> Result<()> {
     let action = engine.system_repair_action(plan_id)?;
     timeline_event(
@@ -1290,9 +1344,14 @@ fn run_worker(
 
     let mutation_started = std::cell::Cell::new(false);
     let mut begin_mutation = || -> Result<()> {
-        if mutation_started.replace(true) {
+        if mutation_started.get() {
             return Ok(());
         }
+        // P78-03: the one place a cancel can still change the outcome. Past it the tools run.
+        if cancel.load(Ordering::SeqCst) {
+            return Err(RepairError::RepairCancelled);
+        }
+        mutation_started.set(true);
         engine.transition(
             plan_id,
             PlanState::Protected,

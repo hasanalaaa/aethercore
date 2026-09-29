@@ -647,7 +647,7 @@ async fn get_repair_assessment() -> Result<v1::RepairAssessmentSnapshot, String>
 async fn cancel_repair_assessment() -> Result<v1::RepairAssessmentSnapshot, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let resp = request(request::Payload::CancelRepairAssessment(
-            v1::CancelRepairAssessmentRequest {},
+            v1::CancelRepairAssessmentRequest::default(),
         ))
         .map_err(|e| e.to_string())?;
         extract_repair_assessment(resp)
