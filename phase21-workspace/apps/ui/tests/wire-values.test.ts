@@ -2,7 +2,12 @@
 // Run: node --experimental-strip-types --import ./tests/resolve-ts.mjs --test tests/*.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { localizeFactState, localizeMatchQuality, localizeRecommendationReason, localizeStartupScope, tp } from '../src/lib/i18n/index.ts';
+import {
+  localizeCleanupKind, localizeConfidence, localizeDirection, localizeDomain, localizeFactState, localizeFleetCadence,
+  localizeHealthStatus, localizeImpact, localizeKind, localizeMatchQuality, localizeMemoryPressure, localizeOwnedText,
+  localizePlanKind, localizeRecommendation, localizeRecommendationReason, localizeRisk, localizeSeverity,
+  localizeStartupScope, localizeState, td, tp,
+} from '../src/lib/i18n/index.ts';
 
 const arabic = /[؀-ۿ]/;
 
@@ -124,4 +129,71 @@ test('disk activity a provider says it did not measure reads unmeasured, not 0%'
   assert.equal(healthChannels(macos as never, 'en').find((c) => c.id === 'disk')?.pct, undefined);
   const windows = { ...base, storage: [{ ...device, activeTimeBp: 0 }], collectorFaults: [] };
   assert.equal(healthChannels(windows as never, 'en').find((c) => c.id === 'disk')?.pct, 0, 'a measured idle disk is 0');
+});
+
+// P77-01: the display boundary fails closed. An unknown enum value, or English prose from the
+// backend, is not shown as itself in either language; what the app knows keeps its meaning;
+// device names, paths, numbers and codes stay data.
+test('an unknown enum value is never shown as itself, in either language', () => {
+  const unknown = 'ZzFutureValue';
+  const labels: Record<string, (value: string, locale: 'en' | 'ar') => string> = {
+    state: localizeState, risk: localizeRisk, severity: localizeSeverity, confidence: localizeConfidence,
+    impact: localizeImpact, kind: localizeKind, direction: localizeDirection, domain: localizeDomain,
+    recommendation: localizeRecommendation, planKind: localizePlanKind, matchQuality: localizeMatchQuality,
+    reason: localizeRecommendationReason, factState: localizeFactState, memoryPressure: localizeMemoryPressure,
+    health: localizeHealthStatus, startupScope: localizeStartupScope, cleanupKind: localizeCleanupKind,
+    cadence: localizeFleetCadence,
+  };
+  for (const [name, label] of Object.entries(labels)) {
+    for (const locale of ['en', 'ar'] as const) {
+      const shown = label(unknown, locale);
+      assert.notEqual(shown, unknown, `${name} ${locale} printed the unknown value`);
+      assert.equal(shown, td('common.unknown', locale), `${name} ${locale}`);
+    }
+  }
+  assert.equal(localizeCleanupKind('', 'ar'), '', 'an empty kind has nothing to hide');
+});
+
+test('backend English prose is never shown in Arabic, not even inside an Arabic sentence', () => {
+  const injected = ['Backend exploded', 'Unknown message', 'Injected English', 'kaboom happened', 'Another injected sentence'];
+  for (const prose of [
+    'Backend exploded',
+    'Hardware telemetry: Backend exploded',
+    'preflight rejected: Unknown message',
+    'Storage telemetry unavailable: Injected English',
+    'WHEA event 7: Injected English',
+    'Windows Update execution failed: Another injected sentence',
+    'Crash diagnostics: kaboom happened',
+  ]) {
+    const shown = localizeOwnedText(prose, 'ar');
+    assert.equal(shown.localized, true, `${prose} was handed to the technical-text path`);
+    assert.match(shown.text, arabic, prose);
+    for (const word of injected) assert.ok(!shown.text.includes(word), `${prose} → ${shown.text}`);
+  }
+});
+
+test('known owned messages keep their meaning, and data is not damaged', () => {
+  const known = localizeOwnedText('preflight rejected: device inventory changed', 'ar');
+  assert.match(known.text, arabic);
+  assert.ok(!known.text.includes('device inventory changed'), known.text);
+  assert.notEqual(known.text, localizeOwnedText('preflight rejected: Unknown message', 'ar').text,
+    'a known detail must not read as the unavailable text');
+  // Device names, paths, numbers and codes are data, not product prose.
+  assert.ok(localizeOwnedText('Samsung 980 — storage reliability', 'ar').text.includes('Samsung 980'));
+  assert.ok(localizeOwnedText('Dump: C:\\Windows\\Minidump\\052624-1.dmp', 'ar').text.includes('C:\\Windows\\Minidump\\052624-1.dmp'));
+  assert.ok(localizeOwnedText('Bugcheck: 0x0000009F', 'ar').text.includes('0x0000009F'));
+  assert.ok(localizeOwnedText('PnP inventory failed: 0x80070005', 'ar').text.includes('0x80070005'));
+  assert.ok(localizeOwnedText('Windows Update search did not complete successfully: 0x8024402C', 'ar').text.includes('0x8024402C'));
+  // The English UI keeps English prose readable.
+  assert.equal(localizeOwnedText('Hardware telemetry: Backend exploded', 'en').text, 'Hardware telemetry: Backend exploded');
+});
+
+test('a caller that shows data opts out of the fallback, and only then', () => {
+  const command = 'C:\\Program Files\\Vendor App\\app.exe --background';
+  assert.deepEqual(localizeOwnedText(command, 'ar', { data: true }), { text: command, localized: false });
+  const closed = localizeOwnedText(command, 'ar');
+  assert.equal(closed.localized, true);
+  assert.ok(!closed.text.includes('Vendor App'), closed.text);
+  // Known product patterns still translate for a data caller.
+  assert.match(localizeOwnedText('Service: wuauserv', 'ar', { data: true }).text, arabic);
 });

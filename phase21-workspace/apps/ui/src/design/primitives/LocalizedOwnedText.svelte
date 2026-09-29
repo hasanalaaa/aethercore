@@ -6,8 +6,11 @@
   export let value = '';
   export let locale: Locale = 'en';
   export let as: 'span' | 'p' | 'small' | 'strong' = 'span';
+  // For a value the user's machine wrote (a command, a path): unknown text is shown isolated as
+  // data. Prose leaves this false, and unknown prose is replaced, never shown (P77-01).
+  export let data = false;
 
-  $: localized = localizeOwnedText(value, locale);
+  $: localized = localizeOwnedText(value, locale, { data });
   $: segments = localized.localized ? segmentBidiEvidence(localized.text) : [];
 </script>
 

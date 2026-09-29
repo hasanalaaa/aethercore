@@ -180,6 +180,7 @@ export const enCatalog = {
   'common.notCollected': 'Not collected yet',
   'common.none': 'None',
   'common.unknown': 'Unknown',
+  'text.unavailable': 'Details unavailable',
   'common.protected': 'Protected',
   'common.crossed': 'Crossed',
   'common.required': 'Required',
