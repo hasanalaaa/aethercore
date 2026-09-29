@@ -255,3 +255,48 @@ test('the deep-scan and provider-fault views do not print collector or provider 
   assert.doesNotMatch(page, /<TechnicalText value=\{collector\.id\}/, 'the deep scan prints a collector id as its heading');
   assert.doesNotMatch(panel, /<TechnicalText value=\{fault\.(provider|operation)\}/, 'the fault panel prints a provider or operation id');
 });
+
+// P77-03: what the leak gate cannot see in the fixture, these read from the Rust sources. A sentence a
+// crate writes for the reader either has an Arabic rendering or the boundary replaces it with
+// "Details unavailable" - and that turns real information into nothing, so it is a failure here.
+test('every sentence the UI-feeding crates write for the reader has an Arabic rendering', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const crates = ['cleaner', 'startup-manager', 'system-repair', 'hardware-telemetry', 'crash-diagnostics', 'diagnostic-engine',
+    'driver-hub', 'driver-install', 'driver-backup', 'windows-update', 'performance-telemetry', 'pc-intelligence', 'windows-pnp',
+    'support-bundle', 'update-engine', 'operation-engine', 'idle-scheduler'];
+  const sentences = new Set<string>();
+  for (const crate of crates) {
+    const root = join(import.meta.dirname, '../../../crates', crate, 'src');
+    for (const file of readdirSync(root, { recursive: true }) as string[]) {
+      if (!file.endsWith('.rs')) continue;
+      let text = readFileSync(join(root, file), 'utf8');
+      const tests = text.indexOf('#[cfg(test)]');
+      if (tests > 0) text = text.slice(0, tests); // test-only strings never reach a screen
+      for (const m of text.matchAll(/"([A-Z][a-z][^"\\{}\n]{18,}\.)"/g)) if (m[1].split(' ').length >= 4) sentences.add(m[1]);
+    }
+  }
+  assert.ok(sentences.size > 80, `read only ${sentences.size} sentences; the extraction is broken`);
+  const fallback = td('text.unavailable', 'ar');
+  const missing = [...sentences].filter((sentence) => localizeOwnedText(sentence, 'ar').text === fallback).sort();
+  assert.deepEqual(missing, [], `sentences with no Arabic rendering:\n  ${missing.join('\n  ')}`);
+});
+
+test('an identifier stays data, a bare word does not, and a dropped sentence is reported once', async () => {
+  const fallback = td('text.unavailable', 'ar');
+  assert.equal(localizeOwnedText('MSFT_StorageReliabilityCounter', 'ar').text, 'MSFT_StorageReliabilityCounter');
+  assert.equal(localizeOwnedText('0x8024402C', 'ar').text, '0x8024402C');
+  assert.equal(localizeOwnedText('Timeout', 'ar').text, fallback, 'a bare English word is prose, not an identifier');
+  assert.equal(localizeOwnedText('Failed.', 'ar').text, fallback, 'a bare word with a full stop is prose');
+  assert.equal(localizeOwnedText('Windows.Update.Client', 'ar').text, 'Windows.Update.Client', 'a dotted name is an identifier');
+  const { mock } = await import('node:test');
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    localizeOwnedText('A sentence nobody translated yet.', 'ar');
+    localizeOwnedText('A sentence nobody translated yet.', 'ar');
+    assert.equal(warn.mock.callCount(), 1, 'the local log names a dropped sentence once, not on every render');
+    assert.match(String(warn.mock.calls[0].arguments[1]), /nobody translated/);
+  } finally {
+    warn.mock.restore();
+  }
+});
