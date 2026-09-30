@@ -896,7 +896,6 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         batteries,
         boots,
         network_adapters,
-        ..Default::default()
     };
     let persistence_result = serde_json::to_string(&snapshot)
         .map_err(|error| {
