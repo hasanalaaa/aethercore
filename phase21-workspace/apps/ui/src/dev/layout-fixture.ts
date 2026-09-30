@@ -9,6 +9,8 @@
  * transport when `VITE_AETHERCORE_TEST_TRANSPORT=1`.
  */
 import type {
+  BatteryMeasurement,
+  BootMeasurement,
   CleanupCandidate,
   CleanupSnapshot,
   CrashRecord,
@@ -20,7 +22,9 @@ import type {
   DriverHub,
   HardwareEvent,
   InsightsResponse,
+  MeasurementCoverage,
   MemoryTelemetry,
+  NetworkAdapterMeasurement,
   PcCollectorStatus,
   PcEvidenceRef,
   PcFinding,
@@ -33,6 +37,7 @@ import type {
   StartupSnapshot,
   StorageReliability,
   StorageTelemetry,
+  ThermalZoneMeasurement,
   TimelineResponse,
   UiKernelEvent,
   UiSessionState,
@@ -240,6 +245,22 @@ const diagnostics: DiagnosticsSnapshot = {
     evidence: ['Available physical memory: 9663676416 of 34359738368 bytes', 'Bugcheck: 0x0000009F'], actions: [],
   })),
   providerFaults: [fill({ provider: 'MSStorageDriver_FailurePredictStatus', operation: 'Query', kind: 'AccessDenied', kindCode: 5, detail: 'WMI namespace requires elevation.' })],
+  // P80-02B: 32 zones at the contract's limit, mixing a real 0, an absent reading and each
+  // availability the wire can carry, so the page is measured at its worst case.
+  thermalZones: Array.from({ length: 32 }, (_, i) => fill<ThermalZoneMeasurement>({
+    stableId: `ACPI\\ThermalZone\\TZ${i}`, displayName: i === 0 ? 'ACPI\\ThermalZone\\TZ00 (CPU package, Intel Core Ultra 9 285K)' : `Zone ${i}`,
+    hasTemperature: i % 4 !== 3, temperatureC: i % 4 === 0 ? 0 : 40 + i, hasCritical: i % 2 === 0, criticalC: 105, hasHighestObserved: i % 3 === 0, highestObservedC: 88,
+    coverage: fill<MeasurementCoverage>({ source: 'ACPI thermal zone', hasObservedUnixMs: true, observedUnixMs: NOW, availability: i % 4 === 3 ? [4, 3, 5][i % 3] : 1 }),
+  })),
+  batteries: [fill<BatteryMeasurement>({
+    stableId: 'BAT0', displayName: 'DELL 0KJ7NC Li-ion battery', hasDesignCapacity: true, designCapacityMwh: 56000, hasFullChargeCapacity: true, fullChargeCapacityMwh: 41000,
+    hasCycleCount: false, cycleCount: 0, coverage: fill<MeasurementCoverage>({ source: 'Windows battery IOCTL', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }),
+  })],
+  boots: [fill<BootMeasurement>({ recordedUnixMs: NOW, hasDuration: true, durationMs: 41500, coverage: fill<MeasurementCoverage>({ source: 'Diagnostics-Performance', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }) })],
+  networkAdapters: [fill<NetworkAdapterMeasurement>({
+    stableId: '{6A1F0E52-77D2-4A1B-9C3E-5B0D8E2F4A19}', displayName: 'Intel(R) Wi-Fi 6E AX211 160MHz', hasLinkSpeed: false, linkSpeedBps: 0,
+    coverage: fill<MeasurementCoverage>({ source: 'MSFT_NetAdapter', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 2 }),
+  })],
 };
 
 const repairAssessment: RepairAssessment = {

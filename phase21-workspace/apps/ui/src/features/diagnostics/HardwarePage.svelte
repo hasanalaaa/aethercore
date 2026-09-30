@@ -9,6 +9,8 @@
   import { formatBytes } from '../shared';
   import { EmptyState } from '../../design/signature';
   import { hardwareVerdict } from '../intelligence/headline';
+  import MeasurementRows from './MeasurementRows.svelte';
+  import { batteryRows, bootRows, networkRows, thermalRows } from './measurement-rows';
 
   $: snapshot = $streamState.snapshot;
   $: diagnostics = $streamState.diagnostics;
@@ -103,6 +105,10 @@
       </article>
     {/each}
   </section>
+  <MeasurementRows title={t('measurement.thermal.title',locale)} rows={thermalRows(diagnostics.thermalZones,locale)} {locale}/>
+  <MeasurementRows title={t('measurement.battery.title',locale)} rows={batteryRows(diagnostics.batteries,locale)} {locale}/>
+  <MeasurementRows title={t('measurement.boot.title',locale)} rows={bootRows(diagnostics.boots,locale)} {locale}/>
+  <MeasurementRows title={t('measurement.network.title',locale)} rows={networkRows(diagnostics.networkAdapters,locale)} {locale}/>
   <section class="memory-card">
     <div><p class="eyebrow">{t('hardware.memoryTelemetry',locale)}</p><h3>{diagnostics.memory ? t('hardware.memoryPressureTitle',locale,{pressure:localizeMemoryPressure(diagnostics.memory.pressureLabel,locale)}) : t('common.unknown',locale)}</h3>{#if diagnostics.memory}<LocalizedOwnedText value={diagnostics.memory.pressureExplanation} {locale} as="p"/>{:else}<p>{t('hardware.memoryUnavailable',locale)}</p>{/if}</div>
     {#if diagnostics.memory}<ProgressBar value={diagnostics.memory.memoryLoadPercent} label={t('hardware.currentMemoryLoad',locale)}/>{/if}

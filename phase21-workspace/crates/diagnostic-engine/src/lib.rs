@@ -18,6 +18,8 @@ use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
     measurements::{Battery, BootRecord, NetworkAdapter, ThermalZone},
 };
+// The service converts these to the wire and depends on this crate, not on the telemetry one.
+pub use aethercore_hardware_telemetry::measurements;
 use aethercore_operation_kernel::{ReadBudgetLease, ReadWorkload};
 use aethercore_persistence::{Database, DiagnosticSnapshotRecord};
 use chrono::Utc;

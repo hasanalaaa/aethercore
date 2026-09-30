@@ -197,6 +197,10 @@ export function createInitialStreamState(): StreamState {
       cards: [],
       warnings: [],
       providerFaults: [],
+      thermalZones: [],
+      batteries: [],
+      boots: [],
+      networkAdapters: [],
     },
     diagnosticHistory: [],
     deepScan: {

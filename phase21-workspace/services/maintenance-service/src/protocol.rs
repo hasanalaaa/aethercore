@@ -1,5 +1,8 @@
 use aethercore_cleaner::{CleanupExecutionStatus, CleanupSnapshot};
 use aethercore_contracts::v1::{self};
+use aethercore_diagnostic_engine::measurements::{
+    Availability, Battery, BootRecord, Coverage, NetworkAdapter, ThermalZone,
+};
 use aethercore_diagnostic_engine::{DiagnosticHistoryEntry, DiagnosticsSnapshot};
 use aethercore_driver_hub::DriverHubSnapshot;
 use aethercore_driver_install::{InstallStatus, RecoveryEntry};
@@ -764,8 +767,124 @@ pub(crate) fn diagnostics_snapshot_proto(v: DiagnosticsSnapshot) -> v1::Diagnost
                 }
             })
             .collect(),
-        // P80-02B maps the four measurement domains; until then they leave the service empty.
-        ..Default::default()
+        thermal_zones: v
+            .thermal_zones
+            .into_iter()
+            .map(thermal_zone_proto)
+            .collect(),
+        batteries: v.batteries.into_iter().map(battery_proto).collect(),
+        boots: v.boots.into_iter().map(boot_proto).collect(),
+        network_adapters: v
+            .network_adapters
+            .into_iter()
+            .map(network_adapter_proto)
+            .collect(),
+    }
+}
+
+fn coverage_proto(c: Coverage) -> v1::MeasurementCoverageInfo {
+    let availability = match c.availability {
+        Availability::Measured => v1::MeasurementAvailability::Measured,
+        Availability::NotMeasured => v1::MeasurementAvailability::NotMeasured,
+        Availability::Unsupported => v1::MeasurementAvailability::Unsupported,
+        Availability::Denied => v1::MeasurementAvailability::Denied,
+        Availability::Failed => v1::MeasurementAvailability::Failed,
+        Availability::Unknown => v1::MeasurementAvailability::Unknown,
+    };
+    v1::MeasurementCoverageInfo {
+        source: c.source,
+        has_observed_unix_ms: c.observed_unix_ms.is_some(),
+        observed_unix_ms: c.observed_unix_ms.unwrap_or_default(),
+        has_window_days: c.window_days.is_some(),
+        window_days: c.window_days.unwrap_or_default(),
+        availability: availability as i32,
+        reason_key: c.reason_key,
+    }
+}
+
+// Each `has_*` says the value was read; the value beside it is only meaningful when it is true.
+fn thermal_zone_proto(z: ThermalZone) -> v1::ThermalZoneInfo {
+    v1::ThermalZoneInfo {
+        stable_id: z.stable_id,
+        display_name: z.display_name,
+        has_temperature: z.temperature_c.is_some(),
+        temperature_c: z.temperature_c.unwrap_or_default(),
+        has_critical: z.critical_c.is_some(),
+        critical_c: z.critical_c.unwrap_or_default(),
+        has_highest_observed: z.highest_observed_c.is_some(),
+        highest_observed_c: z.highest_observed_c.unwrap_or_default(),
+        coverage: Some(coverage_proto(z.coverage)),
+    }
+}
+
+fn battery_proto(b: Battery) -> v1::BatteryInfo {
+    v1::BatteryInfo {
+        stable_id: b.stable_id,
+        display_name: b.display_name,
+        has_design_capacity: b.design_capacity_mwh.is_some(),
+        design_capacity_mwh: b.design_capacity_mwh.unwrap_or_default(),
+        has_full_charge_capacity: b.full_charge_capacity_mwh.is_some(),
+        full_charge_capacity_mwh: b.full_charge_capacity_mwh.unwrap_or_default(),
+        has_cycle_count: b.cycle_count.is_some(),
+        cycle_count: b.cycle_count.unwrap_or_default(),
+        coverage: Some(coverage_proto(b.coverage)),
+    }
+}
+
+fn boot_proto(b: BootRecord) -> v1::BootRecordInfo {
+    v1::BootRecordInfo {
+        recorded_unix_ms: b.recorded_unix_ms,
+        has_duration: b.duration_ms.is_some(),
+        duration_ms: b.duration_ms.unwrap_or_default(),
+        coverage: Some(coverage_proto(b.coverage)),
+    }
+}
+
+fn network_adapter_proto(a: NetworkAdapter) -> v1::NetworkAdapterInfo {
+    v1::NetworkAdapterInfo {
+        stable_id: a.stable_id,
+        display_name: a.display_name,
+        has_link_speed: a.link_speed_bps.is_some(),
+        link_speed_bps: a.link_speed_bps.unwrap_or_default(),
+        coverage: Some(coverage_proto(a.coverage)),
+    }
+}
+
+#[cfg(test)]
+mod measurement_tests {
+    use super::*;
+
+    // P80-02B: presence survives the service boundary. A zone that read 0 °C and a zone that
+    // read nothing must not arrive looking the same.
+    #[test]
+    fn measurement_presence_survives_the_service_boundary() {
+        let absent = thermal_zone_proto(ThermalZone::default());
+        let zero = thermal_zone_proto(ThermalZone {
+            temperature_c: Some(0),
+            ..Default::default()
+        });
+        assert!(!absent.has_temperature && zero.has_temperature);
+        assert_eq!(absent.temperature_c, zero.temperature_c);
+
+        let snapshot = DiagnosticsSnapshot {
+            batteries: vec![Battery {
+                cycle_count: None,
+                coverage: Coverage {
+                    availability: Availability::Denied,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let wire = diagnostics_snapshot_proto(snapshot);
+        assert!(!wire.batteries[0].has_cycle_count);
+        assert_eq!(
+            wire.batteries[0].coverage.as_ref().unwrap().availability,
+            v1::MeasurementAvailability::Denied as i32,
+            "denied stays denied and is not folded into empty"
+        );
+        assert!(wire.thermal_zones.is_empty() && wire.network_adapters.is_empty());
     }
 }
 
