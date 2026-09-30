@@ -69,6 +69,17 @@ export function isProvisional(turn: AssistantTurn): boolean {
   return turn.state === TURN_STREAMING;
 }
 
+let transcriptLocale: Locale = 'en';
+
+/** Changing language discards the old conversation before any asynchronous cancellation. */
+export function setAssistantLocale(locale: Locale): void {
+  if (locale === transcriptLocale) return;
+  transcriptLocale = locale;
+  const turnId = get(assistantState).inFlight;
+  assistantState.update((state) => ({ ...state, transcript: [], inFlight: '' }));
+  if (turnId) void serviceInvoke('cancel_assistant_turn', { turnId }).catch(() => {});
+}
+
 /**
  * Which surfaces the pack holds, and how many rows of each.
  *

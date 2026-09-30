@@ -28,11 +28,12 @@
   import InsightsPanel from '../features/insights/InsightsPanel.svelte';
   import FleetPage from '../features/fleet/FleetPage.svelte';
   import AssistantDrawer from '../features/assistant/AssistantDrawer.svelte';
-  import { bindAssistantStream } from '../features/assistant/controller';
+  import { bindAssistantStream, setAssistantLocale } from '../features/assistant/controller';
   import SettingsPage from '../features/settings/SettingsPage.svelte';
 
   let windowCleanup: WindowUxCleanup | undefined;
   let kernelCleanup: KernelSessionCleanup | undefined;
+  $: setAssistantLocale($shellState.locale);
   $: localizedError = localizeOwnedText($shellState.errorMessage, $shellState.locale);
   $: currentNavigation = NAVIGATION.find((item) => item.id === $shellState.activePage);
   $: shellCondition = $shellState.errorMessage ? 'error' : $shellState.busy ? 'loading' : !$streamState.snapshot.connected ? 'disconnected' : 'idle';
