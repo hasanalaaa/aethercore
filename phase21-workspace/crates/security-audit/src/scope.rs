@@ -264,6 +264,133 @@ pub fn authorize_targets(targets: &[AuditTarget], scope: &OwnerScope) -> Result<
     Ok(())
 }
 
+/// Resolve a profile principal from Windows' protected ProfileList, never a folder name
+/// or request SID. A missing or ambiguous registration is an unavailable observation.
+#[cfg(windows)]
+pub(crate) fn profile_owner_sid(path: &Path) -> Result<String, String> {
+    use std::{ffi::c_void, os::windows::ffi::OsStringExt};
+    #[link(name = "advapi32")]
+    unsafe extern "system" {
+        fn RegOpenKeyExW(
+            key: *mut c_void,
+            name: *const u16,
+            options: u32,
+            access: u32,
+            result: *mut *mut c_void,
+        ) -> i32;
+        fn RegEnumKeyExW(
+            key: *mut c_void,
+            index: u32,
+            name: *mut u16,
+            len: *mut u32,
+            reserved: *mut u32,
+            class: *mut u16,
+            class_len: *mut u32,
+            time: *mut c_void,
+        ) -> i32;
+        fn RegGetValueW(
+            key: *mut c_void,
+            subkey: *const u16,
+            name: *const u16,
+            flags: u32,
+            kind: *mut u32,
+            data: *mut c_void,
+            len: *mut u32,
+        ) -> i32;
+        fn RegCloseKey(key: *mut c_void) -> i32;
+    }
+    struct Key(*mut c_void);
+    impl Drop for Key {
+        fn drop(&mut self) {
+            unsafe {
+                RegCloseKey(self.0);
+            }
+        }
+    }
+    let root = std::fs::canonicalize(path).map_err(|e| format!("profile root: {e}"))?;
+    let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+    let key_name = wide(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList");
+    let value_name = wide("ProfileImagePath");
+    let mut key = std::ptr::null_mut();
+    // HKLM, KEY_READ | KEY_WOW64_64KEY: the OS profile registry, also from a 32-bit caller.
+    let status = unsafe {
+        RegOpenKeyExW(
+            (-2147483646isize) as *mut c_void,
+            key_name.as_ptr(),
+            0,
+            0x20119,
+            &mut key,
+        )
+    };
+    if status != 0 {
+        return Err(format!("ProfileList open: {status}"));
+    }
+    let key = Key(key);
+    let mut matched = None;
+    for index in 0..4096 {
+        let mut name = [0u16; 256];
+        let mut len = name.len() as u32;
+        let status = unsafe {
+            RegEnumKeyExW(
+                key.0,
+                index,
+                name.as_mut_ptr(),
+                &mut len,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if status == 259 {
+            return matched.ok_or_else(|| "OS profile owner SID unresolved".into());
+        }
+        if status != 0 {
+            return Err(format!("ProfileList enumerate: {status}"));
+        }
+        let sid = String::from_utf16(&name[..len as usize]).map_err(|_| "invalid profile SID")?;
+        // Skip backup/non-SID keys; accept domain and Azure AD identities without guessing a user name.
+        if !sid.starts_with("S-1-") || sid[4..].split('-').any(|n| n.parse::<u32>().is_err()) {
+            continue;
+        }
+        let mut profile = vec![0u16; 32768];
+        let mut bytes = (profile.len() * 2) as u32;
+        // RRF_RT_REG_SZ expands REG_EXPAND_SZ, matching security::profile_dir_for_sid_text.
+        let status = unsafe {
+            RegGetValueW(
+                key.0,
+                name.as_ptr(),
+                value_name.as_ptr(),
+                2,
+                std::ptr::null_mut(),
+                profile.as_mut_ptr().cast(),
+                &mut bytes,
+            )
+        };
+        if status != 0 {
+            return Err(format!("ProfileImagePath read: {status}"));
+        }
+        let len = profile
+            .iter()
+            .position(|n| *n == 0)
+            .ok_or("unterminated profile path")?;
+        let profile = PathBuf::from(std::ffi::OsString::from_wide(&profile[..len]));
+        // Avoid touching unrelated profiles (including foreign UNC/reparse paths).
+        if !contained_in(&root, &profile) {
+            continue;
+        }
+        if let Ok(profile) = std::fs::canonicalize(profile)
+            && contained_in(&root, &profile)
+        {
+            if matched.is_some() {
+                return Err("ambiguous OS profile owner SID".into());
+            }
+            matched = Some(sid);
+        }
+    }
+    Err("ProfileList enumeration limit reached".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -427,131 +554,4 @@ mod tests {
         authorize_targets(&[AuditTarget::FirewallState], &OwnerScope::default())
             .expect("FirewallState carries no caller-named path");
     }
-}
-
-/// Resolve a profile principal from Windows' protected ProfileList, never a folder name
-/// or request SID. A missing or ambiguous registration is an unavailable observation.
-#[cfg(windows)]
-pub(crate) fn profile_owner_sid(path: &Path) -> Result<String, String> {
-    use std::{ffi::c_void, os::windows::ffi::OsStringExt};
-    #[link(name = "advapi32")]
-    unsafe extern "system" {
-        fn RegOpenKeyExW(
-            key: *mut c_void,
-            name: *const u16,
-            options: u32,
-            access: u32,
-            result: *mut *mut c_void,
-        ) -> i32;
-        fn RegEnumKeyExW(
-            key: *mut c_void,
-            index: u32,
-            name: *mut u16,
-            len: *mut u32,
-            reserved: *mut u32,
-            class: *mut u16,
-            class_len: *mut u32,
-            time: *mut c_void,
-        ) -> i32;
-        fn RegGetValueW(
-            key: *mut c_void,
-            subkey: *const u16,
-            name: *const u16,
-            flags: u32,
-            kind: *mut u32,
-            data: *mut c_void,
-            len: *mut u32,
-        ) -> i32;
-        fn RegCloseKey(key: *mut c_void) -> i32;
-    }
-    struct Key(*mut c_void);
-    impl Drop for Key {
-        fn drop(&mut self) {
-            unsafe {
-                RegCloseKey(self.0);
-            }
-        }
-    }
-    let root = std::fs::canonicalize(path).map_err(|e| format!("profile root: {e}"))?;
-    let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-    let key_name = wide(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList");
-    let value_name = wide("ProfileImagePath");
-    let mut key = std::ptr::null_mut();
-    // HKLM, KEY_READ | KEY_WOW64_64KEY: the OS profile registry, also from a 32-bit caller.
-    let status = unsafe {
-        RegOpenKeyExW(
-            (-2147483646isize) as *mut c_void,
-            key_name.as_ptr(),
-            0,
-            0x20119,
-            &mut key,
-        )
-    };
-    if status != 0 {
-        return Err(format!("ProfileList open: {status}"));
-    }
-    let key = Key(key);
-    let mut matched = None;
-    for index in 0..4096 {
-        let mut name = [0u16; 256];
-        let mut len = name.len() as u32;
-        let status = unsafe {
-            RegEnumKeyExW(
-                key.0,
-                index,
-                name.as_mut_ptr(),
-                &mut len,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        };
-        if status == 259 {
-            return matched.ok_or_else(|| "OS profile owner SID unresolved".into());
-        }
-        if status != 0 {
-            return Err(format!("ProfileList enumerate: {status}"));
-        }
-        let sid = String::from_utf16(&name[..len as usize]).map_err(|_| "invalid profile SID")?;
-        // Skip backup/non-SID keys; accept domain and Azure AD identities without guessing a user name.
-        if !sid.starts_with("S-1-") || sid[4..].split('-').any(|n| n.parse::<u32>().is_err()) {
-            continue;
-        }
-        let mut profile = vec![0u16; 32768];
-        let mut bytes = (profile.len() * 2) as u32;
-        // RRF_RT_REG_SZ expands REG_EXPAND_SZ, matching security::profile_dir_for_sid_text.
-        let status = unsafe {
-            RegGetValueW(
-                key.0,
-                name.as_ptr(),
-                value_name.as_ptr(),
-                2,
-                std::ptr::null_mut(),
-                profile.as_mut_ptr().cast(),
-                &mut bytes,
-            )
-        };
-        if status != 0 {
-            return Err(format!("ProfileImagePath read: {status}"));
-        }
-        let len = profile
-            .iter()
-            .position(|n| *n == 0)
-            .ok_or("unterminated profile path")?;
-        let profile = PathBuf::from(std::ffi::OsString::from_wide(&profile[..len]));
-        // Avoid touching unrelated profiles (including foreign UNC/reparse paths).
-        if !contained_in(&root, &profile) {
-            continue;
-        }
-        if let Ok(profile) = std::fs::canonicalize(profile)
-            && contained_in(&root, &profile)
-        {
-            if matched.is_some() {
-                return Err("ambiguous OS profile owner SID".into());
-            }
-            matched = Some(sid);
-        }
-    }
-    Err("ProfileList enumeration limit reached".into())
 }
