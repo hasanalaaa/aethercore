@@ -223,8 +223,11 @@ fn ssh_findings_follow_the_real_permissions() {
 #[test]
 #[cfg(windows)]
 fn elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users() {
-    let root = scan_root("elevated-profile");
-    let ssh = root.path().join(".ssh");
+    let container = scan_root("elevated-profile");
+    // A folder named like a foreign SID must not supply the trusted profile principal.
+    let root = container.path().join("S-1-5-21-1-2-3-9876");
+    std::fs::create_dir(&root).unwrap();
+    let ssh = root.as_path().join(".ssh");
     std::fs::create_dir(&ssh).unwrap();
     make_private(&ssh, true);
     let key = ssh.join("id_ed25519");
@@ -241,7 +244,7 @@ fn elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users() {
             "elevated token must be able to set Administrators owner"
         );
     }
-    let findings = scan(root.path());
+    let findings = scan(root.as_path());
     assert!(
         !findings
             .iter()
@@ -251,8 +254,19 @@ fn elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users() {
     for sid in ["S-1-5-21-1-2-3-9876", "S-1-1-0", "S-1-5-32-545"] {
         icacls_grant(&key, &format!("*{sid}:(R)"));
         assert!(
-            at(&scan(root.path()), "SEC-FS-004", &key).is_some(),
+            at(&scan(root.as_path()), "SEC-FS-004", &key).is_some(),
             "{sid} was trusted"
         );
     }
+    let deny = std::process::Command::new("icacls")
+        .arg(&key)
+        .args(["/deny", "*S-1-3-4:(RC)"])
+        .status()
+        .unwrap(); // OWNER RIGHTS: READ_CONTROL
+    assert!(deny.success());
+    let unreadable = scan(root.as_path());
+    assert!(
+        unreadable.iter().any(|f| f.id == "SEC-FS-901"),
+        "an unreadable ACL was reported clean: {unreadable:#?}"
+    );
 }
