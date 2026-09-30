@@ -92,6 +92,18 @@ fn windows_key_is_protected_even_under_an_everyone_parent() {
         envelope["data"]["permissions"], "owner-only-protected",
         "{envelope}"
     );
+    let acl = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command",
+        "$a=Get-Acl -LiteralPath $env:AC_KEY_TEST_PATH; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $r=@($a.Access); [pscustomobject]@{protected=$a.AreAccessRulesProtected; owner=($a.GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $sid.Value); soleOwner=($r.Count -eq 1 -and $r[0].IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq $sid.Value -and -not $r[0].IsInherited -and $r[0].AccessControlType -eq 'Allow' -and [int]$r[0].FileSystemRights -eq 2032127)} | ConvertTo-Json -Compress"])
+        .env("AC_KEY_TEST_PATH", &out).output().unwrap();
+    assert!(
+        acl.status.success(),
+        "{}",
+        String::from_utf8_lossy(&acl.stderr)
+    );
+    let acl: Value = serde_json::from_slice(&acl.stdout).unwrap();
+    assert_eq!(acl["protected"], true, "{acl}");
+    assert_eq!(acl["owner"], true, "{acl}");
+    assert_eq!(acl["soleOwner"], true, "{acl}");
 }
 
 #[test]
@@ -116,5 +128,12 @@ fn existing_junction_target_is_refused_without_touching_its_destination() {
         b"unchanged"
     );
     assert_eq!(std::fs::read_dir(&destination).unwrap().count(), 1);
+    let nested = out.join("nested.key");
+    let (status, envelope) = keys_generate(&nested);
+    assert_eq!(status, Some(8), "{envelope}");
+    assert!(
+        !destination.join("nested.key").exists(),
+        "a reparse parent was followed"
+    );
     std::fs::remove_dir(&out).unwrap();
 }
