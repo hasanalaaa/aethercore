@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P87 lane 4 (2026-09-30), task `P87-01`.
+Last moved: P87 lane 4 (2026-09-30), task `P87-05`.
 
 ---
 
@@ -58,10 +58,11 @@ print(f"rows {len(good)}  open {len(op)}  malformed {len(bad)} {bad}")
 EOF
 ```
 
-Current count (P87 lane 4 rebase, 2026-09-30): **188 rows / 23 open / 2 malformed** ['`DBT-P63-014`', '`DBT-P77-002`'].
+Current count (P87 lane 4 rebase, 2026-09-30): **189 rows / 24 open / 2 malformed** ['`DBT-P63-014`', '`DBT-P77-002`'].
 
 | id | what it is | status | evidence | machine |
 |---|---|---|---|---|
+| `DBT-P87-005` | CPU observation duration was confused with requested snapshot cadence | OPEN — exact-head Windows CI pending | P87-05 records monotonic PDH pair elapsed time internally, preserves snapshot cadence and leaves unknown/synthetic timing absent. Parent `de0cbae` fails the new timing contract test; portable 125 ms / delayed 475 ms / zero-window controls pass. Mac changed crates and direct dependents pass; native PDH timing and invalid-status control await Windows. No wire timing claim. | Windows runner |
 | `DBT-P36-006` | Windows filesystem security findings rest on a POSIX mode-bit approximation, not ACL evidence | **CLOSED by P75 lane `fs-acl`**, pending integration CI at its final head | Windows red-before CI `36057784591` at `23f7169` failed the three new `tests/filesystem_posture.rs` tests. The Windows path now reads the owner and DACL with `GetNamedSecurityInfoW`, reports the SID and mask of broad write grants and of non-owner/SYSTEM/Administrators ACEs on `.ssh` material, treats a NULL DACL as exposed, reports an unreadable DACL as unavailable, and includes files directly under the scan root. A conditional deny cannot hide an unconditional grant (unit test). Evidence: `docs/phase75/lanes/fs-acl.md`. | Windows runner |
 | `DBT-P36-007` | its retirement condition (a seal) has not occurred | OPEN by design | not code-checkable; not actionable until the seal | — |
 | `DBT-P41-001` | the chain's VC++ redistributable **install** branch has never executed on any architecture — only the "already present" branch has | OPEN | P49 §49.7 measured detection and the x64 `Launch` condition; the install branch is still unrun | a Windows box **without** the VC++ redist |
