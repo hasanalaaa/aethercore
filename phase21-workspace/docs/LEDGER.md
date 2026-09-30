@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P78 (2026-09-30), task `P78-04`.
+Last moved: P87 lane 4 (2026-09-30), task `P87-01`.
 
 ---
 
@@ -299,6 +299,9 @@ Report: `docs/phase57/P57-REPORT.md`. Raw measurements:
 | `DBT-P75-089` | Review 2 (`support-bundle lib.rs:751`, regression from `DBT-P75-087`): trimming trailing `:` before parsing turned `fd12:3456::` into invalid `fd12:3456`, so the private IPv6 was exported unredacted | **CLOSED by P75 lane `windows-smoke-final`** (P75 independent review 2), pending integration CI at its final head | `58ae32d`: the whole token is tried first, then one trailing `.`/`:`/`-` shorter at a time; tests `Peer fd12:3456::`, `Peer fd12:3456::.`, `Peer ::1.` (loopback kept), `Peer 192.168.1.23.`. Red-before: `left: "Peer fd12:3456::"`. | any host |
 | `DBT-P75-090` | Review 2 (`intelligence-core llama.rs:212`, from `DBT-P75-069`): a number word outside the gate's list (`thirteen`) yielded no number and passed, and `5.5` split into `5`,`5`, each held by evidence `5` | **CLOSED by P75 lane `windows-smoke-final`** (P75 independent review 2), pending integration CI at its final head | `58ae32d`: a decimal is one number; a number word the gate cannot read (teens, tens, hundred/thousand/million/billion/dozen, plurals, hyphenated) drops the line. Red-before: `thirteen occurrences [E1]` kept. | any host |
 | `DBT-P75-091` | Follow-up to `DBT-P75-088` (`apps/ui/src/features/intelligence/headline.ts`): while a scan is running (state 2) with no findings yet, status is Healthy and the headline says Healthy before anything has been checked | **CLOSED — P76** | `deepScanHeadlineKey(1, 2)` returns `deepScan.state.scanning` (EN "Scanning", AR catalog key already present); a finding made during the scan still headlines its status. Red before: `wire-values.test.ts` "a running scan is not Healthy" failed (`deepScan.status.healthy`); UI unit tests 30/30 after. | any host |
+| `DBT-P87-001` | CI locale/type/unit feedback waited for native tests and no aggregate rejected skipped or cancelled mandatory jobs | **OPEN — P87-01 implementation; exact-head CI and latency measurement pending** | `../../AUDIT/P87-CI-BASELINE.md`: five comparable successful runs; `scripts/test_ci_gates.py` fails twice on e685b14 (missing fast job and aggregate) then passes. Windows seal/freeze/native gates and the rendered-DOM gate remain mandatory. | GitHub runners and owner Windows PC |
+
+
 ## §2 Recovery posture — measured 2026-09-12
 
 P49 recorded `Gate 0f` as regressed: "there is no `D:` and no
