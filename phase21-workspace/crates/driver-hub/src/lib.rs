@@ -16,6 +16,7 @@ use aethercore_driver_authority::{
     builtin_provider_registry, default_defer_until, evaluate_required_authorities,
     management_authority_for_registry_provider, privacy_device_key, required_authorities,
 };
+pub use aethercore_driver_authority::{VersionOrdering, compare_driver_versions};
 use aethercore_gpu_policy::{installed_app_path, policy as gpu_vendor_policy};
 use aethercore_operation_kernel::{ReadBudgetLease, ReadWorkload};
 use aethercore_persistence::{Database, DriverAuthorityOverrideRecord, DriverAuthorityScanRecord};

@@ -10,7 +10,9 @@ use std::{
 };
 
 use aethercore_driver_backup::{BackupEvidence, candidate_backup_root, plan_backup_root};
-use aethercore_driver_hub::{DriverHub, InstallSelection};
+use aethercore_driver_hub::{
+    DriverHub, InstallSelection, VersionOrdering, compare_driver_versions,
+};
 use aethercore_operation_engine::{
     DriverEvidence, DriverInstallAction, OperationEngine, PlanState, PlanView,
 };
@@ -1151,17 +1153,10 @@ impl DriverInstallCoordinator {
             if let Some(v) = v {
                 item.after_driver_json = serde_json::to_string(&v.driver).unwrap_or_default();
                 item.after_problem_code = v.status.problem_code;
-                item.verified = v.present && !v.status.has_problem;
-                item.detail = if item.verified {
-                    "PnP reports the device present without a problem code."
-                } else {
-                    "PnP reports a device problem after installation."
-                }
-                .into();
-            } else {
-                item.verified = false;
-                item.detail = "Device is not present after installation.".into();
             }
+            let (verified, detail) = post_install_verdict(action, v);
+            item.verified = verified;
+            item.detail = detail.into();
             item.stage = "Verified".into();
             item.updated_unix_ms = now_ms();
             all_healthy &= item.verified && result_code_success(&item.result_code);
@@ -1402,6 +1397,48 @@ fn drivers_equivalent(actual: &Option<InstalledDriver>, expected: &Option<Driver
         }
         _ => false,
     }
+}
+/// Whether the device ended bound to the update it was approved for (P84-03). Windows reporting
+/// success is not the proof; the driver PnP binds afterwards is. Versions are compared as numbers,
+/// and a version that cannot be compared proves nothing either way. A failure here is a recovery
+/// review, never an automatic rollback.
+fn post_install_verdict(
+    action: &DriverInstallAction,
+    after: Option<&DeviceVerification>,
+) -> (bool, &'static str) {
+    let Some(after) = after.filter(|v| v.present) else {
+        return (false, "Device is not present after installation.");
+    };
+    if after.status.has_problem {
+        return (false, "PnP reports a device problem after installation.");
+    }
+    if drivers_equivalent(&after.driver, &action.current_driver) {
+        return (
+            false,
+            "The driver that was bound before installation is still bound.",
+        );
+    }
+    let bound = after.driver.as_ref().map_or("", |d| d.version.as_str());
+    let before = action
+        .current_driver
+        .as_ref()
+        .map_or("", |d| d.version.as_str());
+    if compare_driver_versions(before, bound) == VersionOrdering::CandidateOlder {
+        return (
+            false,
+            "An older driver than before installation is now bound and needs a recovery review.",
+        );
+    }
+    if compare_driver_versions(bound, &action.target_version) == VersionOrdering::CandidateNewer {
+        return (
+            false,
+            "The bound driver is older than the offered update, so the update is not verified.",
+        );
+    }
+    (
+        true,
+        "PnP reports the device present without a problem code.",
+    )
 }
 fn result_code_success(v: &str) -> bool {
     v == "orcSucceeded"
