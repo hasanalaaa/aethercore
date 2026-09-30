@@ -112,6 +112,24 @@ struct FakePlatform {
     /// What PnP reports bound after the install, and its problem code; None is the offered
     /// driver, healthy.
     bound_after: Option<(InstalledDriver, u32)>,
+    /// Windows hands back an existing restore point instead of a new one.
+    restore_not_fresh: bool,
+    /// A file in the export changes after it was sealed.
+    drift_after_export: bool,
+}
+
+fn fake() -> FakePlatform {
+    FakePlatform {
+        mutated: AtomicBool::new(false),
+        mutation_count: AtomicU32::new(0),
+        events: Mutex::new(Vec::new()),
+        reboot_required: false,
+        backup_fails: false,
+        restore_end_fails: false,
+        bound_after: None,
+        restore_not_fresh: false,
+        drift_after_export: false,
+    }
 }
 
 impl FakePlatform {
@@ -160,7 +178,7 @@ impl InstallPlatform for FakePlatform {
         Ok(RestorePointEvidence {
             sequence_number: 42,
             description: aethercore_restore_point::description_for_plan(plan_id),
-            verified_fresh: true,
+            verified_fresh: !self.restore_not_fresh,
         })
     }
 
@@ -182,17 +200,15 @@ impl InstallPlatform for FakePlatform {
         if self.backup_fails {
             return Err("injected OEM export failure".into());
         }
-        Ok(BackupEvidence {
-            source_inf: inf.into(),
-            backup_directory: destination.display().to_string(),
-            manifest_path: destination
-                .join("aethercore-backup.json")
-                .display()
-                .to_string(),
-            file_count: 3,
-            total_bytes: 4096,
-            not_applicable: false,
-        })
+        std::fs::create_dir_all(destination).map_err(|e| e.to_string())?;
+        std::fs::write(destination.join(inf), b"[Version]").map_err(|e| e.to_string())?;
+        std::fs::write(destination.join("fake.sys"), b"driver").map_err(|e| e.to_string())?;
+        let evidence =
+            aethercore_driver_backup::seal_export(inf, destination).map_err(|e| e.to_string())?;
+        if self.drift_after_export {
+            std::fs::write(destination.join("fake.sys"), b"changed").map_err(|e| e.to_string())?;
+        }
+        Ok(evidence)
     }
 
     fn execute_wua(
@@ -295,13 +311,10 @@ fn protection_barrier_precedes_every_fake_mutation_and_completes() {
     let engine = Arc::new(OperationEngine::new(db.clone()));
     let hub = ready_hub();
     let platform = Arc::new(FakePlatform {
-        mutated: AtomicBool::new(false),
-        mutation_count: AtomicU32::new(0),
-        events: Mutex::new(Vec::new()),
-        reboot_required: false,
         backup_fails: false,
         restore_end_fails: false,
         bound_after: None,
+        ..fake()
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -381,13 +394,10 @@ fn backup_failure_cancels_protection_and_never_reaches_install() {
     let engine = Arc::new(OperationEngine::new(db.clone()));
     let hub = ready_hub();
     let platform = Arc::new(FakePlatform {
-        mutated: AtomicBool::new(false),
-        mutation_count: AtomicU32::new(0),
-        events: Mutex::new(Vec::new()),
-        reboot_required: false,
         backup_fails: true,
         restore_end_fails: false,
         bound_after: None,
+        ..fake()
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -455,13 +465,10 @@ fn restore_end_failure_after_mutation_requires_recovery_and_never_completes() {
     let engine = Arc::new(OperationEngine::new(db.clone()));
     let hub = ready_hub();
     let platform = Arc::new(FakePlatform {
-        mutated: AtomicBool::new(false),
-        mutation_count: AtomicU32::new(0),
-        events: Mutex::new(Vec::new()),
-        reboot_required: false,
         backup_fails: false,
         restore_end_fails: true,
         bound_after: None,
+        ..fake()
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -542,13 +549,10 @@ fn cross_user_start_cannot_fail_or_mutate_an_owned_plan() {
     let engine = Arc::new(OperationEngine::new(db.clone()));
     let hub = ready_hub();
     let platform = Arc::new(FakePlatform {
-        mutated: AtomicBool::new(false),
-        mutation_count: AtomicU32::new(0),
-        events: Mutex::new(Vec::new()),
-        reboot_required: false,
         backup_fails: false,
         restore_end_fails: false,
         bound_after: None,
+        ..fake()
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -599,13 +603,10 @@ fn install_ending_bound_to(
     let engine = Arc::new(OperationEngine::new(db.clone()));
     let hub = ready_hub();
     let platform = Arc::new(FakePlatform {
-        mutated: AtomicBool::new(false),
-        mutation_count: AtomicU32::new(0),
-        events: Mutex::new(Vec::new()),
-        reboot_required: false,
         backup_fails: false,
         restore_end_fails: false,
         bound_after: Some(bound_after),
+        ..fake()
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -696,4 +697,93 @@ fn an_install_is_verified_by_the_driver_bound_after_it_not_by_the_result_code() 
         install_ending_bound_to((driver("13.0.0.0", "oem2.inf"), 0));
     assert_eq!(state, "Completed", "{detail}");
     assert!(verified);
+}
+
+/// Runs one approved install on `platform` to its end: the final plan state and whether it
+/// crossed the mutation barrier.
+fn install_on(platform: Arc<FakePlatform>) -> (String, bool, u32) {
+    let root = temp_root();
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("database"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let hub = ready_hub();
+    let coordinator = DriverInstallCoordinator::with_platform(
+        engine.clone(),
+        hub.clone(),
+        db.clone(),
+        root.clone(),
+        platform.clone(),
+    );
+    let snapshot = hub
+        .snapshot_for_owner(OWNER)
+        .expect("owned driver snapshot");
+    let candidate_id = snapshot.devices[0].candidates[0].candidate_id.clone();
+    let plan = coordinator
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[candidate_id],
+        )
+        .expect("plan");
+    approve(&engine, &plan.id);
+    start_install(&coordinator, OWNER, &plan.id).expect("start install");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let status = loop {
+        let status = coordinator
+            .status(OWNER, Some(&plan.id))
+            .expect("status")
+            .expect("execution");
+        if status.plan_state == "Completed" || status.plan_state == "Failed" {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "coordinator timed out in {}",
+            status.stage
+        );
+        thread::sleep(Duration::from_millis(10));
+    };
+    let outcome = (
+        status.plan_state.clone(),
+        status.mutation_started,
+        platform.mutation_count.load(Ordering::SeqCst),
+    );
+    drop(coordinator);
+    drop(engine);
+    drop(db);
+    let _ = std::fs::remove_dir_all(root);
+    outcome
+}
+
+/// P84-04: protection is proven, not assumed. A restore point Windows handed back from inside
+/// its frequency window (not a new one), or an export that changed after it was sealed, stops
+/// the install before the mutation barrier. Red before: the coordinator took both as given.
+#[test]
+fn protection_that_cannot_be_proven_stops_the_install_before_any_mutation() {
+    for (label, platform) in [
+        (
+            "a restore point that is not new",
+            FakePlatform {
+                restore_not_fresh: true,
+                ..fake()
+            },
+        ),
+        (
+            "an export that changed after sealing",
+            FakePlatform {
+                drift_after_export: true,
+                ..fake()
+            },
+        ),
+    ] {
+        let platform = Arc::new(platform);
+        let (state, crossed, mutations) = install_on(platform.clone());
+        assert_eq!(state, "Failed", "{label}");
+        assert!(!crossed, "{label}: the barrier was crossed");
+        assert_eq!(mutations, 0, "{label}");
+        let events = platform.events.lock().expect("events").clone();
+        assert!(events.contains(&"restore-cancel"), "{label}: {events:?}");
+        assert!(!events.contains(&"wua-install"), "{label}: {events:?}");
+    }
 }
