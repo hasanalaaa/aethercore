@@ -187,3 +187,143 @@ impl TimelineCoordinator {
         Ok((response, timeline))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aethercore_persistence::PlanRecord;
+    use aethercore_timeline_intelligence::{TimelineBuilder, TimelineEvent};
+    use std::sync::Arc;
+
+    fn timeline_of(count: usize) -> Timeline {
+        let mut builder = TimelineBuilder::new().watermark(1_000_000);
+        for index in 0..count {
+            builder
+                .ingest(TimelineEvent::new(
+                    format!("event:{index}"),
+                    EventClass::Operation,
+                    "cleanup",
+                    &format!("execution.outcome:{index}"),
+                    Outcome::Neutral,
+                    1_000 + index as i64,
+                ))
+                .expect("event");
+        }
+        builder.build()
+    }
+
+    fn ids(page: &v1::TimelineResponse) -> Vec<&str> {
+        page.entries.iter().map(|e| e.source_id.as_str()).collect()
+    }
+
+    /// P79-01: `before_sequence = 0` is the newest page (timeline.proto), which is what every client
+    /// sends for the first page. The cursor then walks back to the oldest events without repeating any.
+    #[test]
+    fn the_first_page_is_the_newest_and_the_cursor_walks_back_without_repeats() {
+        let timeline = timeline_of(3);
+        let first = timeline_page_proto(&timeline, 2, 0);
+        assert_eq!(
+            ids(&first),
+            ["event:1", "event:2"],
+            "the two newest events, oldest of them first"
+        );
+        assert!(first.has_more);
+        assert_eq!(first.next_before_sequence, 1);
+        let second = timeline_page_proto(&timeline, 2, first.next_before_sequence as usize);
+        assert_eq!(
+            ids(&second),
+            ["event:0"],
+            "the cursor returns the rest, none of the first page"
+        );
+        assert!(!second.has_more);
+        assert_eq!(second.next_before_sequence, 0);
+    }
+
+    #[test]
+    fn an_empty_timeline_and_an_oversized_cursor_or_page_stay_in_bounds() {
+        let empty = timeline_page_proto(&timeline_of(0), 50, 0);
+        assert!(empty.entries.is_empty() && !empty.has_more && empty.next_before_sequence == 0);
+        let three = timeline_of(3);
+        assert_eq!(
+            ids(&timeline_page_proto(&three, 50, 0)).len(),
+            3,
+            "a page larger than the history is all of it"
+        );
+        assert_eq!(
+            ids(&timeline_page_proto(&three, 2, usize::MAX)),
+            ["event:1", "event:2"],
+            "a cursor past the end is the newest page"
+        );
+    }
+
+    fn database(label: &str) -> (Arc<Database>, std::path::PathBuf) {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "aethercore-timeline-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("temp root");
+        (
+            Arc::new(Database::open(root.join("state.db")).expect("db")),
+            root,
+        )
+    }
+
+    fn seed_plan(db: &Database, id: &str, owner: &str, at: i64) {
+        db.insert_plan(
+            &PlanRecord {
+                id: id.into(),
+                title: "seed".into(),
+                state: "Completed".into(),
+                digest: format!("digest-{id}"),
+                risk: "Low".into(),
+                immutable_json: "{}".into(),
+                created_unix_ms: at,
+                updated_unix_ms: at,
+                owner_principal_key: owner.into(),
+            },
+            "created",
+        )
+        .expect("plan");
+    }
+
+    /// The coordinator over a real database: the caller's own history only, and a request for a huge
+    /// page is cut to the server's bound, not honoured.
+    #[test]
+    fn a_page_is_the_callers_own_history_and_never_larger_than_the_server_bound() {
+        let (db, root) = database("page");
+        for index in 0..(MAX_PAGE_SIZE + 5) {
+            seed_plan(
+                &db,
+                &format!("mine-{index}"),
+                "owner-a",
+                1_000 + index as i64,
+            );
+        }
+        seed_plan(&db, "theirs", "owner-b", 1_000);
+        let coordinator = TimelineCoordinator::new(db);
+        let (page, _) = coordinator
+            .page_for_owner("owner-a", u32::MAX, 0)
+            .expect("page");
+        assert_eq!(
+            page.entries.len(),
+            MAX_PAGE_SIZE,
+            "a huge page size is bounded"
+        );
+        assert!(page.has_more);
+        assert!(
+            page.entries.iter().all(|e| !e.source_id.contains("theirs")),
+            "another owner's history leaked"
+        );
+        let (other, _) = coordinator.page_for_owner("owner-b", 10, 0).expect("page");
+        assert_eq!(
+            other.entries.len(),
+            1,
+            "the other owner sees only its own event"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
