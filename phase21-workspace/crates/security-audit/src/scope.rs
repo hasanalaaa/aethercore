@@ -355,13 +355,13 @@ pub(crate) fn profile_owner_sid(path: &Path) -> Result<String, String> {
         }
         let mut profile = vec![0u16; 32768];
         let mut bytes = (profile.len() * 2) as u32;
-        // RRF_RT_REG_SZ expands REG_EXPAND_SZ, matching security::profile_dir_for_sid_text.
+        // RRF_SUBKEY_WOW6464KEY | RRF_RT_REG_SZ, with normal REG_EXPAND_SZ expansion.
         let status = unsafe {
             RegGetValueW(
                 key.0,
                 name.as_ptr(),
                 value_name.as_ptr(),
-                2,
+                0x10002,
                 std::ptr::null_mut(),
                 profile.as_mut_ptr().cast(),
                 &mut bytes,
