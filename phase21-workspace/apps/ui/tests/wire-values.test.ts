@@ -113,6 +113,27 @@ test('driver scan source: local cache with its age, online, and nothing before a
   }
 });
 
+// P84-05: a driver recovery entry says what exists to recover with and the manual way back, in both
+// languages, and never that a restore will work; entries from other domains get none of it.
+test('driver recovery entries name their restore point, their export, and the manual way back', async () => {
+  const { driverRecoveryMeans } = await import('../src/lib/i18n/index.ts');
+  const entry = (kind: string, restorePointSequence: number, backupRoot: string) =>
+    ({ kind, restorePointSequence, backupRoot }) as never;
+  for (const locale of ['en', 'ar'] as const) {
+    const full = driverRecoveryMeans(entry('verification-failure', 42, 'C:/ProgramData/AetherCore/recovery/x'), locale);
+    const none = driverRecoveryMeans(entry('interrupted-mutation', 0, ''), locale);
+    assert.equal(full.length, 3, full.join(' | '));
+    assert.match(full[0], /42/);
+    assert.notEqual(full[0], none[0]);
+    assert.notEqual(full[1], none[1]);
+    for (const line of [...full, ...none]) {
+      assert.doesNotMatch(line, /will restore|guarantee|سيستعيد حتمًا|مضمون/i, line);
+      if (locale === 'ar') assert.match(line, arabic, line);
+    }
+    assert.deepEqual(driverRecoveryMeans(entry('cleanup-failure', 0, ''), locale), []);
+  }
+});
+
 test('driver target-version source: the two the hub emits', async () => {
   const { driverTargetEvidence } = await import('../src/lib/i18n/index.ts');
   for (const source of ['TitleHeuristic', 'ProviderMetadata']) {
