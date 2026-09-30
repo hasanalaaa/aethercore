@@ -99,6 +99,16 @@ pub const RULES: &[RuleDescriptor] = &[
 pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
     let mut findings = Vec::new();
     for fact in facts {
+        // A live measurement past its window describes a moment that is over: it raises no
+        // current finding (P80-03).
+        if fact.freshness == Freshness::Stale
+            && matches!(
+                fact.payload,
+                FactPayload::StorageHealth { .. } | FactPayload::MemoryPressure { .. }
+            )
+        {
+            continue;
+        }
         match &fact.payload {
             FactPayload::DeviceHealth {
                 missing_driver: true,
@@ -724,8 +734,14 @@ fn whea_disposition(provider: &str, event_id: u32) -> WheaDisposition {
     }
 }
 
+/// A clock that moved back leaves records stamped slightly after `now`. That is age zero, not a
+/// reason to drop the record; a stamp a day ahead is still not "recent".
+const CLOCK_SKEW_TOLERANCE_MS: i64 = 60 * 60_000;
+
 fn observed_within(observed: i64, now: i64, window: i64) -> bool {
-    observed >= 0 && observed <= now && now - observed <= window
+    observed >= 0
+        && observed - now <= CLOCK_SKEW_TOLERANCE_MS
+        && now.saturating_sub(observed) <= window
 }
 
 fn is_healthy_integrity(result_code: &str, exit_code: i32) -> bool {
@@ -768,6 +784,10 @@ fn is_actionable_integrity_attention(result_code: &str) -> bool {
 }
 
 pub fn explicitly_healthy(fact: &SystemFact) -> bool {
+    // An old healthy reading is not proof of health now.
+    if fact.freshness == Freshness::Stale {
+        return false;
+    }
     match &fact.payload {
         FactPayload::DeviceHealth {
             missing_driver,

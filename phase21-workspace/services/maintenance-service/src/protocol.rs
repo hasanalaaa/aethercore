@@ -850,44 +850,6 @@ fn network_adapter_proto(a: NetworkAdapter) -> v1::NetworkAdapterInfo {
     }
 }
 
-#[cfg(test)]
-mod measurement_tests {
-    use super::*;
-
-    // P80-02B: presence survives the service boundary. A zone that read 0 °C and a zone that
-    // read nothing must not arrive looking the same.
-    #[test]
-    fn measurement_presence_survives_the_service_boundary() {
-        let absent = thermal_zone_proto(ThermalZone::default());
-        let zero = thermal_zone_proto(ThermalZone {
-            temperature_c: Some(0),
-            ..Default::default()
-        });
-        assert!(!absent.has_temperature && zero.has_temperature);
-        assert_eq!(absent.temperature_c, zero.temperature_c);
-
-        let snapshot = DiagnosticsSnapshot {
-            batteries: vec![Battery {
-                cycle_count: None,
-                coverage: Coverage {
-                    availability: Availability::Denied,
-                    ..Default::default()
-                },
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
-        let wire = diagnostics_snapshot_proto(snapshot);
-        assert!(!wire.batteries[0].has_cycle_count);
-        assert_eq!(
-            wire.batteries[0].coverage.as_ref().unwrap().availability,
-            v1::MeasurementAvailability::Denied as i32,
-            "denied stays denied and is not folded into empty"
-        );
-        assert!(wire.thermal_zones.is_empty() && wire.network_adapters.is_empty());
-    }
-}
-
 pub(crate) fn provider_fault_kind_code(kind: &str) -> v1::ProviderFaultKind {
     match kind {
         "Timeout" => v1::ProviderFaultKind::Timeout,
@@ -1388,5 +1350,43 @@ pub(crate) fn remediation_plan_proto(
             .into_iter()
             .map(remediation_candidate_proto)
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod measurement_tests {
+    use super::*;
+
+    // P80-02B: presence survives the service boundary. A zone that read 0 °C and a zone that
+    // read nothing must not arrive looking the same.
+    #[test]
+    fn measurement_presence_survives_the_service_boundary() {
+        let absent = thermal_zone_proto(ThermalZone::default());
+        let zero = thermal_zone_proto(ThermalZone {
+            temperature_c: Some(0),
+            ..Default::default()
+        });
+        assert!(!absent.has_temperature && zero.has_temperature);
+        assert_eq!(absent.temperature_c, zero.temperature_c);
+
+        let snapshot = DiagnosticsSnapshot {
+            batteries: vec![Battery {
+                cycle_count: None,
+                coverage: Coverage {
+                    availability: Availability::Denied,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let wire = diagnostics_snapshot_proto(snapshot);
+        assert!(!wire.batteries[0].has_cycle_count);
+        assert_eq!(
+            wire.batteries[0].coverage.as_ref().unwrap().availability,
+            v1::MeasurementAvailability::Denied as i32,
+            "denied stays denied and is not folded into empty"
+        );
+        assert!(wire.thermal_zones.is_empty() && wire.network_adapters.is_empty());
     }
 }
