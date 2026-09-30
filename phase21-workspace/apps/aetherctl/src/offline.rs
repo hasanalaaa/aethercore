@@ -1043,7 +1043,12 @@ mod windows_key {
 
     #[test]
     fn key_parent_is_pinned_until_seed_write_finishes() {
-        let parent = std::env::temp_dir().join(format!("key-pinned-{}", std::process::id()));
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let parent =
+            std::env::temp_dir().join(format!("key-pinned-{}-{nonce}", std::process::id()));
         let moved = parent.with_extension("moved");
         std::fs::create_dir_all(&parent).unwrap();
         let (file, parents) = create(&parent.join("owner.key")).unwrap();
