@@ -251,18 +251,27 @@ fn elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users() {
             .any(|f| matches!(f.id.as_str(), "SEC-FS-003" | "SEC-FS-004" | "SEC-FS-901")),
         "the OS profile user's own ACE was marked foreign: {findings:#?}"
     );
+    // Build ACEs from the numeric SID directly: icacls rejects unmapped fixture SIDs.
+    let edit_grant = |sid: &str, add: bool| {
+        let result = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; $a=[IO.File]::GetAccessControl($env:AC_AUDIT_KEY); $r=[Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($env:AC_AUDIT_SID),[Security.AccessControl.FileSystemRights]::Read,[Security.AccessControl.AccessControlType]::Allow); if($env:AC_AUDIT_ADD -eq '1'){$a.AddAccessRule($r)}else{$a.RemoveAccessRuleAll($r)}; [IO.File]::SetAccessControl($env:AC_AUDIT_KEY,$a)"])
+            .env("AC_AUDIT_KEY", &key)
+            .env("AC_AUDIT_SID", sid)
+            .env("AC_AUDIT_ADD", if add { "1" } else { "0" })
+            .output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    };
     for sid in ["S-1-5-21-1-2-3-9876", "S-1-1-0", "S-1-5-32-545"] {
-        icacls_grant(&key, &format!("*{sid}:(R)"));
+        edit_grant(sid, true);
         assert!(
             at(&scan(root.as_path()), "SEC-FS-004", &key).is_some(),
             "{sid} was trusted"
         );
-        let remove = std::process::Command::new("icacls")
-            .arg(&key)
-            .args(["/remove:g", &format!("*{sid}")])
-            .status()
-            .unwrap();
-        assert!(remove.success());
+        edit_grant(sid, false);
         let baseline = scan(root.as_path());
         assert!(
             !baseline
