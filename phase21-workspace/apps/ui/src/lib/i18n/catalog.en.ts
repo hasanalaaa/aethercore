@@ -1772,6 +1772,8 @@ export const enCatalog = {
   'care.cancel': 'Cancel',
   'care.refresh': 'Refresh',
   'care.empty': 'No eligible plan. Run a domain scan first.',
+  'care.unavailable': 'Care plan unavailable',
+  'care.unavailable.body': 'Care could not read or prepare its plan. Nothing was assumed about your PC; use Refresh to try again.',
   'care.empty.nothingEligible': 'Nothing eligible for automatic care was found: the default cleanup category had nothing to clean.',
   'care.empty.optIn': 'These categories need your explicit opt-in in Deep Clean: {list}',
   'care.empty.noPlan': 'The default cleanup category has files to clean. Review it in Deep Clean to create the plan care runs.',

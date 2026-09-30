@@ -25,13 +25,14 @@
   import {
     cancelCare,
     loadCareStatus,
+    careLoad,
     openCareConsent,
   } from './controller';
   import { careEmptyReason } from './approval';
 
   $: locale = $shellState.locale;
   $: care = $streamState.careStatus;
-  $: emptyReason = careEmptyReason($streamState.cleanupSnapshot);
+  $: emptyReason = careEmptyReason($streamState.cleanupSnapshot, care ? 'loaded' : $careLoad);
   $: optInList = emptyReason.kind === 'nothingEligible'
     ? emptyReason.optIn.map((title) => localizeOwnedText(title, locale).text).join(locale === 'ar' ? '، ' : ', ')
     : '';
@@ -85,7 +86,9 @@
   </div>
 
   {#if !care || care.steps.length === 0}
-    {#if emptyReason.kind === 'nothingEligible'}
+    {#if emptyReason.kind === 'unavailable'}
+      <EmptyState title={t('care.unavailable', locale)} body={t('care.unavailable.body', locale)} />
+    {:else if emptyReason.kind === 'nothingEligible'}
       <EmptyState title={t('common.notCollected', locale)} body={t('care.empty.nothingEligible', locale)} />
       {#if optInList}<p class="summary">{t('care.empty.optIn', locale, { list: optInList })}</p>{/if}
     {:else if emptyReason.kind === 'noPlan'}

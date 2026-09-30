@@ -29,14 +29,18 @@ export function isPlanChanged(error: unknown): boolean {
   return String(error).includes('care.error.planChanged');
 }
 
-export type CareEmptyReason = { kind: 'noScan' } | { kind: 'nothingEligible'; optIn: string[] } | { kind: 'noPlan' };
+/** Whether the care plan was read: an unread plan is neither empty nor a reason to run a scan (P79-03). */
+export type CareLoad = 'idle' | 'loading' | 'failed' | 'loaded';
+
+export type CareEmptyReason = { kind: 'unavailable' } | { kind: 'noScan' } | { kind: 'nothingEligible'; optIn: string[] } | { kind: 'noPlan' };
 
 /**
  * P76 (DBT-P76-008): why a care plan has no steps, from the cleanup scan care draws on. Care
  * runs only the default, automatic categories; the rest need the owner's explicit opt-in in
  * Deep Clean, and are listed by title so the panel can say so.
  */
-export function careEmptyReason(scan: CleanupSnapshot): CareEmptyReason {
+export function careEmptyReason(scan: CleanupSnapshot, load: CareLoad = 'loaded'): CareEmptyReason {
+  if (load === 'failed') return { kind: 'unavailable' };
   if (scan.state !== 'Ready') return { kind: 'noScan' };
   if (scan.candidates.some((c) => c.selectedByDefault && !c.requiresExplicitConfirmation)) return { kind: 'noPlan' };
   return { kind: 'nothingEligible', optIn: scan.candidates.filter((c) => c.requiresExplicitConfirmation).map((c) => c.title) };

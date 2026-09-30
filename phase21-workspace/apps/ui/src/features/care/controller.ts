@@ -3,17 +3,27 @@ import type { CareRunStatus } from '../../lib/contracts';
 import { runBusy, setPage } from '../../app/shell-state';
 import { serviceInvoke } from '../../platform/service-client';
 import { patchStreamState, streamState } from '../../platform/stream-state';
-import { afterApproval, isPlanChanged } from './approval';
+import { afterApproval, isPlanChanged, type CareLoad } from './approval';
 
 /** UI-only dialog state for the session-consent flow. */
 export const careUi = writable({
   consentDialogOpen: false,
 });
 
+/** Whether the last read of the plan worked; the panel says "unavailable" for a failed one. */
+export const careLoad = writable<CareLoad>('idle');
+
 /** Pulls the current care status (also the deterministic plan preview). */
 export async function loadCareStatus(): Promise<void> {
+  careLoad.set('loading');
   await runBusy(async () => {
-    patchStreamState({ careStatus: await serviceInvoke<CareRunStatus>('get_care_status') });
+    try {
+      patchStreamState({ careStatus: await serviceInvoke<CareRunStatus>('get_care_status') });
+      careLoad.set('loaded');
+    } catch (error) {
+      careLoad.set('failed');
+      throw error;
+    }
   });
 }
 
