@@ -386,9 +386,6 @@ jobs:
         run: npm install --global pnpm@11.22.0
       - name: Frozen dependency restore
         run: pnpm --dir apps/ui install --frozen-lockfile
-      - name: P87 temporary locale negative control
-        run: |
-          python3 -c "from pathlib import Path; import re; p=Path('apps/ui/src/lib/i18n/catalog.ar.ts'); p.write_text(re.sub(r'(?m)^.*nav.overview.*\n', '', p.read_text()))"
       - name: EN/AR locale gate
         run: python3 scripts/test-phase12-localization.py
       - name: UI accessibility/type gate

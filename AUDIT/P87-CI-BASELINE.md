@@ -55,6 +55,11 @@ the owner/project policy. Manual lane4 merges still require full CI at head SHA.
 
 Pending the PR CI receipt. No speedup is claimed before measured fast-job timing.
 Proposed acceptance: fast feedback ≤300 s and ≥25% below the before median.
-Injected locale-leak PR evidence and controlled cold timing remain unmeasured.
+PR #83 negative-control head `92a89d40f0cab9e21d976b22f497beeb371a1cb8`,
+run [36666378019](https://github.com/hasanalaaa/aethercore/actions/runs/36666378019):
+`fast-ui` rejected the deliberately missing Arabic navigation keys at 03:53:09Z,
+16 s after run creation, before the queued Windows native suite. The temporary
+checkout-only injection is removed in the following commit. Controlled cold timing
+remains unmeasured.
 
 [Aggregate scheduling semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds).
