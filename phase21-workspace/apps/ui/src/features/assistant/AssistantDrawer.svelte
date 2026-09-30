@@ -15,10 +15,10 @@
    * THE INVARIANT THIS EXISTS UNDER, and the three places it is enforced here:
    *
    * 1. **Streamed text is not an answer.** The citation gate can only run on a
-   *    complete answer, so a STREAMING frame renders under its own provisional
-   *    treatment — no citation row, no answer label, muted ink and a live
-   *    cursor. The renderer keys off `state`, never off whether text is
-   *    present.
+   *    complete answer, so a STREAMING frame shows only that the turn is
+   *    generating and how far it has got — never the text, which the controller
+   *    does not keep (P86-01). The renderer keys off `state`, never off whether
+   *    text is present.
    * 2. **A turn that cannot be grounded renders as the honest empty state**,
    *    inside the transcript, naming the scan that would produce the evidence.
    *    Not error styling, and NOT violet: an ungroundable question is not a
@@ -267,12 +267,11 @@
               <p class="assistant-question">{entry.text}</p>
             </div>
           {:else if entry.turn.state === TURN_STREAMING}
-            <!-- PROVISIONAL. No answer label, no citation row: the gate has not
-                 run yet, and presenting this as an answer is the one careless
-                 move that would put an uncited claim on the screen. -->
+            <!-- Generating. No text at all: the gate has not run yet, and text
+                 shown before it runs is an uncited claim on the screen. -->
             <div class="assistant-turn" data-kind="streaming">
-              <span class="assistant-kicker">{t('assistant.generating', locale)}</span>
-              <p class="assistant-provisional">{entry.turn.answer}<span class="assistant-cursor" aria-hidden="true">▊</span></p>
+              <span class="assistant-kicker">{t('assistant.generating', locale)}<span class="assistant-cursor" aria-hidden="true">▊</span></span>
+              <span class="assistant-tokens"><TechnicalText value={tp('unit.token', locale, entry.turn.tokensEmitted)} /></span>
             </div>
           {:else if entry.turn.state === TURN_ANSWERED}
             <div class="assistant-turn" data-kind="answered">
@@ -475,16 +474,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* Provisional. Muted ink and a live cursor, and deliberately NOT the answer's
-     treatment: nothing here has passed the citation gate yet. */
-  .assistant-provisional {
-    margin: 0;
-    font-size: var(--ac-type-body);
-    line-height: 1.7;
-    color: var(--ac-text-4);
-    text-wrap: pretty;
-    overflow-wrap: anywhere;
-  }
   .assistant-cursor { margin-inline-start: 0.15em; color: var(--role-interactive); animation: ac-assistant-blink 1.1s steps(1) infinite; }
 
   .assistant-answer {

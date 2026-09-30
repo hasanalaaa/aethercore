@@ -219,63 +219,81 @@ pub fn render_prompt(pack: &TypedEvidencePack, question: &str) -> String {
 /// resolves **stays in the text** — the renderer turns it into an inline
 /// evidence chip, so a reader can see which clause rests on which observation,
 /// and the sentence keeps its grammar (stripping a sentence-initial `[E1]` left
-/// answers starting "indicates that…"). A marker that does NOT resolve is
-/// removed, because a citation of evidence the product does not hold is worse
-/// than no citation at all.
+/// answers starting "indicates that…").
 ///
-/// Returns `None` when nothing resolved, when nothing is left, or when the model
-/// used its own refusal token — all three mean there is no grounded claim here,
-/// so there is nothing this product is allowed to show.
+/// The answer is admitted whole or not at all (P86-01). Every sentence must carry
+/// its own resolvable marker: one valid `[E1]` used to carry every uncited
+/// sentence around it, and a marker naming evidence the pack does not hold was
+/// removed while the claim it was attached to stayed on screen. A sentence ends
+/// at a line break, or at `. ! ? ; … ؟ ؛ ۔` followed by whitespace, a closing
+/// quote or bracket, or the end. A stop glued to the next word could be one
+/// sentence or two, so it refuses the answer rather than guessing where an
+/// Arabic or English sentence ends; a decimal point between digits is not a stop.
+/// This is a parse, not a proof of meaning: a cited sentence can still be wrong.
+///
+/// Returns `None` when any sentence is uncited, any marker does not resolve, a
+/// boundary cannot be read, no word is left, or the model used its own refusal
+/// token — each means there is no grounded answer here to show.
 pub fn ground(raw: &str, pack: &TypedEvidencePack) -> Option<(String, Vec<Citation>)> {
     let mut citations: Vec<Citation> = Vec::new();
     let mut text = String::with_capacity(raw.len());
-    // The same answer with EVERY marker removed, resolvable or not. Only used to
-    // decide whether the model's whole reply was its refusal token.
+    // The same answer with every marker removed. Decides whether any word is
+    // left, and whether the model's whole reply was its refusal token.
     let mut prose = String::with_capacity(raw.len());
-    let bytes = raw.as_bytes();
+    // The sentence being read: whether it says anything, and whether it cites.
+    let mut says = false;
+    let mut cites = false;
     let mut cursor = 0usize;
 
-    while cursor < bytes.len() {
-        if bytes[cursor] == b'[' {
-            // `[E` + digits + `]`, and nothing else.
-            let mut scan = cursor + 1;
-            if scan < bytes.len() && (bytes[scan] == b'E' || bytes[scan] == b'e') {
-                scan += 1;
-                let digits_start = scan;
-                while scan < bytes.len() && bytes[scan].is_ascii_digit() {
-                    scan += 1;
-                }
-                if scan > digits_start && scan < bytes.len() && bytes[scan] == b']' {
-                    let index: usize = raw[digits_start..scan].parse().unwrap_or(0);
-                    if let Some(item) = index.checked_sub(1).and_then(|i| pack.items.get(i)) {
-                        let citation = Citation {
-                            evidence_id: item.evidence_id.clone(),
-                            surface: item.surface,
-                        };
-                        if !citations.contains(&citation) {
-                            citations.push(citation);
-                        }
-                        // Normalised spelling, so the renderer has one shape
-                        // to match rather than `[e1]` and `[E1]` both.
-                        text.push_str(&format!("[E{index}]"));
-                    }
-                    // Unresolvable index: dropped, silently, from the text.
-                    cursor = scan + 1;
-                    continue;
-                }
+    while let Some(ch) = raw[cursor..].chars().next() {
+        if let Some((index, len)) = marker_at(&raw[cursor..]) {
+            let item = index.checked_sub(1).and_then(|i| pack.items.get(i))?;
+            let citation = Citation {
+                evidence_id: item.evidence_id.clone(),
+                surface: item.surface,
+            };
+            if !citations.contains(&citation) {
+                citations.push(citation);
             }
+            // Normalised spelling, so the renderer has one shape to match
+            // rather than `[e1]` and `[E1]` both.
+            text.push_str(&format!("[E{index}]"));
+            cites = true;
+            cursor += len;
+            continue;
         }
-        // Not a marker: copy the character. Markers are pure ASCII, so `cursor`
-        // only ever lands on a char boundary.
-        let char_len = utf8_len(bytes[cursor]);
-        let end = (cursor + char_len).min(raw.len());
-        text.push_str(&raw[cursor..end]);
-        prose.push_str(&raw[cursor..end]);
-        cursor = end;
+        cursor += ch.len_utf8();
+        let after_number = text.chars().next_back().is_some_and(char::is_numeric);
+        text.push(ch);
+        prose.push(ch);
+        says |= ch.is_alphanumeric();
+        let next = raw[cursor..].chars().next();
+        let ends = match ch {
+            '\n' | '\r' => true,
+            _ if is_stop(ch) => match next {
+                None => true,
+                Some(next) if next.is_whitespace() || is_closing(next) => true,
+                // `...` or `?!`: the last stop decides.
+                Some(next) if is_stop(next) => false,
+                Some(next) if ch == '.' && after_number && next.is_numeric() => false,
+                Some(_) => return None,
+            },
+            _ => false,
+        };
+        if ends {
+            if says && !cites {
+                return None;
+            }
+            says = false;
+            cites = false;
+        }
+    }
+    if says && !cites {
+        return None;
     }
 
     let cleaned = collapse_whitespace(&text);
-    if citations.is_empty() || cleaned.is_empty() {
+    if citations.is_empty() || !prose.chars().any(char::is_alphanumeric) {
         return None;
     }
     // The model's own refusal, honoured rather than reinterpreted. Matched on
@@ -298,13 +316,26 @@ fn is_refusal_token(cleaned: &str) -> bool {
     collapse_whitespace(&core).eq_ignore_ascii_case("no evidence")
 }
 
-fn utf8_len(first: u8) -> usize {
-    match first {
-        0x00..=0x7F => 1,
-        0xC0..=0xDF => 2,
-        0xE0..=0xEF => 3,
-        _ => 4,
+/// `[E` + digits + `]` at the start of `rest`, either case of `E`: the index it
+/// names and the marker's length in bytes. An index too long to parse is 0,
+/// which resolves to nothing.
+fn marker_at(rest: &str) -> Option<(usize, usize)> {
+    let body = rest
+        .strip_prefix("[E")
+        .or_else(|| rest.strip_prefix("[e"))?;
+    let digits = body.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 || !body[digits..].starts_with(']') {
+        return None;
     }
+    Some((body[..digits].parse().unwrap_or(0), digits + 3))
+}
+
+fn is_stop(ch: char) -> bool {
+    matches!(ch, '.' | '!' | '?' | ';' | '…' | '؟' | '؛' | '۔')
+}
+
+fn is_closing(ch: char) -> bool {
+    matches!(ch, ')' | '"' | '\'' | '”' | '’' | '»')
 }
 
 fn collapse_whitespace(value: &str) -> String {
@@ -560,16 +591,13 @@ mod tests {
         }
     }
 
-    /// A marker naming evidence the pack does not hold is removed from the text
-    /// as well as from the citations. A false citation on screen is worse than
-    /// no citation at all.
+    /// A marker naming evidence the pack does not hold refuses the answer. It
+    /// used to be removed while the claim it was attached to stayed (P86-01).
     #[test]
-    fn an_unresolvable_marker_is_removed_from_the_answer_too() {
+    fn an_unresolvable_marker_refuses_the_whole_answer() {
         let pack = pack_of(&["fact-a"]);
-        let (text, citations) =
-            ground("The disk is fine [E1] and the fan failed [E9].", &pack).expect("grounded");
-        assert_eq!(text, "The disk is fine [E1] and the fan failed .");
-        assert_eq!(citations.len(), 1);
+        assert!(ground("The disk is fine [E1] and the fan failed [E9].", &pack).is_none());
+        assert!(ground("The disk is fine [E1] [E99999999999999999999999].", &pack).is_none());
     }
 
     /// THE failure that matters, #2. A model failure is a declared fault with a
