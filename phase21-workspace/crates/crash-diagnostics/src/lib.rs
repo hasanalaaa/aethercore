@@ -231,10 +231,11 @@ pub fn classify_event(
 /// digits. A value that is not a hexadecimal code is not a code.
 fn bugcheck_from_payload(values: &[String]) -> Option<String> {
     values.iter().find_map(|value| {
-        let digits = value
-            .trim()
+        // Real events state the code first, then its four parameters in parentheses.
+        let token = value.trim().split([' ', '(']).next()?;
+        let digits = token
             .strip_prefix("0x")
-            .or_else(|| value.trim().strip_prefix("0X"))?;
+            .or_else(|| token.strip_prefix("0X"))?;
         if digits.is_empty() || digits.len() > 8 || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
             return None;
         }
@@ -259,6 +260,22 @@ fn normalize_dump_path(path: &str) -> String {
     path.strip_prefix("\\\\?\\").unwrap_or(&path).to_string()
 }
 
+/// Two normalized dump paths name one file: equal, or equal file names when one side carries no
+/// directory (the dump record holds the name only, the event the full path). Two full paths must
+/// agree entirely.
+fn same_dump_file(a: &str, b: &str) -> bool {
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    let name = |p: &str| p.rsplit('\\').next().unwrap_or(p).to_string();
+    let has_dir = |p: &str| p.contains('\\');
+    if has_dir(a) && has_dir(b) {
+        a == b
+    } else {
+        name(a) == name(b)
+    }
+}
+
 /// How a dump relates to the System log's own record of the crash.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CrashLink {
@@ -280,9 +297,7 @@ pub fn link_dump_to_events(dump: &CrashRecord, events: &[EventEvidence]) -> Cras
     let dump_code = dump.bugcheck_code.map(|code| format!("0x{code:08X}"));
     let mut mismatch = false;
     for event in events.iter().filter(|e| e.category == "BugcheckReport") {
-        let by_path = !dump_path.is_empty()
-            && !event.dump_file.is_empty()
-            && normalize_dump_path(&event.dump_file) == dump_path;
+        let by_path = same_dump_file(&dump_path, &normalize_dump_path(&event.dump_file));
         let by_time = dump
             .recorded_unix_ms
             .is_some_and(|at| (event.recorded_unix_ms - at).abs() <= LINK_WINDOW_MS);
@@ -517,6 +532,45 @@ mod tests {
             "a dump with no time is never linked by time"
         );
         assert_eq!(link_dump_to_events(&same_path, &[]), CrashLink::Unlinked);
+    }
+
+    // The shapes of a real event 1001 and a real dump record, read on a Windows 11 machine.
+    #[test]
+    fn a_real_event_and_a_real_dump_record_are_linked() {
+        let event = classify_event(
+            "Microsoft-Windows-WER-SystemErrorReporting",
+            1001,
+            &[
+                "0x0000000a (0x0000000000000000, 0x00000000000000ff, 0x0000000000000026, 0xfffff802844fc10b)".into(),
+                r"C:\Windows\Minidump\092926-7796-01.dmp".into(),
+                "01752770-a87a-4a8b-a281-6b9e626c846b".into(),
+            ],
+            1_790_669_660_000,
+            None,
+        );
+        assert_eq!(
+            event.bugcheck_hex, "0x0000000A",
+            "the code is the leading token of the value"
+        );
+        assert_eq!(event.dump_file, r"C:\Windows\Minidump\092926-7796-01.dmp");
+        // The dump record holds the file name only, and its own time (two seconds before the event).
+        let same = dump(Some(0x0A), "092926-7796-01.dmp", Some(1_790_669_658_556));
+        assert_eq!(
+            link_dump_to_events(&same, std::slice::from_ref(&event)),
+            CrashLink::Linked
+        );
+        let other = dump(Some(0x3B), "092826-7531-01.dmp", Some(1_790_559_606_373));
+        assert_eq!(
+            link_dump_to_events(&other, std::slice::from_ref(&event)),
+            CrashLink::Unlinked,
+            "another crash, another file, another day"
+        );
+        let same_name_elsewhere = dump(Some(0x0A), r"D:\Other\092926-7796-01.dmp", None);
+        assert_eq!(
+            link_dump_to_events(&same_name_elsewhere, std::slice::from_ref(&event)),
+            CrashLink::Unlinked,
+            "two full paths must agree"
+        );
     }
 
     #[test]
