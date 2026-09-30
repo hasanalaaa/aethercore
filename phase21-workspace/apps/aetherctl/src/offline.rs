@@ -853,6 +853,24 @@ mod windows_key {
         )
     }
 
+    fn final_path(file: &std::fs::File) -> io::Result<PathBuf> {
+        let mut path = vec![0u16; 32768];
+        let len = unsafe {
+            GetFinalPathNameByHandleW(
+                file.as_raw_handle(),
+                path.as_mut_ptr(),
+                path.len() as u32,
+                0,
+            )
+        } as usize;
+        if len == 0 || len >= path.len() {
+            return Err(refused());
+        }
+        Ok(PathBuf::from(
+            String::from_utf16(&path[..len]).map_err(|_| refused())?,
+        ))
+    }
+
     pub(super) fn create(path: &Path) -> io::Result<(std::fs::File, Vec<std::fs::File>)> {
         let path = std::path::absolute(path)?;
         let parent = path.parent().ok_or_else(refused)?;
@@ -863,7 +881,7 @@ mod windows_key {
             let open = || {
                 std::fs::OpenOptions::new()
                     .access_mode(0x80) // FILE_READ_ATTRIBUTES
-                    .share_mode(1) // READ only: prevent reparse edits as well as deletion
+                    .share_mode(3) // READ | WRITE; deny DELETE to pin the namespace
                     .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
                     .open(ancestor)
             };
@@ -884,7 +902,9 @@ mod windows_key {
             }
             parents.push(directory);
         }
-        let expected = std::fs::canonicalize(parent)?.join(path.file_name().ok_or_else(refused)?);
+        // Resolve the opened directory object, never a path that a new reparse point can redirect.
+        let expected = final_path(parents.last().ok_or_else(refused)?)?
+            .join(path.file_name().ok_or_else(refused)?);
         unsafe {
             let mut raw_token = std::ptr::null_mut();
             checked(OpenProcessToken(
@@ -966,19 +986,11 @@ mod windows_key {
                 return Err(io::Error::last_os_error());
             }
             let file = std::fs::File::from_raw_handle(raw);
-            let mut final_path = vec![0u16; 32768];
-            let len = GetFinalPathNameByHandleW(
-                file.as_raw_handle(),
-                final_path.as_mut_ptr(),
-                final_path.len() as u32,
-                0,
-            ) as usize;
-            if len == 0 || len >= final_path.len() {
-                return Err(refused());
-            }
-            let resolved =
-                PathBuf::from(String::from_utf16(&final_path[..len]).map_err(|_| refused())?);
-            if resolved != expected {
+            if final_path(&file)? != expected
+                || parents
+                    .iter()
+                    .any(|p| !p.metadata().is_ok_and(|m| m.file_attributes() & 0x400 == 0))
+            {
                 return Err(refused());
             }
             let (mut owner, mut dacl, mut actual) = (
@@ -1036,13 +1048,11 @@ mod windows_key {
         std::fs::create_dir_all(&parent).unwrap();
         let (file, parents) = create(&parent.join("owner.key")).unwrap();
         assert!(std::fs::rename(&parent, &moved).is_err());
-        assert!(
-            std::fs::OpenOptions::new()
-                .access_mode(0x4000_0000)
-                .custom_flags(0x0200_0000)
-                .share_mode(7)
-                .open(&parent)
-                .is_err()
+        assert_eq!(
+            final_path(&file).unwrap(),
+            final_path(parents.last().unwrap())
+                .unwrap()
+                .join("owner.key")
         );
         drop((file, parents));
         std::fs::rename(&parent, &moved).unwrap();
