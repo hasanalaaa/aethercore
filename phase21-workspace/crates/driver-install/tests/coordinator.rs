@@ -114,8 +114,14 @@ struct FakePlatform {
     bound_after: Option<(InstalledDriver, u32)>,
     /// Windows hands back an existing restore point instead of a new one.
     restore_not_fresh: bool,
+    /// System Restore is off: no point can be made.
+    restore_unavailable: bool,
     /// A file in the export changes after it was sealed.
     drift_after_export: bool,
+    /// The install thread stops right after the mutation, as a service that dies there would,
+    /// until `released` is set.
+    stall_after_install: bool,
+    released: AtomicBool,
 }
 
 fn fake() -> FakePlatform {
@@ -128,7 +134,10 @@ fn fake() -> FakePlatform {
         restore_end_fails: false,
         bound_after: None,
         restore_not_fresh: false,
+        restore_unavailable: false,
         drift_after_export: false,
+        stall_after_install: false,
+        released: AtomicBool::new(false),
     }
 }
 
@@ -175,6 +184,9 @@ impl InstallPlatform for FakePlatform {
 
     fn begin_restore(&self, plan_id: &str) -> Result<RestorePointEvidence, String> {
         self.push("restore-begin");
+        if self.restore_unavailable {
+            return Err("System Restore is turned off".into());
+        }
         Ok(RestorePointEvidence {
             sequence_number: 42,
             description: aethercore_restore_point::description_for_plan(plan_id),
@@ -230,6 +242,13 @@ impl InstallPlatform for FakePlatform {
         self.push("wua-install");
         self.mutated.store(true, Ordering::SeqCst);
         self.mutation_count.fetch_add(1, Ordering::SeqCst);
+        let stalled = Instant::now();
+        while self.stall_after_install
+            && !self.released.load(Ordering::SeqCst)
+            && stalled.elapsed() < Duration::from_secs(10)
+        {
+            thread::sleep(Duration::from_millis(5));
+        }
         progress(WuaProgress {
             stage: ExecutionStage::Installing,
             percent: 100,
@@ -763,6 +782,13 @@ fn install_on(platform: Arc<FakePlatform>) -> (String, bool, u32) {
 fn protection_that_cannot_be_proven_stops_the_install_before_any_mutation() {
     for (label, platform) in [
         (
+            "System Restore turned off",
+            FakePlatform {
+                restore_unavailable: true,
+                ..fake()
+            },
+        ),
+        (
             "a restore point that is not new",
             FakePlatform {
                 restore_not_fresh: true,
@@ -783,7 +809,93 @@ fn protection_that_cannot_be_proven_stops_the_install_before_any_mutation() {
         assert!(!crossed, "{label}: the barrier was crossed");
         assert_eq!(mutations, 0, "{label}");
         let events = platform.events.lock().expect("events").clone();
-        assert!(events.contains(&"restore-cancel"), "{label}: {events:?}");
+        // A point that was made is closed as cancelled; none is made when Restore is off.
+        let made = !platform.restore_unavailable;
+        assert_eq!(
+            events.contains(&"restore-cancel"),
+            made,
+            "{label}: {events:?}"
+        );
         assert!(!events.contains(&"wua-install"), "{label}: {events:?}");
     }
+}
+
+/// P84-04: a service that stops after the mutation barrier leaves a plan the next start marks
+/// recovery-required, without replaying the install. The recovery path existed with no driver
+/// test; this pins it.
+#[test]
+fn an_install_interrupted_after_the_barrier_is_recovery_required_and_not_replayed() {
+    let root = temp_root();
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("database"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let hub = ready_hub();
+    let platform = Arc::new(FakePlatform {
+        stall_after_install: true,
+        ..fake()
+    });
+    let coordinator = DriverInstallCoordinator::with_platform(
+        engine.clone(),
+        hub.clone(),
+        db.clone(),
+        root.clone(),
+        platform.clone(),
+    );
+    let snapshot = hub
+        .snapshot_for_owner(OWNER)
+        .expect("owned driver snapshot");
+    let candidate_id = snapshot.devices[0].candidates[0].candidate_id.clone();
+    let plan = coordinator
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[candidate_id],
+        )
+        .expect("plan");
+    approve(&engine, &plan.id);
+    start_install(&coordinator, OWNER, &plan.id).expect("start install");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while platform.mutation_count.load(Ordering::SeqCst) == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the install never crossed the barrier"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    // The service starts again, with the first install stuck where it died.
+    let restarted = DriverInstallCoordinator::with_platform(
+        engine.clone(),
+        hub.clone(),
+        db.clone(),
+        root.clone(),
+        Arc::new(fake()),
+    );
+    restarted.recover_incomplete().expect("recovery");
+    let status = restarted
+        .status(OWNER, Some(&plan.id))
+        .expect("status")
+        .expect("execution");
+    assert_eq!(status.plan_state, "Failed");
+    assert!(status.recovery_required);
+    assert_eq!(status.stage, "RecoveryRequired");
+    assert_eq!(
+        platform.mutation_count.load(Ordering::SeqCst),
+        1,
+        "never replayed"
+    );
+    assert!(
+        db.recovery_records(20)
+            .expect("recovery history")
+            .iter()
+            .any(|r| r.plan_id == plan.id)
+    );
+
+    platform.released.store(true, Ordering::SeqCst);
+    drop(restarted);
+    drop(coordinator);
+    drop(engine);
+    drop(db);
+    let _ = std::fs::remove_dir_all(root);
 }

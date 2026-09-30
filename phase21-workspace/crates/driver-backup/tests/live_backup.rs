@@ -32,5 +32,11 @@ fn exports_a_bound_oem_driver_package_with_manifest() {
     assert!(evidence.file_count > 0);
     assert!(!evidence.not_applicable);
     assert!(std::path::Path::new(&evidence.manifest_path).is_file());
+    // P84-04: the real export re-reads against its sealed manifest.
+    aethercore_driver_backup::verify_export(&evidence).expect("an untouched export verifies");
+    eprintln!(
+        "exported {inf}: {} files, {} bytes, verified on re-read",
+        evidence.file_count, evidence.total_bytes
+    );
     let _ = fs::remove_dir_all(root);
 }

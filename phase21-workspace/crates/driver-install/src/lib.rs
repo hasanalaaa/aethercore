@@ -602,6 +602,14 @@ impl DriverInstallCoordinator {
             // Set immediately so an error in any subsequent persistence/backup step can still pair
             // BEGIN_SYSTEM_CHANGE with CANCELLED_OPERATION in the outer failure path.
             restore_evidence = Some(restore.clone());
+            // Windows returns an existing point inside its frequency window; that one protects
+            // nothing done now (P84-04). Only a point proven new counts.
+            if !restore.verified_fresh {
+                return Err(
+                    "restore point: Windows returned an existing restore point, not a new one"
+                        .into(),
+                );
+            }
 
             let mut r = self
                 .db
@@ -968,6 +976,10 @@ impl DriverInstallCoordinator {
                 .platform
                 .backup_driver(&driver.inf_path, &destination)
                 .map_err(InstallError::Protection)?;
+            // The export is re-read against its sealed manifest here, immediately before the
+            // install (P84-04): one that drifted or was replaced is not recovery evidence.
+            aethercore_driver_backup::verify_export(&evidence)
+                .map_err(|e| InstallError::Protection(e.to_string()))?;
             item.backup_path = evidence.backup_directory.clone();
             item.stage = "BackedUp".into();
             item.detail = format!("Exported {} files before mutation.", evidence.file_count);
