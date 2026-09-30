@@ -467,7 +467,7 @@ d977f4ffecab6723198aef4b1e1f6e553bf0f5b20512893dca0661810c09d699  apps/ui/src/fe
 1e4bc6c9fb8d1e5687390c7e1af62283e43b33f17cabef24a50bd4c5edefb35f  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-3667833405aba25cb6c3afb560b8adce2695c4a219519a13528c7c37006cf7fa  apps/ui/src/lib/i18n/catalog.ar.ts
+0d1d9b140371028b1b95eea50916da60191c66b095eb93f2fb54b7acb3b6a421  apps/ui/src/lib/i18n/catalog.ar.ts
 3a9f944c05bbc7719064c96642d4eb17df6f97a2891e6b6c0ee5ca39952c2c44  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 861d75f3596e142099802c67260c936723dcab045446c37bfd2c257d0e2339cd  apps/ui/src/lib/i18n/plurals.ar.ts
