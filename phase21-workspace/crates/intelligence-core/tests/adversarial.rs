@@ -689,7 +689,10 @@ mod one_citation_gap {
                 "A plan completed [E1]. The pattern recurred 2.5 times a week [E3]!",
                 Locale::En,
             ),
-            ("اكتملت خطة صيانة [E1]. تكرر حدث في القرص 3 مرات [E2][E3].", Locale::Ar),
+            (
+                "اكتملت خطة صيانة [E1]. تكرر حدث في القرص 3 مرات [E2][E3].",
+                Locale::Ar,
+            ),
             ("Version 10.0.19045 was measured [E2]", Locale::En),
         ] {
             match turn(text, locale) {
