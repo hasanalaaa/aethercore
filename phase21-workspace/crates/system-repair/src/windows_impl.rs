@@ -11,6 +11,7 @@ use std::{
 
 use super::{
     AssessStep, RepairCheck, RepairError, RepairPlatform, Result,
+    bounded::{ProviderSlot, run_check},
     dism_api::{check_online_image_health, check_online_image_health_cancellable},
 };
 use aethercore_operation_engine::SystemRepairAction;
@@ -27,6 +28,18 @@ use windows::{
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 const CBS_TAIL_LIMIT: u64 = 4 * 1024 * 1024;
+
+// P78-02: each assessment check has its own deadline, so one that never returns reads as unknown
+// instead of leaving the screen on "Assessing". These are first bounds, not measurements from a
+// real machine: a slower real scan reads as unknown and can be run again.
+const DISM_SCAN_DEADLINE: Duration = Duration::from_secs(20 * 60);
+const SFC_VERIFY_DEADLINE: Duration = Duration::from_secs(20 * 60);
+const DISK_SCAN_DEADLINE: Duration = Duration::from_secs(20 * 60);
+const UPDATE_PROBE_DEADLINE: Duration = Duration::from_secs(2 * 60);
+static DISM_SLOT: ProviderSlot = ProviderSlot::new();
+static SFC_SLOT: ProviderSlot = ProviderSlot::new();
+static DISK_SLOT: ProviderSlot = ProviderSlot::new();
+static UPDATE_SLOT: ProviderSlot = ProviderSlot::new();
 
 pub struct WindowsRepairPlatform;
 
@@ -53,85 +66,108 @@ impl RepairPlatform for WindowsRepairPlatform {
         // after the other, and are read-only: each is reported as it starts and finishes,
         // and a cancel stops the running one (P76, DBT-P76-007).
         let mut checks = Vec::new();
-        let mut step =
-            |checks: &mut Vec<RepairCheck>, id: &str, run: &mut dyn FnMut() -> RepairCheck| {
-                if cancel.load(Ordering::SeqCst) {
-                    return Err(RepairError::Cancelled);
-                }
-                progress(AssessStep::Started(id));
-                let check = run();
-                if cancel.load(Ordering::SeqCst) {
-                    return Err(RepairError::Cancelled);
-                }
-                progress(AssessStep::Finished(&check));
-                checks.push(check);
-                Ok(())
-            };
+        let mut step = |checks: &mut Vec<RepairCheck>,
+                        id: &str,
+                        run: &mut dyn FnMut() -> Result<RepairCheck>| {
+            if cancel.load(Ordering::SeqCst) {
+                return Err(RepairError::Cancelled);
+            }
+            progress(AssessStep::Started(id));
+            let check = run()?;
+            if cancel.load(Ordering::SeqCst) {
+                return Err(RepairError::Cancelled);
+            }
+            progress(AssessStep::Finished(&check));
+            checks.push(check);
+            Ok(())
+        };
         step(&mut checks, "dism-scan", &mut || {
-            probe_or_unknown(
-                "dism-scan",
-                "Component store",
-                "%WINDIR%\\Logs\\DISM\\dism.log",
-                || {
-                    check_online_image_health_cancellable(
-                        true,
-                        "dism-scan",
-                        "Component store",
-                        cancel,
-                    )
+            const LOG: &str = "%WINDIR%\\Logs\\DISM\\dism.log";
+            run_check(
+                &DISM_SLOT,
+                ("dism-scan", "Component store", LOG),
+                DISM_SCAN_DEADLINE,
+                cancel,
+                |stop| {
+                    probe_or_unknown("dism-scan", "Component store", LOG, || {
+                        check_online_image_health_cancellable(
+                            true,
+                            "dism-scan",
+                            "Component store",
+                            &stop,
+                        )
+                    })
                 },
             )
         })?;
         step(&mut checks, "sfc-verify", &mut || {
-            probe_or_unknown(
-                "sfc-verify",
-                "Protected system files",
-                "%WINDIR%\\Logs\\CBS\\CBS.log",
-                || {
-                    run_sfc(
-                        &system32.join("sfc.exe"),
-                        &["/verifyonly"],
-                        "sfc-verify",
-                        "Protected system files",
-                        &root,
-                        Some(&**cancel),
-                    )
+            const LOG: &str = "%WINDIR%\\Logs\\CBS\\CBS.log";
+            let (sfc, root) = (system32.join("sfc.exe"), root.clone());
+            run_check(
+                &SFC_SLOT,
+                ("sfc-verify", "Protected system files", LOG),
+                SFC_VERIFY_DEADLINE,
+                cancel,
+                move |stop| {
+                    probe_or_unknown("sfc-verify", "Protected system files", LOG, || {
+                        run_sfc(
+                            &sfc,
+                            &["/verifyonly"],
+                            "sfc-verify",
+                            "Protected system files",
+                            &root,
+                            Some(&*stop),
+                        )
+                    })
                 },
             )
         })?;
-        step(&mut checks, "servicing-state", &mut servicing_state_check)?;
-        step(&mut checks, "update-health", &mut update_health_check)?;
+        step(&mut checks, "servicing-state", &mut || {
+            Ok(servicing_state_check())
+        })?;
+        step(&mut checks, "update-health", &mut || {
+            run_check(
+                &UPDATE_SLOT,
+                ("windows-update", "Windows Update", "Windows Update Agent"),
+                UPDATE_PROBE_DEADLINE,
+                cancel,
+                |_| update_health_check(),
+            )
+        })?;
         if checks
             .last()
             .is_some_and(|check| check.result_code == "UpdateFailure")
         {
-            step(
-                &mut checks,
-                "required-update-service",
-                &mut required_update_service_check,
-            )?;
+            step(&mut checks, "required-update-service", &mut || {
+                Ok(required_update_service_check())
+            })?;
         }
         step(&mut checks, "disk-scan", &mut || {
-            probe_or_unknown(
-                "disk-scan",
-                "System volume online scan",
-                "Event Viewer → Application → Chkdsk",
-                || {
-                    run_chkdsk_scan(
-                        &system32.join("chkdsk.exe"),
-                        &volume,
-                        "disk-scan",
-                        "System volume online scan",
-                        Some(&**cancel),
-                    )
+            const LOG: &str = "Event Viewer → Application → Chkdsk";
+            let (chkdsk, volume) = (system32.join("chkdsk.exe"), volume.clone());
+            run_check(
+                &DISK_SLOT,
+                ("disk-scan", "System volume online scan", LOG),
+                DISK_SCAN_DEADLINE,
+                cancel,
+                move |stop| {
+                    probe_or_unknown("disk-scan", "System volume online scan", LOG, || {
+                        run_chkdsk_scan(
+                            &chkdsk,
+                            &volume,
+                            "disk-scan",
+                            "System volume online scan",
+                            Some(&*stop),
+                        )
+                    })
                 },
             )
         })?;
         step(&mut checks, "winre-presence", &mut || {
-            winre_presence_check(&system32)
+            Ok(winre_presence_check(&system32))
         })?;
         step(&mut checks, "restore-readiness", &mut || {
-            restore_readiness_check(&root)
+            Ok(restore_readiness_check(&root))
         })?;
 
         Ok((volume, checks))
