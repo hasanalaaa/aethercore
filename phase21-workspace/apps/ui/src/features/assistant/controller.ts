@@ -25,12 +25,9 @@ import type { Locale } from '../../lib/i18n/runtime';
 import { serviceInvoke } from '../../platform/service-client';
 import { streamState } from '../../platform/stream-state';
 
-/** `AssistantTurnState` from `assistant.proto`. Prost sends the ordinal. */
-export const TURN_STREAMING = 1;
-export const TURN_ANSWERED = 2;
-export const TURN_REFUSED = 3;
-export const TURN_FAULTED = 4;
-export const TURN_CANCELLED = 5;
+import { TURN_FAULTED, TURN_STREAMING, replaceTurn, settleTurn } from './settle';
+
+export { TURN_ANSWERED, TURN_CANCELLED, TURN_FAULTED, TURN_REFUSED, TURN_STREAMING } from './settle';
 
 /** `AssistantRefusalReason` from `assistant.proto`. */
 export const REFUSAL_NO_EVIDENCE = 1;
@@ -122,43 +119,9 @@ function newTurnId(): string {
   return `turn-${Array.from(random, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function replaceTurn(state: AssistantState, turn: AssistantTurn): AssistantState {
-  let found = false;
-  const transcript = state.transcript.map((entry) => {
-    if (entry.kind !== 'turn' || entry.turn.turnId !== turn.turnId) return entry;
-    found = true;
-    return { ...entry, turn };
-  });
-  return {
-    ...state,
-    transcript: found ? transcript : [...transcript, { kind: 'turn', id: turn.turnId, turn }],
-    inFlight: turn.state === TURN_STREAMING ? turn.turnId : state.inFlight === turn.turnId ? '' : state.inFlight,
-    // Every turn carries what it was allowed to draw on, so the empty state's
-    // counts stay current without a second read.
-    pack: turn.pack.length ? turn.pack : state.pack,
-    engineLabel: turn.engineLabel || state.engineLabel,
-    packRead: state.packRead || turn.pack.length > 0,
-  };
-}
-
-/**
- * Applies a streamed envelope.
- *
- * Late frames are ignored: a STREAMING frame that arrives after the terminal one
- * would otherwise reopen a finished turn and put provisional text back on the
- * screen. The kernel stream is ordered, so this guards against nothing but a
- * reordering bug — which is exactly the kind that puts an uncited claim on
- * screen, and is therefore worth one line.
- */
+/** Applies a streamed envelope; `settleTurn` says what the transcript keeps of it. */
 export function applyAssistantTurn(turn: AssistantTurn): void {
-  assistantState.update((state) => {
-    const existing = state.transcript.find(
-      (entry): entry is Extract<AssistantEntry, { kind: 'turn' }> =>
-        entry.kind === 'turn' && entry.turn.turnId === turn.turnId,
-    );
-    if (existing && existing.turn.state !== TURN_STREAMING && turn.state === TURN_STREAMING) return state;
-    return replaceTurn(state, turn);
-  });
+  assistantState.update((state) => settleTurn(state, turn));
 }
 
 let streamBound = false;
