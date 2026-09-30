@@ -37,7 +37,34 @@ defaults:
     working-directory: phase21-workspace
 
 jobs:
+  # Lane 1 step 0: a fast-forward push to main lands a commit that already ran this whole workflow as a
+  # pull request of this repository, on the same SHA; running the ~40 minute windows job again on main
+  # tests nothing new. This job says so only when it can prove it: a `pull_request` run of this workflow
+  # for exactly this SHA, from this repository's own branch, whose `windows` job succeeded. Any doubt -
+  # nothing found, a failure, a fork, a lookup that errors - and `windows` runs as before. Pull requests,
+  # `workflow_dispatch` and everything else never reach this job.
+  tested:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      skip: ${{ steps.lookup.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - id: lookup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_windows_already_tested.py
+
   windows:
+    needs: tested
+    # `!cancelled()` and not `always()`: a cancelled run stays cancelled. `tested` is skipped for
+    # everything but a push, and an unset or failed lookup leaves `skip` empty, so the job runs.
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
     # P76: the job runs on the owner's own Windows PC (a self-hosted runner) only when the
     # repository variable WINDOWS_RUNNER is 'self' - unset it and every run goes back to
     # windows-2025 with no code change - and only for code that is already trusted: a push, or
@@ -292,6 +319,7 @@ jobs:
                    scripts/test_gate_readers.py scripts/test_omega_delivered_set.py \
                    scripts/test_source_seal.py scripts/test_windows_server_support.py \
                    scripts/test-phase12-localization.py scripts/ps_marker_scan.py \
+                   scripts/test_ci_windows_already_tested.py \
                    scripts/test_bootstrap_pwsh.py; do
             echo "== $t"
             python3 "$t"
