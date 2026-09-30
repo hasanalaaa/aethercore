@@ -1738,6 +1738,79 @@ mod tests {
         assert_eq!(snapshot.summary.recommended_update_count, 0);
     }
 
+    fn matched(device: DeviceRecord, offer: DriverOffer) -> DriverHubSnapshot {
+        match_inventory(
+            "scan".into(),
+            1,
+            1,
+            vec![device],
+            DiscoveryResult {
+                offers: vec![offer],
+                warnings: vec![],
+            },
+            &test_machine(),
+        )
+    }
+
+    /// P84-01: WUA exposes no version field; the one shown is read from the offer's title.
+    /// Red before: the hub labelled it "WuaMetadata", so the page said "from Windows Update
+    /// metadata" about a guess.
+    #[test]
+    fn p84_01_a_version_read_from_the_offer_title_says_so() {
+        let snapshot = matched(
+            device("PCI\\VEN_ABCD&DEV_0003", "Net"),
+            offer("PCI\\VEN_ABCD&DEV_0003"),
+        );
+        let candidate = &snapshot.devices[0].candidates[0];
+        assert_eq!(candidate.target_version, "2.0.0.0");
+        assert_eq!(candidate.target_version_source, "TitleHeuristic");
+    }
+
+    /// P84-01: an offer whose version is not above the installed one is not an update, and
+    /// installing it would be a downgrade (D15: never under Auto). Red before: it was
+    /// Recommended and selected by default.
+    #[test]
+    fn p84_01_an_offer_not_newer_than_the_installed_driver_is_not_recommended() {
+        for installed in ["3.0.0.0", "2.0.0.0"] {
+            let mut d = device("PCI\\VEN_ABCD&DEV_0004", "Net");
+            d.driver.as_mut().unwrap().version = installed.into();
+            let snapshot = matched(d, offer("PCI\\VEN_ABCD&DEV_0004"));
+            let d = &snapshot.devices[0];
+            let candidate = &d.candidates[0];
+            assert!(!candidate.recommended, "{installed}");
+            assert!(!candidate.selectable, "{installed}");
+            assert!(!candidate.selected_by_default, "{installed}");
+            assert_eq!(
+                candidate.recommendation_reasons[0], "INSTALLED_DRIVER_ALREADY_PREFERRED",
+                "{installed}"
+            );
+            assert_ne!(d.update_status, "RecommendedUpdateAvailable", "{installed}");
+            assert_eq!(snapshot.summary.recommended_update_count, 0, "{installed}");
+        }
+    }
+
+    /// P84-01: Code 22 is a device someone disabled, usually on purpose; an offer for it is not
+    /// a device problem to fix first, and it is not selected for the user. Red before: the
+    /// offer carried DEVICE_PROBLEM_PRIORITY and was selected by default.
+    #[test]
+    fn p84_01_a_disabled_device_is_not_urged_to_update() {
+        let mut d = device("PCI\\VEN_ABCD&DEV_0005", "Net");
+        d.status.problem_code = 22;
+        d.status.has_problem = true;
+        let snapshot = matched(d, offer("PCI\\VEN_ABCD&DEV_0005"));
+        let candidate = &snapshot.devices[0].candidates[0];
+        assert!(candidate.selectable, "the user may still choose it");
+        assert!(!candidate.selected_by_default);
+        assert!(
+            !candidate
+                .recommendation_reasons
+                .iter()
+                .any(|r| r == "DEVICE_PROBLEM_PRIORITY"),
+            "{:?}",
+            candidate.recommendation_reasons
+        );
+    }
+
     #[test]
     fn d18_02_missing_driver_with_exact_wua_offer_has_concrete_recommendation() {
         let mut d = device("PCI\\VEN_ABCD&DEV_0002", "Net");

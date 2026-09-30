@@ -77,9 +77,24 @@ test('every insight key the model and rule paths emit resolves in both catalogs'
   }
 });
 
+// P84-01: a problem code is named by what it means, never "Problem code N"; a code nobody named
+// reads as a device problem, with its number left to the details row.
+test('driver problem codes each read by their meaning, in both languages', async () => {
+  const { driverStateLabel } = await import('../src/lib/i18n/index.ts');
+  const device = (problemCode: number) =>
+    ({ hasProblem: true, missingDriver: problemCode === 28, problemCode, candidates: [], updateStatus: '' }) as never;
+  for (const locale of ['en', 'ar'] as const) {
+    const labels = [28, 22, 10, 43, 52, 31].map((code) => driverStateLabel(device(code), locale));
+    assert.equal(new Set(labels).size, labels.length, `${locale}: ${labels.join(' | ')}`);
+    for (const label of labels) assert.doesNotMatch(label, /\d/, `${locale}: ${label}`);
+    if (locale === 'ar') for (const label of labels) assert.match(label, arabic, label);
+  }
+  assert.equal(driverStateLabel(device(31), 'en'), driverStateLabel(device(12), 'en'));
+});
+
 test('driver target-version source: the two the hub emits', async () => {
   const { driverTargetEvidence } = await import('../src/lib/i18n/index.ts');
-  for (const source of ['WuaMetadata', 'ProviderMetadata']) {
+  for (const source of ['TitleHeuristic', 'ProviderMetadata']) {
     const text = driverTargetEvidence({ targetVersion: '1.2.3', targetVersionSource: source } as never, 'ar');
     assert.match(text, arabic, source);
   }
