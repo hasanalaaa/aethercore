@@ -576,6 +576,130 @@ fn t5b_an_expired_deadline_refuses_before_the_prompt_is_read() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// P86-01 — one valid citation does not carry an uncited claim. The gate is a
+// parse: it proves every sentence names evidence the pack holds, never that the
+// sentence is true. That is P86-02's job.
+// ---------------------------------------------------------------------------
+
+mod one_citation_gap {
+    use super::populated_pack;
+    use aethercore_intelligence_core::{
+        AssistantEngine, Generated, GenerationBudget, Locale, RefusalReason, StreamingReasoner,
+        TurnOutcome, TypedEvidencePack, ground,
+    };
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    struct Says(&'static str);
+    impl StreamingReasoner for Says {
+        fn is_loaded(&self) -> bool {
+            true
+        }
+        fn generate(
+            &self,
+            _: &TypedEvidencePack,
+            _: &str,
+            _: Locale,
+            _: &GenerationBudget,
+            sink: &mut dyn FnMut(&str),
+        ) -> Result<Generated, String> {
+            sink(self.0);
+            Ok(Generated {
+                text: self.0.into(),
+                tokens: 9,
+                cancelled: false,
+            })
+        }
+    }
+
+    fn turn(text: &'static str, locale: Locale) -> TurnOutcome {
+        AssistantEngine::new(Some(Box::new(Says(text)))).ask(
+            &populated_pack(),
+            "what happened?",
+            locale,
+            false,
+            Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+    }
+
+    /// Red before: the gate removed `[E999]` and showed "the disk will fail
+    /// tomorrow" under the plan's citation.
+    #[test]
+    fn a_claim_citing_unknown_evidence_refuses_the_whole_answer() {
+        for (text, locale) in [
+            (
+                "The plan completed [E1]. The disk will fail tomorrow [E999].",
+                Locale::En,
+            ),
+            ("الخطة اكتملت [E1]. القرص سيتعطل غدًا [E999].", Locale::Ar),
+        ] {
+            assert_eq!(
+                turn(text, locale),
+                TurnOutcome::Refused(RefusalReason::NotCovered),
+                "{text}"
+            );
+        }
+    }
+
+    /// Red before: one marker anywhere admitted every sentence around it.
+    #[test]
+    fn a_sentence_without_its_own_marker_refuses_the_whole_answer() {
+        for (text, locale) in [
+            (
+                "The plan completed [E1]. The disk will fail tomorrow.",
+                Locale::En,
+            ),
+            ("الخطة اكتملت [E1]. القرص سيتعطل غدًا.", Locale::Ar),
+            ("الخطة اكتملت [E1]؟ القرص سيتعطل غدًا", Locale::Ar),
+            // Cut off by the token ceiling mid-claim.
+            ("The plan completed [E1]. The disk", Locale::En),
+            // One line each, and the second cites nothing.
+            ("The plan completed [E1]\nThe disk will fail", Locale::En),
+            // A tag after the full stop belongs to no sentence.
+            ("The plan completed. [E1]", Locale::En),
+        ] {
+            assert_eq!(
+                turn(text, locale),
+                TurnOutcome::Refused(RefusalReason::NotCovered),
+                "{text}"
+            );
+        }
+    }
+
+    /// Where a sentence ends is not guessed: a stop glued to the next word could
+    /// be one sentence or two, so the answer is refused rather than read as one.
+    #[test]
+    fn a_sentence_boundary_that_cannot_be_read_refuses_the_answer() {
+        for text in [
+            "The plan completed.The disk will fail [E1].",
+            "اكتملت الخطة.القرص سيتعطل [E1].",
+        ] {
+            assert!(ground(text, &populated_pack()).is_none(), "{text}");
+        }
+    }
+
+    /// The gate must not refuse what it exists to admit: short cited answers in
+    /// both languages, numbers with a decimal point, and a version string.
+    #[test]
+    fn a_short_answer_citing_every_sentence_is_shown_in_both_languages() {
+        for (text, locale) in [
+            (
+                "A plan completed [E1]. The pattern recurred 2.5 times a week [E3]!",
+                Locale::En,
+            ),
+            ("اكتملت خطة صيانة [E1]. تكرر حدث في القرص 3 مرات [E2][E3].", Locale::Ar),
+            ("Version 10.0.19045 was measured [E2]", Locale::En),
+        ] {
+            match turn(text, locale) {
+                TurnOutcome::Answered { answer, .. } => assert_eq!(answer, text),
+                other => panic!("{text}: expected an answer, got {other:?}"),
+            }
+        }
+    }
+}
+
 /// P76 DBT-P75-078: the service hands out clones of one model before it loads, so it
 /// can accept IPC at once. Until the load resolves, a request that needs the model
 /// answers loading: the selector does not serve the rule engine under a label that
