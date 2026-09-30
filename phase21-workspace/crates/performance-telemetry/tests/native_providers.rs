@@ -331,9 +331,7 @@ fn windows_cpu_pair_has_monotonic_elapsed_metadata() {
     // Windows timer granularity gets 20ms tolerance on the nominal 100ms gap.
     assert!(cpu_ms >= 80 && u128::from(cpu_ms) <= outer_ms);
     let mut invalid = [0u8; 16];
-    invalid[..4].copy_from_slice(
-        &windows::Win32::System::Performance::PDH_CSTATUS_INVALID_DATA.to_le_bytes(),
-    );
+    invalid[..4].copy_from_slice(&u32::MAX.to_le_bytes());
     assert_eq!(
         aethercore_performance_telemetry::__test::decode_pdh_double(&invalid),
         None,

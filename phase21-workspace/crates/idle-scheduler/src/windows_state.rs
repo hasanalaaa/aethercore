@@ -431,10 +431,6 @@ fn probe_network_cost() -> Result<NetworkCost, String> {
     }
 }
 
-fn wide(value: &str) -> Vec<u16> {
-    value.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
 fn probe_servicing_state() -> Result<ServicingState, String> {
     let busy = (|| {
         let _com = ComApartment::mta().map_err(|e| format!("WUA COM: {e}"))?;
