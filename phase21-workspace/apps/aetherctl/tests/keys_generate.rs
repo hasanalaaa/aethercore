@@ -93,7 +93,7 @@ fn windows_key_is_protected_even_under_an_everyone_parent() {
         "{envelope}"
     );
     let acl = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command",
-        "$a=Get-Acl -LiteralPath $env:AC_KEY_TEST_PATH; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $r=@($a.Access); [pscustomobject]@{protected=$a.AreAccessRulesProtected; owner=($a.GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $sid.Value); soleOwner=($r.Count -eq 1 -and $r[0].IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq $sid.Value -and -not $r[0].IsInherited -and $r[0].AccessControlType -eq 'Allow' -and [int]$r[0].FileSystemRights -eq 2032127)} | ConvertTo-Json -Compress"])
+        "$ErrorActionPreference='Stop'; $a=[IO.File]::GetAccessControl($env:AC_KEY_TEST_PATH); $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $r=@($a.Access); [pscustomobject]@{protected=$a.AreAccessRulesProtected; owner=($a.GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $sid.Value); soleOwner=($r.Count -eq 1 -and $r[0].IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq $sid.Value -and -not $r[0].IsInherited -and $r[0].AccessControlType -eq 'Allow' -and [int]$r[0].FileSystemRights -eq 2032127)} | ConvertTo-Json -Compress"])
         .env("AC_KEY_TEST_PATH", &out).output().unwrap();
     assert!(
         acl.status.success(),
