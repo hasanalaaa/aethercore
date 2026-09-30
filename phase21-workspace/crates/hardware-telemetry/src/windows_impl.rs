@@ -219,10 +219,7 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
     ) {
         Ok(zones) => zones,
         Err(error) => {
-            if !matches!(
-                error.kind,
-                FaultKind::Unavailable | FaultKind::ProviderFailure
-            ) {
+            if error.kind != FaultKind::Unavailable {
                 provider_faults.push(CollectorFaultRecord::from(&error));
             }
             Vec::new()
@@ -276,10 +273,7 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
     ) {
         Ok(adapters) => adapters,
         Err(error) => {
-            if !matches!(
-                error.kind,
-                FaultKind::Unavailable | FaultKind::ProviderFailure
-            ) {
+            if error.kind != FaultKind::Unavailable {
                 provider_faults.push(CollectorFaultRecord::from(&error));
             }
             Vec::new()
@@ -518,7 +512,7 @@ fn collect_network_adapters(control: &CollectorControl) -> Result<Vec<NetworkAda
     let services = connect_wmi("ROOT\\StandardCimv2")?;
     let objects = query(
         &services,
-        "SELECT Name,InterfaceGuid,InterfaceOperationalStatus,MediaConnectionState,LinkSpeed,Virtual FROM MSFT_NetAdapter",
+        "SELECT Name,InterfaceGuid,InterfaceOperationalStatus,MediaConnectState,Speed,Virtual FROM MSFT_NetAdapter",
         control,
     )?;
     let observed = std::time::SystemTime::now()
@@ -533,8 +527,8 @@ fn collect_network_adapters(control: &CollectorControl) -> Result<Vec<NetworkAda
                 &prop_string(o, "InterfaceGuid").unwrap_or_default(),
                 &prop_string(o, "Name").unwrap_or_default(),
                 number("InterfaceOperationalStatus").and_then(|v| u32::try_from(v).ok()),
-                number("MediaConnectionState").and_then(|v| u32::try_from(v).ok()),
-                number("LinkSpeed"),
+                number("MediaConnectState").and_then(|v| u32::try_from(v).ok()),
+                number("Speed"),
                 prop_bool(o, "Virtual"),
                 observed,
             )
@@ -1339,7 +1333,9 @@ fn query_nvme_health(index: u32, expected: &DiskIdentity) -> Result<NvmeHealthVa
     parse_nvme_health_log(&output_slice[window])
 }
 fn win(e: windows::core::Error) -> TelemetryError {
-    if e.code() == E_ACCESSDENIED || e.code().0 == WBEM_E_ACCESS_DENIED.0 {
+    if crate::is_absent_wmi_class(e.code().0) {
+        TelemetryError::Unavailable(e.to_string())
+    } else if e.code() == E_ACCESSDENIED || e.code().0 == WBEM_E_ACCESS_DENIED.0 {
         TelemetryError::PermissionDenied(e.to_string())
     } else {
         TelemetryError::Windows(e.to_string())

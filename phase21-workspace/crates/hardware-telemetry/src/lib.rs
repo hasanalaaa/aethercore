@@ -294,6 +294,17 @@ pub struct HardwareTelemetrySnapshot {
     pub warnings: Vec<String>,
 }
 
+/// WMI HRESULTs that say the class or namespace is not there (invalid class, not found, not
+/// supported, invalid namespace): a machine that does not publish a source, which is "not
+/// measured". Any other WMI failure (an invalid query, an access error) is a real fault.
+#[cfg(any(windows, test))]
+pub(crate) fn is_absent_wmi_class(hresult: i32) -> bool {
+    matches!(
+        hresult as u32,
+        0x8004_1010 | 0x8004_1002 | 0x8004_100C | 0x8004_100E
+    )
+}
+
 /// What a disk says it is, as reported either by WMI (`MSFT_PhysicalDisk`) or by an opened
 /// `\\.\PhysicalDriveN` handle. Never leaves this crate: the serial number is not exposed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -957,6 +968,22 @@ mod tests {
             parse_nvme_health_log(&log[..100]).is_err(),
             "a short buffer is an error, not a panic"
         );
+    }
+
+    #[test]
+    fn only_an_absent_class_is_not_a_fault() {
+        for absent in [0x8004_1010_u32, 0x8004_1002, 0x8004_100C, 0x8004_100E] {
+            assert!(is_absent_wmi_class(absent as i32), "{absent:#X}");
+        }
+        assert!(
+            !is_absent_wmi_class(0x8004_1017_u32 as i32),
+            "an invalid query is a bug, not an absent class"
+        );
+        assert!(
+            !is_absent_wmi_class(0x8004_1003_u32 as i32),
+            "access denied is a fault"
+        );
+        assert!(!is_absent_wmi_class(0));
     }
 
     #[test]

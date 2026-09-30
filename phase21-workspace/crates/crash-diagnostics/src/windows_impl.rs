@@ -173,10 +173,7 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
     ) {
         Ok(boots) => boots,
         Err(error) => {
-            if !matches!(
-                error.kind,
-                FaultKind::Unavailable | FaultKind::ProviderFailure
-            ) {
+            if error.kind != FaultKind::Unavailable {
                 provider_faults.push(CollectorFaultRecord::from(&error));
             }
             Vec::new()
@@ -904,9 +901,14 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
 fn w(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
+/// `ERROR_EVT_CHANNEL_NOT_FOUND` as an HRESULT: the channel does not exist on this machine.
+const EVT_CHANNEL_NOT_FOUND: i32 = 0x8007_3A9F_u32 as i32;
+
 fn win(error: windows::core::Error) -> CrashError {
     if error.code() == E_ACCESSDENIED {
         CrashError::PermissionDenied(error.to_string())
+    } else if error.code().0 == EVT_CHANNEL_NOT_FOUND {
+        CrashError::Unavailable(error.to_string())
     } else {
         CrashError::Windows(error.to_string())
     }
