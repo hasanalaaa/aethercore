@@ -75,7 +75,12 @@ check('idle_uses_wts_session_time_not_session0_lastinput',has(win,'WTSQuerySessi
 check('power_gate',has(win,'GetSystemPowerStatus','ACLineStatus == 1','SystemStatusFlag != 0'))
 check('presentation_gate_impersonates_active_user',has(win,'ImpersonateLoggedOnUser','SHQueryUserNotificationState','RevertToSelf','security-fatal: RevertToSelf'))
 check('presentation_unknown_fail_closed',has(policy,'matches!(state.presentation, PresentationState::Unknown) { blocked.push(BlockReason::PresentationUnknown); }'))
-check('servicing_gate',has(win,'TrustedInstaller','UsoSvc','WaaSMedicSvc','QueryServiceStatusEx','ServicingState::Unknown'))
+# P87-06: local WUA is positive busy evidence; false/error cannot prove CBS idle.
+check('servicing_gate',
+      has(win,'IUpdateInstaller','CoCreateInstance(&UpdateInstaller, None, CLSCTX_INPROC_SERVER)',
+          '.IsBusy()', 'servicing_from_wua_busy(busy.ok())')
+      and has(model,'if busy == Some(true) { ServicingState::Busy } else { ServicingState::Unknown }')
+      and 'QueryServiceStatusEx' not in win)
 check('servicing_unknown_fail_closed',has(policy,'matches!(state.servicing, ServicingState::Unknown) { blocked.push(BlockReason::ServicingUnknown); }'))
 check('network_cost_gate',has(win,'INetworkCostManager','GetCost(&mut cost, ptr::null())','NLM_CONNECTION_COST_FIXED','NetworkCost::Metered'))
 check('metered_unknown_network_blocks_driver_discovery',has(policy,'NetworkCost::Metered','NetworkCost::Unknown','NetworkCostUnknown') and 'network_sensitive' in model)
