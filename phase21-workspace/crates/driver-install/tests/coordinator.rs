@@ -54,7 +54,7 @@ fn start_driver_scan(
     let lease = budget
         .try_acquire(ReadWorkload::DriverDiscovery)
         .expect("read budget lease");
-    hub.start_scan_with_lease(owner, lease)
+    hub.start_scan_with_lease(owner, lease, aethercore_driver_hub::SearchScope::Online)
 }
 
 #[derive(Clone)]

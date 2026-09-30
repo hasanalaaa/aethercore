@@ -9,7 +9,9 @@ use aethercore_collector_runtime::CancellationToken;
 use aethercore_diagnostic_engine::{
     DiagnosticEngine, DiagnosticsSnapshot, ScanState as DiagnosticScanState,
 };
-use aethercore_driver_hub::{DriverHub, DriverHubSnapshot, ScanState as DriverScanState};
+use aethercore_driver_hub::{
+    DriverHub, DriverHubSnapshot, ScanState as DriverScanState, SearchScope,
+};
 use aethercore_operation_kernel::{ReadBudgetManager, ReadWorkload};
 use aethercore_startup_manager::{StartupManager, StartupScanState, StartupSnapshot};
 use aethercore_system_repair::{RepairAssessment, RepairAssessmentState, RepairCoordinator};
@@ -102,8 +104,10 @@ impl DeepScanBackend for ExistingSubsystemBackend {
             .reads
             .try_acquire(ReadWorkload::DriverDiscovery)
             .map_err(|_| SourceError::Budget)?;
+        // A deep scan reads what Windows already has; searching online is only ever the user's
+        // own confirmed choice on the drivers page (P84-02A, D14).
         self.driver_hub
-            .start_scan_with_lease(owner, lease)
+            .start_scan_with_lease(owner, lease, SearchScope::LocalCacheOnly)
             .map_err(|e| SourceError::Unavailable(e.to_string()))?;
         wait(
             token,

@@ -771,23 +771,27 @@ impl DriverHub {
         Ok(ready)
     }
 
+    /// Starts a scan that searches `scope`. Online is the user's confirmed choice for this one
+    /// scan (P84-02A, D14); every other caller passes the local cache.
     pub fn start_scan_with_lease(
         &self,
         owner_principal_key: &str,
         lease: ReadBudgetLease,
+        scope: SearchScope,
     ) -> Result<DriverHubSnapshot> {
         if !lease.matches(ReadWorkload::DriverDiscovery) {
             return Err(HubError::Inventory(
                 "read budget lease identity mismatch".into(),
             ));
         }
-        self.start_scan_inner(owner_principal_key, lease)
+        self.start_scan_inner(owner_principal_key, lease, scope)
     }
 
     fn start_scan_inner(
         &self,
         owner_principal_key: &str,
         read_budget_lease: ReadBudgetLease,
+        scope: SearchScope,
     ) -> Result<DriverHubSnapshot> {
         {
             let mut owner = self
@@ -820,7 +824,7 @@ impl DriverHub {
             .name("aether-driver-discovery".into())
             .spawn(move || {
                 let _read_budget_lease = read_budget_lease;
-                hub.run_scan();
+                hub.run_scan(scope);
             })
         {
             let detail = format!("driver discovery worker unavailable: {error}");
@@ -830,7 +834,7 @@ impl DriverHub {
         Ok(initial)
     }
 
-    fn run_scan(&self) {
+    fn run_scan(&self, _scope: SearchScope) {
         let base = self.snapshot();
         let devices = match self.inner.backend.inventory() {
             Ok(devices) => devices,
@@ -1674,12 +1678,53 @@ mod tests {
 
     const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+    /// The user's confirmed online scan: what these tests exercise with offers to match.
     fn start_scan_leased(hub: &DriverHub, owner: &str) -> Result<DriverHubSnapshot> {
+        start_scan_in(hub, owner, SearchScope::Online)
+    }
+
+    fn start_scan_in(
+        hub: &DriverHub,
+        owner: &str,
+        scope: SearchScope,
+    ) -> Result<DriverHubSnapshot> {
         let budget = ReadBudgetManager::new(4);
         let lease = budget
             .try_acquire(ReadWorkload::DriverDiscovery)
             .expect("read budget lease");
-        hub.start_scan_with_lease(owner, lease)
+        hub.start_scan_with_lease(owner, lease, scope)
+    }
+
+    fn scopes_of_one_scan(backend: &ScopeRecorder, hub: &DriverHub) -> Vec<SearchScope> {
+        for _ in 0..200 {
+            if hub.snapshot().state == ScanState::Ready {
+                return std::mem::take(&mut *backend.scopes.lock().unwrap());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("scan did not reach Ready");
+    }
+
+    /// P84-02A (D14): a scan the user did not confirm online searches the local cache only, and
+    /// a confirmed one holds for that scan: the next unconfirmed scan is local again. Red
+    /// before: every user scan went online.
+    #[test]
+    fn only_a_scan_confirmed_online_searches_online_and_only_that_scan() {
+        let backend = Arc::new(ScopeRecorder::default());
+        let hub = DriverHub::with_backend_and_machine(backend.clone(), test_machine());
+        for (scope, expected) in [
+            (SearchScope::LocalCacheOnly, SearchScope::LocalCacheOnly),
+            (SearchScope::Online, SearchScope::Online),
+            (SearchScope::LocalCacheOnly, SearchScope::LocalCacheOnly),
+        ] {
+            start_scan_in(&hub, OWNER, scope).unwrap();
+            assert_eq!(scopes_of_one_scan(&backend, &hub), vec![expected]);
+        }
+        // An unconfirmed scan's empty answer is not "up to date".
+        assert_eq!(
+            hub.snapshot().devices[0].update_status,
+            "NoUpdateFoundFromCheckedSources"
+        );
     }
     use aethercore_windows_pnp::{DeviceStatus, InstalledDriver};
     use aethercore_windows_update::{DriverOffer, VersionSource};

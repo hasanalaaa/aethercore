@@ -3,7 +3,15 @@ package aethercore.v1;
 
 import "common.proto";
 
-message StartDriverScanRequest {}
+// Where a driver scan may look for offers (P84-02A, D14). The zero value is the local cache, so
+// an empty request from any client that predates the field never reaches the network. Online is
+// sent only after the user confirmed a search that names Windows Update or the update server
+// this PC is managed by; it holds for that one scan and is not remembered.
+enum DriverSearchScope {
+  DRIVER_SEARCH_SCOPE_LOCAL_CACHE = 0;
+  DRIVER_SEARCH_SCOPE_ONLINE_CONFIRMED = 1;
+}
+message StartDriverScanRequest { DriverSearchScope scope = 1; }
 message GetDriverHubSnapshotRequest {}
 message SetDriverCandidatePolicyRequest { string scan_id = 1; uint64 inventory_epoch = 2; string candidate_id = 3; string policy = 4; }
 message CreateDriverInstallPlanRequest { string scan_id = 1; uint64 inventory_epoch = 2; repeated string candidate_ids = 3; }

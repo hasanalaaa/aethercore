@@ -481,7 +481,7 @@ async fn get_driver_hub_snapshot() -> Result<v1::DriverHubSnapshot, String> {
 async fn start_driver_scan() -> Result<v1::DriverHubSnapshot, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let resp = request(request::Payload::StartDriverScan(
-            v1::StartDriverScanRequest {},
+            v1::StartDriverScanRequest::default(),
         ))
         .map_err(|e| e.to_string())?;
         extract_driver_hub(resp)

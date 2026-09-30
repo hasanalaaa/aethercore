@@ -1,8 +1,18 @@
 //! Driver discovery, candidate policy, and the install plan/run surface.
 
 use super::*;
+use aethercore_driver_hub::SearchScope;
 
-pub(super) fn start_driver_scan(call: &Call<'_>) -> Routed {
+/// The request's scope, bound to this caller's one scan (D14). Anything but a confirmed online
+/// search, including the empty request older clients send, reads the local cache.
+fn search_scope(request: &v1::StartDriverScanRequest) -> SearchScope {
+    match request.scope() {
+        v1::DriverSearchScope::OnlineConfirmed => SearchScope::Online,
+        v1::DriverSearchScope::LocalCache => SearchScope::LocalCacheOnly,
+    }
+}
+
+pub(super) fn start_driver_scan(call: &Call<'_>, request: v1::StartDriverScanRequest) -> Routed {
     let ctx = call.ctx;
     let request_context = call.request_context;
     let principal_key = &call.principal_key;
@@ -14,7 +24,7 @@ pub(super) fn start_driver_scan(call: &Call<'_>) -> Routed {
     request_context.checkpoint().map_err(err)?;
     let value = ctx
         .driver_hub
-        .start_scan_with_lease(principal_key, lease)
+        .start_scan_with_lease(principal_key, lease, search_scope(&request))
         .map_err(err)?;
     let proto = driver_hub_proto(value.clone());
     publish(
@@ -164,4 +174,26 @@ pub(super) fn get_recovery_history(call: &Call<'_>, v: v1::GetRecoveryHistoryReq
             entries: entries.into_iter().map(recovery_proto).collect(),
         },
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// D14: the empty request every client sent before P84-02A reads the local cache; only the
+    /// confirmed scope searches online.
+    #[test]
+    fn only_a_confirmed_request_searches_online() {
+        assert_eq!(
+            search_scope(&v1::StartDriverScanRequest::default()),
+            SearchScope::LocalCacheOnly
+        );
+        let confirmed = v1::StartDriverScanRequest {
+            scope: v1::DriverSearchScope::OnlineConfirmed as i32,
+        };
+        assert_eq!(search_scope(&confirmed), SearchScope::Online);
+        // A value this build does not know is not a confirmation.
+        let unknown = v1::StartDriverScanRequest { scope: 7 };
+        assert_eq!(search_scope(&unknown), SearchScope::LocalCacheOnly);
+    }
 }

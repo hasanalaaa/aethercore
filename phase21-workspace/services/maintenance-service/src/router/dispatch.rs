@@ -79,7 +79,7 @@ pub fn handle_request(
             request::Payload::BeginConsentIntent(v) => consent::begin_consent_intent(call, v),
             request::Payload::GetConsentIntent(v) => consent::get_consent_intent(call, v),
             request::Payload::ApproveConsentIntent(v) => consent::approve_consent_intent(call, v),
-            request::Payload::StartDriverScan(_) => drivers::start_driver_scan(call),
+            request::Payload::StartDriverScan(v) => drivers::start_driver_scan(call, v),
             request::Payload::GetDriverHubSnapshot(_) => drivers::get_driver_hub_snapshot(call),
             request::Payload::SetDriverCandidatePolicy(v) => {
                 drivers::set_driver_candidate_policy(call, v)
