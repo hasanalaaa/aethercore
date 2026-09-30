@@ -47,19 +47,23 @@ use windows::{
 use crate::{
     AtaSmartAttribute, DiskIdentity, HandleBinding, HardwareTelemetrySnapshot, MemoryTelemetry,
     NvmeHealthValues, Result, StorageDeviceTelemetry, StorageReliability, TelemetryError,
-    bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage, merge_nvme,
-    parse_ata_driver_response, parse_nvme_health_log, parse_predict_failure,
-    parse_storage_device_descriptor,
+    bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage,
+    measurements::ThermalZone, merge_nvme, parse_ata_driver_response, parse_nvme_health_log,
+    parse_predict_failure, parse_storage_device_descriptor, thermal::zone_from_wmi,
 };
 
 static STORAGE_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static DIRECT_IOCTL_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static MEMORY_GATE: OnceLock<IsolationGate> = OnceLock::new();
+static THERMAL_GATE: OnceLock<IsolationGate> = OnceLock::new();
 fn storage_gate() -> &'static IsolationGate {
     STORAGE_GATE.get_or_init(IsolationGate::default)
 }
 fn direct_ioctl_gate() -> &'static IsolationGate {
     DIRECT_IOCTL_GATE.get_or_init(IsolationGate::default)
+}
+fn thermal_gate() -> &'static IsolationGate {
+    THERMAL_GATE.get_or_init(IsolationGate::default)
 }
 fn memory_gate() -> &'static IsolationGate {
     MEMORY_GATE.get_or_init(IsolationGate::default)
@@ -171,12 +175,75 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
         }
     };
 
+    // Thermal zones are an optional source: many machines publish none. A class that is absent or
+    // unsupported leaves the list empty (which reads "not measured"); only a refusal, a timeout or a
+    // cancel is a fault worth reporting.
+    let thermal_zones = match run_isolated_gated_with_token(
+        thermal_gate(),
+        "hardware-telemetry",
+        "thermal-zones",
+        DEFAULT_COLLECTOR_TIMEOUT,
+        parent.child(),
+        |control| {
+            collect_thermal_zones(&control).map_err(|error| {
+                CollectorFault::new(
+                    "hardware-telemetry",
+                    "thermal-zones",
+                    fault_kind(&error),
+                    error.to_string(),
+                )
+            })
+        },
+    ) {
+        Ok(zones) => zones,
+        Err(error) => {
+            if !matches!(
+                error.kind,
+                FaultKind::Unavailable | FaultKind::ProviderFailure
+            ) {
+                provider_faults.push(CollectorFaultRecord::from(&error));
+            }
+            Vec::new()
+        }
+    };
+
     Ok(HardwareTelemetrySnapshot {
         storage,
         memory,
+        thermal_zones,
         provider_faults,
         warnings,
     })
+}
+
+fn collect_thermal_zones(control: &CollectorControl) -> Result<Vec<ThermalZone>> {
+    checkpoint(control, "thermal.begin")?;
+    let _com = init_com()?;
+    let services = connect_wmi("ROOT\\WMI")?;
+    let objects = query(
+        &services,
+        "SELECT InstanceName,CurrentTemperature,CriticalTripPoint FROM MSAcpi_ThermalZoneTemperature",
+        control,
+    )?;
+    let observed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or_default();
+    let zones = objects
+        .iter()
+        .map(|o| {
+            let kelvin_tenths = |name: &str| prop_u64(o, name).and_then(|v| u32::try_from(v).ok());
+            zone_from_wmi(
+                &prop_string(o, "InstanceName").unwrap_or_default(),
+                kelvin_tenths("CurrentTemperature"),
+                kelvin_tenths("CriticalTripPoint"),
+                observed,
+            )
+        })
+        .collect();
+    // The WMI query is bounded (256 objects); the diagnostic engine applies the domain's limit and
+    // says when it cut.
+    Ok(zones)
 }
 
 fn collect_memory() -> Result<MemoryTelemetry> {
@@ -307,12 +374,16 @@ fn collect_storage(
 }
 
 fn connect_storage_wmi() -> Result<IWbemServices> {
+    connect_wmi("ROOT\\Microsoft\\Windows\\Storage")
+}
+
+fn connect_wmi(namespace: &str) -> Result<IWbemServices> {
     unsafe {
         let locator: IWbemLocator =
             CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER).map_err(win)?;
         let services = locator
             .ConnectServer(
-                &BSTR::from("ROOT\\Microsoft\\Windows\\Storage"),
+                &BSTR::from(namespace),
                 &BSTR::new(),
                 &BSTR::new(),
                 &BSTR::new(),

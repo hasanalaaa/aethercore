@@ -1,5 +1,5 @@
 import type { BatteryMeasurement, BootMeasurement, MeasurementCoverage, NetworkAdapterMeasurement, ThermalZoneMeasurement } from '../../lib/contracts';
-import { formatDateTime, formatNumber, td, type Locale, type MessageKey } from '../../lib/i18n';
+import { formatDateTime, formatNumber, hasMessageKey, td, type Locale, type MessageKey } from '../../lib/i18n';
 
 /** One line of a measurement list. `value` is null when the reading was not taken. */
 export type MeasurementRow = {
@@ -39,12 +39,24 @@ function frame(item: Loose, locale: Locale, name: string): Pick<MeasurementRow, 
 }
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
-const rows = <T>(items: readonly T[] | undefined, build: (item: Loose) => MeasurementRow): MeasurementRow[] =>
-  Array.isArray(items) ? items.filter(isRecord).map((item) => build(item as Loose)) : [];
+/** Why a value is missing, when the producer said so and the key is one the catalog knows. */
+function reasonOf(item: Loose, locale: Locale): string | null {
+  const key = isRecord(item.coverage) ? item.coverage.reasonKey : '';
+  return typeof key === 'string' && key && hasMessageKey(key) ? td(key, locale) : null;
+}
+
+const rows = <T>(items: readonly T[] | undefined, locale: Locale, build: (item: Loose) => MeasurementRow): MeasurementRow[] =>
+  Array.isArray(items)
+    ? items.filter(isRecord).map((item) => {
+        const row = build(item as Loose);
+        const note = [row.note, reasonOf(item as Loose, locale)].filter(Boolean).join(' · ');
+        return { ...row, note: note || null };
+      })
+    : [];
 
 export function thermalRows(items: readonly ThermalZoneMeasurement[] | undefined, locale: Locale): MeasurementRow[] {
   const degrees = (value: number) => `${formatNumber(value, locale)} °C`;
-  return rows(items, (item) => {
+  return rows(items, locale, (item) => {
     const temperature = read(item, 'hasTemperature', 'temperatureC');
     const critical = read(item, 'hasCritical', 'criticalC');
     const highest = read(item, 'hasHighestObserved', 'highestObservedC');
@@ -58,7 +70,7 @@ export function thermalRows(items: readonly ThermalZoneMeasurement[] | undefined
 
 export function batteryRows(items: readonly BatteryMeasurement[] | undefined, locale: Locale): MeasurementRow[] {
   const mwh = (value: number) => td('measurement.unit.mwh', locale, { value: formatNumber(value, locale) });
-  return rows(items, (item) => {
+  return rows(items, locale, (item) => {
     const full = read(item, 'hasFullChargeCapacity', 'fullChargeCapacityMwh');
     const design = read(item, 'hasDesignCapacity', 'designCapacityMwh');
     const cycles = read(item, 'hasCycleCount', 'cycleCount');
@@ -71,7 +83,7 @@ export function batteryRows(items: readonly BatteryMeasurement[] | undefined, lo
 }
 
 export function bootRows(items: readonly BootMeasurement[] | undefined, locale: Locale): MeasurementRow[] {
-  return rows(items, (item) => {
+  return rows(items, locale, (item) => {
     const duration = read(item, 'hasDuration', 'durationMs');
     const recorded = finite(item.recordedUnixMs) ? formatDateTime(item.recordedUnixMs, locale) : '';
     const value = duration === null ? null : td('measurement.unit.seconds', locale, { value: formatNumber(Math.round(duration / 100) / 10, locale) });
@@ -80,7 +92,7 @@ export function bootRows(items: readonly BootMeasurement[] | undefined, locale: 
 }
 
 export function networkRows(items: readonly NetworkAdapterMeasurement[] | undefined, locale: Locale): MeasurementRow[] {
-  return rows(items, (item) => {
+  return rows(items, locale, (item) => {
     const bps = read(item, 'hasLinkSpeed', 'linkSpeedBps');
     const value = bps === null ? null : td('measurement.unit.mbps', locale, { value: formatNumber(bps / 1_000_000, locale) });
     return { ...frame(item, locale, text(item.displayName)), value, note: null };

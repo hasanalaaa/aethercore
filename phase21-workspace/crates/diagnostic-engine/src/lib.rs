@@ -17,7 +17,7 @@ use aethercore_crash_diagnostics::{
 use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
     compare_counters,
-    measurements::{Battery, BootRecord, NetworkAdapter, ThermalZone},
+    measurements::{Battery, BootRecord, MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped},
 };
 // The service converts these to the wire and depends on this crate, not on the telemetry one.
 pub use aethercore_hardware_telemetry::measurements;
@@ -784,6 +784,16 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         .unwrap_or_default();
     compare_with_previous_scan(&inner.db, &owner_principal_key, &mut storage);
     let memory = hardware.as_ref().and_then(|h| h.memory.clone());
+    let (thermal_zones, thermal_cut) = capped(
+        hardware
+            .as_ref()
+            .map(|h| h.thermal_zones.clone())
+            .unwrap_or_default(),
+        MAX_THERMAL_ZONES,
+    );
+    if thermal_cut {
+        warnings.push("Only the first 32 thermal zones are shown.".into());
+    }
     let event_window_days = reported_event_window_days(crash.as_ref());
     let events = crash.as_ref().map(|c| c.events.clone()).unwrap_or_default();
     let crashes = crash
@@ -827,8 +837,9 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         cards,
         provider_faults,
         warnings,
-        // P80-02A: the producers arrive with P81 (storage), P82 (thermal, power) and P83 (boot,
-        // network); until each lands its domain is empty, which reads as "not measured".
+        thermal_zones,
+        // Batteries (P82-02B), boots and network (P83) arrive with their producers; until then the
+        // domain is empty, which reads as "not measured".
         ..Default::default()
     };
     let persistence_result = serde_json::to_string(&snapshot)
@@ -1186,6 +1197,40 @@ mod tests {
                 .any(|r| r == "3 more uncorrected read error(s) than at the previous scan."),
             "{:?}",
             second.storage[0].reasons
+        );
+        drop(e);
+        drop(db);
+    }
+    #[test]
+    fn thermal_zones_reach_the_snapshot_and_a_cut_is_said() {
+        let (db, _tmp) = db();
+        let zones: Vec<ThermalZone> = (0..40)
+            .map(|i| ThermalZone {
+                stable_id: format!("z{i}"),
+                temperature_c: Some(40),
+                ..Default::default()
+            })
+            .collect();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot {
+                    thermal_zones: zones,
+                    ..Default::default()
+                },
+                c: CrashDiagnosticsSnapshot::default(),
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let snapshot = wait_for_scan(&e);
+        assert_eq!(snapshot.thermal_zones.len(), 32, "the domain's limit");
+        assert!(
+            snapshot
+                .warnings
+                .iter()
+                .any(|w| w == "Only the first 32 thermal zones are shown."),
+            "{:?}",
+            snapshot.warnings
         );
         drop(e);
         drop(db);

@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod measurements;
+#[cfg(any(windows, test))]
+mod thermal;
 
 #[derive(Debug, Error)]
 pub enum TelemetryError {
@@ -277,6 +279,8 @@ pub struct MemoryTelemetry {
 pub struct HardwareTelemetrySnapshot {
     pub storage: Vec<StorageDeviceTelemetry>,
     pub memory: Option<MemoryTelemetry>,
+    #[serde(default)]
+    pub thermal_zones: Vec<measurements::ThermalZone>,
     #[serde(default)]
     pub provider_faults: Vec<CollectorFaultRecord>,
     pub warnings: Vec<String>,

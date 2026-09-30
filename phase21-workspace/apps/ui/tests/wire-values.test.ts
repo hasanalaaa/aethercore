@@ -192,6 +192,17 @@ test('measurement rows keep "not read" apart from zero and survive malformed inp
   assert.equal(many.length, 32);
 });
 
+// P82-02A: why a zone has no temperature is said on the row, in the reader's language.
+test('a thermal zone with no reading says why, and the cut warning reads in Arabic', async () => {
+  const { thermalRows } = await import('../src/features/diagnostics/measurement-rows.ts');
+  const { localizeOwnedText } = await import('../src/lib/i18n/index.ts');
+  const zone = { stableId: 'z', displayName: 'ACPI\\ThermalZone\\TZ00_0', hasTemperature: false, temperatureC: 0, coverage: { source: 'MSAcpi_ThermalZoneTemperature', hasObservedUnixMs: true, observedUnixMs: 1, availability: 3, reasonKey: 'measurement.reason.noReading' } };
+  assert.match(thermalRows([zone] as never, 'en')[0].note ?? '', /No reading/);
+  assert.match(thermalRows([zone] as never, 'ar')[0].note ?? '', /[\u0600-\u06FF]/);
+  assert.equal(thermalRows([{ ...zone, coverage: { ...zone.coverage, reasonKey: 'made.up.key' } }] as never, 'en')[0].note, null, 'an unknown reason key is not printed');
+  assert.match(localizeOwnedText('Only the first 32 thermal zones are shown.', 'ar').text, /[\u0600-\u06FF]/);
+});
+
 test('disk activity a provider says it did not measure reads unmeasured, not 0%', async () => {
   const { healthChannels } = await import('../src/features/overview/instrument.ts');
   const { createInitialStreamState } = await import('../src/platform/stream-state.ts');
