@@ -191,6 +191,7 @@ pub fn handle_request(
             request::Payload::GetRecurrencePatterns(_) => timeline::get_recurrence_patterns(call),
             // ---------------- Phase 22: One-Click Care ----------------
             request::Payload::GetCareStatus(_) => care::get_care_status(call),
+            request::Payload::PrepareCarePreview(_) => care::prepare_care_preview(call),
             request::Payload::GrantCareSessionConsent(v) => care::grant_consent(call, v),
             request::Payload::StartCareRun(_) => care::start_care_run(call),
             request::Payload::CancelCareRun(_) => care::cancel_care_run(call),

@@ -120,6 +120,8 @@ message Request {
     CancelRepairAssessmentRequest cancel_repair_assessment = 95;
     // P78-03 (D3).
     CancelSystemRepairRequest cancel_system_repair = 96;
+    // P79-04A (D5). Lane 1's band is 97-119.
+    PrepareCarePreviewRequest prepare_care_preview = 97;
   }
 }
 message Response {
@@ -184,6 +186,8 @@ message Response {
     AssistantTurnResponse assistant_turn = 92;
     // Phase 57: the drawer's empty state (additive; next free tag).
     AssistantPackResponse assistant_pack = 93;
+    // P79-04A (D5).
+    CarePreviewResponse care_preview = 97;
   }
 }
 message RunSecurityAuditRequest {

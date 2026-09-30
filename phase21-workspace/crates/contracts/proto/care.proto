@@ -24,9 +24,33 @@ message GrantCareSessionConsentRequest {
 
 message GetCareStatusRequest {}
 
+// P79-04A (decision D5): asks the service to prepare what One-Click Care could run, and to say
+// why when it cannot. It reads and prepares only: it starts the LOCAL cleanup scan when there is no
+// fresh one, turns a fresh scan's default candidates into the same unapproved cleanup plan Deep Clean
+// makes, and never grants consent, deletes, or widens what Care runs. Safe to repeat.
+message PrepareCarePreviewRequest {}
+
 message CancelCareRunRequest {}
 
 message CareStatusResponse { CareRunStatus status = 1; }
+
+// Why one domain has, or does not have, something prepared, and from which scan.
+message CareDomainEligibility {
+  // "cleanup".
+  string domain = 1;
+  // ready | scanning | notScanned | stale | none | reviewRequired | unavailable.
+  string reason = 2;
+  // Completion time of the scan this reason rests on; 0 when there is none.
+  int64 scanned_unix_ms = 3;
+  uint32 eligible_candidates = 4;
+  // Candidates that exist but need the owner's own explicit choice in Deep Clean.
+  uint32 review_required_candidates = 5;
+}
+
+message CarePreviewResponse {
+  CareRunStatus status = 1;
+  repeated CareDomainEligibility domains = 2;
+}
 
 // ---------------------------------------------------------------------------
 // Care run status (streamed on EventKind CARE_RUN / envelope tag care_status)

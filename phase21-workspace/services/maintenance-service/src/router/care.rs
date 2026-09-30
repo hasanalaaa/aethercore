@@ -60,6 +60,59 @@ pub(super) fn get_care_status(call: &Call<'_>) -> Routed {
     )))
 }
 
+/// P79-04A (D5): prepares what care could run and says why when it cannot. It reads and prepares
+/// only - the cleanup scan is local, the plan is unapproved, nothing is granted or deleted.
+pub(super) fn prepare_care_preview(call: &Call<'_>) -> Routed {
+    let ctx = call.ctx;
+    let principal_key = &call.principal_key;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
+    let start_scan = || -> Result<(), String> {
+        let lease = ctx
+            .kernel
+            .reads()
+            .try_acquire(ReadWorkload::CleanupDiscovery)
+            .map_err(|error| error.to_string())?;
+        let value = ctx
+            .cleaner
+            .start_scan_with_lease(principal_key, lease)
+            .map_err(|error| error.to_string())?;
+        publish(
+            ctx,
+            principal_key,
+            EventKind::CleanupDiscovery,
+            "",
+            Some(event_envelope::Payload::CleanupSnapshot(
+                cleanup_snapshot_proto(value),
+            )),
+        );
+        watch_cleanup_scan(ctx.clone(), principal_key.clone());
+        Ok(())
+    };
+    let prepared = crate::care::prepare_preview(
+        &ctx.cleaner,
+        &|| ctx.care.plan_preview(principal_key),
+        principal_key,
+        now_ms,
+        &start_scan,
+    )
+    .map_err(care_err)?;
+    publish(
+        ctx,
+        principal_key,
+        EventKind::CareRun,
+        "",
+        Some(event_envelope::Payload::CareStatus(prepared.status.clone())),
+    );
+    Ok(Some(response::Payload::CarePreview(
+        v1::CarePreviewResponse {
+            status: Some(prepared.status),
+            domains: prepared.domains,
+        },
+    )))
+}
+
 pub(super) fn grant_consent(call: &Call<'_>, v: v1::GrantCareSessionConsentRequest) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
