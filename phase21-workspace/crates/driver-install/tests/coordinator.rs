@@ -109,6 +109,9 @@ struct FakePlatform {
     reboot_required: bool,
     backup_fails: bool,
     restore_end_fails: bool,
+    /// What PnP reports bound after the install, and its problem code; None is the offered
+    /// driver, healthy.
+    bound_after: Option<(InstalledDriver, u32)>,
 }
 
 impl FakePlatform {
@@ -128,6 +131,12 @@ impl InstallPlatform for FakePlatform {
         } else {
             "verify-before"
         });
+        let mutated = self.mutated.load(Ordering::SeqCst);
+        let (bound, problem) = match (&self.bound_after, mutated) {
+            (Some((bound, problem)), true) => (bound.clone(), *problem),
+            (None, true) => (driver("2.0.0.0", "oem2.inf"), 0),
+            (_, false) => (driver("1.0.0.0", "oem1.inf"), 0),
+        };
         Ok(ids
             .iter()
             .map(|id| DeviceVerification {
@@ -136,12 +145,12 @@ impl InstallPlatform for FakePlatform {
                 class_name: "Net".into(),
                 hardware_ids: vec!["PCI\\VEN_FAKE&DEV_0001".into()],
                 compatible_ids: vec!["PCI\\CC_0200".into()],
-                status: DeviceStatus::default(),
-                driver: Some(if self.mutated.load(Ordering::SeqCst) {
-                    driver("2.0.0.0", "oem2.inf")
-                } else {
-                    driver("1.0.0.0", "oem1.inf")
-                }),
+                status: DeviceStatus {
+                    problem_code: problem,
+                    has_problem: problem != 0,
+                    ..DeviceStatus::default()
+                },
+                driver: Some(bound.clone()),
             })
             .collect())
     }
@@ -292,6 +301,7 @@ fn protection_barrier_precedes_every_fake_mutation_and_completes() {
         reboot_required: false,
         backup_fails: false,
         restore_end_fails: false,
+        bound_after: None,
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -377,6 +387,7 @@ fn backup_failure_cancels_protection_and_never_reaches_install() {
         reboot_required: false,
         backup_fails: true,
         restore_end_fails: false,
+        bound_after: None,
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -450,6 +461,7 @@ fn restore_end_failure_after_mutation_requires_recovery_and_never_completes() {
         reboot_required: false,
         backup_fails: false,
         restore_end_fails: true,
+        bound_after: None,
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -536,6 +548,7 @@ fn cross_user_start_cannot_fail_or_mutate_an_owned_plan() {
         reboot_required: false,
         backup_fails: false,
         restore_end_fails: false,
+        bound_after: None,
     });
     let coordinator = DriverInstallCoordinator::with_platform(
         engine.clone(),
@@ -574,4 +587,113 @@ fn cross_user_start_cannot_fail_or_mutate_an_owned_plan() {
     drop(engine);
     drop(db);
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// Runs one approved install whose device PnP reports `bound_after` afterwards, to the end.
+fn install_ending_bound_to(
+    bound_after: (InstalledDriver, u32),
+) -> (String, String, bool, bool, u32) {
+    let root = temp_root();
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("database"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let hub = ready_hub();
+    let platform = Arc::new(FakePlatform {
+        mutated: AtomicBool::new(false),
+        mutation_count: AtomicU32::new(0),
+        events: Mutex::new(Vec::new()),
+        reboot_required: false,
+        backup_fails: false,
+        restore_end_fails: false,
+        bound_after: Some(bound_after),
+    });
+    let coordinator = DriverInstallCoordinator::with_platform(
+        engine.clone(),
+        hub.clone(),
+        db.clone(),
+        root.clone(),
+        platform.clone(),
+    );
+    let snapshot = hub
+        .snapshot_for_owner(OWNER)
+        .expect("owned driver snapshot");
+    let candidate_id = snapshot.devices[0].candidates[0].candidate_id.clone();
+    let plan = coordinator
+        .create_plan(
+            OWNER,
+            &snapshot.scan_id,
+            snapshot.inventory_epoch,
+            &[candidate_id],
+        )
+        .expect("plan");
+    approve(&engine, &plan.id);
+    start_install(&coordinator, OWNER, &plan.id).expect("start install");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let status = loop {
+        let status = coordinator
+            .status(OWNER, Some(&plan.id))
+            .expect("status")
+            .expect("execution");
+        if status.plan_state == "Completed" || status.plan_state == "Failed" {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "coordinator timed out in {}",
+            status.stage
+        );
+        thread::sleep(Duration::from_millis(10));
+    };
+    let outcome = (
+        status.plan_state.clone(),
+        status.items[0].detail.clone(),
+        status.items[0].verified,
+        status.recovery_required,
+        platform.mutation_count.load(Ordering::SeqCst),
+    );
+    drop(coordinator);
+    drop(engine);
+    drop(db);
+    let _ = std::fs::remove_dir_all(root);
+    outcome
+}
+
+/// P84-03: Windows reporting success is not the proof; the driver bound afterwards is. Before
+/// the install 1.0.0.0 (oem1.inf) is bound and 2.0.0.0 is offered. Red before: every one of
+/// these read Completed and verified, because a present device without a problem code was
+/// enough. None of them is rolled back automatically: one mutation, recovery review.
+#[test]
+fn an_install_is_verified_by_the_driver_bound_after_it_not_by_the_result_code() {
+    for (label, bound) in [
+        (
+            "the old driver is still bound",
+            (driver("1.0.0.0", "oem1.inf"), 0),
+        ),
+        (
+            "an older driver than before",
+            (driver("0.9.0.0", "oem3.inf"), 0),
+        ),
+        (
+            "below the offered version",
+            (driver("1.5.0.0", "oem2.inf"), 0),
+        ),
+        (
+            "code 43 after the update",
+            (driver("2.0.0.0", "oem2.inf"), 43),
+        ),
+    ] {
+        let (state, detail, verified, recovery, mutations) = install_ending_bound_to(bound);
+        assert_eq!(state, "Failed", "{label}: {detail}");
+        assert!(!verified, "{label}");
+        assert!(
+            recovery,
+            "{label}: a failed verification asks for recovery review"
+        );
+        assert_eq!(mutations, 1, "{label}: no automatic rollback");
+    }
+    // Compared as numbers: 13.0 is above the offered 2.0, where text order puts "13" first.
+    let (state, detail, verified, _, _) =
+        install_ending_bound_to((driver("13.0.0.0", "oem2.inf"), 0));
+    assert_eq!(state, "Completed", "{detail}");
+    assert!(verified);
 }
