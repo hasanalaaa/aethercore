@@ -13,7 +13,7 @@ use std::{
 
 use aethercore_security::inspect_session_token;
 use aethercore_windows_foundation::{
-    BackgroundThreadMode, ComApartment, OwnedHandle, OwnedServiceHandle, ThreadImpersonation,
+    BackgroundThreadMode, ComApartment, OwnedHandle, ThreadImpersonation,
 };
 use chrono::Utc;
 use windows::{
@@ -36,11 +36,7 @@ use windows::{
                 WTSQuerySessionInformationW, WTSQueryUserToken, WTSSessionInfoEx,
             },
             Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
-            Services::{
-                OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, SC_MANAGER_CONNECT,
-                SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_RUNNING,
-                SERVICE_STATUS_PROCESS,
-            },
+            UpdateAgent::{IUpdateInstaller, UpdateInstaller},
             Variant::VARIANT,
             Wmi::{
                 IWbemClassObject, IWbemLocator, IWbemServices, WBEM_FLAG_FORWARD_ONLY,
@@ -440,48 +436,19 @@ fn wide(value: &str) -> Vec<u16> {
 }
 
 fn probe_servicing_state() -> Result<ServicingState, String> {
-    unsafe {
-        let scm = OwnedServiceHandle::new(
-            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)
-                .map_err(|e| format!("OpenSCManagerW: {e}"))?,
-        );
-        let mut observed = 0usize;
-        let mut uncertain = false;
-        for name in ["TrustedInstaller", "UsoSvc", "WaaSMedicSvc"] {
-            let name_w = wide(name);
-            let service =
-                match OpenServiceW(scm.get(), PCWSTR(name_w.as_ptr()), SERVICE_QUERY_STATUS) {
-                    Ok(value) => OwnedServiceHandle::new(value),
-                    Err(_) => continue,
-                };
-            let mut status = SERVICE_STATUS_PROCESS::default();
-            let mut needed = 0u32;
-            let bytes = std::slice::from_raw_parts_mut(
-                (&mut status as *mut SERVICE_STATUS_PROCESS).cast::<u8>(),
-                size_of::<SERVICE_STATUS_PROCESS>(),
-            );
-            if QueryServiceStatusEx(
-                service.get(),
-                SC_STATUS_PROCESS_INFO,
-                Some(bytes),
-                &mut needed,
-            )
-            .is_err()
-            {
-                uncertain = true;
-                continue;
-            }
-            observed += 1;
-            if status.dwCurrentState == SERVICE_RUNNING {
-                return Ok(ServicingState::Busy);
-            }
+    let busy = (|| {
+        let _com = ComApartment::mta().map_err(|e| format!("WUA COM: {e}"))?;
+        unsafe {
+            let installer: IUpdateInstaller =
+                CoCreateInstance(&UpdateInstaller, None, CLSCTX_INPROC_SERVER)
+                    .map_err(|e| format!("WUA installer: {e}"))?;
+            installer
+                .IsBusy()
+                .map(|busy| busy.as_bool())
+                .map_err(|e| format!("WUA IsBusy: {e}"))
         }
-        Ok(if observed == 0 || uncertain {
-            ServicingState::Unknown
-        } else {
-            ServicingState::Idle
-        })
-    }
+    })();
+    Ok(crate::model::servicing_from_wua_busy(busy.ok()))
 }
 
 pub(crate) fn run_in_background_mode<T>(
