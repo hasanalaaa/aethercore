@@ -775,6 +775,7 @@ export const arCatalog = {
   'tech.memory.pressureHigh': 'مرتفع جدًا',
   'tech.event.wheaSummary': 'سجلت بنية أخطاء عتاد Windows خطأً في العتاد.',
   'tech.event.wheaMemory': 'سجل WHEA خطأ عتاد متعلقًا بالذاكرة. هذا دليل عتادي، لكنه لا يحدد وحدة DIMM بعينها دون فك أعمق واختبار.',
+  'tech.event.wheaMemoryCorrected': 'سجّل WHEA خطأ في الذاكرة صحّحه العتاد. خطأ واحد مصحَّح لا يدل على أن وحدة الذاكرة تتعطل.',
   'tech.event.wheaProcessor': 'سجل WHEA خطأ عتاد متعلقًا بالمعالج/الذاكرة المخبأة. عُدّه دليلًا لا إسنادًا كاملًا للسبب الجذري.',
   'tech.event.wheaPcie': 'سجل WHEA دليل خطأ عتاد متعلقًا بـ PCI/PCIe.',
   'tech.event.wheaGeneric': 'سجل WHEA خطأ عتاد؛ بيانات الحدث الملخصة غير كافية لتسمية مكوّن تالف بثقة.',

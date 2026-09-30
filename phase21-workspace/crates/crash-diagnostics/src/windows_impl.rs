@@ -39,6 +39,8 @@ const MAX_SYSTEM_RENDER_BYTES: usize = 64 * 1024;
 const MAX_USER_RENDER_BYTES: usize = 256 * 1024;
 const MAX_EVENT_PROPERTIES: usize = 256;
 const MAX_EVENT_STRING_UTF16: usize = 16 * 1024;
+/// A CPER is a header, a few descriptors and their sections: far below this.
+const MAX_WHEA_RECORD_BYTES: usize = 64 * 1024;
 const FILETIME_UNIX_EPOCH_TICKS: u64 = 116_444_736_000_000_000;
 
 static EVENTLOG_GATE: OnceLock<IsolationGate> = OnceLock::new();
@@ -269,11 +271,11 @@ fn collect_events(
             checkpoint(control, "eventlog.render")?;
             match render_system(system_context.0, event.0) {
                 Ok(system) => {
-                    let payload = match render_user_values(user_context.0, event.0) {
-                        Ok(values) => values,
+                    let (payload, whea_record) = match render_user_values(user_context.0, event.0) {
+                        Ok(rendered) => rendered,
                         Err(_) => {
                             malformed_events = malformed_events.saturating_add(1);
-                            Vec::new()
+                            (Vec::new(), None)
                         }
                     };
                     out.push(classify_event(
@@ -281,6 +283,7 @@ fn collect_events(
                         system.event_id,
                         &payload,
                         system.recorded_unix_ms,
+                        whea_record.as_deref(),
                     ));
                 }
                 Err(_) => malformed_events = malformed_events.saturating_add(1),
@@ -333,18 +336,55 @@ fn render_system(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<RenderedEvent
     })
 }
 
-fn render_user_values(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<Vec<String>> {
+/// The event's user-data values as text, and the first binary value (a WHEA CPER record) when the
+/// event carries one and it fits the cap.
+fn render_user_values(
+    context: EVT_HANDLE,
+    event: EVT_HANDLE,
+) -> Result<(Vec<String>, Option<Vec<u8>>)> {
     let buffer = render_values(context, event, MAX_USER_RENDER_BYTES)?;
     let variants = buffer.variants()?;
     let mut values = Vec::new();
+    let mut binary = None;
     for variant in variants.iter().take(MAX_EVENT_PROPERTIES) {
+        if binary.is_none() {
+            binary = variant_binary(variant, &buffer)?;
+        }
         if let Some(value) = variant_to_bounded_text(variant, &buffer)?
             && !value.is_empty()
         {
             values.push(value);
         }
     }
-    Ok(values)
+    Ok((values, binary))
+}
+
+/// A `EvtVarTypeBinary` payload copied out of the render buffer. A pointer outside the buffer is a
+/// malformed render; a payload longer than the cap or than the buffer holds is simply not taken.
+fn variant_binary(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Result<Option<Vec<u8>>> {
+    const EVT_VAR_TYPE_BINARY: u32 = 14;
+    if variant_is_array(variant) || variant_base_type(variant) != EVT_VAR_TYPE_BINARY {
+        return Ok(None);
+    }
+    let ptr = unsafe { variant.Anonymous.BinaryVal };
+    let length = usize::try_from(variant.Count).unwrap_or(usize::MAX);
+    if ptr.is_null() || length == 0 {
+        return Ok(None);
+    }
+    let (start, end) = buffer.byte_range();
+    let address = ptr as *const u8;
+    if address < start || address >= end {
+        return Err(CrashError::MalformedResponse(
+            "EVT_VARIANT binary pointer escaped its render buffer".into(),
+        ));
+    }
+    let remaining = (end as usize).saturating_sub(address as usize);
+    if length > remaining || length > MAX_WHEA_RECORD_BYTES {
+        return Ok(None);
+    }
+    Ok(Some(
+        unsafe { std::slice::from_raw_parts(address, length) }.to_vec(),
+    ))
 }
 
 fn checked_render_property_count(properties: u32) -> Result<usize> {

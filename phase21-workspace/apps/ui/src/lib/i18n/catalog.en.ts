@@ -773,6 +773,7 @@ export const enCatalog = {
   'tech.memory.pressureHigh': 'High',
   'tech.event.wheaSummary': 'Windows Hardware Error Architecture recorded a hardware error.',
   'tech.event.wheaMemory': 'WHEA logged a memory-related hardware error. This is hardware evidence, but it does not identify a specific DIMM without deeper decoding/testing.',
+  'tech.event.wheaMemoryCorrected': 'WHEA logged a memory error that the hardware corrected. A single corrected error does not show that a memory module is failing.',
   'tech.event.wheaProcessor': 'WHEA logged a processor/cache-related hardware error. Treat this as evidence, not a complete root-cause attribution.',
   'tech.event.wheaPcie': 'WHEA logged PCI/PCIe-related hardware-error evidence.',
   'tech.event.wheaGeneric': 'WHEA logged a hardware error; the summarized event data is not sufficient to name a failed component with confidence.',

@@ -23,6 +23,8 @@ pub enum CrashError {
 }
 pub type Result<T> = std::result::Result<T, CrashError>;
 
+mod whea;
+
 pub const DEFAULT_EVENT_WINDOW_DAYS: u32 = 30;
 
 /// The crash window in milliseconds.
@@ -113,28 +115,41 @@ pub fn assemble_snapshot(
     }
 }
 
+/// Classifies one System-channel event. `whea_record` is the raw CPER a WHEA-Logger event carries as
+/// binary data, when it carried one. The component category comes only from that record's typed
+/// sections: matching words in the (localized) payload text said "memory" on an English Windows and
+/// nothing on an Arabic one, so it is not used. No record, or one that does not validate, is a
+/// hardware error of unknown component.
 pub fn classify_event(
     provider: &str,
     event_id: u32,
-    payload_values: &[String],
+    _payload_values: &[String],
     recorded_unix_ms: i64,
+    whea_record: Option<&[u8]>,
 ) -> EventEvidence {
-    let lower = payload_values.join(" ").to_ascii_lowercase();
     if provider.eq_ignore_ascii_case("Microsoft-Windows-WHEA-Logger") {
-        let (category, detail) = if lower.contains("memory") || lower.contains("memhierarchy") {
+        use whea::{WheaSection, WheaSeverity};
+        let record = whea_record.and_then(whea::decode_cper);
+        let has = |kind: WheaSection| record.as_ref().is_some_and(|r| r.sections.contains(&kind));
+        let corrected = record
+            .as_ref()
+            .is_some_and(|r| r.severity == WheaSeverity::Corrected);
+        let (category, detail) = if has(WheaSection::Memory) && corrected {
+            (
+                "MemoryHardwareEvidence",
+                "WHEA logged a memory error that the hardware corrected. A single corrected error does not show that a memory module is failing.",
+            )
+        } else if has(WheaSection::Memory) {
             (
                 "MemoryHardwareEvidence",
                 "WHEA logged a memory-related hardware error. This is hardware evidence, but it does not identify a specific DIMM without deeper decoding/testing.",
             )
-        } else if lower.contains("cache")
-            || lower.contains("processor")
-            || lower.contains("machine check")
-        {
+        } else if has(WheaSection::Processor) {
             (
                 "ProcessorHardwareEvidence",
                 "WHEA logged a processor/cache-related hardware error. Treat this as evidence, not a complete root-cause attribution.",
             )
-        } else if lower.contains("pci") || lower.contains("pcie") {
+        } else if has(WheaSection::Pcie) {
             (
                 "PcieHardwareEvidence",
                 "WHEA logged PCI/PCIe-related hardware-error evidence.",
@@ -207,30 +222,89 @@ mod tests {
     }
     #[test]
     fn kernel_power_never_claims_root_cause() {
-        let e = classify_event("Microsoft-Windows-Kernel-Power", 41, &[], 1);
+        let e = classify_event("Microsoft-Windows-Kernel-Power", 41, &[], 1, None);
         assert!(e.detail.contains("does not identify why"));
         assert_eq!(e.category, "UnexpectedShutdown");
     }
+
+    const WHEA: &str = "Microsoft-Windows-WHEA-Logger";
+
     #[test]
     fn whea_memory_is_evidence_not_dimm_diagnosis() {
-        let e = classify_event(
-            "Microsoft-Windows-WHEA-Logger",
-            18,
-            &["Memory hierarchy error".into()],
-            1,
-        );
+        let record = whea::fixtures::cper(1, &[whea::fixtures::MEMORY_GUID]);
+        let e = classify_event(WHEA, 18, &[], 1, Some(&record));
         assert_eq!(e.category, "MemoryHardwareEvidence");
         assert!(e.detail.contains("does not identify a specific DIMM"));
     }
+
+    // P82-03A: the category comes from the record's typed sections, never from words.
+    // Pinned by phase13_structured_whea_classifier: classification reads structured data, not XML
+    // and not prose. It now needs no payload text at all, only the typed record.
     #[test]
     fn structured_payload_classification_does_not_require_xml() {
-        let e = classify_event(
-            "Microsoft-Windows-WHEA-Logger",
-            18,
-            &["Processor".into(), "Machine Check Exception".into()],
-            1,
-        );
+        let record = whea::fixtures::cper(1, &[whea::fixtures::PROCESSOR_GUID]);
+        let e = classify_event(WHEA, 18, &[], 1, Some(&record));
         assert_eq!(e.category, "ProcessorHardwareEvidence");
+    }
+
+    #[test]
+    fn english_and_arabic_windows_give_the_same_category_for_the_same_record() {
+        let record = whea::fixtures::cper(1, &[whea::fixtures::PROCESSOR_GUID]);
+        let english = classify_event(
+            WHEA,
+            18,
+            &["Memory hierarchy error".into()],
+            1,
+            Some(&record),
+        );
+        let arabic = classify_event(WHEA, 18, &["خطأ في تسلسل الذاكرة".into()], 1, Some(&record));
+        assert_eq!(
+            english.category, "ProcessorHardwareEvidence",
+            "the record says processor; the words say memory"
+        );
+        assert_eq!(english.category, arabic.category);
+        assert_eq!(english.detail, arabic.detail);
+    }
+
+    #[test]
+    fn words_alone_never_name_a_component_and_a_bad_record_is_unknown() {
+        for words in ["Memory hierarchy error", "Cache", "PCI Express", "ذاكرة"] {
+            let e = classify_event(WHEA, 18, &[words.into()], 1, None);
+            assert_eq!(e.category, "HardwareError", "{words}");
+        }
+        let mut bad = whea::fixtures::cper(1, &[whea::fixtures::MEMORY_GUID]);
+        bad[0] = 0;
+        assert_eq!(
+            classify_event(WHEA, 18, &[], 1, Some(&bad)).category,
+            "HardwareError"
+        );
+        assert_eq!(
+            classify_event(WHEA, 18, &[], 1, Some(&[1, 2, 3])).category,
+            "HardwareError"
+        );
+    }
+
+    #[test]
+    fn a_corrected_memory_error_is_not_called_a_failing_module() {
+        let corrected = whea::fixtures::cper(2, &[whea::fixtures::MEMORY_GUID]);
+        let e = classify_event(WHEA, 19, &[], 1, Some(&corrected));
+        assert_eq!(e.category, "MemoryHardwareEvidence");
+        assert!(e.detail.contains("corrected"), "{}", e.detail);
+        assert!(
+            e.detail
+                .contains("does not show that a memory module is failing")
+        );
+        let pcie = whea::fixtures::cper(2, &[whea::fixtures::PCIE_GUID]);
+        assert_eq!(
+            classify_event(WHEA, 19, &[], 1, Some(&pcie)).category,
+            "PcieHardwareEvidence"
+        );
+        let other = whea::fixtures::cper(1, &[[9u8; 16]]);
+        assert_eq!(
+            classify_event(WHEA, 18, &[], 1, Some(&other)).category,
+            "HardwareError",
+            "an unknown section is not a component"
+        );
     }
 
     #[test]
