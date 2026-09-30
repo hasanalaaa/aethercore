@@ -68,9 +68,14 @@
            unknown checks as healthy — the first is the policy band's sentence,
            and the second is why the healthy count is stated separately. -->
       {#if repairAssessment.state === 'Scanning'}
-        <p class="hero-reading">{t('repair.progress', locale, { check: checkLabel(repairAssessment.currentCheckId), done: repairAssessment.checks.length, started: formatDateTime(repairAssessment.startedUnixMs, locale) })}</p>
-        <p>{t('repair.slowNote', locale)}</p>
-        <Pressable className="ghost-action" onclick={cancelRepairAssessment}>{t('repair.cancel', locale)}</Pressable>
+        {#if snapshot.connected}
+          <p class="hero-reading">{t('repair.progress', locale, { check: checkLabel(repairAssessment.currentCheckId), done: repairAssessment.checks.length, started: formatDateTime(repairAssessment.startedUnixMs, locale) })}</p>
+          <p>{t('repair.slowNote', locale)}</p>
+          <Pressable className="ghost-action" onclick={cancelRepairAssessment}>{t('repair.cancel', locale)}</Pressable>
+        {:else}
+          <!-- Offline the screen knows nothing new; it does not say the assessment stopped. -->
+          <p class="hero-reading">{t('repair.disconnected', locale)}</p>
+        {/if}
       {:else if repairAssessment.errorMessage}
         <LocalizedOwnedText value={repairAssessment.errorMessage} {locale} as="p"/>
       {:else if repairAssessment.state === 'Ready'}

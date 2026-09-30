@@ -493,6 +493,7 @@ export const arCatalog = {
   'repair.progress': 'قيد التشغيل: {check} · اكتمل {done} · بدأ {started}',
   'repair.slowNote': 'يقرأ DISM وSFC النظام كله وقد يستغرق كل منهما عدة دقائق. يمكنك إيقاف التقييم؛ فكل الفحوص للقراءة فقط.',
   'repair.cancel': 'إيقاف التقييم',
+  'repair.disconnected': 'انقطع الاتصال بخدمة AetherCore. قد يكون التقييم ما زال يعمل؛ ستتحدّث هذه الصفحة عند عودة الاتصال.',
   'repair.check.dism-scan': 'مخزن المكونات (فحص DISM)',
   'repair.check.sfc-verify': 'ملفات النظام المحمية (SFC)',
   'repair.check.servicing-state': 'حالة الصيانة',
