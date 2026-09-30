@@ -92,6 +92,27 @@ test('driver problem codes each read by their meaning, in both languages', async
   assert.equal(driverStateLabel(device(31), 'en'), driverStateLabel(device(12), 'en'));
 });
 
+// P84-02B: the page says where a scan looked and, for the local cache, how old it is. A cache answer
+// is never offered as the newest word from Windows Update.
+test('driver scan source: local cache with its age, online, and nothing before a scan', async () => {
+  const { driverSearchSource } = await import('../src/lib/i18n/index.ts');
+  const hub = (searchScope: string, windowsLastOnlineSearch = '', completedUnixMs = 0) =>
+    ({ searchScope, windowsLastOnlineSearch, completedUnixMs }) as never;
+  for (const locale of ['en', 'ar'] as const) {
+    const cached = driverSearchSource(hub('LocalCacheOnly', '2026-09-01'), locale);
+    const undated = driverSearchSource(hub('LocalCacheOnly'), locale);
+    const online = driverSearchSource(hub('Online', '', Date.UTC(2026, 8, 30, 12)), locale);
+    assert.match(cached, /2026-09-01/, cached);
+    assert.match(online, /2026-09-30/, online);
+    assert.equal(new Set([cached, undated, online]).size, 3, `${cached} | ${undated} | ${online}`);
+    for (const text of [cached, undated, online]) {
+      assert.doesNotMatch(text, /latest|newest|up to date|أحدث|محدّث/i, text);
+      if (locale === 'ar') assert.match(text, arabic, text);
+    }
+    assert.equal(driverSearchSource(hub(''), locale), '');
+  }
+});
+
 test('driver target-version source: the two the hub emits', async () => {
   const { driverTargetEvidence } = await import('../src/lib/i18n/index.ts');
   for (const source of ['TitleHeuristic', 'ProviderMetadata']) {
