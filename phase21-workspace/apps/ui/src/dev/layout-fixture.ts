@@ -92,7 +92,7 @@ function candidate(i: number): DriverCandidate {
     minDownloadBytes: 41_500_000,
     maxDownloadBytes: 58_200_000,
     targetVersion: '23.60.2.5',
-    targetVersionSource: i % 2 ? 'WuaMetadata' : 'ProviderMetadata',
+    targetVersionSource: i % 2 ? 'TitleHeuristic' : 'ProviderMetadata',
     // The service decides selectable from executable() && WindowsManaged, and
     // derives selection_policy from it (driver-hub/src/lib.rs:945-955). The
     // fixture previously marked every candidate selectable with a

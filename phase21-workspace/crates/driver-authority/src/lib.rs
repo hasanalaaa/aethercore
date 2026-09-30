@@ -459,6 +459,10 @@ pub struct DriverCandidateV2 {
     pub match_kind: MatchKind,
     pub title: String,
     pub target_version: String,
+    /// Where `target_version` came from; WUA exposes no version, only a title to read it from.
+    /// Defaulted so a candidate serialized before P84-01 still reads.
+    #[serde(default)]
+    pub target_version_source: VersionSource,
     pub driver_date_iso: String,
     pub driver_class: String,
     pub package_identity: String,
@@ -571,7 +575,8 @@ impl WindowsUpdateProvider {
         });
         if device.problem_code == 28 {
             reasons.push(RecommendationReason::MissingDriverPriority);
-        } else if device.problem_code != 0 {
+        } else if device.problem_code != 0 && device.problem_code != 22 {
+            // Code 22 is a disabled device, usually disabled on purpose: not a problem to fix first.
             reasons.push(RecommendationReason::DeviceProblemPriority);
         }
         let firmware = offer.driver_class.eq_ignore_ascii_case("Firmware")
@@ -580,6 +585,9 @@ impl WindowsUpdateProvider {
             reasons.push(RecommendationReason::FirmwareRequiresManualReview);
         }
         Self::normalize_version_reason(device, offer, &mut reasons);
+        // Not above the installed version: installing it is a reinstall or a downgrade, which
+        // never happens under a recommendation (D15). It stays visible, with the reason first.
+        let not_newer = reasons.contains(&RecommendationReason::InstalledDriverAlreadyPreferred);
         DriverCandidateV2 {
             candidate_id,
             authority: DriverAuthority {
@@ -615,6 +623,7 @@ impl WindowsUpdateProvider {
             match_kind,
             title: offer.title.clone(),
             target_version: offer.target_version.clone(),
+            target_version_source: offer.target_version_source,
             driver_date_iso: offer.driver_date_iso.clone(),
             driver_class: offer.driver_class.clone(),
             package_identity: format!("wua:{}:{}", offer.update_id, offer.revision),
@@ -624,6 +633,8 @@ impl WindowsUpdateProvider {
             trust_state: PackageTrustState::WindowsManaged,
             recommendation_state: if firmware {
                 RecommendationState::FirmwareProtected
+            } else if not_newer {
+                RecommendationState::NotRecommended
             } else {
                 RecommendationState::Recommended
             },
@@ -653,9 +664,7 @@ impl WindowsUpdateProvider {
         match compare_driver_versions(&device.current_version, &offer.target_version) {
             VersionOrdering::Unknown => reasons.push(RecommendationReason::VersionOrderingUnknown),
             VersionOrdering::CandidateOlder | VersionOrdering::Equal => {
-                if offer.target_version_source == VersionSource::TitleHeuristic {
-                    reasons.push(RecommendationReason::InstalledDriverAlreadyPreferred);
-                }
+                reasons.insert(0, RecommendationReason::InstalledDriverAlreadyPreferred);
             }
             VersionOrdering::CandidateNewer => {}
         }
@@ -1493,6 +1502,7 @@ mod tests {
             match_kind: MatchKind::HardwareId,
             title: id.into(),
             target_version: version.into(),
+            target_version_source: VersionSource::Unavailable,
             driver_date_iso: "2026-01-01".into(),
             driver_class: "Net".into(),
             package_identity: id.into(),

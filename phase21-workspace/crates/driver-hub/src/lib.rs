@@ -20,8 +20,8 @@ use aethercore_gpu_policy::{installed_app_path, policy as gpu_vendor_policy};
 use aethercore_operation_kernel::{ReadBudgetLease, ReadWorkload};
 use aethercore_persistence::{Database, DriverAuthorityOverrideRecord, DriverAuthorityScanRecord};
 use aethercore_windows_pnp::{DeviceRecord, InstalledDriver, normalize_pnp_id};
-use aethercore_windows_update::DiscoveryResult;
 pub use aethercore_windows_update::SearchScope;
+use aethercore_windows_update::{DiscoveryResult, VersionSource};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -1085,6 +1085,12 @@ fn match_inventory_with_overrides(
                 .then_with(|| a.candidate_id.cmp(&b.candidate_id))
         });
         device_candidates.dedup_by(|a, b| a.candidate_id == b.candidate_id);
+        if device.status.problem_code == 22 {
+            // Disabled, usually on purpose: an offer may be chosen, never chosen for the user.
+            for candidate in &mut device_candidates {
+                candidate.selected_by_default = false;
+            }
+        }
         let display_managed = is_display_adapter(&device) && gpu.is_some();
         let update_status =
             if device.status.missing_driver && recommended_candidate_id.is_empty() {
@@ -1416,10 +1422,10 @@ fn summarize(devices: &[DriverDevice], offer_count: usize) -> DriverHubSummary {
 }
 
 fn driver_candidate_from_v2(candidate: DriverCandidateV2) -> DriverCandidate {
-    let target_version_source = if candidate.update_id.is_empty() {
-        "ProviderMetadata"
-    } else {
-        "WuaMetadata"
+    let target_version_source = match candidate.target_version_source {
+        _ if candidate.update_id.is_empty() => "ProviderMetadata",
+        VersionSource::TitleHeuristic => "TitleHeuristic",
+        VersionSource::Unavailable => "Unavailable",
     };
     let recommendation_state =
         recommendation_state_label(candidate.recommendation_state).to_string();

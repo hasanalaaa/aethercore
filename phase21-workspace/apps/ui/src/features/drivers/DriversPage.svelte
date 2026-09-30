@@ -10,7 +10,7 @@
   } from './controller';
   import { formatBytes, formatRange, shortDigest, stageTone, stateLabel, targetEvidence, targetLabel } from '../shared';
   import { hasMessageKey, localizeMatchQuality, localizeOwnedText, localizeRecommendationReason, localizeState, t, td, type MessageKey } from '../../lib/i18n';
-  import type { DriverCandidate } from '../../lib/contracts';
+  import type { DriverCandidate, DriverDevice } from '../../lib/contracts';
   import { PolicyDenied, type PolicyDenial } from '../../design/signature';
 
   /**
@@ -57,6 +57,8 @@
   function selectedMinBytes(): number { return selectedUpdates().reduce((sum, candidate) => sum + candidate.minDownloadBytes, 0); }
   function selectedMaxBytes(): number { return selectedUpdates().reduce((sum, candidate) => sum + candidate.maxDownloadBytes, 0); }
   function owned(value: string) { return localizeOwnedText(value, locale); }
+  /** A problem to fix. Code 22 is a device someone disabled, usually on purpose (P84-01). */
+  function faulted(device: DriverDevice): boolean { return device.hasProblem && device.problemCode !== 22; }
   function heroTitle(): string {
     if (hub.state === 'Idle') return t('drivers.hero.idle',locale);
     if (hub.state === 'Ready') return t('drivers.hero.ready',locale);
@@ -164,12 +166,12 @@
     <div class="device-table-head"><span>{t('common.device',locale)}</span><span>{t('drivers.column.current',locale)}</span><span>{t('drivers.column.offer',locale)}</span><span>{t('common.status',locale)}</span><span></span></div>
     <div class="device-list">
       {#each filteredDevices() as device (device.instanceId)}
-        <article class:problem={device.hasProblem} class:gpu={device.displayManaged} class="device-card">
+        <article class:problem={faulted(device)} class:gpu={device.displayManaged} class="device-card">
           <div class="device-main">
             <div class="device-identity"><div class="device-icon">{device.displayManaged ? '▰' : device.className === 'Net' ? '⌁' : device.className === 'MEDIA' ? '◉' : '◇'}</div><div><strong><TechnicalText value={device.displayName}/></strong><p>{#if device.manufacturer}<TechnicalText value={device.manufacturer}/>{:else}{t('drivers.manufacturerUnknown',locale)}{/if} · {#if device.className}<TechnicalText value={device.className}/>{:else}{t('drivers.unclassified',locale)}{/if}</p></div></div>
             <div class="driver-current"><small>{device.driver?.provider || t('drivers.noDriverMetadata',locale)}</small><strong><TechnicalText value={device.driver?.version || '—'}/></strong><span><TechnicalText value={device.driver?.date || device.driver?.infPath || ''}/></span></div>
             <div class="driver-target">{#if device.candidates.length}<small>{device.candidates[0].provider || t('drivers.step.update',locale)}</small><strong>{#if device.candidates[0].targetVersion}<TechnicalText value={device.candidates[0].targetVersion}/>{:else}{targetLabel(device.candidates[0],locale)}{/if}</strong><span>{targetEvidence(device.candidates[0],locale)} · {formatRange(device.candidates[0].minDownloadBytes,device.candidates[0].maxDownloadBytes,locale)}</span>{:else}<small>{t('drivers.step.update',locale)}</small><strong>—</strong><span>{t('drivers.noOffer',locale)}</span>{/if}</div>
-            <div class="device-status"><span class:bad={device.hasProblem} class:update={device.candidates.some((c) => c.selectable)} class:vendor={device.displayManaged || device.candidates.some((candidate) => candidate.firmwareManaged)}>{stateLabel(device,locale)}</span></div>
+            <div class="device-status"><span class:bad={faulted(device)} class:update={device.candidates.some((c) => c.selectable)} class:vendor={device.displayManaged || device.candidates.some((candidate) => candidate.firmwareManaged)}>{stateLabel(device,locale)}</span></div>
             <button use:fluidPress={{ pressedScale: 0.985 }} class="expand-button" aria-label={t('drivers.toggleDetails',locale)} onclick={() => toggleExpanded(device.instanceId)}>{expanded[device.instanceId] ? '−' : '+'}</button>
           </div>
 

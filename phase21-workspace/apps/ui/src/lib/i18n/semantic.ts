@@ -483,9 +483,18 @@ export function localizePublisher(value: string, locale: Locale): string {
   return map[value] ? td(map[value], locale) : value;
 }
 
+/** Device Manager problem codes (CM_PROB_*) the drivers page names; 28 is `missingDriver`. */
+const problemCodeKeys: Record<number, MessageKey> = {
+  10: 'drivers.state.failedStart',
+  22: 'drivers.state.disabled',
+  43: 'drivers.state.stopped',
+  52: 'drivers.state.signature',
+};
 export function driverStateLabel(device: DriverDevice, locale: Locale): string {
   if (device.missingDriver) return t('drivers.state.missing',locale);
-  if (device.hasProblem) return t('drivers.state.problem',locale,{code:device.problemCode});
+  // Named by meaning (P84-01); the number stays in the details row, and a code nobody named here
+  // is a device problem, not a guess at one.
+  if (device.hasProblem) return td(problemCodeKeys[device.problemCode] ?? 'drivers.state.problem',locale);
   if (device.candidates.some((candidate) => candidate.firmwareManaged)) return t('drivers.state.firmware',locale);
   if (device.updateStatus === 'RecommendedUpdateAvailable') return t('drivers.state.update',locale);
   if (device.updateStatus === 'UpToDate') return t('drivers.state.upToDate',locale);
@@ -501,7 +510,6 @@ export function driverTargetLabel(candidate: DriverCandidate, locale: Locale): s
 }
 export function driverTargetEvidence(candidate: DriverCandidate, locale: Locale): string {
   if (candidate.targetVersion && candidate.targetVersionSource === 'TitleHeuristic') return t('drivers.target.parsedTitle',locale);
-  if (candidate.targetVersion && candidate.targetVersionSource === 'WuaMetadata') return t('drivers.target.wuaMetadata',locale);
   if (candidate.targetVersion && candidate.targetVersionSource === 'ProviderMetadata') return t('drivers.target.providerMetadata',locale);
   if (candidate.targetVersion) return t('drivers.target.metadata',locale);
   return t('drivers.target.notExposed',locale);
