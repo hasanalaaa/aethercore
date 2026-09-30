@@ -1739,6 +1739,7 @@ export const arCatalog = {
   'perf.reviewPlan': 'مراجعة الخطة',
 
   'timeline.eyebrow': 'الخط الزمني',
+  'timeline.boundedWindow': 'السجل المعروض محدود بالأحداث الحديثة؛ قد لا يتضمن أحداثًا أقدم.',
   'timeline.title': 'ماذا حدث على هذا الحاسوب',
   'timeline.refresh': 'تحديث',
   'timeline.empty': 'لم يُسجَّل شيء بعد.',

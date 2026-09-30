@@ -27,11 +27,15 @@ message TimelineResponse {
   uint64 next_before_sequence = 3;
   string digest_sha256 = 4;
   uint32 duplicates_collapsed = 5;
+  // Maximum retained candidate events before paging. Each source is also bounded;
+  // this is recent available history, not a complete archive. 0 = older server.
+  uint32 history_window_limit = 6;
 }
 
 message RecurrencePatternsResponse {
   repeated RecurrencePattern patterns = 1;
   string digest_sha256 = 2;
+  uint32 history_window_limit = 3;
 }
 
 // ---------------------------------------------------------------------------

@@ -1739,6 +1739,7 @@ export const enCatalog = {
   'perf.reviewPlan': 'Review plan',
 
   'timeline.eyebrow': 'Timeline',
+  'timeline.boundedWindow': 'Recent history is limited; older events may not be included.',
   'timeline.title': 'What happened on this PC',
   'timeline.refresh': 'Refresh',
   'timeline.empty': 'Nothing recorded yet.',

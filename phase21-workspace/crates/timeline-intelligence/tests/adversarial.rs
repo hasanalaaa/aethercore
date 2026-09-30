@@ -66,20 +66,20 @@ fn accepts_timestamps_exactly_at_watermark() {
 }
 
 #[test]
-fn duplicates_collapse_by_semantic_identity_and_timestamp() {
+fn only_replayed_source_rows_collapse() {
     let mut builder = TimelineBuilder::new().watermark(WATERMARK);
     builder
         .ingest_all([
             failure_event("a", "code.x", 1000),
             failure_event("a", "code.x", 1000), // exact duplicate row (retry/replay)
-            failure_event("b", "code.x", 1000), // same fact re-reported -> also collapses
+            failure_event("b", "code.x", 1000), // another source row -> distinct evidence
             failure_event("a", "code.y", 1000), // different identity -> distinct
             failure_event("a", "code.x", 2000), // same identity, later time -> distinct
         ])
         .unwrap();
     let timeline = builder.build();
-    assert_eq!(timeline.events.len(), 3);
-    assert_eq!(timeline.duplicates_collapsed, 2);
+    assert_eq!(timeline.events.len(), 4);
+    assert_eq!(timeline.duplicates_collapsed, 1);
 }
 
 #[test]

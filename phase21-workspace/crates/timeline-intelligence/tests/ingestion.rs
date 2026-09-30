@@ -172,3 +172,103 @@ fn empty_history_builds_empty_deterministic_timeline() {
         "same persisted history must digest identically"
     );
 }
+
+#[test]
+fn p87_history_is_globally_bounded_after_merging_sources() {
+    use aethercore_persistence::CareRunRecord;
+    use aethercore_timeline_intelligence::{MAX_TIMELINE_EVENTS, ingest};
+    let dir = TempDir::new().unwrap();
+    let db = open_db(&dir);
+    seed_plan(&db, "p87-history", OWNER, 0);
+    for at in 1..=MAX_TIMELINE_EVENTS {
+        db.append_plan_event("p87-history", "Completed", "transition", "", at as i64)
+            .unwrap();
+    }
+    for (id, at) in [("care-a", 10_000), ("care-b", 10_000), ("future", 20_000)] {
+        db.upsert_care_run(&CareRunRecord {
+            run_id: id.into(),
+            owner_principal_key: OWNER.into(),
+            state: "Completed".into(),
+            created_unix_ms: at,
+            updated_unix_ms: at,
+            completed_unix_ms: Some(at),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    for at in 1..=MAX_TIMELINE_EVENTS {
+        db.insert_repair_timeline_event(&RepairTimelineEventRecord {
+            event_id: format!("p87-repair-{at}"),
+            plan_id: "p87-history".into(),
+            owner_principal_key: OWNER.into(),
+            created_unix_ms: 2_500 + at as i64,
+            event_kind: "verification".into(),
+            domain: "WindowsRepair".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    let candidates = ingest::ingest_owner_history_with_watermark(&db, OWNER, 11_000).unwrap();
+    assert_eq!(
+        candidates.len(),
+        MAX_TIMELINE_EVENTS,
+        "per-source caps exceed the global builder ceiling"
+    );
+    assert!(
+        candidates
+            .iter()
+            .all(|e| e.observed_unix_ms > 2_502 && e.observed_unix_ms <= 11_000)
+    );
+    assert!(
+        ingest::ingest_owner_history_with_watermark(&db, OTHER, 11_000)
+            .unwrap()
+            .is_empty()
+    );
+    let mut builder = TimelineBuilder::new().watermark(11_000);
+    builder.ingest_all(candidates).unwrap();
+    let timeline = builder.build();
+    assert_eq!(timeline.events.len(), MAX_TIMELINE_EVENTS);
+    let recent: Vec<_> = timeline
+        .events
+        .iter()
+        .filter(|e| e.observed_unix_ms == 10_000)
+        .map(|e| e.source_id.as_str())
+        .collect();
+    assert_eq!(recent, ["care-run:care-a", "care-run:care-b"]);
+    assert_eq!(timeline.watermark_unix_ms, 11_000);
+    let mut repeated = TimelineBuilder::new().watermark(11_000);
+    repeated
+        .ingest_all(ingest::ingest_owner_history_with_watermark(&db, OWNER, 11_000).unwrap())
+        .unwrap();
+    assert_eq!(timeline.digest_sha256, repeated.build().digest_sha256);
+}
+
+#[test]
+fn p87_distinct_source_rows_at_the_same_time_survive() {
+    use aethercore_timeline_intelligence::{EventClass, TimelineEvent};
+    let mut builder = TimelineBuilder::new();
+    let first = TimelineEvent::new(
+        "journal:1",
+        EventClass::Operation,
+        "Cleanup",
+        "Completed",
+        Outcome::Neutral,
+        100,
+    );
+    let second = TimelineEvent::new(
+        "journal:2",
+        EventClass::Operation,
+        "Cleanup",
+        "Completed",
+        Outcome::Neutral,
+        100,
+    );
+    builder.ingest_all([first.clone(), first, second]).unwrap();
+    let timeline = builder.build();
+    assert_eq!(
+        timeline.events.len(),
+        2,
+        "distinct persisted rows were collapsed as one fact"
+    );
+    assert_eq!(timeline.duplicates_collapsed, 1);
+}

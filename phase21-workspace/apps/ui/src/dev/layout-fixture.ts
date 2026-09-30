@@ -301,7 +301,7 @@ const timelinePage: TimelineResponse = {
     sourceId, class: cls, domain, code, outcome,
     observedUnixMs: NOW - i * 43_200_000, semanticIdentitySha256: 'cd'.repeat(32),
   })),
-  hasMore: false, nextBeforeSequence: 0, digestSha256: 'ef'.repeat(32), duplicatesCollapsed: 2,
+  hasMore: false, nextBeforeSequence: 0, digestSha256: 'ef'.repeat(32), duplicatesCollapsed: 2, historyWindowLimit: 2000,
 };
 
 const insights: InsightsResponse = {
