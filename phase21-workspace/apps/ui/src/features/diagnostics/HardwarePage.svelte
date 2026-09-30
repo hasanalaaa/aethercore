@@ -3,16 +3,27 @@
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
   import { LocalizedOwnedText, Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
-  import { formatNumber, localizeConfidence, localizeDomain, localizeHealthStatus, localizeMemoryPressure, localizeSeverity, t } from '../../lib/i18n';
+  import { formatDateTime, formatNumber, localizeConfidence, localizeDomain, localizeHealthStatus, localizeMemoryPressure, localizeSeverity, t, td, type MessageKey } from '../../lib/i18n';
   import { diagnosticRunning, memoryEvents, startDiagnosticsScan, storageActionCount } from './controller';
   import ProviderFaultsPanel from './ProviderFaultsPanel.svelte';
   import { formatBytes } from '../shared';
   import { EmptyState } from '../../design/signature';
+  import { hardwareVerdict } from '../intelligence/headline';
 
   $: snapshot = $streamState.snapshot;
   $: diagnostics = $streamState.diagnostics;
   $: busy = $shellState.busy;
   $: locale = $shellState.locale;
+  $: verdict = hardwareVerdict(diagnostics);
+  $: nextKey = nextStep(verdict);
+  // Shape and text carry the verdict, colour only repeats them: a critical disk is "!", a denied read is "⊘".
+  $: mark = verdict.kind === 'action' ? '!' : verdict.kind === 'attention' ? '▲' : verdict.kind === 'noneFound' ? '✓' : '○';
+
+  function nextStep(v: typeof verdict): MessageKey {
+    if (v.kind === 'action') return 'hardware.verdict.next.action';
+    if (v.kind === 'attention') return 'hardware.verdict.next.attention';
+    return v.kind === 'noneFound' && v.coverage === 'complete' ? 'hardware.verdict.next.clear' : 'hardware.verdict.next.again';
+  }
 
   function metric(hasValue: boolean, value: number, suffix = ''): string {
     return hasValue ? `${formatNumber(value, locale)}${suffix}` : t('common.notReported', locale);
@@ -28,6 +39,22 @@
 {#if diagnosticRunning()}<div class="indeterminate cleanup-scan-progress"><span></span></div>{/if}
 {#if diagnostics.warnings.length}<section class="warning-strip"><span>◇</span><div><strong>{t('hardware.partial',locale)}</strong>{#each diagnostics.warnings as warning}<LocalizedOwnedText value={warning} {locale} as="p"/>{/each}</div></section>{/if}
 <ProviderFaultsPanel faults={diagnostics.providerFaults} {locale}/>
+{#if verdict.kind !== 'collecting'}
+  <section class="verdict-card" class:verdict-action={verdict.kind === 'action'} class:verdict-attention={verdict.kind === 'attention'} aria-labelledby="hardware-verdict-title">
+    <span class="verdict-mark" aria-hidden="true">{mark}</span>
+    <div>
+      <h2 id="hardware-verdict-title">{td(`hardware.verdict.${verdict.kind}`,locale)}</h2>
+      {#if verdict.kind !== 'notCollected'}
+        <p>{t('hardware.verdict.measured',locale,{items:verdict.measured.map((key) => td(key,locale)).join(' · ') || '—'})}</p>
+        {#if verdict.notMeasured.length}<p>{t('hardware.verdict.notMeasured',locale,{items:verdict.notMeasured.map((key) => td(key,locale)).join(' · ')})}</p>{/if}
+        {#if verdict.coverage !== 'complete'}<p>{t('hardware.verdict.partial',locale)}</p>{/if}
+        {#if verdict.denied}<p><span aria-hidden="true">⊘ </span>{t('hardware.verdict.denied',locale)}</p>{/if}
+        <p>{t('hardware.verdict.when',locale,{time:formatDateTime(diagnostics.completedUnixMs,locale),days:formatNumber(diagnostics.eventWindowDays,locale)})} {t('hardware.verdict.source',locale)}</p>
+        <p><strong>{td(nextKey,locale)}</strong></p>
+      {/if}
+    </div>
+  </section>
+{/if}
 <section class="hardware-summary">
   <article><span>{t('hardware.storageDevices',locale)}</span><strong>{diagnostics.storage.length || '—'}</strong><small>{t('hardware.storageHint',locale)}</small></article>
   <article><span>{t('hardware.actionRequired',locale)}</span><strong>{storageActionCount()}</strong><small>{t('hardware.actionHint',locale)}</small></article>
@@ -91,3 +118,11 @@
 <!-- The diagnostic-honesty paragraph is gone. Every claim it made is already
      made by the screen itself: "Not reported" is printed where a counter is
      missing, and no percentage health score exists to disclaim. -->
+
+<style>
+  .verdict-card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start;align-content:start;padding:14px 16px;margin-block:12px;border:1px solid var(--ac-border-subtle);border-radius:15px;background:var(--ac-material-base)}
+  .verdict-card h2{margin:0 0 .3rem;font-size:var(--ac-type-headline);font-weight:590}
+  .verdict-card p{margin:.2rem 0;color:var(--ac-text-2);line-height:1.5}
+  .verdict-mark{inline-size:30px;block-size:30px;border-radius:9px;display:grid;place-items:center;border:1px solid var(--ac-border-strong);font-weight:700}
+  .verdict-action .verdict-mark,.verdict-attention .verdict-mark{border-width:2px}
+</style>

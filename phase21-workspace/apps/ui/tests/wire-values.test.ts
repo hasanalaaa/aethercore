@@ -100,7 +100,7 @@ test('recovery record severities: "Amber" (cleaner, startup, repair) and "warnin
 test('deep scan headline: a partial scan with no findings is not "Healthy"', async () => {
   const { deepScanHeadlineKey } = await import('../src/features/intelligence/headline.ts');
   assert.equal(deepScanHeadlineKey(1, 4), 'deepScan.status.partialClear');
-  assert.equal(deepScanHeadlineKey(1, 3), 'deepScan.status.healthy');
+  assert.equal(deepScanHeadlineKey(1, 3), 'deepScan.status.noneFound');
   assert.equal(deepScanHeadlineKey(0, 3), 'common.unknown');
   assert.equal(deepScanHeadlineKey(3, 4), 'deepScan.status.action');
 });
@@ -119,6 +119,33 @@ test('deep scan headline: a running scan is not "Healthy"', async () => {
   const { deepScanHeadlineKey } = await import('../src/features/intelligence/headline.ts');
   assert.equal(deepScanHeadlineKey(1, 2), 'deepScan.state.scanning');
   assert.equal(deepScanHeadlineKey(2, 2), 'deepScan.status.attention', 'a finding already made is shown');
+});
+
+// P80-01: the Hardware verdict says what was measured and never "the whole PC is fine". Idle,
+// nothing-measured, partial, attention, action and denied are different verdicts.
+test('hardware verdict: not-collected, unavailable, partial, action and clear are distinct', async () => {
+  const { hardwareVerdict } = await import('../src/features/intelligence/headline.ts');
+  const disk = (severity: string) => ({ severity }) as never;
+  const snap = (over: object) => ({ state: 'Ready', storage: [], memory: null, providerFaults: [], warnings: [], ...over }) as never;
+  const memory = {} as never;
+  assert.equal(hardwareVerdict(snap({ state: 'Idle' })).kind, 'notCollected');
+  assert.equal(hardwareVerdict(snap({ state: 'Collecting' })).kind, 'collecting');
+  const none = hardwareVerdict(snap({ providerFaults: [{ kindCode: 3 }] }));
+  assert.equal(none.kind, 'unavailable');
+  assert.equal(none.coverage, 'none');
+  const partial = hardwareVerdict(snap({ storage: [disk('Normal')], memory: null }));
+  assert.equal(partial.kind, 'noneFound');
+  assert.equal(partial.coverage, 'partial', 'memory was not measured, so coverage is not complete');
+  assert.deepEqual(partial.notMeasured, ['hardware.memoryLoad']);
+  const faulted = hardwareVerdict(snap({ storage: [disk('Normal')], memory, providerFaults: [{ kindCode: 6 }] }));
+  assert.equal(faulted.coverage, 'partial', 'a provider fault means a source did not answer');
+  const clear = hardwareVerdict(snap({ storage: [disk('Normal')], memory }));
+  assert.equal(clear.kind, 'noneFound');
+  assert.equal(clear.coverage, 'complete');
+  assert.equal(hardwareVerdict(snap({ storage: [disk('Attention')], memory })).kind, 'attention');
+  assert.equal(hardwareVerdict(snap({ storage: [disk('ActionRequired')], memory })).kind, 'action');
+  assert.equal(hardwareVerdict(snap({ storage: [disk('Normal')], memory, providerFaults: [{ kindCode: 4 }] })).denied, true, 'a denial is not damage');
+  assert.equal(hardwareVerdict(snap({ storage: [disk('Normal')], memory })).denied, false);
 });
 
 test('disk activity a provider says it did not measure reads unmeasured, not 0%', async () => {
