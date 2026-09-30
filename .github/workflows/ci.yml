@@ -393,7 +393,7 @@ jobs:
       # P75 ui-truth: pure UI logic (keyboard shortcuts, Fleet run outcomes) under node's own
       # test runner; no test dependency. Files are listed, not globbed: a missing file fails.
       - name: UI unit tests
-        run: node --experimental-strip-types --import ./apps/ui/tests/resolve-ts.mjs --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts apps/ui/tests/care.test.ts apps/ui/tests/wire-values.test.ts apps/ui/tests/timeline-text.test.ts apps/ui/tests/localized-text.test.ts apps/ui/tests/repair-progress.test.ts
+        run: node --experimental-strip-types --import ./apps/ui/tests/resolve-ts.mjs --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts apps/ui/tests/care.test.ts apps/ui/tests/wire-values.test.ts apps/ui/tests/timeline-text.test.ts apps/ui/tests/localized-text.test.ts apps/ui/tests/repair-progress.test.ts apps/ui/tests/assistant.test.ts
       - name: CI gate regression tests
         run: python3 scripts/test_ci_gates.py
 

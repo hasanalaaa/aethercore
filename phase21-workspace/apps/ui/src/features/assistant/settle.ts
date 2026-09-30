@@ -12,7 +12,14 @@ export const TURN_REFUSED = 3;
 export const TURN_FAULTED = 4;
 export const TURN_CANCELLED = 5;
 
-export function replaceTurn(state: AssistantState, turn: AssistantTurn): AssistantState {
+/**
+ * Only an ANSWERED turn has passed the citation gate, so only its text is kept (P86-01). A
+ * streamed frame carries the model's raw text as it grows, uncited claims included, and a fault
+ * carries a service diagnostic in the same field; text the transcript never holds is text no
+ * screen or screen reader can reach, whatever a later edit to the drawer does.
+ */
+export function replaceTurn(state: AssistantState, received: AssistantTurn): AssistantState {
+  const turn = received.state === TURN_ANSWERED ? received : { ...received, answer: '' };
   let found = false;
   const transcript = state.transcript.map((entry) => {
     if (entry.kind !== 'turn' || entry.turn.turnId !== turn.turnId) return entry;
