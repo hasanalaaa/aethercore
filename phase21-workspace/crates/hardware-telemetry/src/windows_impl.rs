@@ -25,12 +25,12 @@ use windows::{
             },
             IO::DeviceIoControl,
             Ioctl::{
-                IDEREGS, IOCTL_DISK_GET_LENGTH_INFO, IOCTL_STORAGE_QUERY_PROPERTY,
-                PropertyStandardQuery, ProtocolTypeNvme, READ_ATTRIBUTES, SENDCMDINPARAMS,
-                SENDCMDOUTPARAMS, SMART_CMD, SMART_CYL_HI, SMART_CYL_LOW, SMART_RCV_DRIVE_DATA,
-                STORAGE_PROPERTY_QUERY, STORAGE_PROTOCOL_DATA_DESCRIPTOR,
-                STORAGE_PROTOCOL_SPECIFIC_DATA, StorageDeviceProperty,
-                StorageDeviceProtocolSpecificProperty,
+                IDEREGS, IOCTL_DISK_GET_LENGTH_INFO, IOCTL_STORAGE_PREDICT_FAILURE,
+                IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, ProtocolTypeNvme,
+                READ_ATTRIBUTES, SENDCMDINPARAMS, SENDCMDOUTPARAMS, SMART_CMD, SMART_CYL_HI,
+                SMART_CYL_LOW, SMART_RCV_DRIVE_DATA, STORAGE_PROPERTY_QUERY,
+                STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA,
+                StorageDeviceProperty, StorageDeviceProtocolSpecificProperty,
             },
             Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
             SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX},
@@ -48,7 +48,8 @@ use crate::{
     AtaSmartAttribute, DiskIdentity, HandleBinding, HardwareTelemetrySnapshot, MemoryTelemetry,
     NvmeHealthValues, Result, StorageDeviceTelemetry, StorageReliability, TelemetryError,
     bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage, merge_nvme,
-    parse_ata_driver_response, parse_nvme_health_log, parse_storage_device_descriptor,
+    parse_ata_driver_response, parse_nvme_health_log, parse_predict_failure,
+    parse_storage_device_descriptor,
 };
 
 static STORAGE_GATE: OnceLock<IsolationGate> = OnceLock::new();
@@ -262,18 +263,39 @@ fn collect_storage(
             } else if device.bus_type.eq_ignore_ascii_case("SATA")
                 || device.bus_type.eq_ignore_ascii_case("ATA")
             {
+                // The drive's own failure prediction is the verdict; the raw attribute table below
+                // is shown as reported and is not turned into one.
+                match query_predict_failure_bounded(
+                    index,
+                    expected.clone(),
+                    control.cancellation().child(),
+                ) {
+                    Ok(predicted) => device.reliability.smart_predict_failure = Some(predicted),
+                    Err(error) => push_fault_bounded(
+                        &mut provider_faults,
+                        fault_record("smart-predict-failure", &error),
+                    ),
+                }
                 match query_ata_smart_attributes_bounded(
                     index,
                     expected,
                     control.cancellation().child(),
                 ) {
                     Ok(attributes) if !attributes.is_empty() => {
+                        device.ata_table_available = Some(true);
                         device.ata_smart_attributes = attributes;
                         device.source_notes.push("ATA SMART attribute table via SMART_RCV_DRIVE_DATA; raw values are vendor-defined and are not converted into AetherCore health claims.".into());
                     }
-                    Ok(_) => device.source_notes.push("Direct ATA SMART attributes were not available through SMART_RCV_DRIVE_DATA; standardized Windows reliability counters remain authoritative when present.".into()),
+                    Ok(_) => {
+                        device.ata_table_available = Some(false);
+                        device.source_notes.push("Direct ATA SMART attributes were not available through SMART_RCV_DRIVE_DATA; standardized Windows reliability counters remain authoritative when present.".into());
+                    }
                     Err(error) => {
-                        push_fault_bounded(&mut provider_faults, fault_record("ata-smart-ioctl", &error));
+                        device.ata_table_available = Some(false);
+                        push_fault_bounded(
+                            &mut provider_faults,
+                            fault_record("ata-smart-ioctl", &error),
+                        );
                         device.source_notes.push("Direct ATA SMART attributes were not available through SMART_RCV_DRIVE_DATA; standardized Windows reliability counters remain authoritative when present.".into());
                     }
                 }
@@ -347,6 +369,7 @@ fn query_physical_disks(
             windows_health_status: health_name(prop_u16(&o, "HealthStatus")),
             operational_status: Vec::new(),
             ata_smart_attributes: Vec::new(),
+            ata_table_available: None,
             reliability: StorageReliability::default(),
             severity: "Unknown".into(),
             summary: String::new(),
@@ -603,6 +626,62 @@ fn query_ata_smart_attributes_bounded(
         },
     )
     .map_err(isolated_fault_to_telemetry)
+}
+
+fn query_predict_failure_bounded(
+    index: u32,
+    expected: DiskIdentity,
+    token: CancellationToken,
+) -> Result<bool> {
+    run_isolated_gated_with_token(
+        direct_ioctl_gate(),
+        "hardware-telemetry",
+        "smart-predict-failure",
+        STORAGE_IOCTL_TIMEOUT,
+        token,
+        move |_control| {
+            query_predict_failure(index, &expected).map_err(|error| {
+                CollectorFault::new(
+                    "hardware-telemetry",
+                    "smart-predict-failure",
+                    fault_kind(&error),
+                    error.to_string(),
+                )
+            })
+        },
+    )
+    .map_err(isolated_fault_to_telemetry)
+}
+
+/// `IOCTL_STORAGE_PREDICT_FAILURE` answers a `STORAGE_PREDICT_FAILURE`: a `u32` and 512 vendor
+/// bytes. Read-only; a drive that does not support it fails the call, which is "not asked", not
+/// "no failure predicted".
+fn query_predict_failure(index: u32, expected: &DiskIdentity) -> Result<bool> {
+    let handle_owner = open_verified_drive(index, expected)?;
+    let mut answer = [0u8; 4 + 512];
+    let mut returned = 0u32;
+    unsafe {
+        DeviceIoControl(
+            handle_owner.get(),
+            IOCTL_STORAGE_PREDICT_FAILURE,
+            None,
+            0,
+            Some(answer.as_mut_ptr().cast()),
+            answer.len() as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .map_err(win)?;
+    let returned = usize::try_from(returned)
+        .ok()
+        .filter(|len| *len <= answer.len())
+        .ok_or_else(|| {
+            TelemetryError::MalformedResponse("failure-prediction byte count was invalid".into())
+        })?;
+    parse_predict_failure(&answer[..returned]).ok_or_else(|| {
+        TelemetryError::MalformedResponse("failure-prediction answer was too short".into())
+    })
 }
 
 fn query_nvme_health_bounded(

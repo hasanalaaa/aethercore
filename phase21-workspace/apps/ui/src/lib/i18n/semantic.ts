@@ -94,7 +94,7 @@ const cleanupProviderKeys: Record<string, MessageKey> = {
 };
 const storageCounterKeys: Record<string, MessageKey> = {
   'uncorrected read error count':'tech.storage.counter.readErrors', 'uncorrected write error count':'tech.storage.counter.writeErrors',
-  'NVMe critical-warning flags':'tech.storage.counter.nvmeCritical', 'NVMe media/data-integrity error count':'tech.storage.counter.nvmeMedia',
+  'NVMe critical-warning flags':'tech.storage.counter.nvmeCritical', 'NVMe media/data-integrity error count':'tech.storage.counter.nvmeMedia', 'ATA SMART attribute table':'tech.storage.counter.ataTable',
 };
 export function localizeCollector(value: string, locale: Locale): string { return td(collectorKeys[value] ?? 'perf.collector.unknown', locale); }
 export function localizeCollectorFault(value: string, locale: Locale): string { return collectorFaultKeys[value] ? td(collectorFaultKeys[value], locale) : td('perf.fault.Internal', locale); }
@@ -204,6 +204,8 @@ const exactOwnedText: Record<string, MessageKey> = {
   'NVMe reports the available spare has fallen below its threshold.':'tech.storage.nvmeBit.spare',
   'NVMe reports the temperature is outside its operating limits.':'tech.storage.nvmeBit.temperature',
   "NVMe reports the device's reliability is degraded.":'tech.storage.nvmeBit.reliability',
+  "The drive's own SMART self-assessment predicts a failure.":'tech.storage.predictFailure',
+  'No increase in the reported error counters since the previous scan.':'tech.storage.noIncrease',
   'NVMe reports the device has become read-only.':'tech.storage.nvmeBit.readOnly',
   'NVMe reports its volatile memory backup has failed.':'tech.storage.nvmeBit.volatileBackup',
   'NVMe reports its persistent memory region is unreliable.':'tech.storage.nvmeBit.persistentMemory',
@@ -387,6 +389,7 @@ export function localizeOwnedText(value: string, locale: Locale, options: { data
   let m: RegExpMatchArray | null;
   if ((m = value.match(/^(\d+) uncorrected read error\(s\) were reported\.$/))) return { text: t('tech.storage.readErrors', locale, { count: m[1] }), localized: true };
   if ((m = value.match(/^(\d+) uncorrected write error\(s\) were reported\.$/))) return { text: t('tech.storage.writeErrors', locale, { count: m[1] }), localized: true };
+  if ((m = value.match(/^(\d+) more (uncorrected read|uncorrected write|NVMe media\/data-integrity) error\(s\) than at the previous scan\.$/))) { const key = m[2] === 'uncorrected read' ? 'tech.storage.moreReadErrors' : m[2] === 'uncorrected write' ? 'tech.storage.moreWriteErrors' : 'tech.storage.moreMediaErrors'; return { text: t(key, locale, { count: m[1] }), localized: true }; }
   if ((m = value.match(/^NVMe available spare \((\d+)%\) is below the device's own threshold \((\d+)%\)\.$/))) return { text: t('tech.storage.spareBelowThreshold', locale, { spare: m[1], threshold: m[2] }), localized: true };
   if ((m = value.match(/^NVMe SMART critical-warning flags are set \((0x[0-9A-Fa-f]+)\)\.$/))) return { text: t('tech.storage.nvmeCritical', locale, { flag: m[1] }), localized: true };
   if ((m = value.match(/^Current temperature \(([-\d.]+) °C\) is at or above the device\/Windows-reported maximum \(([-\d.]+) °C\)\.$/))) return { text: t('tech.storage.temperatureLimit', locale, { current:m[1], max:m[2] }), localized: true };

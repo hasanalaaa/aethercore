@@ -225,6 +225,10 @@ pub struct StorageReliability {
     /// written before it was read.
     #[serde(default)]
     pub nvme_available_spare_threshold_percent: Option<u8>,
+    /// The drive's own failure prediction (`IOCTL_STORAGE_PREDICT_FAILURE`); absent when it could
+    /// not be asked, which is not "no failure predicted".
+    #[serde(default)]
+    pub smart_predict_failure: Option<bool>,
     pub nvme_percentage_used: Option<u8>,
     /// NVMe SMART counters are 128-bit values. Strings preserve the exact device-reported value.
     pub nvme_media_errors: Option<String>,
@@ -246,6 +250,11 @@ pub struct StorageDeviceTelemetry {
     pub operational_status: Vec<String>,
     #[serde(default)]
     pub ata_smart_attributes: Vec<AtaSmartAttribute>,
+    /// Whether the ATA SMART table could be read: `None` when it was never asked (not an ATA disk),
+    /// `Some(false)` when it was asked and did not answer. Coverage only; the table's values never
+    /// drive a verdict.
+    #[serde(default)]
+    pub ata_table_available: Option<bool>,
     pub reliability: StorageReliability,
     pub severity: String,
     pub summary: String,
@@ -357,6 +366,67 @@ pub(crate) fn parse_storage_device_descriptor(bytes: &[u8]) -> Option<(u32, Stri
     Some((bus, serial))
 }
 
+/// `STORAGE_PREDICT_FAILURE`: a `u32` that is non-zero when the drive predicts its own failure,
+/// followed by vendor bytes that are not interpreted. Fewer than four bytes is no answer.
+#[cfg(any(windows, test))]
+pub(crate) fn parse_predict_failure(bytes: &[u8]) -> Option<bool> {
+    let word: [u8; 4] = bytes.get(..4)?.try_into().ok()?;
+    Some(u32::from_le_bytes(word) != 0)
+}
+
+/// Adds what changed since `previous` to `current.reasons`, for the same disk only (same serial,
+/// bus and size). A counter that went down is a reset or a replacement, not an improvement, and
+/// says nothing; a counter that could not be read on either side says nothing.
+pub fn compare_counters(previous: &StorageDeviceTelemetry, current: &mut StorageDeviceTelemetry) {
+    let same = |d: &StorageDeviceTelemetry| DiskIdentity {
+        serial: d.serial_number.clone(),
+        bus: d.bus_type.clone(),
+        size_bytes: Some(d.size_bytes).filter(|size| *size > 0),
+    };
+    if bind_handle(&same(previous), &same(current)) != HandleBinding::Confirmed {
+        return;
+    }
+    let (p, c) = (&previous.reliability, &current.reliability);
+    let big = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<u128>().ok());
+    let pairs: [(u8, Option<u128>, Option<u128>); 3] = [
+        (
+            0,
+            p.read_errors_uncorrected.map(u128::from),
+            c.read_errors_uncorrected.map(u128::from),
+        ),
+        (
+            1,
+            p.write_errors_uncorrected.map(u128::from),
+            c.write_errors_uncorrected.map(u128::from),
+        ),
+        (2, big(&p.nvme_media_errors), big(&c.nvme_media_errors)),
+    ];
+    let mut compared_nonzero = false;
+    let mut grew = false;
+    for (kind, before, now) in pairs {
+        let (Some(before), Some(now)) = (before, now) else {
+            continue;
+        };
+        compared_nonzero |= now > 0;
+        if now > before {
+            grew = true;
+            let more = now - before;
+            current.reasons.push(match kind {
+                0 => format!("{more} more uncorrected read error(s) than at the previous scan."),
+                1 => format!("{more} more uncorrected write error(s) than at the previous scan."),
+                _ => format!(
+                    "{more} more NVMe media/data-integrity error(s) than at the previous scan."
+                ),
+            });
+        }
+    }
+    if compared_nonzero && !grew {
+        current
+            .reasons
+            .push("No increase in the reported error counters since the previous scan.".into());
+    }
+}
+
 /// Folds an NVMe health log into the reliability record. `PercentageUsed` may exceed 100 and is
 /// kept as reported; a temperature the device did not report stays absent.
 #[cfg(any(windows, test))]
@@ -418,6 +488,11 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
     // of health. `windows_health_status` is unaffected: it is Windows' own
     // independent verdict, read regardless of whether these counters exist.
     let mut unavailable = Vec::new();
+    // Coverage follows the bus: a SATA disk is not charged with counters only NVMe has, and an
+    // NVMe disk is not charged with an ATA table.
+    let is_nvme = device.bus_type.eq_ignore_ascii_case("NVMe");
+    let is_ata =
+        device.bus_type.eq_ignore_ascii_case("SATA") || device.bus_type.eq_ignore_ascii_case("ATA");
 
     if device
         .windows_health_status
@@ -446,7 +521,8 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
             action.extend(critical_warning_meanings(n).into_iter().map(String::from));
         }
         Some(_) => {}
-        None => unavailable.push("NVMe critical-warning flags"),
+        None if is_nvme => unavailable.push("NVMe critical-warning flags"),
+        None => {}
     }
     // Below the device's own threshold, and the device has not (yet) raised the flag itself.
     if let (Some(spare), Some(threshold)) = (
@@ -468,7 +544,14 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
                 );
             }
         }
-        None => unavailable.push("NVMe media/data-integrity error count"),
+        None if is_nvme => unavailable.push("NVMe media/data-integrity error count"),
+        None => {}
+    }
+    if is_ata && device.ata_table_available == Some(false) {
+        unavailable.push("ATA SMART attribute table");
+    }
+    if r.smart_predict_failure == Some(true) {
+        action.push("The drive's own SMART self-assessment predicts a failure.".to_string());
     }
     if r.wear_percent_used.is_some_and(|v| v >= 100)
         || r.nvme_percentage_used.is_some_and(|v| v >= 100)
@@ -613,6 +696,152 @@ mod tests {
             parse_storage_device_descriptor(&d),
             None,
             "a size larger than the buffer is malformed"
+        );
+    }
+
+    // P81-03: coverage follows the bus, and a counter is compared only with the same disk's own past.
+    fn disk(bus: &str) -> StorageDeviceTelemetry {
+        let mut d = StorageDeviceTelemetry {
+            windows_health_status: "Healthy".into(),
+            bus_type: bus.into(),
+            serial_number: "S1".into(),
+            size_bytes: 1_000,
+            ..Default::default()
+        };
+        d.reliability.read_errors_uncorrected = Some(0);
+        d.reliability.write_errors_uncorrected = Some(0);
+        d
+    }
+
+    fn with_attribute(mut d: StorageDeviceTelemetry) -> StorageDeviceTelemetry {
+        d.ata_smart_attributes = vec![AtaSmartAttribute {
+            id: 5,
+            current: 100,
+            worst: 100,
+            ..Default::default()
+        }];
+        d
+    }
+
+    #[test]
+    fn a_healthy_sata_disk_is_not_charged_with_missing_nvme_counters() {
+        let mut d = with_attribute(disk("SATA"));
+        classify_storage(&mut d);
+        assert_eq!(d.severity, "Normal");
+        assert!(
+            d.reasons.iter().all(|r| !r.contains("NVMe")),
+            "{:?}",
+            d.reasons
+        );
+        assert!(d.summary.contains("do not currently show"), "{}", d.summary);
+    }
+
+    #[test]
+    fn a_sata_disk_whose_smart_table_could_not_be_read_says_so_and_is_not_called_clean() {
+        let mut d = disk("SATA");
+        d.ata_table_available = Some(false);
+        classify_storage(&mut d);
+        assert!(
+            d.reasons
+                .iter()
+                .any(|r| r.contains("ATA SMART attribute table")),
+            "{:?}",
+            d.reasons
+        );
+        assert!(
+            !d.summary.contains("do not currently show"),
+            "{}",
+            d.summary
+        );
+        let mut usb = disk("USB");
+        classify_storage(&mut usb);
+        assert!(
+            usb.reasons
+                .iter()
+                .all(|r| !r.contains("NVMe") && !r.contains("ATA SMART")),
+            "a bridge we do not query is not charged with either: {:?}",
+            usb.reasons
+        );
+    }
+
+    #[test]
+    fn a_failure_prediction_from_the_drive_is_an_action_and_absence_is_not_a_verdict() {
+        let mut predicted = with_attribute(disk("SATA"));
+        predicted.reliability.smart_predict_failure = Some(true);
+        classify_storage(&mut predicted);
+        assert_eq!(predicted.severity, "ActionRequired");
+        assert!(
+            predicted.reasons.iter().any(|r| r.contains("predicts")),
+            "{:?}",
+            predicted.reasons
+        );
+        let mut fine = with_attribute(disk("SATA"));
+        fine.reliability.smart_predict_failure = Some(false);
+        classify_storage(&mut fine);
+        assert_eq!(fine.severity, "Normal");
+        assert_eq!(parse_predict_failure(&[1, 0, 0, 0, 9, 9]), Some(true));
+        assert_eq!(parse_predict_failure(&[0, 0, 0, 0]), Some(false));
+        assert_eq!(
+            parse_predict_failure(&[1, 0]),
+            None,
+            "a short answer is no answer"
+        );
+    }
+
+    #[test]
+    fn counters_are_compared_only_with_the_same_disk_and_never_go_negative() {
+        let mut before = disk("NVMe");
+        before.reliability.read_errors_uncorrected = Some(2);
+        before.reliability.nvme_media_errors = Some((u128::MAX - 3).to_string());
+        let mut now = before.clone();
+        now.reliability.read_errors_uncorrected = Some(5);
+        now.reliability.nvme_media_errors = Some(u128::MAX.to_string());
+        compare_counters(&before, &mut now);
+        let text = now.reasons.join(" | ");
+        assert!(
+            text.contains("3 more uncorrected read error(s) than at the previous scan."),
+            "{text}"
+        );
+        assert!(
+            text.contains("3 more NVMe media/data-integrity error(s)"),
+            "128-bit delta is exact: {text}"
+        );
+
+        let mut unchanged = before.clone();
+        compare_counters(&before, &mut unchanged);
+        assert!(
+            unchanged.reasons.iter().any(|r| r.contains("No increase")),
+            "{:?}",
+            unchanged.reasons
+        );
+
+        let mut reset = before.clone();
+        reset.reliability.read_errors_uncorrected = Some(1);
+        reset.reliability.nvme_media_errors = Some("0".into());
+        compare_counters(&before, &mut reset);
+        assert!(
+            reset.reasons.iter().all(|r| !r.contains("more")),
+            "a reset is not an improvement or a delta: {:?}",
+            reset.reasons
+        );
+
+        let mut replaced = before.clone();
+        replaced.serial_number = "S2".into();
+        replaced.reliability.read_errors_uncorrected = Some(9);
+        compare_counters(&before, &mut replaced);
+        assert!(
+            replaced.reasons.is_empty(),
+            "another disk has no past to compare with: {:?}",
+            replaced.reasons
+        );
+
+        let mut unread = before.clone();
+        unread.reliability.read_errors_uncorrected = None;
+        compare_counters(&before, &mut unread);
+        assert!(
+            unread.reasons.iter().all(|r| !r.contains("read")),
+            "{:?}",
+            unread.reasons
         );
     }
 

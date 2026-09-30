@@ -16,6 +16,7 @@ use aethercore_crash_diagnostics::{
 };
 use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
+    compare_counters,
     measurements::{Battery, BootRecord, NetworkAdapter, ThermalZone},
 };
 // The service converts these to the wire and depends on this crate, not on the telemetry one.
@@ -681,6 +682,32 @@ fn join_provider<T>(
     }
 }
 
+/// P81-03: says what changed for a disk since the owner's previous stored scan. Only the same
+/// disk is compared (`compare_counters` checks serial, bus and size); a missing or unreadable
+/// previous scan says nothing. No new persistence: it reads the snapshot the engine already keeps.
+fn compare_with_previous_scan(
+    db: &Database,
+    owner_principal_key: &str,
+    storage: &mut [StorageDeviceTelemetry],
+) {
+    let Ok(Some(record)) = db.latest_diagnostic_snapshot_for_owner(owner_principal_key) else {
+        return;
+    };
+    let Ok(previous) = serde_json::from_str::<DiagnosticsSnapshot>(&record.snapshot_json) else {
+        return;
+    };
+    for device in storage.iter_mut().filter(|d| !d.serial_number.is_empty()) {
+        let serial = device.serial_number.clone();
+        for before in previous
+            .storage
+            .iter()
+            .filter(|b| b.serial_number == serial)
+        {
+            compare_counters(before, device);
+        }
+    }
+}
+
 fn run(inner: Arc<Inner>, owner_principal_key: String) {
     const PROVIDER_WATCHDOG: Duration = Duration::from_secs(10);
     let scan_id = {
@@ -751,10 +778,11 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         warnings.extend(c.warnings.clone());
         provider_faults.extend(c.provider_faults.iter().map(ProviderFaultRecord::from));
     }
-    let storage = hardware
+    let mut storage = hardware
         .as_ref()
         .map(|h| h.storage.clone())
         .unwrap_or_default();
+    compare_with_previous_scan(&inner.db, &owner_principal_key, &mut storage);
     let memory = hardware.as_ref().and_then(|h| h.memory.clone());
     let event_window_days = reported_event_window_days(crash.as_ref());
     let events = crash.as_ref().map(|c| c.events.clone()).unwrap_or_default();
@@ -1107,6 +1135,60 @@ mod tests {
         ) -> std::result::Result<CrashDiagnosticsSnapshot, CollectorFault> {
             Ok(self.c.clone())
         }
+    }
+    struct GrowingErrors(std::sync::atomic::AtomicU64);
+    impl Backend for GrowingErrors {
+        fn hardware(
+            &self,
+            _control: CollectorControl,
+        ) -> std::result::Result<HardwareTelemetrySnapshot, CollectorFault> {
+            let n = self.0.fetch_add(3, std::sync::atomic::Ordering::SeqCst);
+            let mut disk = StorageDeviceTelemetry {
+                serial_number: "S1".into(),
+                bus_type: "SATA".into(),
+                size_bytes: 1_000,
+                windows_health_status: "Healthy".into(),
+                ..Default::default()
+            };
+            disk.reliability.read_errors_uncorrected = Some(2 + n);
+            Ok(HardwareTelemetrySnapshot {
+                storage: vec![disk],
+                ..Default::default()
+            })
+        }
+        fn crashes(
+            &self,
+            _control: CollectorControl,
+        ) -> std::result::Result<CrashDiagnosticsSnapshot, CollectorFault> {
+            Ok(CrashDiagnosticsSnapshot::default())
+        }
+    }
+    #[test]
+    fn a_second_scan_says_what_changed_for_the_same_disk() {
+        let (db, _tmp) = db();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(GrowingErrors(std::sync::atomic::AtomicU64::new(0))),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let first = wait_for_scan(&e);
+        assert!(
+            first.storage[0].reasons.iter().all(|r| !r.contains("more")),
+            "{:?}",
+            first.storage[0].reasons
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let second = wait_for_scan(&e);
+        assert!(
+            second.storage[0]
+                .reasons
+                .iter()
+                .any(|r| r == "3 more uncorrected read error(s) than at the previous scan."),
+            "{:?}",
+            second.storage[0].reasons
+        );
+        drop(e);
+        drop(db);
     }
     struct PartialMock;
     impl Backend for PartialMock {
