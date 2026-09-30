@@ -257,6 +257,19 @@ fn elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users() {
             at(&scan(root.as_path()), "SEC-FS-004", &key).is_some(),
             "{sid} was trusted"
         );
+        let remove = std::process::Command::new("icacls")
+            .arg(&key)
+            .args(["/remove:g", &format!("*{sid}")])
+            .status()
+            .unwrap();
+        assert!(remove.success());
+        let baseline = scan(root.as_path());
+        assert!(
+            !baseline
+                .iter()
+                .any(|f| matches!(f.id.as_str(), "SEC-FS-003" | "SEC-FS-004" | "SEC-FS-901")),
+            "the next SID must start from the private baseline: {baseline:#?}"
+        );
     }
     let deny = std::process::Command::new("icacls")
         .arg(&key)
@@ -266,7 +279,10 @@ fn elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users() {
     assert!(deny.success());
     let unreadable = scan(root.as_path());
     assert!(
-        unreadable.iter().any(|f| f.id == "SEC-FS-901"),
+        unreadable.iter().any(|f| f.id == "SEC-FS-901"
+            && f.evidence
+                .iter()
+                .any(|e| e.fact.contains(&key.display().to_string()))),
         "an unreadable ACL was reported clean: {unreadable:#?}"
     );
 }
