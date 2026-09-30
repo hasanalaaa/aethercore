@@ -207,6 +207,7 @@ const exactOwnedText: Record<string, MessageKey> = {
   "The drive's own SMART self-assessment predicts a failure.":'tech.storage.predictFailure',
   'No increase in the reported error counters since the previous scan.':'tech.storage.noIncrease',
   'Only the first 32 thermal zones are shown.':'tech.thermal.zonesCut',
+  'Only the first 32 batteries are shown.':'tech.battery.cut',
   'NVMe reports the device has become read-only.':'tech.storage.nvmeBit.readOnly',
   'NVMe reports its volatile memory backup has failed.':'tech.storage.nvmeBit.volatileBackup',
   'NVMe reports its persistent memory region is unreliable.':'tech.storage.nvmeBit.persistentMemory',

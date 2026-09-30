@@ -17,7 +17,9 @@ use aethercore_crash_diagnostics::{
 use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
     compare_counters,
-    measurements::{Battery, BootRecord, MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped},
+    measurements::{
+        Battery, BootRecord, MAX_BATTERIES, MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped,
+    },
 };
 // The service converts these to the wire and depends on this crate, not on the telemetry one.
 pub use aethercore_hardware_telemetry::measurements;
@@ -794,6 +796,16 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
     if thermal_cut {
         warnings.push("Only the first 32 thermal zones are shown.".into());
     }
+    let (batteries, batteries_cut) = capped(
+        hardware
+            .as_ref()
+            .map(|h| h.batteries.clone())
+            .unwrap_or_default(),
+        MAX_BATTERIES,
+    );
+    if batteries_cut {
+        warnings.push("Only the first 32 batteries are shown.".into());
+    }
     let event_window_days = reported_event_window_days(crash.as_ref());
     let events = crash.as_ref().map(|c| c.events.clone()).unwrap_or_default();
     let crashes = crash
@@ -838,8 +850,9 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         provider_faults,
         warnings,
         thermal_zones,
-        // Batteries (P82-02B), boots and network (P83) arrive with their producers; until then the
-        // domain is empty, which reads as "not measured".
+        batteries,
+        // Boots and network (P83) arrive with their producers; until then the domain is empty,
+        // which reads as "not measured".
         ..Default::default()
     };
     let persistence_result = serde_json::to_string(&snapshot)
@@ -1229,6 +1242,44 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|w| w == "Only the first 32 thermal zones are shown."),
+            "{:?}",
+            snapshot.warnings
+        );
+        drop(e);
+        drop(db);
+    }
+    #[test]
+    fn batteries_reach_the_snapshot_one_record_each_and_a_cut_is_said() {
+        let (db, _tmp) = db();
+        let batteries: Vec<Battery> = (0..33)
+            .map(|i| Battery {
+                stable_id: format!("b{i}"),
+                design_capacity_mwh: Some(50_000),
+                ..Default::default()
+            })
+            .collect();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot {
+                    batteries,
+                    ..Default::default()
+                },
+                c: CrashDiagnosticsSnapshot::default(),
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let snapshot = wait_for_scan(&e);
+        assert_eq!(
+            snapshot.batteries.len(),
+            32,
+            "the domain's limit, never averaged"
+        );
+        assert!(
+            snapshot
+                .warnings
+                .iter()
+                .any(|w| w == "Only the first 32 batteries are shown."),
             "{:?}",
             snapshot.warnings
         );

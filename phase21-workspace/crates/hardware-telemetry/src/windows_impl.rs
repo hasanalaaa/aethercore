@@ -13,6 +13,11 @@ use aethercore_restore_point::initialize_process_com_security;
 use aethercore_windows_foundation::{ComApartment, OwnedHandle};
 use windows::{
     Win32::{
+        Devices::DeviceAndDriverInstallation::{
+            DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, HDEVINFO, SP_DEVICE_INTERFACE_DATA,
+            SP_DEVICE_INTERFACE_DETAIL_DATA_W, SetupDiDestroyDeviceInfoList,
+            SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
+        },
         Foundation::E_ACCESSDENIED,
         Storage::FileSystem::{
             CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ,
@@ -32,6 +37,10 @@ use windows::{
                 STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA,
                 StorageDeviceProperty, StorageDeviceProtocolSpecificProperty,
             },
+            Power::{
+                BATTERY_INFORMATION, BATTERY_QUERY_INFORMATION, BatteryDeviceName,
+                BatteryInformation, IOCTL_BATTERY_QUERY_INFORMATION, IOCTL_BATTERY_QUERY_TAG,
+            },
             Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
             SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX},
             Variant::VARIANT,
@@ -41,26 +50,33 @@ use windows::{
             },
         },
     },
-    core::{BSTR, PCWSTR},
+    core::{BSTR, GUID, PCWSTR},
 };
 
 use crate::{
     AtaSmartAttribute, DiskIdentity, HandleBinding, HardwareTelemetrySnapshot, MemoryTelemetry,
     NvmeHealthValues, Result, StorageDeviceTelemetry, StorageReliability, TelemetryError,
+    battery::battery_from_information,
     bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage,
-    measurements::ThermalZone, merge_nvme, parse_ata_driver_response, parse_nvme_health_log,
-    parse_predict_failure, parse_storage_device_descriptor, thermal::zone_from_wmi,
+    measurements::{Availability, Battery, Coverage, MAX_BATTERIES, ThermalZone},
+    merge_nvme, parse_ata_driver_response, parse_nvme_health_log, parse_predict_failure,
+    parse_storage_device_descriptor,
+    thermal::zone_from_wmi,
 };
 
 static STORAGE_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static DIRECT_IOCTL_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static MEMORY_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static THERMAL_GATE: OnceLock<IsolationGate> = OnceLock::new();
+static BATTERY_GATE: OnceLock<IsolationGate> = OnceLock::new();
 fn storage_gate() -> &'static IsolationGate {
     STORAGE_GATE.get_or_init(IsolationGate::default)
 }
 fn direct_ioctl_gate() -> &'static IsolationGate {
     DIRECT_IOCTL_GATE.get_or_init(IsolationGate::default)
+}
+fn battery_gate() -> &'static IsolationGate {
+    BATTERY_GATE.get_or_init(IsolationGate::default)
 }
 fn thermal_gate() -> &'static IsolationGate {
     THERMAL_GATE.get_or_init(IsolationGate::default)
@@ -207,13 +223,255 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
         }
     };
 
+    // Batteries: a desktop has none, which is normal and leaves the list empty. A read that is
+    // refused, times out or is cancelled is a fault; one battery failing is its own failed record.
+    let batteries = match run_isolated_gated_with_token(
+        battery_gate(),
+        "hardware-telemetry",
+        "batteries",
+        DEFAULT_COLLECTOR_TIMEOUT,
+        parent.child(),
+        |control| {
+            collect_batteries(&control).map_err(|error| {
+                CollectorFault::new(
+                    "hardware-telemetry",
+                    "batteries",
+                    fault_kind(&error),
+                    error.to_string(),
+                )
+            })
+        },
+    ) {
+        Ok(batteries) => batteries,
+        Err(error) => {
+            provider_faults.push(CollectorFaultRecord::from(&error));
+            Vec::new()
+        }
+    };
+
     Ok(HardwareTelemetrySnapshot {
         storage,
         memory,
         thermal_zones,
+        batteries,
         provider_faults,
         warnings,
     })
+}
+
+struct DeviceInfoSet(HDEVINFO);
+impl Drop for DeviceInfoSet {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = SetupDiDestroyDeviceInfoList(self.0);
+        }
+    }
+}
+
+/// `GUID_DEVICE_BATTERY`: the device-interface class of every battery Windows can query.
+const GUID_DEVICE_BATTERY: GUID = GUID::from_u128(0x72631e54_78a4_11d0_bcf7_00aa00b7b32a);
+
+fn collect_batteries(control: &CollectorControl) -> Result<Vec<Battery>> {
+    checkpoint(control, "battery.begin")?;
+    let devices = DeviceInfoSet(
+        unsafe {
+            SetupDiGetClassDevsW(
+                Some(&GUID_DEVICE_BATTERY),
+                PCWSTR::null(),
+                None,
+                DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
+            )
+        }
+        .map_err(win)?,
+    );
+    let observed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    for index in 0..MAX_BATTERIES as u32 {
+        checkpoint(control, "battery.device")?;
+        let mut interface = SP_DEVICE_INTERFACE_DATA {
+            cbSize: size_of::<SP_DEVICE_INTERFACE_DATA>() as u32,
+            ..Default::default()
+        };
+        // ERROR_NO_MORE_ITEMS ends the enumeration.
+        if unsafe {
+            SetupDiEnumDeviceInterfaces(
+                devices.0,
+                None,
+                &GUID_DEVICE_BATTERY,
+                index,
+                &mut interface,
+            )
+        }
+        .is_err()
+        {
+            break;
+        }
+        let path = device_interface_path(&devices, &interface)?;
+        out.push(
+            query_battery(&path, observed).unwrap_or_else(|error| Battery {
+                stable_id: path.clone(),
+                display_name: String::new(),
+                coverage: Coverage {
+                    source: "IOCTL_BATTERY_QUERY_INFORMATION".into(),
+                    observed_unix_ms: Some(observed),
+                    window_days: None,
+                    availability: if matches!(error, TelemetryError::PermissionDenied(_)) {
+                        Availability::Denied
+                    } else {
+                        Availability::Failed
+                    },
+                    reason_key: "measurement.reason.readFailed".into(),
+                },
+                ..Default::default()
+            }),
+        );
+    }
+    Ok(out)
+}
+
+fn device_interface_path(
+    devices: &DeviceInfoSet,
+    interface: &SP_DEVICE_INTERFACE_DATA,
+) -> Result<String> {
+    // First call asks for the size it needs (it fails with ERROR_INSUFFICIENT_BUFFER by design).
+    let mut required = 0u32;
+    let _ = unsafe {
+        SetupDiGetDeviceInterfaceDetailW(devices.0, interface, None, 0, Some(&mut required), None)
+    };
+    let header = size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>();
+    let required = usize::try_from(required).unwrap_or(0);
+    if required < header || required > 4096 {
+        return Err(TelemetryError::MalformedResponse(
+            "battery interface detail size was invalid".into(),
+        ));
+    }
+    let mut words = vec![0u64; required.div_ceil(8)];
+    let detail = words.as_mut_ptr() as *mut SP_DEVICE_INTERFACE_DETAIL_DATA_W;
+    unsafe {
+        (*detail).cbSize = header as u32;
+        SetupDiGetDeviceInterfaceDetailW(
+            devices.0,
+            interface,
+            Some(detail),
+            required as u32,
+            None,
+            None,
+        )
+    }
+    .map_err(win)?;
+    let path_offset = offset_of!(SP_DEVICE_INTERFACE_DETAIL_DATA_W, DevicePath);
+    let bytes = unsafe { std::slice::from_raw_parts(words.as_ptr() as *const u8, required) };
+    let wide: Vec<u16> = bytes[path_offset..]
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|c| *c != 0)
+        .collect();
+    Ok(String::from_utf16_lossy(&wide))
+}
+
+fn query_battery(path: &str, observed_unix_ms: i64) -> Result<Battery> {
+    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    // The battery IOCTLs require read and write access to the device object; they only query.
+    const GENERIC_READ_WRITE: u32 = 0xC000_0000;
+    let handle = unsafe {
+        CreateFileW(
+            PCWSTR(wide.as_ptr()),
+            GENERIC_READ_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAGS_AND_ATTRIBUTES(FILE_ATTRIBUTE_NORMAL.0),
+            None,
+        )
+    }
+    .map_err(win)?;
+    let owner = OwnedHandle::new(handle);
+
+    let wait: u32 = 0;
+    let mut tag: u32 = 0;
+    let mut returned = 0u32;
+    unsafe {
+        DeviceIoControl(
+            owner.get(),
+            IOCTL_BATTERY_QUERY_TAG,
+            Some((&wait as *const u32).cast()),
+            size_of::<u32>() as u32,
+            Some((&mut tag as *mut u32).cast()),
+            size_of::<u32>() as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .map_err(win)?;
+    if tag == 0 {
+        return Err(TelemetryError::Unavailable(
+            "the battery reported no tag: it is not present".into(),
+        ));
+    }
+
+    let mut info = BATTERY_INFORMATION::default();
+    let mut query = BATTERY_QUERY_INFORMATION {
+        BatteryTag: tag,
+        InformationLevel: BatteryInformation,
+        AtRate: 0,
+    };
+    unsafe {
+        DeviceIoControl(
+            owner.get(),
+            IOCTL_BATTERY_QUERY_INFORMATION,
+            Some((&query as *const BATTERY_QUERY_INFORMATION).cast()),
+            size_of::<BATTERY_QUERY_INFORMATION>() as u32,
+            Some((&mut info as *mut BATTERY_INFORMATION).cast()),
+            size_of::<BATTERY_INFORMATION>() as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .map_err(win)?;
+    if (returned as usize) < size_of::<BATTERY_INFORMATION>() {
+        return Err(TelemetryError::MalformedResponse(
+            "BATTERY_INFORMATION was shorter than its declared size".into(),
+        ));
+    }
+
+    // The device name is a nicety: without it the interface path names the battery.
+    query.InformationLevel = BatteryDeviceName;
+    let mut name = [0u16; 128];
+    let name_read = unsafe {
+        DeviceIoControl(
+            owner.get(),
+            IOCTL_BATTERY_QUERY_INFORMATION,
+            Some((&query as *const BATTERY_QUERY_INFORMATION).cast()),
+            size_of::<BATTERY_QUERY_INFORMATION>() as u32,
+            Some(name.as_mut_ptr().cast()),
+            (name.len() * 2) as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .is_ok();
+    let display_name = if name_read {
+        let units = (returned as usize / 2).min(name.len());
+        String::from_utf16_lossy(&name[..units])
+            .trim_end_matches('\0')
+            .trim()
+            .to_string()
+    } else {
+        String::new()
+    };
+
+    Ok(battery_from_information(
+        path,
+        &display_name,
+        info.Capabilities,
+        info.DesignedCapacity,
+        info.FullChargedCapacity,
+        info.CycleCount,
+        observed_unix_ms,
+    ))
 }
 
 fn collect_thermal_zones(control: &CollectorControl) -> Result<Vec<ThermalZone>> {

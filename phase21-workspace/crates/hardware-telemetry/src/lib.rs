@@ -4,6 +4,8 @@ use aethercore_collector_runtime::CollectorFaultRecord;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+#[cfg(any(windows, test))]
+mod battery;
 pub mod measurements;
 #[cfg(any(windows, test))]
 mod thermal;
@@ -281,6 +283,8 @@ pub struct HardwareTelemetrySnapshot {
     pub memory: Option<MemoryTelemetry>,
     #[serde(default)]
     pub thermal_zones: Vec<measurements::ThermalZone>,
+    #[serde(default)]
+    pub batteries: Vec<measurements::Battery>,
     #[serde(default)]
     pub provider_faults: Vec<CollectorFaultRecord>,
     pub warnings: Vec<String>,
