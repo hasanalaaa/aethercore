@@ -547,7 +547,9 @@ const STREAM: readonly UiKernelEvent[] = [
   event('insights', insights),
   event('deepScanSnapshot', deepScan),
   event('plan', plan),
-  event('recoveryHistory', { entries: [fill({ seq: 1, planId: plan.id, severity: 'Amber', kind: 'CleanupInterrupted', summary: 'Cleanup was interrupted after deletion began', detail: 'AetherCore did not replay deletion after restart. Run a fresh cleanup scan before any further action.', restorePointSequence: 42, backupRoot: 'C:\\ProgramData\\AetherCore\\backup\\042', createdUnixMs: NOW })] }),
+  event('recoveryHistory', { entries: [fill({ seq: 1, planId: plan.id, severity: 'Amber', kind: 'CleanupInterrupted', summary: 'Cleanup was interrupted after deletion began', detail: 'AetherCore did not replay deletion after restart. Run a fresh cleanup scan before any further action.', restorePointSequence: 42, backupRoot: 'C:\\ProgramData\\AetherCore\\backup\\042', createdUnixMs: NOW }),
+    // What crates/driver-install records when a device fails post-install verification (P84-05).
+    fill({ seq: 2, planId: plan.id, severity: 'warning', kind: 'verification-failure', summary: 'A device needs recovery review', detail: 'The installation result or PnP health check failed. The restore point and driver backup evidence were preserved.', restorePointSequence: 43, backupRoot: 'C:\\ProgramData\\AetherCore\\recovery\\driver-backups\\plan-fixture-2', createdUnixMs: NOW })] }),
   event('startupHistory', { entries: [fill({ changeId: 'ch-1', originChangeId: '', planId: plan.id, itemId: 'startup-0', kind: 'Registry', displayName: 'Adobe Creative Cloud Desktop Application Startup Helper', direction: 'Disable', state: 'Applied', detail: '', createdUnixMs: NOW, updatedUnixMs: NOW, restoredUnixMs: 0, restorable: true })] }),
   event('diagnosticsHistory', { entries: [fill({ scanId: 'diag-fixture-1', state: 'Ready', collectedUnixMs: NOW, warningCount: 1, cardCount: 2 })] }),
 ];

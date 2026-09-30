@@ -1,4 +1,4 @@
-import type { DriverCandidate, DriverDevice, DriverHub } from '../contracts';
+import type { DriverCandidate, DriverDevice, DriverHub, RecoveryEntry } from '../contracts';
 import { hasMessageKey, t, td, tp, type Locale, type MessageKey } from './runtime';
 
 // P77-01: the display boundary fails closed. An enum value or id the app does not know reads as
@@ -516,6 +516,21 @@ export function driverStateLabel(device: DriverDevice, locale: Locale): string {
 
 export function driverTargetLabel(candidate: DriverCandidate, locale: Locale): string {
   return candidate.targetVersion || (candidate.driverDateIso ? t('drivers.target.offerDate',locale,{date:candidate.driverDateIso}) : t('drivers.target.offer',locale));
+}
+/** Recovery kinds only the driver installer records (`crates/driver-install/src/lib.rs`). */
+const driverRecoveryKinds = new Set(['install-failure', 'verification-failure', 'interrupted-mutation', 'restore-transaction-close-failure', 'safe-failure']);
+/**
+ * What a driver recovery entry has to recover with, and the manual way back (P84-05): the restore
+ * point and the exported files, or that there are none. Never a promise that recovery will work and
+ * never a button: AetherCore does not roll a driver back (D17). Empty for other domains' entries.
+ */
+export function driverRecoveryMeans(entry: Pick<RecoveryEntry, 'kind' | 'restorePointSequence' | 'backupRoot'>, locale: Locale): string[] {
+  if (!driverRecoveryKinds.has(entry.kind)) return [];
+  return [
+    entry.restorePointSequence > 0 ? t('recovery.driver.restorePoint',locale,{sequence:entry.restorePointSequence}) : td('recovery.driver.noRestorePoint',locale),
+    entry.backupRoot ? td('recovery.driver.exported',locale) : td('recovery.driver.noExport',locale),
+    td('recovery.driver.rollBack',locale),
+  ];
 }
 /**
  * Where the last driver scan looked (P84-02B): the local cache, with the day Windows last searched
