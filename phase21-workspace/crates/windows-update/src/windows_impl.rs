@@ -1,13 +1,13 @@
 use aethercore_windows_foundation::ComApartment;
 use windows::{
     Win32::{
-        Foundation::{DECIMAL, VARIANT_FALSE, VARIANT_TRUE},
+        Foundation::{DECIMAL, E_ACCESSDENIED, VARIANT_FALSE, VARIANT_TRUE},
         System::{
             Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
             UpdateAgent::{
                 AutomaticUpdates, IAutomaticUpdates2, ISearchCompletedCallback,
                 ISearchCompletedCallback_Impl, ISearchCompletedCallbackArgs, ISearchJob,
-                IUpdateSession, IWindowsDriverUpdate, IWindowsDriverUpdate4,
+                ISearchResult, IUpdateSession, IWindowsDriverUpdate, IWindowsDriverUpdate4,
                 IWindowsDriverUpdateEntry, UpdateSession, orcSucceeded, orcSucceededWithErrors,
             },
             Variant::{VARIANT, VT_DATE},
@@ -202,10 +202,17 @@ fn search_driver_offers(scope: SearchScope, stop: &AtomicBool) -> Result<Discove
     // WUA evaluates applicability. AetherCore never ranks packages by version number.
     let criteria = BSTR::from("IsInstalled=0 and Type='Driver' and IsHidden=0");
     let completed: ISearchCompletedCallback = SearchCompletedCallback.into();
-    let job = unsafe {
-        searcher
-            .BeginSearch(&criteria, &completed, &VARIANT::default())
-            .map_err(wua_err)?
+    let job = match unsafe { searcher.BeginSearch(&criteria, &completed, &VARIANT::default()) } {
+        Ok(job) => job,
+        // Measured on the PC: the agent refuses an asynchronous search (0x80070005) from a
+        // network-logon session, while its plain search answers. That search cannot be aborted,
+        // but it still runs on the bounded thread: the page gets its answer at the deadline and no
+        // second search starts until this one ends.
+        Err(error) if error.code() == E_ACCESSDENIED => {
+            let result = unsafe { searcher.Search(&criteria).map_err(wua_err)? };
+            return read_search_result(&result);
+        }
+        Err(error) => return Err(wua_err(error)),
     };
     let mut aborted = false;
     while !unsafe { job.IsCompleted().map_err(wua_err)? }.as_bool() {
@@ -226,7 +233,10 @@ fn search_driver_offers(scope: SearchScope, stop: &AtomicBool) -> Result<Discove
     if aborted {
         return Err(UpdateError::SearchTimedOut);
     }
-    let result = ended.map_err(wua_err)?;
+    read_search_result(&ended.map_err(wua_err)?)
+}
+
+fn read_search_result(result: &ISearchResult) -> Result<DiscoveryResult> {
     let result_code = unsafe { result.ResultCode().map_err(wua_err)? };
     let mut warnings = Vec::new();
     if result_code == orcSucceededWithErrors {

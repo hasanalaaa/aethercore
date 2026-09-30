@@ -20,10 +20,10 @@ fn discovers_live_driver_offers_without_installing() {
 #[test]
 #[ignore = "reads the live Windows Update Agent's local cache"]
 fn searches_the_local_cache_as_an_abortable_job() {
-    // The agent calls the search's completion callback back into this process, which COM
-    // refuses (0x80070005) unless the process allows impersonation. The service sets exactly this
-    // at startup (`initialize_process_com_security`, maintenance-service main.rs); a bare test
-    // process must do the same to stand in for it.
+    // Stand in for the service, which sets this process COM security at startup
+    // (`initialize_process_com_security`, maintenance-service main.rs). From an SSH session the
+    // agent still refuses the abortable job (0x80070005), so this probe exercises the plain
+    // search the refusal falls back to; the job path in the service's context is unmeasured.
     use windows::Win32::System::Com::{
         CoInitializeSecurity, EOAC_NONE, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE,
     };

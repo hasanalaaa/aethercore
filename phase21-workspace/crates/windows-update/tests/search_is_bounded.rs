@@ -23,8 +23,13 @@ fn the_driver_search_is_an_abortable_job_under_a_deadline() {
             "the driver search does not call {needle}"
         );
     }
+    // The one plain Search is the agent's own refusal of an abortable job (0x80070005, measured
+    // from a network-logon session); it still runs on the bounded thread.
+    let plain: Vec<_> = body.match_indices(".Search(&").map(|(at, _)| at).collect();
+    assert_eq!(plain.len(), 1, "the driver search blocks on a plain Search");
+    let refusal = body.find("E_ACCESSDENIED=>").expect("the refusal branch");
     assert!(
-        !body.contains(".Search(&"),
-        "the driver search still blocks on a plain Search"
+        refusal < plain[0] && plain[0] - refusal < 200,
+        "a plain Search outside the refusal branch"
     );
 }
