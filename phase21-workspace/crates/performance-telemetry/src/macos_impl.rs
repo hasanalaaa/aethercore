@@ -247,6 +247,7 @@ fn sample_cpu(
                 dpc_isr_busy_bp: 0,
                 context_switches_per_sec: 0,
                 processor_queue_length_x100: queue_x100.min(u32::MAX as u64),
+                sample_elapsed_ms: None,
             }),
             || unreachable_fault("cpu"),
         ),

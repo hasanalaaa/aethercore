@@ -204,6 +204,49 @@ fn classify_run_outcome(
     }
 }
 
+// Refresh slow signals only for due work that passes the fast policy gates. Cached slow
+// unknown/busy states are rechecked; they never grant admission themselves.
+fn admission_sample(
+    probe: &dyn SystemStateProbe,
+    eligibility: &EligibilityEngine,
+    workload: AutonomousWorkload,
+    cached: &SystemState,
+    mutation_active: bool,
+    now: i64,
+    next_eligible: i64,
+) -> Result<Option<SystemState>, String> {
+    if now < next_eligible
+        || eligibility
+            .evaluate(workload, cached, mutation_active)
+            .iter()
+            .any(|reason| {
+                !matches!(
+                    reason,
+                    BlockReason::Servicing
+                        | BlockReason::ServicingUnknown
+                        | BlockReason::ThermalPressure
+                        | BlockReason::ThermalPressureUnknown
+                        | BlockReason::MeteredNetwork
+                        | BlockReason::NetworkCostUnknown
+                )
+            })
+    {
+        return Ok(None);
+    }
+    probe.sample()?;
+    // Slow provider latency must not hide input, owner or session changes during collection.
+    let fresh = probe.sample_fast()?;
+    Ok((!preemption_required(
+        eligibility,
+        workload,
+        &cached.owner_principal_key,
+        cached.session_id,
+        &fresh,
+        mutation_active,
+    ))
+    .then_some(fresh))
+}
+
 fn run_loop(
     scheduler: IdleScheduler,
     kernel: Arc<OperationKernel>,
@@ -220,7 +263,7 @@ fn run_loop(
     let mut last_owner = String::new();
 
     while !scheduler.stop.load(Ordering::Acquire) {
-        let state = match probe.sample() {
+        let state = match probe.sample_fast() {
             Ok(value) => value,
             Err(error) => {
                 if error.starts_with("security-fatal:") {
@@ -238,7 +281,6 @@ fn run_loop(
             runs.clear();
         }
 
-        let mutation_active = kernel.mutations().is_active();
         let now = Utc::now().timestamp_millis();
         let mut ran = false;
 
@@ -273,15 +315,30 @@ fn run_loop(
                 );
                 return;
             };
-            if now < run.next_eligible_ms {
+            let state = match admission_sample(
+                probe.as_ref(),
+                &eligibility,
+                workload,
+                &state,
+                kernel.mutations().is_active(),
+                now,
+                run.next_eligible_ms,
+            ) {
+                Ok(Some(state)) => state,
+                Ok(None) => continue,
+                Err(error) => {
+                    warn!(%error, "idle scheduler admission probe unavailable");
+                    if error.starts_with("security-fatal:") {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            // A mutation may have started while the slow admission sample was pending.
+            if kernel.mutations().is_active() {
                 continue;
             }
-
             let policy = eligibility.policy(workload);
-            let blocked = eligibility.evaluate(workload, &state, mutation_active);
-            if !blocked.is_empty() {
-                continue;
-            }
 
             let read = match kernel.reads().try_acquire(map_read(workload)) {
                 Ok(value) => value,
@@ -588,6 +645,98 @@ mod tests {
             presentation: PresentationState::Clear,
             servicing: ServicingState::Idle,
         }
+    }
+
+    #[test]
+    fn slow_admission_probe_only_runs_for_due_fast_eligible_work() {
+        use std::sync::atomic::AtomicUsize;
+        struct Probe(AtomicUsize, SystemState);
+        impl SystemStateProbe for Probe {
+            fn sample(&self) -> Result<SystemState, String> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Ok(self.1.clone())
+            }
+            fn sample_fast(&self) -> Result<SystemState, String> {
+                Ok(self.1.clone())
+            }
+        }
+        let e = EligibilityEngine::new(SchedulerConfig::default());
+        let w = AutonomousWorkload::StartupInventory;
+        let s = eligible_state();
+        let p = Probe(AtomicUsize::new(0), s.clone());
+        assert!(
+            admission_sample(&p, &e, w, &s, false, 10, 11)
+                .unwrap()
+                .is_none()
+        );
+        let mut active = s.clone();
+        active.idle_for = Duration::ZERO;
+        assert!(
+            admission_sample(&p, &e, w, &active, false, 10, 10)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(p.0.load(Ordering::Relaxed), 0);
+        let mut cached = s.clone();
+        cached.servicing = ServicingState::Unknown;
+        assert!(
+            admission_sample(&p, &e, w, &cached, false, 10, 10)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(p.0.load(Ordering::Relaxed), 1);
+        for servicing in [ServicingState::Unknown, ServicingState::Busy] {
+            let mut next = s.clone();
+            next.servicing = servicing;
+            let p = Probe(AtomicUsize::new(0), next);
+            assert!(
+                admission_sample(&p, &e, w, &s, false, 10, 10)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        let mut next = s.clone();
+        next.owner_principal_key = "other".into();
+        let p = Probe(AtomicUsize::new(0), next);
+        assert!(
+            admission_sample(&p, &e, w, &s, false, 10, 10)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn input_during_a_slow_probe_blocks_admission() {
+        struct Changed(AtomicBool);
+        impl SystemStateProbe for Changed {
+            fn sample(&self) -> Result<SystemState, String> {
+                self.0.store(true, Ordering::Relaxed);
+                Ok(eligible_state())
+            }
+            fn sample_fast(&self) -> Result<SystemState, String> {
+                let mut state = eligible_state();
+                if self.0.load(Ordering::Relaxed) {
+                    state.idle_for = Duration::ZERO;
+                }
+                Ok(state)
+            }
+        }
+        let eligibility = EligibilityEngine::new(SchedulerConfig::default());
+        let probe = Changed(AtomicBool::new(false));
+        let cached = probe.sample_fast().unwrap();
+        assert!(
+            admission_sample(
+                &probe,
+                &eligibility,
+                AutonomousWorkload::StartupInventory,
+                &cached,
+                false,
+                10,
+                10
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[test]

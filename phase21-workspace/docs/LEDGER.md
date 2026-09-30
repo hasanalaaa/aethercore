@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P87 lane 4 (2026-09-30), task `P87-01`.
+Last moved: P87 lane 4 (2026-09-30), task `P87-08`.
 
 ---
 
@@ -58,10 +58,14 @@ print(f"rows {len(good)}  open {len(op)}  malformed {len(bad)} {bad}")
 EOF
 ```
 
-Current count (P87 lane 4 rebase, 2026-09-30): **188 rows / 23 open / 2 malformed** ['`DBT-P63-014`', '`DBT-P77-002`'].
+Current count (P87 lane 4 rebase, 2026-09-30): **192 rows / 27 open / 2 malformed** ['`DBT-P63-014`', '`DBT-P77-002`'].
 
 | id | what it is | status | evidence | machine |
 |---|---|---|---|---|
+| `DBT-P87-008` | Elevated own-profile user ACEs were misclassified as foreign access | OPEN — exact-head Windows CI pending | P87-08 resolves profile identity only from OS ProfileList registrations and canonical containment; unresolved/ambiguous identity and unsupported/unreadable ACLs degrade honestly. Trusted profile SID joins file owner/SYSTEM/Administrators; foreign and broad grants remain findings. Parent native negative control: run `36671481794` at `2b716c6`, failed on the elevated own-user ACE with SEC-FS-004/003 while three controls passed. Portable ACL controls and Mac direct-dependent tests pass. No wire SID or folder-name authority. | Windows runner |
+| `DBT-P87-007` | CLI owner key creation inherited potentially broad Windows ACLs | OPEN — exact-head Windows CI pending | P87-07 creates a protected TokenUser-only DACL with FILE_CREATE (CREATE_NEW semantics), parent-relative NtCreateFile, no file sharing/reparse traversal. Directory handles request LIST_DIRECTORY and deny delete sharing; directory-only/native path fences and owner/protection/single-ACE readback precede every seed write; unsupported ACL filesystems fail closed. Native parent negative control: run `36670616289`, head `837f345`, failed exactly on inherited versus protected permissions; overwrite and existing-junction controls passed. Unix 0600/overwrite controls pass; BCrypt and pipe DACL unchanged. No dependency/freeze change. | Windows runner |
+| `DBT-P87-006` | Running servicing services were treated as proof of an active installation; idle loops refreshed slow providers | OPEN — exact-head Windows CI pending | P87-06 uses local WUA IsBusy only as positive busy evidence; false/unavailable remains Unknown because CBS idle is unproven. Fast policy and persisted cadence precede slow admission sampling; fresh owner/session/full eligibility is required. Inline counting-probe and unknown/busy controls pass on Mac; input/cancellation fence tests retained. No maintenance barrier relaxed. | Windows runner |
+| `DBT-P87-005` | CPU observation duration was confused with requested snapshot cadence | OPEN — exact-head Windows CI pending | P87-05 records monotonic PDH pair elapsed time internally, preserves snapshot cadence and leaves unknown/synthetic timing absent. Parent `de0cbae` fails the new timing contract test; portable 125 ms / delayed 475 ms / zero-window controls pass. Mac changed crates and direct dependents pass; native PDH timing and invalid-status control await Windows. No wire timing claim. | Windows runner |
 | `DBT-P36-006` | Windows filesystem security findings rest on a POSIX mode-bit approximation, not ACL evidence | **CLOSED by P75 lane `fs-acl`**, pending integration CI at its final head | Windows red-before CI `36057784591` at `23f7169` failed the three new `tests/filesystem_posture.rs` tests. The Windows path now reads the owner and DACL with `GetNamedSecurityInfoW`, reports the SID and mask of broad write grants and of non-owner/SYSTEM/Administrators ACEs on `.ssh` material, treats a NULL DACL as exposed, reports an unreadable DACL as unavailable, and includes files directly under the scan root. A conditional deny cannot hide an unconditional grant (unit test). Evidence: `docs/phase75/lanes/fs-acl.md`. | Windows runner |
 | `DBT-P36-007` | its retirement condition (a seal) has not occurred | OPEN by design | not code-checkable; not actionable until the seal | — |
 | `DBT-P41-001` | the chain's VC++ redistributable **install** branch has never executed on any architecture — only the "already present" branch has | OPEN | P49 §49.7 measured detection and the x64 `Launch` condition; the install branch is still unrun | a Windows box **without** the VC++ redist |
