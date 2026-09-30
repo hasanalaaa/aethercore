@@ -8,10 +8,10 @@
  * one is a thing this file is written to make impossible rather than a thing to
  * remember:
  *
- * 1. **Streamed text is provisional.** The citation gate runs on a COMPLETE
- *    answer, so `STREAMING.answer` is not an answer. `isProvisional` is derived
- *    from the state alone, never from whether text is present, and the drawer
- *    renders it under its own treatment.
+ * 1. **Streamed text is not kept.** The citation gate runs on a COMPLETE
+ *    answer, so `STREAMING.answer` is not an answer, and `replaceTurn` drops it
+ *    before it reaches the store (P86-01). `isProvisional` is derived from the
+ *    state alone, and the drawer shows only that a turn is generating.
  * 2. **An ungrounded turn is a refusal, not dim prose.** The service already
  *    discards uncited text and terminates REFUSED; nothing here may resurrect
  *    it, which is why the transcript keeps the terminal envelope and not the
