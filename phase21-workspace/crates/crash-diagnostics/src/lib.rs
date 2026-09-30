@@ -171,6 +171,28 @@ pub fn classify_event(
             detail: detail.into(),
         };
     }
+    // Windows Memory Diagnostic's own result events: id 1201 says the test finished without
+    // errors, 1202 that it reported errors. The id decides, never the localized message text.
+    if provider.eq_ignore_ascii_case("Microsoft-Windows-MemoryDiagnostics-Results")
+        && matches!(event_id, 1201 | 1202)
+    {
+        let errors = event_id == 1202;
+        return EventEvidence {
+            event_id,
+            provider: provider.into(),
+            recorded_unix_ms,
+            category: "MemoryTestResult".into(),
+            severity: if errors { "Attention" } else { "Info" }.into(),
+            confidence: "EventOnly".into(),
+            summary: "Windows Memory Diagnostic recorded a test result.".into(),
+            detail: if errors {
+                "Windows Memory Diagnostic reported memory errors when it ran."
+            } else {
+                "Windows Memory Diagnostic finished when it ran and reported no errors. This is the result of that run, not a statement about the memory now."
+            }
+            .into(),
+        };
+    }
     if provider.eq_ignore_ascii_case("Microsoft-Windows-Kernel-Power") && event_id == 41 {
         return EventEvidence { event_id, provider:provider.into(), recorded_unix_ms, category:"UnexpectedShutdown".into(), severity:"Attention".into(), confidence:"EventHigh/CauseLow".into(), summary:"Windows recorded an unexpected shutdown or restart.".into(), detail:"Kernel-Power Event 41 confirms an unclean shutdown; by itself it does not identify why power was lost or the system crashed.".into() };
     }
@@ -281,6 +303,33 @@ mod tests {
         assert_eq!(
             classify_event(WHEA, 18, &[], 1, Some(&[1, 2, 3])).category,
             "HardwareError"
+        );
+    }
+
+    // P82-03B: a test result is read from the event id, in any Windows language.
+    #[test]
+    fn a_memory_test_result_is_read_from_the_event_id_and_dated_not_certified() {
+        let p = "Microsoft-Windows-MemoryDiagnostics-Results";
+        let ok = classify_event(p, 1201, &["لم يتم اكتشاف أخطاء".into()], 7, None);
+        assert_eq!(
+            (ok.category.as_str(), ok.severity.as_str()),
+            ("MemoryTestResult", "Info")
+        );
+        assert!(ok.detail.contains("not a statement about the memory now"));
+        let bad = classify_event(p, 1202, &[], 7, None);
+        assert_eq!(
+            (bad.category.as_str(), bad.severity.as_str()),
+            ("MemoryTestResult", "Attention")
+        );
+        assert_eq!(
+            classify_event(p, 999, &[], 7, None).category,
+            "SystemEvent",
+            "another id is not a result"
+        );
+        assert_eq!(
+            classify_event("Some-Other", 1201, &[], 7, None).category,
+            "SystemEvent",
+            "and another provider's 1201 is not ours"
         );
     }
 

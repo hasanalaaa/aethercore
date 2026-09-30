@@ -194,7 +194,7 @@ fn checkpoint(control: &CollectorControl, operation: &'static str) -> Result<()>
 /// in this file: the phase-6 static gate pins the bounded window to the collector.
 fn event_query(window_ms: u64) -> String {
     format!(
-        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= {window_ms}]]]"
+        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting'] or (Provider[@Name='Microsoft-Windows-MemoryDiagnostics-Results'] and (EventID=1201 or EventID=1202))) and TimeCreated[timediff(@SystemTime) <= {window_ms}]]]"
     )
 }
 

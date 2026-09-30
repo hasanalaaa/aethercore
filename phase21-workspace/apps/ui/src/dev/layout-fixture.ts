@@ -229,12 +229,19 @@ const diagnostics: DiagnosticsSnapshot = {
     }),
     ataSmartAttributes: [5, 9, 187, 194].map((id) => fill({ id, current: 100, worst: 100, rawValueDecimal: '0', rawValueHex: '0x000000000000' })),
   })),
-  events: [0, 1, 2].map((i) => fill<HardwareEvent>({
+  events: [...[0, 1, 2].map((i) => fill<HardwareEvent>({
     eventId: 41 + i, provider: 'Microsoft-Windows-Kernel-Power', recordedUnixMs: NOW - i * 86_400_000,
     category: 'UnexpectedShutdown', severity: 'Attention', confidence: 'EventHigh/CauseLow',
     summary: 'Windows recorded an unexpected shutdown or restart.',
     detail: 'Kernel-Power Event 41 confirms an unclean shutdown; by itself it does not identify why power was lost or the system crashed.',
   })),
+    fill<HardwareEvent>({
+      eventId: 1201, provider: 'Microsoft-Windows-MemoryDiagnostics-Results', recordedUnixMs: NOW - 3 * 86_400_000,
+      category: 'MemoryTestResult', severity: 'Info', confidence: 'EventOnly',
+      summary: 'Windows Memory Diagnostic recorded a test result.',
+      detail: 'Windows Memory Diagnostic finished when it ran and reported no errors. This is the result of that run, not a statement about the memory now.',
+    }),
+  ],
   crashes: [0, 1].map((i) => fill<CrashRecord>({
     crashId: `crash-${i}`, recordedUnixMs: NOW - i * 172_800_000, hasBugcheckCode: true,
     bugcheckCode: 26, bugcheckHex: '0x0000001A', parameters: ['0x41792', '0xFFFFF', '0x0', '0x0'],

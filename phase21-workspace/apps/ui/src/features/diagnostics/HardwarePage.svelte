@@ -11,6 +11,7 @@
   import { hardwareVerdict } from '../intelligence/headline';
   import MeasurementRows from './MeasurementRows.svelte';
   import { diskAdvice, missingDiskMetrics } from './disk-facts';
+  import { memoryTestSummary } from './memory-test';
   import { batteryRows, bootRows, networkRows, thermalRows } from './measurement-rows';
 
   $: snapshot = $streamState.snapshot;
@@ -18,6 +19,7 @@
   $: busy = $shellState.busy;
   $: locale = $shellState.locale;
   $: verdict = hardwareVerdict(diagnostics);
+  $: memtest = memoryTestSummary(diagnostics);
   $: nextKey = nextStep(verdict);
   // Shape and text carry the verdict, colour only repeats them: a critical disk is "!", a denied read is "⊘".
   $: mark = verdict.kind === 'action' ? '!' : verdict.kind === 'attention' ? '▲' : verdict.kind === 'noneFound' ? '✓' : '○';
@@ -117,6 +119,11 @@
     <div><p class="eyebrow">{t('hardware.memoryTelemetry',locale)}</p><h3>{diagnostics.memory ? t('hardware.memoryPressureTitle',locale,{pressure:localizeMemoryPressure(diagnostics.memory.pressureLabel,locale)}) : t('common.unknown',locale)}</h3>{#if diagnostics.memory}<LocalizedOwnedText value={diagnostics.memory.pressureExplanation} {locale} as="p"/>{:else}<p>{t('hardware.memoryUnavailable',locale)}</p>{/if}</div>
     {#if diagnostics.memory}<ProgressBar value={diagnostics.memory.memoryLoadPercent} label={t('hardware.currentMemoryLoad',locale)}/>{/if}
     <div class="memory-facts"><div><span>{t('hardware.available',locale)}</span><strong>{diagnostics.memory ? formatBytes(diagnostics.memory.availablePhysicalBytes,locale) : '—'}</strong></div><div><span>{t('hardware.totalPhysical',locale)}</span><strong>{diagnostics.memory ? formatBytes(diagnostics.memory.totalPhysicalBytes,locale) : '—'}</strong></div><div><span>{t('hardware.loggedMemoryWhea',locale)}</span><strong>{memoryEvents().length}</strong></div></div>
+    <div class="memtest" role="group" aria-label={t('hardware.memtest.title',locale)}>
+      <strong>{t('hardware.memtest.title',locale)}</strong>
+      <p>{#if memtest.state === 'noErrors'}{t('hardware.memtest.noErrors',locale,{time:formatDateTime(memtest.unixMs ?? 0,locale)})}{:else if memtest.state === 'errors'}{t('hardware.memtest.errors',locale,{time:formatDateTime(memtest.unixMs ?? 0,locale)})}{:else if memtest.state === 'notTested'}{t('hardware.memtest.notTested',locale,{days:formatNumber(memtest.windowDays,locale)})}{:else}{t('hardware.memtest.unknown',locale)}{/if}</p>
+      <p>{t('hardware.memtest.guide',locale)}</p>
+    </div>
     <p class="truth-note">{t('hardware.truthNote',locale)}</p>
   </section>
   <section class="diagnostic-cards"><div class="panel-head"><div><p class="eyebrow">{t('hardware.triageEyebrow',locale)}</p><h3>{t('hardware.triageTitle',locale)}</h3></div></div>
@@ -137,4 +144,6 @@
   .verdict-action .verdict-mark,.verdict-attention .verdict-mark{border-width:2px}
   .disk-advice{margin:.6rem 0;padding:.6rem .8rem;border:1px solid var(--ac-border-strong);border-radius:10px;font-weight:600}
   .disk-missing{margin:.4rem 0;color:var(--ac-text-3);font-size:var(--ac-type-body)}
+  .memtest{margin-top:.6rem;padding:.6rem .8rem;border:1px solid var(--ac-border-subtle);border-radius:10px}
+  .memtest p{margin:.25rem 0;color:var(--ac-text-2)}
 </style>

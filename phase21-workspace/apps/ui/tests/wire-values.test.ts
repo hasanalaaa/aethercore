@@ -192,6 +192,20 @@ test('measurement rows keep "not read" apart from zero and survive malformed inp
   assert.equal(many.length, 32);
 });
 
+// P82-03B: what Windows Memory Diagnostic last said, dated; a missing test is "not tested", and an
+// unreadable event log is "unknown", never "not tested" and never a pass.
+test('the memory-test summary is dated, and a missing or unreadable result is not a pass', async () => {
+  const { memoryTestSummary } = await import('../src/features/diagnostics/memory-test.ts');
+  const result = (eventId: number, at: number) => ({ eventId, category: 'MemoryTestResult', provider: 'Microsoft-Windows-MemoryDiagnostics-Results', recordedUnixMs: at });
+  const other = { eventId: 1201, category: 'SystemEvent', provider: 'Some-Other', recordedUnixMs: 9 };
+  assert.deepEqual(memoryTestSummary({ events: [], eventWindowDays: 30 } as never), { state: 'notTested', unixMs: null, windowDays: 30 });
+  assert.equal(memoryTestSummary({ events: [], eventWindowDays: 0 } as never).state, 'unknown', 'the log could not be read');
+  assert.deepEqual(memoryTestSummary({ events: [result(1201, 100)], eventWindowDays: 30 } as never), { state: 'noErrors', unixMs: 100, windowDays: 30 });
+  assert.equal(memoryTestSummary({ events: [result(1201, 100), result(1202, 200)], eventWindowDays: 30 } as never).state, 'errors', 'the latest result wins');
+  assert.equal(memoryTestSummary({ events: [result(1202, 100), result(1201, 200)], eventWindowDays: 30 } as never).state, 'noErrors');
+  assert.equal(memoryTestSummary({ events: [other], eventWindowDays: 30 } as never).state, 'notTested', "another provider's 1201 is not a test result");
+});
+
 // P82-02A: why a zone has no temperature is said on the row, in the reader's language.
 test('a thermal zone with no reading says why, and the cut warning reads in Arabic', async () => {
   const { thermalRows } = await import('../src/features/diagnostics/measurement-rows.ts');
