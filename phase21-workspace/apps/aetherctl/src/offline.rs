@@ -1112,6 +1112,7 @@ mod windows_key {
         }
     }
 
+    #[cfg(test)]
     #[test]
     fn key_parent_is_pinned_until_seed_write_finishes() {
         let nonce = std::time::SystemTime::now()
