@@ -156,6 +156,8 @@ fn digest_of(steps: &[CareStep]) -> String {
 /// Typed errors. Never stringly state; never panic on hostile input.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CareError {
+    #[error("Care sources exceed the bounded preview; review domain plans individually")]
+    SourceLimit,
     #[error("session consent has not been granted for this run")]
     ConsentRequired,
     #[error("another mutation already holds the machine-wide lease")]

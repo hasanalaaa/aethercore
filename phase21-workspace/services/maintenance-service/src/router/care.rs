@@ -7,6 +7,14 @@ use super::*;
 /// what is due, which is a 500 the caller can distinguish from a refusal.
 fn care_err(error: aethercore_care_orchestrator::CareError) -> ServiceError {
     match error {
+        aethercore_care_orchestrator::CareError::SourceLimit => ServiceError::new(
+            429,
+            v1::ErrorCode::Busy,
+            "care",
+            "care.error.sourceLimit",
+            error.to_string(),
+            false,
+        ),
         aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(_) => {
             ServiceError::internal(
                 "care",

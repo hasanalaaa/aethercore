@@ -16,7 +16,7 @@ If a row needs a machine or a person you do not have, skip it — §3 says which
 rows those are and who unblocks them. Do not redo a `CLOSED` row: its evidence
 column names a commit or a measurement you can re-run.
 
-Last moved: P78 (2026-09-30), task `P78-04`.
+Last moved: P87 lane 4 (2026-09-30), task `P87-01`.
 
 ---
 
@@ -57,6 +57,8 @@ op = [c[0] for c in good if c[2].strip("*").startswith("OPEN")]
 print(f"rows {len(good)}  open {len(op)}  malformed {len(bad)} {bad}")
 EOF
 ```
+
+Current count (P87 lane 4 rebase, 2026-09-30): **188 rows / 23 open / 2 malformed** ['`DBT-P63-014`', '`DBT-P77-002`'].
 
 | id | what it is | status | evidence | machine |
 |---|---|---|---|---|
@@ -304,6 +306,11 @@ Report: `docs/phase57/P57-REPORT.md`. Raw measurements:
 | `DBT-P75-089` | Review 2 (`support-bundle lib.rs:751`, regression from `DBT-P75-087`): trimming trailing `:` before parsing turned `fd12:3456::` into invalid `fd12:3456`, so the private IPv6 was exported unredacted | **CLOSED by P75 lane `windows-smoke-final`** (P75 independent review 2), pending integration CI at its final head | `58ae32d`: the whole token is tried first, then one trailing `.`/`:`/`-` shorter at a time; tests `Peer fd12:3456::`, `Peer fd12:3456::.`, `Peer ::1.` (loopback kept), `Peer 192.168.1.23.`. Red-before: `left: "Peer fd12:3456::"`. | any host |
 | `DBT-P75-090` | Review 2 (`intelligence-core llama.rs:212`, from `DBT-P75-069`): a number word outside the gate's list (`thirteen`) yielded no number and passed, and `5.5` split into `5`,`5`, each held by evidence `5` | **CLOSED by P75 lane `windows-smoke-final`** (P75 independent review 2), pending integration CI at its final head | `58ae32d`: a decimal is one number; a number word the gate cannot read (teens, tens, hundred/thousand/million/billion/dozen, plurals, hyphenated) drops the line. Red-before: `thirteen occurrences [E1]` kept. | any host |
 | `DBT-P75-091` | Follow-up to `DBT-P75-088` (`apps/ui/src/features/intelligence/headline.ts`): while a scan is running (state 2) with no findings yet, status is Healthy and the headline says Healthy before anything has been checked | **CLOSED — P76** | `deepScanHeadlineKey(1, 2)` returns `deepScan.state.scanning` (EN "Scanning", AR catalog key already present); a finding made during the scan still headlines its status. Red before: `wire-values.test.ts` "a running scan is not Healthy" failed (`deepScan.status.healthy`); UI unit tests 30/30 after. | any host |
+| `DBT-P87-001` | CI locale/type/unit feedback waited for native tests and no aggregate rejected skipped or cancelled mandatory jobs | **OPEN — P87-01 implementation; exact-head CI and latency measurement pending** | `../../AUDIT/P87-CI-BASELINE.md`: five comparable successful runs; `scripts/test_ci_gates.py` fails twice on e685b14 (missing fast job and aggregate) then passes. Windows seal/freeze/native gates and the rendered-DOM gate remain mandatory. | GitHub runners and owner Windows PC |
+| `DBT-P87-003` | Care materialized every principal's eligible plan and silently turned more than 16 steps into an empty preview | **OPEN — P87-03 implemented; exact-head full CI pending** | `care_plan_candidates`: owner and eligible-state predicates, bounded SQL and stable timestamp/id order; 2000 malformed foreign payloads cannot affect three owned rows. Existing owner index is selected by EXPLAIN; no migration required. Oversized previews fail with a typed source-limit error and EN/AR guidance; digest encoding and recovery query are unchanged. Red-before on de0cbae: 17 owned plans reported an empty healthy preview; new query API absent. Fast checks: 16 packages and direct dependents, 417 tests, fmt/static/locale/UI check and 55 UI tests. | macOS and Windows CI |
+| `DBT-P87-004` | Timeline per-source caps could exceed the builder ceiling, and semantic/time deduplication erased distinct source rows | **OPEN — P87-04A implemented; exact-head full CI pending** | Two red assertions on 06e7d7f: 2502 candidates exceeded the 2000-event ceiling; two distinct persisted rows at the same time collapsed to one. Ingestion globally sorts/deduplicates exact rows/caps after merging; builder dedup includes provenance and outcome. Timestamp ties, newest Care runs, owner isolation, watermark and repeated digest are tested. Additive response metadata (D0/D27) and EN/AR note declare a bounded recent window. Fast: 180 tests across 12 changed/direct-dependent packages, fmt/static/locale/UI check, 55 UI tests and Arabic Activity rendered-DOM leak check (1/1). Pagination semantics unchanged; P87-04B remains outside lane 4. | macOS and Windows CI |
+
+
 ## §2 Recovery posture — measured 2026-09-12
 
 P49 recorded `Gate 0f` as regressed: "there is no `D:` and no

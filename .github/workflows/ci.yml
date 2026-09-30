@@ -220,12 +220,6 @@ jobs:
           }
       - name: Rust unit/integration tests
         run: cargo test --locked --workspace
-      - name: UI accessibility/type gate
-        run: pnpm --dir apps/ui check
-      # P75 ui-truth: pure UI logic (keyboard shortcuts, Fleet run outcomes) under node's own
-      # test runner; no test dependency. Files are listed, not globbed: a missing file fails.
-      - name: UI unit tests
-        run: node --experimental-strip-types --import ./apps/ui/tests/resolve-ts.mjs --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts apps/ui/tests/care.test.ts apps/ui/tests/wire-values.test.ts apps/ui/tests/timeline-text.test.ts apps/ui/tests/localized-text.test.ts apps/ui/tests/repair-progress.test.ts
       - name: UI production build
         run: pnpm --dir apps/ui build
       - name: Locked Rust workspace check
@@ -376,3 +370,43 @@ jobs:
       - name: Stop the fixture server
         if: always()
         run: kill "$(cat "$RUNNER_TEMP/vite.pid")" 2>/dev/null || true
+
+  # P87-01: local UI feedback has no native build dependency.
+  fast-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.16.0
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.22.0
+      - name: Frozen dependency restore
+        run: pnpm --dir apps/ui install --frozen-lockfile
+      - name: EN/AR locale gate
+        run: python3 scripts/test-phase12-localization.py
+      - name: UI accessibility/type gate
+        run: pnpm --dir apps/ui check
+      # P75 ui-truth: pure UI logic (keyboard shortcuts, Fleet run outcomes) under node's own
+      # test runner; no test dependency. Files are listed, not globbed: a missing file fails.
+      - name: UI unit tests
+        run: node --experimental-strip-types --import ./apps/ui/tests/resolve-ts.mjs --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts apps/ui/tests/care.test.ts apps/ui/tests/wire-values.test.ts apps/ui/tests/timeline-text.test.ts apps/ui/tests/localized-text.test.ts apps/ui/tests/repair-progress.test.ts
+      - name: CI gate regression tests
+        run: python3 scripts/test_ci_gates.py
+
+  required:
+    name: CI required
+    runs-on: ubuntu-latest
+    needs: [windows, gate-self-tests, linux-provider-clippy, deny-check, ui-leak-gate, fast-ui]
+    if: ${{ always() }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Every mandatory gate succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: jq -e 'length == 6 and all(.[]; .result == "success")' <<< "$NEEDS"
