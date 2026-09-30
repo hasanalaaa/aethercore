@@ -110,6 +110,7 @@ impl RepairPlatform for FakeRepairPlatform {
     fn repair(
         &self,
         _action: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         begin_mutation: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
@@ -458,6 +459,7 @@ impl RepairPlatform for PanickingAssessment {
     fn repair(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         _: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
         _: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
@@ -524,6 +526,7 @@ impl RepairPlatform for SlowAssessment {
     fn repair(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         _: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
         _: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
@@ -607,6 +610,7 @@ impl RepairPlatform for TimedAssessment {
     fn repair(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         _: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
         _: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
@@ -789,6 +793,7 @@ impl RepairPlatform for GatedRepair {
     fn repair(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         begin_mutation: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
         _: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
@@ -939,6 +944,183 @@ fn a_stale_plan_id_and_a_cancel_after_the_barrier_stop_nothing() {
     assert!(
         status.mutation_started && !status.recovery_required,
         "{status:?}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// P85-02: a repair whose tool reports its own progress and can be stopped. After the platform
+/// crosses the barrier it reports `None` (the tool cannot say), then 40, then 100, each only after the
+/// test has looked at the status; or it waits for the owner's cancel and stops.
+struct ToolRepair {
+    reported: std::sync::atomic::AtomicUsize,
+    allow: std::sync::atomic::AtomicUsize,
+    stop_on_cancel: bool,
+}
+
+impl ToolRepair {
+    fn wait(&self, counter: &std::sync::atomic::AtomicUsize, at_least: usize) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while counter.load(std::sync::atomic::Ordering::SeqCst) < at_least {
+            assert!(
+                Instant::now() < deadline,
+                "the test never released the repair"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
+impl RepairPlatform for ToolRepair {
+    fn assess(
+        &self,
+        cancel: &Arc<std::sync::atomic::AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
+        FakeRepairPlatform {
+            fail_before_mutation: false,
+            fail_after_mutation: false,
+            events: Mutex::new(Vec::new()),
+        }
+        .assess(cancel, progress)
+    }
+    fn repair(
+        &self,
+        _: &SystemRepairAction,
+        control: &mut aethercore_system_repair::RepairControl<'_>,
+        begin_mutation: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        begin_mutation()?;
+        if self.stop_on_cancel {
+            self.reported.store(1, std::sync::atomic::Ordering::SeqCst);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !control.cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                assert!(
+                    Instant::now() < deadline,
+                    "the cancel never reached the tool"
+                );
+                thread::sleep(Duration::from_millis(5));
+            }
+            return Err(RepairError::RepairStopped);
+        }
+        for (step, percent) in [None, Some(40), Some(100)].into_iter().enumerate() {
+            (control.progress)(percent);
+            self.reported
+                .store(step + 1, std::sync::atomic::Ordering::SeqCst);
+            self.wait(&self.allow, step + 1);
+        }
+        Ok(())
+    }
+    fn verify(
+        &self,
+        _: &SystemRepairAction,
+        emit: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        for (id, code) in [
+            ("verify-dism", "ComponentStoreHealthy"),
+            ("verify-sfc", "SystemFilesHealthy"),
+        ] {
+            emit(RepairCheck {
+                id: id.into(),
+                title: id.into(),
+                stage: "Completed".into(),
+                result_code: code.into(),
+                ..RepairCheck::default()
+            });
+        }
+        Ok(())
+    }
+}
+
+fn tool_plan(coordinator: &RepairCoordinator, engine: &OperationEngine) -> String {
+    start_assessment(coordinator, OWNER).expect("start assessment");
+    let assessment_id = wait_assessment(coordinator);
+    let plan = coordinator
+        .create_plan(OWNER, &assessment_id, false)
+        .expect("plan");
+    authorize(engine, &plan.id);
+    start_repair(coordinator, OWNER, &plan.id).expect("start");
+    plan.id
+}
+
+#[test]
+fn a_tool_percent_reaches_the_status_and_no_percent_stays_unknown() {
+    let root = temp_root("tool-progress");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let platform = Arc::new(ToolRepair {
+        reported: 0.into(),
+        allow: 0.into(),
+        stop_on_cancel: false,
+    });
+    let coordinator = RepairCoordinator::with_platform(engine.clone(), db, platform.clone());
+    let plan = tool_plan(&coordinator, &engine);
+    let status_after = |step: usize| {
+        platform.wait(&platform.reported, step);
+        coordinator
+            .status(OWNER, Some(&plan))
+            .expect("status")
+            .expect("execution")
+    };
+
+    let unknown = status_after(1);
+    assert!(
+        !unknown.progress_known,
+        "a tool that cannot say is indeterminate, not 0%: {unknown:?}"
+    );
+    platform.allow.store(1, std::sync::atomic::Ordering::SeqCst);
+    let part = status_after(2);
+    assert!(part.progress_known, "{part:?}");
+    platform.allow.store(2, std::sync::atomic::Ordering::SeqCst);
+    let full = status_after(3);
+    assert!(
+        full.progress_known && full.overall_percent > part.overall_percent,
+        "progress only moves forward: {part:?} then {full:?}"
+    );
+    assert!(
+        full.overall_percent < 100,
+        "the tool finishing is not the plan finishing: verification is still to come"
+    );
+    platform.allow.store(3, std::sync::atomic::Ordering::SeqCst);
+    let done = wait_terminal(&coordinator, &plan, "Completed");
+    assert_eq!(done.overall_percent, 100);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_repair_stopped_after_the_barrier_needs_recovery_and_is_never_completed() {
+    let root = temp_root("tool-stop");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let platform = Arc::new(ToolRepair {
+        reported: 0.into(),
+        allow: 0.into(),
+        stop_on_cancel: true,
+    });
+    let coordinator =
+        RepairCoordinator::with_platform(engine.clone(), db.clone(), platform.clone());
+    let plan = tool_plan(&coordinator, &engine);
+    platform.wait(&platform.reported, 1);
+    coordinator.cancel_repair(OWNER, &plan).expect("cancel");
+    let status = wait_terminal(&coordinator, &plan, "Failed");
+    assert!(
+        status.mutation_started && status.recovery_required,
+        "{status:?}"
+    );
+    assert_eq!(status.outcome, "FailedAfterMutation");
+    assert!(
+        status.failure_message.contains("stopped"),
+        "{}",
+        status.failure_message
+    );
+    assert!(
+        db.recovery_records(20)
+            .expect("recovery records")
+            .iter()
+            .any(|r| r.plan_id == plan),
+        "the owner is told to review"
     );
     let _ = std::fs::remove_dir_all(root);
 }

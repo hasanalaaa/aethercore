@@ -39,6 +39,7 @@ impl RepairPlatform for Scripted {
     fn repair(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         _: &mut dyn FnMut() -> Result<()>,
         _: &mut dyn FnMut(RepairCheck),
     ) -> Result<()> {

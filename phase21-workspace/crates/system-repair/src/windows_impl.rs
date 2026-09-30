@@ -9,10 +9,13 @@ use std::{
 };
 
 use super::{
-    AssessStep, RepairCheck, RepairError, RepairPlatform, Result,
+    AssessStep, RepairCheck, RepairControl, RepairError, RepairPlatform, Result,
     bounded::{ProviderSlot, run_check},
     cbs,
-    dism_api::{check_online_image_health, check_online_image_health_cancellable},
+    dism_api::{
+        check_online_image_health, check_online_image_health_cancellable,
+        restore_online_image_health,
+    },
 };
 use aethercore_operation_engine::SystemRepairAction;
 use aethercore_windows_foundation::{MachineMutationGuard, OwnedServiceHandle};
@@ -175,6 +178,7 @@ impl RepairPlatform for WindowsRepairPlatform {
     fn repair(
         &self,
         action: &SystemRepairAction,
+        control: &mut RepairControl<'_>,
         begin_mutation: &mut dyn FnMut() -> Result<()>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()> {
@@ -224,7 +228,7 @@ impl RepairPlatform for WindowsRepairPlatform {
             emit(start_update_service()?);
         }
         if action.run_component_store {
-            emit(run_dism_restore(&system32.join("dism.exe"))?);
+            emit(restore_online_image_health(control)?);
         }
         if action.run_system_files {
             emit(run_sfc(
@@ -461,28 +465,6 @@ fn system_volume() -> Result<String> {
         return Err(RepairError::Command("invalid SystemDrive".into()));
     }
     Ok(raw.to_ascii_uppercase())
-}
-
-fn run_dism_restore(exe: &Path) -> Result<RepairCheck> {
-    match run_with_accepted_codes(
-        exe,
-        &["/Online", "/Cleanup-Image", "/RestoreHealth"],
-        "dism-restore",
-        "DISM RestoreHealth",
-        "%WINDIR%\\Logs\\DISM\\dism.log",
-        &[0],
-        None,
-    ) {
-        Ok(mut check) => {
-            check.result_code = "MutationSucceeded".into();
-            check.detail = "DISM RestoreHealth completed. This is mutation evidence only; component-store health must still be verified.".into();
-            Ok(check)
-        }
-        Err(RepairError::Command(detail)) if detail.contains("-2146498529") || detail.contains("0x800F081F") => {
-            Err(RepairError::SourceRequired("Windows could not locate the source files required for component-store repair (HRESULT 0x800F081F).".into()))
-        }
-        Err(error) => Err(error),
-    }
 }
 
 fn run_sfc(

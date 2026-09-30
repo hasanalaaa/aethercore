@@ -38,6 +38,10 @@ pub enum RepairError {
     Cancelled,
     #[error("the repair was cancelled before any change was made")]
     RepairCancelled,
+    #[error(
+        "the repair was stopped after changes had begun; run a new check before relying on this PC"
+    )]
+    RepairStopped,
     #[error("repair assessment is not ready")]
     AssessmentNotReady,
     #[error("repair assessment is stale")]
@@ -176,6 +180,15 @@ pub struct RepairExecutionStatus {
     pub steps: Vec<RepairCheck>,
 }
 
+/// What a running repair is told and what it reports (P85-02).
+pub struct RepairControl<'a> {
+    /// Raised when the owner asks the repair to stop. The platform honours it where its tool can
+    /// stop safely (the DISM API's cancel event); a stop after changes began needs recovery.
+    pub cancel: &'a Arc<AtomicBool>,
+    /// The running tool's own progress, from its callback: `None` when it cannot say.
+    pub progress: &'a mut dyn FnMut(Option<u32>),
+}
+
 pub trait RepairPlatform: Send + Sync + 'static {
     /// Runs the read-only checks, reporting each through `progress`, and stops with
     /// [`RepairError::Cancelled`] once `cancel` is raised.
@@ -187,6 +200,7 @@ pub trait RepairPlatform: Send + Sync + 'static {
     fn repair(
         &self,
         action: &SystemRepairAction,
+        control: &mut RepairControl<'_>,
         begin_mutation: &mut dyn FnMut() -> Result<()>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()>;
@@ -237,6 +251,7 @@ pub(crate) fn trim_to_tail(detail: &mut String, limit: usize) {
 
 pub mod bounded;
 pub mod cbs;
+pub mod dism;
 
 #[cfg(windows)]
 mod dism_api;
@@ -261,6 +276,7 @@ impl RepairPlatform for WindowsRepairPlatform {
     fn repair(
         &self,
         _action: &SystemRepairAction,
+        _control: &mut RepairControl<'_>,
         _begin_mutation: &mut dyn FnMut() -> Result<()>,
         _emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()> {
@@ -1286,7 +1302,7 @@ fn run_worker(
     owner_principal_key: &str,
     telemetry: &ProgressTelemetryStore,
     plan_id: &str,
-    cancel: &AtomicBool,
+    cancel: &Arc<AtomicBool>,
 ) -> Result<()> {
     let action = engine.system_repair_action(plan_id)?;
     timeline_event(
@@ -1430,7 +1446,31 @@ fn run_worker(
         let _ = update_exec(db, plan_id, stage, percent, &step.title, mutated, None);
     };
 
-    if let Err(error) = platform.repair(&action, &mut begin_mutation, &mut emit) {
+    // The running tool's own percent (P85-02). It lands in the live telemetry only: a callback must not
+    // touch the database, and only a change is published. The tool's 0-100 is mapped into the
+    // executing band so the stage values that follow (verification 80, done 100) stay in order.
+    let mut last_percent: Option<Option<u32>> = None;
+    let mut tool_progress = |percent: Option<u32>| {
+        if last_percent == Some(percent) {
+            return;
+        }
+        last_percent = Some(percent);
+        telemetry.publish(aethercore_operation_kernel::ProgressTelemetry {
+            owner_principal_key: owner_principal_key.into(),
+            plan_id: plan_id.into(),
+            stage: "Executing".into(),
+            progress_known: percent.is_some(),
+            overall_percent: percent.map_or(0, |p| 10 + p.min(100) * 65 / 100),
+            current_item_id: String::new(),
+            detail: "Running supported Windows repair tools".into(),
+            ..Default::default()
+        });
+    };
+    let mut control = RepairControl {
+        cancel,
+        progress: &mut tool_progress,
+    };
+    if let Err(error) = platform.repair(&action, &mut control, &mut begin_mutation, &mut emit) {
         timeline_event(
             db,
             owner_principal_key,
