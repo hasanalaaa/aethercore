@@ -979,6 +979,7 @@ export const enCatalog = {
   'measurement.reason.relativeCapacity': 'This battery reports relative capacity, not milliwatt-hours',
   'measurement.reason.noCapacity': 'This battery reported no capacity',
   'measurement.reason.readFailed': 'This battery could not be read',
+  'measurement.reason.noBootTime': 'The boot-performance record has no boot time',
   'tech.battery.cut': 'Only the first 32 batteries are shown.',
   'measurement.reason.implausibleReading': 'The reported value is not a plausible temperature',
   'hardware.storageHint': 'standardized physical disks',

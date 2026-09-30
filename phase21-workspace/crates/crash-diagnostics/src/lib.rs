@@ -23,6 +23,7 @@ pub enum CrashError {
 }
 pub type Result<T> = std::result::Result<T, CrashError>;
 
+pub mod boot;
 mod whea;
 
 pub const DEFAULT_EVENT_WINDOW_DAYS: u32 = 30;
@@ -94,6 +95,10 @@ pub struct CrashDiagnosticsSnapshot {
     pub event_log_read: bool,
     pub events: Vec<EventEvidence>,
     pub crashes: Vec<CrashRecord>,
+    /// The recent boots from the boot-performance channel (P83-01A). Empty when the channel could
+    /// not be read or holds none: that is "not measured", never "no boots".
+    #[serde(default)]
+    pub boots: Vec<boot::BootEvidence>,
     #[serde(default)]
     pub provider_faults: Vec<CollectorFaultRecord>,
     pub warnings: Vec<String>,
@@ -117,6 +122,7 @@ pub fn assemble_snapshot(
         event_log_read,
         events: event_log.unwrap_or_default(),
         crashes,
+        boots: Vec::new(),
         provider_faults,
         warnings,
     }

@@ -12,14 +12,15 @@ use aethercore_collector_runtime::{
     FaultKind, IsolationGate, run_isolated_gated, run_isolated_gated_with_token,
 };
 use aethercore_crash_diagnostics::{
-    CrashDiagnosticsSnapshot, CrashError, CrashLink, CrashRecord, EventEvidence,
-    link_dump_to_events,
+    CrashDiagnosticsSnapshot, CrashError, CrashLink, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS,
+    EventEvidence, boot::BootEvidence, link_dump_to_events,
 };
 use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
     compare_counters,
     measurements::{
-        Battery, BootRecord, MAX_BATTERIES, MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped,
+        Availability, Battery, BootRecord, Coverage, MAX_BATTERIES, MAX_THERMAL_ZONES,
+        NetworkAdapter, ThermalZone, capped,
     },
 };
 // The service converts these to the wire and depends on this crate, not on the telemetry one.
@@ -711,6 +712,33 @@ fn compare_with_previous_scan(
     }
 }
 
+/// P83-01A: the boot-performance events as measurement records. `BootTime` is the whole boot in
+/// milliseconds; a record without it is unsupported, never a zero-second boot.
+fn boot_records(boots: &[BootEvidence]) -> Vec<BootRecord> {
+    boots
+        .iter()
+        .map(|b| BootRecord {
+            recorded_unix_ms: b.recorded_unix_ms,
+            duration_ms: b.boot_time_ms,
+            coverage: Coverage {
+                source: "Microsoft-Windows-Diagnostics-Performance event 100".into(),
+                observed_unix_ms: Some(b.recorded_unix_ms),
+                window_days: Some(DEFAULT_EVENT_WINDOW_DAYS),
+                availability: if b.boot_time_ms.is_some() {
+                    Availability::Measured
+                } else {
+                    Availability::Unsupported
+                },
+                reason_key: if b.boot_time_ms.is_some() {
+                    String::new()
+                } else {
+                    "measurement.reason.noBootTime".into()
+                },
+            },
+        })
+        .collect()
+}
+
 fn run(inner: Arc<Inner>, owner_principal_key: String) {
     const PROVIDER_WATCHDOG: Duration = Duration::from_secs(10);
     let scan_id = {
@@ -787,6 +815,10 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         .unwrap_or_default();
     compare_with_previous_scan(&inner.db, &owner_principal_key, &mut storage);
     let memory = hardware.as_ref().and_then(|h| h.memory.clone());
+    let boots = crash
+        .as_ref()
+        .map(|c| boot_records(&c.boots))
+        .unwrap_or_default();
     let (thermal_zones, thermal_cut) = capped(
         hardware
             .as_ref()
@@ -852,8 +884,9 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         warnings,
         thermal_zones,
         batteries,
-        // Boots and network (P83) arrive with their producers; until then the domain is empty,
-        // which reads as "not measured".
+        boots,
+        // Network (P83-02) arrives with its producer; until then the domain is empty, which
+        // reads as "not measured".
         ..Default::default()
     };
     let persistence_result = serde_json::to_string(&snapshot)
@@ -1336,6 +1369,41 @@ mod tests {
             evidence(&[]).iter().all(|e| !e.contains("System log")),
             "no event, nothing said"
         );
+    }
+    #[test]
+    fn boots_reach_the_snapshot_with_their_duration_and_a_missing_one_is_not_zero() {
+        let (db, _tmp) = db();
+        let boot = |instance, ms: Option<u64>| BootEvidence {
+            system_boot_instance: Some(instance),
+            recorded_unix_ms: 1_000 + instance as i64,
+            boot_time_ms: ms,
+            ..Default::default()
+        };
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot::default(),
+                c: CrashDiagnosticsSnapshot {
+                    boots: vec![boot(2, Some(25_414)), boot(1, None)],
+                    ..Default::default()
+                },
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let snapshot = wait_for_scan(&e);
+        assert_eq!(snapshot.boots.len(), 2);
+        assert_eq!(snapshot.boots[0].duration_ms, Some(25_414));
+        assert_eq!(
+            snapshot.boots[0].coverage.availability,
+            Availability::Measured
+        );
+        assert_eq!(snapshot.boots[1].duration_ms, None, "not 0 seconds");
+        assert_eq!(
+            snapshot.boots[1].coverage.reason_key,
+            "measurement.reason.noBootTime"
+        );
+        drop(e);
+        drop(db);
     }
     struct PartialMock;
     impl Backend for PartialMock {

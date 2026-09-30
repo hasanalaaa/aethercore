@@ -21,7 +21,7 @@ use windows::{
             EventLog::{
                 EVT_HANDLE, EVT_VARIANT, EvtClose, EvtCreateRenderContext, EvtNext, EvtQuery,
                 EvtQueryChannelPath, EvtQueryReverseDirection, EvtRender, EvtRenderContextSystem,
-                EvtRenderContextUser, EvtRenderEventValues,
+                EvtRenderContextUser, EvtRenderContextValues, EvtRenderEventValues,
             },
         },
     },
@@ -30,7 +30,9 @@ use windows::{
 
 use crate::{
     CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EVENT_WINDOW_MS,
-    EventEvidence, Result, assemble_snapshot, classify_event, dump_in_window,
+    EventEvidence, Result, assemble_snapshot,
+    boot::{BootEvidence, boot_from_fields, dedupe_boots},
+    classify_event, dump_in_window,
 };
 
 const MAX_EVENTS: usize = 128;
@@ -45,6 +47,10 @@ const FILETIME_UNIX_EPOCH_TICKS: u64 = 116_444_736_000_000_000;
 
 static EVENTLOG_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static MINIDUMP_GATE: OnceLock<IsolationGate> = OnceLock::new();
+static BOOT_GATE: OnceLock<IsolationGate> = OnceLock::new();
+fn boot_gate() -> &'static IsolationGate {
+    BOOT_GATE.get_or_init(IsolationGate::default)
+}
 fn eventlog_gate() -> &'static IsolationGate {
     EVENTLOG_GATE.get_or_init(IsolationGate::default)
 }
@@ -154,12 +160,120 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
         }
     };
 
-    Ok(assemble_snapshot(
-        event_log,
-        crashes,
-        provider_faults,
-        warnings,
-    ))
+    // Boots come from a separate channel and are optional: a machine without the channel, or with
+    // it disabled, leaves the list empty ("not measured"). Only a refusal, a timeout or a cancel is
+    // a fault. Nothing here enables a disabled log.
+    let boots = match run_isolated_gated_with_token(
+        boot_gate(),
+        "crash-diagnostics",
+        "boots",
+        DEFAULT_COLLECTOR_TIMEOUT,
+        parent.child(),
+        |control| collect_boots(&control).map_err(|error| collector_fault("boots", error)),
+    ) {
+        Ok(boots) => boots,
+        Err(error) => {
+            if !matches!(
+                error.kind,
+                FaultKind::Unavailable | FaultKind::ProviderFailure
+            ) {
+                provider_faults.push(CollectorFaultRecord::from(&error));
+            }
+            Vec::new()
+        }
+    };
+
+    let mut snapshot = assemble_snapshot(event_log, crashes, provider_faults, warnings);
+    snapshot.boots = boots;
+    Ok(snapshot)
+}
+
+/// The most recent boots from event 100 of the boot-performance channel, read by field name
+/// through an `EvtRenderContextValues` context so no value is taken by position or offset.
+fn collect_boots(control: &CollectorControl) -> Result<Vec<BootEvidence>> {
+    const FIELDS: [&str; 6] = [
+        "BootTsVersion",
+        "SystemBootInstance",
+        "BootTime",
+        "MainPathBootTime",
+        "BootPostBootTime",
+        "BootNumStartupApps",
+    ];
+    const MAX_BOOT_EVENTS_SCANNED: usize = 64;
+    checkpoint(control, "boot.begin")?;
+    let channel = w("Microsoft-Windows-Diagnostics-Performance/Operational");
+    let query = w(&format!(
+        "*[System[Provider[@Name='Microsoft-Windows-Diagnostics-Performance'] and (EventID=100) and TimeCreated[timediff(@SystemTime) <= {EVENT_WINDOW_MS}]]]"
+    ));
+    let result = EventHandle(
+        unsafe {
+            EvtQuery(
+                None,
+                PCWSTR(channel.as_ptr()),
+                PCWSTR(query.as_ptr()),
+                EvtQueryChannelPath.0 | EvtQueryReverseDirection.0,
+            )
+        }
+        .map_err(win)?,
+    );
+    let system_context = EventHandle(
+        unsafe { EvtCreateRenderContext(None, EvtRenderContextSystem.0) }.map_err(win)?,
+    );
+    let paths: Vec<Vec<u16>> = FIELDS
+        .iter()
+        .map(|name| w(&format!("Event/EventData/Data[@Name='{name}']")))
+        .collect();
+    let path_pointers: Vec<PCWSTR> = paths.iter().map(|p| PCWSTR(p.as_ptr())).collect();
+    let values_context = EventHandle(
+        unsafe { EvtCreateRenderContext(Some(&path_pointers), EvtRenderContextValues.0) }
+            .map_err(win)?,
+    );
+
+    let mut boots = Vec::new();
+    let mut scanned = 0usize;
+    while scanned < MAX_BOOT_EVENTS_SCANNED {
+        checkpoint(control, "boot.next")?;
+        let mut handles = [0isize; 1];
+        let mut returned = 0u32;
+        let timeout_ms = control.remaining_ms_capped(EVENTLOG_NEXT_SLICE);
+        match unsafe { EvtNext(result.0, &mut handles, timeout_ms, 0, &mut returned) } {
+            Ok(()) => {}
+            Err(error) if error.code() == ERROR_TIMEOUT.to_hresult() => continue,
+            Err(error) if error.code() == ERROR_NO_MORE_ITEMS.to_hresult() => break,
+            Err(error) => return Err(win(error)),
+        }
+        if returned != 1 || handles[0] == 0 {
+            return Err(CrashError::MalformedResponse(
+                "EvtNext returned an inconsistent handle count for the boot channel".into(),
+            ));
+        }
+        let event = EventHandle(EVT_HANDLE(handles[0]));
+        scanned += 1;
+        // An event that does not render is skipped: it is not a boot record we can read.
+        let Ok(system) = render_system(system_context.0, event.0) else {
+            continue;
+        };
+        let Ok(buffer) = render_values(values_context.0, event.0, MAX_USER_RENDER_BYTES) else {
+            continue;
+        };
+        let Ok(variants) = buffer.variants() else {
+            continue;
+        };
+        let texts: Vec<Option<String>> = variants
+            .iter()
+            .map(|variant| variant_to_bounded_text(variant, &buffer).ok().flatten())
+            .collect();
+        let field = |name: &str| {
+            FIELDS
+                .iter()
+                .position(|candidate| *candidate == name)
+                .and_then(|index| texts.get(index).cloned().flatten())
+        };
+        if let Some(boot) = boot_from_fields(&field, system.recorded_unix_ms) {
+            boots.push(boot);
+        }
+    }
+    Ok(dedupe_boots(boots))
 }
 
 fn collector_fault(operation: &'static str, error: CrashError) -> CollectorFault {

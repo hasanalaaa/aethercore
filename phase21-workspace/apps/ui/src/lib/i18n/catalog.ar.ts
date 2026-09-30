@@ -981,6 +981,7 @@ export const arCatalog = {
   'measurement.reason.relativeCapacity': 'تبلّغ هذه البطارية عن سعة نسبية لا عن مللي واط·ساعة',
   'measurement.reason.noCapacity': 'لم تُبلّغ هذه البطارية عن أي سعة',
   'measurement.reason.readFailed': 'تعذّرت قراءة هذه البطارية',
+  'measurement.reason.noBootTime': 'سجل أداء الإقلاع لا يتضمن زمن الإقلاع',
   'tech.battery.cut': 'تُعرض أول 32 بطارية فقط.',
   'measurement.reason.implausibleReading': 'القيمة المُبلَّغ عنها ليست درجة حرارة معقولة',
   'hardware.storageHint': 'أقراص فعلية معيارية',
