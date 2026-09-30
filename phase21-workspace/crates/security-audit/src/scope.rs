@@ -289,7 +289,7 @@ pub(crate) fn profile_owner_sid(path: &Path) -> Result<String, String> {
             time: *mut c_void,
         ) -> i32;
         fn RegGetValueW(
-            key: *mut c_void,
+            key: isize,
             subkey: *const u16,
             name: *const u16,
             flags: u32,
@@ -358,7 +358,7 @@ pub(crate) fn profile_owner_sid(path: &Path) -> Result<String, String> {
         // RRF_SUBKEY_WOW6464KEY | RRF_RT_REG_SZ, with normal REG_EXPAND_SZ expansion.
         let status = unsafe {
             RegGetValueW(
-                key.0,
+                key.0 as isize,
                 name.as_ptr(),
                 value_name.as_ptr(),
                 0x10002,
