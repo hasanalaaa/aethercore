@@ -20,6 +20,28 @@ fn discovers_live_driver_offers_without_installing() {
 #[test]
 #[ignore = "reads the live Windows Update Agent's local cache"]
 fn searches_the_local_cache_as_an_abortable_job() {
+    // The agent calls the search's completion callback back into this process, which COM
+    // refuses (0x80070005) unless the process allows impersonation. The service sets exactly this
+    // at startup (`initialize_process_com_security`, maintenance-service main.rs); a bare test
+    // process must do the same to stand in for it.
+    use windows::Win32::System::Com::{
+        CoInitializeSecurity, EOAC_NONE, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE,
+    };
+    let _com = aethercore_windows_foundation::ComApartment::mta().expect("COM");
+    unsafe {
+        CoInitializeSecurity(
+            None,
+            -1,
+            None,
+            None,
+            RPC_C_AUTHN_LEVEL_DEFAULT,
+            RPC_C_IMP_LEVEL_IMPERSONATE,
+            None,
+            EOAC_NONE,
+            None,
+        )
+        .expect("process COM security, as the service sets it");
+    }
     let started = std::time::Instant::now();
     let result = aethercore_windows_update::discover_driver_offers(
         aethercore_windows_update::SearchScope::LocalCacheOnly,
