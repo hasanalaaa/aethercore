@@ -148,6 +148,11 @@ message DriverHubSnapshot {
   DiscoveryState state_code = 11;
   string authority_coverage = 12;
   repeated string provider_status = 13;
+  // P84-02B (D27): where this scan looked, "LocalCacheOnly" or "Online" (empty before any scan),
+  // and for a local-cache scan the day Windows last finished an online search, YYYY-MM-DD, or
+  // empty when Windows keeps no such date.
+  string search_scope = 14;
+  string windows_last_online_search = 15;
 }
 message DriverHubSnapshotResponse { DriverHubSnapshot snapshot = 1; }
 message DriverInstallItemStatus {

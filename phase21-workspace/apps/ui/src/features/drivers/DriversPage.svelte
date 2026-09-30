@@ -6,10 +6,10 @@
   import {
     authorizeDriverPlan, driverFilters, driversUi, filteredDevices, installActive, installTerminal,
     clearDriverSelection, openGpuSupport, reviewDriverInstall, scanStateIndex, scanStates, selectAllRecommended, selectedCandidates, selectedUpdates, setDriverCandidatePolicy, setDriverFilter, setDriverSearch,
-    startDriverInstall, startDriverScan as startScan, toggleCandidate, toggleExpanded
+    startDriverInstall, startDriverScan, startOnlineDriverSearch, toggleCandidate, toggleExpanded
   } from './controller';
   import { formatBytes, formatRange, shortDigest, stageTone, stateLabel, targetEvidence, targetLabel } from '../shared';
-  import { hasMessageKey, localizeMatchQuality, localizeOwnedText, localizeRecommendationReason, localizeState, t, td, type MessageKey } from '../../lib/i18n';
+  import { driverSearchSource, hasMessageKey, localizeMatchQuality, localizeOwnedText, localizeRecommendationReason, localizeState, t, td, type MessageKey } from '../../lib/i18n';
   import type { DriverCandidate, DriverDevice } from '../../lib/contracts';
   import { PolicyDenied, type PolicyDenial } from '../../design/signature';
 
@@ -57,6 +57,10 @@
   function selectedMinBytes(): number { return selectedUpdates().reduce((sum, candidate) => sum + candidate.minDownloadBytes, 0); }
   function selectedMaxBytes(): number { return selectedUpdates().reduce((sum, candidate) => sum + candidate.maxDownloadBytes, 0); }
   function owned(value: string) { return localizeOwnedText(value, locale); }
+  /** Handlers take no event: a click never reaches the online search except through its confirmation. */
+  const startScan = () => { confirmingOnline = false; void startDriverScan(); };
+  let confirmingOnline = false;
+  function confirmOnlineSearch(): void { confirmingOnline = false; void startOnlineDriverSearch(); }
   /** A problem to fix. Code 22 is a device someone disabled, usually on purpose (P84-01). */
   function faulted(device: DriverDevice): boolean { return device.hasProblem && device.problemCode !== 22; }
   function heroTitle(): string {
@@ -76,9 +80,19 @@
   <div class="header-actions">
     <div class="service-pill"><span class:online={snapshot.connected}></span>{snapshot.connected ? t('common.engineOnline',locale,{version:snapshot.serviceVersion}) : t('common.engineOffline',locale)}</div>
     {#if hub.state === 'Ready' && hub.summary.recommendedUpdateCount > 0}<Pressable className="primary" onclick={() => { selectAllRecommended(); reviewDriverInstall(); }} disabled={busy || !snapshot.connected}>{t('drivers.updateRecommended',locale,{count:hub.summary.recommendedUpdateCount})}</Pressable>{/if}
+    <Pressable className="secondary" onclick={() => { confirmingOnline = true; }} disabled={busy || scanStates.includes(hub.state) || !snapshot.connected}>{t('drivers.searchOnline',locale)}</Pressable>
     <Pressable className="scan-button" onclick={startScan} disabled={busy || scanStates.includes(hub.state) || !snapshot.connected}><span>↻</span>{hub.state === 'Idle' ? t('drivers.scan',locale) : scanStates.includes(hub.state) ? t('drivers.scanning',locale) : t('drivers.scanAgain',locale)}</Pressable>
   </div>
 </header>
+
+{#if confirmingOnline}
+  <!-- D14: the only way to an online search. It names Windows Update and the managed server, and
+       says nothing is downloaded or installed; Cancel sends nothing. -->
+  <section class="pending-install-card" aria-labelledby="drivers-online-title" aria-describedby="drivers-online-body">
+    <div><h3 id="drivers-online-title">{t('drivers.searchOnline.title',locale)}</h3><p id="drivers-online-body">{t('drivers.searchOnline.body',locale)}</p></div>
+    <div class="pending-install-actions"><button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={() => { confirmingOnline = false; }}>{t('common.cancel',locale)}</button><button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={confirmOnlineSearch} disabled={busy || !snapshot.connected}>{t('drivers.searchOnline.confirm',locale)}</button></div>
+  </section>
+{/if}
 
 <section class="driver-hero">
   <div class="driver-hero-copy">
@@ -88,7 +102,7 @@
          driver catalog — a fact about the product, restated on the one screen
          where every row already names its authority. -->
     <div><h2>{heroTitle()}</h2>
-      {#if hub.state === 'Ready'}<span class="hero-reading"><TechnicalText value={t('drivers.inventorySummary',locale,{epoch:hub.inventoryEpoch,count:hub.summary.deviceCount})}/></span>
+      {#if hub.state === 'Ready'}<span class="hero-reading"><TechnicalText value={t('drivers.inventorySummary',locale,{epoch:hub.inventoryEpoch,count:hub.summary.deviceCount})}/></span>{#if driverSearchSource(hub,locale)}<p>{driverSearchSource(hub,locale)}</p>{/if}
       {:else if hub.errorMessage}{@const err=owned(hub.errorMessage)}{#if err.localized}<p>{err.text}</p>{:else}<p><TechnicalText value={hub.errorMessage}/></p>{/if}{/if}
     </div>
   </div>

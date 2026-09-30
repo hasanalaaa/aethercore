@@ -44,7 +44,8 @@ export type HubSummary = {
 export type DriverHub = {
     scanId:string; state:string; inventoryEpoch:number; startedUnixMs:number; completedUnixMs:number;
     errorMessage:string; summary:HubSummary; devices:DriverDevice[];
-    unmatchedOffers:unknown[]; warnings:string[]; authorityCoverage:string; providerStatus:string[]
+    unmatchedOffers:unknown[]; warnings:string[]; authorityCoverage:string; providerStatus:string[];
+    searchScope:string; windowsLastOnlineSearch:string
   };
 export type DriverInstallItemStatus = {
     candidateId:string; instanceId:string; title:string; stage:string; progressKnown:boolean;

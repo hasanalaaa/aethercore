@@ -477,11 +477,20 @@ async fn get_driver_hub_snapshot() -> Result<v1::DriverHubSnapshot, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// `online` is true only after the user confirmed a search that names Windows Update (P84-02B,
+/// D14); absent or false, the scan reads the local cache.
 #[command]
-async fn start_driver_scan() -> Result<v1::DriverHubSnapshot, String> {
-    tauri::async_runtime::spawn_blocking(|| {
+async fn start_driver_scan(online: Option<bool>) -> Result<v1::DriverHubSnapshot, String> {
+    let scope = if online == Some(true) {
+        v1::DriverSearchScope::OnlineConfirmed
+    } else {
+        v1::DriverSearchScope::LocalCache
+    };
+    tauri::async_runtime::spawn_blocking(move || {
         let resp = request(request::Payload::StartDriverScan(
-            v1::StartDriverScanRequest::default(),
+            v1::StartDriverScanRequest {
+                scope: scope as i32,
+            },
         ))
         .map_err(|e| e.to_string())?;
         extract_driver_hub(resp)

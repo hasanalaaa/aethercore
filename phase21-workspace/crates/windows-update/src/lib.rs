@@ -26,6 +26,10 @@ pub enum UpdateError {
     Timeout(String),
     #[error("pre-install protection failed: {0}")]
     Protection(String),
+    #[error("Windows Update did not finish the driver search in time and was asked to stop")]
+    SearchTimedOut,
+    #[error("Windows Update is still stopping an earlier driver search")]
+    SearchStillStopping,
 }
 
 pub type Result<T> = std::result::Result<T, UpdateError>;
@@ -179,10 +183,13 @@ mod execution_windows;
 #[cfg(windows)]
 mod windows_impl;
 
+#[cfg_attr(not(windows), allow(dead_code))]
+mod bounded;
+
 #[cfg(windows)]
 pub use execution_windows::{ensure_servicing_available, execute_driver_updates};
 #[cfg(windows)]
-pub use windows_impl::{discover_driver_offers, probe_update_health};
+pub use windows_impl::{discover_driver_offers, last_online_search_iso, probe_update_health};
 
 #[cfg(not(windows))]
 pub fn probe_update_health() -> UpdateHealthProbe {
@@ -197,6 +204,11 @@ pub fn probe_update_health() -> UpdateHealthProbe {
 #[cfg(not(windows))]
 pub fn discover_driver_offers(_scope: SearchScope) -> Result<DiscoveryResult> {
     Err(UpdateError::UnsupportedPlatform)
+}
+
+#[cfg(not(windows))]
+pub fn last_online_search_iso() -> Option<String> {
+    None
 }
 
 #[cfg(not(windows))]

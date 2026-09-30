@@ -5,13 +5,19 @@ use windows::{
         System::{
             Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
             UpdateAgent::{
+                AutomaticUpdates, IAutomaticUpdates2, ISearchCompletedCallback,
+                ISearchCompletedCallback_Impl, ISearchCompletedCallbackArgs, ISearchJob,
                 IUpdateSession, IWindowsDriverUpdate, IWindowsDriverUpdate4,
                 IWindowsDriverUpdateEntry, UpdateSession, orcSucceeded, orcSucceededWithErrors,
             },
+            Variant::{VARIANT, VT_DATE},
         },
     },
-    core::{BSTR, Interface},
+    core::{BSTR, Interface, Ref},
 };
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use crate::{
     DiscoveryResult, DriverOffer, Result, SearchScope, UpdateError, UpdateHealthProbe,
@@ -126,7 +132,49 @@ fn update_probe_error(error: windows::core::Error) -> UpdateHealthProbe {
     }
 }
 
+/// How long a driver search may take (P84-02B). The local cache answers in seconds; online the
+/// agent first fetches its catalog. Past this the agent is asked to stop and the page says so.
+const LOCAL_SEARCH_DEADLINE: Duration = Duration::from_secs(120);
+const ONLINE_SEARCH_DEADLINE: Duration = Duration::from_secs(600);
+const SEARCH_POLL: Duration = Duration::from_millis(250);
+
+/// The agent's completion notice. The job is polled instead, so this does nothing, and COM holds
+/// it for as long as the agent does: no notice can reach an object that is gone.
+#[windows::core::implement(ISearchCompletedCallback)]
+struct SearchCompletedCallback;
+impl ISearchCompletedCallback_Impl for SearchCompletedCallback_Impl {
+    fn Invoke(
+        &self,
+        _searchjob: Ref<'_, ISearchJob>,
+        _callbackargs: Ref<'_, ISearchCompletedCallbackArgs>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+}
+
+/// The day Windows last finished an online search, from its own record: how old the local cache
+/// is (P84-02B). A local read; None when Windows keeps no such date or cannot say.
+pub fn last_online_search_iso() -> Option<String> {
+    let _guard = ComApartment::mta().ok()?;
+    let updates: IAutomaticUpdates2 =
+        unsafe { CoCreateInstance(&AutomaticUpdates, None, CLSCTX_INPROC_SERVER) }.ok()?;
+    let date = unsafe { updates.Results().ok()?.LastSearchSuccessDate().ok()? };
+    let inner = unsafe { &date.Anonymous.Anonymous };
+    if inner.vt != VT_DATE {
+        return None;
+    }
+    ole_automation_date_to_iso(unsafe { inner.Anonymous.date })
+}
+
 pub fn discover_driver_offers(scope: SearchScope) -> Result<DiscoveryResult> {
+    let deadline = match scope {
+        SearchScope::Online => ONLINE_SEARCH_DEADLINE,
+        SearchScope::LocalCacheOnly => LOCAL_SEARCH_DEADLINE,
+    };
+    crate::bounded::search_bounded(deadline, move |stop| search_driver_offers(scope, stop))
+}
+
+fn search_driver_offers(scope: SearchScope, stop: &AtomicBool) -> Result<DiscoveryResult> {
     let _guard = ComApartment::mta()
         .map_err(|hr| UpdateError::Wua(format!("CoInitializeEx failed: 0x{:08X}", hr.0 as u32)))?;
 
@@ -153,7 +201,32 @@ pub fn discover_driver_offers(scope: SearchScope) -> Result<DiscoveryResult> {
 
     // WUA evaluates applicability. AetherCore never ranks packages by version number.
     let criteria = BSTR::from("IsInstalled=0 and Type='Driver' and IsHidden=0");
-    let result = unsafe { searcher.Search(&criteria).map_err(wua_err)? };
+    let completed: ISearchCompletedCallback = SearchCompletedCallback.into();
+    let job = unsafe {
+        searcher
+            .BeginSearch(&criteria, &completed, &VARIANT::default())
+            .map_err(wua_err)?
+    };
+    let mut aborted = false;
+    while !unsafe { job.IsCompleted().map_err(wua_err)? }.as_bool() {
+        if !aborted && stop.load(Ordering::SeqCst) {
+            // Asked once. Whether the agent accepts or refuses, this thread keeps waiting for
+            // the job to end, so a later search never runs beside it.
+            aborted = true;
+            unsafe {
+                let _ = job.RequestAbort();
+            }
+        }
+        std::thread::sleep(SEARCH_POLL);
+    }
+    let ended = unsafe { searcher.EndSearch(&job) };
+    unsafe {
+        let _ = job.CleanUp();
+    }
+    if aborted {
+        return Err(UpdateError::SearchTimedOut);
+    }
+    let result = ended.map_err(wua_err)?;
     let result_code = unsafe { result.ResultCode().map_err(wua_err)? };
     let mut warnings = Vec::new();
     if result_code == orcSucceededWithErrors {

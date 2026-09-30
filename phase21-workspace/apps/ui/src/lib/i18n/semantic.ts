@@ -1,4 +1,4 @@
-import type { DriverCandidate, DriverDevice } from '../contracts';
+import type { DriverCandidate, DriverDevice, DriverHub } from '../contracts';
 import { hasMessageKey, t, td, tp, type Locale, type MessageKey } from './runtime';
 
 // P77-01: the display boundary fails closed. An enum value or id the app does not know reads as
@@ -134,6 +134,8 @@ export function localizeRecommendationReason(code: string, locale: Locale): stri
 export function localizeFactState(value: string, locale: Locale): string { const key = `repair.fact.${value}`; return hasMessageKey(key) ? td(key, locale) : unknownLabel(locale); }
 
 const exactOwnedText: Record<string, MessageKey> = {
+  'Windows Update did not finish the driver search in time and was asked to stop':'tech.driver.searchTimedOut',
+  'Windows Update is still stopping an earlier driver search':'tech.driver.searchStillStopping',
   'Startup change needs review':'startup.failure',
   'Authorized repair queued':'tech.repair.queued',
   'Checking servicing safety':'tech.repair.preflight',
@@ -507,6 +509,15 @@ export function driverStateLabel(device: DriverDevice, locale: Locale): string {
 
 export function driverTargetLabel(candidate: DriverCandidate, locale: Locale): string {
   return candidate.targetVersion || (candidate.driverDateIso ? t('drivers.target.offerDate',locale,{date:candidate.driverDateIso}) : t('drivers.target.offer',locale));
+}
+/**
+ * Where the last driver scan looked (P84-02B): the local cache, with the day Windows last searched
+ * online as its age, or an online search the user confirmed. Empty before any scan.
+ */
+export function driverSearchSource(hub: Pick<DriverHub, 'searchScope' | 'windowsLastOnlineSearch' | 'completedUnixMs'>, locale: Locale): string {
+  if (hub.searchScope === 'Online') return t('drivers.source.online',locale,{date:new Date(hub.completedUnixMs).toISOString().slice(0,10)});
+  if (hub.searchScope !== 'LocalCacheOnly') return '';
+  return hub.windowsLastOnlineSearch ? t('drivers.source.cache',locale,{date:hub.windowsLastOnlineSearch}) : t('drivers.source.cacheNoDate',locale);
 }
 export function driverTargetEvidence(candidate: DriverCandidate, locale: Locale): string {
   if (candidate.targetVersion && candidate.targetVersionSource === 'TitleHeuristic') return t('drivers.target.parsedTitle',locale);

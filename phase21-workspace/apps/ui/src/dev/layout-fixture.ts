@@ -131,6 +131,8 @@ const hub: DriverHub = {
   devices: [0, 1, 2, 3, 4, 5].map((i) => device(i)),
   authorityCoverage: 'Complete',
   providerStatus: ['WindowsUpdate: Available', 'VendorPortal: Manual'],
+  searchScope: 'LocalCacheOnly',
+  windowsLastOnlineSearch: '2026-01-20',
 };
 
 const cleanupSnapshot: CleanupSnapshot = {

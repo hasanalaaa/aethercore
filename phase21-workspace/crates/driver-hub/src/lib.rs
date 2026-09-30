@@ -237,6 +237,14 @@ pub struct DriverHubSnapshot {
     pub warnings: Vec<String>,
     pub authority_coverage: String,
     pub provider_status: Vec<String>,
+    /// Where this scan looked for offers: "LocalCacheOnly" or "Online"; empty before any scan
+    /// (P84-02B). Defaulted so a snapshot stored before it still reads.
+    #[serde(default)]
+    pub search_scope: String,
+    /// For a local-cache scan, the day Windows last finished an online search (the cache's
+    /// age), as Windows records it; empty when it keeps no such date.
+    #[serde(default)]
+    pub windows_last_online_search: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -265,6 +273,8 @@ impl Default for DriverHubSnapshot {
             warnings: Vec::new(),
             authority_coverage: "Unknown".into(),
             provider_status: Vec::new(),
+            search_scope: String::new(),
+            windows_last_online_search: String::new(),
         }
     }
 }
@@ -288,6 +298,11 @@ pub trait DiscoveryBackend: Send + Sync + 'static {
     fn inventory(&self) -> std::result::Result<Vec<DeviceRecord>, String>;
     /// The online search. The hub never calls it directly: it goes through `updates_in`.
     fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure>;
+    /// The day Windows last finished an online search: how old a local-cache answer is. A local
+    /// read; None when the backend cannot say.
+    fn last_online_search(&self) -> Option<String> {
+        None
+    }
     /// Every hub scan names its scope (no network at rest). The default fails closed, so a
     /// backend that cannot search the local cache is never sent online by a passive scan.
     fn updates_in(
@@ -313,6 +328,10 @@ impl DiscoveryBackend for WindowsDiscoveryBackend {
 
     fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
         self.updates_in(SearchScope::Online)
+    }
+
+    fn last_online_search(&self) -> Option<String> {
+        aethercore_windows_update::last_online_search_iso()
     }
 
     fn updates_in(
@@ -746,6 +765,10 @@ impl DriverHub {
         ready.state = ScanState::Ready;
         ready.completed_unix_ms = Utc::now().timestamp_millis();
         ready.warnings.extend(overrides_warning);
+        if scope == SearchScope::LocalCacheOnly {
+            ready.windows_last_online_search =
+                self.inner.backend.last_online_search().unwrap_or_default();
+        }
         let committed = commit_fence.try_commit_checked(|| {
             let mut owner = self
                 .inner
@@ -873,6 +896,10 @@ impl DriverHub {
         ready.state = ScanState::Ready;
         ready.completed_unix_ms = Utc::now().timestamp_millis();
         ready.warnings.extend(overrides_warning);
+        if scope == SearchScope::LocalCacheOnly {
+            ready.windows_last_online_search =
+                self.inner.backend.last_online_search().unwrap_or_default();
+        }
         self.persist_authority_snapshot(&owner, &ready);
         let mut current = self
             .inner
@@ -1185,6 +1212,12 @@ fn match_inventory_with_overrides(
         warnings,
         authority_coverage: coverage_label(global_coverage).into(),
         provider_status,
+        search_scope: match scope {
+            SearchScope::LocalCacheOnly => "LocalCacheOnly",
+            SearchScope::Online => "Online",
+        }
+        .into(),
+        windows_last_online_search: String::new(),
     }
 }
 
@@ -1718,6 +1751,14 @@ mod tests {
         ] {
             start_scan_in(&hub, OWNER, scope).unwrap();
             assert_eq!(scopes_of_one_scan(&backend, &hub), vec![expected]);
+            // P84-02B: the snapshot says which source it read, and how old a cache answer is.
+            let snapshot = hub.snapshot();
+            let (named, age) = match expected {
+                SearchScope::LocalCacheOnly => ("LocalCacheOnly", "2026-09-01"),
+                SearchScope::Online => ("Online", ""),
+            };
+            assert_eq!(snapshot.search_scope, named);
+            assert_eq!(snapshot.windows_last_online_search, age);
         }
         // An unconfirmed scan's empty answer is not "up to date".
         assert_eq!(
@@ -2363,6 +2404,9 @@ mod tests {
         ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
             self.scopes.lock().unwrap().push(scope);
             Ok(DiscoveryResult::default())
+        }
+        fn last_online_search(&self) -> Option<String> {
+            Some("2026-09-01".into())
         }
     }
 

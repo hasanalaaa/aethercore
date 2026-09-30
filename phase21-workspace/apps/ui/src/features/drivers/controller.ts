@@ -105,10 +105,19 @@ export function filteredDevices(): DriverDevice[] {
   });
 }
 
-export async function startDriverScan(): Promise<void> {
+/** A scan of what Windows already knows: the local cache, no network (P84-02A). */
+export function startDriverScan(): Promise<void> { return scanDrivers(false); }
+
+/**
+ * The user's confirmed online search through Windows Update, for this one scan (P84-02B, D14).
+ * Only the confirmation button on the drivers page calls it.
+ */
+export function startOnlineDriverSearch(): Promise<void> { return scanDrivers(true); }
+
+async function scanDrivers(online: boolean): Promise<void> {
   setPage('drivers');
   await runBusy(async () => {
-    const hub = await serviceInvoke<DriverHub>('start_driver_scan');
+    const hub = await serviceInvoke<DriverHub>('start_driver_scan', { online });
     patchStreamState({ hub });
     driversUi.set({ filter: get(driversUi).filter, search: get(driversUi).search, selected: {}, expanded: {}, lastSelectionScan: '', reviewOpen: false });
   });

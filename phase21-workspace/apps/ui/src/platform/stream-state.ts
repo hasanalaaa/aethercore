@@ -130,6 +130,8 @@ export function createInitialStreamState(): StreamState {
       warnings: [],
       authorityCoverage: 'Unknown',
       providerStatus: [],
+      searchScope: '',
+      windowsLastOnlineSearch: '',
     },
     installPlan: null,
     installStatus: null,

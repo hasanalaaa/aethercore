@@ -196,6 +196,8 @@ pub(crate) fn driver_hub_proto(snapshot: DriverHubSnapshot) -> v1::DriverHubSnap
         state_code,
         authority_coverage: snapshot.authority_coverage,
         provider_status: snapshot.provider_status,
+        search_scope: snapshot.search_scope,
+        windows_last_online_search: snapshot.windows_last_online_search,
     }
 }
 
