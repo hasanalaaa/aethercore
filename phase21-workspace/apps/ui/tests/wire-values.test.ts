@@ -364,3 +364,16 @@ test('the update health probe sentences read in Arabic', async () => {
   }
   assert.match(localizeOwnedText(counted(12), 'ar').text, /12/);
 });
+
+// P78-03: a repair the owner cancels before the mutation barrier fails with this message. It is a
+// lowercase `#[error]` string, which the sentence scan above does not read, so it is pinned here.
+test('the message of a repair cancelled before any change reads in Arabic', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const source = readFileSync(join(import.meta.dirname, '../../../crates/system-repair/src/lib.rs'), 'utf8');
+  const message = 'the repair was cancelled before any change was made';
+  assert.ok(source.includes(`#[error("${message}")]`), 'the source no longer says the message this test pins');
+  const shown = localizeOwnedText(message, 'ar').text;
+  assert.notEqual(shown, td('text.unavailable', 'ar'));
+  assert.match(shown, arabic);
+});

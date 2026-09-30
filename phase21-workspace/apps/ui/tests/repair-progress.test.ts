@@ -22,8 +22,8 @@ test('every assessment check the Windows provider reports has an English and an 
 });
 
 // P78-04: the assessment screen must not be put back on "Assessing" by a late answer, must say when
-// the connection is gone instead of pretending, and must show how long it has been running.
-import { settleAssessment, elapsedLabel } from '../src/features/repair/settle.ts';
+// the connection is gone instead of pretending. (No ticking clock: the renderer does not poll.)
+import { settleAssessment } from '../src/features/repair/settle.ts';
 import type { RepairAssessment } from '../src/lib/contracts.ts';
 
 const assessment = (assessmentId: string, state: RepairAssessment['state']): RepairAssessment =>
@@ -49,18 +49,10 @@ test('an answer that is news still replaces what the screen holds', () => {
   assert.equal(settleAssessment(running, done), done, 'a terminal answer replaces Scanning');
 });
 
-test('the elapsed time reads as m:ss or h:mm:ss and is empty when the start is unknown', () => {
-  assert.equal(elapsedLabel(1000, 1000), '0:00');
-  assert.equal(elapsedLabel(0, 5000), '', 'a start of 0 is unknown, not 1970');
-  assert.equal(elapsedLabel(1000, 66_000), '1:05');
-  assert.equal(elapsedLabel(1000, 3_726_000), '1:02:05');
-  assert.equal(elapsedLabel(9000, 1000), '0:00', 'a clock behind the start never shows a negative time');
-});
-
 test('the screen says when the connection is lost, and the cancel names its assessment', () => {
-  for (const key of ['repair.disconnected', 'repair.elapsed']) {
+  for (const key of ['repair.disconnected']) {
     assert.ok(hasMessageKey(key), key);
-    assert.match(td(key as never, 'ar', { elapsed: '1:05' } as never), arabic, key);
+    assert.match(td(key as never, 'ar'), arabic, key);
   }
   const page = readFileSync(new URL('../src/features/repair/RepairPage.svelte', import.meta.url), 'utf8');
   const connected = page.slice(page.indexOf("{#if repairAssessment.state === 'Scanning'}"), page.indexOf('{:else if repairAssessment.errorMessage}'));

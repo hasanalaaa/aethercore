@@ -118,6 +118,8 @@ message Request {
     GetAssistantPackRequest get_assistant_pack = 94;
     // P76 (DBT-P76-007).
     CancelRepairAssessmentRequest cancel_repair_assessment = 95;
+    // P78-03 (D3).
+    CancelSystemRepairRequest cancel_system_repair = 96;
   }
 }
 message Response {

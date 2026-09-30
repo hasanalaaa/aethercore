@@ -95,6 +95,7 @@ pub fn handle_request(
             payload @ (request::Payload::StartRepairAssessment(_)
             | request::Payload::GetRepairAssessment(_)
             | request::Payload::CancelRepairAssessment(_)
+            | request::Payload::CancelSystemRepair(_)
             | request::Payload::CreateSystemRepairPlan(_)
             | request::Payload::StartSystemRepair(_)
             | request::Payload::GetSystemRepairStatus(_)) => repair::route(call, payload),

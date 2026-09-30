@@ -562,7 +562,7 @@ fn a_running_assessment_shows_its_progress_and_can_be_cancelled() {
     assert_eq!(running.checks.len(), 1);
     assert_eq!(running.checks[0].id, "dism-scan");
 
-    coordinator.cancel_assessment(OWNER).expect("cancel");
+    coordinator.cancel_assessment(OWNER, "").expect("cancel");
     let deadline = Instant::now() + Duration::from_secs(5);
     let stopped = loop {
         let current = coordinator.assessment_for_owner(OWNER).expect("snapshot");
@@ -578,7 +578,7 @@ fn a_running_assessment_shows_its_progress_and_can_be_cancelled() {
     );
     assert_eq!(stopped.checks.len(), 1, "what was measured is kept");
     assert!(stopped.current_check_id.is_empty());
-    assert!(coordinator.cancel_assessment("someone-else").is_err());
+    assert!(coordinator.cancel_assessment("someone-else", "").is_err());
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -652,6 +652,293 @@ fn an_assessment_completes_after_its_measurement_ended() {
     assert!(
         state.completed_unix_ms - state.started_unix_ms >= 80,
         "{state:?}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// P78-03: cancel verbs carry the id of what they cancel. An id from an older assessment cancels
+/// nothing, repeating a cancel is safe, and another owner is refused.
+#[test]
+fn an_assessment_cancel_names_its_target_and_is_safe_to_repeat() {
+    let root = temp_root("assess-cancel-id");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let coordinator = RepairCoordinator::with_platform(engine, db, Arc::new(SlowAssessment));
+    let started = start_assessment(&coordinator, OWNER).expect("start");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while coordinator
+        .assessment_for_owner(OWNER)
+        .expect("snapshot")
+        .current_check_id
+        != "sfc-verify"
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the assessment never reached its slow check"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    // An id from an older assessment must not stop this one.
+    let stale = coordinator
+        .cancel_assessment(OWNER, "an-older-assessment")
+        .expect("stale cancel");
+    assert_eq!(stale.state, RepairAssessmentState::Scanning);
+    thread::sleep(Duration::from_millis(150));
+    let still = coordinator.assessment_for_owner(OWNER).expect("snapshot");
+    assert_eq!(
+        still.state,
+        RepairAssessmentState::Scanning,
+        "a stale id cancelled the current assessment"
+    );
+
+    // Another owner is refused, whatever id it names.
+    assert!(
+        coordinator
+            .cancel_assessment("someone-else", &started.assessment_id)
+            .is_err()
+    );
+
+    // The right id stops it, and asking again is not an error.
+    coordinator
+        .cancel_assessment(OWNER, &started.assessment_id)
+        .expect("cancel");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let stopped = loop {
+        let current = coordinator.assessment_for_owner(OWNER).expect("snapshot");
+        if current.state != RepairAssessmentState::Scanning || Instant::now() > deadline {
+            break current;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(
+        stopped.state,
+        RepairAssessmentState::Cancelled,
+        "{stopped:?}"
+    );
+    let again = coordinator
+        .cancel_assessment(OWNER, &started.assessment_id)
+        .expect("repeat");
+    assert_eq!(again.state, RepairAssessmentState::Cancelled);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A repair platform that waits before the mutation barrier (or after it) until released.
+struct GatedRepair {
+    hold_before_barrier: std::sync::atomic::AtomicBool,
+    hold_after_barrier: std::sync::atomic::AtomicBool,
+    waiting: std::sync::atomic::AtomicBool,
+    release: std::sync::atomic::AtomicBool,
+    mutations: std::sync::atomic::AtomicUsize,
+}
+
+impl GatedRepair {
+    fn new() -> Self {
+        Self {
+            hold_before_barrier: false.into(),
+            hold_after_barrier: false.into(),
+            waiting: false.into(),
+            release: false.into(),
+            mutations: 0.into(),
+        }
+    }
+    fn hold(&self, before_barrier: bool) {
+        self.waiting
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.release
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.hold_before_barrier
+            .store(before_barrier, std::sync::atomic::Ordering::SeqCst);
+        self.hold_after_barrier
+            .store(!before_barrier, std::sync::atomic::Ordering::SeqCst);
+    }
+    fn wait_until_waiting(&self) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !self.waiting.load(std::sync::atomic::Ordering::SeqCst) {
+            assert!(
+                Instant::now() < deadline,
+                "the repair never reached its wait"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+    fn park(&self) {
+        self.waiting
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !self.release.load(std::sync::atomic::Ordering::SeqCst) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
+impl RepairPlatform for GatedRepair {
+    fn assess(
+        &self,
+        cancel: &Arc<std::sync::atomic::AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
+        FakeRepairPlatform {
+            fail_before_mutation: false,
+            fail_after_mutation: false,
+            events: Mutex::new(Vec::new()),
+        }
+        .assess(cancel, progress)
+    }
+    fn repair(
+        &self,
+        _: &SystemRepairAction,
+        begin_mutation: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        if self
+            .hold_before_barrier
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            self.park();
+        }
+        begin_mutation()?;
+        self.mutations
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self
+            .hold_after_barrier
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            self.park();
+        }
+        Ok(())
+    }
+    fn verify(
+        &self,
+        _: &SystemRepairAction,
+        emit: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        for (id, code) in [
+            ("verify-dism", "ComponentStoreHealthy"),
+            ("verify-sfc", "SystemFilesHealthy"),
+        ] {
+            emit(RepairCheck {
+                id: id.into(),
+                title: id.into(),
+                stage: "Completed".into(),
+                result_code: code.into(),
+                ..RepairCheck::default()
+            });
+        }
+        Ok(())
+    }
+}
+
+fn gated_plan(
+    coordinator: &RepairCoordinator,
+    engine: &OperationEngine,
+    platform: &GatedRepair,
+    before_barrier: bool,
+) -> String {
+    start_assessment(coordinator, OWNER).expect("start assessment");
+    let assessment_id = wait_assessment(coordinator);
+    let plan = coordinator
+        .create_plan(OWNER, &assessment_id, false)
+        .expect("plan");
+    authorize(engine, &plan.id);
+    platform.hold(before_barrier);
+    start_repair(coordinator, OWNER, &plan.id).expect("start");
+    plan.id
+}
+
+/// P78-03: a cancel that arrives before the mutation barrier stops the repair from crossing it.
+/// The plan ends failed-before-mutation with nothing to recover; no command ran.
+#[test]
+fn a_repair_cancelled_before_the_barrier_never_crosses_it() {
+    let root = temp_root("repair-cancel-before");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let platform = Arc::new(GatedRepair::new());
+    let coordinator = RepairCoordinator::with_platform(engine.clone(), db, platform.clone());
+    let plan = gated_plan(&coordinator, &engine, &platform, true);
+    platform.wait_until_waiting();
+
+    // Another owner and an unknown plan are refused; neither touches this repair.
+    assert!(coordinator.cancel_repair("someone-else", &plan).is_err());
+    assert!(coordinator.cancel_repair(OWNER, "no-such-plan").is_err());
+    coordinator.cancel_repair(OWNER, &plan).expect("cancel");
+    coordinator
+        .cancel_repair(OWNER, &plan)
+        .expect("cancel again");
+    platform
+        .release
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+
+    let status = wait_terminal(&coordinator, &plan, "Failed");
+    assert!(!status.mutation_started, "{status:?}");
+    assert!(!status.recovery_required, "{status:?}");
+    assert_eq!(status.outcome, "FailedBeforeMutation");
+    assert!(
+        status.failure_message.contains("cancelled"),
+        "{}",
+        status.failure_message
+    );
+    assert_eq!(
+        platform.mutations.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "a command ran after the cancel"
+    );
+    // The finished plan answers a repeated cancel with its state, and the journal is untouched.
+    let after = coordinator
+        .cancel_repair(OWNER, &plan)
+        .expect("cancel a finished plan")
+        .expect("status");
+    assert_eq!(after.plan_state, "Failed");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The other two edges: an id from an older plan does not cancel the plan that replaced it, and a
+/// cancel after the barrier stops nothing (a real stop of the running tool is P85) - the repair
+/// finishes and is verified as it would have been.
+#[test]
+fn a_stale_plan_id_and_a_cancel_after_the_barrier_stop_nothing() {
+    let root = temp_root("repair-cancel-edges");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let platform = Arc::new(GatedRepair::new());
+    let coordinator = RepairCoordinator::with_platform(engine.clone(), db, platform.clone());
+
+    let older = gated_plan(&coordinator, &engine, &platform, false);
+    platform.wait_until_waiting();
+    platform
+        .release
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    wait_terminal(&coordinator, &older, "Completed");
+
+    let newer = gated_plan(&coordinator, &engine, &platform, true);
+    platform.wait_until_waiting();
+    coordinator
+        .cancel_repair(OWNER, &older)
+        .expect("an older plan's cancel is not an error");
+    platform
+        .release
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let status = wait_terminal(&coordinator, &newer, "Completed");
+    assert!(
+        status.mutation_started,
+        "an older plan's id cancelled the newer plan"
+    );
+
+    let past = gated_plan(&coordinator, &engine, &platform, false);
+    platform.wait_until_waiting();
+    coordinator
+        .cancel_repair(OWNER, &past)
+        .expect("cancel after the barrier");
+    platform
+        .release
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let status = wait_terminal(&coordinator, &past, "Completed");
+    assert!(
+        status.mutation_started && !status.recovery_required,
+        "{status:?}"
     );
     let _ = std::fs::remove_dir_all(root);
 }
