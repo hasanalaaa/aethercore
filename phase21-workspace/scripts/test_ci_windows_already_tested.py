@@ -72,6 +72,11 @@ CASES = [
 
 
 def main() -> int:
+    if os.name == "nt":
+        # The stub `gh` is an executable script; Windows cannot run one without an extension. The job that
+        # uses the script runs on Linux and this test runs in the macOS gate self-tests.
+        print("SKIP  the stub gh needs a POSIX shebang; not run on Windows")
+        return 0
     failed = 0
     for name, scenario, expected in CASES:
         got, code = run(scenario)
