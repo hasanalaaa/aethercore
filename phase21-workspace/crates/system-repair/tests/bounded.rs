@@ -201,7 +201,7 @@ fn the_owners_cancel_stops_a_check_long_before_its_deadline() {
     let began = Instant::now();
     start(&coordinator);
     thread::sleep(Duration::from_millis(60));
-    coordinator.cancel_assessment(OWNER).expect("cancel");
+    coordinator.cancel_assessment(OWNER, "").expect("cancel");
     assert_eq!(
         terminal(&coordinator).state,
         RepairAssessmentState::Cancelled

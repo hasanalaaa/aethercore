@@ -834,6 +834,7 @@ export const enCatalog = {
   'tech.recovery.cleanupDetail': 'AetherCore did not replay deletion after restart. Run a fresh cleanup scan before any further action.',
   'tech.warning.diagnosticWorker': 'The diagnostic scan stopped because an internal worker failed.',
   'tech.repair.mutationBoundary': 'The point of no return was crossed: changes had begun.',
+  'tech.repair.cancelledBeforeChange': 'The repair was cancelled before any change was made.',
   'tech.repair.checkTimedOut': 'This check did not finish in time and was stopped; its result is unknown.',
   'tech.repair.checkStillRunning': 'An earlier attempt at this check is still running, so it was not started again; its result is unknown.',
   'tech.repair.checkNoAnswer': 'This check stopped without an answer; its result is unknown.',
