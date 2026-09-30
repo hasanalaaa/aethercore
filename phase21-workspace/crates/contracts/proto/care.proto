@@ -38,7 +38,7 @@ message CareStatusResponse { CareRunStatus status = 1; }
 message CareDomainEligibility {
   // "cleanup".
   string domain = 1;
-  // ready | scanning | notScanned | stale | none | reviewRequired | unavailable.
+  // ready | scanning | none | reviewRequired | unavailable.
   string reason = 2;
   // Completion time of the scan this reason rests on; 0 when there is none.
   int64 scanned_unix_ms = 3;

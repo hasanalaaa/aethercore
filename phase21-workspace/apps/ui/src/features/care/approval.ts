@@ -1,4 +1,4 @@
-import type { CareRunStatus, CleanupSnapshot } from '../../lib/contracts';
+import type { CarePreview, CareRunStatus, CleanupCandidate, CleanupSnapshot } from '../../lib/contracts';
 
 /**
  * DBT-P75-045: the service approves the care plan it composes when the owner clicks, and that
@@ -44,4 +44,16 @@ export function careEmptyReason(scan: CleanupSnapshot, load: CareLoad = 'loaded'
   if (scan.state !== 'Ready') return { kind: 'noScan' };
   if (scan.candidates.some((c) => c.selectedByDefault && !c.requiresExplicitConfirmation)) return { kind: 'noPlan' };
   return { kind: 'nothingEligible', optIn: scan.candidates.filter((c) => c.requiresExplicitConfirmation).map((c) => c.title) };
+}
+
+/** What the page does with a prepared preview: open the review, wait for the local scan, or say why not. */
+export function afterPrepare(preview: CarePreview): 'review' | 'wait' | 'explain' {
+  const reason = preview.domains.find((domain) => domain.domain === 'cleanup')?.reason;
+  if (reason === 'scanning') return 'wait';
+  return reason === 'ready' && approvedStepCount(preview.status) > 0 ? 'review' : 'explain';
+}
+
+/** The candidates the service prepares for care: the same rule as `decide_cleanup` in the service. */
+export function eligibleCandidates(scan: CleanupSnapshot): CleanupCandidate[] {
+  return scan.candidates.filter((candidate) => candidate.selectedByDefault && !candidate.requiresExplicitConfirmation);
 }

@@ -234,6 +234,11 @@ export type CareRunStatus = {
   runId:string; state:string; stage:string; sessionConsentGranted:boolean;
   planDigestSha256:string; steps:CareStepReport[]; updatedUnixMs:number; summaryKey:string
 };
+/** P79-04A: why a domain has, or has not, something prepared. */
+export type CareDomainEligibility = {
+  domain:string; reason:string; scannedUnixMs:number; eligibleCandidates:number; reviewRequiredCandidates:number
+};
+export type CarePreview = { status:CareRunStatus; domains:CareDomainEligibility[] };
 
 // Phase 23 — Local Intelligence (advisory-only)
 export type InsightCitation = { evidenceId:string; surface:'bottleneckReport'|'repairDiagnosis'|'timelinePattern'|'maintenanceHistory'|'securityFinding' };

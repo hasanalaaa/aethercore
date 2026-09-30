@@ -1,13 +1,17 @@
 import { get, writable } from 'svelte/store';
-import type { CareRunStatus } from '../../lib/contracts';
+import type { CareDomainEligibility, CarePreview, CareRunStatus } from '../../lib/contracts';
 import { runBusy, setPage } from '../../app/shell-state';
 import { serviceInvoke } from '../../platform/service-client';
 import { patchStreamState, streamState } from '../../platform/stream-state';
-import { afterApproval, isPlanChanged, type CareLoad } from './approval';
+import { afterApproval, afterPrepare, isPlanChanged, type CareLoad } from './approval';
 
-/** UI-only dialog state for the session-consent flow. */
+/** UI-only state for the prepare -> review -> approve flow. */
 export const careUi = writable({
   consentDialogOpen: false,
+  /** The local scan care asked for has not finished; the page continues when it does. */
+  preparing: false,
+  /** Why each domain has, or has not, something prepared (P79-04A). */
+  domains: [] as CareDomainEligibility[],
 });
 
 /** Whether the last read of the plan worked; the panel says "unavailable" for a failed one. */
@@ -27,15 +31,28 @@ export async function loadCareStatus(): Promise<void> {
   });
 }
 
+let preparing = false;
+
 /**
- * Opens the approval dialog on the plan as the service composes it now, so the owner approves
- * a plan they are shown. Nothing runs until the owner confirms.
+ * P79-04B: asks the service to prepare what care could run (P79-04A: it reads and prepares only).
+ * A prepared plan with automatic work opens the approval dialog, on the plan as the service
+ * composes it now, so the owner approves the plan they are shown; while the local scan runs the
+ * page says so and continues when the scan ends; otherwise it says why nothing is prepared.
+ * Nothing runs until the owner confirms.
  */
-export async function openCareConsent(): Promise<void> {
-  const shown = await runBusy(() => serviceInvoke<CareRunStatus>('get_care_status'));
-  if (!shown) return;
-  patchStreamState({ careStatus: shown });
-  careUi.update((state) => ({ ...state, consentDialogOpen: true }));
+export async function prepareCare(): Promise<void> {
+  if (preparing) return;
+  preparing = true;
+  try {
+    const preview = await runBusy(() => serviceInvoke<CarePreview>('prepare_care_preview'));
+    if (!preview) return;
+    patchStreamState({ careStatus: preview.status });
+    const next = afterPrepare(preview);
+    careUi.update((state) => ({ ...state, domains: preview.domains, preparing: next === 'wait', consentDialogOpen: next === 'review' }));
+    if (next !== 'review') setPage('activity');
+  } finally {
+    preparing = false;
+  }
 }
 
 export function closeCareConsent(): void {
