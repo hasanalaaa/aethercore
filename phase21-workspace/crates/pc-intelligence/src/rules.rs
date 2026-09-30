@@ -104,7 +104,9 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
         if fact.freshness == Freshness::Stale
             && matches!(
                 fact.payload,
-                FactPayload::StorageHealth { .. } | FactPayload::MemoryPressure { .. }
+                FactPayload::StorageHealth { .. }
+                    | FactPayload::MemoryPressure { .. }
+                    | FactPayload::ThermalZone { .. }
             )
         {
             continue;
@@ -393,6 +395,26 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                     ));
                 }
             }
+            // A zone at or above ITS OWN rated critical trip point (P83-06A). Nothing here says
+            // what is hot: the zone is firmware's, and a reading without a rated threshold never
+            // reaches this rule.
+            FactPayload::ThermalZone {
+                temperature_c,
+                critical_c,
+            } if *critical_c > 0 && *temperature_c >= *critical_c => findings.push(finding(
+                fact,
+                "THERMAL_TRIP_EXCEEDED",
+                Domain::Hardware,
+                Severity::High,
+                Confidence::High,
+                "finding.thermalTrip.title",
+                "finding.thermalTrip.summary",
+                "finding.thermalTrip.technical",
+                "P83-THERM-001",
+                1,
+                Some(RemediationSafety::HardwareService),
+                ActionType::ReviewHardwareError,
+            )),
             FactPayload::MemoryPressure {
                 memory_load_percent,
                 ..

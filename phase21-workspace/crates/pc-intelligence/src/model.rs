@@ -326,6 +326,12 @@ pub enum FactPayload {
         memory_load_percent: u32,
         pressure_label: String,
     },
+    /// An ACPI thermal zone that reports both a plausible current reading and its own rated
+    /// critical trip point (P83-06A). Whole degrees Celsius.
+    ThermalZone {
+        temperature_c: i64,
+        critical_c: i64,
+    },
     HardwareEvent {
         category: String,
         provider: String,
@@ -374,6 +380,7 @@ impl FactPayload {
             Self::WindowsIntegrity { .. } => "windowsIntegrity",
             Self::StorageHealth { .. } => "storageHealth",
             Self::MemoryPressure { .. } => "memoryPressure",
+            Self::ThermalZone { .. } => "thermalZone",
             Self::HardwareEvent { .. } => "hardwareEvent",
             Self::Crash { .. } => "crash",
             Self::StartupFootprint { .. } => "startupFootprint",

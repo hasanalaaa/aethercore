@@ -906,6 +906,81 @@ mod tests {
         );
     }
 
+    // P83-06A: a thermal finding needs the zone's own rated threshold and a current reading.
+    fn thermal_snapshot(
+        zones: Vec<aethercore_diagnostic_engine::measurements::ThermalZone>,
+    ) -> aethercore_diagnostic_engine::DiagnosticsSnapshot {
+        aethercore_diagnostic_engine::DiagnosticsSnapshot {
+            state: aethercore_diagnostic_engine::ScanState::Ready,
+            completed_unix_ms: 1_000,
+            thermal_zones: zones,
+            ..Default::default()
+        }
+    }
+    fn zone(
+        temperature: Option<i32>,
+        critical: Option<i32>,
+    ) -> aethercore_diagnostic_engine::measurements::ThermalZone {
+        aethercore_diagnostic_engine::measurements::ThermalZone {
+            stable_id: "tz0".into(),
+            display_name: r"ACPI\ThermalZone\TZ00".into(),
+            temperature_c: temperature,
+            critical_c: critical,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_zone_at_its_own_rated_trip_point_is_a_finding_with_its_evidence() {
+        let facts = crate::normalize::diagnostics(
+            &thermal_snapshot(vec![zone(Some(105), Some(105))]),
+            1_000,
+        );
+        let findings = crate::rules::evaluate(&facts, 1_000);
+        let f = findings
+            .iter()
+            .find(|f| f.code == "THERMAL_TRIP_EXCEEDED")
+            .expect("a thermal finding");
+        assert!(
+            f.evidence
+                .iter()
+                .any(|e| e.technical_value.contains("temperatureC=105")
+                    && e.technical_value.contains("ratedCriticalC=105")),
+            "{:?}",
+            f.evidence
+        );
+        let below = crate::normalize::diagnostics(
+            &thermal_snapshot(vec![zone(Some(104), Some(105))]),
+            1_000,
+        );
+        assert!(
+            crate::rules::evaluate(&below, 1_000)
+                .iter()
+                .all(|f| f.code != "THERMAL_TRIP_EXCEEDED")
+        );
+    }
+
+    #[test]
+    fn no_rated_threshold_no_reading_or_an_old_sample_is_no_thermal_alarm() {
+        for zones in [vec![zone(Some(120), None)], vec![zone(None, Some(105))]] {
+            let facts = crate::normalize::diagnostics(&thermal_snapshot(zones), 1_000);
+            assert!(
+                facts.iter().all(|f| f.payload.kind_name() != "thermalZone"),
+                "a reading without its threshold, or a threshold without a reading, is not a fact"
+            );
+        }
+        let old = crate::normalize::diagnostics(
+            &thermal_snapshot(vec![zone(Some(120), Some(105))]),
+            1_000 + 3_600_000,
+        );
+        assert!(
+            crate::rules::evaluate(&old, 1_000 + 3_600_000)
+                .iter()
+                .all(|f| f.code != "THERMAL_TRIP_EXCEEDED"),
+            "an hour-old sample is not a current alarm"
+        );
+    }
+
     #[test]
     fn a_crash_stamped_slightly_after_now_by_a_moved_back_clock_still_counts() {
         const MIN: i64 = 60_000;
