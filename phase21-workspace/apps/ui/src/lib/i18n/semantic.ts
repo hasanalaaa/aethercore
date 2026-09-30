@@ -208,6 +208,7 @@ const exactOwnedText: Record<string, MessageKey> = {
   'No increase in the reported error counters since the previous scan.':'tech.storage.noIncrease',
   'Only the first 32 thermal zones are shown.':'tech.thermal.zonesCut',
   'Only the first 32 batteries are shown.':'tech.battery.cut',
+  'Only the first 128 network adapters are shown.':'tech.network.cut',
   'NVMe reports the device has become read-only.':'tech.storage.nvmeBit.readOnly',
   'NVMe reports its volatile memory backup has failed.':'tech.storage.nvmeBit.volatileBackup',
   'NVMe reports its persistent memory region is unreliable.':'tech.storage.nvmeBit.persistentMemory',

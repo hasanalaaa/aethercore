@@ -192,6 +192,23 @@ test('measurement rows keep "not read" apart from zero and survive malformed inp
   assert.equal(many.length, 32);
 });
 
+// P83-02: a down link, an unplugged cable and a virtual adapter are states in words, and an
+// unreported media state is not "disconnected".
+test('network adapter rows state the adapter, not the internet', async () => {
+  const { networkRows } = await import('../src/features/diagnostics/measurement-rows.ts');
+  const cov = { source: 'MSFT_NetAdapter', hasObservedUnixMs: true, observedUnixMs: 1, availability: 1, reasonKey: '' };
+  const base = { stableId: 'g', displayName: 'Wi-Fi', hasLinkSpeed: false, linkSpeedBps: 0, coverage: cov };
+  const down = networkRows([{ ...base, hasOperationalStatus: true, operationalStatus: 2, hasConnected: false, connected: false, hasIsVirtual: true, isVirtual: false }] as never, 'en')[0];
+  assert.equal(down.note, 'Link down', 'an unreported media state adds no "disconnected"');
+  assert.equal(down.value, null);
+  const vpn = networkRows([{ ...base, hasLinkSpeed: true, linkSpeedBps: 10_000_000, hasOperationalStatus: true, operationalStatus: 1, hasConnected: true, connected: true, hasIsVirtual: true, isVirtual: true }] as never, 'en')[0];
+  assert.equal(vpn.value, '10 Mbit/s');
+  assert.match(vpn.note ?? '', /Link up · Media connected · Virtual adapter/);
+  const unplugged = networkRows([{ ...base, hasOperationalStatus: true, operationalStatus: 2, hasConnected: true, connected: false, hasIsVirtual: false, isVirtual: false }] as never, 'ar')[0];
+  assert.match(unplugged.note ?? '', /[\u0600-\u06FF]/);
+  assert.equal(networkRows([{ ...base, hasOperationalStatus: true, operationalStatus: 99 }] as never, 'en')[0].note, 'State unknown', 'an out-of-range status is unknown');
+});
+
 // P82-03B: what Windows Memory Diagnostic last said, dated; a missing test is "not tested", and an
 // unreadable event log is "unknown", never "not tested" and never a pass.
 test('the memory-test summary is dated, and a missing or unreadable result is not a pass', async () => {

@@ -268,7 +268,7 @@ const diagnostics: DiagnosticsSnapshot = {
   })],
   boots: [fill<BootMeasurement>({ recordedUnixMs: NOW, hasDuration: true, durationMs: 41500, coverage: fill<MeasurementCoverage>({ source: 'Diagnostics-Performance', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }) })],
   networkAdapters: [fill<NetworkAdapterMeasurement>({
-    stableId: '{6A1F0E52-77D2-4A1B-9C3E-5B0D8E2F4A19}', displayName: 'Intel(R) Wi-Fi 6E AX211 160MHz', hasLinkSpeed: false, linkSpeedBps: 0,
+    stableId: '{6A1F0E52-77D2-4A1B-9C3E-5B0D8E2F4A19}', displayName: 'Intel(R) Wi-Fi 6E AX211 160MHz', hasLinkSpeed: false, linkSpeedBps: 0, hasOperationalStatus: true, operationalStatus: 2, hasConnected: false, connected: false, hasIsVirtual: true, isVirtual: false,
     coverage: fill<MeasurementCoverage>({ source: 'MSFT_NetAdapter', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 2 }),
   })],
 };

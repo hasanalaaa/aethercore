@@ -19,8 +19,8 @@ use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
     compare_counters,
     measurements::{
-        Availability, Battery, BootRecord, Coverage, MAX_BATTERIES, MAX_THERMAL_ZONES,
-        NetworkAdapter, ThermalZone, capped,
+        Availability, Battery, BootRecord, Coverage, MAX_BATTERIES, MAX_NETWORK_ADAPTERS,
+        MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped,
     },
 };
 // The service converts these to the wire and depends on this crate, not on the telemetry one.
@@ -829,6 +829,16 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
     if thermal_cut {
         warnings.push("Only the first 32 thermal zones are shown.".into());
     }
+    let (network_adapters, adapters_cut) = capped(
+        hardware
+            .as_ref()
+            .map(|h| h.network_adapters.clone())
+            .unwrap_or_default(),
+        MAX_NETWORK_ADAPTERS,
+    );
+    if adapters_cut {
+        warnings.push("Only the first 128 network adapters are shown.".into());
+    }
     let (batteries, batteries_cut) = capped(
         hardware
             .as_ref()
@@ -885,8 +895,7 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         thermal_zones,
         batteries,
         boots,
-        // Network (P83-02) arrives with its producer; until then the domain is empty, which
-        // reads as "not measured".
+        network_adapters,
         ..Default::default()
     };
     let persistence_result = serde_json::to_string(&snapshot)
@@ -1401,6 +1410,45 @@ mod tests {
         assert_eq!(
             snapshot.boots[1].coverage.reason_key,
             "measurement.reason.noBootTime"
+        );
+        drop(e);
+        drop(db);
+    }
+    #[test]
+    fn network_adapters_reach_the_snapshot_as_reported_and_a_cut_is_said() {
+        let (db, _tmp) = db();
+        let adapters: Vec<NetworkAdapter> = (0..129)
+            .map(|i| NetworkAdapter {
+                stable_id: format!("a{i}"),
+                operational_status: Some(2),
+                connected: None,
+                ..Default::default()
+            })
+            .collect();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot {
+                    network_adapters: adapters,
+                    ..Default::default()
+                },
+                c: CrashDiagnosticsSnapshot::default(),
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let snapshot = wait_for_scan(&e);
+        assert_eq!(snapshot.network_adapters.len(), 128, "the domain's limit");
+        assert_eq!(
+            snapshot.network_adapters[0].connected, None,
+            "an unreported media state stays unknown"
+        );
+        assert!(
+            snapshot
+                .warnings
+                .iter()
+                .any(|w| w == "Only the first 128 network adapters are shown."),
+            "{:?}",
+            snapshot.warnings
         );
         drop(e);
         drop(db);

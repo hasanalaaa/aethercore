@@ -91,10 +91,31 @@ export function bootRows(items: readonly BootMeasurement[] | undefined, locale: 
   });
 }
 
+const OPER_STATUS: Record<number, MessageKey> = {
+  1: 'measurement.network.status.up',
+  2: 'measurement.network.status.down',
+  3: 'measurement.network.status.testing',
+  4: 'measurement.network.status.unknown',
+  5: 'measurement.network.status.dormant',
+  6: 'measurement.network.status.notPresent',
+  7: 'measurement.network.status.lowerLayerDown',
+};
+
+/**
+ * One line per adapter: link speed as reported, and its state in words. A down link, an unplugged
+ * cable and a virtual adapter are states of an adapter; none is read as "no internet". An
+ * unreported media state is not "disconnected".
+ */
 export function networkRows(items: readonly NetworkAdapterMeasurement[] | undefined, locale: Locale): MeasurementRow[] {
   return rows(items, locale, (item) => {
     const bps = read(item, 'hasLinkSpeed', 'linkSpeedBps');
     const value = bps === null ? null : td('measurement.unit.mbps', locale, { value: formatNumber(bps / 1_000_000, locale) });
-    return { ...frame(item, locale, text(item.displayName)), value, note: null };
+    const status = read(item, 'hasOperationalStatus', 'operationalStatus');
+    const notes = [
+      status === null ? '' : td(OPER_STATUS[status] ?? 'measurement.network.status.unknown', locale),
+      item.hasConnected === true ? td(item.connected === true ? 'measurement.network.mediaConnected' : 'measurement.network.mediaDisconnected', locale) : '',
+      item.hasIsVirtual === true && item.isVirtual === true ? td('measurement.network.virtual', locale) : '',
+    ].filter(Boolean);
+    return { ...frame(item, locale, text(item.displayName)), value, note: notes.join(' · ') || null };
   });
 }

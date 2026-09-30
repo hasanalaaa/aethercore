@@ -80,6 +80,13 @@ pub struct NetworkAdapter {
     pub stable_id: String,
     pub display_name: String,
     pub link_speed_bps: Option<u64>,
+    /// `IF_OPER_STATUS`: 1 up, 2 down, 3 testing, 4 unknown, 5 dormant, 6 not present,
+    /// 7 lower layer down. Absent when not reported.
+    pub operational_status: Option<u8>,
+    /// The media connection (a cable or an association): absent when not reported.
+    pub connected: Option<bool>,
+    /// Windows' own flag for a virtual adapter (VPN, virtual switch): a name, not a fault.
+    pub is_virtual: Option<bool>,
     pub coverage: Coverage,
 }
 

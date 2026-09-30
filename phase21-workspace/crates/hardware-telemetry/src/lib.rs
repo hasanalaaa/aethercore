@@ -8,6 +8,8 @@ use thiserror::Error;
 mod battery;
 pub mod measurements;
 #[cfg(any(windows, test))]
+mod network;
+#[cfg(any(windows, test))]
 mod thermal;
 
 #[derive(Debug, Error)]
@@ -285,6 +287,8 @@ pub struct HardwareTelemetrySnapshot {
     pub thermal_zones: Vec<measurements::ThermalZone>,
     #[serde(default)]
     pub batteries: Vec<measurements::Battery>,
+    #[serde(default)]
+    pub network_adapters: Vec<measurements::NetworkAdapter>,
     #[serde(default)]
     pub provider_faults: Vec<CollectorFaultRecord>,
     pub warnings: Vec<String>,
