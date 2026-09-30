@@ -223,6 +223,7 @@ export const arCatalog = {
   'text.unavailable': 'التفاصيل غير متاحة',
   'assistant.invalid.locale': 'المساعد لا يدعم هذه اللغة.',
   'assistant.invalid.turnId': 'طلب المساعد غير صالح.',
+  'care.error.sourceLimit': 'لدى العناية خطط معلّقة أكثر مما تستوعبه معاينة واحدة. راجع المهام منفردة أولًا.',
   'care.error.planSourcesUnavailable': 'تعذّر على العناية قراءة النتائج اللازمة لإعداد الخطة.',
   'care.error.startFailed': 'تعذّر بدء العناية.',
   'insight.error.modelLoading': 'النموذج المحلي ما زال قيد التحميل. حاول مرة أخرى بعد قليل.',
