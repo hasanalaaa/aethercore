@@ -219,3 +219,40 @@ fn ssh_findings_follow_the_real_permissions() {
         );
     }
 }
+
+#[test]
+#[cfg(windows)]
+fn elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users() {
+    let root = scan_root("elevated-profile");
+    let ssh = root.path().join(".ssh");
+    std::fs::create_dir(&ssh).unwrap();
+    make_private(&ssh, true);
+    let key = ssh.join("id_ed25519");
+    std::fs::write(&key, b"test key material").unwrap();
+    make_private(&key, false);
+    for path in [&ssh, &key] {
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .args(["/setowner", "*S-1-5-32-544"])
+            .status()
+            .unwrap();
+        assert!(
+            status.success(),
+            "elevated token must be able to set Administrators owner"
+        );
+    }
+    let findings = scan(root.path());
+    assert!(
+        !findings
+            .iter()
+            .any(|f| matches!(f.id.as_str(), "SEC-FS-003" | "SEC-FS-004" | "SEC-FS-901")),
+        "the OS profile user's own ACE was marked foreign: {findings:#?}"
+    );
+    for sid in ["S-1-5-21-1-2-3-9876", "S-1-1-0", "S-1-5-32-545"] {
+        icacls_grant(&key, &format!("*{sid}:(R)"));
+        assert!(
+            at(&scan(root.path()), "SEC-FS-004", &key).is_some(),
+            "{sid} was trusted"
+        );
+    }
+}
