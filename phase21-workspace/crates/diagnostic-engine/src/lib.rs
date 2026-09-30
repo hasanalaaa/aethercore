@@ -12,7 +12,8 @@ use aethercore_collector_runtime::{
     FaultKind, IsolationGate, run_isolated_gated, run_isolated_gated_with_token,
 };
 use aethercore_crash_diagnostics::{
-    CrashDiagnosticsSnapshot, CrashError, CrashRecord, EventEvidence,
+    CrashDiagnosticsSnapshot, CrashError, CrashLink, CrashRecord, EventEvidence,
+    link_dump_to_events,
 };
 use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
@@ -1077,6 +1078,17 @@ fn build_cards_with_availability(
                 format!("Bugcheck: {}", c.bugcheck_hex)
             },
         ];
+        // One crash is one incident: say when the System log recorded this dump too, or when the
+        // two disagree about the code. Nothing here names a culprit.
+        match link_dump_to_events(c, events) {
+            CrashLink::Linked => evidence.push(
+                "The System log also recorded this crash (Windows Error Reporting event).".into(),
+            ),
+            CrashLink::CodeMismatch => {
+                evidence.push("The System log and this dump name different bugcheck codes.".into())
+            }
+            CrashLink::Unlinked => {}
+        }
         if !nearby_whea.is_empty() {
             evidence.push(format!(
                 "{} WHEA event(s) were logged within ±10 minutes of the dump timestamp; this is correlation, not proof of causation.",
@@ -1285,6 +1297,45 @@ mod tests {
         );
         drop(e);
         drop(db);
+    }
+    #[test]
+    fn a_dump_and_its_log_event_are_one_crash_and_a_code_disagreement_is_shown() {
+        let event = |code: &str| EventEvidence {
+            provider: "Microsoft-Windows-WER-SystemErrorReporting".into(),
+            category: "BugcheckReport".into(),
+            recorded_unix_ms: 1_000,
+            bugcheck_hex: code.into(),
+            dump_file: r"C:\Windows\Minidump\a.dmp".into(),
+            ..Default::default()
+        };
+        let dump = CrashRecord {
+            bugcheck_code: Some(0x9F),
+            bugcheck_hex: "0x0000009F".into(),
+            dump_file: r"C:\Windows\Minidump\a.dmp".into(),
+            recorded_unix_ms: Some(1_000),
+            ..Default::default()
+        };
+        let evidence = |events: &[EventEvidence]| {
+            build_cards_with_availability(&[], None, events, std::slice::from_ref(&dump), true, 30)
+                .into_iter()
+                .find(|c| c.card_id == "crash:recent")
+                .expect("the dump card")
+                .evidence
+        };
+        assert!(
+            evidence(&[event("0x0000009F")])
+                .iter()
+                .any(|e| e.contains("also recorded this crash"))
+        );
+        assert!(
+            evidence(&[event("0x0000001A")])
+                .iter()
+                .any(|e| e.contains("different bugcheck codes"))
+        );
+        assert!(
+            evidence(&[]).iter().all(|e| !e.contains("System log")),
+            "no event, nothing said"
+        );
     }
     struct PartialMock;
     impl Backend for PartialMock {

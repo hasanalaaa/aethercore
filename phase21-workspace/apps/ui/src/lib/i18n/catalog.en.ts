@@ -777,6 +777,8 @@ export const enCatalog = {
   'tech.event.memtestSummary': 'Windows Memory Diagnostic recorded a test result.',
   'tech.event.memtestErrors': 'Windows Memory Diagnostic reported memory errors when it ran.',
   'tech.event.memtestOk': 'Windows Memory Diagnostic finished when it ran and reported no errors. This is the result of that run, not a statement about the memory now.',
+  'tech.crash.linkedEvent': 'The System log also recorded this crash (Windows Error Reporting event).',
+  'tech.crash.codeMismatch': 'The System log and this dump name different bugcheck codes.',
   'tech.event.wheaProcessor': 'WHEA logged a processor/cache-related hardware error. Treat this as evidence, not a complete root-cause attribution.',
   'tech.event.wheaPcie': 'WHEA logged PCI/PCIe-related hardware-error evidence.',
   'tech.event.wheaGeneric': 'WHEA logged a hardware error; the summarized event data is not sufficient to name a failed component with confidence.',

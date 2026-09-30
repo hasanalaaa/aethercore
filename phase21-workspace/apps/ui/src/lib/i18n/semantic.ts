@@ -227,6 +227,8 @@ const exactOwnedText: Record<string, MessageKey> = {
   'WHEA logged a memory-related hardware error. This is hardware evidence, but it does not identify a specific DIMM without deeper decoding/testing.':'tech.event.wheaMemory',
   'WHEA logged a memory error that the hardware corrected. A single corrected error does not show that a memory module is failing.':'tech.event.wheaMemoryCorrected',
   'Windows Memory Diagnostic recorded a test result.':'tech.event.memtestSummary',
+  'The System log also recorded this crash (Windows Error Reporting event).':'tech.crash.linkedEvent',
+  'The System log and this dump name different bugcheck codes.':'tech.crash.codeMismatch',
   'Windows Memory Diagnostic reported memory errors when it ran.':'tech.event.memtestErrors',
   'Windows Memory Diagnostic finished when it ran and reported no errors. This is the result of that run, not a statement about the memory now.':'tech.event.memtestOk',
   'WHEA logged a processor/cache-related hardware error. Treat this as evidence, not a complete root-cause attribution.':'tech.event.wheaProcessor',
