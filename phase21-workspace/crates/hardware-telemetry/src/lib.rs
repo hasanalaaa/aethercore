@@ -270,6 +270,90 @@ pub struct HardwareTelemetrySnapshot {
     pub warnings: Vec<String>,
 }
 
+/// What a disk says it is, as reported either by WMI (`MSFT_PhysicalDisk`) or by an opened
+/// `\\.\PhysicalDriveN` handle. Never leaves this crate: the serial number is not exposed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DiskIdentity {
+    pub serial: String,
+    pub bus: String,
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HandleBinding {
+    /// Both sides report the same serial, bus and size: the handle is this disk.
+    Confirmed,
+    /// A field both sides report differs: the handle is another disk.
+    Mismatch,
+    /// Nothing proves the handle is this disk (a missing serial); nothing proves it is not.
+    Unproven,
+}
+
+fn serial_key(serial: &str) -> String {
+    serial
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
+}
+
+/// ATA and SATA are one family; every other bus compares by name.
+fn bus_family(bus: &str) -> String {
+    let bus = bus.trim().to_ascii_lowercase();
+    if bus == "ata" || bus == "sata" {
+        "sata".into()
+    } else {
+        bus
+    }
+}
+
+/// Decides whether the IOCTL answers of `opened` may be attributed to the WMI record `reported`.
+/// The WMI `DeviceId` is not always the PhysicalDrive index (Storage Spaces, hot-swapped disks),
+/// so the index alone proves nothing. A disk without a serial is not confirmed by size and bus:
+/// two disks of one model and size would be mixed.
+pub fn bind_handle(reported: &DiskIdentity, opened: &DiskIdentity) -> HandleBinding {
+    let (a, b) = (bus_family(&reported.bus), bus_family(&opened.bus));
+    let bus_differs = !a.is_empty() && !b.is_empty() && a != b;
+    let size_differs =
+        matches!((reported.size_bytes, opened.size_bytes), (Some(x), Some(y)) if x != y);
+    let (sa, sb) = (serial_key(&reported.serial), serial_key(&opened.serial));
+    let serial_differs = !sa.is_empty() && !sb.is_empty() && sa != sb;
+    if bus_differs || size_differs || serial_differs {
+        HandleBinding::Mismatch
+    } else if sa.is_empty() || sb.is_empty() {
+        HandleBinding::Unproven
+    } else {
+        HandleBinding::Confirmed
+    }
+}
+
+/// Reads the bus type and serial number out of a `STORAGE_DEVICE_DESCRIPTOR`
+/// (`StorageDeviceProperty`). Offsets are the documented layout: `SerialNumberOffset` at 24,
+/// `BusType` at 28. An offset that points outside the returned bytes reads as "no serial", never
+/// as a panic or a read past the buffer.
+#[cfg(any(windows, test))]
+pub(crate) fn parse_storage_device_descriptor(bytes: &[u8]) -> Option<(u32, String)> {
+    let word = |at: usize| -> Option<u32> {
+        Some(u32::from_le_bytes(
+            bytes.get(at..at.checked_add(4)?)?.try_into().ok()?,
+        ))
+    };
+    let size = usize::try_from(word(4)?).ok()?;
+    if size < 36 || size > bytes.len() {
+        return None;
+    }
+    let bus = word(28)?;
+    let serial = match usize::try_from(word(24)?) {
+        Ok(offset) if offset != 0 && offset < size => {
+            let raw = &bytes[offset..size];
+            let end = raw.iter().position(|b| *b == 0).unwrap_or(raw.len());
+            String::from_utf8_lossy(&raw[..end]).trim().to_string()
+        }
+        _ => String::new(),
+    };
+    Some((bus, serial))
+}
+
 pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
     let r = &device.reliability;
     let mut action = Vec::new();
@@ -414,6 +498,95 @@ pub fn collect_with_cancellation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn identity(serial: &str, bus: &str, size: Option<u64>) -> DiskIdentity {
+        DiskIdentity {
+            serial: serial.into(),
+            bus: bus.into(),
+            size_bytes: size,
+        }
+    }
+
+    // P81-01: WMI says which disk this is; the opened `\\.\PhysicalDriveN` says which disk it
+    // is. Only when they agree may the IOCTL answers be attributed to the WMI record.
+    #[test]
+    fn a_handle_is_bound_only_to_the_disk_whose_serial_it_reports() {
+        let wmi = identity("0025_38B1_2320_C7E3.", "NVMe", Some(2_000_398_934_016));
+        let same = identity("002538B12320C7E3", "NVMe", Some(2_000_398_934_016));
+        assert_eq!(
+            bind_handle(&wmi, &same),
+            HandleBinding::Confirmed,
+            "punctuation and case are formatting"
+        );
+        // Two disks of one model and size differ only by serial: they must not be mixed.
+        let sibling = identity("002538B12320FFFF", "NVMe", Some(2_000_398_934_016));
+        assert_eq!(bind_handle(&wmi, &sibling), HandleBinding::Mismatch);
+    }
+
+    #[test]
+    fn the_device_descriptor_yields_bus_and_serial_and_never_reads_out_of_bounds() {
+        let mut d = vec![0u8; 64];
+        d[4..8].copy_from_slice(&64u32.to_le_bytes());
+        d[24..28].copy_from_slice(&40u32.to_le_bytes());
+        d[28..32].copy_from_slice(&17u32.to_le_bytes());
+        d[40..48].copy_from_slice(b"SN 42   ");
+        assert_eq!(
+            parse_storage_device_descriptor(&d),
+            Some((17, "SN 42".into()))
+        );
+        // An offset past the returned bytes is "no serial", and a short buffer is "no answer".
+        d[24..28].copy_from_slice(&9_000u32.to_le_bytes());
+        assert_eq!(
+            parse_storage_device_descriptor(&d),
+            Some((17, String::new()))
+        );
+        assert_eq!(parse_storage_device_descriptor(&d[..20]), None);
+        d[4..8].copy_from_slice(&4_000u32.to_le_bytes());
+        assert_eq!(
+            parse_storage_device_descriptor(&d),
+            None,
+            "a size larger than the buffer is malformed"
+        );
+    }
+
+    #[test]
+    fn a_different_bus_or_size_is_a_mismatch_even_when_the_serial_agrees() {
+        let wmi = identity("S123", "NVMe", Some(1_000));
+        assert_eq!(
+            bind_handle(&wmi, &identity("S123", "USB", Some(1_000))),
+            HandleBinding::Mismatch
+        );
+        assert_eq!(
+            bind_handle(&wmi, &identity("S123", "NVMe", Some(2_000))),
+            HandleBinding::Mismatch
+        );
+        assert_eq!(
+            bind_handle(
+                &identity("S123", "SATA", None),
+                &identity("S123", "ATA", None)
+            ),
+            HandleBinding::Confirmed,
+            "ATA and SATA are one family"
+        );
+    }
+
+    #[test]
+    fn a_disk_with_no_serial_is_never_confirmed_by_size_and_bus_alone() {
+        let a = identity("", "SATA", Some(500));
+        assert_eq!(
+            bind_handle(&a, &identity("", "SATA", Some(500))),
+            HandleBinding::Unproven
+        );
+        assert_eq!(
+            bind_handle(&a, &identity("S9", "SATA", Some(500))),
+            HandleBinding::Unproven
+        );
+        assert_eq!(
+            bind_handle(&a, &identity("", "SATA", Some(900))),
+            HandleBinding::Mismatch,
+            "a size that differs is proof of a different disk"
+        );
+    }
 
     #[test]
     fn storage_classifier_never_creates_a_score_and_escalates_uncorrected_errors() {

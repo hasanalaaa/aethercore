@@ -25,10 +25,11 @@ use windows::{
             },
             IO::DeviceIoControl,
             Ioctl::{
-                IDEREGS, IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, ProtocolTypeNvme,
-                READ_ATTRIBUTES, SENDCMDINPARAMS, SENDCMDOUTPARAMS, SMART_CMD, SMART_CYL_HI,
-                SMART_CYL_LOW, SMART_RCV_DRIVE_DATA, STORAGE_PROPERTY_QUERY,
-                STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA,
+                IDEREGS, IOCTL_DISK_GET_LENGTH_INFO, IOCTL_STORAGE_QUERY_PROPERTY,
+                PropertyStandardQuery, ProtocolTypeNvme, READ_ATTRIBUTES, SENDCMDINPARAMS,
+                SENDCMDOUTPARAMS, SMART_CMD, SMART_CYL_HI, SMART_CYL_LOW, SMART_RCV_DRIVE_DATA,
+                STORAGE_PROPERTY_QUERY, STORAGE_PROTOCOL_DATA_DESCRIPTOR,
+                STORAGE_PROTOCOL_SPECIFIC_DATA, StorageDeviceProperty,
                 StorageDeviceProtocolSpecificProperty,
             },
             Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
@@ -44,9 +45,10 @@ use windows::{
 };
 
 use crate::{
-    AtaSmartAttribute, HardwareTelemetrySnapshot, MemoryTelemetry, NvmeHealthValues, Result,
-    StorageDeviceTelemetry, StorageReliability, TelemetryError, checked_protocol_window,
-    classify_memory_pressure, classify_storage, parse_ata_driver_response, parse_nvme_health_log,
+    AtaSmartAttribute, DiskIdentity, HandleBinding, HardwareTelemetrySnapshot, MemoryTelemetry,
+    NvmeHealthValues, Result, StorageDeviceTelemetry, StorageReliability, TelemetryError,
+    bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage,
+    parse_ata_driver_response, parse_nvme_health_log, parse_storage_device_descriptor,
 };
 
 static STORAGE_GATE: OnceLock<IsolationGate> = OnceLock::new();
@@ -231,8 +233,15 @@ fn collect_storage(
         }
 
         if let Ok(index) = device.device_id.parse::<u32>() {
+            // The WMI DeviceId is not always the PhysicalDrive index; the handle opened for it must
+            // report this disk's own serial, bus and size before its answers are attributed here.
+            let expected = DiskIdentity {
+                serial: device.serial_number.clone(),
+                bus: device.bus_type.clone(),
+                size_bytes: Some(device.size_bytes).filter(|size| *size > 0),
+            };
             if device.bus_type.eq_ignore_ascii_case("NVMe") {
-                match query_nvme_health_bounded(index, control.cancellation().child()) {
+                match query_nvme_health_bounded(index, expected, control.cancellation().child()) {
                     Ok(nvme) => {
                         merge_nvme(&mut device.reliability, nvme);
                         device
@@ -253,7 +262,11 @@ fn collect_storage(
             } else if device.bus_type.eq_ignore_ascii_case("SATA")
                 || device.bus_type.eq_ignore_ascii_case("ATA")
             {
-                match query_ata_smart_attributes_bounded(index, control.cancellation().child()) {
+                match query_ata_smart_attributes_bounded(
+                    index,
+                    expected,
+                    control.cancellation().child(),
+                ) {
                     Ok(attributes) if !attributes.is_empty() => {
                         device.ata_smart_attributes = attributes;
                         device.source_notes.push("ATA SMART attribute table via SMART_RCV_DRIVE_DATA; raw values are vendor-defined and are not converted into AetherCore health claims.".into());
@@ -569,6 +582,7 @@ fn isolated_fault_to_telemetry(fault: CollectorFault) -> TelemetryError {
 
 fn query_ata_smart_attributes_bounded(
     index: u32,
+    expected: DiskIdentity,
     token: CancellationToken,
 ) -> Result<Vec<AtaSmartAttribute>> {
     run_isolated_gated_with_token(
@@ -578,7 +592,7 @@ fn query_ata_smart_attributes_bounded(
         STORAGE_IOCTL_TIMEOUT,
         token,
         move |_control| {
-            query_ata_smart_attributes(index).map_err(|error| {
+            query_ata_smart_attributes(index, &expected).map_err(|error| {
                 CollectorFault::new(
                     "hardware-telemetry",
                     "ata-smart-ioctl",
@@ -591,7 +605,11 @@ fn query_ata_smart_attributes_bounded(
     .map_err(isolated_fault_to_telemetry)
 }
 
-fn query_nvme_health_bounded(index: u32, token: CancellationToken) -> Result<NvmeHealthValues> {
+fn query_nvme_health_bounded(
+    index: u32,
+    expected: DiskIdentity,
+    token: CancellationToken,
+) -> Result<NvmeHealthValues> {
     run_isolated_gated_with_token(
         direct_ioctl_gate(),
         "hardware-telemetry",
@@ -599,7 +617,7 @@ fn query_nvme_health_bounded(index: u32, token: CancellationToken) -> Result<Nvm
         STORAGE_IOCTL_TIMEOUT,
         token,
         move |_control| {
-            query_nvme_health(index).map_err(|error| {
+            query_nvme_health(index, &expected).map_err(|error| {
                 CollectorFault::new(
                     "hardware-telemetry",
                     "nvme-health-ioctl",
@@ -612,23 +630,12 @@ fn query_nvme_health_bounded(index: u32, token: CancellationToken) -> Result<Nvm
     .map_err(isolated_fault_to_telemetry)
 }
 
-fn query_ata_smart_attributes(index: u32) -> Result<Vec<AtaSmartAttribute>> {
-    let path = format!(r"\\.\PhysicalDrive{index}");
-    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-    const GENERIC_READ_ACCESS: u32 = 0x8000_0000;
-    let handle = unsafe {
-        CreateFileW(
-            PCWSTR(wide.as_ptr()),
-            GENERIC_READ_ACCESS,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            None,
-            OPEN_EXISTING,
-            FILE_FLAGS_AND_ATTRIBUTES(FILE_ATTRIBUTE_NORMAL.0),
-            None,
-        )
-    }
-    .map_err(win)?;
-    let _handle_owner = OwnedHandle::new(handle);
+fn query_ata_smart_attributes(
+    index: u32,
+    expected: &DiskIdentity,
+) -> Result<Vec<AtaSmartAttribute>> {
+    let handle_owner = open_verified_drive(index, expected)?;
+    let handle = handle_owner.get();
 
     // SMART_RCV_DRIVE_DATA is read-only. The target disk is selected by the handle; bDriveNumber is opaque to callers.
     let input = SENDCMDINPARAMS {
@@ -676,7 +683,10 @@ fn query_ata_smart_attributes(index: u32) -> Result<Vec<AtaSmartAttribute>> {
     parse_ata_driver_response(&output, returned, data_offset)
 }
 
-fn query_nvme_health(index: u32) -> Result<NvmeHealthValues> {
+/// Opens `\\.\PhysicalDriveN` read-only and returns it only if it is the disk WMI described. A
+/// handle whose serial, bus or size differs (or that reports no serial to compare) is closed and
+/// refused: its IOCTL answers would be attributed to the wrong disk.
+fn open_verified_drive(index: u32, expected: &DiskIdentity) -> Result<OwnedHandle> {
     let path = format!(r"\\.\PhysicalDrive{index}");
     let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
     const GENERIC_READ_ACCESS: u32 = 0x8000_0000;
@@ -692,7 +702,82 @@ fn query_nvme_health(index: u32) -> Result<NvmeHealthValues> {
         )
     }
     .map_err(win)?;
-    let _handle_owner = OwnedHandle::new(handle);
+    let owner = OwnedHandle::new(handle);
+    match bind_handle(expected, &opened_identity(&owner)?) {
+        HandleBinding::Confirmed => Ok(owner),
+        HandleBinding::Mismatch => Err(TelemetryError::Unavailable(
+            "the opened physical drive reports a different disk than the one WMI described".into(),
+        )),
+        HandleBinding::Unproven => Err(TelemetryError::Unavailable(
+            "the physical drive could not be proven to be the disk WMI described".into(),
+        )),
+    }
+}
+
+fn opened_identity(handle: &OwnedHandle) -> Result<DiskIdentity> {
+    // StorageDeviceProperty: bus type and serial number of the disk behind this handle.
+    let query_len = size_of::<STORAGE_PROPERTY_QUERY>();
+    let mut query = vec![0u64; query_len.div_ceil(8)];
+    unsafe {
+        let q = &mut *(query.as_mut_ptr() as *mut STORAGE_PROPERTY_QUERY);
+        q.PropertyId = StorageDeviceProperty;
+        q.QueryType = PropertyStandardQuery;
+    }
+    let mut descriptor = vec![0u8; 1024];
+    let mut returned = 0u32;
+    unsafe {
+        DeviceIoControl(
+            handle.get(),
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            Some(query.as_ptr().cast()),
+            query_len as u32,
+            Some(descriptor.as_mut_ptr().cast()),
+            descriptor.len() as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .map_err(win)?;
+    let returned = usize::try_from(returned)
+        .ok()
+        .filter(|len| *len <= descriptor.len())
+        .ok_or_else(|| {
+            TelemetryError::MalformedResponse("storage descriptor byte count was invalid".into())
+        })?;
+    let (bus, serial) =
+        parse_storage_device_descriptor(&descriptor[..returned]).ok_or_else(|| {
+            TelemetryError::MalformedResponse("storage device descriptor was not valid".into())
+        })?;
+
+    // IOCTL_DISK_GET_LENGTH_INFO answers a GET_LENGTH_INFORMATION: one i64, the disk's length.
+    let mut length = [0u8; 8];
+    let mut length_returned = 0u32;
+    let size_bytes = unsafe {
+        DeviceIoControl(
+            handle.get(),
+            IOCTL_DISK_GET_LENGTH_INFO,
+            None,
+            0,
+            Some(length.as_mut_ptr().cast()),
+            length.len() as u32,
+            Some(&mut length_returned),
+            None,
+        )
+    }
+    .ok()
+    .filter(|_| length_returned as usize == length.len())
+    .and_then(|_| u64::try_from(i64::from_le_bytes(length)).ok())
+    .filter(|size| *size > 0);
+    Ok(DiskIdentity {
+        serial,
+        bus: bus_name(u16::try_from(bus).ok()),
+        size_bytes,
+    })
+}
+
+fn query_nvme_health(index: u32, expected: &DiskIdentity) -> Result<NvmeHealthValues> {
+    let handle_owner = open_verified_drive(index, expected)?;
+    let handle = handle_owner.get();
 
     // STORAGE_PROPERTY_QUERY ends in a one-byte flexible array. Microsoft requires the protocol
     // query to begin at AdditionalParameters rather than after sizeof(STORAGE_PROPERTY_QUERY).
