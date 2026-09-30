@@ -666,6 +666,13 @@ pub(crate) fn diagnostics_snapshot_proto(v: DiagnosticsSnapshot) -> v1::Diagnost
                         write_latency_max_ms: r.write_latency_max_ms.unwrap_or_default(),
                         has_flush_latency_max: r.flush_latency_max_ms.is_some(),
                         flush_latency_max_ms: r.flush_latency_max_ms.unwrap_or_default(),
+                        has_nvme_available_spare_threshold: r
+                            .nvme_available_spare_threshold_percent
+                            .is_some(),
+                        nvme_available_spare_threshold_percent: r
+                            .nvme_available_spare_threshold_percent
+                            .unwrap_or_default()
+                            as u32,
                     }),
                     severity: d.severity,
                     summary: d.summary,
@@ -757,6 +764,8 @@ pub(crate) fn diagnostics_snapshot_proto(v: DiagnosticsSnapshot) -> v1::Diagnost
                 }
             })
             .collect(),
+        // P80-02B maps the four measurement domains; until then they leave the service empty.
+        ..Default::default()
     }
 }
 

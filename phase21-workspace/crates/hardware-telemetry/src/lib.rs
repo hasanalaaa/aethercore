@@ -4,6 +4,8 @@ use aethercore_collector_runtime::CollectorFaultRecord;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod measurements;
+
 #[derive(Debug, Error)]
 pub enum TelemetryError {
     #[error("Windows telemetry error: {0}")]
@@ -216,6 +218,10 @@ pub struct StorageReliability {
     pub flush_latency_max_ms: Option<u64>,
     pub nvme_critical_warning: Option<u8>,
     pub nvme_available_spare_percent: Option<u8>,
+    /// The device's own threshold below which its spare counts as low; absent in snapshots
+    /// written before it was read.
+    #[serde(default)]
+    pub nvme_available_spare_threshold_percent: Option<u8>,
     pub nvme_percentage_used: Option<u8>,
     /// NVMe SMART counters are 128-bit values. Strings preserve the exact device-reported value.
     pub nvme_media_errors: Option<String>,
