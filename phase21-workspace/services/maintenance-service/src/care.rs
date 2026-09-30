@@ -142,10 +142,14 @@ enum CleanupStep {
     Unavailable,
     /// The scan is too old to prepare from.
     Stale,
-    /// Default candidates that need no extra confirmation, and how many more wait for the owner.
+    /// Default candidates that need no extra confirmation, how many more wait for the owner, and
+    /// the scan they come from (its id, epoch and completion time).
     Prepare {
         eligible: Vec<String>,
         review_required: u32,
+        scan_id: String,
+        inventory_epoch: u64,
+        completed_unix_ms: i64,
     },
     Nothing {
         review_required: u32,
@@ -185,6 +189,9 @@ fn decide_cleanup(
                 CleanupStep::Prepare {
                     eligible,
                     review_required,
+                    scan_id: snapshot.scan_id.clone(),
+                    inventory_epoch: snapshot.inventory_epoch,
+                    completed_unix_ms: snapshot.completed_unix_ms,
                 }
             }
         }
@@ -239,8 +246,10 @@ pub(crate) fn prepare_preview(
         CleanupStep::Prepare {
             eligible,
             review_required,
+            scan_id,
+            inventory_epoch,
+            completed_unix_ms,
         } => {
-            let snapshot = snapshot.as_ref().expect("a scan was decided from");
             let prepared = preview()?
                 .steps
                 .iter()
@@ -248,8 +257,8 @@ pub(crate) fn prepare_preview(
             let created = prepared
                 || match cleaner.create_plan(
                     owner_principal_key,
-                    &snapshot.scan_id,
-                    snapshot.inventory_epoch,
+                    &scan_id,
+                    inventory_epoch,
                     &eligible,
                 ) {
                     Ok(_) => true,
@@ -260,7 +269,7 @@ pub(crate) fn prepare_preview(
                 };
             (
                 if created { "ready" } else { "unavailable" },
-                snapshot.completed_unix_ms,
+                completed_unix_ms,
                 eligible.len() as u32,
                 review_required,
             )
@@ -1289,7 +1298,10 @@ mod p79_prepare_tests {
             decide_cleanup(Some(&snapshot(CleanupScanState::Ready, fresh, mixed)), NOW),
             Prepare {
                 eligible: vec!["a".into(), "c".into()],
-                review_required: 2
+                review_required: 2,
+                scan_id: "scan-1".into(),
+                inventory_epoch: 1,
+                completed_unix_ms: fresh,
             },
             "only default, unconfirmed-free candidates are prepared; the rest wait for the owner"
         );

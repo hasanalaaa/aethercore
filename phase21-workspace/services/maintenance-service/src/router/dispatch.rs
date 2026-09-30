@@ -189,12 +189,11 @@ pub fn handle_request(
             // ---------------- Phase 21: timeline intelligence ----------------
             request::Payload::GetTimelinePage(v) => timeline::get_timeline_page(call, v),
             request::Payload::GetRecurrencePatterns(_) => timeline::get_recurrence_patterns(call),
-            // ---------------- Phase 22: One-Click Care ----------------
-            request::Payload::GetCareStatus(_) => care::get_care_status(call),
-            request::Payload::PrepareCarePreview(_) => care::prepare_care_preview(call),
-            request::Payload::GrantCareSessionConsent(v) => care::grant_consent(call, v),
-            request::Payload::StartCareRun(_) => care::start_care_run(call),
-            request::Payload::CancelCareRun(_) => care::cancel_care_run(call),
+            payload @ (request::Payload::GetCareStatus(_)
+            | request::Payload::PrepareCarePreview(_)
+            | request::Payload::GrantCareSessionConsent(_)
+            | request::Payload::StartCareRun(_)
+            | request::Payload::CancelCareRun(_)) => care::route(call, payload),
             // ---------------- Phase 23: Local Intelligence (advisory-only) ----------------
             request::Payload::ListInsights(_) => insights::list_insights(call),
             request::Payload::RequestInsight(v) => insights::request_insight(call, v),

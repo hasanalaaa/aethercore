@@ -42,6 +42,18 @@ fn care_err(error: aethercore_care_orchestrator::CareError) -> ServiceError {
     }
 }
 
+/// The One-Click Care requests, routed as one arm so the dispatcher stays within its line ratchet.
+pub(super) fn route(call: &Call<'_>, payload: request::Payload) -> Routed {
+    match payload {
+        request::Payload::GetCareStatus(_) => get_care_status(call),
+        request::Payload::PrepareCarePreview(_) => prepare_care_preview(call),
+        request::Payload::GrantCareSessionConsent(v) => grant_consent(call, v),
+        request::Payload::StartCareRun(_) => start_care_run(call),
+        request::Payload::CancelCareRun(_) => cancel_care_run(call),
+        other => Err(format!("not a care request: {other:?}").into()),
+    }
+}
+
 pub(super) fn get_care_status(call: &Call<'_>) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
@@ -68,27 +80,11 @@ pub(super) fn prepare_care_preview(call: &Call<'_>) -> Routed {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as i64);
+    // The same lease, scan, event and watcher as Deep Clean's own start: one path, not a second copy.
     let start_scan = || -> Result<(), String> {
-        let lease = ctx
-            .kernel
-            .reads()
-            .try_acquire(ReadWorkload::CleanupDiscovery)
-            .map_err(|error| error.to_string())?;
-        let value = ctx
-            .cleaner
-            .start_scan_with_lease(principal_key, lease)
-            .map_err(|error| error.to_string())?;
-        publish(
-            ctx,
-            principal_key,
-            EventKind::CleanupDiscovery,
-            "",
-            Some(event_envelope::Payload::CleanupSnapshot(
-                cleanup_snapshot_proto(value),
-            )),
-        );
-        watch_cleanup_scan(ctx.clone(), principal_key.clone());
-        Ok(())
+        super::cleanup::start_cleanup_scan(call)
+            .map(|_| ())
+            .map_err(|error| format!("{error:?}"))
     };
     let prepared = crate::care::prepare_preview(
         &ctx.cleaner,
