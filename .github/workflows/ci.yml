@@ -428,7 +428,7 @@ jobs:
   required:
     name: CI required
     runs-on: ubuntu-latest
-    needs: [windows, gate-self-tests, linux-provider-clippy, deny-check, ui-leak-gate, fast-ui]
+    needs: [tested, windows, gate-self-tests, linux-provider-clippy, deny-check, ui-leak-gate, fast-ui]
     if: ${{ always() }}
     defaults:
       run:
@@ -437,4 +437,6 @@ jobs:
       - name: Every mandatory gate succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: jq -e 'length == 6 and all(.[]; .result == "success")' <<< "$NEEDS"
+        # `windows` may be skipped only when `tested` proved, for this SHA, that its pull request
+        # already passed it (lane 1 step 0); `tested` itself is skipped for everything but a push.
+        run: jq -e 'length == 7 and (.tested.result | IN("success", "skipped")) and (.windows.result == "success" or (.windows.result == "skipped" and .tested.result == "success" and .tested.outputs.skip == "true")) and all(del(.tested, .windows)[]; .result == "success")' <<< "$NEEDS"
