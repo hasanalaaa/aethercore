@@ -881,6 +881,42 @@ impl PerformanceRing {
     }
 }
 
+/// One `PROCESSOR_POWER_INFORMATION`: six `ULONG`s (Number, MaxMhz, CurrentMhz, MhzLimit,
+/// MaxIdleState, CurrentIdleState).
+#[cfg(any(windows, test))]
+pub(crate) const PROCESSOR_POWER_ENTRY_BYTES: usize = 24;
+
+/// Reads what `CallNtPowerInformation(ProcessorInformation)` can honestly say. A processor below
+/// its maximum clock is idle or saving power, not throttled; the only evidence of a limit is
+/// `MhzLimit` under `MaxMhz`, and it does not say why, so the reason stays `Unspecified`. Every
+/// entry is read (multi-group machines), unpopulated ones (MaxMhz 0) are skipped, and a buffer
+/// with no populated entry is no answer (`None`), never "not throttled".
+#[cfg(any(windows, test))]
+pub(crate) fn power_from_processor_information(buffer: &[u8]) -> Option<PowerSample> {
+    let word = |chunk: &[u8], at: usize| {
+        u32::from_le_bytes([chunk[at], chunk[at + 1], chunk[at + 2], chunk[at + 3]])
+    };
+    let mut populated = false;
+    let mut limited = false;
+    for entry in buffer.chunks_exact(PROCESSOR_POWER_ENTRY_BYTES) {
+        let (max, limit) = (word(entry, 4), word(entry, 12));
+        if max == 0 {
+            continue;
+        }
+        populated = true;
+        limited |= limit > 0 && limit < max;
+    }
+    populated.then(|| PowerSample {
+        throttle_active: limited,
+        throttle_reason: if limited {
+            ThermalThrottleReason::Unspecified
+        } else {
+            ThermalThrottleReason::None
+        },
+        ..PowerSample::default()
+    })
+}
+
 pub fn published_total() -> u64 {
     PUBLISHED_TOTAL.load(Ordering::Relaxed)
 }
@@ -926,5 +962,79 @@ mod p75_review_owner_race {
             "the live sampler's ring belongs to B"
         );
         ring.stop();
+    }
+}
+
+#[cfg(test)]
+mod p82_processor_power {
+    use super::*;
+
+    fn entry(number: u32, max: u32, current: u32, limit: u32) -> Vec<u8> {
+        [number, max, current, limit, 0, 0]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect()
+    }
+
+    #[test]
+    fn an_idle_clock_is_not_a_throttle() {
+        let sample =
+            power_from_processor_information(&entry(0, 4000, 800, 4000)).expect("populated");
+        assert!(
+            !sample.throttle_active,
+            "800 of 4000 MHz at idle is power saving, not a clamp"
+        );
+        assert_eq!(sample.throttle_reason, ThermalThrottleReason::None);
+    }
+
+    #[test]
+    fn a_limit_below_the_maximum_is_a_limit_of_unknown_cause_and_never_a_percentage() {
+        let sample = power_from_processor_information(&entry(0, 4000, 3000, 3000)).unwrap();
+        assert!(sample.throttle_active);
+        assert_eq!(
+            sample.throttle_reason,
+            ThermalThrottleReason::Unspecified,
+            "the OS says a limit exists, not why"
+        );
+        assert!(
+            !power_from_processor_information(&entry(0, 4000, 800, 0))
+                .unwrap()
+                .throttle_active,
+            "MhzLimit 0 is not reported"
+        );
+        assert!(
+            !power_from_processor_information(&entry(0, 4000, 800, 5000))
+                .unwrap()
+                .throttle_active,
+            "a limit above the maximum limits nothing"
+        );
+    }
+
+    #[test]
+    fn a_buffer_with_no_populated_entry_is_unavailable_not_healthy() {
+        assert!(
+            power_from_processor_information(&[0u8; 96]).is_none(),
+            "all zero"
+        );
+        assert!(
+            power_from_processor_information(&[1u8; 10]).is_none(),
+            "shorter than one entry"
+        );
+        assert!(power_from_processor_information(&[]).is_none());
+    }
+
+    #[test]
+    fn every_processor_group_is_read_and_a_partial_tail_is_ignored() {
+        let mut buffer = Vec::new();
+        for n in 0..130u32 {
+            buffer.extend(entry(n, 4000, 800, if n == 129 { 3000 } else { 4000 }));
+        }
+        buffer.extend([7u8; 5]);
+        assert!(
+            power_from_processor_information(&buffer)
+                .unwrap()
+                .throttle_active,
+            "the 130th processor's limit counts"
+        );
     }
 }

@@ -83,6 +83,34 @@ fn healthy_window_produces_no_findings() {
     assert_eq!(report.findings.len(), 0);
 }
 
+// P82-01: a frequency limit whose cause nobody measured is reported as a limit, not as heat.
+#[test]
+fn a_limit_of_unknown_cause_is_not_called_thermal() {
+    let mut samples: Vec<PerfSnapshot> = (0..10)
+        .map(|index| idle_snapshot(1_700_000_000_000 + index * 1000))
+        .collect();
+    for snap in &mut samples {
+        snap.power.throttle_active = true;
+        snap.power.throttle_reason = ThermalThrottleReason::Unspecified;
+    }
+    let (report, _) = build_window(samples);
+    let codes: Vec<&str> = report.findings.iter().map(|f| f.code.as_str()).collect();
+    assert!(
+        !codes.contains(&"THERMAL_CLAMP"),
+        "no heat evidence, so no heat claim: {codes:?}"
+    );
+    assert!(
+        !codes.contains(&"POWER_LIMIT_CLAMP"),
+        "and no power claim either: {codes:?}"
+    );
+    let finding = report
+        .findings
+        .iter()
+        .find(|f| f.code == "FREQUENCY_LIMIT_OBSERVED")
+        .expect("the limit itself is still reported");
+    assert_eq!(finding.role, Role::Symptom, "a symptom, never a root cause");
+}
+
 #[test]
 fn thermal_clamp_distinguishes_power_limit_from_thermal() {
     let mut samples: Vec<PerfSnapshot> = (0..10)

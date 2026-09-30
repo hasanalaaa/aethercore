@@ -1782,6 +1782,7 @@ export const arCatalog = {
   'perf.collector.memory.counters': 'عدّادات الذاكرة',
   'perf.collector.power': 'الطاقة',
   'perf.collector.power.temperature': 'درجة الحرارة',
+  'perf.collector.power.throttleCause': 'سبب خفض التردد',
   'perf.collector.processTop': 'العمليات الأعلى استهلاكاً',
   'perf.collector.storage': 'التخزين',
   'perf.collector.storage.activeTime': 'زمن نشاط القرص',

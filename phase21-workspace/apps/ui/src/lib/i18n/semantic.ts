@@ -79,7 +79,7 @@ export function describeTimelineEntry(entry: { domain: string; code: string }, l
 // generic label, never as the id.
 const collectorKeys: Record<string, MessageKey> = {
   cpu:'perf.collector.cpu', 'cpu.counters':'perf.collector.cpu.counters', gpu:'perf.collector.gpu', memory:'perf.collector.memory',
-  'memory.counters':'perf.collector.memory.counters', power:'perf.collector.power', 'power.temperature':'perf.collector.power.temperature',
+  'memory.counters':'perf.collector.memory.counters', power:'perf.collector.power', 'power.temperature':'perf.collector.power.temperature', 'power.throttle_cause':'perf.collector.power.throttleCause',
   processTop:'perf.collector.processTop', storage:'perf.collector.storage', 'storage.activeTime':'perf.collector.storage.activeTime',
   'storage.rates':'perf.collector.storage.rates', thermalPower:'perf.collector.thermalPower',
 };

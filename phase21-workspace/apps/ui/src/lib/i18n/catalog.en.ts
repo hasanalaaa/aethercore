@@ -1782,6 +1782,7 @@ export const enCatalog = {
   'perf.collector.memory.counters': 'Memory counters',
   'perf.collector.power': 'Power',
   'perf.collector.power.temperature': 'Temperature',
+  'perf.collector.power.throttleCause': 'Throttle cause',
   'perf.collector.processTop': 'Top processes',
   'perf.collector.storage': 'Storage',
   'perf.collector.storage.activeTime': 'Disk active time',
