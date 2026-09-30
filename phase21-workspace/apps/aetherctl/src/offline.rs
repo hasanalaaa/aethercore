@@ -770,10 +770,41 @@ mod windows_key {
         path::{Path, PathBuf},
     };
     #[repr(C)]
-    struct SecurityAttributes {
+    struct UnicodeString {
+        len: u16,
+        capacity: u16,
+        data: *mut u16,
+    }
+    #[repr(C)]
+    struct ObjectAttributes {
         len: u32,
+        root: *mut c_void,
+        name: *mut UnicodeString,
+        flags: u32,
         descriptor: *mut c_void,
-        inherit: i32,
+        quality: *mut c_void,
+    }
+    #[repr(C)]
+    struct IoStatus {
+        status: usize,
+        information: usize,
+    }
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn NtCreateFile(
+            handle: *mut *mut c_void,
+            access: u32,
+            attributes: *const ObjectAttributes,
+            status: *mut IoStatus,
+            allocation: *const i64,
+            file_attributes: u32,
+            share: u32,
+            disposition: u32,
+            options: u32,
+            ea: *const c_void,
+            ea_len: u32,
+        ) -> i32;
+        fn RtlNtStatusToDosError(status: i32) -> u32;
     }
     #[link(name = "advapi32")]
     unsafe extern "system" {
@@ -815,15 +846,6 @@ mod windows_key {
     unsafe extern "system" {
         fn GetCurrentProcess() -> *mut c_void;
         fn LocalFree(memory: *mut c_void) -> *mut c_void;
-        fn CreateFileW(
-            path: *const u16,
-            access: u32,
-            share: u32,
-            attributes: *const SecurityAttributes,
-            disposition: u32,
-            flags: u32,
-            template: *mut c_void,
-        ) -> *mut c_void;
         fn GetFinalPathNameByHandleW(
             handle: *mut c_void,
             path: *mut u16,
@@ -871,36 +893,98 @@ mod windows_key {
         ))
     }
 
+    // Only a single child name is resolved against the held directory object.
+    // Directory creation preserves inherited permissions; key creation supplies the live SD.
+    fn create_relative(
+        parent: &std::fs::File,
+        name: &std::ffi::OsStr,
+        descriptor: *mut c_void,
+        directory: bool,
+    ) -> io::Result<std::fs::File> {
+        let mut units: Vec<u16> = name.encode_wide().collect();
+        let len = u16::try_from(units.len().checked_mul(2).ok_or_else(refused)?)
+            .map_err(|_| refused())?;
+        if len == 0 {
+            return Err(refused());
+        }
+        let mut name = UnicodeString {
+            len,
+            capacity: len,
+            data: units.as_mut_ptr(),
+        };
+        let attributes = ObjectAttributes {
+            len: size_of::<ObjectAttributes>() as u32,
+            root: parent.as_raw_handle(),
+            name: &mut name,
+            flags: 0x1040, // CASE_INSENSITIVE | DONT_REPARSE
+            descriptor,
+            quality: std::ptr::null_mut(),
+        };
+        let mut status = IoStatus {
+            status: 0,
+            information: 0,
+        };
+        let mut raw = std::ptr::null_mut();
+        // LIST_DIRECTORY makes directory sharing effective; metadata-only opens do not pin names.
+        // SAFETY: all buffers/handles and the null or Local-owned SD outlive this synchronous call.
+        let result = unsafe {
+            NtCreateFile(
+                &mut raw,
+                if directory { 0x0010_00a1 } else { 0x4012_0000 },
+                &attributes,
+                &mut status,
+                std::ptr::null(),
+                if directory { 0x10 } else { 0x80 },
+                if directory { 3 } else { 0 },
+                if directory { 3 } else { 2 }, // OPEN_IF / CREATE
+                if directory { 0x0020_0021 } else { 0x0020_0060 }, // sync, reparse, dir/non-dir
+                std::ptr::null(),
+                0,
+            )
+        };
+        if result < 0 {
+            return Err(io::Error::from_raw_os_error(
+                unsafe { RtlNtStatusToDosError(result) } as i32,
+            ));
+        }
+        if raw.is_null() {
+            return Err(refused());
+        }
+        Ok(unsafe { std::fs::File::from_raw_handle(raw) })
+    }
+
     pub(super) fn create(path: &Path) -> io::Result<(std::fs::File, Vec<std::fs::File>)> {
         let path = std::path::absolute(path)?;
         let parent = path.parent().ok_or_else(refused)?;
         // Pin each directory from root to leaf, refusing reparse points and delete sharing.
         // The caller retains these handles until the seed write completes.
-        let mut parents = Vec::new();
-        for ancestor in parent.ancestors().collect::<Vec<_>>().into_iter().rev() {
-            let open = || {
-                std::fs::OpenOptions::new()
-                    .access_mode(0x80) // FILE_READ_ATTRIBUTES
-                    .share_mode(3) // READ | WRITE; deny DELETE to pin the namespace
-                    .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
-                    .open(ancestor)
-            };
-            let directory = match open() {
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                    match std::fs::create_dir(ancestor) {
-                        Ok(()) => (),
-                        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
-                        Err(e) => return Err(e),
-                    }
-                    open()?
-                }
-                result => result?,
-            };
-            let metadata = directory.metadata()?;
+        let mut ancestors = parent.ancestors().collect::<Vec<_>>().into_iter().rev();
+        let root = std::fs::OpenOptions::new()
+            .access_mode(0xa1)
+            .share_mode(3) // list/attributes/traverse; deny DELETE
+            .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
+            .open(ancestors.next().ok_or_else(refused)?)?;
+        let mut parents = vec![root];
+        for ancestor in ancestors {
+            let metadata = parents.last().ok_or_else(refused)?.metadata()?;
             if !metadata.is_dir() || metadata.file_attributes() & 0x400 != 0 {
                 return Err(refused());
             }
+            let directory = create_relative(
+                parents.last().ok_or_else(refused)?,
+                ancestor.file_name().ok_or_else(refused)?,
+                std::ptr::null_mut(),
+                true,
+            )?;
             parents.push(directory);
+        }
+        if !parents
+            .last()
+            .ok_or_else(refused)?
+            .metadata()
+            .is_ok_and(|m| m.is_dir() && m.file_attributes() & 0x400 == 0)
+        {
+            return Err(refused());
         }
         // Resolve the opened directory object, never a path that a new reparse point can redirect.
         let expected = final_path(parents.last().ok_or_else(refused)?)?
@@ -966,26 +1050,13 @@ mod windows_key {
                 std::ptr::null_mut(),
             ))?;
             let _sd = Local(sd);
-            let attributes = SecurityAttributes {
-                len: size_of::<SecurityAttributes>() as u32,
-                descriptor: sd,
-                inherit: 0,
-            };
-            let wide: Vec<u16> = expected.as_os_str().encode_wide().chain(Some(0)).collect();
-            // CREATE_NEW, no sharing, OPEN_REPARSE_POINT, GENERIC_WRITE | READ_CONTROL.
-            let raw = CreateFileW(
-                wide.as_ptr(),
-                0x4002_0000,
-                0,
-                &attributes,
-                1,
-                0x0020_0080,
-                std::ptr::null_mut(),
-            );
-            if raw as isize == -1 {
-                return Err(io::Error::last_os_error());
-            }
-            let file = std::fs::File::from_raw_handle(raw);
+            // FILE_CREATE (CREATE_NEW semantics), no sharing, parent-relative, no reparse traversal.
+            let file = create_relative(
+                parents.last().ok_or_else(refused)?,
+                path.file_name().ok_or_else(refused)?,
+                sd,
+                false,
+            )?;
             if final_path(&file)? != expected
                 || parents
                     .iter()
@@ -1051,7 +1122,24 @@ mod windows_key {
             std::env::temp_dir().join(format!("key-pinned-{}-{nonce}", std::process::id()));
         let moved = parent.with_extension("moved");
         std::fs::create_dir_all(&parent).unwrap();
-        let (file, parents) = create(&parent.join("owner.key")).unwrap();
+        // Prove directory handles alone pin names, before any open key can mask a weak guard.
+        let root = std::fs::OpenOptions::new()
+            .access_mode(0xa1)
+            .share_mode(3)
+            .custom_flags(0x0220_0000)
+            .open(&parent)
+            .unwrap();
+        assert!(std::fs::rename(&parent, &moved).is_err());
+        let held = create_relative(
+            &root,
+            std::ffi::OsStr::new("nested"),
+            std::ptr::null_mut(),
+            true,
+        )
+        .unwrap();
+        assert!(std::fs::rename(parent.join("nested"), parent.join("other")).is_err());
+        drop((held, root));
+        let (file, parents) = create(&parent.join("nested").join("owner.key")).unwrap();
         assert!(std::fs::rename(&parent, &moved).is_err());
         assert_eq!(
             final_path(&file).unwrap(),
