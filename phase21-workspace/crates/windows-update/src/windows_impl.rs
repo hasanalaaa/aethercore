@@ -5,8 +5,10 @@ use windows::{
         System::{
             Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
             UpdateAgent::{
-                IUpdateSession, IWindowsDriverUpdate, IWindowsDriverUpdate4,
-                IWindowsDriverUpdateEntry, UpdateSession, orcSucceeded, orcSucceededWithErrors,
+                IUpdateHistoryEntry, IUpdateSession, IWindowsDriverUpdate, IWindowsDriverUpdate4,
+                IWindowsDriverUpdateEntry, UpdateSession, orcAborted, orcFailed, orcInProgress,
+                orcNotStarted, orcSucceeded, orcSucceededWithErrors, uoInstallation,
+                uoUninstallation,
             },
         },
     },
@@ -14,8 +16,9 @@ use windows::{
 };
 
 use crate::{
-    DiscoveryResult, DriverOffer, Result, SearchScope, UpdateError, UpdateHealthProbe,
-    VersionSource, extract_version_from_update_title, ole_automation_date_to_iso,
+    DiscoveryResult, DriverOffer, HistoryOperation, HistoryResult, Result, SearchScope,
+    UpdateError, UpdateHealthProbe, UpdateHistory, UpdateHistoryEntry, VersionSource,
+    extract_version_from_update_title, ole_automation_date_to_iso,
 };
 
 #[derive(Clone)]
@@ -106,6 +109,80 @@ pub fn probe_update_health() -> UpdateHealthProbe {
             detail: format!("Windows Update Agent discovery returned {result_code:?}."),
         }
     }
+}
+
+/// The newest `max_entries` rows of the local Windows Update history, read in pages of 50 from the
+/// agent's local store. It does not go online, starts no service, and changes no policy. An
+/// unreadable history is an error, not an empty list; `truncated` says older entries were left.
+pub fn query_update_history(max_entries: usize) -> Result<UpdateHistory> {
+    const PAGE: i32 = 50;
+    let _guard = ComApartment::mta()
+        .map_err(|hr| UpdateError::Wua(format!("CoInitializeEx failed: 0x{:08X}", hr.0 as u32)))?;
+    let session: IUpdateSession =
+        unsafe { CoCreateInstance(&UpdateSession, None, CLSCTX_INPROC_SERVER) }.map_err(wua_err)?;
+    unsafe { session.SetClientApplicationID(&BSTR::from("AetherCore Windows Health")) }
+        .map_err(wua_err)?;
+    let searcher = unsafe { session.CreateUpdateSearcher() }.map_err(wua_err)?;
+    let total = unsafe { searcher.GetTotalHistoryCount() }
+        .map_err(wua_err)?
+        .max(0);
+    let want = i32::try_from(max_entries).unwrap_or(i32::MAX).min(total);
+    let mut entries = Vec::new();
+    let mut start = 0;
+    while start < want {
+        let count = PAGE.min(want - start);
+        let page = unsafe { searcher.QueryHistory(start, count) }.map_err(wua_err)?;
+        let returned = unsafe { page.Count() }.map_err(wua_err)?.max(0);
+        if returned == 0 {
+            break;
+        }
+        for index in 0..returned {
+            let item: IUpdateHistoryEntry = unsafe { page.get_Item(index) }.map_err(wua_err)?;
+            entries.push(history_entry(&item)?);
+        }
+        start += returned;
+    }
+    Ok(UpdateHistory {
+        truncated: (entries.len() as i32) < total,
+        entries,
+    })
+}
+
+fn history_entry(item: &IUpdateHistoryEntry) -> Result<UpdateHistoryEntry> {
+    let identity = unsafe { item.UpdateIdentity() }.map_err(wua_err)?;
+    let operation = match unsafe { item.Operation() }.map_err(wua_err)? {
+        value if value == uoInstallation => HistoryOperation::Installation,
+        value if value == uoUninstallation => HistoryOperation::Uninstallation,
+        _ => HistoryOperation::Other,
+    };
+    let result = match unsafe { item.ResultCode() }.map_err(wua_err)? {
+        value if value == orcNotStarted => HistoryResult::NotStarted,
+        value if value == orcInProgress => HistoryResult::InProgress,
+        value if value == orcSucceeded => HistoryResult::Succeeded,
+        value if value == orcSucceededWithErrors => HistoryResult::SucceededWithErrors,
+        value if value == orcFailed => HistoryResult::Failed,
+        value if value == orcAborted => HistoryResult::Aborted,
+        _ => HistoryResult::Unknown,
+    };
+    Ok(UpdateHistoryEntry {
+        update_id: bounded(
+            unsafe { identity.UpdateID() }.map_err(wua_err)?.to_string(),
+            64,
+        ),
+        revision: unsafe { identity.RevisionNumber() }.map_err(wua_err)?,
+        title: bounded(
+            unsafe { item.Title() }
+                .map(|t| t.to_string())
+                .unwrap_or_default(),
+            256,
+        ),
+        unix_ms: unsafe { item.Date() }
+            .ok()
+            .and_then(crate::ole_date_to_unix_ms),
+        operation,
+        result,
+        hresult: unsafe { item.HResult() }.map_err(wua_err)?,
+    })
 }
 
 fn update_probe_error(error: windows::core::Error) -> UpdateHealthProbe {

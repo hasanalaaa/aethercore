@@ -136,6 +136,143 @@ pub struct UpdateHealthProbe {
     pub detail: String,
 }
 
+/// What an update attempt was: only installations are judged; an uninstall says nothing about
+/// whether an update took.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum HistoryOperation {
+    Installation,
+    Uninstallation,
+    Other,
+}
+
+/// `OperationResultCode` of a history entry.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum HistoryResult {
+    NotStarted,
+    InProgress,
+    Succeeded,
+    SucceededWithErrors,
+    Failed,
+    Aborted,
+    Unknown,
+}
+
+/// One row of the local Windows Update history (`IUpdateHistoryEntry`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateHistoryEntry {
+    pub update_id: String,
+    pub revision: i32,
+    pub title: String,
+    /// When the attempt was recorded; `None` when the agent gave no usable date.
+    pub unix_ms: Option<i64>,
+    pub operation: HistoryOperation,
+    pub result: HistoryResult,
+    pub hresult: i32,
+}
+
+/// The local history as read. `truncated` says older entries exist that were not read: an empty or
+/// short list is then "not everything", and an unreadable history is an error, never an empty list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateHistory {
+    pub entries: Vec<UpdateHistoryEntry>,
+    pub truncated: bool,
+}
+
+/// An update whose installation failed more than once with no later success of the same revision.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepeatedFailure {
+    pub update_id: String,
+    pub title: String,
+    pub failures: u32,
+    pub last_failure_unix_ms: Option<i64>,
+    /// Distinct failure codes, newest first, at most four.
+    pub hresults: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryAnalysis {
+    /// Installation failures with no later success of the same update and revision.
+    pub unresolved_failures: u32,
+    pub repeated_failures: Vec<RepeatedFailure>,
+}
+
+/// Reads the history as a record of attempts. A failure is closed only by a later success of the
+/// same update and revision (an undated success cannot be shown to come later). Nothing here
+/// says the machine is or is not up to date: the last success of some update is not compliance.
+pub fn analyze_history(entries: &[UpdateHistoryEntry]) -> HistoryAnalysis {
+    let installs = || {
+        entries
+            .iter()
+            .filter(|e| e.operation == HistoryOperation::Installation)
+    };
+    let closes = |failure: &UpdateHistoryEntry| {
+        installs().any(|success| {
+            matches!(
+                success.result,
+                HistoryResult::Succeeded | HistoryResult::SucceededWithErrors
+            ) && success.update_id == failure.update_id
+                && success.revision == failure.revision
+                && matches!((success.unix_ms, failure.unix_ms), (Some(after), Some(before)) if after >= before)
+        })
+    };
+    let mut unresolved: Vec<&UpdateHistoryEntry> = installs()
+        .filter(|e| matches!(e.result, HistoryResult::Failed | HistoryResult::Aborted))
+        .filter(|failure| !closes(failure))
+        .collect();
+    unresolved.sort_by_key(|e| std::cmp::Reverse(e.unix_ms));
+    let mut repeated = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for failure in &unresolved {
+        if !seen.insert(failure.update_id.clone()) {
+            continue;
+        }
+        let same: Vec<_> = unresolved
+            .iter()
+            .filter(|e| e.update_id == failure.update_id)
+            .collect();
+        if same.len() < 2 {
+            continue;
+        }
+        let mut hresults = Vec::new();
+        for e in &same {
+            if !hresults.contains(&e.hresult) && hresults.len() < 4 {
+                hresults.push(e.hresult);
+            }
+        }
+        repeated.push(RepeatedFailure {
+            update_id: failure.update_id.clone(),
+            title: failure.title.clone(),
+            failures: u32::try_from(same.len()).unwrap_or(u32::MAX),
+            last_failure_unix_ms: same[0].unix_ms,
+            hresults,
+        });
+    }
+    HistoryAnalysis {
+        unresolved_failures: u32::try_from(unresolved.len()).unwrap_or(u32::MAX),
+        repeated_failures: repeated,
+    }
+}
+
+/// An OLE Automation date (days since 1899-12-30) as Unix milliseconds. 0 is "no date", and a value
+/// that is not finite or not a plausible date is `None`.
+pub fn ole_date_to_unix_ms(value: f64) -> Option<i64> {
+    if !value.is_finite() || value <= 0.0 || value > 1_000_000.0 {
+        return None;
+    }
+    Some(((value - 25_569.0) * 86_400_000.0).round() as i64)
+}
+
+/// A Unix-millisecond timestamp as a UTC calendar date (`YYYY-MM-DD`); `None` when out of range.
+pub fn unix_ms_to_iso_date(unix_ms: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp_millis(unix_ms).map(|dt| dt.format("%Y-%m-%d").to_string())
+}
+
 pub fn extract_version_from_update_title(title: &str) -> Option<String> {
     // WUA does not expose a universal target driver-version property. AetherCore therefore
     // treats a version parsed from the title as display-only metadata, never as a ranking
@@ -182,7 +319,7 @@ mod windows_impl;
 #[cfg(windows)]
 pub use execution_windows::{ensure_servicing_available, execute_driver_updates};
 #[cfg(windows)]
-pub use windows_impl::{discover_driver_offers, probe_update_health};
+pub use windows_impl::{discover_driver_offers, probe_update_health, query_update_history};
 
 #[cfg(not(windows))]
 pub fn probe_update_health() -> UpdateHealthProbe {
@@ -192,6 +329,11 @@ pub fn probe_update_health() -> UpdateHealthProbe {
         pending_update_count: 0,
         detail: "Windows Update Agent is only available on Windows".into(),
     }
+}
+
+#[cfg(not(windows))]
+pub fn query_update_history(_max_entries: usize) -> Result<UpdateHistory> {
+    Err(UpdateError::UnsupportedPlatform)
 }
 
 #[cfg(not(windows))]
@@ -244,6 +386,127 @@ mod tests {
             extract_version_from_update_title("Vendor 31.0.101.5590 - Extension"),
             None
         );
+    }
+
+    // P83-03A: history is read as a record of attempts, not as a compliance statement.
+    fn entry(
+        id: &str,
+        revision: i32,
+        op: HistoryOperation,
+        result: HistoryResult,
+        at: Option<i64>,
+        hr: i32,
+    ) -> UpdateHistoryEntry {
+        UpdateHistoryEntry {
+            update_id: id.into(),
+            revision,
+            title: format!("Update {id}"),
+            unix_ms: at,
+            operation: op,
+            result,
+            hresult: hr,
+        }
+    }
+    use HistoryOperation::{Installation as Install, Uninstallation as Uninstall};
+    use HistoryResult::{Aborted, Failed, Succeeded, SucceededWithErrors};
+
+    #[test]
+    fn a_failure_followed_by_a_success_of_the_same_update_is_not_unresolved() {
+        let history = [
+            entry("A", 1, Install, Succeeded, Some(20), 0),
+            entry("A", 1, Install, Failed, Some(10), 0x8024_2016_u32 as i32),
+        ];
+        let analysis = analyze_history(&history);
+        assert!(analysis.repeated_failures.is_empty());
+        assert_eq!(analysis.unresolved_failures, 0);
+    }
+
+    #[test]
+    fn another_updates_success_or_another_revision_does_not_close_a_failure() {
+        let history = [
+            entry("B", 1, Install, Succeeded, Some(30), 0),
+            entry("A", 2, Install, Succeeded, Some(30), 0),
+            entry("A", 1, Install, Failed, Some(10), 1),
+        ];
+        assert_eq!(analyze_history(&history).unresolved_failures, 1);
+        let earlier_success = [
+            entry("A", 1, Install, Succeeded, Some(5), 0),
+            entry("A", 1, Install, Failed, Some(10), 1),
+        ];
+        assert_eq!(
+            analyze_history(&earlier_success).unresolved_failures,
+            1,
+            "a success before the failure does not resolve it"
+        );
+    }
+
+    #[test]
+    fn two_unresolved_failures_of_one_update_are_repeated_with_their_dates_and_codes() {
+        let history = [
+            entry("A", 1, Install, Failed, Some(300), 0x8007_0005_u32 as i32),
+            entry("A", 1, Install, Aborted, Some(200), 0x8024_2016_u32 as i32),
+            entry("A", 1, Install, Failed, Some(100), 0x8007_0005_u32 as i32),
+            entry("C", 1, Install, Failed, Some(50), 7),
+        ];
+        let analysis = analyze_history(&history);
+        assert_eq!(analysis.unresolved_failures, 4);
+        assert_eq!(
+            analysis.repeated_failures.len(),
+            1,
+            "C failed once: not repeated"
+        );
+        let repeated = &analysis.repeated_failures[0];
+        assert_eq!(
+            (
+                repeated.update_id.as_str(),
+                repeated.failures,
+                repeated.last_failure_unix_ms
+            ),
+            ("A", 3, Some(300))
+        );
+        assert_eq!(
+            repeated.hresults,
+            vec![0x8007_0005_u32 as i32, 0x8024_2016_u32 as i32],
+            "distinct codes, newest first"
+        );
+    }
+
+    #[test]
+    fn uninstalls_are_ignored_an_undated_failure_stays_unresolved_and_a_success_with_errors_resolves()
+     {
+        let history = [
+            entry("A", 1, Uninstall, Failed, Some(10), 1),
+            entry("D", 1, Install, Failed, None, 2),
+            entry("D", 1, Install, Succeeded, None, 0),
+            entry("E", 1, Install, Failed, Some(10), 3),
+            entry("E", 1, Install, SucceededWithErrors, Some(20), 0),
+        ];
+        let analysis = analyze_history(&history);
+        assert_eq!(
+            analysis.unresolved_failures, 1,
+            "only D: an undated success cannot be shown to come after"
+        );
+    }
+
+    #[test]
+    fn a_unix_time_becomes_its_utc_date() {
+        assert_eq!(unix_ms_to_iso_date(0).as_deref(), Some("1970-01-01"));
+        assert_eq!(
+            unix_ms_to_iso_date(1_790_669_658_556).as_deref(),
+            Some("2026-09-29")
+        );
+    }
+
+    #[test]
+    fn ole_dates_become_unix_milliseconds_and_nonsense_becomes_none() {
+        assert_eq!(
+            ole_date_to_unix_ms(25_569.0),
+            Some(0),
+            "the OLE date of 1970-01-01"
+        );
+        assert_eq!(ole_date_to_unix_ms(25_570.5), Some(129_600_000));
+        assert_eq!(ole_date_to_unix_ms(f64::NAN), None);
+        assert_eq!(ole_date_to_unix_ms(0.0), None, "0 is 'no date', not 1899");
     }
 
     #[test]

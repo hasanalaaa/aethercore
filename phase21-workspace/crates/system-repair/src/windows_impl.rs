@@ -36,10 +36,15 @@ const DISM_SCAN_DEADLINE: Duration = Duration::from_secs(20 * 60);
 const SFC_VERIFY_DEADLINE: Duration = Duration::from_secs(20 * 60);
 const DISK_SCAN_DEADLINE: Duration = Duration::from_secs(20 * 60);
 const UPDATE_PROBE_DEADLINE: Duration = Duration::from_secs(2 * 60);
+/// The local history read: a bounded query of the agent's own store, first bound not a measurement.
+const UPDATE_HISTORY_DEADLINE: Duration = Duration::from_secs(2 * 60);
+/// The newest history entries read (two pages of 100 at most).
+const UPDATE_HISTORY_ENTRIES: usize = 200;
 static DISM_SLOT: ProviderSlot = ProviderSlot::new();
 static SFC_SLOT: ProviderSlot = ProviderSlot::new();
 static DISK_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_SLOT: ProviderSlot = ProviderSlot::new();
+static UPDATE_HISTORY_SLOT: ProviderSlot = ProviderSlot::new();
 
 pub struct WindowsRepairPlatform;
 
@@ -142,6 +147,26 @@ impl RepairPlatform for WindowsRepairPlatform {
                 Ok(required_update_service_check())
             })?;
         }
+        // Evidence only: the id has no diagnosis fact, so this proposes no repair (P83-03A).
+        step(&mut checks, "update-history", &mut || {
+            run_check(
+                &UPDATE_HISTORY_SLOT,
+                (
+                    "windows-update-history",
+                    "Windows Update history",
+                    "Windows Update Agent",
+                ),
+                UPDATE_HISTORY_DEADLINE,
+                cancel,
+                |_| {
+                    crate::update_history_check(
+                        aethercore_windows_update::query_update_history(UPDATE_HISTORY_ENTRIES)
+                            .ok()
+                            .as_ref(),
+                    )
+                },
+            )
+        })?;
         step(&mut checks, "disk-scan", &mut || {
             const LOG: &str = "Event Viewer → Application → Chkdsk";
             let (chkdsk, volume) = (system32.join("chkdsk.exe"), volume.clone());

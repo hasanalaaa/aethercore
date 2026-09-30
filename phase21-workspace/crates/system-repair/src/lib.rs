@@ -1755,3 +1755,148 @@ mod dbt_p46_b9_tests {
         assert_eq!(detail, "short");
     }
 }
+
+/// The assessment's Windows Update history check (P83-03A). It is evidence only: its id has no
+/// diagnosis fact and proposes no repair. `None` means the local history could not be read, which
+/// says nothing about whether updates installed; an empty history is not "up to date".
+#[cfg(any(windows, test))]
+pub(crate) fn update_history_check(
+    history: Option<&aethercore_windows_update::UpdateHistory>,
+) -> RepairCheck {
+    use aethercore_windows_update::{analyze_history, unix_ms_to_iso_date};
+    let base = |stage: &str, code: &str, exit_code: i32, detail: String| RepairCheck {
+        id: "windows-update-history".into(),
+        title: "Windows Update history".into(),
+        stage: stage.into(),
+        result_code: code.into(),
+        exit_code,
+        detail,
+        log_hint: "Windows Update Agent".into(),
+    };
+    let Some(history) = history else {
+        return base(
+            "Unknown",
+            "UpdateHistoryUnavailable",
+            0,
+            "The Windows Update history could not be read; this says nothing about whether updates installed.".into(),
+        );
+    };
+    let analysis = analyze_history(&history.entries);
+    let Some(newest) = analysis.repeated_failures.first() else {
+        return base(
+            "Completed",
+            "UpdateHistoryClear",
+            0,
+            if history.truncated {
+                "Windows Update history shows no update that failed to install more than once without a later success in the newest entries read; older entries were not read."
+            } else {
+                "Windows Update history shows no update that failed to install more than once without a later success in the entries read."
+            }
+            .into(),
+        );
+    };
+    let date = newest
+        .last_failure_unix_ms
+        .and_then(unix_ms_to_iso_date)
+        .unwrap_or_else(|| "—".into());
+    let codes = newest
+        .hresults
+        .iter()
+        .map(|code| format!("{:#010X}", *code as u32))
+        .collect::<Vec<_>>()
+        .join(", ");
+    base(
+        "Attention",
+        "UpdateHistoryFailures",
+        newest.hresults.first().copied().unwrap_or(0),
+        format!(
+            "{} update(s) failed to install more than once with no later success; the newest failure was recorded on {date} ({codes}).",
+            analysis.repeated_failures.len()
+        ),
+    )
+}
+
+#[cfg(test)]
+mod update_history_tests {
+    use super::*;
+    use aethercore_windows_update::{
+        HistoryOperation, HistoryResult, UpdateHistory, UpdateHistoryEntry,
+    };
+
+    fn failure(id: &str, at: i64, hr: i32) -> UpdateHistoryEntry {
+        UpdateHistoryEntry {
+            update_id: id.into(),
+            revision: 1,
+            title: id.into(),
+            unix_ms: Some(at),
+            operation: HistoryOperation::Installation,
+            result: HistoryResult::Failed,
+            hresult: hr,
+        }
+    }
+
+    #[test]
+    fn an_unreadable_history_is_unknown_and_never_clear() {
+        let check = update_history_check(None);
+        assert_eq!(
+            (check.stage.as_str(), check.result_code.as_str()),
+            ("Unknown", "UpdateHistoryUnavailable")
+        );
+        assert!(
+            check
+                .detail
+                .contains("says nothing about whether updates installed")
+        );
+    }
+
+    #[test]
+    fn an_empty_or_resolved_history_is_clear_but_says_only_what_it_read() {
+        let empty = update_history_check(Some(&UpdateHistory::default()));
+        assert_eq!(empty.result_code, "UpdateHistoryClear");
+        let cut = update_history_check(Some(&UpdateHistory {
+            entries: vec![],
+            truncated: true,
+        }));
+        assert!(
+            cut.detail.contains("older entries were not read"),
+            "{}",
+            cut.detail
+        );
+        assert!(
+            !empty.detail.to_lowercase().contains("up to date"),
+            "history is not compliance"
+        );
+    }
+
+    #[test]
+    fn repeated_failures_appear_with_the_date_and_the_codes() {
+        let history = UpdateHistory {
+            entries: vec![
+                failure("A", 1_790_669_658_556, 0x8007_0005_u32 as i32),
+                failure("A", 1_790_559_606_373, 0x8024_2016_u32 as i32),
+            ],
+            truncated: false,
+        };
+        let check = update_history_check(Some(&history));
+        assert_eq!(
+            (check.stage.as_str(), check.result_code.as_str()),
+            ("Attention", "UpdateHistoryFailures")
+        );
+        assert_eq!(
+            check.detail,
+            "1 update(s) failed to install more than once with no later success; the newest failure was recorded on 2026-09-29 (0x80070005, 0x80242016)."
+        );
+        assert_eq!(check.exit_code, 0x8007_0005_u32 as i32);
+        assert_eq!(check.id, "windows-update-history");
+    }
+
+    #[test]
+    fn the_history_check_proposes_no_fact_and_so_no_repair() {
+        // Only ids the diagnosis knows become facts; this one is evidence for the reader alone.
+        let check = update_history_check(Some(&UpdateHistory {
+            entries: vec![failure("A", 1, 1), failure("A", 2, 1)],
+            truncated: false,
+        }));
+        assert!(check_to_fact(&check).is_none());
+    }
+}
