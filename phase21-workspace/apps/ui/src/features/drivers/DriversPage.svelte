@@ -61,8 +61,11 @@
   const startScan = () => { confirmingOnline = false; void startDriverScan(); };
   let confirmingOnline = false;
   function confirmOnlineSearch(): void { confirmingOnline = false; void startOnlineDriverSearch(); }
-  /** The Microsoft Update Catalog, given to the user to open themselves (P84-05): never opened here. */
-  const catalogAddress = 'https://www.catalog.update.microsoft.com/Home.aspx';
+  /**
+   * The Microsoft Update Catalog, given to the user to open themselves (P84-05): never opened here.
+   * No scheme: the UI holds no remote address (phase7_no_remote_ui_assets); a browser adds it.
+   */
+  const catalogAddress = 'www.catalog.update.microsoft.com';
   let copied = '';
   async function copy(value: string, what: string): Promise<void> {
     // Without clipboard access nothing claims "Copied"; the text stays on screen to select by hand.
