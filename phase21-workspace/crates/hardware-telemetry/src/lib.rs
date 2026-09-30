@@ -123,6 +123,8 @@ pub(crate) struct NvmeHealthValues {
     pub critical: u8,
     pub temperature_c: Option<i32>,
     pub spare: u8,
+    /// The device's own threshold for `spare`; below it the device flags a critical warning.
+    pub spare_threshold: u8,
     pub used: u8,
     pub unsafe_shutdowns: String,
     pub media_errors: String,
@@ -148,6 +150,7 @@ pub(crate) fn parse_nvme_health_log(data: &[u8]) -> Result<NvmeHealthValues> {
         critical: data[0],
         temperature_c: (temperature_kelvin > 0).then(|| i32::from(temperature_kelvin) - 273),
         spare: data[3],
+        spare_threshold: data[4],
         used: data[5],
         unsafe_shutdowns: read_u128(144).to_string(),
         media_errors: read_u128(160).to_string(),
@@ -354,6 +357,55 @@ pub(crate) fn parse_storage_device_descriptor(bytes: &[u8]) -> Option<(u32, Stri
     Some((bus, serial))
 }
 
+/// Folds an NVMe health log into the reliability record. `PercentageUsed` may exceed 100 and is
+/// kept as reported; a temperature the device did not report stays absent.
+#[cfg(any(windows, test))]
+pub(crate) fn merge_nvme(r: &mut StorageReliability, n: NvmeHealthValues) {
+    r.nvme_critical_warning = Some(n.critical);
+    r.nvme_available_spare_percent = Some(n.spare);
+    r.nvme_available_spare_threshold_percent = Some(n.spare_threshold);
+    r.nvme_percentage_used = Some(n.used);
+    r.nvme_unsafe_shutdowns = Some(n.unsafe_shutdowns);
+    r.nvme_media_errors = Some(n.media_errors);
+    r.nvme_error_log_entries = Some(n.error_entries);
+    if r.temperature_c.is_none() {
+        r.temperature_c = n.temperature_c;
+    }
+    if r.wear_percent_used.is_none() {
+        r.wear_percent_used = Some(u32::from(n.used));
+    }
+}
+
+/// The NVMe critical-warning byte, bit by bit, as the specification defines it.
+fn critical_warning_meanings(flags: u8) -> Vec<&'static str> {
+    let named: [(u8, &str); 6] = [
+        (
+            0x01,
+            "NVMe reports the available spare has fallen below its threshold.",
+        ),
+        (
+            0x02,
+            "NVMe reports the temperature is outside its operating limits.",
+        ),
+        (0x04, "NVMe reports the device's reliability is degraded."),
+        (0x08, "NVMe reports the device has become read-only."),
+        (0x10, "NVMe reports its volatile memory backup has failed."),
+        (
+            0x20,
+            "NVMe reports its persistent memory region is unreliable.",
+        ),
+    ];
+    let mut out: Vec<&'static str> = named
+        .iter()
+        .filter(|(bit, _)| flags & bit != 0)
+        .map(|(_, text)| *text)
+        .collect();
+    if flags & 0xC0 != 0 {
+        out.push("NVMe critical-warning flags include bits this reader does not recognize.");
+    }
+    out
+}
+
 pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
     let r = &device.reliability;
     let mut action = Vec::new();
@@ -387,11 +439,26 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
         None => unavailable.push("uncorrected write error count"),
     }
     match r.nvme_critical_warning {
-        Some(n) if n != 0 => action.push(format!(
-            "NVMe SMART critical-warning flags are set (0x{n:02X})."
-        )),
+        Some(n) if n != 0 => {
+            action.push(format!(
+                "NVMe SMART critical-warning flags are set (0x{n:02X})."
+            ));
+            action.extend(critical_warning_meanings(n).into_iter().map(String::from));
+        }
         Some(_) => {}
         None => unavailable.push("NVMe critical-warning flags"),
+    }
+    // Below the device's own threshold, and the device has not (yet) raised the flag itself.
+    if let (Some(spare), Some(threshold)) = (
+        r.nvme_available_spare_percent,
+        r.nvme_available_spare_threshold_percent,
+    ) && threshold > 0
+        && spare < threshold
+        && r.nvme_critical_warning.unwrap_or(0) & 0x01 == 0
+    {
+        attention.push(format!(
+            "NVMe available spare ({spare}%) is below the device's own threshold ({threshold}%)."
+        ));
     }
     match r.nvme_media_errors.as_deref() {
         Some(v) => {
@@ -546,6 +613,108 @@ mod tests {
             parse_storage_device_descriptor(&d),
             None,
             "a size larger than the buffer is malformed"
+        );
+    }
+
+    // P81-02: the NVMe health log, read for what it says.
+    fn nvme_log(critical: u8, kelvin: u16, spare: u8, threshold: u8, used: u8) -> Vec<u8> {
+        let mut log = vec![0u8; 512];
+        log[0] = critical;
+        log[1..3].copy_from_slice(&kelvin.to_le_bytes());
+        log[3] = spare;
+        log[4] = threshold;
+        log[5] = used;
+        log
+    }
+
+    fn nvme_disk(critical: u8, spare: u8, threshold: u8, used: u8) -> StorageDeviceTelemetry {
+        let mut device = StorageDeviceTelemetry {
+            windows_health_status: "Healthy".into(),
+            ..Default::default()
+        };
+        let values =
+            parse_nvme_health_log(&nvme_log(critical, 310, spare, threshold, used)).unwrap();
+        merge_nvme(&mut device.reliability, values);
+        device.reliability.read_errors_uncorrected = Some(0);
+        device.reliability.write_errors_uncorrected = Some(0);
+        classify_storage(&mut device);
+        device
+    }
+
+    #[test]
+    fn the_spare_threshold_is_read_and_a_spare_below_it_asks_for_review() {
+        let values = parse_nvme_health_log(&nvme_log(0, 310, 15, 20, 5)).unwrap();
+        assert_eq!(values.spare_threshold, 20);
+        let low = nvme_disk(0, 15, 20, 5);
+        assert_eq!(
+            low.severity, "Attention",
+            "spare 15% under its own 20% threshold"
+        );
+        assert!(
+            low.reasons
+                .iter()
+                .any(|r| r.contains("below the device's own threshold")),
+            "{:?}",
+            low.reasons
+        );
+        assert_eq!(nvme_disk(0, 100, 10, 5).severity, "Normal");
+        assert_eq!(
+            nvme_disk(0, 10, 10, 5).severity,
+            "Normal",
+            "equal is not below"
+        );
+    }
+
+    #[test]
+    fn critical_warning_bits_are_named_by_meaning_and_unknown_bits_are_not_dropped() {
+        let device = nvme_disk(0b1100_0101, 100, 10, 5);
+        assert_eq!(device.severity, "ActionRequired");
+        let reasons = device.reasons.join(" | ");
+        for meaning in [
+            "spare has fallen below its threshold",
+            "reliability is degraded",
+            "recognize",
+        ] {
+            assert!(
+                reasons.contains(meaning),
+                "{meaning} missing from {reasons}"
+            );
+        }
+        assert!(
+            !reasons.contains("read-only"),
+            "bit 3 was not set: {reasons}"
+        );
+        assert!(
+            device.summary.contains("back up important data"),
+            "the first advice is a backup, not a repair"
+        );
+    }
+
+    #[test]
+    fn wear_over_a_hundred_is_kept_and_a_zero_temperature_is_not_minus_273() {
+        let hot = parse_nvme_health_log(&nvme_log(0, 0, 100, 10, 105)).unwrap();
+        assert_eq!(hot.temperature_c, None, "0 K is 'not reported'");
+        assert_eq!(hot.used, 105);
+        let mut r = StorageReliability::default();
+        merge_nvme(&mut r, hot);
+        assert_eq!(r.nvme_percentage_used, Some(105));
+        assert_eq!(r.wear_percent_used, Some(105), "not clamped to 100");
+        assert_eq!(r.nvme_available_spare_threshold_percent, Some(10));
+        assert_eq!(r.temperature_c, None);
+    }
+
+    #[test]
+    fn counters_beyond_64_bits_keep_every_digit() {
+        let mut log = nvme_log(0, 310, 100, 10, 1);
+        log[160..176].copy_from_slice(&u128::MAX.to_le_bytes());
+        let values = parse_nvme_health_log(&log).unwrap();
+        assert_eq!(
+            values.media_errors,
+            "340282366920938463463374607431768211455"
+        );
+        assert!(
+            parse_nvme_health_log(&log[..100]).is_err(),
+            "a short buffer is an error, not a panic"
         );
     }
 

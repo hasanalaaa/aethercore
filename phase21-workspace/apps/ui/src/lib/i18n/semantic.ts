@@ -201,6 +201,13 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Networking, storage, input, accessibility, or other protected service role.':'tech.startup.protectedRole',
   'NVMe SMART/Health log via IOCTL_STORAGE_QUERY_PROPERTY':'tech.storage.sourceNvme',
   'Direct NVMe SMART/Health log was not available for this device.':'tech.storage.sourceNvmeUnavailable',
+  'NVMe reports the available spare has fallen below its threshold.':'tech.storage.nvmeBit.spare',
+  'NVMe reports the temperature is outside its operating limits.':'tech.storage.nvmeBit.temperature',
+  "NVMe reports the device's reliability is degraded.":'tech.storage.nvmeBit.reliability',
+  'NVMe reports the device has become read-only.':'tech.storage.nvmeBit.readOnly',
+  'NVMe reports its volatile memory backup has failed.':'tech.storage.nvmeBit.volatileBackup',
+  'NVMe reports its persistent memory region is unreliable.':'tech.storage.nvmeBit.persistentMemory',
+  'NVMe critical-warning flags include bits this reader does not recognize.':'tech.storage.nvmeBit.unknown',
   'ATA SMART attribute table via SMART_RCV_DRIVE_DATA; raw values are vendor-defined and are not converted into AetherCore health claims.':'tech.storage.sourceAta',
   'Direct ATA SMART attributes were not available through SMART_RCV_DRIVE_DATA; standardized Windows reliability counters remain authoritative when present.':'tech.storage.sourceAtaUnavailable',
   'Physical disk DeviceId was not reported.':'tech.storage.deviceIdMissing',
@@ -380,6 +387,7 @@ export function localizeOwnedText(value: string, locale: Locale, options: { data
   let m: RegExpMatchArray | null;
   if ((m = value.match(/^(\d+) uncorrected read error\(s\) were reported\.$/))) return { text: t('tech.storage.readErrors', locale, { count: m[1] }), localized: true };
   if ((m = value.match(/^(\d+) uncorrected write error\(s\) were reported\.$/))) return { text: t('tech.storage.writeErrors', locale, { count: m[1] }), localized: true };
+  if ((m = value.match(/^NVMe available spare \((\d+)%\) is below the device's own threshold \((\d+)%\)\.$/))) return { text: t('tech.storage.spareBelowThreshold', locale, { spare: m[1], threshold: m[2] }), localized: true };
   if ((m = value.match(/^NVMe SMART critical-warning flags are set \((0x[0-9A-Fa-f]+)\)\.$/))) return { text: t('tech.storage.nvmeCritical', locale, { flag: m[1] }), localized: true };
   if ((m = value.match(/^Current temperature \(([-\d.]+) °C\) is at or above the device\/Windows-reported maximum \(([-\d.]+) °C\)\.$/))) return { text: t('tech.storage.temperatureLimit', locale, { current:m[1], max:m[2] }), localized: true };
   if ((m = value.match(/^Windows reports a maximum (read|write|flush) latency above 10 seconds in the storage reliability counters\.$/))) {

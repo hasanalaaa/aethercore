@@ -47,7 +47,7 @@ use windows::{
 use crate::{
     AtaSmartAttribute, DiskIdentity, HandleBinding, HardwareTelemetrySnapshot, MemoryTelemetry,
     NvmeHealthValues, Result, StorageDeviceTelemetry, StorageReliability, TelemetryError,
-    bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage,
+    bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage, merge_nvme,
     parse_ata_driver_response, parse_nvme_health_log, parse_storage_device_descriptor,
 };
 
@@ -859,21 +859,6 @@ fn query_nvme_health(index: u32, expected: &DiskIdentity) -> Result<NvmeHealthVa
     let output_slice = unsafe { std::slice::from_raw_parts(output_ptr, returned) };
     parse_nvme_health_log(&output_slice[window])
 }
-fn merge_nvme(r: &mut StorageReliability, n: NvmeHealthValues) {
-    r.nvme_critical_warning = Some(n.critical);
-    r.nvme_available_spare_percent = Some(n.spare);
-    r.nvme_percentage_used = Some(n.used);
-    r.nvme_unsafe_shutdowns = Some(n.unsafe_shutdowns);
-    r.nvme_media_errors = Some(n.media_errors);
-    r.nvme_error_log_entries = Some(n.error_entries);
-    if r.temperature_c.is_none() {
-        r.temperature_c = n.temperature_c;
-    }
-    if r.wear_percent_used.is_none() {
-        r.wear_percent_used = Some(n.used as u32);
-    }
-}
-
 fn win(e: windows::core::Error) -> TelemetryError {
     if e.code() == E_ACCESSDENIED || e.code().0 == WBEM_E_ACCESS_DENIED.0 {
         TelemetryError::PermissionDenied(e.to_string())
