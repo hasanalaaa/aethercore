@@ -10,6 +10,7 @@
   import { EmptyState } from '../../design/signature';
   import { hardwareVerdict } from '../intelligence/headline';
   import MeasurementRows from './MeasurementRows.svelte';
+  import { diskAdvice, missingDiskMetrics } from './disk-facts';
   import { batteryRows, bootRows, networkRows, thermalRows } from './measurement-rows';
 
   $: snapshot = $streamState.snapshot;
@@ -83,6 +84,7 @@
           <div><span>{t('hardware.uncorrectedWrites',locale)}</span><strong>{metric(!!disk.reliability?.hasWriteErrorsUncorrected,disk.reliability?.writeErrorsUncorrected ?? 0)}</strong></div>
           {#if disk.reliability?.hasNvmeCriticalWarning}<div><span>{t('hardware.nvmeFlags',locale)}</span><TechnicalText value={`0x${disk.reliability.nvmeCriticalWarning.toString(16).padStart(2,'0').toUpperCase()}`} as="code"/></div>{/if}
           {#if disk.reliability?.hasNvmeAvailableSpare}<div><span>{t('hardware.nvmeSpare',locale)}</span><strong>{formatNumber(disk.reliability.nvmeAvailableSparePercent,locale)}%</strong></div>{/if}
+          {#if disk.reliability?.hasNvmeAvailableSpareThreshold}<div><span>{t('hardware.nvmeSpareThreshold',locale)}</span><strong>{formatNumber(disk.reliability.nvmeAvailableSpareThresholdPercent,locale)}%</strong></div>{/if}
           {#if disk.reliability?.hasNvmePercentageUsed}<div><span>{t('hardware.nvmeUsed',locale)}</span><strong>{formatNumber(disk.reliability.nvmePercentageUsed,locale)}%</strong></div>{/if}
           {#if disk.reliability?.nvmeMediaErrors}<div><span>{t('hardware.nvmeMediaErrors',locale)}</span><TechnicalText value={disk.reliability.nvmeMediaErrors}/></div>{/if}
           {#if disk.reliability?.nvmeUnsafeShutdowns}<div><span>{t('hardware.nvmeUnsafeShutdowns',locale)}</span><TechnicalText value={disk.reliability.nvmeUnsafeShutdowns}/></div>{/if}
@@ -91,6 +93,8 @@
           {#if disk.reliability?.hasWriteLatencyMax}<div><span>{t('hardware.maxWriteLatency',locale)}</span><strong>{formatNumber(disk.reliability.writeLatencyMaxMs,locale)} {t('unit.milliseconds.short',locale)}</strong></div>{/if}
           {#if disk.reliability?.hasFlushLatencyMax}<div><span>{t('hardware.maxFlushLatency',locale)}</span><strong>{formatNumber(disk.reliability.flushLatencyMaxMs,locale)} {t('unit.milliseconds.short',locale)}</strong></div>{/if}
         </div>
+        {#if diskAdvice(disk)}<p class="disk-advice" role="note">{td(diskAdvice(disk) as MessageKey,locale)}</p>{/if}
+        {#if missingDiskMetrics(disk).length}<p class="disk-missing">{t('hardware.disk.notReported',locale,{items:missingDiskMetrics(disk).map((key) => td(key,locale)).join(' · ')})}</p>{/if}
         <div class="metric-grid technical-facts">
           <div><span>{t('hardware.serial',locale)}</span><TechnicalText value={disk.serialNumber || '—'}/></div>
           <div><span>{t('hardware.firmware',locale)}</span><TechnicalText value={disk.firmwareVersion || '—'}/></div>
@@ -131,4 +135,6 @@
   .verdict-card p{margin:.2rem 0;color:var(--ac-text-2);line-height:1.5}
   .verdict-mark{inline-size:30px;block-size:30px;border-radius:9px;display:grid;place-items:center;border:1px solid var(--ac-border-strong);font-weight:700}
   .verdict-action .verdict-mark,.verdict-attention .verdict-mark{border-width:2px}
+  .disk-advice{margin:.6rem 0;padding:.6rem .8rem;border:1px solid var(--ac-border-strong);border-radius:10px;font-weight:600}
+  .disk-missing{margin:.4rem 0;color:var(--ac-text-3);font-size:var(--ac-type-body)}
 </style>

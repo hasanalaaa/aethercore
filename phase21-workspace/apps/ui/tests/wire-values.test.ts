@@ -148,6 +148,26 @@ test('hardware verdict: not-collected, unavailable, partial, action and clear ar
   assert.equal(hardwareVerdict(snap({ storage: [disk('Normal')], memory })).denied, false);
 });
 
+// P81-04: three disks stay three verdicts. What one disk did not report is said for that disk
+// only, by its own bus; the first advice for a data-risk disk is a backup, never a repair.
+test('each disk states what it did not report, by its bus, and the first advice is a backup', async () => {
+  const { missingDiskMetrics, diskAdvice } = await import('../src/features/diagnostics/disk-facts.ts');
+  const has = { hasTemperature: true, hasWear: true, hasPowerOnHours: true, hasReadErrorsUncorrected: true, hasWriteErrorsUncorrected: true, hasNvmeCriticalWarning: true, hasNvmeAvailableSpare: true };
+  const critical = { busType: 'NVMe', severity: 'ActionRequired', reliability: { ...has, wearPercentUsed: 105 } } as never;
+  const usb = { busType: 'USB', severity: 'Unknown', reliability: null } as never;
+  const sata = { busType: 'SATA', severity: 'Normal', reliability: { ...has, hasNvmeCriticalWarning: false, hasNvmeAvailableSpare: false } } as never;
+  assert.deepEqual(missingDiskMetrics(critical), [], 'everything an NVMe disk reports was reported');
+  assert.deepEqual(missingDiskMetrics(sata), [], 'a SATA disk is not charged with NVMe-only fields');
+  const missing = missingDiskMetrics(usb);
+  assert.ok(missing.includes('hardware.temperature') && missing.includes('hardware.wear'), 'a disk that reported nothing lists what is missing');
+  assert.ok(!missing.includes('hardware.nvmeSpare'), 'and only what applies to its bus');
+  assert.deepEqual(missingDiskMetrics({ busType: 'NVMe', severity: 'Normal', reliability: { ...has, hasTemperature: false, hasNvmeAvailableSpare: false } } as never), ['hardware.temperature', 'hardware.nvmeSpare']);
+  assert.equal(diskAdvice(critical), 'hardware.disk.backupFirst');
+  assert.equal(diskAdvice(usb), 'hardware.disk.unsupported', 'an unknown disk is unknown, not fine');
+  assert.equal(diskAdvice(sata), null);
+  assert.equal((critical as { reliability: { wearPercentUsed: number } }).reliability.wearPercentUsed, 105, 'wear over 100 is kept');
+});
+
 // P80-02B: presence survives to the screen. A sensor that read 0 shows 0; one that read nothing
 // shows no value and says why (denied is not empty, unknown is not measured); bad input is skipped.
 test('measurement rows keep "not read" apart from zero and survive malformed input', async () => {
