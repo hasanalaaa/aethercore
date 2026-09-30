@@ -145,6 +145,10 @@ pub fn discover_driver_offers(scope: SearchScope) -> Result<DiscoveryResult> {
     };
     unsafe {
         searcher.SetOnline(online).map_err(wua_err)?;
+        // A search does not let the agent update itself first (P84-02A).
+        searcher
+            .SetCanAutomaticallyUpgradeService(VARIANT_FALSE)
+            .map_err(wua_err)?;
     }
 
     // WUA evaluates applicability. AetherCore never ranks packages by version number.

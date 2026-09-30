@@ -834,7 +834,7 @@ impl DriverHub {
         Ok(initial)
     }
 
-    fn run_scan(&self, _scope: SearchScope) {
+    fn run_scan(&self, scope: SearchScope) {
         let base = self.snapshot();
         let devices = match self.inner.backend.inventory() {
             Ok(devices) => devices,
@@ -845,7 +845,6 @@ impl DriverHub {
         };
 
         self.update_state(ScanState::UpdateSearching);
-        let scope = SearchScope::Online;
         let discovery = match self.inner.backend.updates_in(scope) {
             Ok(result) => result,
             Err(DiscoveryFailure::Offline(error)) => DiscoveryResult {
