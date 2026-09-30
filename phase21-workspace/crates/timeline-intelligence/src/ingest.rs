@@ -145,8 +145,8 @@ pub fn intelligence_scan(record: &IntelligenceScanRecord) -> TimelineEvent {
     )
 }
 
-/// Reads the owner-scoped history tables and returns candidate events in arbitrary
-/// (per-table) order; construction applies the deterministic total order afterwards.
+/// Reads the owner-scoped history tables and retains a globally bounded recent
+/// window in stable newest-first order; construction orders it for presentation.
 ///
 /// Every query is bounded server-side; no table can push more than
 /// [`INGEST_READ_LIMIT`] rows into the builder. Rows stamped after `watermark_unix_ms`
@@ -204,6 +204,24 @@ pub fn ingest_owner_history_with_watermark(
         );
     }
 
+    // Select globally after merging: a source read first cannot crowd out newer
+    // events from another source. Only identical persisted rows are duplicates.
+    candidates.sort_by(|a, b| {
+        (
+            b.observed_unix_ms,
+            &b.source_id,
+            &b.semantic_identity_sha256,
+            b.outcome as u8,
+        )
+            .cmp(&(
+                a.observed_unix_ms,
+                &a.source_id,
+                &a.semantic_identity_sha256,
+                a.outcome as u8,
+            ))
+    });
+    candidates.dedup();
+    candidates.truncate(crate::MAX_TIMELINE_EVENTS);
     Ok(candidates)
 }
 

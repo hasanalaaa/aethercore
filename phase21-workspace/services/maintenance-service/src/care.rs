@@ -99,14 +99,19 @@ pub fn compose_plan(
     // domain created them; we consider plans still awaiting authorization plus
     // recently created ones. Terminal plans are excluded — nothing left to run.
     let candidates = db
-        .plans_in_states(&["ReadyForReview", "AwaitingAuthorization"])
+        .care_plan_candidates(
+            owner_principal_key,
+            aethercore_care_orchestrator::MAX_CARE_STEPS + 1,
+        )
         .map_err(|error| {
             aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(error.to_string())
         })?;
 
+    if candidates.len() > aethercore_care_orchestrator::MAX_CARE_STEPS {
+        return Err(aethercore_care_orchestrator::CareError::SourceLimit);
+    }
     let steps = candidates
         .into_iter()
-        .filter(|plan| plan.owner_principal_key == owner_principal_key)
         .filter_map(|plan| {
             classify(plan_kind_of(&plan)).map(|safety| CareStep {
                 domain_plan_id: plan.id.clone(),

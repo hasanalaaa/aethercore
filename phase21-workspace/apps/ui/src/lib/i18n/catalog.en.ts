@@ -221,6 +221,7 @@ export const enCatalog = {
   'text.unavailable': 'Details unavailable',
   'assistant.invalid.locale': 'The assistant does not support this language.',
   'assistant.invalid.turnId': 'The assistant request was not valid.',
+  'care.error.sourceLimit': 'Care has more pending plans than one preview can include. Review the individual tasks first.',
   'care.error.planSourcesUnavailable': 'Care could not read the results it needs to prepare a plan.',
   'care.error.startFailed': 'Care could not start.',
   'insight.error.modelLoading': 'The local model is still loading. Try again in a moment.',
@@ -1773,6 +1774,7 @@ export const enCatalog = {
   'perf.reviewPlan': 'Review plan',
 
   'timeline.eyebrow': 'Timeline',
+  'timeline.boundedWindow': 'Recent history is limited; older events may not be included.',
   'timeline.title': 'What happened on this PC',
   'timeline.refresh': 'Refresh',
   'timeline.empty': 'Nothing recorded yet.',

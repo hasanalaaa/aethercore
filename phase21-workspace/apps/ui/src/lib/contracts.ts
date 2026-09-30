@@ -219,7 +219,7 @@ export type TimelineEntry = {
 };
 export type TimelineResponse = {
   entries:TimelineEntry[]; hasMore:boolean; nextBeforeSequence:number;
-  digestSha256:string; duplicatesCollapsed:number
+  digestSha256:string; duplicatesCollapsed:number; historyWindowLimit?:number
 };
 export type RecurrenceEvidence = { sourceId:string; observedUnixMs:number; gapFromPreviousMs:number };
 export type RecurrencePattern = {
@@ -228,7 +228,7 @@ export type RecurrencePattern = {
   firstObservedUnixMs:number; lastObservedUnixMs:number; meanGapMs:number;
   evidence:RecurrenceEvidence[]
 };
-export type RecurrencePatternsResponse = { patterns:RecurrencePattern[]; digestSha256:string };
+export type RecurrencePatternsResponse = { patterns:RecurrencePattern[]; digestSha256:string; historyWindowLimit?:number };
 
 // ---------------------------------------------------------------------------
 // Phase 22 — One-Click Care orchestration

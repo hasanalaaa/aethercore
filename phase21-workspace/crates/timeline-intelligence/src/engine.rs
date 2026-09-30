@@ -18,7 +18,7 @@ use crate::model::{
 #[derive(Debug, Default)]
 pub struct TimelineBuilder {
     events: Vec<TimelineEvent>,
-    seen: HashMap<String, ()>,
+    seen: HashMap<(String, i64, u8, String, u8), ()>,
     duplicates_collapsed: usize,
     watermark_unix_ms: Option<i64>,
 }
@@ -35,8 +35,8 @@ impl TimelineBuilder {
         self
     }
 
-    /// Ingests one candidate event. Exact duplicates (same semantic identity AND same
-    /// observation timestamp) collapse silently; everything else is retained in order.
+    /// Ingests one candidate event. Only the same source row, meaning, time and
+    /// outcome collapse; distinct records sharing a timestamp remain evidence.
     pub fn ingest(&mut self, event: TimelineEvent) -> Result<&mut Self, TimelineError> {
         if let Some(watermark) = self.watermark_unix_ms
             && event.observed_unix_ms > watermark
@@ -46,21 +46,23 @@ impl TimelineBuilder {
                 watermark_unix_ms: watermark,
             });
         }
+        let identity = (
+            event.semantic_identity_sha256.clone(),
+            event.observed_unix_ms,
+            event.class.ordinal(),
+            event.source_id.clone(),
+            event.outcome as u8,
+        );
+        if self.seen.contains_key(&identity) {
+            self.duplicates_collapsed += 1;
+            return Ok(self);
+        }
         if self.events.len() >= MAX_TIMELINE_EVENTS {
             return Err(TimelineError::CapacityExceeded {
                 limit: MAX_TIMELINE_EVENTS,
             });
         }
-        let identity = format!(
-            "{}:{}:{}",
-            event.semantic_identity_sha256,
-            event.observed_unix_ms,
-            event.class.ordinal()
-        );
-        if self.seen.insert(identity, ()).is_some() {
-            self.duplicates_collapsed += 1;
-            return Ok(self);
-        }
+        self.seen.insert(identity, ());
         self.events.push(event);
         Ok(self)
     }

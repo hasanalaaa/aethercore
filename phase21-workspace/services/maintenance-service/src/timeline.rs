@@ -104,6 +104,7 @@ fn timeline_page_proto(
         next_before_sequence: if has_more { start as u64 } else { 0 },
         digest_sha256: timeline.digest_sha256.clone(),
         duplicates_collapsed: timeline.duplicates_collapsed.min(u32::MAX as usize) as u32,
+        history_window_limit: aethercore_timeline_intelligence::MAX_TIMELINE_EVENTS as u32,
     }
 }
 
@@ -144,8 +145,8 @@ impl TimelineCoordinator {
                 // an invariant broke. Fail loudly instead of emitting a wrong page.
                 aethercore_persistence::PersistenceError::Poisoned
             }
-            // Capacity cannot trigger here: ingestion clamps candidates well below
-            // the builder ceiling by construction.
+            // Ingestion globally clamps after merging the independently bounded
+            // sources. Capacity here would mean that invariant broke.
             aethercore_timeline_intelligence::TimelineError::CapacityExceeded { .. } => {
                 aethercore_persistence::PersistenceError::Poisoned
             }
@@ -181,6 +182,7 @@ impl TimelineCoordinator {
                 .map(recurrence_pattern_proto)
                 .collect(),
             digest_sha256: timeline.digest_sha256.clone(),
+            history_window_limit: aethercore_timeline_intelligence::MAX_TIMELINE_EVENTS as u32,
         };
         Ok((response, timeline))
     }
