@@ -424,8 +424,8 @@ eec37c71f08c871f07eb1f89b7a2c42910c1a2b0471ed35f73ef0274697a1b8d  apps/ui/src/de
 f89fb559ea97c1a165a0c3a503b760bf34fe5ab55117ad338b01072efef33e8e  apps/ui/src/design/styles/navigation.css
 70d35f82309f64a39253039e038aed554e48f621bf115a8f96b181d6b41a7152  apps/ui/src/design/styles/responsive.css
 6f2bf78f7b6055439a138c940ab14d6cdb47bb3fe75e18b68e0745a9897f7ba6  apps/ui/src/design/styles/typography.css
-b65d4cc8f9e052edfc905d2330d434e096538d47922b4d182fcc72fefdcf003c  apps/ui/src/dev/layout-fixture.ts
-02fa2662f53f9ac0acd11fc8b7f45194302e97252d41a209c9128183f84f77e5  apps/ui/src/features/RecoveryPanel.svelte
+f96ea5a1947f752818015c0c628b2ac53e0eccad6ec04d9a6e09379ac85b1695  apps/ui/src/dev/layout-fixture.ts
+b8a693dddd449d5bcfabfbbf39104df7d62a793567b9153546a59f11d03fd273  apps/ui/src/features/RecoveryPanel.svelte
 6ade8fb850fd4982fe84f63eaad464c6dd7740c0fc7a425253bfee6e47e3a99c  apps/ui/src/features/activity/ActivityPage.svelte
 395552aa58a999415ce0a5bef07aef626da8ba3e80484e511645088cedeb623a  apps/ui/src/features/assistant/AssistantDrawer.svelte
 e896fad8e983d7b3bf1dc12cf8042711f6bed46cbe56f36313d72cba785b7ca6  apps/ui/src/features/assistant/controller.ts
@@ -438,7 +438,7 @@ e896fad8e983d7b3bf1dc12cf8042711f6bed46cbe56f36313d72cba785b7ca6  apps/ui/src/fe
 87dce9d85dfbcba193c151d6575c6f51dce929deefc777649b81cd43fc7a155f  apps/ui/src/features/diagnostics/HardwarePage.svelte
 72f4194700cb8c14be9a6f68ab5a9a8c8da530323f8997a78dd28e029d9acd2e  apps/ui/src/features/diagnostics/ProviderFaultsPanel.svelte
 b3bfe24d9b74e04f9943f8fb99af1d3f538b3fad46c6e93fc9049f166faae838  apps/ui/src/features/diagnostics/controller.ts
-68c75c1fb38d407fa59f539822c3f3756ae78dcb6496c4f3fa25670d92caeed6  apps/ui/src/features/drivers/DriversPage.svelte
+d23727dc8e37cb617735e3a4ee89a04071e1a8c2aeda7f0ef82d1b344abb9b02  apps/ui/src/features/drivers/DriversPage.svelte
 c54dd065439f74e3df7ce74e188ac73d79c52e0d4b1034350cc563e5ab10d79c  apps/ui/src/features/drivers/controller.ts
 3772ca8e9e8d035f57fc22abebdb12edac7548c69a2d01391b2550b4f15d2bc0  apps/ui/src/features/fleet/FleetPage.svelte
 081abe2776b96a11b4184b6fa04dec82e6e19c3b9dae57721a7fc1ec9a3e22ba  apps/ui/src/features/fleet/run-due.ts
@@ -467,13 +467,13 @@ d977f4ffecab6723198aef4b1e1f6e553bf0f5b20512893dca0661810c09d699  apps/ui/src/fe
 1e4bc6c9fb8d1e5687390c7e1af62283e43b33f17cabef24a50bd4c5edefb35f  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-3982c64f272ccac6c0e205a49ae99ded0d1c7b23704aaeaca77dbb9f3fec216e  apps/ui/src/lib/i18n/catalog.ar.ts
-a1695df692d7d934fd4de59eb3509785d35c97424118605d30452ffee5456c9f  apps/ui/src/lib/i18n/catalog.en.ts
+2ae5cb73a46b2be1494e61d51b5e484299869d1f9436f784885ba74e20f42229  apps/ui/src/lib/i18n/catalog.ar.ts
+7fbdd00d382c6349a9ade22838cc91843354e5f3f8cdfa9be447a59ba02a7b59  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 861d75f3596e142099802c67260c936723dcab045446c37bfd2c257d0e2339cd  apps/ui/src/lib/i18n/plurals.ar.ts
 132a089d249f086435a2c391863187ee056386bebc40c126354a954c64016c71  apps/ui/src/lib/i18n/plurals.en.ts
 ba3972510ca9dd84627297c5916b4d1f60a4179a117835eb6c1637d3da7187c1  apps/ui/src/lib/i18n/runtime.ts
-5e852864269d267a51dafd293d934ba8c9b115f64f6c85871b5561aeefef80c6  apps/ui/src/lib/i18n/semantic.ts
+ef662c6d64d86f0fb1e0d44a6095a1c3002965fa43f46f0546b5b19a48ee6c82  apps/ui/src/lib/i18n/semantic.ts
 84d73a83b469bd1123eda48fb97418b6fd92bd1f89f2bdc1ce3e0bf2c38abd81  apps/ui/src/lib/navigation.ts
 5b36f9bf3fd346a149b12889d33487d63532c098e9c59ca3045546f884a304a7  apps/ui/src/lib/policy.ts
 7da035df3efe31b798dcadbb45a181b8531430be3766adae919d4e9141cce1e2  apps/ui/src/lib/window-ux.ts
@@ -494,7 +494,7 @@ a4a092f82b169bb987ca5c82173a78e8c882c0adfb2a004912b360b4f4bef40b  apps/ui/tests/
 1dfa7f11a14cc2e7597f574990181be81ce13ffbfcf406201b54f6a13314fc34  apps/ui/tests/repair-progress.test.ts
 ad27fd90c77735a5d42b830cb5c054712f94b6196fe611cdb2c62cdfb3803ee4  apps/ui/tests/resolve-ts.mjs
 03e31347af166842acf1ab6b1029124e7d26d0583b599e6374d9478bf301bcb8  apps/ui/tests/timeline-text.test.ts
-36f9de5e9493c1fbab9cd6b3e003658547cfe823f800d3b339b3bc7e0bf21cf8  apps/ui/tests/wire-values.test.ts
+cd6e7baf42deafc42199d262dc0e40602737380936866ec735301e69cd3f9ba4  apps/ui/tests/wire-values.test.ts
 837d1f530f73477ecaa2a7ea1b35793f5f552ccf7b751375cfe90199de686a17  apps/ui/tools/contrast-sweep.mjs
 85f3a0f130d2a023daeaea7865040a46fcf9332b8b250464115f37010eb5aa91  apps/ui/tools/layout-sweep.mjs
 50ced562c676287c6d66e1d381a834284ca4f6fbaebd9c637fc3c8961d137ce0  apps/ui/tools/measure-density.mjs
