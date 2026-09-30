@@ -174,3 +174,24 @@ fn another_log_with_the_same_length_but_a_new_identity_is_a_rotation() {
         "a file created after the baseline is not the file the run began in"
     );
 }
+
+#[test]
+fn an_incomplete_transaction_after_a_complete_one_is_not_clean() {
+    assert_eq!(
+        classify(&format!("{CLEAN_RUN}{PROGRESS_ONLY}"), 0),
+        CbsEvidence::Unknown
+    );
+}
+
+#[test]
+fn unreadable_baseline_is_not_treated_as_a_new_log() {
+    let path = temp("unreadable-baseline");
+    fs::create_dir(&path).expect("log path is a directory");
+    let baseline = CbsBaseline::capture(&path);
+    fs::remove_dir(&path).expect("remove directory");
+    append(&path, CLEAN_RUN);
+    assert_eq!(
+        run_window(&path, baseline.as_ref(), 0),
+        CbsEvidence::Unknown
+    );
+}

@@ -14,7 +14,6 @@ use std::{
     fs,
     io::{Read, Seek, SeekFrom},
     path::Path,
-    time::SystemTime,
 };
 
 /// The most of one run's log that is read. A longer window cannot be attributed.
@@ -24,16 +23,28 @@ const MAX_WINDOW: u64 = 4 * 1024 * 1024;
 #[derive(Clone, Debug)]
 pub struct CbsBaseline {
     len: u64,
-    created: Option<SystemTime>,
+    identity: Option<(u64, [u8; 16])>,
 }
 
 impl CbsBaseline {
     /// `None` when there is no log yet: the whole file, once it appears, belongs to the run.
     pub fn capture(path: &Path) -> Option<Self> {
-        let metadata = fs::metadata(path).ok()?;
+        let file = match fs::File::open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+            Err(_) => {
+                return Some(Self {
+                    len: 0,
+                    identity: None,
+                });
+            }
+        };
+        let metadata = file.metadata().ok();
         Some(Self {
-            len: metadata.len(),
-            created: metadata.created().ok(),
+            len: metadata.as_ref().map_or(0, fs::Metadata::len),
+            identity: metadata
+                .filter(fs::Metadata::is_file)
+                .and_then(|_| file_identity(&file)),
         })
     }
 }
@@ -46,15 +57,22 @@ pub enum Window {
 }
 
 pub fn window(path: &Path, baseline: Option<&CbsBaseline>) -> Window {
-    let Ok(metadata) = fs::metadata(path) else {
+    let Ok(mut file) = fs::File::open(path) else {
         return Window::Unknown;
     };
+    let Ok(metadata) = file.metadata() else {
+        return Window::Unknown;
+    };
+    if !metadata.is_file() {
+        return Window::Unknown;
+    }
     let start = match baseline {
         None => 0,
         Some(before) => {
-            let replaced =
-                matches!((before.created, metadata.created().ok()), (Some(a), Some(b)) if a != b);
-            if replaced || metadata.len() < before.len {
+            if before.identity.is_none()
+                || before.identity != file_identity(&file)
+                || metadata.len() < before.len
+            {
                 return Window::Unknown; // rotated or truncated: the start of the run is gone
             }
             before.len
@@ -63,17 +81,45 @@ pub fn window(path: &Path, baseline: Option<&CbsBaseline>) -> Window {
     if metadata.len() - start > MAX_WINDOW {
         return Window::Unknown;
     }
-    let Ok(mut file) = fs::File::open(path) else {
-        return Window::Unknown;
-    };
     if file.seek(SeekFrom::Start(start)).is_err() {
         return Window::Unknown;
     }
     let mut bytes = Vec::new();
-    if file.take(MAX_WINDOW).read_to_end(&mut bytes).is_err() {
+    if file.take(MAX_WINDOW + 1).read_to_end(&mut bytes).is_err() || bytes.len() as u64 > MAX_WINDOW
+    {
         return Window::Unknown;
     }
     Window::Text(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(unix)]
+fn file_identity(file: &fs::File) -> Option<(u64, [u8; 16])> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = file.metadata().ok()?;
+    let mut id = [0; 16];
+    id[..8].copy_from_slice(&metadata.ino().to_le_bytes());
+    Some((metadata.dev(), id))
+}
+
+#[cfg(windows)]
+fn file_identity(file: &fs::File) -> Option<(u64, [u8; 16])> {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::{
+        Foundation::HANDLE,
+        Storage::FileSystem::{FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx},
+    };
+    let mut id = FILE_ID_INFO::default();
+    // SAFETY: the file owns the live handle; the output buffer has FILE_ID_INFO's exact size.
+    unsafe {
+        GetFileInformationByHandleEx(
+            HANDLE(file.as_raw_handle()),
+            FileIdInfo,
+            &mut id as *mut FILE_ID_INFO as *mut _,
+            std::mem::size_of::<FILE_ID_INFO>() as u32,
+        )
+    }
+    .ok()?;
+    Some((id.VolumeSerialNumber, id.FileId.Identifier))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,7 +138,20 @@ pub fn classify(window: &str, exit_code: i32) -> CbsEvidence {
         .filter(|line| line.contains("[SR]"))
         .map(str::to_ascii_lowercase)
         .collect();
-    if lines.is_empty() {
+    let mut active = false;
+    let mut began = false;
+    for line in &lines {
+        if line.contains("beginning verify and repair transaction") {
+            if active {
+                return CbsEvidence::Unknown;
+            }
+            began = true;
+            active = true;
+        } else if line.contains("verify complete") || line.contains("repair complete") {
+            active = false;
+        }
+    }
+    if !began || active {
         return CbsEvidence::Unknown;
     }
     if lines
