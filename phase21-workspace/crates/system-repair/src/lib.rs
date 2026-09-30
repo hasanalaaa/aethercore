@@ -236,6 +236,7 @@ pub(crate) fn trim_to_tail(detail: &mut String, limit: usize) {
 }
 
 pub mod bounded;
+pub mod cbs;
 
 #[cfg(windows)]
 mod dism_api;

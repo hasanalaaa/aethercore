@@ -1,5 +1,4 @@
 use std::{
-    fs,
     io::Read,
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
@@ -12,6 +11,7 @@ use std::{
 use super::{
     AssessStep, RepairCheck, RepairError, RepairPlatform, Result,
     bounded::{ProviderSlot, run_check},
+    cbs,
     dism_api::{check_online_image_health, check_online_image_health_cancellable},
 };
 use aethercore_operation_engine::SystemRepairAction;
@@ -27,7 +27,6 @@ use windows::{
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
-const CBS_TAIL_LIMIT: u64 = 4 * 1024 * 1024;
 
 // P78-02: each assessment check has its own deadline, so one that never returns reads as unknown
 // instead of leaving the screen on "Assessing". These are first bounds, not measurements from a
@@ -494,6 +493,10 @@ fn run_sfc(
     root: &Path,
     cancel: Option<&AtomicBool>,
 ) -> Result<RepairCheck> {
+    // P85-01: the verdict comes from what THIS run wrote to the CBS log, found from a baseline taken
+    // before it started, not from a tail that holds older runs (see `cbs`).
+    let cbs_log = root.join("Logs").join("CBS").join("CBS.log");
+    let baseline = cbs::CbsBaseline::capture(&cbs_log);
     let mut check = run_with_accepted_codes(
         exe,
         args,
@@ -505,32 +508,35 @@ fn run_sfc(
     )?;
 
     // Do not infer integrity state from localized console prose. SFC's console output is retained
-    // only as bounded diagnostic context. The normalized result comes from the bounded CBS [SR]
-    // evidence stream when present; otherwise the state remains Unknown and cannot resolve a Finding.
-    let cbs = parse_recent_cbs_sr(&root.join("Logs").join("CBS").join("CBS.log"));
+    // only as bounded diagnostic context; a run the log cannot be attributed to stays Unknown and
+    // cannot resolve a Finding.
+    let evidence = match cbs::window(&cbs_log, baseline.as_ref()) {
+        cbs::Window::Text(text) => cbs::classify(&text, check.exit_code),
+        cbs::Window::Unknown => cbs::CbsEvidence::Unknown,
+    };
     let repair_mode = args.iter().any(|arg| arg.eq_ignore_ascii_case("/scannow"));
-    match cbs {
-        CbsIntegrityEvidence::NoViolation => {
+    match evidence {
+        cbs::CbsEvidence::NoViolation => {
             check.stage = "Completed".into();
             check.result_code = "SystemFilesHealthy".into();
             check.detail = "Recent CBS [SR] evidence contains no unresolved protected-file integrity violation for this check window.".into();
         }
-        CbsIntegrityEvidence::ViolationRepaired if repair_mode => {
+        cbs::CbsEvidence::ViolationRepaired if repair_mode => {
             check.stage = "Completed".into();
             check.result_code = "SystemFilesRepairMutationSucceeded".into();
             check.detail = "CBS [SR] evidence records protected-file repair activity. A separate verify-only pass is still required.".into();
         }
-        CbsIntegrityEvidence::ViolationRepaired => {
+        cbs::CbsEvidence::ViolationRepaired => {
             check.stage = "Attention".into();
             check.result_code = "SystemFilesCorrupt".into();
             check.detail = "CBS [SR] evidence records protected-file repair activity; verify-only did not provide enough evidence to mark the state healthy.".into();
         }
-        CbsIntegrityEvidence::ViolationUnresolved => {
+        cbs::CbsEvidence::ViolationUnresolved => {
             check.stage = "Attention".into();
             check.result_code = "SystemFilesCorrupt".into();
             check.detail = "Recent CBS [SR] evidence indicates unresolved protected-file integrity work is required.".into();
         }
-        CbsIntegrityEvidence::Unknown => {
+        cbs::CbsEvidence::Unknown => {
             check.stage = "Unknown".into();
             check.result_code = if repair_mode {
                 "SystemFilesRepairUnverified"
@@ -542,62 +548,6 @@ fn run_sfc(
         }
     }
     Ok(check)
-}
-
-#[derive(Clone, Copy)]
-enum CbsIntegrityEvidence {
-    NoViolation,
-    ViolationRepaired,
-    ViolationUnresolved,
-    Unknown,
-}
-
-fn parse_recent_cbs_sr(path: &Path) -> CbsIntegrityEvidence {
-    let Ok(metadata) = fs::metadata(path) else {
-        return CbsIntegrityEvidence::Unknown;
-    };
-    let Ok(mut file) = fs::File::open(path) else {
-        return CbsIntegrityEvidence::Unknown;
-    };
-    let start = metadata.len().saturating_sub(CBS_TAIL_LIMIT);
-    if start > 0 {
-        use std::io::{Seek, SeekFrom};
-        if file.seek(SeekFrom::Start(start)).is_err() {
-            return CbsIntegrityEvidence::Unknown;
-        }
-    }
-    let mut bytes = Vec::new();
-    if file.take(CBS_TAIL_LIMIT).read_to_end(&mut bytes).is_err() {
-        return CbsIntegrityEvidence::Unknown;
-    }
-    let text = String::from_utf8_lossy(&bytes);
-    let sr = text
-        .lines()
-        .filter(|line| line.contains("[SR]"))
-        .collect::<Vec<_>>();
-    if sr.is_empty() {
-        return CbsIntegrityEvidence::Unknown;
-    }
-
-    // These tokens are component identifiers emitted by CBS rather than localized SFC console prose.
-    // The parser is deliberately conservative: anything ambiguous remains Unknown.
-    let unresolved = sr.iter().any(|line| {
-        let lower = line.to_ascii_lowercase();
-        lower.contains("cannot repair") || lower.contains("repair failed")
-    });
-    if unresolved {
-        return CbsIntegrityEvidence::ViolationUnresolved;
-    }
-    let repaired = sr.iter().any(|line| {
-        let lower = line.to_ascii_lowercase();
-        lower.contains("repairing")
-            || lower.contains("repaired file")
-            || lower.contains("repair complete")
-    });
-    if repaired {
-        return CbsIntegrityEvidence::ViolationRepaired;
-    }
-    CbsIntegrityEvidence::NoViolation
 }
 
 fn run_chkdsk_scan(
