@@ -48,7 +48,7 @@
   import { shellState, setPage } from '../../app/shell-state';
   import { OVERVIEW_READ_INTERVAL_MS, readTelemetryNow, startOverviewTelemetry } from './controller';
   import { streamState } from '../../platform/stream-state';
-  import { openCareConsent } from '../care/controller';
+  import { prepareCare } from '../care/controller';
   import { authorizeDriverPlan, startDriverInstall } from '../drivers/controller';
   import { shortDigest } from '../shared';
   import { formatNumber, localizePlanKind, localizeRisk, localizeState, t, td, tp } from '../../lib/i18n';
@@ -134,7 +134,7 @@
 <header>
   <h1>{t('overview.title', locale)}</h1>
   <div class="overview-header-side">
-    <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={openCareConsent} disabled={!snapshot.connected || busy}>{t('care.start', locale)}</button>
+    <button use:fluidPress={{ pressedScale: 0.985 }} class="secondary" onclick={prepareCare} disabled={!snapshot.connected || busy}>{t('care.start', locale)}</button>
     <button use:fluidPress={{ pressedScale: 0.985 }} class="primary" onclick={() => setPage('deepScan')}>{t('overview.scanMyPc',locale)}</button>
   </div>
 </header>

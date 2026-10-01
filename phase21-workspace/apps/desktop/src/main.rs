@@ -1942,6 +1942,23 @@ async fn get_care_status() -> Result<v1::CareRunStatus, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// P79-04A (D5): prepares what care could run and says why when it cannot; reads and prepares only.
+#[command]
+async fn prepare_care_preview() -> Result<v1::CarePreviewResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::PrepareCarePreview(
+            v1::PrepareCarePreviewRequest {},
+        ))
+        .map_err(|e| e.to_string())?;
+        match resp.payload {
+            Some(response::Payload::CarePreview(p)) => Ok(p),
+            _ => Err("unexpected care preview response".into()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[command]
 async fn grant_care_session_consent(
     plan_digest_sha256: String,
@@ -3101,6 +3118,7 @@ fn main() {
             get_timeline_page,
             get_recurrence_patterns,
             get_care_status,
+            prepare_care_preview,
             grant_care_session_consent,
             start_care_run,
             cancel_care_run,

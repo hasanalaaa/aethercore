@@ -1,0 +1,943 @@
+P87 lane 4 raw local-check excerpts (generated from captured stdout/stderr).
+ANSI escapes and trailing whitespace removed; source line numbers and full-log SHA-256 retained.
+Untrimmed local logs reside at /tmp/aethercore-lane4-evidence.
+Native red runs are also reproducible from GitHub runs 36670616289 and 36671481794.
+Pre-fix production-source blob equivalence across rebases (reference source, not necessarily the temporary test checkout HEAD):
+P87-01: initial pre-fix reference e685b14f4290ee7b7de64b15c187a4a9453b521e; rebased pre-fix source de0cbae8b96eb7dc75a1bbb1806cc7bc111ae322
+  .github/workflows/ci.yml: identical blob 3baf075b6e0f2f41f6fa1a82a804766cb6a8d6aa
+P87-03: initial pre-fix reference de0cbae8b96eb7dc75a1bbb1806cc7bc111ae322; rebased pre-fix source 131eca3d8120fa7ea0b20965c3dfd342302531aa
+  phase21-workspace/services/maintenance-service/src/care.rs: identical blob 71d0f9bff642bc8cccf67df9b5520a7e715ebdd9
+  phase21-workspace/crates/persistence/src/lib.rs: identical blob f534b0f2c853ca2f4c8e0f3b88a44b7c95773839
+P87-04A: initial pre-fix reference de0cbae8b96eb7dc75a1bbb1806cc7bc111ae322; rebased pre-fix source 9840b17baa5cf2c766ad80a8e77acb0af15a68f1
+  phase21-workspace/crates/timeline-intelligence/src/engine.rs: identical blob d19de235a1612345d01189dcbf810782761b22ec
+  phase21-workspace/crates/timeline-intelligence/src/ingest.rs: identical blob 7c53e423753c4d8471b07418d4ac57767eaa4f45
+P87-05: initial pre-fix reference de0cbae8b96eb7dc75a1bbb1806cc7bc111ae322; rebased pre-fix source ad42479cdf8664a6e765e8e90c134ab19ceb5da8
+  phase21-workspace/crates/performance-telemetry/src/lib.rs: identical blob 43d556383ac50045d14c2b423a1764028613fc3c
+  phase21-workspace/crates/performance-telemetry/src/windows_impl.rs: identical blob 855127a37c1962b6e315f91d0d16ccf6128db961
+P87-06: initial pre-fix reference d3098940298f9f5f95a5990a796bc24189d5b352; rebased pre-fix source 1ec1afd510ed0910d335b47f2fc67c7dd4dd46ff
+  phase21-workspace/crates/idle-scheduler/src/model.rs: identical blob 1062bb87d02343a6909025495e168fa809d7f71b
+  phase21-workspace/crates/idle-scheduler/src/runtime.rs: identical blob 1fb283c37c17dda406aca5f9b1ab34856cbc7542
+  phase21-workspace/crates/idle-scheduler/src/windows_state.rs: identical blob 9a30e4cb10152f6b985a723a5d3cee1db996fbd1
+P87-07: initial pre-fix reference 837f3458977ebfd83979662d17a16819707bfaad; rebased pre-fix source 498d5314da5bf9924ac6228370cae058f41f6bb3
+  phase21-workspace/apps/aetherctl/src/offline.rs: identical blob 1b1774cc9b13a973053dda6940f38fbc92341b1e
+P87-08: initial pre-fix reference 2b716c63a838b1debebae6a10e81cb557fa39aae; rebased pre-fix source d03df3f511a57c09c96e2611b04bf59974f44e83
+  phase21-workspace/crates/security-audit/src/filesystem.rs: identical blob cbbb78266a69c413e7c1dce1094b486f4fba6f23
+  phase21-workspace/crates/security-audit/src/scope.rs: identical blob b98970c429071a1482fa652396e3701e0639f8a3
+
+P87-08 prepared against P87-05/06/07: original red source versus final pre-fix test parent.
+crates/security-audit/src/filesystem.rs: d03df3f511a57c09c96e2611b04bf59974f44e83:phase21-workspace/crates/security-audit/src/filesystem.rs == 29d50b1daf1fc8f42441c17b65abdda3eb9035a4:phase21-workspace/crates/security-audit/src/filesystem.rs: cbbb78266a69c413e7c1dce1094b486f4fba6f23
+crates/security-audit/src/scope.rs: d03df3f511a57c09c96e2611b04bf59974f44e83:phase21-workspace/crates/security-audit/src/scope.rs == 29d50b1daf1fc8f42441c17b65abdda3eb9035a4:phase21-workspace/crates/security-audit/src/scope.rs: b98970c429071a1482fa652396e3701e0639f8a3
+
+P87-08 final pre-fix parent after rebase on merged P87-05/06/07.
+crates/security-audit/src/filesystem.rs: d03df3f511a57c09c96e2611b04bf59974f44e83:phase21-workspace/crates/security-audit/src/filesystem.rs == 22ec791ecc1295de1c728f89fc7134c4315c15f2:phase21-workspace/crates/security-audit/src/filesystem.rs: cbbb78266a69c413e7c1dce1094b486f4fba6f23
+crates/security-audit/src/scope.rs: d03df3f511a57c09c96e2611b04bf59974f44e83:phase21-workspace/crates/security-audit/src/scope.rs == 22ec791ecc1295de1c728f89fc7134c4315c15f2:phase21-workspace/crates/security-audit/src/scope.rs: b98970c429071a1482fa652396e3701e0639f8a3
+Reproduction package selections from Cargo metadata and each group diff:
+03/04A: 24 packages
+cargo test -p aethercore-care-orchestrator -p aethercore-cleaner -p aethercore-consent-broker -p aethercore-contracts -p aethercore-desktop -p aethercore-diagnostic-engine -p aethercore-driver-hub -p aethercore-driver-install -p aethercore-ga-probe -p aethercore-idle-scheduler -p aethercore-ipc -p aethercore-maintenance-service -p aethercore-operation-engine -p aethercore-operation-kernel -p aethercore-p39-probes -p aethercore-pc-intelligence -p aethercore-persistence -p aethercore-security-audit -p aethercore-startup-manager -p aethercore-system-repair -p aethercore-timeline-intelligence -p aethercore-update-broker -p aethercore-update-engine -p aetherctl --locked
+05/06/07: 6 packages
+cargo test -p aethercore-idle-scheduler -p aethercore-maintenance-service -p aethercore-performance-bottleneck -p aethercore-performance-optimization -p aethercore-performance-telemetry -p aetherctl --locked
+08: 4 packages
+cargo test -p aethercore-gd4-audit -p aethercore-maintenance-service -p aethercore-security-audit -p aetherctl --locked
+Common checks: cargo fmt --all -- --check; python3 scripts/static_validate.py; python3 scripts/source_seal.py.
+UI checks when touched: pnpm --dir apps/ui check; exact seven node files from .github/workflows/ci.yml; python3 scripts/test-phase12-localization.py.
+Versions at collection:
+$ rustc --version
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+$ node --version
+v26.7.0
+$ pnpm --version
+11.22.0
+$ python3 --version
+Python 3.14.6
+
+=== p87-01-red.txt ===
+Full log SHA-256: 037ef70ff8fde40983dbd80dc89d3cf67f017a5d77d4241d1b9eef44fde7e17f
+1: FF
+2: ======================================================================
+3: FAIL: test_aggregate_rejects_every_non_success_and_missing_gate (__main__.CiGates.test_aggregate_rejects_every_non_success_and_missing_gate)
+4: ----------------------------------------------------------------------
+5: Traceback (most recent call last):
+6:   File "/Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/scripts/test_ci_gates.py", line 37, in test_aggregate_rejects_every_non_success_and_missing_gate
+7:     self.assertTrue('required' in blocks, 'No aggregate guards skipped/cancelled gates')
+8:     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+9: AssertionError: False is not true : No aggregate guards skipped/cancelled gates
+10:
+11: ======================================================================
+12: FAIL: test_locale_and_units_do_not_wait_for_windows (__main__.CiGates.test_locale_and_units_do_not_wait_for_windows)
+13: ----------------------------------------------------------------------
+14: Traceback (most recent call last):
+15:   File "/Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/scripts/test_ci_gates.py", line 23, in test_locale_and_units_do_not_wait_for_windows
+16:     self.assertTrue('fast-ui' in blocks, 'UI checks still wait behind native Windows tests')
+17:     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18: AssertionError: False is not true : UI checks still wait behind native Windows tests
+19:
+20: ----------------------------------------------------------------------
+21: Ran 2 tests in 0.002s
+22:
+23: FAILED (failures=2)
+
+=== p87-03-red.txt ===
+Full log SHA-256: c09f7679fdfcc9e74d044a90ef0cf2d564a133b92bce9bd7e5ae131253c2ab3b
+1:    Compiling aethercore-maintenance-service v0.1.11 (/Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/services/maintenance-service)
+2:     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.59s
+3:      Running tests/care_query.rs (/tmp/aethercore-lane4-target/debug/deps/care_query-d2b0975841e9557f)
+4:
+5: running 1 test
+6: test too_many_owned_candidates_are_not_an_empty_healthy_plan ... FAILED
+7:
+8: failures:
+9:
+10: ---- too_many_owned_candidates_are_not_an_empty_healthy_plan stdout ----
+11:
+12: thread 'too_many_owned_candidates_are_not_an_empty_healthy_plan' (48746871) panicked at services/maintenance-service/tests/care_query.rs:29:5:
+13: 17 due plans silently became an empty healthy Care preview
+14: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+15:
+16:
+17: failures:
+18:     too_many_owned_candidates_are_not_an_empty_healthy_plan
+19:
+20: test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.02s
+21:
+22: error: test failed, to rerun pass `-p aethercore-maintenance-service --test care_query`
+
+=== p87-03-api-red.txt ===
+Full log SHA-256: 979bd9bc5e424a10b441442b6be589e030f87dfa3a6df34ba5a006d3f9b8208b
+36:    Compiling serde_json v1.0.151
+37:    Compiling uuid v1.26.1
+38:    Compiling tinytemplate v1.2.1
+39:    Compiling aethercore-fleet v0.1.11 (/Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/crates/fleet)
+40:    Compiling half v2.7.1
+41:    Compiling ciborium-ll v0.2.2
+42:    Compiling ciborium v0.2.2
+43:    Compiling rusqlite v0.40.2
+44:    Compiling criterion v0.8.2
+45:    Compiling aethercore-persistence v0.1.11 (/Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/crates/persistence)
+46: error[E0599]: no method named `care_plan_candidates` found for struct `Database` in the current scope
+47:   --> crates/persistence/tests/care_candidates.rs:36:19
+48:    |
+49: 36 |     let rows = db.care_plan_candidates("owner-a", 2).unwrap();
+50:    |                   ^^^^^^^^^^^^^^^^^^^^ method not found in `Database`
+51:
+52: error[E0599]: no method named `care_plan_candidates` found for struct `Database` in the current scope
+53:   --> crates/persistence/tests/care_candidates.rs:38:19
+54:    |
+55: 38 |     assert_eq!(db.care_plan_candidates("owner-a", usize::MAX).unwrap().len(), 3);
+56:    |                   ^^^^^^^^^^^^^^^^^^^^ method not found in `Database`
+57:
+58: error[E0599]: no method named `care_plan_candidates` found for struct `Database` in the current scope
+59:   --> crates/persistence/tests/care_candidates.rs:39:16
+60:    |
+61: 39 |     assert!(db.care_plan_candidates("owner-a", 0).unwrap().is_empty());
+62:    |                ^^^^^^^^^^^^^^^^^^^^ method not found in `Database`
+63:
+64: error[E0599]: no method named `care_plan_candidates` found for struct `Database` in the current scope
+65:   --> crates/persistence/tests/care_candidates.rs:40:16
+66:    |
+67: 40 |     assert!(db.care_plan_candidates("missing", 100).unwrap().is_empty());
+68:    |                ^^^^^^^^^^^^^^^^^^^^ method not found in `Database`
+69:
+70: error[E0599]: no method named `care_plan_candidates` found for struct `Database` in the current scope
+71:   --> crates/persistence/tests/care_candidates.rs:41:16
+72:    |
+73: 41 |     assert!(db.care_plan_candidates("owner-b", 2).is_err());
+74:    |                ^^^^^^^^^^^^^^^^^^^^ method not found in `Database`
+75:
+76: For more information about this error, try `rustc --explain E0599`.
+77: error: could not compile `aethercore-persistence` (test "care_candidates") due to 5 previous errors
+
+=== p87-04a-red.txt ===
+Full log SHA-256: 0b5e28dd15e7765dbef659b01dee64dd9783a1faceac2fbd7d4be85d595997cb
+1:    Compiling aethercore-timeline-intelligence v0.1.11 (/Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/crates/timeline-intelligence)
+2:     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.43s
+3:      Running tests/ingestion.rs (/Users/hasanalaaa/dev/aethercore-lane4-target/debug/deps/ingestion-fbc9983040541945)
+4:
+5: running 2 tests
+6: test p87_distinct_source_rows_at_the_same_time_survive ... FAILED
+7: test p87_history_is_globally_bounded_after_merging_sources ... FAILED
+8:
+9: failures:
+10:
+11: ---- p87_distinct_source_rows_at_the_same_time_survive stdout ----
+12:
+13: thread 'p87_distinct_source_rows_at_the_same_time_survive' (48796644) panicked at crates/timeline-intelligence/tests/ingestion.rs:236:5:
+14: assertion `left == right` failed: distinct persisted rows were collapsed as one fact
+15:   left: 1
+16:  right: 2
+17: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+18:
+19: ---- p87_history_is_globally_bounded_after_merging_sources stdout ----
+20:
+21: thread 'p87_history_is_globally_bounded_after_merging_sources' (48796645) panicked at crates/timeline-intelligence/tests/ingestion.rs:212:5:
+22: assertion `left == right` failed: per-source caps exceed the global builder ceiling
+23:   left: 2502
+24:  right: 2000
+25:
+26:
+27: failures:
+28:     p87_distinct_source_rows_at_the_same_time_survive
+29:     p87_history_is_globally_bounded_after_merging_sources
+30:
+31: test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.29s
+32:
+33: error: test failed, to rerun pass `-p aethercore-timeline-intelligence --test ingestion`
+
+=== p87-05-red.txt ===
+Full log SHA-256: 436c5ece8ac909668f0c139ef19db66977fe7f0cbb8353c9474d3977bafdce9c
+1:    Compiling aethercore-performance-telemetry v0.1.11 (/Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/crates/performance-telemetry)
+2: error[E0599]: no method named `measured_over` found for struct `CpuSample` in the current scope
+3:    --> crates/performance-telemetry/tests/native_providers.rs:283:40
+4:     |
+5: 283 |         let cpu = CpuSample::default().measured_over(finish.duration_since(start)).unwrap();
+6:     |                                        ^^^^^^^^^^^^^ method not found in `CpuSample`
+7:
+8: error[E0609]: no field `sample_elapsed_ms` on type `CpuSample`
+9:    --> crates/performance-telemetry/tests/native_providers.rs:292:33
+10:     |
+11: 292 |         assert_eq!(snapshot.cpu.sample_elapsed_ms, Some(elapsed_ms as u32));
+12:     |                                 ^^^^^^^^^^^^^^^^^ unknown field
+13:     |
+14:     = note: available fields are: `per_processor_busy_bp`, `total_busy_bp`, `dpc_isr_busy_bp`, `context_switches_per_sec`, `processor_queue_length_x100`
+15:
+16: error[E0599]: no method named `measured_over` found for struct `CpuSample` in the current scope
+17:    --> crates/performance-telemetry/tests/native_providers.rs:295:34
+18:     |
+19: 295 |     assert!(CpuSample::default().measured_over(Duration::ZERO).is_none());
+20:     |                                  ^^^^^^^^^^^^^ method not found in `CpuSample`
+21:
+22: error[E0609]: no field `sample_elapsed_ms` on type `CpuSample`
+23:    --> crates/performance-telemetry/tests/native_providers.rs:296:37
+24:     |
+25: 296 |     assert_eq!(CpuSample::default().sample_elapsed_ms, None, "unavailable has no zero-valued measurement window");
+26:     |                                     ^^^^^^^^^^^^^^^^^ unknown field
+27:     |
+28:     = note: available fields are: `per_processor_busy_bp`, `total_busy_bp`, `dpc_isr_busy_bp`, `context_switches_per_sec`, `processor_queue_length_x100`
+29:
+30: Some errors have detailed explanations: E0599, E0609.
+31: For more information about an error, try `rustc --explain E0599`.
+32: error: could not compile `aethercore-performance-telemetry` (test "native_providers") due to 4 previous errors
+
+=== p87-06-red.txt ===
+Full log SHA-256: 38f964fc1300b77feb99e0a76941d23bb81a0d5321f5583d4cd03e42cdc05768
+38:     |
+39: 186 |         assert_eq!(servicing_from_wua_busy(Some(false)), ServicingState::Unknown);
+40:     |                    ^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+41:
+42: error[E0425]: cannot find function `servicing_from_wua_busy` in this scope
+43:    --> crates/idle-scheduler/src/model.rs:187:20
+44:     |
+45: 187 |         assert_eq!(servicing_from_wua_busy(None), ServicingState::Unknown);
+46:     |                    ^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+47:
+48: error[E0425]: cannot find function `admission_sample` in this scope
+49:    --> crates/idle-scheduler/src/runtime.rs:607:17
+50:     |
+51: 607 |         assert!(admission_sample(&p, &e, w, &s, false, 10, 11).is_none());
+52:     |                 ^^^^^^^^^^^^^^^^ not found in this scope
+53:
+54: error[E0425]: cannot find function `admission_sample` in this scope
+55:    --> crates/idle-scheduler/src/runtime.rs:610:17
+56:     |
+57: 610 |         assert!(admission_sample(&p, &e, w, &active, false, 10, 10).is_none());
+58:     |                 ^^^^^^^^^^^^^^^^ not found in this scope
+59:
+60: error[E0425]: cannot find function `admission_sample` in this scope
+61:    --> crates/idle-scheduler/src/runtime.rs:614:17
+62:     |
+63: 614 |         assert!(admission_sample(&p, &e, w, &cached, false, 10, 10).is_some());
+64:     |                 ^^^^^^^^^^^^^^^^ not found in this scope
+65:
+66: error[E0425]: cannot find function `admission_sample` in this scope
+67:    --> crates/idle-scheduler/src/runtime.rs:620:21
+68:     |
+69: 620 |             assert!(admission_sample(&p, &e, w, &s, false, 10, 10).is_none());
+70:     |                     ^^^^^^^^^^^^^^^^ not found in this scope
+71:
+72: error[E0425]: cannot find function `admission_sample` in this scope
+73:    --> crates/idle-scheduler/src/runtime.rs:625:17
+74:     |
+75: 625 |         assert!(admission_sample(&p, &e, w, &s, false, 10, 10).is_none());
+76:     |                 ^^^^^^^^^^^^^^^^ not found in this scope
+77:
+78: For more information about this error, try `rustc --explain E0425`.
+79: error: could not compile `aethercore-idle-scheduler` (lib test) due to 8 previous errors
+
+=== p87-06-fresh-red.txt ===
+Full log SHA-256: d172d0e5e211651323110aa86ef7f81e543e59f2f4353b0fd5ee57ab8225adc7
+1:    Compiling aethercore-idle-scheduler v0.1.11 (/Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/crates/idle-scheduler)
+2:     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.73s
+3:      Running unittests src/lib.rs (/Users/hasanalaaa/dev/aethercore-lane4-target/debug/deps/aethercore_idle_scheduler-6172e9a9ee5489de)
+4:
+5: running 1 test
+6: test runtime::tests::input_during_a_slow_probe_blocks_admission ... FAILED
+7:
+8: failures:
+9:
+10: ---- runtime::tests::input_during_a_slow_probe_blocks_admission stdout ----
+11:
+12: thread 'runtime::tests::input_during_a_slow_probe_blocks_admission' (49032548) panicked at crates/idle-scheduler/src/runtime.rs:718:9:
+13: assertion failed: admission_sample(&probe, &eligibility, AutonomousWorkload::StartupInventory,
+14:             &cached, false, 10, 10).unwrap().is_none()
+15: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+16:
+17:
+18: failures:
+19:     runtime::tests::input_during_a_slow_probe_blocks_admission
+20:
+21: test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+22:
+23: error: test failed, to rerun pass `-p aethercore-idle-scheduler --lib`
+
+=== p87-06-gate-red.txt ===
+Full log SHA-256: 9e9785bf7c4e0c2780ad67480988882585f778fc57238b9c983a06a76e236f9c
+1: {
+2:   "ok": false,
+3:   "checks": 63,
+4:   "failed": [
+5:     "servicing_gate"
+6:   ]
+7: }
+
+=== p87-06-gate-green.txt ===
+Full log SHA-256: c802ff7b1a2e54e321ce896587c1c5838857ca38ae1988ef071048d615a391de
+1: {
+2:   "ok": true,
+3:   "checks": 63,
+4:   "failed": []
+5: }
+
+=== p87-06-gate-negative-controls.txt ===
+Full log SHA-256: 0a78f06f4e0ecb1f5490e1d7aa59bd710c21dfe4fc9b6e39680e58cbb4369946
+1: WUA call removed PASS {'ok': False, 'checks': 63, 'failed': ['servicing_gate']}
+2: busy becomes idle PASS {'ok': False, 'checks': 63, 'failed': ['servicing_gate']}
+3: unknown becomes idle PASS {'ok': False, 'checks': 63, 'failed': ['servicing_gate']}
+4: SCM heuristic returns PASS {'ok': False, 'checks': 63, 'failed': ['servicing_gate']}
+
+=== p87-06-gate-readers.txt ===
+Full log SHA-256: 1a4fcc1dc8d498820dbcd346255eae045dba58666fe691430e4d6826202d0613
+1: PASS  scripts/phase16-ga-audit.py  ⟂ scripts/phase13-fault-injection.ps1  exit=1  aborted_at_read=True
+2: PASS  scripts/phase15-security-audit.py  ⟂ crates/security/src/lib.rs  exit=1  aborted_at_read=True
+3: PASS  scripts/phase13-reliability-audit.py  ⟂ services/maintenance-service/src/protocol.rs  exit=1  aborted_at_read=True
+4: PASS  scripts/enterprise-adversarial-audit.py  ⟂ apps/ui/src/lib/i18n/catalog.en.ts  exit=1  aborted_at_read=True
+5: PASS  scripts/phase35-adversarial-audit.py  ⟂ apps/desktop/tauri.conf.json  exit=1  aborted_at_read=True
+6: PASS  scripts/static_validate.py  ⟂ scripts/setup-and-run.ps1  exit=1  aborted_at_read=True
+7: PASS  scripts/static_validate.py  ⟂ scripts/phase10-architecture-audit.ps1  exit=1  aborted_at_read=True
+8: PASS  scripts/phase14-scheduler-audit.py  ⟂ crates/idle-scheduler/src/policy.rs  exit=1  aborted_at_read=True
+9: PASS  scripts/zenith-adversarial-audit.py  ⟂ apps/ui/src/design/motion/fluid-press.ts  exit=1  aborted_at_read=True
+10: PASS  scripts/zenith-recursive-audit.py  ⟂ services/maintenance-service/src/streaming.rs  exit=1  aborted_at_read=True
+11: PASS  retired-audits/phase19-windows-repair-audit.py  ⟂ crates/operation-engine/src/lib.rs  exit=1  aborted_at_read=True
+12: PASS  scripts/phase15-security-audit.py  ⟂ .github/workflows/ci.yml  exit=1  aborted_at_read=True
+13: PASS  scripts/phase29-adversarial-audit.py  ⟂ PHASE_29_BINARY_SAFE_PATCH/MANIFEST.json  exit=1  named=True
+14: PASS  scripts/check-dependency-freeze.py  ⟂ package.json  reason='pinned tool version source unreadable (package.json / rust-toolchain.toml): [Errno 13] unreadable'
+15:
+16: all 14 readers fail closed
+
+=== p87-06-enterprise-gate-red.txt ===
+Full log SHA-256: e18cb43450e91dc7ae31bade0f7de54cea8654d38c69283da152f442046120b2
+1: {
+2:   "ok": false,
+3:   "checks": 88,
+4:   "failed": [
+5:     "scheduler_uses_raii_com_and_service_handles",
+6:     "production_rust_has_no_panic_shortcuts"
+7:   ]
+8: }
+
+=== p87-06-enterprise-gate-green.txt ===
+Full log SHA-256: ad087999f7106228452af8ff2104a574dab9e774df9423a7544ab58cf0511081
+1: {
+2:   "ok": true,
+3:   "checks": 88,
+4:   "failed": []
+5: }
+
+=== p87-06-enterprise-negative-controls.txt ===
+Full log SHA-256: 130ab7f667958cde3e78a53f80e93ef65acea34f861911796a32e568727fb1a8
+1: COM RAII removed PASS {'ok': False, 'checks': 88, 'failed': ['scheduler_uses_raii_com_and_wua']}
+2: WUA interface removed PASS {'ok': False, 'checks': 88, 'failed': ['scheduler_uses_raii_com_and_wua']}
+3: manual COM release PASS {'ok': False, 'checks': 88, 'failed': ['scheduler_uses_raii_com_and_wua', 'common_windows_release_pairs_are_centralized']}
+4: production unwrap planted PASS {'ok': False, 'checks': 88, 'failed': ['production_rust_has_no_panic_shortcuts']}
+
+=== p87-05-07-zenith-adversarial.txt ===
+Full log SHA-256: a620db988112f342e7bbe790e66a040d884975a1b8f7b795a335913f0b20084e
+1: {
+2:   "ok": true,
+3:   "checks": 35,
+4:   "failed": []
+5: }
+
+=== p87-05-07-zenith-recursive.txt ===
+Full log SHA-256: 68da43f90adbc4164b1cbbc1ac8e5d8fcfadddc3e34ba5414638ab4dc4680673
+1: {
+2:   "ok": true,
+3:   "checks": 120,
+4:   "failed": []
+5: }
+
+=== p87-07-test-cfg-cargo.txt ===
+Full log SHA-256: a6aee33fddf326c9ed06753f40ec1be1c3471cea0ba4ee0ef87b64737e038edc
+45: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+53: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+59: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+76: test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+82: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== p87-07-test-cfg-static.txt ===
+Full log SHA-256: 9a4250a1540947f5a2eac3fc86fd06b3d1d4a65da10df28c538200c115389353
+1: {
+2:   "ok": true,
+3:   "checks": 349,
+4:   "failed": [],
+5:   "unmeasured": [
+6:     "parse_yaml"
+7:   ]
+8: }
+
+=== p87-07-red-windows.txt ===
+Full log SHA-256: 9c2e42a4c4ce020afae6bed6edbb6d2324137f7ae5faee0eebb9bb56210625fd
+12199: windows	Rust unit/integration tests	2026-09-30T05:05:03.2920285Z test refuses_to_overwrite_an_existing_seed_file ... ok
+12200: windows	Rust unit/integration tests	2026-09-30T05:05:03.2924833Z test existing_junction_target_is_refused_without_touching_its_destination ... ok
+12201: windows	Rust unit/integration tests	2026-09-30T05:05:03.2930706Z test windows_key_is_protected_even_under_an_everyone_parent ... FAILED
+12202: windows	Rust unit/integration tests	2026-09-30T05:05:03.2931272Z
+12203: windows	Rust unit/integration tests	2026-09-30T05:05:03.2931446Z failures:
+12204: windows	Rust unit/integration tests	2026-09-30T05:05:03.2931637Z
+12205: windows	Rust unit/integration tests	2026-09-30T05:05:03.2931952Z ---- windows_key_is_protected_even_under_an_everyone_parent stdout ----
+12206: windows	Rust unit/integration tests	2026-09-30T05:05:03.2932264Z
+12207: windows	Rust unit/integration tests	2026-09-30T05:05:03.2932837Z thread 'windows_key_is_protected_even_under_an_everyone_parent' (2820) panicked at apps\aetherctl\tests\keys_generate.rs:91:5:
+12208: windows	Rust unit/integration tests	2026-09-30T05:05:03.2935117Z assertion `left == right` failed: {"command":"keys generate","data":{"generated":true,"out":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\aetherctl-keygen-acl-6496\\owner.key","permissions":"inherited","publicKeyFingerprint":"33acd127f9f5d13f5e419dede3d1d1b1afc839017357fdf92456a075fd553554"},"ok":true,"schema":"aethercore.aetherctl.v1"}
+12209: windows	Rust unit/integration tests	2026-09-30T05:05:03.2936669Z   left: String("inherited")
+12210: windows	Rust unit/integration tests	2026-09-30T05:05:03.2936981Z  right: "owner-only-protected"
+12211: windows	Rust unit/integration tests	2026-09-30T05:05:03.2937451Z note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+12212: windows	Rust unit/integration tests	2026-09-30T05:05:03.2937756Z
+12213: windows	Rust unit/integration tests	2026-09-30T05:05:03.2937765Z
+12214: windows	Rust unit/integration tests	2026-09-30T05:05:03.2937842Z failures:
+12215: windows	Rust unit/integration tests	2026-09-30T05:05:03.2938143Z     windows_key_is_protected_even_under_an_everyone_parent
+12216: windows	Rust unit/integration tests	2026-09-30T05:05:03.2938391Z
+12217: windows	Rust unit/integration tests	2026-09-30T05:05:03.2938769Z test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+12218: windows	Rust unit/integration tests	2026-09-30T05:05:03.2939124Z
+12219: windows	Rust unit/integration tests	2026-09-30T05:05:03.2998596Z ^[[1m^[[91merror^[[0m: test failed, to rerun pass `-p aetherctl --test keys_generate`
+12220: windows	Rust unit/integration tests	2026-09-30T05:05:03.6453080Z ##[error]Process completed with exit code 1.
+
+=== p87-08-red-windows.txt ===
+Full log SHA-256: 478f165d7f981be7693267591c0ee5115fca7236bd74c98b8ddab2493e54121a
+11864: windows	Rust unit/integration tests	2026-09-30T05:15:54.8668661Z processed file: C:\Users\RUNNER~1\AppData\Local\Temp\p36-006-ssh-B0VqA7\.ssh\id_ed25519
+11865: windows	Rust unit/integration tests	2026-09-30T05:15:54.8669896Z Successfully processed 1 files; Failed processing 0 files
+11866: windows	Rust unit/integration tests	2026-09-30T05:15:54.8686244Z test elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users ... FAILED
+11867: windows	Rust unit/integration tests	2026-09-30T05:15:54.8695493Z test ssh_findings_follow_the_real_permissions ... ok
+11868: windows	Rust unit/integration tests	2026-09-30T05:15:54.8695937Z
+11869: windows	Rust unit/integration tests	2026-09-30T05:15:54.8696051Z failures:
+11870: windows	Rust unit/integration tests	2026-09-30T05:15:54.8696274Z
+11871: windows	Rust unit/integration tests	2026-09-30T05:15:54.8696766Z ---- elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users stdout ----
+11872: windows	Rust unit/integration tests	2026-09-30T05:15:54.8697336Z
+11873: windows	Rust unit/integration tests	2026-09-30T05:15:54.8698043Z thread 'elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users' (4224) panicked at crates\security-audit\tests\filesystem_posture.rs:245:5:
+11874: windows	Rust unit/integration tests	2026-09-30T05:15:54.8698775Z the OS profile user's own ACE was marked foreign: [
+11875: windows	Rust unit/integration tests	2026-09-30T05:15:54.8699416Z     SecFinding {
+11876: windows	Rust unit/integration tests	2026-09-30T05:15:54.8699866Z         id: "SEC-FS-004",
+11877: windows	Rust unit/integration tests	2026-09-30T05:15:54.8700087Z         code: "fs.ssh_key_perms",
+11878: windows	Rust unit/integration tests	2026-09-30T05:15:54.8700298Z         severity: Critical,
+11879: windows	Rust unit/integration tests	2026-09-30T05:15:54.8700490Z         evidence: [
+11880: windows	Rust unit/integration tests	2026-09-30T05:15:54.8700664Z             EvidenceRef {
+11881: windows	Rust unit/integration tests	2026-09-30T05:15:54.8701192Z                 fact: "SSH key material over-permissive: C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\p36-006-elevated-profile-CpIV0q\\.ssh\\id_ed25519",
+11882: windows	Rust unit/integration tests	2026-09-30T05:15:54.8701829Z                 observed: "file allow S-1-5-21-3162555376-3447873500-144036907-500 mask=0x001f01ff",
+11883: windows	Rust unit/integration tests	2026-09-30T05:15:54.8702379Z                 expected_or_threshold: "allow ACEs on key material only for its owner, SYSTEM and Administrators",
+11884: windows	Rust unit/integration tests	2026-09-30T05:15:54.8702992Z                 source_location: "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\p36-006-elevated-profile-CpIV0q\\.ssh\\id_ed25519",
+11885: windows	Rust unit/integration tests	2026-09-30T05:15:54.8703362Z             },
+11886: windows	Rust unit/integration tests	2026-09-30T05:15:54.8703515Z         ],
+11887: windows	Rust unit/integration tests	2026-09-30T05:15:54.8703683Z         cis_ref: None,
+11888: windows	Rust unit/integration tests	2026-09-30T05:15:54.8703897Z         summary_key: "sec.fs.sshKeyPerms",
+11912: windows	Rust unit/integration tests	2026-09-30T05:15:54.8710444Z     elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users
+11913: windows	Rust unit/integration tests	2026-09-30T05:15:54.8710677Z
+11914: windows	Rust unit/integration tests	2026-09-30T05:15:54.8710966Z test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+11915: windows	Rust unit/integration tests	2026-09-30T05:15:54.8711226Z
+11916: windows	Rust unit/integration tests	2026-09-30T05:15:54.8727399Z ^[[1m^[[91merror^[[0m: test failed, to rerun pass `-p aethercore-security-audit --test filesystem_posture`
+11917: windows	Rust unit/integration tests	2026-09-30T05:15:55.0737288Z ##[error]Process completed with exit code 1.
+
+=== p87-01-static.txt ===
+Full log SHA-256: 9a4250a1540947f5a2eac3fc86fd06b3d1d4a65da10df28c538200c115389353
+1: {
+2:   "ok": true,
+3:   "checks": 349,
+4:   "failed": [],
+5:   "unmeasured": [
+6:     "parse_yaml"
+7:   ]
+8: }
+
+=== p87-01-locale.txt ===
+Full log SHA-256: ef7760dd1c315719ad48eb9f6f3f594123a5fe5d0240399e1052a660606b7f2d
+2: [PASS] catalog_placeholder_parity — mismatches=[]
+3: [PASS] arabic_catalog_typed
+4: [PASS] message_key_derived_from_english
+5: [PASS] plural_key_parity — en=['unit.action', 'unit.careStep', 'unit.category', 'unit.channel', 'unit.crashRecord', 'unit.day', 'unit.device', 'unit.deviceAction', 'unit.event', 'unit.evidenceItem', 'unit.file', 'unit.finding', 'unit.hour', 'unit.insight', 'unit.occurrence', 'unit.offer', 'unit.sample', 'unit.serviceTarget', 'unit.token', 'unit.triageCard', 'unit.update', 'unit.warning'] ar=['unit.action', 'unit.careStep', 'unit.category', 'unit.channel', 'unit.crashRecord', 'unit.day', 'unit.device', 'unit.deviceAction', 'unit.event', 'unit.evidenceItem', 'unit.file', 'unit.finding', 'unit.hour', 'unit.insight', 'unit.occurrence', 'unit.offer', 'unit.sample', 'unit.serviceTarget', 'unit.token', 'unit.triageCard', 'unit.update', 'unit.warning']
+6: [PASS] english_plural_forms — []
+7: [PASS] arabic_six_plural_forms — []
+8: [PASS] arabic_plural_count_placeholders — []
+9: [PASS] literal_message_keys_exist — missing=[]
+10: [PASS] literal_plural_keys_exist — missing=[]
+11: [PASS] typed_placeholder_inference
+12: [PASS] intl_plural_rules
+13: [PASS] no_legacy_record_catalog
+14: [PASS] no_manual_english_pluralization — []
+15: [PASS] no_hardcoded_visible_english — 0 found:
+16: [PASS] keyboard_shortcuts_are_key_tokens — 4 kbd nodes; bad=[]
+17: [PASS] technical_text_primitive
+18: [PASS] technical_css_unicode_isolation
+19: [PASS] technical_segmenter
+20: [PASS] owned_text_segments_technical_tokens
+21: [PASS] css_logical_direction_only
+22: [PASS] rtl_optical_typography
+23: [PASS] all_eight_surfaces_use_i18n — []
+24: [PASS] backend_owned_prose_localized — []
+25: [PASS] deep_technical_mapping_coverage — []
+26: [PASS] backend_literal_owned_text_coverage — 0 uncovered across 19 shipping .rs files: []
+27: [PASS] backend_dynamic_owned_text_coverage — []
+28: [PASS] no_display_string_business_logic — []
+29: [PASS] driver_version_path_isolation
+30: [PASS] crash_code_path_isolation
+31: [PASS] hardware_identifier_isolation
+32: [PASS] plan_hash_identifier_isolation
+33: [PASS] result_code_path_isolation — isolated on 4 surfaces; bare=[]
+34: [PASS] catalog_feature_namespace_coverage — []
+35:
+36: Phase 12 localization audit: 34/34 checks passed; EN/AR keys=1910; plural keys=22
+
+=== p87-01-ui-check.txt ===
+Full log SHA-256: bcae9915544615947a4914ae1a30952643a48726cb09395e15587f584a162d7f
+1: $ svelte-check --tsconfig ./tsconfig.json --threshold warning --fail-on-warnings
+2: Loading svelte-check in workspace: /Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/apps/ui
+3: Getting Svelte diagnostics...
+4:
+5: svelte-check found 0 errors and 0 warnings
+
+=== p87-01-ui-tests.txt ===
+Full log SHA-256: 4d1a35335b0c347e0671c0273038cb55eca5a03d6c56d6468a3fcb8810d53d16
+39: [AetherCore] text with no translation was replaced: Failed.
+40: ✔ startup scope: the registry and startup-folder scopes the Windows provider emits (0.76475ms)
+41: ✔ driver match quality: every MatchKind label the hub emits (0.119208ms)
+42: ✔ driver recommendation reasons: every RecommendationReason code (0.295833ms)
+43: ✔ repair recovery facts: every FactState, as the service writes it (lowerCamel) (0.918417ms)
+44: ✔ repair evidence count agrees with its number in Arabic (1.138125ms)
+45: ✔ every insight key the model and rule paths emit resolves in both catalogs (14.929917ms)
+46: ✔ driver target-version source: the two the hub emits (0.259375ms)
+47: ✔ fleet cadence as the desktop writes it (0.260917ms)
+48: ✔ recovery record severities: "Amber" (cleaner, startup, repair) and "warning" (driver install) (0.12175ms)
+49: ✔ deep scan headline: a partial scan with no findings is not "Healthy" (0.728416ms)
+50: ✔ deep scan headline: a failed or cancelled scan is not "Healthy" (0.08075ms)
+51: ✔ deep scan headline: a running scan is not "Healthy" (0.055542ms)
+52: ✔ disk activity a provider says it did not measure reads unmeasured, not 0% (54.088833ms)
+53: ✔ an unknown enum value is never shown as itself, in either language (0.332125ms)
+54: ✔ backend English prose is never shown in Arabic, not even inside an Arabic sentence (3.916959ms)
+55: ✔ known owned messages keep their meaning, and data is not damaged (0.693917ms)
+56: ✔ a caller that shows data opts out of the fallback, and only then (0.503708ms)
+57: ✔ every deep-scan collector id the coordinator emits is named in both languages (0.532708ms)
+58: ✔ every provider that reports a fault is named in both languages (2.584625ms)
+59: ✔ the deep-scan and provider-fault views do not print collector or provider ids (0.393458ms)
+60: ✔ every sentence the UI-feeding crates write for the reader has an Arabic rendering (7.9445ms)
+61: ✔ an identifier stays data, a bare word does not, and a dropped sentence is reported once (0.855ms)
+62: ✔ every message key the service emits resolves in both catalogs (5.21175ms)
+63: ✔ a transport failure is classified, a known key is kept, and raw text is never the answer (0.598166ms)
+64: ✔ the update health probe sentences read in Arabic (0.406459ms)
+65: ✔ the message of a repair cancelled before any change reads in Arabic (0.204ms)
+66: ℹ tests 55
+67: ℹ suites 0
+68: ℹ pass 55
+69: ℹ fail 0
+70: ℹ cancelled 0
+71: ℹ skipped 0
+72: ℹ todo 0
+73: ℹ duration_ms 426.433625
+
+=== p87-03-04a-rebase-cargo.txt ===
+Full log SHA-256: fca5ba93a05baad21e982aa2e2adfd46509a32e01b4a7ad8a3a0e90a5a93ea34
+33: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+53: test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+62: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+69: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+83: test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.15s
+89: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+95: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+101: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+108: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+129: test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+156: test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+168: test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+178: test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+184: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+203: test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+217: test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+231: test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+237: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+280: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+295: test too_many_owned_candidates_are_not_an_empty_healthy_plan ... ok
+299: test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+306: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.16s
+312: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+318: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+325: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+336: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+372: test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+378: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+413: test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+433: test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+464: test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+466:      Running tests/care_candidates.rs (/Users/hasanalaaa/dev/aethercore-lane4-target/debug/deps/care_candidates-4d7afe24961a53cc)
+471: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+488: test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+527: test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+543: test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+552: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+563: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+578: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+596: test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+607: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+614: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+623: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.89s
+642: test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.24s
+648: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+654: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+661: test only_replayed_source_rows_collapse ... ok
+674: test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+679: test p87_distinct_source_rows_at_the_same_time_survive ... ok
+682: test p87_history_is_globally_bounded_after_merging_sources ... ok
+684: test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+690: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+715: test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+758: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+766: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+772: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+789: test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+795: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+801: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+807: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+813: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+819: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+825: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+831: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+837: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+843: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+849: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+855: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+861: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+867: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+873: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+879: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+885: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+891: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+897: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== p87-03-04a-rebase-static.json ===
+Full log SHA-256: 9a4250a1540947f5a2eac3fc86fd06b3d1d4a65da10df28c538200c115389353
+1: {
+2:   "ok": true,
+3:   "checks": 349,
+4:   "failed": [],
+5:   "unmeasured": [
+6:     "parse_yaml"
+7:   ]
+8: }
+
+=== p87-03-04a-rebase-ui-check.txt ===
+Full log SHA-256: bcae9915544615947a4914ae1a30952643a48726cb09395e15587f584a162d7f
+1: $ svelte-check --tsconfig ./tsconfig.json --threshold warning --fail-on-warnings
+2: Loading svelte-check in workspace: /Users/hasanalaaa/dev/aethercore-lane4/phase21-workspace/apps/ui
+3: Getting Svelte diagnostics...
+4:
+5: svelte-check found 0 errors and 0 warnings
+
+=== p87-03-04a-rebase-ui-tests.txt ===
+Full log SHA-256: ff975d331190750743931181cbae937271c1a6a8cf38a8aec83f32dd1344ccf8
+39: [AetherCore] text with no translation was replaced: Failed.
+40: ✔ startup scope: the registry and startup-folder scopes the Windows provider emits (0.82775ms)
+41: ✔ driver match quality: every MatchKind label the hub emits (0.100583ms)
+42: ✔ driver recommendation reasons: every RecommendationReason code (0.109125ms)
+43: ✔ repair recovery facts: every FactState, as the service writes it (lowerCamel) (0.111583ms)
+44: ✔ repair evidence count agrees with its number in Arabic (0.410375ms)
+45: ✔ every insight key the model and rule paths emit resolves in both catalogs (7.628958ms)
+46: ✔ driver target-version source: the two the hub emits (0.20625ms)
+47: ✔ fleet cadence as the desktop writes it (0.22075ms)
+48: ✔ recovery record severities: "Amber" (cleaner, startup, repair) and "warning" (driver install) (0.110042ms)
+49: ✔ deep scan headline: a partial scan with no findings is not "Healthy" (1.199ms)
+50: ✔ deep scan headline: a failed or cancelled scan is not "Healthy" (0.108083ms)
+51: ✔ deep scan headline: a running scan is not "Healthy" (0.07875ms)
+52: ✔ disk activity a provider says it did not measure reads unmeasured, not 0% (68.828375ms)
+53: ✔ an unknown enum value is never shown as itself, in either language (0.470083ms)
+54: ✔ backend English prose is never shown in Arabic, not even inside an Arabic sentence (3.137416ms)
+55: ✔ known owned messages keep their meaning, and data is not damaged (0.533042ms)
+56: ✔ a caller that shows data opts out of the fallback, and only then (0.451334ms)
+57: ✔ every deep-scan collector id the coordinator emits is named in both languages (1.004792ms)
+58: ✔ every provider that reports a fault is named in both languages (5.438125ms)
+59: ✔ the deep-scan and provider-fault views do not print collector or provider ids (0.6355ms)
+60: ✔ every sentence the UI-feeding crates write for the reader has an Arabic rendering (18.182292ms)
+61: ✔ an identifier stays data, a bare word does not, and a dropped sentence is reported once (1.724417ms)
+62: ✔ every message key the service emits resolves in both catalogs (11.533792ms)
+63: ✔ a transport failure is classified, a known key is kept, and raw text is never the answer (0.94825ms)
+64: ✔ the update health probe sentences read in Arabic (0.539292ms)
+65: ✔ the message of a repair cancelled before any change reads in Arabic (0.760834ms)
+66: ℹ tests 55
+67: ℹ suites 0
+68: ℹ pass 55
+69: ℹ fail 0
+70: ℹ cancelled 0
+71: ℹ skipped 0
+72: ℹ todo 0
+73: ℹ duration_ms 323.897167
+
+=== p87-03-04a-rebase-locales.txt ===
+Full log SHA-256: 6b0a20f6d343bf629f9ef8e2aa5c7d4354302e5b3906bcc80fd3677253246131
+2: [PASS] catalog_placeholder_parity — mismatches=[]
+3: [PASS] arabic_catalog_typed
+4: [PASS] message_key_derived_from_english
+5: [PASS] plural_key_parity — en=['unit.action', 'unit.careStep', 'unit.category', 'unit.channel', 'unit.crashRecord', 'unit.day', 'unit.device', 'unit.deviceAction', 'unit.event', 'unit.evidenceItem', 'unit.file', 'unit.finding', 'unit.hour', 'unit.insight', 'unit.occurrence', 'unit.offer', 'unit.sample', 'unit.serviceTarget', 'unit.token', 'unit.triageCard', 'unit.update', 'unit.warning'] ar=['unit.action', 'unit.careStep', 'unit.category', 'unit.channel', 'unit.crashRecord', 'unit.day', 'unit.device', 'unit.deviceAction', 'unit.event', 'unit.evidenceItem', 'unit.file', 'unit.finding', 'unit.hour', 'unit.insight', 'unit.occurrence', 'unit.offer', 'unit.sample', 'unit.serviceTarget', 'unit.token', 'unit.triageCard', 'unit.update', 'unit.warning']
+6: [PASS] english_plural_forms — []
+7: [PASS] arabic_six_plural_forms — []
+8: [PASS] arabic_plural_count_placeholders — []
+9: [PASS] literal_message_keys_exist — missing=[]
+10: [PASS] literal_plural_keys_exist — missing=[]
+11: [PASS] typed_placeholder_inference
+12: [PASS] intl_plural_rules
+13: [PASS] no_legacy_record_catalog
+14: [PASS] no_manual_english_pluralization — []
+15: [PASS] no_hardcoded_visible_english — 0 found:
+16: [PASS] keyboard_shortcuts_are_key_tokens — 4 kbd nodes; bad=[]
+17: [PASS] technical_text_primitive
+18: [PASS] technical_css_unicode_isolation
+19: [PASS] technical_segmenter
+20: [PASS] owned_text_segments_technical_tokens
+21: [PASS] css_logical_direction_only
+22: [PASS] rtl_optical_typography
+23: [PASS] all_eight_surfaces_use_i18n — []
+24: [PASS] backend_owned_prose_localized — []
+25: [PASS] deep_technical_mapping_coverage — []
+26: [PASS] backend_literal_owned_text_coverage — 0 uncovered across 19 shipping .rs files: []
+27: [PASS] backend_dynamic_owned_text_coverage — []
+28: [PASS] no_display_string_business_logic — []
+29: [PASS] driver_version_path_isolation
+30: [PASS] crash_code_path_isolation
+31: [PASS] hardware_identifier_isolation
+32: [PASS] plan_hash_identifier_isolation
+33: [PASS] result_code_path_isolation — isolated on 4 surfaces; bare=[]
+34: [PASS] catalog_feature_namespace_coverage — []
+35:
+36: Phase 12 localization audit: 34/34 checks passed; EN/AR keys=1912; plural keys=22
+
+=== p87-03-04a-rebase-ci-gates.txt ===
+Full log SHA-256: 9f92752dadedfc623f0115a346add0ecde5000d8f6f5f22e505b409565110cfe
+1: ..
+2: ----------------------------------------------------------------------
+3: Ran 2 tests in 0.240s
+4:
+5: OK
+
+=== p87-04a-dom.txt ===
+Full log SHA-256: ddfb2ca06c3f8d0f019c1878db98d7230db75b491c459cbe2543da43ba9d04e4
+1: PASS  leaks-clean-activity-1280-ar-dark            sentinels=0 fallbacks=0 data=0
+2:
+3: 1/1 leak checks pass
+
+=== p87-05-07-relative-cargo.txt ===
+Full log SHA-256: 6f17dfd984ef44e99786d34a733a45b3226be5732f30d611fccf76b08488e116
+20: test runtime::tests::input_during_a_slow_probe_blocks_admission ... ok
+26: test runtime::tests::slow_admission_probe_only_runs_for_due_fast_eligible_work ... ok
+29: test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+72: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+78: test too_many_owned_candidates_are_not_an_empty_healthy_plan ... ok
+91: test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+98: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.12s
+104: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+110: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+117: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+123: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+142: test identical_windows_have_identical_digests_regardless_of_insertion_timing ... ok
+144: test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+150: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+165: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+172: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+187: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+193: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+202: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.34s
+209: test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+220: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
+229: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.02s
+237: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+245: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.41s
+288: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+296: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+302: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+319: test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+325: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+331: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+337: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+343: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+349: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== p87-05-07-relative-static.txt ===
+Full log SHA-256: 9a4250a1540947f5a2eac3fc86fd06b3d1d4a65da10df28c538200c115389353
+1: {
+2:   "ok": true,
+3:   "checks": 349,
+4:   "failed": [],
+5:   "unmeasured": [
+6:     "parse_yaml"
+7:   ]
+8: }
+
+=== p87-07-acl-fixture-cargo.txt ===
+Full log SHA-256: b9d21da957ad5c601b634f439bf76838d827f7eef7a5d9c509c3d962209c614f
+44: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+52: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+58: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+75: test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+81: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== p87-07-acl-fixture-static.txt ===
+Full log SHA-256: 9a4250a1540947f5a2eac3fc86fd06b3d1d4a65da10df28c538200c115389353
+1: {
+2:   "ok": true,
+3:   "checks": 349,
+4:   "failed": [],
+5:   "unmeasured": [
+6:     "parse_yaml"
+7:   ]
+8: }
+
+=== p87-08-final-cargo.txt ===
+Full log SHA-256: b48fc1e25e099f15da8f973cf1fed7c855cf5817c89bc458fcd9558aedf980a3
+7: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+50: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+65: test too_many_owned_candidates_are_not_an_empty_healthy_plan ... ok
+69: test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+76: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.33s
+82: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+88: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+95: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+135: test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+151: test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+160: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+171: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+186: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+229: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+237: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+243: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+260: test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+266: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+272: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== p87-08-final-static.txt ===
+Full log SHA-256: 9a4250a1540947f5a2eac3fc86fd06b3d1d4a65da10df28c538200c115389353
+1: {
+2:   "ok": true,
+3:   "checks": 349,
+4:   "failed": [],
+5:   "unmeasured": [
+6:     "parse_yaml"
+7:   ]
+8: }
+
+=== p87-08-final-enterprise.txt ===
+Full log SHA-256: ad087999f7106228452af8ff2104a574dab9e774df9423a7544ab58cf0511081
+1: {
+2:   "ok": true,
+3:   "checks": 88,
+4:   "failed": []
+5: }
+
+=== p87-08-final-p14.txt ===
+Full log SHA-256: c802ff7b1a2e54e321ce896587c1c5838857ca38ae1988ef071048d615a391de
+1: {
+2:   "ok": true,
+3:   "checks": 63,
+4:   "failed": []
+5: }
+
+=== p87-08-production-gate-control.txt ===
+Full log SHA-256: fe6084e5995a3d5f4dd76ae74a563388b8e9423d6fc46df58dbe75e5685b4042
+1: Profile lookup body unchanged after moving before test module: PASS
+2: Production profile lookup panic control: PASS {'ok': False, 'checks': 88, 'failed': ['production_rust_has_no_panic_shortcuts']}
+
+=== p87-08-ffi-red.txt ===
+Full log SHA-256: e3b2b5c749470c57a10ee6f58c11400cae910109c1e01f652ae684f6c441f6d2
+1: Clippy red-before: CI36702821074, head576d50ee80c7fd1549bb335b9481fd55972198f2; Rust suites passed, strict Clippy rejected mismatched RegGetValueW handle types.
+2: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7714683Z ^[[1m^[[93mwarning^[[0m^[[1m^[[97m: `RegGetValueW` redeclared with a different signature^[[0m
+3: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7716682Z    ^[[1m^[[96m--> ^[[0mcrates\security-audit\src\scope.rs:291:9
+4: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7718406Z     ^[[1m^[[96m|^[[0m
+5: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7719042Z ^[[1m^[[96m291^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[93m/^[[0m         fn RegGetValueW(
+6: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7720668Z ^[[1m^[[96m292^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[93m|^[[0m             key: *mut c_void,
+7: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7723381Z ^[[1m^[[96m293^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[93m|^[[0m             subkey: *const u16,
+8: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7724610Z ^[[1m^[[96m294^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[93m|^[[0m             name: *const u16,
+9: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7726579Z ^[[1m^[[96m...^[[0m   ^[[1m^[[93m|^[[0m
+10: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7728708Z ^[[1m^[[96m298^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[93m|^[[0m             len: *mut u32,
+11: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7731117Z ^[[1m^[[96m299^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[93m|^[[0m         ) -> i32;
+12: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7734357Z     ^[[1m^[[96m|^[[0m ^[[1m^[[93m|_________________^^[[0m ^[[1m^[[93mthis signature doesn't match the previous declaration^[[0m
+13: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7736965Z     ^[[1m^[[96m|^[[0m
+14: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7739053Z    ^[[1m^[[96m::: ^[[0mcrates\security-audit\src\firewall.rs:137:9
+15: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7740777Z     ^[[1m^[[96m|^[[0m
+16: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7742675Z ^[[1m^[[96m137^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[96m/^[[0m         fn RegGetValueW(
+17: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7745157Z ^[[1m^[[96m138^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[96m|^[[0m             key: isize,
+18: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7748891Z ^[[1m^[[96m139^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[96m|^[[0m             subkey: *const u16,
+19: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7751550Z ^[[1m^[[96m140^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[96m|^[[0m             name: *const u16,
+20: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7753543Z ^[[1m^[[96m...^[[0m   ^[[1m^[[96m|^[[0m
+21: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7755944Z ^[[1m^[[96m144^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[96m|^[[0m             size: *mut u32,
+22: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7758416Z ^[[1m^[[96m145^[[0m ^[[1m^[[96m|^[[0m ^[[1m^[[96m|^[[0m         ) -> i32;
+23: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7761341Z     ^[[1m^[[96m|^[[0m ^[[1m^[[96m|_________________-^[[0m ^[[1m^[[96m`RegGetValueW` previously declared here^[[0m
+24: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7763473Z     ^[[1m^[[96m|^[[0m
+25: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7766899Z     ^[[1m^[[96m= ^[[0m^[[1m^[[97mnote^[[0m: expected `unsafe extern "system" fn(isize, *const u16, *const u16, u32, *mut u32, *mut c_void, *mut u32) -> i32`
+26: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7771907Z                found `^[[1m^[[35munsafe extern "system" fn(*mut c_void, *const u16, *const u16, u32, *mut u32, *mut c_void, *mut u32) -> i32^[[0m`
+27: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7775946Z     ^[[1m^[[96m= ^[[0m^[[1m^[[97mnote^[[0m: `#[warn(clashing_extern_declarations)]` on by default
+28: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7777463Z
+29: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7779169Z ^[[1m^[[93mwarning^[[0m: `aethercore-security-audit` (lib) generated 1 warning
+30: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:05.7782326Z ^[[1m^[[92m    Finished^[[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.58s
+31: windows	Enterprise convergence master source/native qualification gate	2026-09-30T10:41:06.7706915Z {
+
+=== p87-08-ffi-cargo.txt ===
+Full log SHA-256: 0c856aece871ed83e00752b4f2af09007600dfbd3dd972a10208be2ccc2e9830
+10: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+53: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+64: test too_many_owned_candidates_are_not_an_empty_healthy_plan ... ok
+72: test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+79: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.12s
+85: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+91: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+98: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+138: test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+154: test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+163: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+174: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+189: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+232: test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+240: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+246: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+263: test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+269: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+275: test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== p87-08-ffi-static.txt ===
+Full log SHA-256: 9a4250a1540947f5a2eac3fc86fd06b3d1d4a65da10df28c538200c115389353
+1: {
+2:   "ok": true,
+3:   "checks": 349,
+4:   "failed": [],
+5:   "unmeasured": [
+6:     "parse_yaml"
+7:   ]
+8: }
+
+=== p87-08-ffi-enterprise.txt ===
+Full log SHA-256: ad087999f7106228452af8ff2104a574dab9e774df9423a7544ab58cf0511081
+1: {
+2:   "ok": true,
+3:   "checks": 88,
+4:   "failed": []
+5: }
+
+=== p87-native-positive-receipts.txt ===
+Full log SHA-256: 99ea7cf631df8a158f5d2d5a764b337ebb0ac5724e92e9e4681ff381f2e50437
+1: Native positive receipts: merged P87-05/06/07, PR86, run36695256608, head3f6d96fe5f857ac3fed19ca5eb5b79f08b05f643.
+2: Full Windows log SHA-256: 016855ce8ea7827850c810cd00260c901ccf7acd12082bb381279607e220f2a1
+3: p87-05-07-final-windows-ci.txt:22187: windows	Rust unit/integration tests	2026-09-30T09:27:17.8926905Z test windows_cpu_pair_has_monotonic_elapsed_metadata ... ok
+4: p87-05-07-final-windows-ci.txt:11023: windows	Rust unit/integration tests	2026-09-30T09:19:13.9338445Z test runtime::tests::input_during_a_slow_probe_blocks_admission ... ok
+5: p87-05-07-final-windows-ci.txt:11027: windows	Rust unit/integration tests	2026-09-30T09:19:13.9348279Z test runtime::tests::slow_admission_probe_only_runs_for_due_fast_eligible_work ... ok
+6: p87-05-07-final-windows-ci.txt:22777: windows	Rust unit/integration tests	2026-09-30T09:27:46.3313781Z test offline::windows_key::key_parent_is_pinned_until_seed_write_finishes ... ok
+7: p87-05-07-final-windows-ci.txt:22788: windows	Rust unit/integration tests	2026-09-30T09:27:47.5403188Z test windows_key_is_protected_even_under_an_everyone_parent ... ok
+8: P87-08: merged PR89, CI36705560521, head50568458ac2a00d15b19f4cb1f5f4dfc276ae556; all 19 exact-head checks green.
+9: Full log SHA-256: 72b711bca6ec817c02435542a1954c4696548a44bae362c467caa1c1b7b38891
+10: p87-08-final-windows-ci.txt:12233: windows	Rust unit/integration tests	2026-09-30T11:04:47.0251186Z test elevated_profile_material_accepts_its_os_profile_owner_not_foreign_users ... ok
