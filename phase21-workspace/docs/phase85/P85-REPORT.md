@@ -72,3 +72,44 @@ Red-before: the native mixed deletion-action fixture returned only the generic u
 The existing cleanup total label and verification wording now say **deleted file bytes/sizes**, in English and Arabic, rather than implying a physical free-space measurement. The existing per-item detail/result fields persist and display the aggregate cause summary; per-file skip disclosure remains outside the current wire contract.
 
 Root integration of `af8271f` with P79–P85 preserved the P83 client-event localization checks. The integrated check passed 127 Rust tests across cleaner, maintenance-service and PC intelligence, all 75 UI tests, Svelte check (zero errors/warnings), and the production UI build. Source seals verified 1595 workspace files and seven workflow files before commit. Full final-head CI remains required after the P84 read-budget lifetime correction is integrated.
+
+## P85-03 follow-up — cancellation throughout verification
+
+The shared verification entry point now receives the existing owner's `RepairControl`.
+Windows verification passes its flag to the existing cancellable read-only DISM, SFC and
+disk checks, and checks it before each subsequent verification step. The coordinator also
+checks cancellation after verification returns. That final check and the terminal commit
+share the existing running-plan mutex with `cancel_repair`; the mutex is acquired only
+after the actual child/API work exits. The existing mutation lease stays with the worker,
+and cancelled post-mutation work records `FailedAfterMutation` with recovery required
+rather than `SucceededVerified`. Wire fields, dependencies, deadlines and budgets are
+unchanged; mutating children are still never force-killed.
+
+Red-before: two actual-coordinator fixtures cancelled while a controlled first verification
+call was blocked. The next verification count was one instead of zero, and an intentionally
+late healthy result recorded `Completed` instead of `Failed`. Green-after: both reject the
+late success; the blocked worker retains exclusive mutation ownership until actual return.
+Locked macOS tests for system-repair, maintenance-service, windows-repair-intelligence and
+pc-intelligence passed: 197 tests. Workspace formatting and all-target Clippy with
+warnings denied passed. All eleven gate/self-test scripts and five source/localization
+audits passed; optional local YAML parsing remains unmeasured without PyYAML. The source
+seal verifies 1595 workspace files and seven workflow files. Native exact-commit portable
+fixtures and full phase CI are pending at this source receipt; no live servicing/cancellation claim is made. The
+isolated-VM and TrustedInstaller qualification limits above remain open.
+
+Native follow-up receipt: a clean detached Windows checkout of
+`1561c2547e1ca3eb98911233aa489a3518c36428`, transferred as a narrow Git bundle,
+verified all 1595 workspace and seven workflow hashes. With two build jobs, both
+`p85_cancel_during` actual-coordinator fixtures passed (2/2), and system-repair
+all-target Clippy with warnings denied passed, compiling the real Windows
+verification implementation. No live servicing or model inference was run. This
+qualifies the portable cancellation regression and native build, while final
+integration CI and the real-servicing limits above remain open.
+
+### Final recovery integration and prerequisite transfer bounds
+
+Root integration of verification cancellation passed 197 locked Rust tests using a separate build target. Reusing the intelligence lane's target had incorrectly retained its newer enum artifacts while checking the older repair tree; the independent target compiled the actual repair source and passed, without changing production code. Native verification controls and Windows all-target Clippy are recorded above at source `1561c25`.
+
+The superseded CI at `1943619` stalled during VC++ acquisition for hours: its download handle remained open on an unchanged partial file, with an established HTTPS connection and no child build process. The run was cancelled. Source `6b9ce96` uses native Windows curl for both existing fixed Microsoft prerequisite URLs, with a 30-second connect ceiling, 120 seconds per attempt, two retries and a 360-second retry-start ceiling. This bounds transfer attempts rather than claiming a strict total including backoff or signature validation. Temporary files are admitted only after the existing valid Microsoft Authenticode checks; partial downloads are removed on curl failure. There is no new dependency, CI duration increase or signature bypass.
+
+Four native loopback controls passed: stalled WebView2 and VC++ bodies each stop after three attempts without publishing an artifact; an initial503 followed by a complete unsigned response retries once and is rejected by the original signature checks. The fixture uses one-second test transfer ceilings and real curl/Authenticode, never downloads or installs Setup. The same fixture is now a Windows CI step before packaging. The strengthened source gate requires the fixed URL and complete transfer bounds. Final full CI must use the integration head including these corrections.

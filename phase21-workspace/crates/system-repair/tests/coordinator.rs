@@ -147,6 +147,7 @@ impl RepairPlatform for FakeRepairPlatform {
     fn verify(
         &self,
         _action: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
         self.event("verify");
@@ -468,6 +469,7 @@ impl RepairPlatform for PanickingAssessment {
     fn verify(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         _: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
         Ok(())
@@ -535,6 +537,7 @@ impl RepairPlatform for SlowAssessment {
     fn verify(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         _: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
         Ok(())
@@ -619,6 +622,7 @@ impl RepairPlatform for TimedAssessment {
     fn verify(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         _: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
         Ok(())
@@ -817,6 +821,7 @@ impl RepairPlatform for GatedRepair {
     fn verify(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
         for (id, code) in [
@@ -1014,6 +1019,7 @@ impl RepairPlatform for ToolRepair {
     fn verify(
         &self,
         _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> aethercore_system_repair::Result<()> {
         for (id, code) in [
@@ -1123,4 +1129,157 @@ fn a_repair_stopped_after_the_barrier_needs_recovery_and_is_never_completed() {
         "the owner is told to review"
     );
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// The real coordinator accepts a cancel while its first verification call is blocked.
+/// The platform can honour it between checks, or return a late success regardless.
+struct VerificationGate {
+    entered: std::sync::mpsc::Sender<()>,
+    release: Mutex<std::sync::mpsc::Receiver<()>>,
+    next_checks: std::sync::atomic::AtomicUsize,
+    ignores_cancel: bool,
+}
+
+impl RepairPlatform for VerificationGate {
+    fn assess(
+        &self,
+        cancel: &Arc<std::sync::atomic::AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
+        let (volume, mut checks) = FakeRepairPlatform {
+            fail_before_mutation: false,
+            fail_after_mutation: false,
+            events: Mutex::new(Vec::new()),
+        }
+        .assess(cancel, progress)?;
+        checks.push(RepairCheck {
+            id: "sfc-verify".into(),
+            title: "Protected file check".into(),
+            result_code: "SystemFilesCorrupt".into(),
+            stage: "Attention".into(),
+            ..RepairCheck::default()
+        });
+        Ok((volume, checks))
+    }
+    fn repair(
+        &self,
+        _: &SystemRepairAction,
+        _: &mut aethercore_system_repair::RepairControl<'_>,
+        begin_mutation: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        begin_mutation()
+    }
+    fn verify(
+        &self,
+        _: &SystemRepairAction,
+        control: &mut aethercore_system_repair::RepairControl<'_>,
+        emit: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        self.entered.send(()).unwrap();
+        self.release.lock().unwrap().recv().unwrap();
+        emit(RepairCheck {
+            id: "verify-dism".into(),
+            result_code: "ComponentStoreHealthy".into(),
+            stage: "Completed".into(),
+            ..RepairCheck::default()
+        });
+        if !self.ignores_cancel && control.cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(RepairError::RepairStopped);
+        }
+        self.next_checks
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        emit(RepairCheck {
+            id: "verify-sfc".into(),
+            result_code: "SystemFilesHealthy".into(),
+            stage: "Completed".into(),
+            ..RepairCheck::default()
+        });
+        Ok(())
+    }
+}
+
+fn cancel_during_verification(ignores_cancel: bool) {
+    let root = temp_root("verification-cancel");
+    std::fs::create_dir_all(&root).unwrap();
+    let db = Arc::new(Database::open(root.join("state.db")).unwrap());
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let (entered, entry) = std::sync::mpsc::channel();
+    let (release, blocked) = std::sync::mpsc::channel();
+    let platform = Arc::new(VerificationGate {
+        entered,
+        release: Mutex::new(blocked),
+        next_checks: 0.into(),
+        ignores_cancel,
+    });
+    let coordinator = RepairCoordinator::with_platform(engine.clone(), db, platform.clone());
+    start_assessment(&coordinator, OWNER).unwrap();
+    let assessment_id = wait_assessment(&coordinator);
+    let plan = coordinator
+        .create_plan(OWNER, &assessment_id, false)
+        .unwrap();
+    authorize(&engine, &plan.id);
+    let supervisor = MutationSupervisor::new();
+    let lease = supervisor
+        .try_acquire(MutationWorkload::SystemRepair, &plan.id, OWNER)
+        .unwrap();
+    coordinator
+        .start_with_lease(OWNER, &plan.id, lease)
+        .unwrap();
+    entry.recv_timeout(Duration::from_secs(5)).unwrap();
+    coordinator.cancel_repair(OWNER, &plan.id).unwrap();
+    assert!(
+        supervisor.is_active(),
+        "cancellation released a still-running verification worker"
+    );
+    assert!(
+        supervisor
+            .try_acquire(MutationWorkload::Cleanup, "another-plan", OWNER)
+            .is_err()
+    );
+    release.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let status = loop {
+        let status = coordinator.status(OWNER, Some(&plan.id)).unwrap().unwrap();
+        if matches!(status.plan_state.as_str(), "Failed" | "Completed") {
+            break status;
+        }
+        assert!(Instant::now() < deadline, "verification never completed");
+        thread::sleep(Duration::from_millis(5));
+    };
+    if !ignores_cancel {
+        assert_eq!(
+            platform
+                .next_checks
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "a verification step started after cancellation at the previous safe boundary"
+        );
+    }
+    assert_eq!(
+        status.plan_state, "Failed",
+        "cancelled verification claimed success"
+    );
+    assert_ne!(status.outcome, "SucceededVerified");
+    assert_eq!(status.outcome, "FailedAfterMutation");
+    assert!(status.mutation_started && status.recovery_required);
+    assert_ne!(status.verification_state, "Verified");
+    while supervisor.is_active() {
+        assert!(
+            Instant::now() < deadline,
+            "the completed worker kept its mutation lease"
+        );
+        thread::yield_now();
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn p85_cancel_during_first_verification_prevents_the_next_check() {
+    cancel_during_verification(false);
+}
+
+#[test]
+fn p85_cancel_during_last_verification_rejects_a_late_success() {
+    cancel_during_verification(true);
 }

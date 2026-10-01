@@ -45,7 +45,12 @@ impl RepairPlatform for Scripted {
     ) -> Result<()> {
         Ok(())
     }
-    fn verify(&self, _: &SystemRepairAction, _: &mut dyn FnMut(RepairCheck)) -> Result<()> {
+    fn verify(
+        &self,
+        _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> Result<()> {
         Ok(())
     }
 }

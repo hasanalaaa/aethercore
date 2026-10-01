@@ -14,7 +14,12 @@ New-Item -ItemType Directory -Force (Split-Path $Destination -Parent) | Out-Null
 $tmp = "$Destination.download"
 Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 
-Invoke-WebRequest -Uri $Uri -OutFile $tmp -UseBasicParsing
+Write-Host 'Acquiring Microsoft WebView2 bootstrapper (120 seconds per attempt, two retries).'
+& curl.exe --fail --location --silent --show-error --connect-timeout 30 --max-time 120 --retry 2 --retry-max-time 360 --output $tmp $Uri
+if ($LASTEXITCODE -ne 0) {
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    throw "WebView2 prerequisite download failed (curl exit $LASTEXITCODE)."
+}
 if (-not (Test-Path $tmp) -or (Get-Item $tmp).Length -lt 500000) {
     throw 'Downloaded WebView2 bootstrapper is unexpectedly small or missing.'
 }
