@@ -135,6 +135,79 @@ impl Locale {
     }
 }
 
+/// P86-02: these meanings are supplied by domain readers, never inferred from detail text.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MaintenanceDomain {
+    Cleanup,
+    Startup,
+    WindowsRepair,
+    Drivers,
+}
+
+impl MaintenanceDomain {
+    pub fn from_record(value: &str) -> Option<Self> {
+        match value {
+            "Cleanup" => Some(Self::Cleanup),
+            "Startup" => Some(Self::Startup),
+            "SystemRepair" | "WindowsRepair" => Some(Self::WindowsRepair),
+            "Drivers" => Some(Self::Drivers),
+            _ => None,
+        }
+    }
+
+    fn name(self, locale: Locale) -> &'static str {
+        match (self, locale) {
+            (Self::Cleanup, Locale::En) => "cleanup",
+            (Self::Cleanup, Locale::Ar) => "للتنظيف",
+            (Self::Startup, Locale::En) => "startup",
+            (Self::Startup, Locale::Ar) => "لبدء التشغيل",
+            (Self::WindowsRepair, Locale::En) => "Windows repair",
+            (Self::WindowsRepair, Locale::Ar) => "لإصلاح Windows",
+            (Self::Drivers, Locale::En) => "driver",
+            (Self::Drivers, Locale::Ar) => "للتعريفات",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Fact {
+    PlanCompleted { domain: MaintenanceDomain },
+    PlanCancelled { domain: MaintenanceDomain },
+    RepeatedFailure { occurrences: u32 },
+}
+
+impl Fact {
+    pub fn sentence(&self, locale: Locale) -> String {
+        match (self, locale) {
+            (Self::PlanCompleted { domain }, Locale::En) => {
+                format!("A {} maintenance plan completed", domain.name(locale))
+            }
+            (Self::PlanCompleted { domain }, Locale::Ar) => {
+                format!("اكتملت خطة صيانة {}", domain.name(locale))
+            }
+            (Self::PlanCancelled { domain }, Locale::En) => {
+                format!("A {} maintenance plan was cancelled", domain.name(locale))
+            }
+            (Self::PlanCancelled { domain }, Locale::Ar) => {
+                format!("أُلغيت خطة صيانة {}", domain.name(locale))
+            }
+            (Self::RepeatedFailure { occurrences }, Locale::En) => {
+                format!("A failure recurred {occurrences} times")
+            }
+            (Self::RepeatedFailure { occurrences }, Locale::Ar) => {
+                format!("عدد مرات تكرار الإخفاق: {occurrences}")
+            }
+        }
+    }
+}
+
+/// Its one-based position is its prompt ID. Neither IDs nor facts travel in technical strings.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Proposition {
+    pub citation: Citation,
+    pub fact: Fact,
+}
+
 /// Bounded, read-only evidence pack assembled from PUBLIC read APIs of existing
 /// domains (I1/I4). Items are pre-typed structured data — never raw attacker
 /// controlled prose (threat-model mitigation, see docs/phase23/ARCHITECTURE.md).
@@ -142,6 +215,8 @@ impl Locale {
 #[serde(rename_all = "camelCase")]
 pub struct TypedEvidencePack {
     pub items: Vec<EvidenceItem>,
+    #[serde(default)]
+    pub propositions: Vec<Proposition>,
 }
 
 /// One structured evidence item. `payload` is a bounded key:value summary rendered
@@ -172,6 +247,23 @@ impl TypedEvidencePack {
         self.items.push(item);
     }
 
+    pub fn push_fact(&mut self, citation: Citation, fact: Fact) -> bool {
+        let supported = match fact {
+            Fact::PlanCompleted { .. } | Fact::PlanCancelled { .. } => {
+                citation.surface == EvidenceSurface::MaintenanceHistory
+            }
+            Fact::RepeatedFailure { occurrences } => {
+                citation.surface == EvidenceSurface::TimelinePattern && occurrences >= 2
+            }
+        };
+        if !supported || !self.resolves(&citation) || self.propositions.len() >= MAX_EVIDENCE_ITEMS
+        {
+            return false;
+        }
+        self.propositions.push(Proposition { citation, fact });
+        true
+    }
+
     /// Resolves a citation handle against current pack content (I2).
     pub fn resolves(&self, citation: &Citation) -> bool {
         self.items.iter().any(|item| {
@@ -194,6 +286,7 @@ impl TypedEvidencePack {
             }]);
             hasher.update(item.detail.as_bytes());
         }
+        hasher.update(format!("{:?}", self.propositions).as_bytes());
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let bytes = hasher.finalize();
         bytes.iter().fold(String::new(), |mut out, &b| {

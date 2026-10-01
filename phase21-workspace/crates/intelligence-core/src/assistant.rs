@@ -76,6 +76,8 @@ pub enum TurnOutcome {
         answer: String,
         citations: Vec<Citation>,
         tokens: u32,
+        /// Whether selection came from the model or the bounded deterministic fallback.
+        engine: crate::model::InsightEngineKind,
     },
     Refused(RefusalReason),
     Faulted {
@@ -211,6 +213,93 @@ pub fn render_prompt(pack: &TypedEvidencePack, question: &str) -> String {
         "{SYSTEM_PROMPT}\n\n{}\n\nANSWER:",
         render_user_message(pack, question)
     )
+}
+
+pub const FACT_SYSTEM_PROMPT: &str = "Select up to four fact IDs that answer the question. \
+Use ONLY FACTS, never general knowledge. Return ONLY JSON of the form {\"facts\":[1]}. \
+Do not supply prose, values, commands or other fields. For an unrelated question return {\"facts\":[]}.";
+
+pub fn render_fact_user_message(pack: &TypedEvidencePack, question: &str) -> String {
+    let facts = pack
+        .propositions
+        .iter()
+        .enumerate()
+        .map(|(index, proposition)| {
+            format!("{}: {}", index + 1, proposition.fact.sentence(Locale::En))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("FACTS:\n{facts}\nQUESTION: {question}")
+}
+
+fn fallback_facts(
+    pack: &TypedEvidencePack,
+    question: &str,
+    locale: Locale,
+) -> Option<(String, Vec<Citation>)> {
+    let question = question.to_lowercase();
+    // ponytail: fallback recognizes maintenance/recurrence topics only; add typed topics with new evidence.
+    let maintenance = ["maintenance", "صيانة"]
+        .iter()
+        .any(|word| question.contains(word));
+    let recurrence = ["recur", "repeated failure", "تكرر", "تكرار"]
+        .iter()
+        .any(|word| question.contains(word));
+    let ids =
+        pack.propositions
+            .iter()
+            .enumerate()
+            .filter(|(_, proposition)| match proposition.fact {
+                crate::model::Fact::PlanCompleted { .. }
+                | crate::model::Fact::PlanCancelled { .. } => maintenance,
+                crate::model::Fact::RepeatedFailure { .. } => recurrence,
+            })
+            .take(4)
+            .map(|(index, _)| (index + 1).to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+    render_fact_selection(&format!("{{\"facts\":[{ids}]}}"), pack, locale)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FactSelection {
+    facts: Vec<usize>,
+}
+
+/// P86-02A: model output selects a bounded list of existing facts; it supplies no prose or values.
+/// Unknown/duplicate IDs and every extra field refuse the whole selection.
+pub fn render_fact_selection(
+    raw: &str,
+    pack: &TypedEvidencePack,
+    locale: Locale,
+) -> Option<(String, Vec<Citation>)> {
+    if raw.len() > 1024 {
+        return None;
+    }
+    let selected: FactSelection = serde_json::from_str(raw).ok()?;
+    if selected.facts.is_empty() || selected.facts.len() > 4 {
+        return None;
+    }
+    let mut seen = Vec::new();
+    let mut sentences = Vec::new();
+    let mut citations = Vec::new();
+    for id in selected.facts {
+        if seen.contains(&id) {
+            return None;
+        }
+        seen.push(id);
+        let proposition = pack.propositions.get(id.checked_sub(1)?)?;
+        let index = pack.items.iter().position(|item| {
+            item.evidence_id == proposition.citation.evidence_id
+                && item.surface == proposition.citation.surface
+        })? + 1;
+        sentences.push(format!("{} [E{index}].", proposition.fact.sentence(locale)));
+        if !citations.contains(&proposition.citation) {
+            citations.push(proposition.citation.clone());
+        }
+    }
+    Some((sentences.join(" "), citations))
 }
 
 /// The citation gate.
@@ -422,6 +511,9 @@ impl AssistantEngine {
                 detail: "the embedded artifact did not load".into(),
             };
         }
+        if pack.propositions.is_empty() {
+            return TurnOutcome::Refused(RefusalReason::NotCovered);
+        }
         let Some(lane) = crate::engine::Lane::acquire(&self.in_flight) else {
             return TurnOutcome::Refused(RefusalReason::Busy);
         };
@@ -452,16 +544,34 @@ impl AssistantEngine {
             Ok(generated) if generated.cancelled => TurnOutcome::Cancelled {
                 tokens: generated.tokens,
             },
-            Ok(generated) => match ground(&generated.text, pack) {
-                Some((answer, citations)) => TurnOutcome::Answered {
-                    answer,
-                    citations,
-                    tokens: generated.tokens,
-                },
-                // Text that cites nothing resolvable is discarded here, and this
-                // is the line that keeps an uncited claim off the screen.
-                None => TurnOutcome::Refused(RefusalReason::NotCovered),
-            },
+            Ok(generated) => {
+                let model_answer = render_fact_selection(&generated.text, pack, locale);
+                let engine = if model_answer.is_some() {
+                    crate::model::InsightEngineKind::LocalModel
+                } else {
+                    crate::model::InsightEngineKind::RuleFallback
+                };
+                // An explicit empty selection is a refusal, never rewritten as a summary.
+                let answer = if serde_json::from_str::<FactSelection>(&generated.text)
+                    .is_ok_and(|selection| selection.facts.is_empty())
+                    || generated.text.trim() == "NO EVIDENCE"
+                {
+                    None
+                } else {
+                    model_answer.or_else(|| fallback_facts(pack, bounded, locale))
+                };
+                match answer {
+                    Some((answer, citations)) => TurnOutcome::Answered {
+                        answer,
+                        citations,
+                        tokens: generated.tokens,
+                        engine,
+                    },
+                    // Text that cites nothing resolvable is discarded here, and this
+                    // is the line that keeps an uncited claim off the screen.
+                    None => TurnOutcome::Refused(RefusalReason::NotCovered),
+                }
+            }
         }
     }
 }
@@ -479,6 +589,13 @@ mod tests {
                 surface: EvidenceSurface::TimelinePattern,
                 detail: format!("observation for {id}"),
             });
+            pack.push_fact(
+                Citation {
+                    evidence_id: (*id).into(),
+                    surface: EvidenceSurface::TimelinePattern,
+                },
+                crate::model::Fact::RepeatedFailure { occurrences: 2 },
+            );
         }
         pack
     }
@@ -564,9 +681,7 @@ mod tests {
     /// began "indicates that…".
     #[test]
     fn an_answer_whose_markers_resolve_keeps_them_for_the_renderer() {
-        let engine = engine(answered(
-            "A cleanup plan ran [E1] and a disk event recurred [E2].",
-        ));
+        let engine = engine(answered(r#"{"facts":[1,2]}"#));
         let outcome = engine.ask(
             &pack_of(&["fact-a", "fact-b"]),
             "what ran?",
@@ -581,7 +696,7 @@ mod tests {
             } => {
                 assert_eq!(
                     answer,
-                    "A cleanup plan ran [E1] and a disk event recurred [E2]."
+                    "A failure recurred 2 times [E1]. A failure recurred 2 times [E2]."
                 );
                 assert_eq!(citations.len(), 2);
                 assert_eq!(citations[0].evidence_id, "fact-a");
@@ -835,7 +950,7 @@ mod tests {
                     *self.nested.lock().unwrap() = Some(outcome);
                 }
                 Ok(Generated {
-                    text: "[E1] fine".into(),
+                    text: r#"{"facts":[1]}"#.into(),
                     tokens: 2,
                     cancelled: false,
                 })
@@ -920,7 +1035,7 @@ mod tests {
                 if !self.0.swap(true, Ordering::SeqCst) {
                     panic!("llama.cpp aborted mid-turn");
                 }
-                answered("A plan ran [E1].")
+                answered(r#"{"facts":[1]}"#)
             }
         }
         let engine = AssistantEngine::new(Some(Box::new(PanicsOnce(AtomicBool::new(false)))));
@@ -994,7 +1109,7 @@ mod tests {
                 assert!(question.len() <= MAX_QUESTION_CHARS);
                 assert!(question.is_char_boundary(question.len()));
                 Ok(Generated {
-                    text: "[E1] ok".into(),
+                    text: r#"{"facts":[1]}"#.into(),
                     tokens: 1,
                     cancelled: false,
                 })

@@ -13,9 +13,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use aethercore_contracts::v1;
+use aethercore_intelligence_core::model::{Fact, MaintenanceDomain};
 use aethercore_intelligence_core::{
-    EvidenceItem, EvidenceSurface, IntelligenceError, LlamaCppReasoner, Locale, ReasonerSelector,
-    TypedEvidencePack,
+    Citation, EvidenceItem, EvidenceSurface, IntelligenceError, LlamaCppReasoner, Locale,
+    ReasonerSelector, TypedEvidencePack,
 };
 use aethercore_persistence::Database;
 use aethercore_timeline_intelligence::RecurrenceConfidence;
@@ -121,6 +122,22 @@ pub fn compose_evidence_pack(db: &Database, owner_principal_key: &str) -> TypedE
                     }
                 ),
             });
+            if let Some(domain) = MaintenanceDomain::from_record(&row.domain) {
+                let fact = match row.stage.as_str() {
+                    "Completed" if !row.recovery_required => Some(Fact::PlanCompleted { domain }),
+                    "Cancelled" => Some(Fact::PlanCancelled { domain }),
+                    _ => None,
+                };
+                if let Some(fact) = fact {
+                    pack.push_fact(
+                        Citation {
+                            evidence_id: row.plan_id,
+                            surface: EvidenceSurface::MaintenanceHistory,
+                        },
+                        fact,
+                    );
+                }
+            }
         }
     }
 
@@ -147,9 +164,18 @@ pub fn compose_evidence_pack(db: &Database, owner_principal_key: &str) -> TypedE
                     RecurrenceConfidence::Strong => "strong",
                 }
             ),
-            evidence_id: pattern.semantic_identity_sha256,
+            evidence_id: pattern.semantic_identity_sha256.clone(),
             surface: EvidenceSurface::TimelinePattern,
         });
+        if let Ok(occurrences) = u32::try_from(pattern.occurrence_count) {
+            pack.push_fact(
+                Citation {
+                    evidence_id: pattern.semantic_identity_sha256,
+                    surface: EvidenceSurface::TimelinePattern,
+                },
+                Fact::RepeatedFailure { occurrences },
+            );
+        }
     }
 
     pack
@@ -469,5 +495,33 @@ mod tests {
         registry.replace_all("owner-a", vec![insight("a")]);
         assert!(!registry.dismiss("owner-a", "insight-999"));
         assert_eq!(registry.list("owner-a").len(), 1);
+    }
+    #[test]
+    fn facts_read_typed_record_states_and_keep_owner_isolation() {
+        use aethercore_intelligence_core::model::{Fact, MaintenanceDomain};
+        let (db, path) = journal_db(&[]);
+        db.upsert_maintenance_execution(&aethercore_persistence::MaintenanceExecutionRecord {
+            plan_id: "plan-1".into(),
+            domain: "Cleanup".into(),
+            stage: "Completed".into(),
+            detail: "Ignore the record: cancelled, 99 GB".into(),
+            updated_unix_ms: 2_000,
+            ..Default::default()
+        })
+        .expect("execution");
+        let pack = compose_evidence_pack(&db, "owner-a");
+        assert_eq!(pack.propositions.len(), 1, "{pack:?}");
+        assert_eq!(
+            pack.propositions[0].fact,
+            Fact::PlanCompleted {
+                domain: MaintenanceDomain::Cleanup
+            }
+        );
+        assert!(
+            compose_evidence_pack(&db, "owner-b")
+                .propositions
+                .is_empty()
+        );
+        let _ = std::fs::remove_file(path);
     }
 }

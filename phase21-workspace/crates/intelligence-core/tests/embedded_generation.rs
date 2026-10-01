@@ -22,10 +22,10 @@ use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use aethercore_intelligence_core::{
-    AssistantEngine, EMBEDDED_MODEL_RELATIVE_PATH, EvidenceItem, EvidenceSurface, GenerationBudget,
-    INFERENCE_TIMEOUT, InsightConfidence, InsightEngineKind, LlamaCppReasoner, LocalReasoner,
-    Locale, ReasonerSelector, RefusalReason, StreamingReasoner, TurnOutcome, TypedEvidencePack,
-    embedded_model_entry, verify_model_hash,
+    AssistantEngine, Citation, EMBEDDED_MODEL_RELATIVE_PATH, EvidenceItem, EvidenceSurface,
+    GenerationBudget, INFERENCE_TIMEOUT, InsightConfidence, InsightEngineKind, LlamaCppReasoner,
+    LocalReasoner, Locale, ReasonerSelector, RefusalReason, StreamingReasoner, TurnOutcome,
+    TypedEvidencePack, embedded_model_entry, verify_model_hash,
 };
 
 /// The workspace root, two levels above this crate.
@@ -49,6 +49,22 @@ fn pack() -> TypedEvidencePack {
         surface: EvidenceSurface::TimelinePattern,
         detail: "event class Thermal code THRM-7 recurred on 3 of the last 5 sessions".into(),
     });
+    pack.push_fact(
+        Citation {
+            evidence_id: "plan-cleanup-0042".into(),
+            surface: EvidenceSurface::MaintenanceHistory,
+        },
+        aethercore_intelligence_core::model::Fact::PlanCompleted {
+            domain: aethercore_intelligence_core::model::MaintenanceDomain::Cleanup,
+        },
+    );
+    pack.push_fact(
+        Citation {
+            evidence_id: "pattern-thermal-7".into(),
+            surface: EvidenceSurface::TimelinePattern,
+        },
+        aethercore_intelligence_core::model::Fact::RepeatedFailure { occurrences: 3 },
+    );
     pack
 }
 
@@ -486,6 +502,7 @@ fn the_real_model_answers_a_question_its_evidence_covers_and_cites_it() {
             answer,
             citations,
             tokens,
+            ..
         } => {
             assert!(tokens > 0);
             assert!(!citations.is_empty(), "an answer must cite: {answer:?}");
@@ -624,4 +641,56 @@ fn a_clone_taken_before_the_background_load_generates_after_it() {
         matches!(outcome, TurnOutcome::Answered { .. }),
         "{outcome:?}"
     );
+}
+
+#[test]
+fn the_real_model_selects_fact_ids_in_both_locales() {
+    use aethercore_intelligence_core::{
+        Citation,
+        assistant::render_fact_selection,
+        model::{Fact, MaintenanceDomain},
+    };
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut reasoner = LlamaCppReasoner::new();
+    let path = product_root().join(EMBEDDED_MODEL_RELATIVE_PATH);
+    verify_model_hash(&path, &embedded_model_entry()).expect("pinned artifact");
+    reasoner.load(&path).expect("artifact loads");
+    let mut facts = pack();
+    facts.push_fact(
+        Citation {
+            evidence_id: facts.items[0].evidence_id.clone(),
+            surface: EvidenceSurface::MaintenanceHistory,
+        },
+        Fact::PlanCompleted {
+            domain: MaintenanceDomain::Cleanup,
+        },
+    );
+    for (locale, question) in [
+        (Locale::En, "what maintenance has run?"),
+        (Locale::Ar, "ما الصيانة التي جرت؟"),
+    ] {
+        let started = Instant::now();
+        let generated = reasoner
+            .generate(
+                &facts,
+                question,
+                locale,
+                &GenerationBudget::new(Arc::new(AtomicBool::new(false))),
+                &mut |_| {},
+            )
+            .expect("model selection");
+        measured(&format!(
+            "fact schema {:?}: accepted={} tokens={} duration_ms={}",
+            locale,
+            render_fact_selection(&generated.text, &facts, locale).is_some(),
+            generated.tokens,
+            started.elapsed().as_millis()
+        ));
+        assert!(
+            render_fact_selection(&generated.text, &facts, locale).is_some(),
+            "not a fact selection: {generated:?}"
+        );
+    }
 }

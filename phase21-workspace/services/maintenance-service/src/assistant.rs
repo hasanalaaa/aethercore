@@ -340,6 +340,7 @@ fn terminal(
             answer,
             citations,
             tokens,
+            engine,
         } => v1::AssistantTurn {
             state: v1::AssistantTurnState::Answered as i32,
             answer,
@@ -360,7 +361,15 @@ fn terminal(
                 })
                 .collect(),
             tokens_emitted: tokens,
-            ..base(turn_id, label, pack)
+            ..base(
+                turn_id,
+                if engine == aethercore_intelligence_core::InsightEngineKind::RuleFallback {
+                    "ruleFallback"
+                } else {
+                    label
+                },
+                pack,
+            )
         },
         TurnOutcome::Refused(reason) => refused(turn_id, label, reason, pack),
         TurnOutcome::Faulted { fault_key, detail } => {
