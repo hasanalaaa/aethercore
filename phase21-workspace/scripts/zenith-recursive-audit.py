@@ -313,7 +313,15 @@ read_domains = [
 ]
 check("read_workers_own_budget_lease", all("let _read_budget_lease" in text and workload in text and method in text for text, workload, method in read_domains))
 check("read_entrypoints_cannot_bypass_budget", all("Option<ReadBudgetLease>" not in text and "pub fn start_scan(" not in text and "pub fn start_assessment(" not in text for text, _, _ in read_domains))
-check("service_routes_use_leased_read_start", count(router, "start_scan_with_lease(principal_key,lease)") == 4 and contains(router, "start_assessment_with_lease(principal_key,lease)"))
+# P84 adds only the request-bound search scope to driver discovery. Keep four
+# leased starts, require exactly one scoped driver call, and retain assessment.
+scoped_driver_starts = count(router, "start_scan_with_lease(principal_key,lease,search_scope(&request))")
+owned_cleanup_starts = count(router, "start_scan_with_lease(principal_key,&call.peer.owner_roots(),lease)")
+check("service_routes_use_leased_read_start",
+      count(router, "start_scan_with_lease(principal_key,lease)") + scoped_driver_starts + owned_cleanup_starts == 4
+      and scoped_driver_starts == 1
+      and owned_cleanup_starts == 1
+      and contains(router, "start_assessment_with_lease(principal_key,lease)"))
 check("read_watchers_are_not_budget_holders", "ReadBudgetLease" not in streaming and "_read_budget_lease" not in streaming)
 check("read_worker_spawn_failure_is_recoverable", all("thread::Builder::new()" in text for text, _, _ in read_domains))
 check("read_crates_expose_no_unleased_start", all("pub fn start_scan(&self" not in text and "pub fn start_assessment(&self" not in text for text, _, _ in read_domains))

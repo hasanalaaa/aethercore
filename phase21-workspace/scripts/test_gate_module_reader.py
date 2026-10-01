@@ -82,7 +82,45 @@ for token in [
 
 # zenith_recursive counts these exactly, so an exact number is the assertion.
 case("leased mutation starts", count(tree, "start_with_lease(principal_key,&v.plan_id,lease)"), 4)
-case("leased read starts", count(tree, "start_scan_with_lease(principal_key,lease)"), 4)
+# P84 binds driver discovery to this request's confirmed search scope. Count
+# only the complete call shapes: owner, lease, and the driver scope remain
+# mandatory, and the expected four starts do not change.
+UNSCOPED_SCAN = "start_scan_with_lease(principal_key,lease)"
+SCOPED_SCAN = "start_scan_with_lease(principal_key,lease,search_scope(&request))"
+OWNED_SCAN = "start_scan_with_lease(principal_key,&call.peer.owner_roots(),lease)"
+
+
+def leased_read_starts(text: str) -> int:
+    return count(text, UNSCOPED_SCAN) + count(text, SCOPED_SCAN) + count(text, OWNED_SCAN)
+
+
+case("leased read starts", leased_read_starts(tree), 4)
+case("driver scan binds its leased read to the request scope", count(tree, SCOPED_SCAN), 1)
+case("cleanup scan binds its leased read to peer roots", count(tree, OWNED_SCAN), 1)
+for label, replacement, expected in [
+    ("deleted driver scan", "", 3),
+    ("duplicated driver scan", SCOPED_SCAN + SCOPED_SCAN, 5),
+    ("driver scan with a different owner", SCOPED_SCAN.replace("principal_key", "other_owner"), 3),
+    ("driver scan without its lease", "start_scan_with_lease(principal_key,search_scope(&request))", 3),
+    ("driver scan with another lease", SCOPED_SCAN.replace(",lease,", ",other_lease,"), 3),
+    ("driver scan with an unconfirmed online scope", SCOPED_SCAN.replace("search_scope(&request)", "SearchScope::Online"), 3),
+]:
+    # Use the real route's formatted call, not a synthetic copy of the router.
+    driver_call = ".start_scan_with_lease(principal_key, lease, search_scope(&request))"
+    mutated = tree.replace(driver_call, "." + replacement)
+    case(f"{label} still changes the exact count", leased_read_starts(mutated), expected)
+
+for label, replacement, expected in [
+    ("deleted cleanup scan", "", 3),
+    ("duplicated cleanup scan", OWNED_SCAN + OWNED_SCAN, 5),
+    ("cleanup scan with a different owner", OWNED_SCAN.replace("principal_key", "other_owner"), 3),
+    ("cleanup scan with caller-provided roots", OWNED_SCAN.replace("&call.peer.owner_roots()", "&request.roots"), 3),
+    ("cleanup scan without its lease", OWNED_SCAN.replace(",lease)", ")"), 3),
+]:
+    cleanup_call = ".start_scan_with_lease(principal_key, &call.peer.owner_roots(), lease)"
+    mutated = tree.replace(cleanup_call, "." + replacement)
+    case(f"{label} still changes the exact count", leased_read_starts(mutated), expected)
+
 
 # Delete one module from a copy of the tree: its tokens must go with it. A reader
 # that survived this would be reading something other than the files.
