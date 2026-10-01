@@ -490,3 +490,19 @@ test('the message of a repair cancelled before any change reads in Arabic', asyn
   assert.notEqual(shown, td('text.unavailable', 'ar'));
   assert.match(shown, arabic);
 });
+
+test('P83-05B boot history is dated evidence, with no boot-type baseline or application attribution', async () => {
+  assert.match(td('startup.bootHistory.context', 'en'), /historical/i);
+  assert.match(td('startup.bootHistory.context', 'ar'), arabic);
+  const { bootRows } = await import('../src/features/diagnostics/measurement-rows.ts');
+  const boot = { recordedUnixMs: 1_700_000_000_000, hasDuration: true, durationMs: 25414,
+    coverage: { source: 'Diagnostics-Performance', hasObservedUnixMs: true, observedUnixMs: 1_700_000_000_000, availability: 1 } };
+  for (const locale of ['en', 'ar'] as const) {
+    const row = bootRows([boot], locale)[0];
+    assert.match(td('startup.bootHistory.window', locale, {count:2, days:30, when:'2026-09-30'}), /2026-09-30/);
+    assert.equal(row.observedUnixMs, boot.recordedUnixMs);
+    assert.equal(row.note, null, 'no inferred baseline or per-app saving');
+    assert.ok(row.value && row.name, 'duration and event date are retained');
+    assert.deepEqual(bootRows([], locale), [], 'an unavailable channel never becomes a zero-second boot');
+  }
+});

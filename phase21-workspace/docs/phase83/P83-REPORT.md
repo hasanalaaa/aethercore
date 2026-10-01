@@ -13,6 +13,7 @@ without the command that produced it is labelled a belief.
 | P83-03A/B | `3162d0c` | the local Windows Update history, and an evidence-only `update-history` assessment step |
 | P83-03B follow-up | Codex continuation below | bounded local Operational errors, measured event 25/version 1, with a separate translated assessment check |
 | P83-05A | `be6287b`, `c6c9bb0` and the shared P80 contract | thermal zones and batteries reach the Hardware rows via the owner-scoped snapshot |
+| P83-05B follow-up | Codex continuation §6 | Startup reuses dated historical boot rows; comparable-type baseline and per-application attribution remain open |
 | P83-06A | `9e404fd` | `THERMAL_TRIP_EXCEEDED` for a zone at its own rated critical trip point |
 | P83-04 | — | closed as deferred (D12): nothing built |
 
@@ -111,3 +112,28 @@ lines. No safety or unknown-state handling was removed to meet a size estimate.
 Not yet measured: a disabled channel on a real machine, an unsupported real schema, and a reboot
 client event. System-channel evidence and service configuration remain open. Native parsing uses
 Windows-rendered XML and is intentionally not a general-purpose external XML parser.
+
+## 6. Startup history display — P83-05B continuation
+
+The Startup page now reuses `bootRows` and `MeasurementRows` with the already owner-scoped shared
+diagnostic snapshot. It shows each recorded duration with its date, source and measurement state,
+plus the event window, sample count and last scan time. It explicitly calls this historical evidence:
+boot type and application delays are unmeasured, so no baseline, regression or per-application time
+saving is inferred. With no boot record, it says no evidence is available instead of inventing zero.
+No collector, backend call, polling, dependency, protocol field or startup action was added.
+
+The context-label/row test was red for the missing label, then green. Fast verification: 63 UI tests,
+svelte-check 0 errors/warnings, static validation 349 checks with zero failures, localization 34/34.
+The populated Startup fixture was visually inspected in Arabic; its historical 41.5-second sample
+and scan date render. The page passed all 12 layout combinations (1280/1024/960, EN/AR, dark/light)
+and its Arabic clean leak check. The first dev-server run used the default mode and showed an empty
+transport; it was stopped and rerun in the same `--mode fixture` used by CI before these claims.
+
+This closes only the history-display part of DBT-P83-006. Boot type, measured per-entry delay,
+like-type baseline, startup attribution and a real-machine Narrator pass remain open.
+
+The full CI-equivalent UI phase checks were then rerun at this UI tree: 60/60 layout combinations
+(1280/960/720, EN/AR, dark/light over deepScan/repair/cleanup/startup/hardware), 9/9 clean Arabic
+leak pages, 5/5 injected-sentinel pages. Startup's sample text and duration were inspected visually.
+Backend source remains the fully tested P83-03B commit; this follow-up changes only UI presentation,
+translations, the UI check and phase records. Final Windows full-phase/merge CI remains root-owned.
