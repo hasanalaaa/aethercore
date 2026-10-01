@@ -10,6 +10,7 @@ import {
   localizeCollector,
   localizeCollectorFault,
   localizeOwnedText,
+  td,
 } from '../src/lib/i18n/index.ts';
 
 const arabic = /[؀-ۿ]/;
@@ -93,4 +94,32 @@ test('P83-03B: local client event evidence is translated without counting instal
     if (text.startsWith('2 ')) assert.match(translated.text, /0x80240438/);
     assert.equal(localizeOwnedText(text, 'en').text, text);
   }
+});
+
+
+test('P85 skip summaries preserve each cause count in English and Arabic without OS prose', () => {
+  const summary = 'Skipped files (not reclaimed): in use 2, changed since preview 3, multiple hard links 4, other safety checks 5.';
+  assert.equal(localizeOwnedText(summary, 'en').text, summary);
+  const ar = localizeOwnedText(summary, 'ar');
+  assert.equal(ar.localized, true);
+  assert.match(ar.text, /قيد الاستخدام 2/);
+  assert.match(ar.text, /تغيّرت بعد المعاينة 3/);
+  assert.match(ar.text, /روابط صلبة متعددة 4/);
+  assert.match(ar.text, /فحوص أمان أخرى 5/);
+  assert.doesNotMatch(ar.text, /Skipped|reclaimed|HRESULT|C:\\/);
+  // The existing per-category result wraps this same summary with skipped bytes.
+  const wrapped = localizeOwnedText(`${summary}; skipped 4096 bytes that changed, were locked, or failed validation`, 'ar');
+  assert.equal(wrapped.localized, true);
+  assert.match(wrapped.text, /قيد الاستخدام 2/);
+  assert.doesNotMatch(wrapped.text, /Skipped|reclaimed/);
+});
+
+
+test('P85 cleanup totals name deleted logical file bytes rather than physical free-space gain', () => {
+  assert.equal(td('cleanup.reclaimed', 'en'), 'Deleted file bytes');
+  assert.equal(td('cleanup.reclaimed', 'ar'), 'بايتات الملفات المحذوفة');
+  const rust = source('crates/cleaner/src/lib.rs');
+  assert.match(rust, /Verifying cleanup journal and deleted file sizes/);
+  assert.doesNotMatch(rust, /Verifying cleanup journal and reclaimed totals/);
+  assert.match(localizeOwnedText('Verifying cleanup journal and deleted file sizes', 'ar').text, /أحجام الملفات المحذوفة/);
 });

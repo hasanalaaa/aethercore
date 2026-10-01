@@ -897,14 +897,14 @@ fn run_cleanup(
         "Verifying",
         95,
         "",
-        "Verifying cleanup journal and reclaimed totals",
+        "Verifying cleanup journal and deleted file sizes",
     );
     update(
         db,
         plan_id,
         "Verifying",
         95,
-        "Verifying cleanup journal and reclaimed totals",
+        "Verifying cleanup journal and deleted file sizes",
         true,
         None,
     )?;
