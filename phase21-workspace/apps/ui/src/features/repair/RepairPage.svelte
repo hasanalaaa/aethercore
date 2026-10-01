@@ -4,7 +4,7 @@
   import { streamState } from '../../platform/stream-state';
   import { LocalizedOwnedText, Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
   import { formatDateTime, hasMessageKey, localizeFactState, localizeOwnedText, localizeState, t, td, tp } from '../../lib/i18n';
-  import { cancelRepairAssessment, openRepairReview, repairActive, repairUi, reviewSystemRepair, setIncludeDiskScan, startRepairAssessment } from './controller';
+  import { cancelSystemRepair, repairStopRequested, cancelRepairAssessment, openRepairReview, repairActive, repairUi, reviewSystemRepair, setIncludeDiskScan, startRepairAssessment } from './controller';
   import { shortDigest, stageTone } from '../shared';
 
   $: snapshot = $streamState.snapshot;
@@ -165,6 +165,11 @@
   <section class:terminal={['Completed','Failed'].includes(repairStatus.planState)} class="install-progress-card" aria-live="polite">
     <div class="install-progress-head"><div><p class="eyebrow">{t('repair.execution', locale)}</p><h3>{localizeState(repairStatus.stage, locale)}</h3>{#if repairStatus.detail}<LocalizedOwnedText value={repairStatus.detail} {locale} as="p"/>{/if}</div><span class:bad={stageTone(repairStatus.stage)==='bad'} class="execution-state">{localizeState(repairStatus.planState, locale)}</span></div>
     {#if repairStatus.progressKnown}<ProgressBar value={repairStatus.overallPercent} label={t('repair.progressLabel', locale)} />{:else if repairActive()}<ProgressBar value={0} known={false} label={t('repair.progressUnknown', locale)} />{/if}
+    {#if repairActive()}
+      <p>{t('repair.executionStarted', locale, { started: formatDateTime(repairStatus.startedUnixMs, locale) })}</p>
+      {#if $repairStopRequested === repairStatus.planId}<p>{t('repair.stopRequested', locale)}</p>{/if}
+      {#if snapshot.connected}<Pressable className="ghost-action" onclick={cancelSystemRepair} disabled={busy || $repairStopRequested === repairStatus.planId}>{t('repair.stopSafely', locale)}</Pressable>{/if}
+    {/if}
     <div class="phase4-safety-row"><div class:ready={!repairStatus.mutationStarted}><span>{t('repair.before', locale)}</span><strong>{repairStatus.mutationStarted ? t('repair.checkpointCrossed', locale) : t('repair.noMutation', locale)}</strong></div><div class:ready={repairStatus.verificationState==='Verified'}><span>{t('repair.verification',locale)}</span><strong>{localizeState(repairStatus.verificationState || 'Pending',locale)}</strong></div><div class:ready={!repairStatus.rebootRequired}><span>{t('repair.restart',locale)}</span><strong>{repairStatus.rebootRequired ? t('repair.restartRequired',locale) : t('repair.noRestartBarrier',locale)}</strong></div></div>
     {#if repairStatus.failureMessage}<div class="install-failure"><strong>{t('repair.failure', locale)}</strong><LocalizedOwnedText value={repairStatus.failureMessage} {locale} as="p"/></div>{/if}
     {#if repairStatus.steps.length}<div class="phase4-step-list">{#each repairStatus.steps as step (step.id)}<div><span class="step-dot"></span><div><LocalizedOwnedText value={step.title} {locale} as="strong"/><LocalizedOwnedText value={step.detail} {locale} as="p"/></div><em><TechnicalText value={step.resultCode || step.stage}/></em></div>{/each}</div>{/if}

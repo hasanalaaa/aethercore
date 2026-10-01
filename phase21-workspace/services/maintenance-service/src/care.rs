@@ -1362,7 +1362,7 @@ mod p79_prepare_tests {
             .try_acquire(aethercore_operation_kernel::ReadWorkload::CleanupDiscovery)
             .expect("lease");
         cleaner
-            .start_scan_with_lease(OWNER, lease)
+            .start_scan_with_lease(OWNER, &[], lease)
             .expect("scan starts");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while cleaner.snapshot_for_owner(OWNER).expect("snapshot").state

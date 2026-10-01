@@ -26,7 +26,7 @@ fn live_cleanup_scan_returns_only_service_minted_categories() {
         .try_acquire(ReadWorkload::CleanupDiscovery)
         .expect("read budget lease");
     cleaner
-        .start_scan_with_lease(OWNER, lease)
+        .start_scan_with_lease(OWNER, &[], lease)
         .expect("start scan");
 
     let deadline = Instant::now() + Duration::from_secs(5 * 60);

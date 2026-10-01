@@ -12,7 +12,7 @@ pub(super) fn start_cleanup_scan(call: &Call<'_>) -> Routed {
         .map_err(err)?;
     let value = ctx
         .cleaner
-        .start_scan_with_lease(principal_key, lease)
+        .start_scan_with_lease(principal_key, &call.peer.owner_roots(), lease)
         .map_err(err)?;
     let proto = cleanup_snapshot_proto(value);
     publish(

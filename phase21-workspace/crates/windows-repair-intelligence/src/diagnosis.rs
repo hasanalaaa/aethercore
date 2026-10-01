@@ -166,7 +166,7 @@ pub fn diagnose(input: &RepairObservationSet) -> Vec<Diagnosis> {
     }
 
     let service_stopped = ids(RepairDomain::Services, &[FactState::Stopped]);
-    if !service_stopped.is_empty() {
+    if !service_stopped.is_empty() && out.iter().any(|d| d.code == "WINDOWS_UPDATE_FAILURE") {
         push_diagnosis(
             &mut out,
             "REQUIRED_SERVICE_STOPPED",

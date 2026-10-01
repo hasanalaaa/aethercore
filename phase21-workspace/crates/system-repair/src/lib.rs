@@ -38,6 +38,14 @@ pub enum RepairError {
     Cancelled,
     #[error("the repair was cancelled before any change was made")]
     RepairCancelled,
+    #[error(
+        "the repair was stopped after changes had begun; run a new check before relying on this PC"
+    )]
+    RepairStopped,
+    #[error(
+        "the repair exceeded its time limit; the current step has exited, but its result must be checked again"
+    )]
+    RepairTimedOut,
     #[error("repair assessment is not ready")]
     AssessmentNotReady,
     #[error("repair assessment is stale")]
@@ -176,6 +184,15 @@ pub struct RepairExecutionStatus {
     pub steps: Vec<RepairCheck>,
 }
 
+/// What a running repair is told and what it reports (P85-02).
+pub struct RepairControl<'a> {
+    /// Raised when the owner asks the repair to stop. The platform honours it where its tool can
+    /// stop safely (the DISM API's cancel event); a stop after changes began needs recovery.
+    pub cancel: &'a Arc<AtomicBool>,
+    /// The running tool's own progress, from its callback: `None` when it cannot say.
+    pub progress: &'a mut (dyn FnMut(Option<u32>) + Send),
+}
+
 pub trait RepairPlatform: Send + Sync + 'static {
     /// Runs the read-only checks, reporting each through `progress`, and stops with
     /// [`RepairError::Cancelled`] once `cancel` is raised.
@@ -187,6 +204,7 @@ pub trait RepairPlatform: Send + Sync + 'static {
     fn repair(
         &self,
         action: &SystemRepairAction,
+        control: &mut RepairControl<'_>,
         begin_mutation: &mut dyn FnMut() -> Result<()>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()>;
@@ -236,6 +254,9 @@ pub(crate) fn trim_to_tail(detail: &mut String, limit: usize) {
 }
 
 pub mod bounded;
+pub mod cbs;
+pub mod dism;
+mod process;
 
 #[cfg(windows)]
 mod dism_api;
@@ -260,6 +281,7 @@ impl RepairPlatform for WindowsRepairPlatform {
     fn repair(
         &self,
         _action: &SystemRepairAction,
+        _control: &mut RepairControl<'_>,
         _begin_mutation: &mut dyn FnMut() -> Result<()>,
         _emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()> {
@@ -529,10 +551,9 @@ impl RepairCoordinator {
         Ok(current)
     }
 
-    /// P78-03: asks the owner's running repair plan not to cross the mutation barrier. Before the
-    /// barrier the repair stops with nothing changed; after it this stops nothing, because the
-    /// running tool cannot be stopped yet (P85) and a repair reported as cancelled while it runs
-    /// would be a guess. Another owner's or an unknown plan is refused; a plan that is not the
+    /// Asks the owner's running repair plan to stop at its first safe boundary. Before mutation
+    /// nothing changes; afterwards the servicing lease stays held until the current tool returns,
+    /// and no subsequent step starts. A stopped mutation remains unverified. Another owner's or an unknown plan is refused; a plan that is not the
     /// running one is left as it is, so an older plan's id cannot cancel the one that replaced it.
     pub fn cancel_repair(
         &self,
@@ -1124,7 +1145,7 @@ fn check_to_fact(check: &RepairCheck) -> Option<RepairFact> {
         }
         "required-service" => {
             let state = match check.result_code.as_str() {
-                "ServiceRunning" => FactState::Healthy,
+                "ServiceRunning" | "ServiceDemandStopped" => FactState::Healthy,
                 "ServiceStopped" => FactState::Stopped,
                 "ServiceDisabled" => FactState::Disabled,
                 _ => FactState::Unknown,
@@ -1285,7 +1306,7 @@ fn run_worker(
     owner_principal_key: &str,
     telemetry: &ProgressTelemetryStore,
     plan_id: &str,
-    cancel: &AtomicBool,
+    cancel: &Arc<AtomicBool>,
 ) -> Result<()> {
     let action = engine.system_repair_action(plan_id)?;
     timeline_event(
@@ -1429,7 +1450,31 @@ fn run_worker(
         let _ = update_exec(db, plan_id, stage, percent, &step.title, mutated, None);
     };
 
-    if let Err(error) = platform.repair(&action, &mut begin_mutation, &mut emit) {
+    // The running tool's own percent (P85-02). It lands in the live telemetry only: a callback must not
+    // touch the database, and only a change is published. The tool's 0-100 is mapped into the
+    // executing band so the stage values that follow (verification 80, done 100) stay in order.
+    let mut last_percent: Option<Option<u32>> = None;
+    let mut tool_progress = |percent: Option<u32>| {
+        if last_percent == Some(percent) {
+            return;
+        }
+        last_percent = Some(percent);
+        telemetry.publish(aethercore_operation_kernel::ProgressTelemetry {
+            owner_principal_key: owner_principal_key.into(),
+            plan_id: plan_id.into(),
+            stage: "Executing".into(),
+            progress_known: percent.is_some(),
+            overall_percent: percent.map_or(0, |p| 10 + p.min(100) * 65 / 100),
+            current_item_id: String::new(),
+            detail: "Running supported Windows repair tools".into(),
+            ..Default::default()
+        });
+    };
+    let mut control = RepairControl {
+        cancel,
+        progress: &mut tool_progress,
+    };
+    if let Err(error) = platform.repair(&action, &mut control, &mut begin_mutation, &mut emit) {
         timeline_event(
             db,
             owner_principal_key,
@@ -1452,6 +1497,11 @@ fn run_worker(
         );
     }
 
+    // A tool may finish successfully after declining cancellation. Stop the workflow here;
+    // another mutation or verification is never started on a cancelled plan.
+    if cancel.load(Ordering::SeqCst) {
+        return fail_repair(engine, db, plan_id, RepairError::RepairStopped);
+    }
     engine.transition(
         plan_id,
         PlanState::Executing,
@@ -1986,5 +2036,33 @@ mod update_client_tests {
             ..Default::default()
         }));
         assert_eq!(unknown.stage, "Unknown");
+    }
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn service_start_verdict(running: bool, start_type: u32) -> &'static str {
+    if running {
+        return "ServiceRunning";
+    }
+    match start_type {
+        2 => "ServiceStopped", // SERVICE_AUTO_START, only after dependent update failure
+        3 => "ServiceDemandStopped", // trigger/manual-start idle is normal
+        4 => "ServiceDisabled", // policy is retained, never enabled automatically
+        _ => "ServiceUnknown",
+    }
+}
+
+#[cfg(test)]
+mod p85_service_tests {
+    #[test]
+    fn a_stopped_demand_start_or_disabled_service_is_not_a_start_candidate() {
+        assert_eq!(
+            super::service_start_verdict(false, 3),
+            "ServiceDemandStopped"
+        );
+        assert_eq!(super::service_start_verdict(false, 4), "ServiceDisabled");
+        assert_eq!(super::service_start_verdict(false, 2), "ServiceStopped");
+        assert_eq!(super::service_start_verdict(true, 3), "ServiceRunning");
+        assert_eq!(super::service_start_verdict(false, 999), "ServiceUnknown");
     }
 }

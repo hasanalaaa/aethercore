@@ -64,3 +64,18 @@ test('the screen says when the connection is lost, and the cancel names its asse
   const command = desktop.slice(desktop.indexOf('async fn cancel_repair_assessment'), desktop.indexOf('async fn create_system_repair_plan'));
   assert.ok(command.includes('assessment_id: String') && command.includes('CancelRepairAssessmentRequest { assessment_id'), 'the desktop drops the assessment id');
 });
+
+// P85-03: a requested stop remains pending until the service reaches a safe boundary.
+test('repair stop binds to the shown plan and says safe-boundary pending in both languages', () => {
+  for (const key of ['repair.stopSafely', 'repair.stopRequested', 'repair.executionStarted']) {
+    assert.ok(hasMessageKey(key), key);
+    assert.match(td(key as never, 'ar'), arabic, key);
+  }
+  const page = readFileSync(new URL('../src/features/repair/RepairPage.svelte', import.meta.url), 'utf8');
+  assert.match(page, /snapshot.connected[\s\S]*cancelSystemRepair/);
+  assert.match(page, /repair.stopRequested/);
+  const controller = readFileSync(new URL('../src/features/repair/controller.ts', import.meta.url), 'utf8');
+  assert.match(controller, /cancel_system_repair',\s*\{\s*planId/);
+  const desktop = readFileSync(new URL('../../desktop/src/main.rs', import.meta.url), 'utf8');
+  assert.match(desktop, /CancelSystemRepairRequest\s*\{\s*plan_id/);
+});

@@ -38,7 +38,17 @@ pub struct WindowsCleanupPlatform;
 
 impl CleanupPlatform for WindowsCleanupPlatform {
     fn scan(&self) -> Result<Vec<CleanupCandidate>> {
-        scan_impl(true)
+        scan_impl(&[])
+    }
+
+    fn scan_for_owner(&self, roots: &[PathBuf]) -> Result<(Vec<CleanupCandidate>, Vec<String>)> {
+        let candidates = scan_impl(roots)?;
+        // ponytail: retain all crash evidence until unresolved-incident linkage is available.
+        let mut warnings = vec!["Crash reports and dumps are excluded because their unresolved-incident status is not known.".into()];
+        if roots.is_empty() {
+            warnings.push("The caller's profile root was unavailable; personal temporary files and shader caches were not scanned.".into());
+        }
+        Ok((candidates, warnings))
     }
 
     /// The real cross-process lease: the installer-provisioned ProgramData lock file,
@@ -52,7 +62,7 @@ impl CleanupPlatform for WindowsCleanupPlatform {
     }
 
     fn scan_passive(&self) -> Result<Vec<CleanupCandidate>> {
-        let mut output = scan_impl(false)?;
+        let mut output = scan_impl(&[])?;
         output.retain(|candidate| !candidate.requires_explicit_confirmation);
         Ok(output)
     }
@@ -69,19 +79,19 @@ impl CleanupPlatform for WindowsCleanupPlatform {
         Ok((
             deleted,
             skipped,
-            format!("{} provider completed", action.provider),
+            if skipped > 0 {
+                "Files that could not be safely removed were skipped; they are not counted as reclaimed.".into()
+            } else {
+                format!("{} provider completed", action.provider)
+            },
         ))
     }
 }
 
-fn scan_impl(include_profile_roots: bool) -> Result<Vec<CleanupCandidate>> {
+fn scan_impl(owner_roots: &[PathBuf]) -> Result<Vec<CleanupCandidate>> {
     let mut output = Vec::new();
     let system_root = PathBuf::from(
         std::env::var_os("SystemRoot").unwrap_or_else(|| OsStr::new(r"C:\Windows").to_os_string()),
-    );
-    let program_data = PathBuf::from(
-        std::env::var_os("ProgramData")
-            .unwrap_or_else(|| OsStr::new(r"C:\ProgramData").to_os_string()),
     );
 
     push_root(
@@ -95,88 +105,36 @@ fn scan_impl(include_profile_roots: bool) -> Result<Vec<CleanupCandidate>> {
         false,
     )?;
 
-    let users = system_root
-        .parent()
-        .unwrap_or(Path::new(r"C:\"))
-        .join("Users");
-    if include_profile_roots && let Ok(entries) = std::fs::read_dir(&users) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if matches!(
-                name.to_ascii_lowercase().as_str(),
-                "public" | "default" | "default user" | "all users"
-            ) {
-                continue;
-            }
-            let profile = entry.path();
-            push_root(
-                &mut output,
-                "UserTemp",
-                &format!("{name} temporary files"),
-                "Profile-specific temp files older than seven days. Because the service cannot infer that this is the interactive caller’s profile, this category requires explicit review.",
-                &profile.join(r"AppData\Local\Temp"),
-                Duration::from_secs(7 * 24 * 3600),
-                false,
-                true,
-            )?;
-            push_root(
-                &mut output,
-                "ShaderCache",
-                &format!("{name} Direct3D shader cache"),
-                "Profile-specific rebuildable Direct3D cache files older than 72 hours. This category requires explicit review.",
-                &profile.join(r"AppData\Local\D3DSCache"),
-                Duration::from_secs(72 * 3600),
-                false,
-                true,
-            )?;
-        }
-    }
-
-    if include_profile_roots {
-        push_root(
-            &mut output,
-            "WER",
-            "Windows Error Reporting archives",
-            "Archived Windows Error Reporting files. Keep these when diagnosing crashes.",
-            &program_data.join(r"Microsoft\Windows\WER\ReportArchive"),
-            Duration::ZERO,
-            false,
-            true,
-        )?;
-        push_root(
-            &mut output,
-            "WER",
-            "Windows Error Reporting queue",
-            "Queued Windows Error Reporting files. Keep these when diagnosing crashes.",
-            &program_data.join(r"Microsoft\Windows\WER\ReportQueue"),
-            Duration::ZERO,
-            false,
-            true,
-        )?;
-        push_root(
-            &mut output,
-            "CrashDumps",
-            "Windows minidumps",
-            "Windows crash minidumps. Keep these when diagnosing BSODs.",
-            &system_root.join("Minidump"),
-            Duration::ZERO,
-            false,
-            true,
-        )?;
-
-        if let Some(memory_dump) = single_file(&system_root.join("MEMORY.DMP"), &system_root) {
-            let (files, truncated) = cap_files(vec![memory_dump]);
-            output.push(candidate(
-                "CrashDumps",
-                "Windows memory dump",
-                "Full kernel memory dump. Keep it when diagnosing crashes.",
-                files,
-                false,
-                true,
-                "Files",
-                truncated,
+    for profile in owner_roots {
+        use std::path::{Component, Prefix};
+        if !profile.is_absolute()
+            || !matches!(profile.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)))
+        {
+            return Err(CleanerError::Safety(
+                "The caller's profile root is not a trusted local path.".into(),
             ));
         }
+        reject_ancestor_reparse_chain(profile)?;
+        push_root(
+            &mut output,
+            "UserTemp",
+            "User temporary files",
+            "Temporary files older than seven days in the calling owner's profile. Requires explicit review.",
+            &profile.join(r"AppData\Local\Temp"),
+            Duration::from_secs(7 * 24 * 3600),
+            false,
+            true,
+        )?;
+        push_root(
+            &mut output,
+            "ShaderCache",
+            "Direct3D shader cache",
+            "Optional shader cache older than 72 hours. Deleting it can cause recompilation and temporary stutter.",
+            &profile.join(r"AppData\Local\D3DSCache"),
+            Duration::from_secs(72 * 3600),
+            false,
+            true,
+        )?;
     }
 
     output.retain(|candidate| candidate.reclaimable_bytes > 0);
@@ -249,15 +207,6 @@ fn scan_root(root: &Path, age: Duration) -> Result<Vec<CleanupFileEvidence>> {
         }
     }
     Ok(files)
-}
-
-fn single_file(path: &Path, root: &Path) -> Option<CleanupFileEvidence> {
-    let (_root_guard, root_final_path) = open_stable_root(root).ok()?;
-    let metadata = std::fs::symlink_metadata(path).ok()?;
-    if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
-        return None;
-    }
-    evidence_from_handle(path, root, &root_final_path).ok()
 }
 
 fn reject_reparse(path: &Path) -> Result<()> {
@@ -360,6 +309,11 @@ fn query_handle_evidence(handle: HANDLE) -> Result<HandleEvidence> {
     let mut basic = BY_HANDLE_FILE_INFORMATION::default();
     unsafe { GetFileInformationByHandle(handle, &mut basic) }
         .map_err(|error| CleanerError::Safety(error.to_string()))?;
+    if basic.nNumberOfLinks != 1 {
+        return Err(CleanerError::Safety(
+            "cleanup target has multiple hard links".into(),
+        ));
+    }
     let mut file_id = FILE_ID_INFO::default();
     unsafe {
         GetFileInformationByHandleEx(
@@ -425,7 +379,7 @@ fn delete_evidence(file: &CleanupFileEvidence) -> Result<u64> {
         CreateFileW(
             PCWSTR(wide_path.as_ptr()),
             DELETE_ACCESS | FILE_READ_ATTRIBUTES.0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            windows::Win32::Storage::FileSystem::FILE_SHARE_MODE(0),
             None,
             OPEN_EXISTING,
             FILE_FLAGS_AND_ATTRIBUTES(FILE_ATTRIBUTE_NORMAL.0 | FILE_FLAG_OPEN_REPARSE_POINT.0),
@@ -581,5 +535,44 @@ mod phase9_tests {
         assert_eq!(deleted, 4);
         assert!(!path.exists());
         let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[cfg(test)]
+mod p85_tests {
+    use super::*;
+    #[test]
+    fn a_hard_link_added_after_preview_cannot_be_deleted() {
+        let root =
+            std::env::temp_dir().join(format!("aether-p85-hardlink-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("candidate.tmp");
+        std::fs::write(&path, b"AAAA").unwrap();
+        let (_, final_root) = open_stable_root(&root).unwrap();
+        let approved = evidence_from_handle(&path, &root, &final_root).unwrap();
+        std::fs::hard_link(&path, root.join("alias.tmp")).unwrap();
+        assert!(
+            delete_evidence(&approved).is_err(),
+            "a hardlinked target was accepted for deletion"
+        );
+        assert!(path.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn an_open_file_is_skipped_instead_of_claimed_reclaimed() {
+        let root = std::env::temp_dir().join(format!("aether-p85-locked-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("candidate.tmp");
+        std::fs::write(&path, b"AAAA").unwrap();
+        let (_, final_root) = open_stable_root(&root).unwrap();
+        let approved = evidence_from_handle(&path, &root, &final_root).unwrap();
+        let open = std::fs::File::open(&path).unwrap();
+        assert!(
+            delete_evidence(&approved).is_err(),
+            "an open file was claimed deleted"
+        );
+        assert!(path.exists());
+        drop(open);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

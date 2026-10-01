@@ -288,7 +288,9 @@ impl From<RepairError> for ServiceError {
             | RepairError::StaleAssessment
             | RepairError::RebootPending
             | RepairError::Cancelled
-            | RepairError::RepairCancelled => {
+            | RepairError::RepairCancelled
+            | RepairError::RepairStopped
+            | RepairError::RepairTimedOut => {
                 Self::conflict("repair", "repair.stateConflict", detail)
             }
             RepairError::UnsupportedPlatform

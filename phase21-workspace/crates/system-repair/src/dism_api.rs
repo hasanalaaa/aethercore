@@ -18,7 +18,7 @@ use windows::{
     core::PCWSTR,
 };
 
-use super::{RepairCheck, RepairError, Result};
+use super::{RepairCheck, RepairControl, RepairError, Result, dism};
 
 const DISM_LOG_ERRORS_WARNINGS_INFO: i32 = 2;
 const DISM_ONLINE_IMAGE: &str = "DISM_{53BFAE52-B167-4E2F-A258-0A37B57FF845}";
@@ -39,6 +39,15 @@ unsafe extern "system" {
         session: *mut u32,
     ) -> i32;
     fn DismCloseSession(session: u32) -> i32;
+    fn DismRestoreImageHealth(
+        session: u32,
+        source_paths: *const *const u16,
+        source_path_count: u32,
+        limit_access: i32,
+        cancel_event: isize,
+        progress: Option<unsafe extern "system" fn(u32, u32, *mut c_void)>,
+        user_data: *mut c_void,
+    ) -> i32;
     fn DismCheckImageHealth(
         session: u32,
         scan_image: i32,
@@ -54,23 +63,29 @@ unsafe extern "system" {
 struct CancelWatcher {
     event: OwnedHandle,
     done: Arc<AtomicBool>,
+    timed_out: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl CancelWatcher {
-    fn start(cancel: &Arc<AtomicBool>) -> Result<Self> {
+    fn start(cancel: &Arc<AtomicBool>, deadline: Option<std::time::Duration>) -> Result<Self> {
         let event = OwnedHandle::new(
             unsafe { CreateEventW(None, true, false, PCWSTR::null()) }
                 .map_err(|error| RepairError::Command(format!("CreateEventW failed: {error}")))?,
         );
         let raw = event.get().0 as isize;
         let done = Arc::new(AtomicBool::new(false));
-        let (thread_done, cancel) = (done.clone(), cancel.clone());
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let (thread_done, cancel, expired) = (done.clone(), cancel.clone(), timed_out.clone());
+        let began = std::time::Instant::now();
         let thread = std::thread::Builder::new()
             .name("aether-dism-cancel".into())
             .spawn(move || {
                 while !thread_done.load(Ordering::SeqCst) {
-                    if cancel.load(Ordering::SeqCst) {
+                    // The owner's cancel, or the deadline: either raises DISM's own cancel event, once.
+                    let passed_deadline = deadline.is_some_and(|limit| began.elapsed() >= limit);
+                    if cancel.load(Ordering::SeqCst) || passed_deadline {
+                        expired.store(passed_deadline, Ordering::SeqCst);
                         // SAFETY: the event is closed only after this thread joins (`Drop`).
                         let _ = unsafe { SetEvent(HANDLE(raw as *mut c_void)) };
                         return;
@@ -82,6 +97,7 @@ impl CancelWatcher {
         Ok(Self {
             event,
             done,
+            timed_out,
             thread: Some(thread),
         })
     }
@@ -138,6 +154,7 @@ fn check_image_health(
     title: &str,
     cancel: Option<&Arc<AtomicBool>>,
 ) -> Result<RepairCheck> {
+    let _session_guard = dism::acquire_session()?;
     let mut lifecycle = DismLifecycle {
         initialized: false,
         session: 0,
@@ -169,7 +186,9 @@ fn check_image_health(
     }
 
     let mut health = -1i32;
-    let watcher = cancel.map(CancelWatcher::start).transpose()?;
+    let watcher = cancel
+        .map(|flag| CancelWatcher::start(flag, None))
+        .transpose()?;
     let hr = unsafe {
         DismCheckImageHealth(
             lifecycle.session,
@@ -224,6 +243,95 @@ fn check_image_health(
         result_code: result_code.into(),
         exit_code: hr,
         detail: detail.into(),
+        log_hint: "%WINDIR%\\Logs\\DISM\\dism.log".into(),
+    })
+}
+
+/// How long `DismRestoreImageHealth` may run before DISM's own cancel event is raised (once). A first
+/// bound, not a measurement; past it the image is unknown until verified again.
+const RESTORE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
+
+/// P85-02: repairs the online component store through the DISM API, from local files only
+/// (`LimitAccess = TRUE`: Windows Update is never asked, and no source path is given), reporting the
+/// API's own progress and stopping through its cancel event when the owner cancels or the deadline
+/// passes. The API returning success is mutation evidence only; the plan still verifies afterwards.
+pub fn restore_online_image_health(control: &mut RepairControl<'_>) -> Result<RepairCheck> {
+    struct Sink<'a>(std::sync::Mutex<&'a mut (dyn FnMut(Option<u32>) + Send)>);
+
+    // A callback must not panic across the FFI boundary or touch anything shared: it forwards the
+    // percent (or `None` when the API gives no total) to the coordinator's live telemetry.
+    unsafe extern "system" fn on_progress(current: u32, total: u32, user_data: *mut c_void) {
+        // SAFETY: `user_data` is the `Sink` below, alive for the whole `DismRestoreImageHealth` call.
+        let sink = unsafe { &*(user_data as *const Sink<'_>) };
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Ok(mut progress) = sink.0.try_lock() {
+                progress(dism::progress_percent(current, total));
+            }
+        }));
+    }
+
+    let _session_guard = dism::acquire_session()?;
+    let mut lifecycle = DismLifecycle {
+        initialized: false,
+        session: 0,
+    };
+    let init = unsafe { DismInitialize(DISM_LOG_ERRORS_WARNINGS_INFO, ptr::null(), ptr::null()) };
+    if init != S_OK {
+        return Err(RepairError::Command(format!(
+            "DismInitialize failed: HRESULT=0x{:08X}",
+            init as u32
+        )));
+    }
+    lifecycle.initialized = true;
+    let mut online = DISM_ONLINE_IMAGE.encode_utf16().collect::<Vec<_>>();
+    online.push(0);
+    let open = unsafe {
+        DismOpenSession(
+            online.as_ptr(),
+            ptr::null(),
+            ptr::null(),
+            &mut lifecycle.session,
+        )
+    };
+    if open != S_OK {
+        return Err(RepairError::Command(format!(
+            "DismOpenSession failed: HRESULT=0x{:08X}",
+            open as u32
+        )));
+    }
+
+    (control.progress)(None);
+    let watcher = CancelWatcher::start(control.cancel, Some(RESTORE_DEADLINE))?;
+    let mut sink = Sink(std::sync::Mutex::new(&mut *control.progress));
+    let hr = unsafe {
+        DismRestoreImageHealth(
+            lifecycle.session,
+            ptr::null(),
+            0,
+            1, // TRUE: LimitAccess disables Windows Update source lookup.
+            watcher.event(),
+            Some(on_progress),
+            &mut sink as *mut Sink<'_> as *mut c_void,
+        )
+    };
+    let timed_out = watcher.timed_out.load(Ordering::SeqCst);
+    drop(watcher);
+    if timed_out {
+        return Err(RepairError::RepairTimedOut);
+    }
+    if control.cancel.load(Ordering::SeqCst) {
+        return Err(RepairError::RepairStopped);
+    }
+    if hr != S_OK {
+        return Err(dism::restore_error(hr));
+    }
+    Ok(RepairCheck {
+        id: "dism-restore".into(),
+        title: "DISM RestoreHealth".into(),
+        stage: "Completed".into(),
+        result_code: "MutationSucceeded".into(),
+        exit_code: 0,
+        detail: "DISM RestoreHealth completed. This is mutation evidence only; component-store health must still be verified.".into(),
         log_hint: "%WINDIR%\\Logs\\DISM\\dism.log".into(),
     })
 }

@@ -201,8 +201,9 @@ impl DeepScanBackend for ExistingSubsystemBackend {
             .reads
             .try_acquire(ReadWorkload::CleanupDiscovery)
             .map_err(|_| SourceError::Budget)?;
+        // No authenticated token roots on this background source: personal locations stay unavailable.
         self.cleanup
-            .start_scan_with_lease(owner, lease)
+            .start_scan_with_lease(owner, &[], lease)
             .map_err(|e| SourceError::Unavailable(e.to_string()))?;
         wait(
             token,

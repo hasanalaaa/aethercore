@@ -6,6 +6,8 @@ import { serviceInvoke } from '../../platform/service-client';
 import { patchStreamState, streamState } from '../../platform/stream-state';
 import { settleAssessment } from './settle';
 
+export const repairStopRequested = writable('');
+
 export const repairUi = writable({ includeDiskScan: true, planDiskScan: null as boolean | null, reviewOpen: false });
 
 export function setIncludeDiskScan(includeDiskScan: boolean): void { repairUi.update((state) => ({ ...state, includeDiskScan })); }
@@ -61,4 +63,20 @@ export async function authorizeAndRepair(): Promise<void> {
 export function repairActive(): boolean {
   const status = get(streamState).repairStatus;
   return !!status && !['Completed', 'Failed'].includes(status.planState);
+}
+
+/** The acknowledgement says only that a stop was requested; events settle the actual outcome. */
+export async function cancelSystemRepair(): Promise<void> {
+  const status = get(streamState).repairStatus;
+  if (!status || !repairActive()) return;
+  const planId = status.planId;
+  repairStopRequested.set(planId);
+  await runBusy(async () => {
+    try {
+      await serviceInvoke<SystemRepairStatus | null>('cancel_system_repair', { planId });
+    } catch (error) {
+      repairStopRequested.set('');
+      throw error;
+    }
+  });
 }
