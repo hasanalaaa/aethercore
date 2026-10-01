@@ -349,8 +349,7 @@ pub fn expand_wildcard_path(pattern: &str) -> Result<Vec<String>, String> {
 /// A fresh query per tick costs microseconds and avoids cross-tick state entirely, which keeps
 /// the engine restartable and deterministic under audit. Two `collect` calls are needed for
 /// rate counters to produce a delta; both happen inside this single tick window.
-fn sample_cpu(partial: &mut Vec<CollectorFault>, interval: Duration) -> Reading<CpuSample> {
-    let _ = interval;
+fn sample_cpu(partial: &mut Vec<CollectorFault>) -> Reading<CpuSample> {
     let unavailable = |detail: &str, kind: &str| {
         Reading::unavailable(CollectorFault {
             collector: "cpu".into(),
@@ -369,11 +368,13 @@ fn sample_cpu(partial: &mut Vec<CollectorFault>, interval: Duration) -> Reading<
     if !query.collect() {
         return unavailable("first PDH collection failed", "ProviderFailure");
     }
+    let started = std::time::Instant::now();
     // Rate counters need a second observation inside the same tick.
-    std::thread::sleep(Duration::from_millis(120).min(Duration::from_millis(100)));
+    std::thread::sleep(Duration::from_millis(100));
     if !query.collect() {
         return unavailable("second PDH collection failed", "ProviderFailure");
     }
+    let elapsed = started.elapsed();
     let read_bp = |counter: &Option<CounterHandle>| -> Option<u32> {
         counter.as_ref().and_then(|c| c.read_percent_bp())
     };
@@ -418,16 +419,21 @@ fn sample_cpu(partial: &mut Vec<CollectorFault>, interval: Duration) -> Reading<
         });
     }
     Reading::from_evidence(
-        Some(CpuSample {
-            // Per-processor breakdown has never been written on Windows
-            // (§20.1.3(b)); the aggregate is what this provider measures.
+        CpuSample {
+            // This provider measures the aggregate, never per-processor values.
             per_processor_busy_bp: Vec::new(),
             total_busy_bp,
             dpc_isr_busy_bp: dpc_bp.saturating_add(isr_bp).min(10_000),
             context_switches_per_sec,
             processor_queue_length_x100,
-        }),
-        || unreachable_fault("cpu"),
+            sample_elapsed_ms: None,
+        }
+        .measured_over(elapsed),
+        || CollectorFault {
+            collector: "cpu".into(),
+            kind: "ProviderFailure".into(),
+            detail: "CPU observation window was unavailable".into(),
+        },
     )
 }
 
@@ -977,7 +983,7 @@ impl PerfPlatform for WindowsPerfPlatform {
         // names). Whole-subsystem availability is carried by the `Reading`s and
         // published by `into_snapshot`, which is the only path to a snapshot.
         let mut partial: Vec<CollectorFault> = Vec::new();
-        let cpu = sample_cpu(&mut partial, interval);
+        let cpu = sample_cpu(&mut partial);
         let power = sample_power(&mut partial);
         let memory = sample_memory(&mut partial);
         let storage = sample_storage(&mut partial);

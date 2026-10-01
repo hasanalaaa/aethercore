@@ -1,4 +1,4 @@
-import type { CareRunStatus, CleanupSnapshot } from '../../lib/contracts';
+import type { CarePreview, CareRunStatus, CleanupCandidate, CleanupSnapshot } from '../../lib/contracts';
 
 /**
  * DBT-P75-045: the service approves the care plan it composes when the owner clicks, and that
@@ -29,15 +29,31 @@ export function isPlanChanged(error: unknown): boolean {
   return String(error).includes('care.error.planChanged');
 }
 
-export type CareEmptyReason = { kind: 'noScan' } | { kind: 'nothingEligible'; optIn: string[] } | { kind: 'noPlan' };
+/** Whether the care plan was read: an unread plan is neither empty nor a reason to run a scan (P79-03). */
+export type CareLoad = 'idle' | 'loading' | 'failed' | 'loaded';
+
+export type CareEmptyReason = { kind: 'unavailable' } | { kind: 'noScan' } | { kind: 'nothingEligible'; optIn: string[] } | { kind: 'noPlan' };
 
 /**
  * P76 (DBT-P76-008): why a care plan has no steps, from the cleanup scan care draws on. Care
  * runs only the default, automatic categories; the rest need the owner's explicit opt-in in
  * Deep Clean, and are listed by title so the panel can say so.
  */
-export function careEmptyReason(scan: CleanupSnapshot): CareEmptyReason {
+export function careEmptyReason(scan: CleanupSnapshot, load: CareLoad = 'loaded'): CareEmptyReason {
+  if (load === 'failed') return { kind: 'unavailable' };
   if (scan.state !== 'Ready') return { kind: 'noScan' };
   if (scan.candidates.some((c) => c.selectedByDefault && !c.requiresExplicitConfirmation)) return { kind: 'noPlan' };
   return { kind: 'nothingEligible', optIn: scan.candidates.filter((c) => c.requiresExplicitConfirmation).map((c) => c.title) };
+}
+
+/** What the page does with a prepared preview: open the review, wait for the local scan, or say why not. */
+export function afterPrepare(preview: CarePreview): 'review' | 'wait' | 'explain' {
+  const reason = preview.domains.find((domain) => domain.domain === 'cleanup')?.reason;
+  if (reason === 'scanning') return 'wait';
+  return reason === 'ready' && approvedStepCount(preview.status) > 0 ? 'review' : 'explain';
+}
+
+/** The candidates the service prepares for care: the same rule as `decide_cleanup` in the service. */
+export function eligibleCandidates(scan: CleanupSnapshot): CleanupCandidate[] {
+  return scan.candidates.filter((candidate) => candidate.selectedByDefault && !candidate.requiresExplicitConfirmation);
 }

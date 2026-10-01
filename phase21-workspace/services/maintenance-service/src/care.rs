@@ -129,6 +129,164 @@ pub fn compose_plan(
     }))
 }
 
+/// How old a cleanup scan may be and still be prepared into a plan. A first bound, not a
+/// measurement: an older result is scanned again, never turned into a plan (P79-04A).
+const SCAN_FRESHNESS_MS: i64 = 15 * 60 * 1000;
+
+/// What `PrepareCarePreview` does next, from the cleanup scan the owner has.
+#[derive(Debug, PartialEq, Eq)]
+enum CleanupStep {
+    /// No scan for this owner.
+    StartScan,
+    Scanning,
+    Unavailable,
+    /// The scan is too old to prepare from.
+    Stale,
+    /// Default candidates that need no extra confirmation, how many more wait for the owner, and
+    /// the scan they come from (its id, epoch and completion time).
+    Prepare {
+        eligible: Vec<String>,
+        review_required: u32,
+        scan_id: String,
+        inventory_epoch: u64,
+        completed_unix_ms: i64,
+    },
+    Nothing {
+        review_required: u32,
+    },
+}
+
+fn decide_cleanup(
+    snapshot: Option<&aethercore_cleaner::CleanupSnapshot>,
+    now_ms: i64,
+) -> CleanupStep {
+    use aethercore_cleaner::CleanupScanState;
+    let Some(snapshot) = snapshot else {
+        return CleanupStep::StartScan;
+    };
+    match snapshot.state {
+        CleanupScanState::Idle => CleanupStep::StartScan,
+        CleanupScanState::Scanning => CleanupStep::Scanning,
+        CleanupScanState::Failed => CleanupStep::Unavailable,
+        CleanupScanState::Ready if now_ms - snapshot.completed_unix_ms > SCAN_FRESHNESS_MS => {
+            CleanupStep::Stale
+        }
+        CleanupScanState::Ready => {
+            let eligible: Vec<String> = snapshot
+                .candidates
+                .iter()
+                .filter(|c| c.selected_by_default && !c.requires_explicit_confirmation)
+                .map(|c| c.candidate_id.clone())
+                .collect();
+            let review_required = snapshot
+                .candidates
+                .iter()
+                .filter(|c| c.requires_explicit_confirmation)
+                .count() as u32;
+            if eligible.is_empty() {
+                CleanupStep::Nothing { review_required }
+            } else {
+                CleanupStep::Prepare {
+                    eligible,
+                    review_required,
+                    scan_id: snapshot.scan_id.clone(),
+                    inventory_epoch: snapshot.inventory_epoch,
+                    completed_unix_ms: snapshot.completed_unix_ms,
+                }
+            }
+        }
+    }
+}
+
+/// The preview plus why, per domain.
+pub(crate) struct PreparedPreview {
+    pub status: v1::CareRunStatus,
+    pub domains: Vec<v1::CareDomainEligibility>,
+}
+
+/// P79-04A (D5): prepares what One-Click Care could run, and says why when it cannot. Reads and
+/// prepares only - it never grants consent, deletes, or runs a domain. `start_scan` starts the
+/// local cleanup scan (and its event watcher); `preview` is the current care preview. Repeating it is
+/// safe: a fresh scan is not started again, and a cleanup plan already prepared is not stacked.
+pub(crate) fn prepare_preview(
+    cleaner: &aethercore_cleaner::CleanupEngine,
+    preview: &dyn Fn() -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError>,
+    owner_principal_key: &str,
+    now_ms: i64,
+    start_scan: &dyn Fn() -> Result<(), String>,
+) -> Result<PreparedPreview, aethercore_care_orchestrator::CareError> {
+    // Another owner's scan, or none, reads as no scan for this owner.
+    let snapshot = cleaner.snapshot_for_owner(owner_principal_key).ok();
+    let (reason, scanned, eligible_count, review_required) = match decide_cleanup(
+        snapshot.as_ref(),
+        now_ms,
+    ) {
+        CleanupStep::StartScan | CleanupStep::Stale => match start_scan() {
+            Ok(()) => ("scanning", 0, 0, 0),
+            Err(error) => {
+                tracing::warn!(error = %error, "care preview: the local cleanup scan could not start");
+                ("unavailable", 0, 0, 0)
+            }
+        },
+        CleanupStep::Scanning => ("scanning", 0, 0, 0),
+        CleanupStep::Unavailable => ("unavailable", 0, 0, 0),
+        CleanupStep::Nothing { review_required } => {
+            let scanned = snapshot.as_ref().map_or(0, |s| s.completed_unix_ms);
+            (
+                if review_required > 0 {
+                    "reviewRequired"
+                } else {
+                    "none"
+                },
+                scanned,
+                0,
+                review_required,
+            )
+        }
+        CleanupStep::Prepare {
+            eligible,
+            review_required,
+            scan_id,
+            inventory_epoch,
+            completed_unix_ms,
+        } => {
+            let prepared = preview()?
+                .steps
+                .iter()
+                .any(|step| step.domain_kind == "Cleanup");
+            let created = prepared
+                || match cleaner.create_plan(
+                    owner_principal_key,
+                    &scan_id,
+                    inventory_epoch,
+                    &eligible,
+                ) {
+                    Ok(_) => true,
+                    Err(error) => {
+                        tracing::warn!(error = %error, "care preview: the cleanup plan could not be prepared");
+                        false
+                    }
+                };
+            (
+                if created { "ready" } else { "unavailable" },
+                completed_unix_ms,
+                eligible.len() as u32,
+                review_required,
+            )
+        }
+    };
+    Ok(PreparedPreview {
+        status: preview()?,
+        domains: vec![v1::CareDomainEligibility {
+            domain: "cleanup".into(),
+            reason: reason.into(),
+            scanned_unix_ms: scanned,
+            eligible_candidates: eligible_count,
+            review_required_candidates: review_required,
+        }],
+    })
+}
+
 fn plan_kind_of(plan: &aethercore_persistence::PlanRecord) -> &'static str {
     // PlanRecord carries immutable_json whose actions tag the kind; the cheap stable
     // discriminator is the leading action tag inside the immutable document.
@@ -1046,5 +1204,294 @@ mod p75_care_consent_tests {
         drop((one, two));
         let _ = std::fs::remove_file(&one_path);
         let _ = std::fs::remove_file(&two_path);
+    }
+}
+
+/// P79-04A (D5): what `PrepareCarePreview` decides from the cleanup scan the owner has, and the
+/// orchestration around it. It reads and prepares only: a scan is local, a plan is the same
+/// unapproved cleanup plan Deep Clean makes, and nothing here grants consent or deletes.
+#[cfg(test)]
+mod p79_prepare_tests {
+    use super::*;
+    use aethercore_cleaner::{
+        CleanerError, CleanupCandidate, CleanupEngine, CleanupMutationLease, CleanupPlatform,
+        CleanupScanState, CleanupSnapshot,
+    };
+    use aethercore_operation_engine::{CleanupDeleteAction, OperationEngine};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const OWNER: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+    const NOW: i64 = 10_000_000;
+
+    fn candidate(id: &str, default: bool) -> CleanupCandidate {
+        CleanupCandidate {
+            candidate_id: id.into(),
+            provider: "test".into(),
+            title: id.into(),
+            description: String::new(),
+            reclaimable_bytes: 1024,
+            file_count: 1,
+            selected_by_default: default,
+            requires_explicit_confirmation: !default,
+            truncated: false,
+            special_kind: "Files".into(),
+            files: Vec::new(),
+        }
+    }
+
+    fn snapshot(
+        state: CleanupScanState,
+        completed: i64,
+        candidates: Vec<CleanupCandidate>,
+    ) -> CleanupSnapshot {
+        CleanupSnapshot {
+            scan_id: "scan-1".into(),
+            state,
+            inventory_epoch: 1,
+            started_unix_ms: completed,
+            completed_unix_ms: completed,
+            candidates,
+            ..CleanupSnapshot::default()
+        }
+    }
+
+    #[test]
+    fn what_a_scan_allows_is_decided_by_its_state_age_and_candidates() {
+        use CleanupStep::*;
+        assert_eq!(decide_cleanup(None, NOW), StartScan, "no scan: start one");
+        assert_eq!(
+            decide_cleanup(Some(&snapshot(CleanupScanState::Idle, 0, vec![])), NOW),
+            StartScan
+        );
+        assert_eq!(
+            decide_cleanup(Some(&snapshot(CleanupScanState::Scanning, 0, vec![])), NOW),
+            Scanning
+        );
+        assert_eq!(
+            decide_cleanup(Some(&snapshot(CleanupScanState::Failed, 0, vec![])), NOW),
+            Unavailable
+        );
+        let old = NOW - SCAN_FRESHNESS_MS - 1;
+        assert_eq!(
+            decide_cleanup(
+                Some(&snapshot(
+                    CleanupScanState::Ready,
+                    old,
+                    vec![candidate("a", true)]
+                )),
+                NOW
+            ),
+            Stale,
+            "an old result is scanned again, never turned into a plan"
+        );
+        let fresh = NOW - 1_000;
+        // "d" is selected by default yet needs the owner's own confirmation: never prepared for Auto.
+        let mut confirm_first = candidate("d", true);
+        confirm_first.requires_explicit_confirmation = true;
+        let mixed = vec![
+            candidate("a", true),
+            candidate("b", false),
+            candidate("c", true),
+            confirm_first,
+        ];
+        assert_eq!(
+            decide_cleanup(Some(&snapshot(CleanupScanState::Ready, fresh, mixed)), NOW),
+            Prepare {
+                eligible: vec!["a".into(), "c".into()],
+                review_required: 2,
+                scan_id: "scan-1".into(),
+                inventory_epoch: 1,
+                completed_unix_ms: fresh,
+            },
+            "only default, unconfirmed-free candidates are prepared; the rest wait for the owner"
+        );
+        assert_eq!(
+            decide_cleanup(
+                Some(&snapshot(
+                    CleanupScanState::Ready,
+                    fresh,
+                    vec![candidate("b", false)]
+                )),
+                NOW
+            ),
+            Nothing { review_required: 1 }
+        );
+        assert_eq!(
+            decide_cleanup(Some(&snapshot(CleanupScanState::Ready, fresh, vec![])), NOW),
+            Nothing { review_required: 0 }
+        );
+    }
+
+    /// A cleaner platform that reports fixed candidates and deletes nothing.
+    struct Fixed(Vec<CleanupCandidate>);
+
+    impl CleanupPlatform for Fixed {
+        fn scan(&self) -> aethercore_cleaner::Result<Vec<CleanupCandidate>> {
+            Ok(self.0.clone())
+        }
+        fn delete_action(
+            &self,
+            _: &CleanupDeleteAction,
+        ) -> aethercore_cleaner::Result<(u64, u64, String)> {
+            Err(CleanerError::Safety("a preview deletes nothing".into()))
+        }
+        fn acquire_mutation_lease(&self) -> aethercore_cleaner::Result<CleanupMutationLease> {
+            Ok(Box::new(()))
+        }
+    }
+
+    fn cleaner_with(
+        candidates: Vec<CleanupCandidate>,
+    ) -> (Arc<Database>, CleanupEngine, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!(
+            "aethercore-p79-prepare-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let db = Arc::new(Database::open(&path).expect("database"));
+        let engine = Arc::new(OperationEngine::new(db.clone()));
+        (
+            db.clone(),
+            CleanupEngine::with_platform(engine, db, Arc::new(Fixed(candidates))),
+            path,
+        )
+    }
+
+    fn finish_scan(cleaner: &CleanupEngine) {
+        let budget = aethercore_operation_kernel::ReadBudgetManager::new(4);
+        let lease = budget
+            .try_acquire(aethercore_operation_kernel::ReadWorkload::CleanupDiscovery)
+            .expect("lease");
+        cleaner
+            .start_scan_with_lease(OWNER, lease)
+            .expect("scan starts");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while cleaner.snapshot_for_owner(OWNER).expect("snapshot").state
+            == CleanupScanState::Scanning
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the scan never finished"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    fn preview(
+        db: &Arc<Database>,
+    ) -> impl Fn() -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError> + '_ {
+        move || {
+            Ok(status_proto(
+                "Idle",
+                "Preview",
+                false,
+                &compose_plan(db, OWNER)?,
+                &[],
+            ))
+        }
+    }
+
+    /// The whole journey the service runs: no scan starts one; a fresh scan with eligible candidates is
+    /// prepared into one unapproved plan, once; nothing is approved and nothing is deleted.
+    #[test]
+    fn a_fresh_scan_is_prepared_once_and_approves_nothing() {
+        let (db, cleaner, path) =
+            cleaner_with(vec![candidate("temp", true), candidate("downloads", false)]);
+        let started = AtomicUsize::new(0);
+        let start = || {
+            started.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        };
+        let first = prepare_preview(&cleaner, &preview(&db), OWNER, NOW, &start).expect("preview");
+        assert_eq!(
+            first.domains[0].reason, "scanning",
+            "no scan yet: one is started, nothing is claimed"
+        );
+        assert_eq!(started.load(Ordering::SeqCst), 1);
+        assert!(first.status.steps.is_empty());
+
+        finish_scan(&cleaner);
+        let now = cleaner.snapshot_for_owner(OWNER).unwrap().completed_unix_ms + 1_000;
+        let second = prepare_preview(&cleaner, &preview(&db), OWNER, now, &start).expect("preview");
+        assert_eq!(second.domains[0].reason, "ready");
+        assert_eq!(
+            (
+                second.domains[0].eligible_candidates,
+                second.domains[0].review_required_candidates
+            ),
+            (1, 1)
+        );
+        assert_eq!(
+            second
+                .status
+                .steps
+                .iter()
+                .filter(|s| s.domain_kind == "Cleanup")
+                .count(),
+            1,
+            "one cleanup step is prepared"
+        );
+        assert!(
+            !second.status.session_consent_granted,
+            "a preview writes no consent"
+        );
+        assert_eq!(
+            second.domains[0].scanned_unix_ms,
+            cleaner.snapshot_for_owner(OWNER).unwrap().completed_unix_ms
+        );
+
+        let third = prepare_preview(&cleaner, &preview(&db), OWNER, now, &start).expect("preview");
+        assert_eq!(
+            third.domains[0].reason, "ready",
+            "asking again still says it is ready"
+        );
+        assert_eq!(
+            third.status.steps.len(),
+            second.status.steps.len(),
+            "asking again does not stack a second plan"
+        );
+        assert_eq!(
+            third.status.plan_digest_sha256,
+            second.status.plan_digest_sha256
+        );
+        assert_eq!(
+            started.load(Ordering::SeqCst),
+            1,
+            "a fresh scan is not started again"
+        );
+
+        let later = now + SCAN_FRESHNESS_MS + 1;
+        let stale =
+            prepare_preview(&cleaner, &preview(&db), OWNER, later, &start).expect("preview");
+        assert_eq!(
+            stale.domains[0].reason, "scanning",
+            "a stale result asks for a new scan"
+        );
+        assert_eq!(started.load(Ordering::SeqCst), 2);
+        drop((db, cleaner));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_scan_that_cannot_start_or_finds_nothing_says_so() {
+        let (db, cleaner, path) = cleaner_with(vec![candidate("downloads", false)]);
+        let refused = prepare_preview(&cleaner, &preview(&db), OWNER, NOW, &|| {
+            Err("the read budget is taken".into())
+        })
+        .expect("preview");
+        assert_eq!(refused.domains[0].reason, "unavailable");
+        finish_scan(&cleaner);
+        let now = cleaner.snapshot_for_owner(OWNER).unwrap().completed_unix_ms + 1_000;
+        let review =
+            prepare_preview(&cleaner, &preview(&db), OWNER, now, &|| Ok(())).expect("preview");
+        assert_eq!(
+            review.domains[0].reason, "reviewRequired",
+            "files exist but need the owner's own choice"
+        );
+        assert!(
+            review.status.steps.is_empty(),
+            "nothing needing review is prepared to run"
+        );
+        drop((db, cleaner));
+        let _ = std::fs::remove_file(&path);
     }
 }

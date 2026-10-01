@@ -62,6 +62,21 @@ pub struct CpuSample {
     pub dpc_isr_busy_bp: u32,
     pub context_switches_per_sec: u64,
     pub processor_queue_length_x100: u64,
+    /// Internal CPU observation window, separate from the snapshot's poll cadence.
+    /// Missing means unknown, including synthetic and unavailable readings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_elapsed_ms: Option<u32>,
+}
+
+impl CpuSample {
+    pub fn measured_over(mut self, elapsed: Duration) -> Option<Self> {
+        let millis = elapsed.as_millis().min(u128::from(u32::MAX)) as u32;
+        if millis == 0 {
+            return None;
+        }
+        self.sample_elapsed_ms = Some(millis);
+        Some(self)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -158,6 +173,7 @@ pub struct CollectorFault {
 #[serde(rename_all = "camelCase")]
 pub struct PerfSnapshot {
     pub captured_unix_ms: i64,
+    /// Requested poll cadence; subsystems may observe different windows.
     pub interval_ms: u32,
     pub cpu: CpuSample,
     pub power: PowerSample,
@@ -504,6 +520,7 @@ impl PerfPlatform for SyntheticPerfPlatform {
                 dpc_isr_busy_bp: ((tick % 11) as u32) * 10,
                 context_switches_per_sec: 1_000 + tick % 500,
                 processor_queue_length_x100: u64::from(busy) / 100,
+                sample_elapsed_ms: None,
             },
             power: PowerSample::default(),
             memory: MemorySample {

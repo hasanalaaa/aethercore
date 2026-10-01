@@ -60,13 +60,17 @@ mod expected {
 mod expected {
     pub const WORLD_WRITABLE: &str = "a DACL with no write-class allow ACE for Everyone, \
          Authenticated Users, Users or Anonymous";
-    pub const SSH_DIR: &str = "allow ACEs on .ssh only for its owner, SYSTEM and Administrators";
-    pub const SSH_KEY: &str =
-        "allow ACEs on key material only for its owner, SYSTEM and Administrators";
+    pub const SSH_DIR: &str =
+        "allow ACEs on .ssh only for its owner or OS profile principal, SYSTEM and Administrators";
+    pub const SSH_KEY: &str = "allow ACEs on key material only for its owner or OS profile principal, SYSTEM and Administrators";
 }
 
 #[cfg(unix)]
-fn posture(_path: &Path, meta: &std::fs::Metadata) -> Result<Posture, String> {
+fn posture(
+    _path: &Path,
+    meta: &std::fs::Metadata,
+    _profile_owner: Option<&str>,
+) -> Result<Posture, String> {
     use std::os::unix::fs::PermissionsExt;
     let mode = meta.permissions().mode() & 0o7777;
     let shown = format!("mode={mode:04o}");
@@ -78,12 +82,16 @@ fn posture(_path: &Path, meta: &std::fs::Metadata) -> Result<Posture, String> {
 }
 
 #[cfg(windows)]
-fn posture(path: &Path, _meta: &std::fs::Metadata) -> Result<Posture, String> {
+fn posture(
+    path: &Path,
+    _meta: &std::fs::Metadata,
+    profile_owner: Option<&str>,
+) -> Result<Posture, String> {
     let (owner, dacl) = win::read_dacl(path)?;
     Ok(Posture {
         suid: None,
         world_writable: acl::world_writable(dacl.as_deref()),
-        exposed: acl::foreign_access(&owner, dacl.as_deref()),
+        exposed: acl::foreign_access(&owner, profile_owner, dacl.as_deref()),
     })
 }
 
@@ -173,8 +181,13 @@ mod acl {
         None
     }
 
-    /// Any allow ACE for a principal other than the owner, SYSTEM or Administrators.
-    pub fn foreign_access(owner: &str, dacl: Option<&[Ace]>) -> Option<String> {
+    /// Any allow ACE outside the file/profile owners and SYSTEM/Administrators.
+    /// Broad grants remain exposed even if presented as an owner.
+    pub fn foreign_access(
+        owner: &str,
+        profile_owner: Option<&str>,
+        dacl: Option<&[Ace]>,
+    ) -> Option<String> {
         let Some(aces) = dacl else {
             return Some(NULL_DACL.to_string());
         };
@@ -183,8 +196,10 @@ mod acl {
                 a.allow
                     && !a.inherit_only
                     && a.mask != 0
-                    && a.sid != owner
-                    && !TRUSTED.contains(&a.sid.as_str())
+                    && (BROAD.contains(&a.sid.as_str())
+                        || (a.sid != owner
+                            && profile_owner != Some(a.sid.as_str())
+                            && !TRUSTED.contains(&a.sid.as_str())))
             })
             .map(shown)
     }
@@ -308,11 +323,10 @@ mod win {
                 std::io::Error::from_raw_os_error(status as i32)
             ));
         }
-        let owner = if owner.is_null() {
-            String::new()
-        } else {
-            sid_string(owner)?
-        };
+        if owner.is_null() {
+            return Err("file owner SID unavailable".into());
+        }
+        let owner = sid_string(owner)?;
         if dacl.is_null() {
             return Ok((owner, None));
         }
@@ -341,9 +355,8 @@ mod win {
                 ACCESS_ALLOWED_CALLBACK => (true, true),
                 ACCESS_DENIED => (false, false),
                 ACCESS_DENIED_CALLBACK => (false, true),
-                // Object ACEs (directory-service objects) and audit or label ACEs
-                // grant no file access, and their SID sits at another offset.
-                _ => continue,
+                // An unsupported ACE cannot establish a clean file-access verdict.
+                _ => return Err(format!("unsupported DACL ACE type {ace_type}")),
             };
             let mask = unsafe { (*ace).mask };
             let sid = sid_string(unsafe { &raw const (*ace).sid_start }.cast())?;
@@ -428,7 +441,7 @@ pub fn audit_filesystem(roots: &[String]) -> Result<Vec<SecFinding>, String> {
             continue;
         };
         let shown = f.display().to_string();
-        let posture = match posture(f, &meta) {
+        let posture = match posture(f, &meta, None) {
             Ok(p) => p,
             Err(e) => {
                 unreadable.push(format!("{shown}: {e}"));
@@ -486,7 +499,17 @@ pub fn audit_filesystem(roots: &[String]) -> Result<Vec<SecFinding>, String> {
         if crate::scope::is_reparse_point(&meta) || !meta.is_dir() {
             continue;
         }
-        match posture(&ssh_dir, &meta) {
+        #[cfg(windows)]
+        let profile_owner = match crate::scope::profile_owner_sid(Path::new(root)) {
+            Ok(sid) => Some(sid),
+            Err(e) => {
+                unreadable.push(format!("{}: {e}", ssh_dir.display()));
+                continue;
+            }
+        };
+        #[cfg(unix)]
+        let profile_owner: Option<String> = None;
+        match posture(&ssh_dir, &meta, profile_owner.as_deref()) {
             Err(e) => unreadable.push(format!("{}: {e}", ssh_dir.display())),
             Ok(Posture {
                 exposed: Some(observed),
@@ -532,7 +555,7 @@ pub fn audit_filesystem(roots: &[String]) -> Result<Vec<SecFinding>, String> {
                 if !is_key {
                     continue;
                 }
-                let observed = match posture(&p, &fm) {
+                let observed = match posture(&p, &fm, profile_owner.as_deref()) {
                     Err(err) => {
                         unreadable.push(format!("{}: {err}", p.display()));
                         continue;
@@ -646,6 +669,21 @@ mod tests {
     }
 
     #[test]
+    fn profile_owner_is_trusted_but_broad_and_foreign_sids_remain_exposed() {
+        let admins = "S-1-5-32-544";
+        let own = [allow(OWNER, 0x001f_01ff)];
+        assert_eq!(foreign_access(admins, Some(OWNER), Some(&own)), None);
+        assert!(foreign_access(admins, None, Some(&own)).is_some());
+        for sid in ["S-1-5-21-1-2-3-2002", "S-1-1-0", "S-1-5-32-545"] {
+            let acl = [allow(sid, 0x0012_0089)];
+            assert!(foreign_access(admins, Some(OWNER), Some(&acl)).is_some());
+        }
+        let broad = [allow("S-1-5-32-545", 0x0012_0089)];
+        assert!(foreign_access("S-1-5-32-545", Some("S-1-5-32-545"), Some(&broad)).is_some());
+        assert!(foreign_access(admins, Some(OWNER), None).is_some());
+    }
+
+    #[test]
     fn everyone_write_is_world_writable_and_names_the_ace() {
         let mut dacl = private_acl();
         // icacls *S-1-1-0:(W) = FILE_GENERIC_WRITE.
@@ -687,7 +725,7 @@ mod tests {
             ..allow("S-1-5-11", 0x1000_0000)
         });
         assert_eq!(world_writable(Some(&dacl)), None);
-        assert_eq!(foreign_access(OWNER, Some(&dacl)), None);
+        assert_eq!(foreign_access(OWNER, None, Some(&dacl)), None);
     }
 
     #[test]
@@ -734,7 +772,7 @@ mod tests {
     fn null_dacl_is_world_writable_and_exposed() {
         assert!(world_writable(None).unwrap().starts_with("NULL DACL"));
         assert!(
-            foreign_access(OWNER, None)
+            foreign_access(OWNER, None, None)
                 .unwrap()
                 .starts_with("NULL DACL")
         );
@@ -742,9 +780,9 @@ mod tests {
 
     #[test]
     fn owner_system_and_administrators_only_is_not_exposed() {
-        assert_eq!(foreign_access(OWNER, Some(&private_acl())), None);
+        assert_eq!(foreign_access(OWNER, None, Some(&private_acl())), None);
         // An empty DACL grants nothing to anyone.
-        assert_eq!(foreign_access(OWNER, Some(&[])), None);
+        assert_eq!(foreign_access(OWNER, None, Some(&[])), None);
     }
 
     #[test]
@@ -752,15 +790,15 @@ mod tests {
         let mut dacl = private_acl();
         dacl.push(allow("S-1-5-32-545", 0x0012_0089));
         assert_eq!(
-            foreign_access(OWNER, Some(&dacl)).as_deref(),
+            foreign_access(OWNER, None, Some(&dacl)).as_deref(),
             Some("allow S-1-5-32-545 mask=0x00120089")
         );
         // A second user is as foreign as a broad group.
         let other_user = [allow("S-1-5-21-1-2-3-1002", 0x0012_0089)];
-        assert!(foreign_access(OWNER, Some(&other_user)).is_some());
+        assert!(foreign_access(OWNER, None, Some(&other_user)).is_some());
         // Deny ACEs grant nothing.
         assert_eq!(
-            foreign_access(OWNER, Some(&[deny("S-1-1-0", 0x001f_01ff)])),
+            foreign_access(OWNER, None, Some(&[deny("S-1-1-0", 0x001f_01ff)])),
             None
         );
     }

@@ -176,3 +176,27 @@ pub struct PassiveWorkReport {
     pub evidence_count: u32,
     pub warning_count: u32,
 }
+
+// WUA's false result says nothing about CBS. Missing evidence keeps the barrier closed.
+#[cfg(any(windows, test))]
+pub(crate) fn servicing_from_wua_busy(busy: Option<bool>) -> ServicingState {
+    if busy == Some(true) {
+        ServicingState::Busy
+    } else {
+        ServicingState::Unknown
+    }
+}
+
+#[cfg(test)]
+mod servicing_tests {
+    use super::*;
+    #[test]
+    fn wua_idle_does_not_prove_cbs_idle() {
+        assert_eq!(servicing_from_wua_busy(Some(true)), ServicingState::Busy);
+        assert_eq!(
+            servicing_from_wua_busy(Some(false)),
+            ServicingState::Unknown
+        );
+        assert_eq!(servicing_from_wua_busy(None), ServicingState::Unknown);
+    }
+}

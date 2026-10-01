@@ -628,6 +628,9 @@ const emit = (kernelEvent: UiKernelEvent): void => {
     if (command === 'get_care_status' || command === 'grant_care_session_consent') {
       return careStatus(command === 'grant_care_session_consent');
     }
+    if (command === 'prepare_care_preview') {
+      return { status: careStatus(false), domains: [{ domain: 'cleanup', reason: 'ready', scannedUnixMs: NOW, eligibleCandidates: 2, reviewRequiredCandidates: 1 }] };
+    }
     if (command === 'start_care_run') return careRun;
     if (command === 'get_assistant_pack') return { pack: ASSISTANT_PACK, engineLabel: 'localModel' };
     if (command === 'cancel_assistant_turn') {

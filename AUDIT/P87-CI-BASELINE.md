@@ -47,14 +47,35 @@ UI checks wait behind native tests and the required aggregate is absent.
 After: the aggregate shell command rejects each individual failure, cancellation
 and skip, rejects missing gates, and accepts six successes.
 
-Branch protection API returned HTTP 404 (main not protected). The stable aggregate
-is provided per D24; enabling only `CI required` as a branch-required status needs
-the owner/project policy. Manual lane4 merges still require full CI at head SHA.
+D24 was applied through the main branch protection API. Readback requires only
+`CI required`, binds it to GitHub Actions app 15368, enables strict/up-to-date
+checks and administrator enforcement, and prohibits force pushes and deletion.
+The aggregate still requires all six dependencies. Readback is reproducible:
+
+```sh
+gh api repos/hasanalaaa/aethercore/branches/main/protection
+```
 
 ## After
 
-Pending the PR CI receipt. No speedup is claimed before measured fast-job timing.
-Proposed acceptance: fast feedback ≤300 s and ≥25% below the before median.
+Five successful post-change CI runs are listed below after their exact-head
+completion. These are observational warm-path runs on the same self-hosted PC;
+concurrent lane work and changed heads prevent a controlled Windows speedup claim.
+
+| Run / head | Fast queue s | Fast execution s | UI feedback s | Windows queue s | Windows execution s |
+|---|---:|---:|---:|---:|---:|
+| [36666498382](https://github.com/hasanalaaa/aethercore/actions/runs/36666498382) / `131eca3d8120fa7ea0b20965c3dfd342302531aa` | 63 | 20 | 83 | 3111 | 2090 |
+| [36673364760](https://github.com/hasanalaaa/aethercore/actions/runs/36673364760) / `131eca3d8120fa7ea0b20965c3dfd342302531aa` | 4 | 20 | 24 | 4 | 2276 |
+| [36673999649](https://github.com/hasanalaaa/aethercore/actions/runs/36673999649) / `ad42479cdf8664a6e765e8e90c134ab19ceb5da8` | 4 | 26 | 30 | 4 | 3733 |
+| [36679304656](https://github.com/hasanalaaa/aethercore/actions/runs/36679304656) / `ad42479cdf8664a6e765e8e90c134ab19ceb5da8` | 4 | 26 | 30 | 4 | 2784 |
+| [36695256608](https://github.com/hasanalaaa/aethercore/actions/runs/36695256608) / `3f6d96fe5f857ac3fed19ca5eb5b79f08b05f643` | 4 | 27 | 31 | 4 | 3021 |
+
+Fast feedback median: **30 s**, **94.9% below** the before median of 593 s; all five satisfy the 300 s ceiling. Windows execution median: **2784 s**, shown for context only; this sample does not establish a controlled native-runtime speedup.
+
+The fast feedback comparison includes hosted-job setup/queue time and finishes
+without waiting for the self-hosted Windows queue. Cold compilation, steady
+Windows runtime improvement and runner-cost change remain unmeasured.
+
 PR #83 negative-control head `92a89d40f0cab9e21d976b22f497beeb371a1cb8`,
 run [36666378019](https://github.com/hasanalaaa/aethercore/actions/runs/36666378019):
 `fast-ui` rejected the deliberately missing Arabic navigation keys at 03:53:09Z,

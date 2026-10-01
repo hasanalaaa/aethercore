@@ -139,7 +139,12 @@ check("background_mode_admission_is_fail_closed", has(foundation, "pub fn enter(
 check("security_uses_raii_impersonation_and_handles", has(security, "ThreadImpersonation::named_pipe_client", "OwnedHandle::new", "impersonation.revert()") and "CloseHandle(" not in security)
 check("security_explicit_revert_runs_after_failed_token_inspection", has(security, "let result = (|| {", "OpenThreadToken", "impersonation.revert().map_err(winerr)?;", "returning while still impersonating"))
 check("scheduler_uses_raii_user_token_and_impersonation", has(scheduler_win, "OwnedHandle::new", "ThreadImpersonation::logged_on_user", "impersonation.revert()"))
-check("scheduler_uses_raii_com_and_service_handles", has(scheduler_win, "ComApartment::mta", "OwnedServiceHandle::new", "BackgroundThreadMode::enter"))
+# P87-06 uses local WUA interfaces; no SCM handle remains to own.
+servicing_probe = section(scheduler_win, "fn probe_servicing_state()", "pub(crate) fn run_in_background_mode")
+check("scheduler_uses_raii_com_and_wua", ordered(servicing_probe,
+      "let _com = ComApartment::mta()", "let installer: IUpdateInstaller", ".IsBusy()")
+      and "BackgroundThreadMode::enter" in scheduler_win
+      and "CoUninitialize(" not in scheduler_win and "CloseServiceHandle(" not in scheduler_win)
 check("hardware_uses_raii_com_and_storage_handles", has(hardware_win, "ComApartment::mta", "OwnedHandle::new") and "CoUninitialize(" not in hardware_win and "CloseHandle(" not in hardware_win)
 check("startup_uses_raii_com_and_service_handles", has(startup_win, "ComApartment::mta", "OwnedServiceHandle::new") and "CoUninitialize(" not in startup_win and "CloseServiceHandle(" not in startup_win)
 check("restore_point_uses_raii_thread_com", has(restore_win, "ComApartment::mta", "CoInitializeSecurity") and "CoUninitialize(" not in restore_win)

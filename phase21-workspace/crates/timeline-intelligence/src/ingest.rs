@@ -97,8 +97,11 @@ pub fn care_run(record: &CareRunRecord) -> TimelineEvent {
         EventClass::Operation,
         "oneClickCare",
         &code,
-        // A run that finished with failed steps is `Completed` with this detail.
-        if failed_state(&record.state) || record.detail == "care.status.completedWithFailures" {
+        // A run that finished with failed steps is `Completed` with this detail. A cancelled run is
+        // the owner's own stop, not a failure: it stays neutral under its own `care.run:Cancelled` code.
+        if (failed_state(&record.state) && record.state != "Cancelled")
+            || record.detail == "care.status.completedWithFailures"
+        {
             Outcome::Failed
         } else {
             Outcome::Neutral
