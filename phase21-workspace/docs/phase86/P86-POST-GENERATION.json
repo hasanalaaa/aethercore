@@ -1,0 +1,80 @@
+{
+  "code_head": "2a8fd95c8f9adcdd001aefe737e777513508018a",
+  "native_final_token_fixture_head": "8c75fdc3c419f164b9b273760a86a0c0e97100a0",
+  "red": {
+    "valid_cancelled_false_ids": "Answered before correction despite raised shared cancellation",
+    "expired_valid_ids": "Answered after actual 20-second deadline before correction",
+    "invalid_selection_known_topic": "Answered ruleFallback before post-generation barrier"
+  },
+  "local": {
+    "core_unit": 32,
+    "adversarial": 29,
+    "offline_boundary": 1,
+    "clippy_all_targets": "passed with warnings denied"
+  },
+  "native": [
+    {
+      "source_head": "2a8fd95c8f9adcdd001aefe737e777513508018a",
+      "tracked_source_overlay": "none",
+      "core_unit": 32,
+      "real_model_cancel_tests": 1
+    },
+    {
+      "source_head": "8c75fdc3c419f164b9b273760a86a0c0e97100a0",
+      "tracked_source_overlay": "none",
+      "real_model_final_token_cancel_tests": 1,
+      "max_tokens": 3,
+      "cancel_raised_at_token": 3,
+      "returned_tokens": 3,
+      "returned_cancelled": true,
+      "test_elapsed_seconds": 36.98
+    }
+  ],
+  "conditions": {
+    "target_dir": "C:/dev/lanes/l3/target-p86-codex",
+    "build_jobs": 2,
+    "full_twenty_sample_benchmark_repeated": false,
+    "live_host_mutations": false,
+    "wire_dependency_deadline_changes": false
+  },
+  "commands": [
+    "cargo test --locked -p aethercore-intelligence-core --lib --test adversarial --test offline_boundary",
+    "cargo clippy --locked -p aethercore-intelligence-core --all-targets -- -D warnings",
+    "cargo test --locked -p aethercore-intelligence-core --lib",
+    "cargo test --locked -p aethercore-intelligence-core --test embedded_generation cancelling_the_real_loop_stops_generation_early -- --nocapture --test-threads=1"
+  ],
+  "raw_logs": [
+    {
+      "path": "/private/tmp/p86-post-generation-red.log",
+      "sha256": "efda4a74f158f33a6fad87ccda19f7c024fff38da31558cb8d899cf9c7a4e67a"
+    },
+    {
+      "path": "/private/tmp/p86-post-generation-invalid-fallback-red.log",
+      "sha256": "03f100a40ff8983796defa9f2b0d47c3961157e62a09b4058bdcbde7648e8cad"
+    },
+    {
+      "path": "/private/tmp/p86-post-generation-full.log",
+      "sha256": "d8098e27c2e74f282f94a12e127d1ec8f035e5f3bb2f7b9cf250bb5aab497754"
+    },
+    {
+      "path": "/private/tmp/p86-post-generation-fallback-green.log",
+      "sha256": "52b77528ef8bf04c618273e285f6d3985002c1083311a5b5099d55787ec0be8e"
+    },
+    {
+      "path": "/private/tmp/p86-post-generation-clippy.log",
+      "sha256": "85fe88805f904ee7e61c91626404f2065d0a24771f19f998498737cef3ab30ff"
+    },
+    {
+      "path": "/private/tmp/p86-windows-boundary-unit.log",
+      "sha256": "3703e3b30651636bf09ee29ade82ec59a9fb917196a2c1c85ed43f241f464225"
+    },
+    {
+      "path": "/private/tmp/p86-windows-boundary-real-cancel.log",
+      "sha256": "4b4395ef298fb92c9168f54447a11204eb6945955e9f5736862bb6507ea7568f"
+    },
+    {
+      "path": "/private/tmp/p86-windows-boundary-final-token.log",
+      "sha256": "77a09ee50178965d71183204c963c004cab6d95da669e1e19c32eeb0ea88b4d6"
+    }
+  ]
+}
