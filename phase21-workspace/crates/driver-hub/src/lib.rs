@@ -299,6 +299,14 @@ pub trait DiscoveryBackend: Send + Sync + 'static {
     fn inventory(&self) -> std::result::Result<Vec<DeviceRecord>, String>;
     /// The online search. The hub never calls it directly: it goes through `updates_in`.
     fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure>;
+    /// Backends that detach expensive work must carry this guard into that worker.
+    fn updates_in_with_keepalive(
+        &self,
+        scope: SearchScope,
+        _keepalive: Arc<ReadBudgetLease>,
+    ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+        self.updates_in(scope)
+    }
     /// The day Windows last finished an online search: how old a local-cache answer is. A local
     /// read; None when the backend cannot say.
     fn last_online_search(&self) -> Option<String> {
@@ -339,13 +347,29 @@ impl DiscoveryBackend for WindowsDiscoveryBackend {
         &self,
         scope: SearchScope,
     ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
-        aethercore_windows_update::discover_driver_offers(scope).map_err(|error| match error {
-            aethercore_windows_update::UpdateError::Offline(detail) => {
-                DiscoveryFailure::Offline(detail)
-            }
-            other => DiscoveryFailure::Unavailable(other.to_string()),
-        })
+        map_update_discovery(aethercore_windows_update::discover_driver_offers(scope))
     }
+
+    fn updates_in_with_keepalive(
+        &self,
+        scope: SearchScope,
+        keepalive: Arc<ReadBudgetLease>,
+    ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+        map_update_discovery(
+            aethercore_windows_update::discover_driver_offers_with_keepalive(scope, keepalive),
+        )
+    }
+}
+
+fn map_update_discovery(
+    result: aethercore_windows_update::Result<DiscoveryResult>,
+) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+    result.map_err(|error| match error {
+        aethercore_windows_update::UpdateError::Offline(detail) => {
+            DiscoveryFailure::Offline(detail)
+        }
+        other => DiscoveryFailure::Unavailable(other.to_string()),
+    })
 }
 
 #[derive(Clone)]
@@ -704,8 +728,9 @@ impl DriverHub {
         &self,
         owner_principal_key: &str,
         token: CancellationToken,
+        lease: Arc<ReadBudgetLease>,
     ) -> Result<DriverHubSnapshot> {
-        self.passive_scan_with_fence(owner_principal_key, token, CommitFence::new())
+        self.passive_scan_with_fence(owner_principal_key, token, CommitFence::new(), lease)
     }
 
     pub fn passive_scan_with_fence(
@@ -713,7 +738,13 @@ impl DriverHub {
         owner_principal_key: &str,
         token: CancellationToken,
         commit_fence: CommitFence,
+        lease: Arc<ReadBudgetLease>,
     ) -> Result<DriverHubSnapshot> {
+        if !lease.matches(ReadWorkload::DriverDiscovery) {
+            return Err(HubError::Inventory(
+                "read budget lease identity mismatch".into(),
+            ));
+        }
         if owner_principal_key.trim().is_empty() || token.is_cancelled() {
             return Err(HubError::Cancelled);
         }
@@ -744,7 +775,7 @@ impl DriverHub {
         let discovery = self
             .inner
             .backend
-            .updates_in(scope)
+            .updates_in_with_keepalive(scope, Arc::clone(&lease))
             .unwrap_or_else(|error| DiscoveryResult {
                 offers: Vec::new(),
                 warnings: vec![format!("Windows Update discovery unavailable: {error}")],
@@ -844,11 +875,13 @@ impl DriverHub {
 
         let initial = self.snapshot_for_owner(owner_principal_key)?;
         let hub = self.clone();
+        let read_budget_lease = Arc::new(read_budget_lease);
         if let Err(error) = thread::Builder::new()
             .name("aether-driver-discovery".into())
             .spawn(move || {
+                let lease = Arc::clone(&read_budget_lease);
                 let _read_budget_lease = read_budget_lease;
-                hub.run_scan(scope);
+                hub.run_scan(scope, lease);
             })
         {
             let detail = format!("driver discovery worker unavailable: {error}");
@@ -858,7 +891,7 @@ impl DriverHub {
         Ok(initial)
     }
 
-    fn run_scan(&self, scope: SearchScope) {
+    fn run_scan(&self, scope: SearchScope, lease: Arc<ReadBudgetLease>) {
         let base = self.snapshot();
         let devices = match self.inner.backend.inventory() {
             Ok(devices) => devices,
@@ -869,7 +902,7 @@ impl DriverHub {
         };
 
         self.update_state(ScanState::UpdateSearching);
-        let discovery = match self.inner.backend.updates_in(scope) {
+        let discovery = match self.inner.backend.updates_in_with_keepalive(scope, lease) {
             Ok(result) => result,
             Err(DiscoveryFailure::Offline(error)) => DiscoveryResult {
                 offers: Vec::new(),
@@ -2353,6 +2386,192 @@ mod tests {
         panic!("scan did not reach Ready after WUA failure");
     }
 
+    /// Model WUA: the observer returns, but the expensive search waits for explicit completion.
+    struct DetachedSearchBackend {
+        observer_finish: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+        finish: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+        exited: std::sync::mpsc::Sender<()>,
+    }
+    impl DiscoveryBackend for DetachedSearchBackend {
+        fn inventory(&self) -> std::result::Result<Vec<DeviceRecord>, String> {
+            Ok(Vec::new())
+        }
+        fn updates(&self) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+            unreachable!("scope is mandatory")
+        }
+        fn updates_in(
+            &self,
+            _scope: SearchScope,
+        ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+            unreachable!("the hub must transfer resource ownership")
+        }
+        fn updates_in_with_keepalive(
+            &self,
+            _scope: SearchScope,
+            keepalive: Arc<ReadBudgetLease>,
+        ) -> std::result::Result<DiscoveryResult, DiscoveryFailure> {
+            let finish = self.finish.lock().unwrap().take().unwrap();
+            let exited = self.exited.clone();
+            std::thread::spawn(move || {
+                finish.recv().unwrap();
+                drop(keepalive);
+                exited.send(()).unwrap();
+            });
+            if let Some(observer_finish) = self.observer_finish.lock().unwrap().take() {
+                observer_finish.recv().unwrap();
+            }
+            Err(DiscoveryFailure::Unavailable(
+                "search observer timed out".into(),
+            ))
+        }
+    }
+
+    #[test]
+    fn interactive_timeout_keeps_the_budget_until_the_actual_search_exits() {
+        let budget = ReadBudgetManager::new(1);
+        let lease = budget.try_acquire(ReadWorkload::DriverDiscovery).unwrap();
+        let (finish, blocked) = std::sync::mpsc::channel();
+        let (exited, exit) = std::sync::mpsc::channel();
+        let hub = DriverHub::with_backend_and_machine(
+            Arc::new(DetachedSearchBackend {
+                observer_finish: Mutex::new(None),
+                finish: Mutex::new(Some(blocked)),
+                exited,
+            }),
+            test_machine(),
+        );
+        hub.start_scan_with_lease(OWNER, lease, SearchScope::LocalCacheOnly)
+            .unwrap();
+        for _ in 0..200 {
+            if hub.snapshot().state == ScanState::Ready {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(hub.snapshot().state, ScanState::Ready);
+        assert_eq!(hub.snapshot().authority_coverage, "ProviderUnavailable");
+        // The observer completed; the fixture has not let its expensive worker complete.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let charged = budget.active_total();
+        let denied = budget.try_acquire(ReadWorkload::Diagnostics).is_err()
+            && budget.try_acquire(ReadWorkload::DriverDiscovery).is_err();
+        finish.send(()).unwrap();
+        exit.recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        assert_eq!(
+            charged, 1,
+            "the timed-out search lost its global budget charge"
+        );
+        assert!(
+            denied,
+            "a new workload was admitted while the search was still running"
+        );
+        assert_eq!(budget.active_total(), 0);
+        assert!(budget.try_acquire(ReadWorkload::DriverDiscovery).is_ok());
+    }
+
+    #[test]
+    fn passive_timeout_keeps_the_budget_after_its_observer_returns() {
+        let budget = ReadBudgetManager::new(1);
+        let lease = budget.try_acquire(ReadWorkload::DriverDiscovery).unwrap();
+        let (finish, blocked) = std::sync::mpsc::channel();
+        let (exited, exit) = std::sync::mpsc::channel();
+        let hub = DriverHub::with_backend_and_machine(
+            Arc::new(DetachedSearchBackend {
+                observer_finish: Mutex::new(None),
+                finish: Mutex::new(Some(blocked)),
+                exited,
+            }),
+            test_machine(),
+        );
+        let lease = Arc::new(lease);
+        let ready = hub
+            .passive_scan(OWNER, CancellationToken::new(), Arc::clone(&lease))
+            .unwrap();
+        assert_eq!(ready.state, ScanState::Ready);
+        drop(lease); // The scheduler observer no longer owns its read lease.
+        let charged = budget.active_total();
+        let denied = budget.try_acquire(ReadWorkload::Diagnostics).is_err()
+            && budget.try_acquire(ReadWorkload::DriverDiscovery).is_err();
+        finish.send(()).unwrap();
+        exit.recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        assert_eq!(
+            charged, 1,
+            "the detached passive search lost its global budget charge"
+        );
+        assert!(denied);
+        assert_eq!(budget.active_total(), 0);
+    }
+
+    /// The scheduler's watchdog expires before WUA's: both observers can finish while the
+    /// actual search is still blocked. Cancellation must also prevent late publication.
+    #[test]
+    fn passive_watchdog_then_search_timeout_retains_the_actual_worker_budget() {
+        use aethercore_collector_runtime::{IsolationGate, run_isolated_gated_with_token};
+        let budget = ReadBudgetManager::new(1);
+        let lease = Arc::new(budget.try_acquire(ReadWorkload::DriverDiscovery).unwrap());
+        let (finish_observer, observer_wait) = std::sync::mpsc::channel();
+        let (finish, blocked) = std::sync::mpsc::channel();
+        let (exited, exit) = std::sync::mpsc::channel();
+        let hub = DriverHub::with_backend_and_machine(
+            Arc::new(DetachedSearchBackend {
+                observer_finish: Mutex::new(Some(observer_wait)),
+                finish: Mutex::new(Some(blocked)),
+                exited,
+            }),
+            test_machine(),
+        );
+        let worker_hub = hub.clone();
+        let gate = IsolationGate::default();
+        let result = run_isolated_gated_with_token(
+            &gate,
+            "fixture",
+            "passive-driver",
+            std::time::Duration::from_millis(20),
+            CancellationToken::new(),
+            move |control| {
+                worker_hub
+                    .passive_scan_with_fence(
+                        OWNER,
+                        control.cancellation(),
+                        CommitFence::new(),
+                        lease,
+                    )
+                    .map_err(|_| {
+                        aethercore_collector_runtime::CollectorFault::cancelled(
+                            "fixture",
+                            "passive-driver",
+                        )
+                    })
+            },
+        );
+        assert!(result.is_err(), "the scheduler observer must time out");
+        assert_eq!(budget.active_total(), 1);
+        assert!(budget.try_acquire(ReadWorkload::DriverDiscovery).is_err());
+        finish_observer.send(()).unwrap();
+        // Wait for the passive observer to exit as well; its nested search remains blocked.
+        let started = std::time::Instant::now();
+        while gate.is_active() {
+            assert!(started.elapsed() < std::time::Duration::from_secs(2));
+            std::thread::yield_now();
+        }
+        let charged = budget.active_total();
+        let denied = budget.try_acquire(ReadWorkload::Diagnostics).is_err()
+            && budget.try_acquire(ReadWorkload::DriverDiscovery).is_err();
+        finish.send(()).unwrap();
+        exit.recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        assert_eq!(charged, 1, "both observers exited before the actual search");
+        assert!(denied);
+        assert_eq!(budget.active_total(), 0);
+        assert_eq!(
+            hub.snapshot().state,
+            ScanState::Idle,
+            "a late cancelled scan published"
+        );
+    }
+
     /// A backend that only knows the online search, as every backend did before P75.
     #[derive(Default)]
     struct OnlineOnlyBackend {
@@ -2376,7 +2595,15 @@ mod tests {
         let backend = Arc::new(OnlineOnlyBackend::default());
         let hub = DriverHub::with_backend_and_machine(backend.clone(), test_machine());
         let snapshot = hub
-            .passive_scan(OWNER, CancellationToken::default())
+            .passive_scan(
+                OWNER,
+                CancellationToken::default(),
+                Arc::new(
+                    ReadBudgetManager::new(4)
+                        .try_acquire(ReadWorkload::DriverDiscovery)
+                        .unwrap(),
+                ),
+            )
             .unwrap();
         assert_eq!(
             backend
@@ -2417,7 +2644,15 @@ mod tests {
         let hub = DriverHub::with_backend_and_machine(backend.clone(), test_machine());
 
         let passive = hub
-            .passive_scan(OWNER, CancellationToken::default())
+            .passive_scan(
+                OWNER,
+                CancellationToken::default(),
+                Arc::new(
+                    ReadBudgetManager::new(4)
+                        .try_acquire(ReadWorkload::DriverDiscovery)
+                        .unwrap(),
+                ),
+            )
             .unwrap();
         assert_eq!(
             *backend.scopes.lock().unwrap(),

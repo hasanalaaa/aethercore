@@ -244,11 +244,21 @@ pub fn last_online_search_iso() -> Option<String> {
 }
 
 pub fn discover_driver_offers(scope: SearchScope) -> Result<DiscoveryResult> {
+    discover_driver_offers_with_keepalive(scope, ())
+}
+
+/// Keep caller-owned resource accounting in the actual search worker after observer timeout.
+pub fn discover_driver_offers_with_keepalive<G: Send + 'static>(
+    scope: SearchScope,
+    keepalive: G,
+) -> Result<DiscoveryResult> {
     let deadline = match scope {
         SearchScope::Online => ONLINE_SEARCH_DEADLINE,
         SearchScope::LocalCacheOnly => LOCAL_SEARCH_DEADLINE,
     };
-    crate::bounded::search_bounded(deadline, move |stop| search_driver_offers(scope, stop))
+    crate::bounded::search_bounded(deadline, keepalive, move |stop| {
+        search_driver_offers(scope, stop)
+    })
 }
 
 fn search_driver_offers(scope: SearchScope, stop: &AtomicBool) -> Result<DiscoveryResult> {
