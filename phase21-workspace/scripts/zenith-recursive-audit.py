@@ -198,6 +198,8 @@ diagnostics = read("crates/diagnostic-engine/src/lib.rs")
 ipc_windows = read("crates/ipc/src/windows_impl.rs")
 ipc_lib = read("crates/ipc/src/lib.rs")
 repair_windows = read("crates/system-repair/src/windows_impl.rs")
+repair_process = read("crates/system-repair/src/process.rs")
+repair_dism_api = read("crates/system-repair/src/dism_api.rs")
 desktop = read("apps/desktop/src/main.rs")
 driver_hub_toml = read("crates/driver-hub/Cargo.toml")
 diagnostics_toml = read("crates/diagnostic-engine/Cargo.toml")
@@ -313,7 +315,15 @@ read_domains = [
 ]
 check("read_workers_own_budget_lease", all("let _read_budget_lease" in text and workload in text and method in text for text, workload, method in read_domains))
 check("read_entrypoints_cannot_bypass_budget", all("Option<ReadBudgetLease>" not in text and "pub fn start_scan(" not in text and "pub fn start_assessment(" not in text for text, _, _ in read_domains))
-check("service_routes_use_leased_read_start", count(router, "start_scan_with_lease(principal_key,lease)") == 4 and contains(router, "start_assessment_with_lease(principal_key,lease)"))
+# P84 adds only the request-bound search scope to driver discovery. Keep four
+# leased starts, require exactly one scoped driver call, and retain assessment.
+scoped_driver_starts = count(router, "start_scan_with_lease(principal_key,lease,search_scope(&request))")
+owned_cleanup_starts = count(router, "start_scan_with_lease(principal_key,&call.peer.owner_roots(),lease)")
+check("service_routes_use_leased_read_start",
+      count(router, "start_scan_with_lease(principal_key,lease)") + scoped_driver_starts + owned_cleanup_starts == 4
+      and scoped_driver_starts == 1
+      and owned_cleanup_starts == 1
+      and contains(router, "start_assessment_with_lease(principal_key,lease)"))
 check("read_watchers_are_not_budget_holders", "ReadBudgetLease" not in streaming and "_read_budget_lease" not in streaming)
 check("read_worker_spawn_failure_is_recoverable", all("thread::Builder::new()" in text for text, _, _ in read_domains))
 check("read_crates_expose_no_unleased_start", all("pub fn start_scan(&self" not in text and "pub fn start_assessment(&self" not in text for text, _, _ in read_domains))
@@ -325,8 +335,50 @@ check("all_stream_watchers_use_helper", streaming.count('spawn_watcher("') == 10
 
 # ZR-010: remaining runtime support threads fail explicitly instead of panicking the caller.
 check("ipc_client_reader_spawn_is_fallible", has(ipc_windows, 'name("aether-ipc-client-reader"', ").map_err(IpcError::Io)?;"))
-check("repair_pipe_readers_are_fallible", has(repair_windows, 'name("aether-repair-stdout"', 'name("aether-repair-stderr"', "failed to create repair stdout reader", "failed to create repair stderr reader"))
-check("repair_timeout_joins_pipe_readers", has(repair_windows, "let _ = stdout_thread.join();", "let _ = stderr_thread.join();", 'format!("{title} timed out")'))
+# P85 moved the owned child/pipe lifecycle into process.rs. Assert each branch,
+# not a marker anywhere in the former Windows module: joins elsewhere do not prove
+# teardown, and mutating servicing must retain ownership until the child exits.
+def repair_readers_are_fallible(source: str) -> bool:
+    stdout = section(source, "let stdout_thread =", "let stderr_thread =")
+    stderr = section(source, "let stderr_thread =", "let deadline =")
+    return all(has(body, "match thread::Builder::new()", f'name("aether-repair-{stream}"',
+                   "Ok(worker) => worker", "Err(error) =>", "let _ = child.wait();",
+                   f"failed to create repair {stream} reader")
+               for body, stream in [(stdout, "stdout"), (stderr, "stderr")]) \
+        and has(stderr, "let _ = stdout_thread.join();")
+
+
+def repair_timeout_preserves_ownership(source: str) -> bool:
+    stdout = section(source, "let stdout_thread =", "let stderr_thread =")
+    stderr = section(source, "let stderr_thread =", "let deadline =")
+    timeout = section(source, "if !mutating && timed_out {", "if !mutating && stopped {")
+    cancel = section(source, "if !mutating && stopped {", "thread::sleep(")
+    polling = section(source, "let status = loop {", "timed_out |=")
+    tails = section(source, "let mut notes =", "if mutating {")
+    outcome = section(source, "if mutating {", "let code =")
+    # Every kill belongs to a read-only branch; reader-creation failures wait even
+    # for mutating children. Normal and polling-error exits settle both readers.
+    return all(has(body, "if !mutating { let _ = child.kill(); }", "let _ = child.wait();")
+               for body in [stdout, stderr]) \
+        and all(ordered(body, "child.kill()", "child.wait()", "stdout_thread.join()", "stderr_thread.join()", "return Err(")
+                for body in [timeout, cancel]) \
+        and has(timeout, 'format!("{title} timed out")') \
+        and has(cancel, "RepairError::Cancelled") \
+        and ordered(polling, "child.wait()", "stdout_thread.join()", "stderr_thread.join()", "return Err(") \
+        and has(tails, 'joined_stream(stdout_thread.join(), "stdout"', 'joined_stream(stderr_thread.join(), "stderr"') \
+        and has(outcome, "RepairError::RepairStopped", "RepairError::RepairTimedOut") \
+        and count(source, "child.kill()") == 4
+
+
+def repair_mutation_uses_limited_dism(windows: str, api: str) -> bool:
+    return has(windows, '"/scannow"', "restore_online_image_health(control)", "begin_mutation()?") \
+        and ordered(windows, "begin_mutation()?", "restore_online_image_health(control)") \
+        and has(api, '#[link(name = "DismApi")]', "DismRestoreImageHealth(",
+                "lifecycle.session, ptr::null(), 0, 1,", "watcher.event()", "Some(on_progress)")
+
+
+check("repair_pipe_readers_are_fallible", repair_readers_are_fallible(repair_process))
+check("repair_timeout_joins_pipe_readers", repair_timeout_preserves_ownership(repair_process))
 check("desktop_reconnect_spawn_is_fallible", has(desktop, 'name("aether-desktop-ipc-reconnect"', ").map_err(|error| -> Box<dyn std::error::Error>"))
 check("new_read_budget_dependencies_are_declared", "aethercore-operation-kernel" in driver_hub_toml and "aethercore-operation-kernel" in diagnostics_toml)
 
@@ -433,7 +485,7 @@ check(
     has(install_hardener, 'run_checked(&sc, ["sidtype", SERVICE_NAME, "unrestricted"])')
     and has(startup_windows, "RegSetValueExW", "ChangeServiceConfigW")
     and has(cleaner_windows, "SetFileInformationByHandle")
-    and has(repair_windows, '"/RestoreHealth"', '"/scannow"')
+    and repair_mutation_uses_limited_dism(repair_windows, repair_dism_api)
     and has(windows_update, "BeginInstall")
     and 'run_checked(&sc, ["sidtype", SERVICE_NAME, "restricted"])' not in install_hardener,
 )

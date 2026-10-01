@@ -1,6 +1,6 @@
 # P85 — supported repair and bounded cleanup
 
-Implementation: task work complete; phase acceptance remains pending the integration commit's full Windows CI and the qualification gaps below. No live repair or cleanup was run on the owner's host.
+Implementation source is available; phase acceptance remains open pending the integration commit's full Windows CI and the qualification gaps below. No live repair or cleanup was run on the owner's host.
 
 ## Changes and evidence
 
@@ -24,7 +24,7 @@ Implementation: task work complete; phase acceptance remains pending the integra
 
 ## Validation
 
-The task checks ran against local source and a dirty-source Windows overlay, not a clean claimed integration head. An exact committed checkout and source-seal check are required next, followed by root-owned phase CI.
+The initial task checks ran against local source and a dirty-source Windows overlay. A separate clean Windows checkout of `855b012` passed the 1572-file workspace and seven-file workflow seals. Root-owned integration CI remains the phase acceptance authority; the follow-up results below are also explicitly source-overlay results.
 
 - macOS: locked tests for cleaner, system-repair, repair-intelligence, maintenance-service and pc-intelligence passed; Clippy all-targets with warnings denied passed for those packages.
 - Windows (two build jobs, fixture-only): cleaner 14 passed, one live inventory test ignored; system-repair 38 passed, one live assessment ignored; repair-intelligence 34 passed. No ignored live test was counted as acceptance evidence.
@@ -41,6 +41,17 @@ Svelte check (zero errors/warnings), production build, static validation, schedu
 EN/AR localization passed. Full CI at the exact PR head remains the phase merge gate. The
 ledger keeps the unmeasured qualification work open.
 
+## CI gate recovery
+
+The first integrated full CI passed its Rust and UI checks but rejected obsolete source
+assertions for the moved child runner and scoped read arguments. The recursive audit now
+checks fallible reader creation and both joins in each teardown branch in `process.rs`,
+read-only kill guards versus retained mutating-child ownership, and DISM API LimitAccess,
+cancel event and mutation-barrier order. Negative controls remove each property and remain
+rejected. The four required leased read routes now include the exact request-scoped driver
+and OS-peer-root cleanup forms; replacing owner, roots, scope or lease is rejected. No gate,
+required count or deadline was removed. Fresh full CI at the correction head gates integration.
+
 ## Qualification limits
 
 1. No isolated Windows VM is configured. Real SFC/cooperative console cancellation and TrustedInstaller lifetime after child exit are unverified. D19 wording is **stop at the first safe point**. The deadline requests/records stop; it cannot guarantee bounded completion if the mutating child or system call stalls. The UI retains pending state until service evidence arrives.
@@ -48,5 +59,16 @@ ledger keeps the unmeasured qualification work open.
 3. CBS markers are not a stable public verdict API. Concurrent OS servicing attribution remains conservative and may return Unknown. This implementation does not claim an authoritative OS transaction identifier.
 4. Cleanup uses frozen file identity, ancestor reparse checks and an exclusive target deletion handle. It does not claim proof against every parent-directory rename/reparse race; stronger parent-chain ownership needs separate Windows qualification.
 5. Crash evidence is conservatively retained in all cases until incident linkage exists. This is narrower than the eventual review-only resolved-incident category. No new destructive category or retention expansion was added under D21.
-6. Skips are explained as unsafe removal and not counted as reclaimed. Existing wire data does not expose a per-file skip reason. Reclaimed bytes mean the exact removed logical file sizes, not measured physical free-space gain.
+6. Existing per-category detail now exposes deterministic counts of in-use, changed-after-preview, multiple-hardlink and other safety skips. No per-file path/error list or new wire field is claimed. Skipped approved bytes remain excluded. The displayed total is **deleted file bytes**, the exact removed logical file sizes, not measured physical free-space gain.
 7. WinRE enabled/disabled state remains Unknown until a supported locale-independent configuration proof is established. No configuration mutation was introduced.
+
+
+## P85-05 follow-up — explicit skip causes
+
+The existing deletion-action detail carries four stable counts: **in use**, **changed since preview**, **multiple hard links**, and **other safety checks**. Sharing and lock violations are classified by Win32 HRESULT before aggregation; other OS errors and paths are never interpolated into the user-facing summary. Internal file-identity/metadata safety reasons identify changed evidence. No protocol, dependency, destructive eligibility or retention change was introduced.
+
+Red-before: the native mixed deletion-action fixture returned only the generic unsafe-removal sentence; the Arabic UI test returned unavailable text. Green-after: a five-file temporary fixture deletes only the unchanged four-byte file; locked, hardlinked, changed and invalid-root files survive, each cause count is one, and sixteen approved skipped bytes are excluded. Both sharing and lock HRESULT controls pass. Native cleaner: 16 passed, one live inventory test ignored; native Clippy all targets with warnings denied passed. UI cause-count/wrapped-detail and logical-byte-label regressions passed (61/61 source UI tests); localization audit 34/34 passed. Svelte check and production build passed. Further validation is reported with the integration commit rather than inferred from this overlay.
+
+The existing cleanup total label and verification wording now say **deleted file bytes/sizes**, in English and Arabic, rather than implying a physical free-space measurement. The existing per-item detail/result fields persist and display the aggregate cause summary; per-file skip disclosure remains outside the current wire contract.
+
+Root integration of `af8271f` with P79–P85 preserved the P83 client-event localization checks. The integrated check passed 127 Rust tests across cleaner, maintenance-service and PC intelligence, all 75 UI tests, Svelte check (zero errors/warnings), and the production UI build. Source seals verified 1595 workspace files and seven workflow files before commit. Full final-head CI remains required after the P84 read-budget lifetime correction is integrated.

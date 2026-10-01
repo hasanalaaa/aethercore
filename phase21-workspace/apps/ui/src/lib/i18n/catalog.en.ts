@@ -579,7 +579,7 @@ export const enCatalog = {
   'cleanup.execution': 'ALLOWLISTED CLEANUP EXECUTION',
   'cleanup.progressLabel': 'Cleanup progress',
   'cleanup.progressUnknown': 'Cleanup in progress',
-  'cleanup.reclaimed': 'Reclaimed',
+  'cleanup.reclaimed': 'Deleted file bytes',
   'cleanup.skippedSafely': 'Skipped safely',
   'cleanup.mutation': 'Mutation',
   'cleanup.started': 'Started',
@@ -1152,7 +1152,7 @@ export const enCatalog = {
   "tech.cleanup.queued": "Reviewed cleanup queued",
   "tech.cleanup.preflight": "Revalidating allowlisted cleanup targets",
   "tech.cleanup.executing": "Deleting reviewed candidates with final-path validation",
-  "tech.cleanup.verifying": "Verifying cleanup journal and reclaimed totals",
+  "tech.cleanup.verifying": "Verifying cleanup journal and deleted file sizes",
   "tech.cleanup.completed": "Reviewed cleanup completed. Locked or changed files were left untouched.",
   "tech.cleanup.stopped": "Cleanup stopped; no targets will be replayed automatically.",
   "tech.cleanup.interruptedAfter": "Cleanup stopped after deletion began. No deletion was replayed automatically.",
@@ -2101,6 +2101,7 @@ export const enCatalog = {
 
   'tech.cleanup.skippedUnsafe': 'Files that could not be safely removed were skipped; they are not counted as reclaimed.',
 
+  'tech.cleanup.skipCauses': 'Skipped files (not reclaimed): in use {inUse}, changed since preview {changed}, multiple hard links {links}, other safety checks {other}.',
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;
