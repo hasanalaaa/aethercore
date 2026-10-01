@@ -1,7 +1,7 @@
 # P86 acceptance report
 
 Implementation source head: `8c75fdc3c419f164b9b273760a86a0c0e97100a0`.
-Shared model/core native head: `2f01d4c634db2e471e633f7a127a02d4c0e3db04`; repair priority native fixture head: `62a2888b813763b699f5f977b4d63ce90148d74b`.
+Twenty-sample shared model/core native head: `2f01d4c634db2e471e633f7a127a02d4c0e3db04`; repair priority native fixture head: `62a2888b813763b699f5f977b4d63ce90148d74b`.
 The earlier `042f3b5` changes only a fake backend test summary key; the post-generation correction below supersedes its implementation head.
 Owner authority: `docs/roadmap/DECISIONS.md`, D22 and D23, approved 2026-09-28.
 Scope: P86-02A/B, 03A/B, 04, and 05 following the existing P86-01 baseline.
@@ -49,7 +49,7 @@ Code and fixtures are complete; hardware/UI qualifications below remain explicit
 | Contract binary compatibility | 1 passed, old empty messages decode |
 | Clippy, core all targets and service test/binary targets | Passed with warnings denied |
 | Static validation / contract audit | 349 / 351 passed |
-| Delivered source seal at implementation code head | 1571/1571 plus .github 7/7; report delivery adds six tracked artifacts |
+| Delivered source seal | Code head 8c75fdc: 1576/1576; final report delivery: 1577/1577; .github 7/7 |
 
 The previous assistant-only full embedded suite also passed 11 tests, plus 30 core unit,
 26 adversarial and one offline-boundary test. After the shared path changed, the affected real
@@ -94,7 +94,7 @@ from the 20 assistant fact selections. Native core unit 30, adversarial 29 and o
 Native build output is an untracked isolated target outside the sealed workspace; it is not a source overlay.
 The later service-only repair prioritization delta passed all 12 native intelligence fixtures at `62a2888`
 (detached exact checkout, no source overlay); the shared core
-has not changed since the measurement. Final integration checks must use the coordinator's exact head.
+measurement predates the post-generation correction below. Final integration checks must use the coordinator's exact head.
 
 Two self-hosted CI jobs were active when measurement was scheduled. These timings therefore include
 possible concurrent load and do not establish isolated latency, UI round-trip latency, or production
