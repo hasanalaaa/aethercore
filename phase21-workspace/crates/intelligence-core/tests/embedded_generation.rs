@@ -182,7 +182,10 @@ fn cancelling_the_real_loop_stops_generation_early() {
 
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&cancel);
-    let budget = GenerationBudget::new(cancel);
+    let mut budget = GenerationBudget::new(cancel);
+    // Cancel on the final permitted token: there is no next loop iteration to
+    // notice the flag, so the post-decode barrier itself must report it.
+    budget.max_tokens = 3;
     let mut callbacks = 0u32;
     let generated = reasoner
         .generate(

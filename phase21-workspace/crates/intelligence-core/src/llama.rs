@@ -794,6 +794,13 @@ impl LlamaCppReasoner {
                 .map_err(|error| format!("decode failed at token {emitted}: {error}"))?;
         }
 
+        // The final native decode may finish after a boundary even when the
+        // loop ends at its token cap or EOG. Direct insight/generation callers
+        // share this barrier, independently of the assistant admission gate.
+        cancelled |= budget.cancelled();
+        if !cancelled && budget.expired() {
+            return Err(format!("deadline exceeded after {emitted} token(s)"));
+        }
         let text = String::from_utf8_lossy(&bytes).into_owned();
         if text != streamed {
             // Only a trailing partial character was held back; the final text

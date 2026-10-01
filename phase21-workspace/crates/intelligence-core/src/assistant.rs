@@ -572,6 +572,23 @@ impl AssistantEngine {
         let result = reasoner.generate(pack, bounded, locale, &budget, sink);
         drop(lane);
 
+        // Backend return flags cannot authorize a late result. The last decode
+        // can cross cancellation/deadline; reject before either ID rendering or
+        // deterministic fallback, including errors from an uncooperative backend.
+        if budget.cancelled() || result.as_ref().is_ok_and(|generated| generated.cancelled) {
+            return TurnOutcome::Cancelled {
+                tokens: result.as_ref().map_or(0, |generated| generated.tokens),
+            };
+        }
+        if budget.expired() {
+            return TurnOutcome::Faulted {
+                fault_key: FAULT_DEADLINE_EXCEEDED,
+                detail: result
+                    .err()
+                    .unwrap_or_else(|| "deadline exceeded after generation".into()),
+            };
+        }
+
         match result {
             Err(detail) if detail == MODEL_BUSY => TurnOutcome::Refused(RefusalReason::Busy),
             Err(detail) => TurnOutcome::Faulted {
@@ -873,6 +890,92 @@ mod tests {
                 &mut |_| {},
             ),
             TurnOutcome::Cancelled { tokens: 3 },
+        );
+    }
+
+    struct FinishesAfterBoundary {
+        cancel: bool,
+        text: &'static str,
+    }
+    impl StreamingReasoner for FinishesAfterBoundary {
+        fn is_loaded(&self) -> bool {
+            true
+        }
+        fn generate(
+            &self,
+            _: &TypedEvidencePack,
+            _: &str,
+            _: Locale,
+            budget: &GenerationBudget,
+            _: &mut dyn FnMut(&str),
+        ) -> Result<Generated, String> {
+            if self.cancel {
+                budget.cancel.store(true, Ordering::SeqCst);
+            } else {
+                std::thread::sleep(budget.deadline.saturating_duration_since(Instant::now()));
+            }
+            Ok(Generated {
+                text: self.text.into(),
+                tokens: 3,
+                cancelled: false,
+            })
+        }
+    }
+
+    #[test]
+    fn post_generation_cancel_refuses_valid_ids_and_invalid_selection_fallback() {
+        for locale in [Locale::En, Locale::Ar] {
+            for text in ["invalid selection", r#"{"facts":[1]}"#] {
+                assert!(
+                    fallback_facts(
+                        &pack_of(&["fact-a"]),
+                        "what repeated failure was observed?",
+                        locale,
+                    )
+                    .is_some()
+                );
+                let engine = AssistantEngine::new(Some(Box::new(FinishesAfterBoundary {
+                    cancel: true,
+                    text,
+                })));
+                assert_eq!(
+                    engine.ask(
+                        &pack_of(&["fact-a"]),
+                        "what repeated failure was observed?",
+                        locale,
+                        false,
+                        Arc::new(AtomicBool::new(false)),
+                        &mut |_| {},
+                    ),
+                    TurnOutcome::Cancelled { tokens: 3 }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn post_generation_expiry_refuses_valid_ids() {
+        let engine = AssistantEngine::new(Some(Box::new(FinishesAfterBoundary {
+            cancel: false,
+            text: r#"{"facts":[1]}"#,
+        })));
+        let outcome = engine.ask(
+            &pack_of(&["fact-a"]),
+            "what repeated failure was observed?",
+            Locale::En,
+            false,
+            Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        );
+        assert!(
+            matches!(
+                outcome,
+                TurnOutcome::Faulted {
+                    fault_key: FAULT_DEADLINE_EXCEEDED,
+                    ..
+                }
+            ),
+            "late valid IDs must not become an answer: {outcome:?}"
         );
     }
 
