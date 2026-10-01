@@ -1991,10 +1991,12 @@ fn extract_insights(resp: v1::Response) -> Result<v1::InsightsResponse, String> 
 }
 
 #[command]
-async fn list_insights() -> Result<v1::InsightsResponse, String> {
+async fn list_insights(locale: Option<String>) -> Result<v1::InsightsResponse, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let resp = request(request::Payload::ListInsights(v1::ListInsightsRequest {}))
-            .map_err(|e| e.to_string())?;
+        let resp = request(request::Payload::ListInsights(v1::ListInsightsRequest {
+            locale,
+        }))
+        .map_err(|e| e.to_string())?;
         extract_insights(resp)
     })
     .await

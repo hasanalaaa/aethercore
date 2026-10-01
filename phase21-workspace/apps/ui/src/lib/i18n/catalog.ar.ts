@@ -1827,6 +1827,8 @@ export const arCatalog = {
   'insight.surface.bottleneckReport': 'أداء',
   'insight.surface.repairDiagnosis': 'إصلاح',
   'insight.surface.timelinePattern': 'نمط زمني',
+  'insight.surface.diagnostics': 'التشخيص',
+  'insight.surface.careHistory': 'سجل العناية',
   'insight.surface.maintenanceHistory': 'سجل',
   'insight.surface.securityFinding': 'أمن',
   'insight.summary.bottleneck': 'ملخص ملاحظات الأداء',
@@ -1903,6 +1905,8 @@ export const arCatalog = {
   'overview.serviceLogEmptyBody': 'لا أحداث بعد.',
 
   /* ---- P57: درج المساعد --------------------------------------------------- */
+  'assistant.askFinding': 'اسأل عن هذه النتيجة',
+  'assistant.contextQuestion': 'ما الذي يتطلب الانتباه في التشخيص المسجّل؟',
   'assistant.title': 'المساعد',
   'nav.assistant': 'اسأل المساعد',
   'nav.assistantDescription': 'يجيب عن أسئلة حول هذا الجهاز مما قاسه AetherCore',

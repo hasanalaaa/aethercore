@@ -43,6 +43,8 @@
       case 'bottleneckReport': return td('insight.surface.bottleneckReport', locale);
       case 'repairDiagnosis': return td('insight.surface.repairDiagnosis', locale);
       case 'timelinePattern': return td('insight.surface.timelinePattern', locale);
+      case 'diagnostics': return td('insight.surface.diagnostics', locale);
+      case 'careHistory': return td('insight.surface.careHistory', locale);
       case 'securityFinding': return td('insight.surface.securityFinding', locale);
       default: return td('insight.surface.maintenanceHistory', locale);
     }

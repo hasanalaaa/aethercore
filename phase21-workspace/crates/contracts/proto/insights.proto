@@ -28,7 +28,10 @@ message Insight {
   string engine = 6;
 }
 
-message ListInsightsRequest {}
+message ListInsightsRequest {
+  // P86/D23: omitted or empty remains English; en/ar only. Listing never runs inference.
+  optional string locale = 1;
+}
 
 message RequestInsightRequest {
   // Advisory question key; evidence pack is composed service-side from public read APIs.

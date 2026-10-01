@@ -16,11 +16,9 @@
 //! badge. Showing it would put an uncited claim about someone's computer on the
 //! screen, which is the one thing this product is built not to do.
 //!
-//! The engine label never lies either. It reports what the engine IS. A
-//! generation failure is a FAULTED turn carrying a reason key, never a silent
-//! degrade to the rule engine — the rule engine summarises evidence and cannot
-//! answer a question, so letting it answer one under the model's label would be
-//! the silent fallback P56's brief forbids.
+//! P86/D22: the model selects typed fact IDs; owned templates carry the final
+//! meanings in EN/AR. Invalid selections use the same bounded facts under an
+//! explicit ruleFallback label. Runtime failures still terminate with a fault.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -118,7 +116,7 @@ impl GenerationBudget {
 /// What a generation run produced.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Generated {
-    /// Raw model text, citation markers included. Grounding runs on this.
+    /// Untrusted fact-selection JSON. Only owned templates reach the reader.
     pub text: String,
     pub tokens: u32,
     /// True when the loop stopped because `budget.cancel` was raised.

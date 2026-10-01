@@ -119,7 +119,7 @@ impl Insight {
 
 /// The language the reader asked for (DBT-P75-052). It selects the language of
 /// the prose; tags, the `NO EVIDENCE` token and every gate are the same in both.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Locale {
     #[default]
     En,

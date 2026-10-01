@@ -195,7 +195,7 @@ pub fn handle_request(
             request::Payload::StartCareRun(_) => care::start_care_run(call),
             request::Payload::CancelCareRun(_) => care::cancel_care_run(call),
             // ---------------- Phase 23: Local Intelligence (advisory-only) ----------------
-            request::Payload::ListInsights(_) => insights::list_insights(call),
+            request::Payload::ListInsights(v) => insights::list_insights(call, v),
             request::Payload::RequestInsight(v) => insights::request_insight(call, v),
             request::Payload::DismissInsight(v) => insights::dismiss_insight(call, v),
             // ---------------- Phase 56: the grounded assistant ----------------------

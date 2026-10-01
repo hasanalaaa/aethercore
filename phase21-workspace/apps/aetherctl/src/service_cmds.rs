@@ -197,7 +197,7 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
         }
         ServiceJob::InsightsList => {
             let payload = require_ok(client.call(request::Payload::ListInsights(
-                aethercore_contracts::v1::ListInsightsRequest {},
+                aethercore_contracts::v1::ListInsightsRequest { locale: None },
             ))?)?;
             insights_value(&payload).ok_or_else(|| CliError::ProtocolViolation {
                 detail: "expected InsightsResponse".to_string(),

@@ -18,3 +18,24 @@ pub const MAX_REQUEST_DEADLINE_MS: i64 = 120_000;
 pub mod v1 {
     include!(concat!(env!("OUT_DIR"), "/aethercore.v1.rs"));
 }
+
+#[cfg(test)]
+mod locale_tests {
+    use super::v1::ListInsightsRequest;
+    use prost::Message;
+    #[test]
+    fn insight_list_locale_preserves_old_empty_messages_and_uses_additive_tag_one() {
+        assert_eq!(ListInsightsRequest::decode(&[][..]).unwrap().locale, None);
+        let arabic = ListInsightsRequest {
+            locale: Some("ar".into()),
+        };
+        assert_eq!(arabic.encode_to_vec(), b"\x0a\x02ar");
+        assert_eq!(
+            ListInsightsRequest::decode(arabic.encode_to_vec().as_slice())
+                .unwrap()
+                .locale
+                .as_deref(),
+            Some("ar")
+        );
+    }
+}

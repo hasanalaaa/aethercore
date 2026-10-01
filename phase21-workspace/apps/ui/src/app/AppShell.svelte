@@ -25,6 +25,7 @@
   import ActivityPage from '../features/activity/ActivityPage.svelte';
   import TimelinePanel from '../features/timeline/TimelinePage.svelte';
   import CarePanel from '../features/care/CarePanel.svelte';
+  import { setInsightsLocale } from '../features/insights/controller';
   import InsightsPanel from '../features/insights/InsightsPanel.svelte';
   import FleetPage from '../features/fleet/FleetPage.svelte';
   import AssistantDrawer from '../features/assistant/AssistantDrawer.svelte';
@@ -34,6 +35,7 @@
   let windowCleanup: WindowUxCleanup | undefined;
   let kernelCleanup: KernelSessionCleanup | undefined;
   $: setAssistantLocale($shellState.locale);
+  $: setInsightsLocale($shellState.locale);
   $: localizedError = localizeOwnedText($shellState.errorMessage, $shellState.locale);
   $: currentNavigation = NAVIGATION.find((item) => item.id === $shellState.activePage);
   $: shellCondition = $shellState.errorMessage ? 'error' : $shellState.busy ? 'loading' : !$streamState.snapshot.connected ? 'disconnected' : 'idle';

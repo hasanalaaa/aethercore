@@ -2,12 +2,21 @@
 
 use super::*;
 
-pub(super) fn list_insights(call: &Call<'_>) -> Routed {
+pub(super) fn list_insights(call: &Call<'_>, v: v1::ListInsightsRequest) -> Routed {
     let ctx = call.ctx;
     let request_context = call.request_context;
     let principal_key = &call.principal_key;
     request_context.checkpoint().map_err(err)?;
-    let response = ctx.intelligence_core.list(principal_key);
+    let Some(locale) =
+        aethercore_intelligence_core::Locale::from_wire(v.locale.as_deref().unwrap_or(""))
+    else {
+        return Err(ServiceError::invalid(
+            "intelligence",
+            "insight.invalid.locale",
+            "insight.invalid.locale",
+        ));
+    };
+    let response = ctx.intelligence_core.list(principal_key, locale);
     publish(
         ctx,
         principal_key,
@@ -83,8 +92,8 @@ pub(super) fn dismiss_insight(call: &Call<'_>, v: v1::DismissInsightRequest) -> 
     // A handle that is already gone is not an error: the set is
     // session-scoped and two windows can dismiss the same insight.
     // The list below is what settles it either way.
-    let _ = ctx.intelligence_core.dismiss(principal_key, &v.insight_id);
-    let response = ctx.intelligence_core.list(principal_key);
+    let locale = ctx.intelligence_core.dismiss(principal_key, &v.insight_id);
+    let response = ctx.intelligence_core.list(principal_key, locale);
     publish(
         ctx,
         principal_key,

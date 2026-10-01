@@ -371,7 +371,7 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
       next.careStatus = event.payload;
       break;
     case 'insights':
-      next.insights = event.payload;
+      // This stable event has no locale. Only an explicitly scoped RPC reply may display prose.
       break;
     case 'assistantTurn':
       next.assistantTurn = event.payload;

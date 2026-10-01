@@ -694,3 +694,80 @@ fn the_real_model_selects_fact_ids_in_both_locales() {
         );
     }
 }
+
+/// Explicit acceptance run: one verified model, actual cold/warm timings, unchanged budgets.
+/// This is measured on demand rather than adding twenty generations to ordinary unit CI.
+#[test]
+#[ignore = "manual native acceptance measurement with the shipped model"]
+fn windows_fact_acceptance_measurement() {
+    use aethercore_intelligence_core::assistant::render_fact_selection;
+    let _serialised = ONE_MODEL_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let path = product_root().join(EMBEDDED_MODEL_RELATIVE_PATH);
+    let mut reasoner = LlamaCppReasoner::new();
+    let started = Instant::now();
+    verify_model_hash(&path, &embedded_model_entry()).expect("pinned artifact");
+    let verified_ms = started.elapsed().as_millis();
+    let loaded = Instant::now();
+    reasoner.load(&path).expect("model loads");
+    measured(&format!(
+        "P86 cold verify_ms={verified_ms} load_ms={}",
+        loaded.elapsed().as_millis()
+    ));
+    let facts = pack();
+    let mut rejected = 0;
+    for (locale, question) in [
+        (Locale::En, "what maintenance has run?"),
+        (Locale::Ar, "ما الصيانة التي جرت؟"),
+    ] {
+        let mut timings = Vec::new();
+        for sample in 0..10 {
+            let started = Instant::now();
+            let generated = reasoner.generate(
+                &facts,
+                question,
+                locale,
+                &GenerationBudget::new(Arc::new(AtomicBool::new(false))),
+                &mut |_| {},
+            );
+            let generation_ms = started.elapsed().as_millis();
+            let validation = Instant::now();
+            let accepted = generated.as_ref().is_ok_and(|output| {
+                !output.cancelled && render_fact_selection(&output.text, &facts, locale).is_some()
+            });
+            let validation_us = validation.elapsed().as_micros();
+            rejected += usize::from(!accepted);
+            measured(&format!(
+                "P86 sample locale={locale:?} index={sample} generation_ms={generation_ms} validation_us={validation_us} accepted={accepted}"
+            ));
+            timings.push(generation_ms);
+        }
+        timings.sort_unstable();
+        measured(&format!(
+            "P86 warm locale={locale:?} n=10 p50_ms={} p95_ms={}",
+            timings[4], timings[9]
+        ));
+    }
+    let cancelled = reasoner
+        .generate(
+            &facts,
+            "maintenance",
+            Locale::En,
+            &GenerationBudget::new(Arc::new(AtomicBool::new(true))),
+            &mut |_| {},
+        )
+        .expect("cancel result");
+    assert!(
+        cancelled.cancelled && cancelled.tokens == 0,
+        "{cancelled:?}"
+    );
+    measured(&format!(
+        "P86 schema rejected={rejected}/20 pre_cancel_tokens={}",
+        cancelled.tokens
+    ));
+    assert_eq!(
+        rejected, 0,
+        "the native schema run must be reported as failed on rejected outputs"
+    );
+}

@@ -325,7 +325,7 @@ fn list_insights_label(session: &mut aethercore_ipc::UnixSocketSession) -> Strin
             request_id: "gd-list-insights01".into(),
         }),
         payload: Some(aethercore_contracts::v1::request::Payload::ListInsights(
-            v1::ListInsightsRequest {},
+            v1::ListInsightsRequest { locale: None },
         )),
     };
     match exchange(session, &session_request(request)).payload {

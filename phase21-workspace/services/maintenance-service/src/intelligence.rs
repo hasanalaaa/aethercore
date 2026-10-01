@@ -53,42 +53,75 @@ pub fn load_in_background(model: LlamaCppReasoner, product_root: std::path::Path
 /// insights it had no way to name and every dismissal missed. One field, one
 /// decider — what is stored and what is sent cannot drift apart.
 #[derive(Default)]
+struct CachedInsights {
+    digest: String,
+    insights: Vec<v1::Insight>,
+}
+
+#[derive(Default)]
 pub struct EphemeralInsights {
     next_id: AtomicU32,
-    items: Mutex<HashMap<String, Vec<v1::Insight>>>,
+    items: Mutex<HashMap<(String, Locale), CachedInsights>>,
 }
 
 impl EphemeralInsights {
     /// Replaces the session set and returns it stamped with the handles the
     /// client must send back to dismiss.
-    fn replace_all(&self, owner: &str, insights: Vec<v1::Insight>) -> Vec<v1::Insight> {
-        let mut all = self.items.lock().unwrap_or_else(|p| p.into_inner());
-        let store = all.entry(owner.to_owned()).or_default();
-        store.clear();
-        for mut insight in insights {
+    fn replace_all(
+        &self,
+        owner: &str,
+        locale: Locale,
+        digest: &str,
+        mut insights: Vec<v1::Insight>,
+    ) -> Vec<v1::Insight> {
+        for insight in &mut insights {
             insight.id = format!("insight-{}", self.next_id.fetch_add(1, Ordering::SeqCst));
-            store.push(insight);
         }
-        store.clone()
+        self.items.lock().unwrap_or_else(|p| p.into_inner()).insert(
+            (owner.to_owned(), locale),
+            CachedInsights {
+                digest: digest.to_owned(),
+                insights: insights.clone(),
+            },
+        );
+        insights
     }
 
-    fn list(&self, owner: &str) -> Vec<v1::Insight> {
+    fn list(&self, owner: &str, locale: Locale, digest: &str) -> Vec<v1::Insight> {
+        let mut all = self.items.lock().unwrap_or_else(|p| p.into_inner());
+        let key = (owner.to_owned(), locale);
+        if all.get(&key).is_some_and(|store| store.digest != digest) {
+            all.remove(&key);
+        }
+        all.get(&key)
+            .map(|store| store.insights.clone())
+            .unwrap_or_default()
+    }
+
+    fn locale_for_handle(&self, owner: &str, insight_id: &str) -> Option<Locale> {
         self.items
             .lock()
             .unwrap_or_else(|p| p.into_inner())
-            .get(owner)
-            .cloned()
-            .unwrap_or_default()
+            .iter()
+            .find(|((key, _), store)| {
+                key == owner
+                    && store
+                        .insights
+                        .iter()
+                        .any(|insight| insight.id == insight_id)
+            })
+            .map(|((_, locale), _)| *locale)
     }
 
     fn dismiss(&self, owner: &str, insight_id: &str) -> bool {
         let mut all = self.items.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(store) = all.get_mut(owner) else {
-            return false;
-        };
-        let before = store.len();
-        store.retain(|insight| insight.id != insight_id);
-        store.len() != before
+        let mut removed = false;
+        for (_, store) in all.iter_mut().filter(|((key, _), _)| key == owner) {
+            let before = store.insights.len();
+            store.insights.retain(|insight| insight.id != insight_id);
+            removed |= store.insights.len() != before;
+        }
+        removed
     }
 }
 
@@ -428,10 +461,17 @@ impl IntelligenceCoordinator {
     }
 
     /// Lists current session insights without running inference.
-    pub fn list(&self, owner: &str) -> v1::InsightsResponse {
+    pub fn list(&self, owner: &str, locale: Locale) -> v1::InsightsResponse {
+        let digest = compose_current_evidence_pack(
+            self.db.as_ref(),
+            owner,
+            self.diagnostics.as_ref(),
+            self.repair.as_ref(),
+        )
+        .digest_sha256();
         v1::InsightsResponse {
             engine_label: self.engine_label().into(),
-            insights: self.session.list(owner),
+            insights: self.session.list(owner, locale, &digest),
         }
     }
 
@@ -506,18 +546,39 @@ impl IntelligenceCoordinator {
             })
             .collect();
 
+        // An observation may change while the model runs. Never cache or return that old answer.
+        let digest = pack.digest_sha256();
+        let current = compose_current_evidence_pack(
+            self.db.as_ref(),
+            owner_principal_key,
+            self.diagnostics.as_ref(),
+            self.repair.as_ref(),
+        );
+        if digest != current.digest_sha256() {
+            return Ok(v1::InsightsResponse {
+                engine_label: self.engine_label().into(),
+                insights: Vec::new(),
+            });
+        }
         // Return what the registry now holds, not the pre-registration vector:
         // the ids are assigned during registration, and a response without them
         // is one the client cannot act on.
         Ok(v1::InsightsResponse {
             engine_label: self.engine_label().into(),
-            insights: self.session.replace_all(owner_principal_key, wire),
+            insights: self
+                .session
+                .replace_all(owner_principal_key, locale, &digest, wire),
         })
     }
 
     /// Dismisses one session insight. Returns true when it existed.
-    pub fn dismiss(&self, owner: &str, insight_id: &str) -> bool {
-        self.session.dismiss(owner, insight_id)
+    pub fn dismiss(&self, owner: &str, insight_id: &str) -> Locale {
+        let locale = self
+            .session
+            .locale_for_handle(owner, insight_id)
+            .unwrap_or(Locale::En);
+        self.session.dismiss(owner, insight_id);
+        locale
     }
 }
 
@@ -547,7 +608,12 @@ mod tests {
     #[test]
     fn a_dismissal_by_list_index_removes_nothing() {
         let registry = EphemeralInsights::default();
-        registry.replace_all("owner-a", vec![insight("a"), insight("b"), insight("c")]);
+        registry.replace_all(
+            "owner-a",
+            Locale::En,
+            "generation-a",
+            vec![insight("a"), insight("b"), insight("c")],
+        );
 
         for index in 0..3 {
             assert!(
@@ -555,7 +621,10 @@ mod tests {
                 "list index {index} must not name an insight"
             );
         }
-        assert_eq!(registry.list("owner-a").len(), 3);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            3
+        );
     }
 
     /// The handle the client is given is the handle the registry matches on.
@@ -564,21 +633,40 @@ mod tests {
     #[test]
     fn every_listed_insight_carries_the_handle_that_dismisses_it() {
         let registry = EphemeralInsights::default();
-        let listed =
-            registry.replace_all("owner-a", vec![insight("a"), insight("b"), insight("c")]);
+        let listed = registry.replace_all(
+            "owner-a",
+            Locale::En,
+            "generation-a",
+            vec![insight("a"), insight("b"), insight("c")],
+        );
         assert_eq!(listed.len(), 3);
         assert!(listed.iter().all(|i| !i.id.is_empty()), "{listed:?}");
 
         // replace_all's return and list() are the same set, ids included.
         let ids: Vec<&str> = listed.iter().map(|i| i.id.as_str()).collect();
-        let relisted: Vec<String> = registry.list("owner-a").into_iter().map(|i| i.id).collect();
+        let relisted: Vec<String> = registry
+            .list("owner-a", Locale::En, "generation-a")
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
         assert_eq!(ids, relisted.iter().map(String::as_str).collect::<Vec<_>>());
 
         assert!(registry.dismiss("owner-a", &listed[1].id));
-        let after: Vec<String> = registry.list("owner-a").into_iter().map(|i| i.id).collect();
+        let after: Vec<String> = registry
+            .list("owner-a", Locale::En, "generation-a")
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
         assert_eq!(after, vec![listed[0].id.clone(), listed[2].id.clone()]);
-        assert_eq!(registry.list("owner-a").len(), 2);
-        assert!(registry.list("owner-b").is_empty());
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            2
+        );
+        assert!(
+            registry
+                .list("owner-b", Locale::En, "generation-a")
+                .is_empty()
+        );
     }
 
     /// Handles are not reused across a refresh, so a stale press from a panel
@@ -586,8 +674,18 @@ mod tests {
     #[test]
     fn handles_are_not_reused_when_the_set_is_replaced() {
         let registry = EphemeralInsights::default();
-        let first = registry.replace_all("owner-a", vec![insight("a"), insight("b")]);
-        let second = registry.replace_all("owner-a", vec![insight("c"), insight("d")]);
+        let first = registry.replace_all(
+            "owner-a",
+            Locale::En,
+            "generation-a",
+            vec![insight("a"), insight("b")],
+        );
+        let second = registry.replace_all(
+            "owner-a",
+            Locale::En,
+            "generation-a",
+            vec![insight("c"), insight("d")],
+        );
 
         for stale in &first {
             assert!(
@@ -596,9 +694,15 @@ mod tests {
                 stale.id
             );
         }
-        assert_eq!(registry.list("owner-a").len(), 2);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            2
+        );
         assert!(registry.dismiss("owner-a", &second[0].id));
-        assert_eq!(registry.list("owner-a").len(), 1);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            1
+        );
     }
 
     fn journal_db(transitions: &[(&str, i64)]) -> (Database, std::path::PathBuf) {
@@ -696,9 +800,12 @@ mod tests {
     #[test]
     fn dismissing_an_unknown_handle_is_reported_rather_than_swallowed() {
         let registry = EphemeralInsights::default();
-        registry.replace_all("owner-a", vec![insight("a")]);
+        registry.replace_all("owner-a", Locale::En, "generation-a", vec![insight("a")]);
         assert!(!registry.dismiss("owner-a", "insight-999"));
-        assert_eq!(registry.list("owner-a").len(), 1);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            1
+        );
     }
     #[test]
     fn facts_read_typed_record_states_and_keep_owner_isolation() {
@@ -849,5 +956,35 @@ mod tests {
         append_care_history(&mut other, &db, "owner-b", now);
         assert!(other.items.is_empty());
         let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn cached_insights_are_scoped_to_locale_and_evidence_generation() {
+        let registry = EphemeralInsights::default();
+        registry.replace_all("owner-a", Locale::En, "generation-a", vec![insight("en")]);
+        registry.replace_all("owner-a", Locale::Ar, "generation-a", vec![insight("ar")]);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a")[0].summary_key,
+            "en"
+        );
+        assert_eq!(
+            registry.list("owner-a", Locale::Ar, "generation-a")[0].summary_key,
+            "ar"
+        );
+        assert!(
+            registry
+                .list("owner-b", Locale::En, "generation-a")
+                .is_empty()
+        );
+        assert!(
+            registry
+                .list("owner-a", Locale::En, "generation-b")
+                .is_empty()
+        );
+        assert!(
+            registry
+                .list("owner-a", Locale::En, "generation-a")
+                .is_empty(),
+            "a stale generation stays invalidated"
+        );
     }
 }
