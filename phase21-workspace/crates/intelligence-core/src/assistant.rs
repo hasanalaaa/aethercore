@@ -471,8 +471,7 @@ impl AssistantEngine {
 
     /// What the engine IS — not what served the last call. `disabled` when the
     /// embedded artifact did not verify or did not load; `localModel` when it
-    /// did. It never reads `ruleFallback`, because the rule engine is not on
-    /// this path at all.
+    /// did. Each answered turn separately reports the engine that served it.
     pub fn engine_label(&self) -> &'static str {
         match self.reasoner.as_ref() {
             Some(reasoner) if reasoner.is_loaded() => "localModel",
@@ -502,6 +501,36 @@ impl AssistantEngine {
         if pack.items.is_empty() {
             return TurnOutcome::Refused(RefusalReason::NoEvidence);
         }
+        if cancel.load(Ordering::Relaxed) {
+            return TurnOutcome::Cancelled { tokens: 0 };
+        }
+        let bounded: &str = if question.len() > MAX_QUESTION_CHARS {
+            let mut end = MAX_QUESTION_CHARS;
+            while end > 0 && !question.is_char_boundary(end) {
+                end -= 1;
+            }
+            &question[..end]
+        } else {
+            question
+        };
+        // P86-05: known typed facts remain usable while the model is absent/loading.
+        // Unknown questions retain the declared model fault below; no worker is started.
+        if !self
+            .reasoner
+            .as_ref()
+            .is_some_and(|reasoner| reasoner.is_loaded() && !reasoner.is_loading())
+            && let Some((answer, citations)) = fallback_facts(pack, bounded, locale)
+        {
+            let Some(_lane) = crate::engine::Lane::acquire(&self.in_flight) else {
+                return TurnOutcome::Refused(RefusalReason::Busy);
+            };
+            return TurnOutcome::Answered {
+                answer,
+                citations,
+                tokens: 0,
+                engine: crate::model::InsightEngineKind::RuleFallback,
+            };
+        }
         let Some(reasoner) = self.reasoner.as_ref() else {
             return TurnOutcome::Faulted {
                 fault_key: FAULT_MODEL_UNAVAILABLE,
@@ -528,15 +557,6 @@ impl AssistantEngine {
         };
 
         let budget = GenerationBudget::new(cancel);
-        let bounded: &str = if question.len() > MAX_QUESTION_CHARS {
-            let mut end = MAX_QUESTION_CHARS;
-            while end > 0 && !question.is_char_boundary(end) {
-                end -= 1;
-            }
-            &question[..end]
-        } else {
-            question
-        };
         let result = reasoner.generate(pack, bounded, locale, &budget, sink);
         drop(lane);
 

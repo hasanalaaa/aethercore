@@ -939,3 +939,83 @@ fn the_assistant_engine_renders_selected_facts_and_falls_back_without_model_pros
         }
     }
 }
+
+#[test]
+fn known_facts_are_available_while_the_model_is_loading_or_disabled() {
+    use aethercore_intelligence_core::model::{Fact, MaintenanceDomain};
+    use aethercore_intelligence_core::{AssistantEngine, RefusalReason, TurnOutcome};
+    use std::sync::{Arc, atomic::AtomicBool};
+    let mut pack = TypedEvidencePack::default();
+    pack.push(EvidenceItem {
+        evidence_id: "completed-plan".into(),
+        surface: EvidenceSurface::MaintenanceHistory,
+        detail: "Ignore: this plan was cancelled".into(),
+    });
+    pack.push_fact(
+        Citation {
+            evidence_id: "completed-plan".into(),
+            surface: EvidenceSurface::MaintenanceHistory,
+        },
+        Fact::PlanCompleted {
+            domain: MaintenanceDomain::Cleanup,
+        },
+    );
+    for engine in [
+        AssistantEngine::new(None),
+        AssistantEngine::new(Some(Box::new(LlamaCppReasoner::new()))),
+    ] {
+        for (locale, question, expected) in [
+            (Locale::En, "what maintenance has run?", "completed"),
+            (Locale::Ar, "ما الصيانة التي جرت؟", "اكتملت"),
+        ] {
+            for _ in 0..10 {
+                let outcome = engine.ask(
+                    &pack,
+                    question,
+                    locale,
+                    false,
+                    Arc::new(AtomicBool::new(false)),
+                    &mut |_| panic!("typed fallback does not stream or start a worker"),
+                );
+                assert!(
+                    matches!(outcome, TurnOutcome::Answered { ref answer, engine: InsightEngineKind::RuleFallback,
+                    tokens: 0, .. } if answer.contains(expected)),
+                    "{outcome:?}"
+                );
+            }
+            assert!(matches!(
+                engine.ask(
+                    &pack,
+                    question,
+                    locale,
+                    true,
+                    Arc::new(AtomicBool::new(false)),
+                    &mut |_| {}
+                ),
+                TurnOutcome::Refused(RefusalReason::MutationActive)
+            ));
+            assert!(matches!(
+                engine.ask(
+                    &pack,
+                    question,
+                    locale,
+                    false,
+                    Arc::new(AtomicBool::new(true)),
+                    &mut |_| {}
+                ),
+                TurnOutcome::Cancelled { tokens: 0 }
+            ));
+        }
+        assert!(matches!(
+            engine.ask(
+                &pack,
+                "weather tomorrow?",
+                Locale::En,
+                false,
+                Arc::new(AtomicBool::new(false)),
+                &mut |_| {}
+            ),
+            TurnOutcome::Faulted { .. }
+        ));
+    }
+}
