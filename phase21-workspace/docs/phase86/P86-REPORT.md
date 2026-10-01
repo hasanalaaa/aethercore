@@ -1,8 +1,8 @@
 # P86 acceptance report
 
-Implementation source head: `042f3b51970232f827b3313c60895c5166890f12`.
+Implementation source head: `8c75fdc3c419f164b9b273760a86a0c0e97100a0`.
 Shared model/core native head: `2f01d4c634db2e471e633f7a127a02d4c0e3db04`; repair priority native fixture head: `62a2888b813763b699f5f977b4d63ce90148d74b`.
-The last source commit changes only a fake backend test summary key to the owned observation key.
+The earlier `042f3b5` changes only a fake backend test summary key; the post-generation correction below supersedes its implementation head.
 Owner authority: `docs/roadmap/DECISIONS.md`, D22 and D23, approved 2026-09-28.
 Scope: P86-02A/B, 03A/B, 04, and 05 following the existing P86-01 baseline.
 Code and fixtures are complete; hardware/UI qualifications below remain explicitly NOT RUN.
@@ -37,7 +37,7 @@ Code and fixtures are complete; hardware/UI qualifications below remain explicit
 
 | Check | Result |
 | --- | --- |
-| Core unit suite | 30 passed |
+| Core unit suite | 32 passed after post-generation correction |
 | Adversarial suite, including cited semantic inversion and strict insight selection | 29 passed |
 | Full service binary unit suite, including 12 intelligence fixtures and repair priority | 43 passed |
 | Real model shared insight path, including AR and cross-path single-flight | 3 passed |
@@ -49,7 +49,7 @@ Code and fixtures are complete; hardware/UI qualifications below remain explicit
 | Contract binary compatibility | 1 passed, old empty messages decode |
 | Clippy, core all targets and service test/binary targets | Passed with warnings denied |
 | Static validation / contract audit | 349 / 351 passed |
-| Delivered source seal at implementation code head | 1571/1571 plus .github 7/7; report delivery adds five tracked artifacts |
+| Delivered source seal at implementation code head | 1571/1571 plus .github 7/7; report delivery adds six tracked artifacts |
 
 The previous assistant-only full embedded suite also passed 11 tests, plus 30 core unit,
 26 adversarial and one offline-boundary test. After the shared path changed, the affected real
@@ -123,3 +123,34 @@ cargo test --locked -p aethercore-maintenance-service --features unix-ipc --test
 
 The new long native sampling test is explicitly invoked acceptance work, not an added slow requirement
 for every unit CI. Existing embedded tests remain enabled and their deadlines are unchanged.
+
+## Post-generation cancellation/deadline correction
+
+Code fix: `2a8fd95c8f9adcdd001aefe737e777513508018a`.
+Native final-token fixture: `8c75fdc3c419f164b9b273760a86a0c0e97100a0`.
+
+An uncooperative backend could raise the shared cancel flag or finish after the deadline, then
+return valid fact IDs with `Generated.cancelled = false`. The assistant admitted those IDs; an
+invalid selection could also enter the typed fallback after cancellation. The assistant now reads
+its own budget after generation, before either branch: cancellation terminates as `Cancelled`
+(with emitted tokens, or zero if generation errored), and expiry uses the existing deadline fault.
+Backend flags cannot override that decision. The native decode loop independently rechecks the
+same budget at its final boundary, covering direct assistant generation and the shared insight
+path even when token cap/EOG leaves no next loop iteration.
+
+Red evidence: both fake valid-ID results were `Answered` before the correction (cancel and actual
+20-second expiry), and a known-topic invalid selection was `Answered` with `ruleFallback` before
+its post-generation barrier. Green covers cancellation in EN/AR for valid IDs and invalid-selection
+fallback, plus expired valid IDs. The expiry test uses the real 20-second ceiling without changing
+production budgets. The real-model cancellation fixture now caps generation at three tokens and
+raises cancellation at token three; its existing exact token-count and cancellation assertions stay.
+
+Local verification: core 32, adversarial 29, offline boundary 1 passed; core all-target Clippy passed
+with warnings denied. The adversarial suite includes actual artifact load/inference/deadline checks.
+Native Windows at clean exact `2a8fd95`: core 32 passed and existing actual cancellation 1 passed.
+Native Windows at clean exact `8c75fdc`: final-token actual cancellation 1 passed (three tokens, cancellation true); receipt is recorded in
+`P86-POST-GENERATION.json`. Each used the isolated l3 target and two build jobs; no tracked-source
+or binary overlay. The previous 20-sample measurements remain explicitly at their recorded earlier
+heads; they were not repeated or relabelled as measurements of this correction. This delta adds no
+wire/dependency or deadline change. Coordinator integration CI/installer and the qualifications
+above still require their own exact-head evidence.
