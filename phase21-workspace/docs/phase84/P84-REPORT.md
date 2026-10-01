@@ -32,7 +32,7 @@ Two tasks passed the ~300-line guide:
 
 Neither split into a third task, because each half is only complete with the other.
 
-Ledger: `DBT-P84-001` to `DBT-P84-005` and `DBT-P84-007` are closed; `DBT-P84-006` is open.
+Ledger: `DBT-P84-001` to `DBT-P84-005` and `DBT-P84-007` are closed; `DBT-P84-008` is qualified for source and deterministic fixtures, with exact-head native phase qualification pending; `DBT-P84-006` is open.
 
 ## 2. Red before, per task
 
@@ -99,6 +99,39 @@ checkpoint serialization; no new wire field, dependency or live driver install w
 The five-package Mac check (`driver-backup`, `driver-install`, `driver-hub`,
 `maintenance-service`, `pc-intelligence`, locked, jobs=2) passed after the fix.
 Full CI at the integration head remains the merge gate; its receipt belongs to the PR.
+
+### Execution recovery: the read lease follows the actual WUA worker
+
+The lifecycle review at `5e808f9` found that `search_bounded` returned at its observer
+deadline while WUA could still be running. The hub then published warning-only `Ready`
+and dropped its outer `ReadBudgetLease`. `IN_FLIGHT` prevented another WUA search,
+but the global and same-kind read counters no longer included that expensive worker.
+The passive scheduler's 45-second watchdog could release the same accounting before
+the local WUA observer's 120-second deadline as well.
+
+`DBT-P84-008` records the fix. The existing backend and passive executor carry an
+`Arc<ReadBudgetLease>` into the actual bounded search closure. The observer still returns
+at its original deadline, but the guard stays with the worker until it really exits.
+Passive scans require the matching driver-discovery lease; scheduler cancellation still
+prevents publication. Direct read-only probes use the same generic search with a unit
+guard. No dependency, wire field, budget limit, search deadline or abort policy changed.
+
+Before the fix, the controllable interactive and passive fixtures failed with active
+budget 0 where 1 was required; the bounded guard fixture failed with one drop at the
+observer deadline where zero was required. After the handoff, both `Ready` observers
+leave global and same-kind admission charged until explicit worker completion. The
+bounded fixture counts exactly one guard drop, retains the existing no-overlap check,
+and discards its late result. A nested passive-watchdog fixture proves ownership survives
+both observer exits and that cancellation prevents a late snapshot from publishing.
+
+The five-package locked Mac test run (`windows-update`, `driver-hub`, `idle-scheduler`,
+`maintenance-service`, `operation-kernel`, jobs=2) passed 160 tests. All-target host clippy
+with `-D warnings` passed. The WUA-only Windows GNU cross-clippy passed; broader cross
+compilation was unavailable because this Mac lacks `x86_64-w64-mingw32-gcc` for native
+SQLite dependencies. No live WUA, driver install or model test was run for this fix.
+The complete 11 gate self-test scripts and five active Python audits passed (16/16);
+source seal verified 1589 workspace files and seven workflow files. Native Windows
+compilation and full phase CI remain required at the new exact head.
 
 ### Execution recovery: retain all four leased read routes
 

@@ -6,6 +6,7 @@ use aethercore_idle_scheduler::{
     AutonomousWorkload, IdleScheduler, PassiveWorkExecutor, PassiveWorkReport, ResourceGovernor,
     SchedulerConfig, SchedulerHandle, SchedulerStartError, WindowsSystemStateProbe,
 };
+use aethercore_operation_kernel::ReadBudgetLease;
 
 use crate::{
     protocol::{
@@ -40,6 +41,7 @@ impl PassiveWorkExecutor for ServicePassiveExecutor {
         token: CancellationToken,
         commit_fence: CommitFence,
         governor: &ResourceGovernor,
+        read: Arc<ReadBudgetLease>,
     ) -> Result<PassiveWorkReport, String> {
         // Opaque Windows providers cannot be preempted at arbitrary kernel instruction boundaries.
         // Reserve a deliberately small process-local duty-cycle budget before entering them; the
@@ -103,7 +105,7 @@ impl PassiveWorkExecutor for ServicePassiveExecutor {
                 let snapshot = self
                     .context
                     .driver_hub
-                    .passive_scan_with_fence(owner, token, commit_fence.clone())
+                    .passive_scan_with_fence(owner, token, commit_fence.clone(), read)
                     .map_err(|e| e.to_string())?;
                 if commit_fence.is_committed() {
                     publish(

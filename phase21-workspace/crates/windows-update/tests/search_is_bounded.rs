@@ -7,13 +7,17 @@ fn the_driver_search_is_an_abortable_job_under_a_deadline() {
     let source: String = include_str!("../src/windows_impl.rs")
         .split_whitespace()
         .collect();
+    assert!(
+        source.contains("discover_driver_offers_with_keepalive(scope,())"),
+        "direct read-only probes must delegate with a unit guard"
+    );
     let start = source
-        .find("pubfndiscover_driver_offers(")
-        .expect("discover_driver_offers");
+        .find("pubfndiscover_driver_offers_with_keepalive<G:Send+'static>")
+        .expect("the resource-owning search entrypoint");
     let body = &source[start..];
     let body = &body[..body[1..].find("pubfn").map_or(body.len(), |end| end + 1)];
     for needle in [
-        "search_bounded(",
+        "search_bounded(deadline,keepalive,",
         "BeginSearch(",
         "RequestAbort()",
         "EndSearch(",
