@@ -571,7 +571,7 @@ impl IntelligenceCoordinator {
         })
     }
 
-    /// Dismisses one session insight. Returns true when it existed.
+    /// Dismisses one session insight and returns its locale for the remaining-list reply.
     pub fn dismiss(&self, owner: &str, insight_id: &str) -> Locale {
         let locale = self
             .session
@@ -917,7 +917,7 @@ mod tests {
             confidence: serde_json::from_str("\"confirmed\"").unwrap(),
         };
         let mut pack = TypedEvidencePack::default();
-        append_repair_facts(&mut pack, "assessment-a", &[fact.clone()], now);
+        append_repair_facts(&mut pack, "assessment-a", std::slice::from_ref(&fact), now);
         assert_eq!(pack.propositions.len(), 1);
         assert!(
             pack.propositions[0]
@@ -986,5 +986,96 @@ mod tests {
                 .is_empty(),
             "a stale generation stays invalidated"
         );
+    }
+    #[test]
+    fn a_backend_reply_after_evidence_changes_is_neither_returned_nor_cached() {
+        struct ChangingBackend(Arc<Database>);
+        impl aethercore_intelligence_core::LocalReasoner for ChangingBackend {
+            fn load(&mut self, _: &std::path::Path) -> Result<(), String> {
+                Ok(())
+            }
+            fn is_loaded(&self) -> bool {
+                true
+            }
+            fn infer(
+                &self,
+                pack: &TypedEvidencePack,
+                _: &str,
+                _: Locale,
+                _: std::time::Instant,
+            ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
+                self.0
+                    .upsert_maintenance_execution(
+                        &aethercore_persistence::MaintenanceExecutionRecord {
+                            plan_id: "plan-1".into(),
+                            domain: "Cleanup".into(),
+                            stage: "Cancelled".into(),
+                            updated_unix_ms: 3_000,
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                Ok(vec![
+                    aethercore_intelligence_core::Insight::build(
+                        "insight.summary.maintenanceCompleted",
+                        "A plan completed",
+                        aethercore_intelligence_core::InsightConfidence::Moderate,
+                        vec![Citation {
+                            evidence_id: pack.items[0].evidence_id.clone(),
+                            surface: pack.items[0].surface,
+                        }],
+                        aethercore_intelligence_core::InsightEngineKind::LocalModel,
+                    )
+                    .unwrap(),
+                ])
+            }
+        }
+        let (db, path) = journal_db(&[]);
+        let db = Arc::new(db);
+        db.upsert_maintenance_execution(&aethercore_persistence::MaintenanceExecutionRecord {
+            plan_id: "plan-1".into(),
+            domain: "Cleanup".into(),
+            stage: "Completed".into(),
+            updated_unix_ms: 2_000,
+            ..Default::default()
+        })
+        .unwrap();
+        let diagnostics = Arc::new(aethercore_diagnostic_engine::DiagnosticEngine::new(
+            db.clone(),
+        ));
+        let repair = Arc::new(aethercore_system_repair::RepairCoordinator::new(
+            Arc::new(aethercore_operation_engine::OperationEngine::new(
+                db.clone(),
+            )),
+            db.clone(),
+        ));
+        let coordinator = IntelligenceCoordinator::new(
+            db.clone(),
+            Some(Box::new(ChangingBackend(db))),
+            diagnostics,
+            repair,
+        );
+        assert!(
+            coordinator
+                .request("owner-a", false, "maintenance", Locale::En)
+                .unwrap()
+                .insights
+                .is_empty()
+        );
+        assert!(coordinator.list("owner-a", Locale::En).insights.is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn current_evidence_clock_accepts_only_the_bounded_past() {
+        let now = 2 * CURRENT_EVIDENCE_MAX_AGE_MS;
+        assert!(current_observation(now, now));
+        assert!(current_observation(now - CURRENT_EVIDENCE_MAX_AGE_MS, now));
+        assert!(!current_observation(
+            now - CURRENT_EVIDENCE_MAX_AGE_MS - 1,
+            now
+        ));
+        assert!(!current_observation(now + 1, now));
+        assert!(!current_observation(0, now));
     }
 }

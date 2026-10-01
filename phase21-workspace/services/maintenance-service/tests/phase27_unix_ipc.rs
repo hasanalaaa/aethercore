@@ -273,6 +273,45 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
         other => panic!("expected Response frame, got {other:?}"),
     }
 
+    // P86/D23: the additive optional list locale preserves the omitted English default.
+    for (index, (locale, served)) in [
+        (None, true),
+        (Some(""), true),
+        (Some("en"), true),
+        (Some("ar"), true),
+        (Some("fr"), false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let request = Request {
+            header: Some(RequestHeader {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: format!("gd-list-locale-{index}"),
+            }),
+            payload: Some(v1::request::Payload::ListInsights(
+                v1::ListInsightsRequest {
+                    locale: locale.map(str::to_owned),
+                },
+            )),
+        };
+        match exchange(&mut session, &session_request(request)).payload {
+            Some(server_frame::Payload::Response(response)) if served => {
+                assert_eq!(response.status_code, 0, "{locale:?}: {response:?}");
+                assert!(matches!(
+                    response.payload,
+                    Some(v1::response::Payload::InsightsResponse(_))
+                ));
+            }
+            Some(server_frame::Payload::Response(response)) => {
+                let error = response.error.expect("invalid locale carries a refusal");
+                assert_eq!(error.message_key, "insight.invalid.locale");
+                assert_eq!(error.code, v1::ErrorCode::InvalidRequest as i32);
+            }
+            other => panic!("expected scoped list response, got {other:?}"),
+        }
+    }
+
     // P76 DBT-P75-052: the locale field over the real socket. "ar" and the empty
     // default are served; a value the service does not speak is refused, not
     // silently answered in English.
