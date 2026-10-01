@@ -259,6 +259,110 @@ pub fn analyze_history(entries: &[UpdateHistoryEntry]) -> HistoryAnalysis {
     }
 }
 
+/// One error the update client logged (`Microsoft-Windows-WindowsUpdateClient/Operational`, level
+/// Error): the event id, the `errorCode` field it carries and when it was logged. What the id means is
+/// not interpreted here.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientError {
+    pub event_id: u32,
+    pub error_code: u32,
+    pub unix_ms: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientErrorSummary {
+    pub count: u32,
+    pub newest_unix_ms: Option<i64>,
+    /// Distinct error codes, newest first, at most four.
+    pub codes: Vec<u32>,
+}
+
+/// The bounded subset of error events read locally; unsupported schemas are counted separately.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClientErrors {
+    pub errors: Vec<ClientError>,
+    pub unknown_events: u32,
+    pub truncated: bool,
+}
+
+const PROVIDER_ATTRIBUTE: &str = "Name=\"Microsoft-Windows-WindowsUpdateClient\"";
+
+fn xml_between<'a>(xml: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    let start = xml.find(open)? + open.len();
+    let end = xml[start..].find(close)? + start;
+    Some(&xml[start..end])
+}
+
+/// Reads the measured Operational schema (update client, event 25, version 1, Error level),
+/// with its named hexadecimal `errorCode` and UTC timestamp. Other schemas stay unknown.
+/// This reads Windows-rendered XML only; it is not a general XML parser.
+pub fn parse_client_error_xml(xml: &str) -> Option<ClientError> {
+    if xml.len() > 64 * 1024 {
+        return None;
+    }
+    // EvtRender uses double quotes; the machine fixture was captured with single quotes.
+    let normalized = xml.replace('\'', "\"");
+    let xml = normalized.as_str();
+    if !xml_between(xml, "<Provider ", "/>")?.contains(PROVIDER_ATTRIBUTE)
+        || xml_between(xml, "<Level>", "</Level>")? != "2"
+        || xml_between(xml, "<Version>", "</Version>")? != "1"
+        || xml_between(xml, "<Channel>", "</Channel>")?
+            != "Microsoft-Windows-WindowsUpdateClient/Operational"
+    {
+        return None;
+    }
+    let event_id = xml_between(xml, "<EventID>", "</EventID>")?
+        .trim()
+        .parse()
+        .ok()?;
+    // Only event 25, version 1 was measured. Other schemas stay unknown.
+    if event_id != 25 {
+        return None;
+    }
+    let code = xml_between(xml, "<Data Name=\"errorCode\">", "</Data>")?.trim();
+    let error_code = u32::from_str_radix(
+        code.strip_prefix("0x")
+            .or_else(|| code.strip_prefix("0X"))?,
+        16,
+    )
+    .ok()?;
+    let created = xml_between(xml, "<TimeCreated ", "/>")?;
+    let stamp = xml_between(created, "SystemTime=\"", "\"")?;
+    let unix_ms = chrono::DateTime::parse_from_rfc3339(stamp)
+        .ok()?
+        .timestamp_millis();
+    Some(ClientError {
+        event_id,
+        error_code,
+        unix_ms,
+    })
+}
+
+/// Counts the errors as records of distinct (event, code, time), newest first.
+pub fn summarize_client_errors(errors: &[ClientError]) -> ClientErrorSummary {
+    // ponytail: O(n²) deduplication over the collector's 200-event cap; use a set if the cap grows.
+    let mut unique: Vec<ClientError> = Vec::new();
+    for error in errors {
+        if !unique.contains(error) {
+            unique.push(*error);
+        }
+    }
+    unique.sort_by_key(|e| std::cmp::Reverse(e.unix_ms));
+    let mut codes = Vec::new();
+    for error in &unique {
+        if !codes.contains(&error.error_code) && codes.len() < 4 {
+            codes.push(error.error_code);
+        }
+    }
+    ClientErrorSummary {
+        count: u32::try_from(unique.len()).unwrap_or(u32::MAX),
+        newest_unix_ms: unique.first().map(|e| e.unix_ms),
+        codes,
+    }
+}
+
 /// An OLE Automation date (days since 1899-12-30) as Unix milliseconds. 0 is "no date", and a value
 /// that is not finite or not a plausible date is `None`.
 pub fn ole_date_to_unix_ms(value: f64) -> Option<i64> {
@@ -309,6 +413,15 @@ pub fn ole_automation_date_to_iso(value: f64) -> Option<String> {
     }
     base.checked_add_signed(Duration::milliseconds(millis as i64))
         .map(|dt| dt.date().format("%Y-%m-%d").to_string())
+}
+
+#[cfg(windows)]
+mod client_events_windows;
+#[cfg(windows)]
+pub use client_events_windows::query_client_errors;
+#[cfg(not(windows))]
+pub fn query_client_errors(_max_entries: usize) -> Result<ClientErrors> {
+    Err(UpdateError::UnsupportedPlatform)
 }
 
 #[cfg(windows)]
@@ -495,6 +608,92 @@ mod tests {
             unix_ms_to_iso_date(1_790_669_658_556).as_deref(),
             Some("2026-09-29")
         );
+    }
+
+    // P83-03B: what the update client logged as errors, read by field name from the event XML.
+    // The XML is a real event read on a Windows 11 machine (computer and SID redacted).
+    const CLIENT_ERROR_XML: &str = "<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><Provider Name='Microsoft-Windows-WindowsUpdateClient' Guid='{945a8954-c147-4acd-923f-40c45405a658}'/><EventID>25</EventID><Version>1</Version><Level>2</Level><TimeCreated SystemTime='2026-09-28T19:26:29.4304781Z'/><Channel>Microsoft-Windows-WindowsUpdateClient/Operational</Channel></System><EventData><Data Name='errorCode'>0x80240438</Data><Data Name='serviceGuid'>{8b24b027-1dee-babb-9a95-3517dfb9c552}</Data></EventData></Event>";
+
+    #[test]
+    fn a_real_client_error_event_gives_its_id_code_and_time() {
+        let e = parse_client_error_xml(CLIENT_ERROR_XML).expect("an error");
+        assert_eq!((e.event_id, e.error_code), (25, 0x8024_0438));
+        assert_eq!(e.unix_ms, 1_790_623_589_430, "2026-09-28T19:26:29.430Z");
+    }
+
+    #[test]
+    fn an_event_without_its_fields_or_from_another_provider_is_not_an_error_record() {
+        assert!(
+            parse_client_error_xml(&CLIENT_ERROR_XML.replace("errorCode", "other")).is_none(),
+            "no errorCode field"
+        );
+        assert!(
+            parse_client_error_xml(
+                &CLIENT_ERROR_XML.replace("Microsoft-Windows-WindowsUpdateClient'", "Some-Other'")
+            )
+            .is_none(),
+            "another provider"
+        );
+        assert!(
+            parse_client_error_xml(
+                &CLIENT_ERROR_XML.replace("<Level>2</Level>", "<Level>4</Level>")
+            )
+            .is_none(),
+            "not an error level"
+        );
+        assert!(
+            parse_client_error_xml(&CLIENT_ERROR_XML.replace("0x80240438", "not-a-code")).is_none()
+        );
+        assert!(parse_client_error_xml("").is_none());
+    }
+
+    #[test]
+    fn client_error_schema_is_checked_and_native_xml_quotes_are_supported() {
+        assert_eq!(
+            parse_client_error_xml(&CLIENT_ERROR_XML.replace("'", "\"")),
+            parse_client_error_xml(CLIENT_ERROR_XML)
+        );
+        assert!(
+            parse_client_error_xml(
+                &CLIENT_ERROR_XML.replace("<Version>1</Version>", "<Version>2</Version>")
+            )
+            .is_none()
+        );
+        assert!(
+            parse_client_error_xml(
+                &CLIENT_ERROR_XML.replace("<EventID>25</EventID>", "<EventID>20</EventID>")
+            )
+            .is_none()
+        );
+        assert!(
+            parse_client_error_xml(&CLIENT_ERROR_XML.replace(
+                "<Channel>Microsoft-Windows-WindowsUpdateClient/Operational</Channel>",
+                "<Channel>System</Channel>"
+            ))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn errors_are_counted_by_distinct_code_newest_first_and_a_repeat_is_not_a_second_attempt() {
+        let e = |id, code, at| ClientError {
+            event_id: id,
+            error_code: code,
+            unix_ms: at,
+        };
+        let summary = summarize_client_errors(&[
+            e(25, 0x8024_0438, 300),
+            e(25, 0x8024_0438, 300),
+            e(20, 0x8007_0005, 200),
+            e(25, 0x8024_0438, 100),
+        ]);
+        assert_eq!(
+            summary.count, 3,
+            "the same event, same code, same instant is one record"
+        );
+        assert_eq!(summary.newest_unix_ms, Some(300));
+        assert_eq!(summary.codes, vec![0x8024_0438, 0x8007_0005]);
+        assert_eq!(summarize_client_errors(&[]), ClientErrorSummary::default());
     }
 
     #[test]

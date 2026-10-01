@@ -75,3 +75,20 @@ test('DBT-P76-005: cleanup category ids and kinds are named, not printed, in bot
   assert.match(localizeCleanupKind('Files', 'ar'), arabic);
   assert.notEqual(localizeCleanupKind('Files', 'en'), 'Files');
 });
+
+test('P83-03B: local client event evidence is translated without counting installation attempts', () => {
+  for (const text of [
+    'Windows Update client events',
+    'The Windows Update client event channel could not be read; update installation status is unknown.',
+    '2 client error event(s) in the last 30 days; newest: 2026-09-28 (0x80240438); 1 unsupported event(s); older events were not read. These events are separate from installation attempts.',
+    '0 client error event(s) in the last 30 days; newest: — (—); 0 unsupported event(s); all matching events were read. These events are separate from installation attempts.',
+  ]) {
+    const translated = localizeOwnedText(text, 'ar');
+    assert.ok(translated.localized, text);
+    assert.match(translated.text, arabic);
+    assert.doesNotMatch(translated.text, /client error|unsupported|installation attempts/);
+    assert.doesNotMatch(translated.text, /نص تقني|صياغة|غير متاح|غير مترجم/);
+    if (text.startsWith('2 ')) assert.match(translated.text, /0x80240438/);
+    assert.equal(localizeOwnedText(text, 'en').text, text);
+  }
+});

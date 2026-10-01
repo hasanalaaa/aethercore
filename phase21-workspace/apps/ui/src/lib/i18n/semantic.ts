@@ -148,6 +148,10 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Component store quick check':'tech.repair.componentQuick',
   'Protected system files':'tech.repair.protectedFiles',
   'System volume online scan':'tech.repair.volumeScan',
+  "Windows Update client events":'tech.update.clientTitle',
+  "Microsoft-Windows-WindowsUpdateClient/Operational":'tech.update.clientChannel',
+  "The Windows Update client event channel could not be read; update installation status is unknown.":'tech.update.clientUnavailable',
+  "MemoryTestResult":'hardware.memtest.title',
   "Windows Update history":'tech.update.historyTitle',
   "The Windows Update history could not be read; this says nothing about whether updates installed.":'tech.update.historyUnavailable',
   "Windows Update history shows no update that failed to install more than once without a later success in the entries read.":'tech.update.historyClear',
@@ -402,6 +406,7 @@ export function localizeOwnedText(value: string, locale: Locale, options: { data
   let m: RegExpMatchArray | null;
   if ((m = value.match(/^(\d+) uncorrected read error\(s\) were reported\.$/))) return { text: t('tech.storage.readErrors', locale, { count: m[1] }), localized: true };
   if ((m = value.match(/^(\d+) uncorrected write error\(s\) were reported\.$/))) return { text: t('tech.storage.writeErrors', locale, { count: m[1] }), localized: true };
+  if ((m = value.match(/^(\d+) client error event\(s\) in the last 30 days; newest: (\S+) \(([^)]*)\); (\d+) unsupported event\(s\); (older events were not read|all matching events were read)\. These events are separate from installation attempts\.$/))) return { text: t(m[5] === 'older events were not read' ? 'tech.update.clientSummaryCut' : 'tech.update.clientSummary', locale, { count:m[1], date:m[2], codes:m[3], unknown:m[4] }), localized:true };
   if ((m = value.match(/^(\d+) update\(s\) failed to install more than once with no later success; the newest failure was recorded on (\S+) \(([^)]*)\)\.$/))) return { text: t('tech.update.historyFailures', locale, { count: m[1], date: m[2], codes: m[3] }), localized: true };
   if ((m = value.match(/^(\d+) more (uncorrected read|uncorrected write|NVMe media\/data-integrity) error\(s\) than at the previous scan\.$/))) { const key = m[2] === 'uncorrected read' ? 'tech.storage.moreReadErrors' : m[2] === 'uncorrected write' ? 'tech.storage.moreWriteErrors' : 'tech.storage.moreMediaErrors'; return { text: t(key, locale, { count: m[1] }), localized: true }; }
   if ((m = value.match(/^NVMe available spare \((\d+)%\) is below the device's own threshold \((\d+)%\)\.$/))) return { text: t('tech.storage.spareBelowThreshold', locale, { spare: m[1], threshold: m[2] }), localized: true };

@@ -1900,3 +1900,91 @@ mod update_history_tests {
         assert!(check_to_fact(&check).is_none());
     }
 }
+
+/// Event evidence stays separate from installation history: one event is not another attempt.
+#[cfg(any(windows, test))]
+pub(crate) fn update_client_check(
+    events: Option<&aethercore_windows_update::ClientErrors>,
+) -> RepairCheck {
+    use aethercore_windows_update::{summarize_client_errors, unix_ms_to_iso_date};
+    let mut check = RepairCheck {
+        id: "windows-update-client-events".into(),
+        title: "Windows Update client events".into(),
+        stage: "Unknown".into(),
+        result_code: "UpdateClientUnavailable".into(),
+        exit_code: 0,
+        detail: "The Windows Update client event channel could not be read; update installation status is unknown.".into(),
+        log_hint: "Microsoft-Windows-WindowsUpdateClient/Operational".into(),
+    };
+    let Some(events) = events else {
+        return check;
+    };
+    let summary = summarize_client_errors(&events.errors);
+    let (stage, code) = if summary.count > 0 {
+        ("Attention", "UpdateClientErrorsRead")
+    } else if events.unknown_events > 0 || events.truncated {
+        ("Unknown", "UpdateClientIncomplete")
+    } else {
+        ("Completed", "UpdateClientNoErrorsRead")
+    };
+    check.stage = stage.into();
+    check.result_code = code.into();
+    let date = summary
+        .newest_unix_ms
+        .and_then(unix_ms_to_iso_date)
+        .unwrap_or_else(|| "—".into());
+    let codes = if summary.codes.is_empty() {
+        "—".into()
+    } else {
+        summary
+            .codes
+            .iter()
+            .map(|code| format!("0x{code:08X}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let coverage = if events.truncated {
+        "older events were not read"
+    } else {
+        "all matching events were read"
+    };
+    check.detail = format!(
+        "{} client error event(s) in the last 30 days; newest: {date} ({codes}); {} unsupported event(s); {coverage}. These events are separate from installation attempts.",
+        summary.count, events.unknown_events
+    );
+    check
+}
+
+#[cfg(test)]
+mod update_client_tests {
+    use super::*;
+    use aethercore_windows_update::{ClientError, ClientErrors};
+    #[test]
+    fn update_client_errors_are_evidence_without_repair_or_double_counting() {
+        let unavailable = update_client_check(None);
+        assert_eq!(unavailable.stage, "Unknown");
+        assert!(check_to_fact(&unavailable).is_none());
+        let empty = update_client_check(Some(&ClientErrors::default()));
+        assert_eq!(empty.result_code, "UpdateClientNoErrorsRead");
+        let error = ClientError {
+            event_id: 25,
+            error_code: 0x80240438,
+            unix_ms: 1790623589430,
+        };
+        let measured = update_client_check(Some(&ClientErrors {
+            errors: vec![error, error],
+            unknown_events: 2,
+            truncated: true,
+        }));
+        assert_eq!(measured.stage, "Attention");
+        assert!(measured.detail.starts_with("1 client error event(s)"));
+        assert!(measured.detail.contains("2 unsupported event(s)"));
+        assert!(measured.detail.contains("older events were not read"));
+        assert!(check_to_fact(&measured).is_none());
+        let unknown = update_client_check(Some(&ClientErrors {
+            unknown_events: 1,
+            ..Default::default()
+        }));
+        assert_eq!(unknown.stage, "Unknown");
+    }
+}

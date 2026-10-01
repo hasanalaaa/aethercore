@@ -46,3 +46,19 @@ These are compile-reds, not behaviour-reds: the logic is new code with no earlie
 - A real SATA disk with a real predicted failure, and the previous-scan comparison across a service restart.
 - The Hardware page on the owner's Windows 11 with Narrator, at 200% zoom, in Arabic.
 - D7: no vendor threshold table was added (`DBT-P81-003`).
+
+## 5. Cumulative continuation verification (2026-10-01)
+
+P81/P82/P83's combined source tree was rerun locally during the P83-03B continuation:
+`cargo test --workspace --locked` passed 876 tests across 149 suites (one ignored platform/live test).
+The targeted cumulative telemetry/engine/crash/performance/bottleneck/intelligence/service/contracts/
+windows-update/system-repair run passed 273 tests across 41 suites (one ignored live test).
+UI tests: 62 passed; direct svelte-check: zero errors and warnings; static validation: 349 checks with
+zero failures (`parse_yaml` unmeasured); enterprise audit: 88/88; localization self-tests: 34/34.
+The P82 `MemoryTestResult` semantic label gap found by localization was fixed using the existing
+translated memory-diagnostic title. Source seal verified the complete tracked tree.
+
+These results supplement the original per-task evidence; Mac tests do not execute native Windows
+storage/battery/event code. Exact combined-head Windows validation and merge CI remain coordinator
+owned. The historical phase30/35 audits still fail their old wire/baseline checks; they were not
+weakened or re-baselined. The remaining hardware and accessibility gaps in §4 remain open.

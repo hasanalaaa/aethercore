@@ -45,6 +45,7 @@ static SFC_SLOT: ProviderSlot = ProviderSlot::new();
 static DISK_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_HISTORY_SLOT: ProviderSlot = ProviderSlot::new();
+static UPDATE_CLIENT_SLOT: ProviderSlot = ProviderSlot::new();
 
 pub struct WindowsRepairPlatform;
 
@@ -161,6 +162,25 @@ impl RepairPlatform for WindowsRepairPlatform {
                 |_| {
                     crate::update_history_check(
                         aethercore_windows_update::query_update_history(UPDATE_HISTORY_ENTRIES)
+                            .ok()
+                            .as_ref(),
+                    )
+                },
+            )
+        })?;
+        step(&mut checks, "update-client-events", &mut || {
+            run_check(
+                &UPDATE_CLIENT_SLOT,
+                (
+                    "windows-update-client-events",
+                    "Windows Update client events",
+                    "Microsoft-Windows-WindowsUpdateClient/Operational",
+                ),
+                UPDATE_HISTORY_DEADLINE,
+                cancel,
+                |_| {
+                    crate::update_client_check(
+                        aethercore_windows_update::query_client_errors(200)
                             .ok()
                             .as_ref(),
                     )
