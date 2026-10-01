@@ -13,6 +13,11 @@ use aethercore_restore_point::initialize_process_com_security;
 use aethercore_windows_foundation::{ComApartment, OwnedHandle};
 use windows::{
     Win32::{
+        Devices::DeviceAndDriverInstallation::{
+            DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, HDEVINFO, SP_DEVICE_INTERFACE_DATA,
+            SP_DEVICE_INTERFACE_DETAIL_DATA_W, SetupDiDestroyDeviceInfoList,
+            SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
+        },
         Foundation::E_ACCESSDENIED,
         Storage::FileSystem::{
             CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ,
@@ -25,11 +30,16 @@ use windows::{
             },
             IO::DeviceIoControl,
             Ioctl::{
-                IDEREGS, IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, ProtocolTypeNvme,
+                IDEREGS, IOCTL_DISK_GET_LENGTH_INFO, IOCTL_STORAGE_PREDICT_FAILURE,
+                IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, ProtocolTypeNvme,
                 READ_ATTRIBUTES, SENDCMDINPARAMS, SENDCMDOUTPARAMS, SMART_CMD, SMART_CYL_HI,
                 SMART_CYL_LOW, SMART_RCV_DRIVE_DATA, STORAGE_PROPERTY_QUERY,
                 STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA,
-                StorageDeviceProtocolSpecificProperty,
+                StorageDeviceProperty, StorageDeviceProtocolSpecificProperty,
+            },
+            Power::{
+                BATTERY_INFORMATION, BATTERY_QUERY_INFORMATION, BatteryDeviceName,
+                BatteryInformation, IOCTL_BATTERY_QUERY_INFORMATION, IOCTL_BATTERY_QUERY_TAG,
             },
             Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE},
             SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX},
@@ -40,23 +50,42 @@ use windows::{
             },
         },
     },
-    core::{BSTR, PCWSTR},
+    core::{BSTR, GUID, PCWSTR},
 };
 
 use crate::{
-    AtaSmartAttribute, HardwareTelemetrySnapshot, MemoryTelemetry, NvmeHealthValues, Result,
-    StorageDeviceTelemetry, StorageReliability, TelemetryError, checked_protocol_window,
-    classify_memory_pressure, classify_storage, parse_ata_driver_response, parse_nvme_health_log,
+    AtaSmartAttribute, DiskIdentity, HandleBinding, HardwareTelemetrySnapshot, MemoryTelemetry,
+    NvmeHealthValues, Result, StorageDeviceTelemetry, StorageReliability, TelemetryError,
+    battery::battery_from_information,
+    bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage,
+    measurements::{Availability, Battery, Coverage, MAX_BATTERIES, NetworkAdapter, ThermalZone},
+    merge_nvme,
+    network::adapter_from_wmi,
+    parse_ata_driver_response, parse_nvme_health_log, parse_predict_failure,
+    parse_storage_device_descriptor,
+    thermal::zone_from_wmi,
 };
 
 static STORAGE_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static DIRECT_IOCTL_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static MEMORY_GATE: OnceLock<IsolationGate> = OnceLock::new();
+static THERMAL_GATE: OnceLock<IsolationGate> = OnceLock::new();
+static BATTERY_GATE: OnceLock<IsolationGate> = OnceLock::new();
+static NETWORK_GATE: OnceLock<IsolationGate> = OnceLock::new();
 fn storage_gate() -> &'static IsolationGate {
     STORAGE_GATE.get_or_init(IsolationGate::default)
 }
 fn direct_ioctl_gate() -> &'static IsolationGate {
     DIRECT_IOCTL_GATE.get_or_init(IsolationGate::default)
+}
+fn network_gate() -> &'static IsolationGate {
+    NETWORK_GATE.get_or_init(IsolationGate::default)
+}
+fn battery_gate() -> &'static IsolationGate {
+    BATTERY_GATE.get_or_init(IsolationGate::default)
+}
+fn thermal_gate() -> &'static IsolationGate {
+    THERMAL_GATE.get_or_init(IsolationGate::default)
 }
 fn memory_gate() -> &'static IsolationGate {
     MEMORY_GATE.get_or_init(IsolationGate::default)
@@ -168,12 +197,373 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
         }
     };
 
+    // Thermal zones are an optional source: many machines publish none. A class that is absent or
+    // unsupported leaves the list empty (which reads "not measured"); only a refusal, a timeout or a
+    // cancel is a fault worth reporting.
+    let thermal_zones = match run_isolated_gated_with_token(
+        thermal_gate(),
+        "hardware-telemetry",
+        "thermal-zones",
+        DEFAULT_COLLECTOR_TIMEOUT,
+        parent.child(),
+        |control| {
+            collect_thermal_zones(&control).map_err(|error| {
+                CollectorFault::new(
+                    "hardware-telemetry",
+                    "thermal-zones",
+                    fault_kind(&error),
+                    error.to_string(),
+                )
+            })
+        },
+    ) {
+        Ok(zones) => zones,
+        Err(error) => {
+            if error.kind != FaultKind::Unavailable {
+                provider_faults.push(CollectorFaultRecord::from(&error));
+            }
+            Vec::new()
+        }
+    };
+
+    // Batteries: a desktop has none, which is normal and leaves the list empty. A read that is
+    // refused, times out or is cancelled is a fault; one battery failing is its own failed record.
+    let batteries = match run_isolated_gated_with_token(
+        battery_gate(),
+        "hardware-telemetry",
+        "batteries",
+        DEFAULT_COLLECTOR_TIMEOUT,
+        parent.child(),
+        |control| {
+            collect_batteries(&control).map_err(|error| {
+                CollectorFault::new(
+                    "hardware-telemetry",
+                    "batteries",
+                    fault_kind(&error),
+                    error.to_string(),
+                )
+            })
+        },
+    ) {
+        Ok(batteries) => batteries,
+        Err(error) => {
+            provider_faults.push(CollectorFaultRecord::from(&error));
+            Vec::new()
+        }
+    };
+
+    // Network adapters: a local WMI read, no packet sent. A machine that does not publish the class
+    // leaves the list empty ("not measured"); a refusal, timeout or cancel is a fault.
+    let network_adapters = match run_isolated_gated_with_token(
+        network_gate(),
+        "hardware-telemetry",
+        "network-adapters",
+        DEFAULT_COLLECTOR_TIMEOUT,
+        parent.child(),
+        |control| {
+            collect_network_adapters(&control).map_err(|error| {
+                CollectorFault::new(
+                    "hardware-telemetry",
+                    "network-adapters",
+                    fault_kind(&error),
+                    error.to_string(),
+                )
+            })
+        },
+    ) {
+        Ok(adapters) => adapters,
+        Err(error) => {
+            if error.kind != FaultKind::Unavailable {
+                provider_faults.push(CollectorFaultRecord::from(&error));
+            }
+            Vec::new()
+        }
+    };
+
     Ok(HardwareTelemetrySnapshot {
         storage,
         memory,
+        thermal_zones,
+        batteries,
+        network_adapters,
         provider_faults,
         warnings,
     })
+}
+
+struct DeviceInfoSet(HDEVINFO);
+impl Drop for DeviceInfoSet {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = SetupDiDestroyDeviceInfoList(self.0);
+        }
+    }
+}
+
+/// `GUID_DEVICE_BATTERY`: the device-interface class of every battery Windows can query.
+const GUID_DEVICE_BATTERY: GUID = GUID::from_u128(0x72631e54_78a4_11d0_bcf7_00aa00b7b32a);
+
+fn collect_batteries(control: &CollectorControl) -> Result<Vec<Battery>> {
+    checkpoint(control, "battery.begin")?;
+    let devices = DeviceInfoSet(
+        unsafe {
+            SetupDiGetClassDevsW(
+                Some(&GUID_DEVICE_BATTERY),
+                PCWSTR::null(),
+                None,
+                DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
+            )
+        }
+        .map_err(win)?,
+    );
+    let observed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    for index in 0..MAX_BATTERIES as u32 {
+        checkpoint(control, "battery.device")?;
+        let mut interface = SP_DEVICE_INTERFACE_DATA {
+            cbSize: size_of::<SP_DEVICE_INTERFACE_DATA>() as u32,
+            ..Default::default()
+        };
+        // ERROR_NO_MORE_ITEMS ends the enumeration.
+        if unsafe {
+            SetupDiEnumDeviceInterfaces(
+                devices.0,
+                None,
+                &GUID_DEVICE_BATTERY,
+                index,
+                &mut interface,
+            )
+        }
+        .is_err()
+        {
+            break;
+        }
+        let path = device_interface_path(&devices, &interface)?;
+        out.push(
+            query_battery(&path, observed).unwrap_or_else(|error| Battery {
+                stable_id: path.clone(),
+                display_name: String::new(),
+                coverage: Coverage {
+                    source: "IOCTL_BATTERY_QUERY_INFORMATION".into(),
+                    observed_unix_ms: Some(observed),
+                    window_days: None,
+                    availability: if matches!(error, TelemetryError::PermissionDenied(_)) {
+                        Availability::Denied
+                    } else {
+                        Availability::Failed
+                    },
+                    reason_key: "measurement.reason.readFailed".into(),
+                },
+                ..Default::default()
+            }),
+        );
+    }
+    Ok(out)
+}
+
+fn device_interface_path(
+    devices: &DeviceInfoSet,
+    interface: &SP_DEVICE_INTERFACE_DATA,
+) -> Result<String> {
+    // First call asks for the size it needs (it fails with ERROR_INSUFFICIENT_BUFFER by design).
+    let mut required = 0u32;
+    let _ = unsafe {
+        SetupDiGetDeviceInterfaceDetailW(devices.0, interface, None, 0, Some(&mut required), None)
+    };
+    let header = size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>();
+    let required = usize::try_from(required).unwrap_or(0);
+    if required < header || required > 4096 {
+        return Err(TelemetryError::MalformedResponse(
+            "battery interface detail size was invalid".into(),
+        ));
+    }
+    let mut words = vec![0u64; required.div_ceil(8)];
+    let detail = words.as_mut_ptr() as *mut SP_DEVICE_INTERFACE_DETAIL_DATA_W;
+    unsafe {
+        (*detail).cbSize = header as u32;
+        SetupDiGetDeviceInterfaceDetailW(
+            devices.0,
+            interface,
+            Some(detail),
+            required as u32,
+            None,
+            None,
+        )
+    }
+    .map_err(win)?;
+    let path_offset = offset_of!(SP_DEVICE_INTERFACE_DETAIL_DATA_W, DevicePath);
+    let bytes = unsafe { std::slice::from_raw_parts(words.as_ptr() as *const u8, required) };
+    let wide: Vec<u16> = bytes[path_offset..]
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|c| *c != 0)
+        .collect();
+    Ok(String::from_utf16_lossy(&wide))
+}
+
+fn query_battery(path: &str, observed_unix_ms: i64) -> Result<Battery> {
+    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    // The battery IOCTLs require read and write access to the device object; they only query.
+    const GENERIC_READ_WRITE: u32 = 0xC000_0000;
+    let handle = unsafe {
+        CreateFileW(
+            PCWSTR(wide.as_ptr()),
+            GENERIC_READ_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAGS_AND_ATTRIBUTES(FILE_ATTRIBUTE_NORMAL.0),
+            None,
+        )
+    }
+    .map_err(win)?;
+    let owner = OwnedHandle::new(handle);
+
+    let wait: u32 = 0;
+    let mut tag: u32 = 0;
+    let mut returned = 0u32;
+    unsafe {
+        DeviceIoControl(
+            owner.get(),
+            IOCTL_BATTERY_QUERY_TAG,
+            Some((&wait as *const u32).cast()),
+            size_of::<u32>() as u32,
+            Some((&mut tag as *mut u32).cast()),
+            size_of::<u32>() as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .map_err(win)?;
+    if tag == 0 {
+        return Err(TelemetryError::Unavailable(
+            "the battery reported no tag: it is not present".into(),
+        ));
+    }
+
+    let mut info = BATTERY_INFORMATION::default();
+    let mut query = BATTERY_QUERY_INFORMATION {
+        BatteryTag: tag,
+        InformationLevel: BatteryInformation,
+        AtRate: 0,
+    };
+    unsafe {
+        DeviceIoControl(
+            owner.get(),
+            IOCTL_BATTERY_QUERY_INFORMATION,
+            Some((&query as *const BATTERY_QUERY_INFORMATION).cast()),
+            size_of::<BATTERY_QUERY_INFORMATION>() as u32,
+            Some((&mut info as *mut BATTERY_INFORMATION).cast()),
+            size_of::<BATTERY_INFORMATION>() as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .map_err(win)?;
+    if (returned as usize) < size_of::<BATTERY_INFORMATION>() {
+        return Err(TelemetryError::MalformedResponse(
+            "BATTERY_INFORMATION was shorter than its declared size".into(),
+        ));
+    }
+
+    // The device name is a nicety: without it the interface path names the battery.
+    query.InformationLevel = BatteryDeviceName;
+    let mut name = [0u16; 128];
+    let name_read = unsafe {
+        DeviceIoControl(
+            owner.get(),
+            IOCTL_BATTERY_QUERY_INFORMATION,
+            Some((&query as *const BATTERY_QUERY_INFORMATION).cast()),
+            size_of::<BATTERY_QUERY_INFORMATION>() as u32,
+            Some(name.as_mut_ptr().cast()),
+            (name.len() * 2) as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .is_ok();
+    let display_name = if name_read {
+        let units = (returned as usize / 2).min(name.len());
+        String::from_utf16_lossy(&name[..units])
+            .trim_end_matches('\0')
+            .trim()
+            .to_string()
+    } else {
+        String::new()
+    };
+
+    Ok(battery_from_information(
+        path,
+        &display_name,
+        info.Capabilities,
+        info.DesignedCapacity,
+        info.FullChargedCapacity,
+        info.CycleCount,
+        observed_unix_ms,
+    ))
+}
+
+fn collect_network_adapters(control: &CollectorControl) -> Result<Vec<NetworkAdapter>> {
+    checkpoint(control, "network.begin")?;
+    let _com = init_com()?;
+    let services = connect_wmi("ROOT\\StandardCimv2")?;
+    let objects = query(
+        &services,
+        "SELECT Name,InterfaceGuid,InterfaceOperationalStatus,MediaConnectState,Speed,Virtual FROM MSFT_NetAdapter",
+        control,
+    )?;
+    let observed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or_default();
+    Ok(objects
+        .iter()
+        .map(|o| {
+            let number = |name: &str| prop_u64(o, name);
+            adapter_from_wmi(
+                &prop_string(o, "InterfaceGuid").unwrap_or_default(),
+                &prop_string(o, "Name").unwrap_or_default(),
+                number("InterfaceOperationalStatus").and_then(|v| u32::try_from(v).ok()),
+                number("MediaConnectState").and_then(|v| u32::try_from(v).ok()),
+                number("Speed"),
+                prop_bool(o, "Virtual"),
+                observed,
+            )
+        })
+        .collect())
+}
+
+fn collect_thermal_zones(control: &CollectorControl) -> Result<Vec<ThermalZone>> {
+    checkpoint(control, "thermal.begin")?;
+    let _com = init_com()?;
+    let services = connect_wmi("ROOT\\WMI")?;
+    let objects = query(
+        &services,
+        "SELECT InstanceName,CurrentTemperature,CriticalTripPoint FROM MSAcpi_ThermalZoneTemperature",
+        control,
+    )?;
+    let observed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or_default();
+    let zones = objects
+        .iter()
+        .map(|o| {
+            let kelvin_tenths = |name: &str| prop_u64(o, name).and_then(|v| u32::try_from(v).ok());
+            zone_from_wmi(
+                &prop_string(o, "InstanceName").unwrap_or_default(),
+                kelvin_tenths("CurrentTemperature"),
+                kelvin_tenths("CriticalTripPoint"),
+                observed,
+            )
+        })
+        .collect();
+    // The WMI query is bounded (256 objects); the diagnostic engine applies the domain's limit and
+    // says when it cut.
+    Ok(zones)
 }
 
 fn collect_memory() -> Result<MemoryTelemetry> {
@@ -231,8 +621,15 @@ fn collect_storage(
         }
 
         if let Ok(index) = device.device_id.parse::<u32>() {
+            // The WMI DeviceId is not always the PhysicalDrive index; the handle opened for it must
+            // report this disk's own serial, bus and size before its answers are attributed here.
+            let expected = DiskIdentity {
+                serial: device.serial_number.clone(),
+                bus: device.bus_type.clone(),
+                size_bytes: Some(device.size_bytes).filter(|size| *size > 0),
+            };
             if device.bus_type.eq_ignore_ascii_case("NVMe") {
-                match query_nvme_health_bounded(index, control.cancellation().child()) {
+                match query_nvme_health_bounded(index, expected, control.cancellation().child()) {
                     Ok(nvme) => {
                         merge_nvme(&mut device.reliability, nvme);
                         device
@@ -253,14 +650,39 @@ fn collect_storage(
             } else if device.bus_type.eq_ignore_ascii_case("SATA")
                 || device.bus_type.eq_ignore_ascii_case("ATA")
             {
-                match query_ata_smart_attributes_bounded(index, control.cancellation().child()) {
+                // The drive's own failure prediction is the verdict; the raw attribute table below
+                // is shown as reported and is not turned into one.
+                match query_predict_failure_bounded(
+                    index,
+                    expected.clone(),
+                    control.cancellation().child(),
+                ) {
+                    Ok(predicted) => device.reliability.smart_predict_failure = Some(predicted),
+                    Err(error) => push_fault_bounded(
+                        &mut provider_faults,
+                        fault_record("smart-predict-failure", &error),
+                    ),
+                }
+                match query_ata_smart_attributes_bounded(
+                    index,
+                    expected,
+                    control.cancellation().child(),
+                ) {
                     Ok(attributes) if !attributes.is_empty() => {
+                        device.ata_table_available = Some(true);
                         device.ata_smart_attributes = attributes;
                         device.source_notes.push("ATA SMART attribute table via SMART_RCV_DRIVE_DATA; raw values are vendor-defined and are not converted into AetherCore health claims.".into());
                     }
-                    Ok(_) => device.source_notes.push("Direct ATA SMART attributes were not available through SMART_RCV_DRIVE_DATA; standardized Windows reliability counters remain authoritative when present.".into()),
+                    Ok(_) => {
+                        device.ata_table_available = Some(false);
+                        device.source_notes.push("Direct ATA SMART attributes were not available through SMART_RCV_DRIVE_DATA; standardized Windows reliability counters remain authoritative when present.".into());
+                    }
                     Err(error) => {
-                        push_fault_bounded(&mut provider_faults, fault_record("ata-smart-ioctl", &error));
+                        device.ata_table_available = Some(false);
+                        push_fault_bounded(
+                            &mut provider_faults,
+                            fault_record("ata-smart-ioctl", &error),
+                        );
                         device.source_notes.push("Direct ATA SMART attributes were not available through SMART_RCV_DRIVE_DATA; standardized Windows reliability counters remain authoritative when present.".into());
                     }
                 }
@@ -272,12 +694,16 @@ fn collect_storage(
 }
 
 fn connect_storage_wmi() -> Result<IWbemServices> {
+    connect_wmi("ROOT\\Microsoft\\Windows\\Storage")
+}
+
+fn connect_wmi(namespace: &str) -> Result<IWbemServices> {
     unsafe {
         let locator: IWbemLocator =
             CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER).map_err(win)?;
         let services = locator
             .ConnectServer(
-                &BSTR::from("ROOT\\Microsoft\\Windows\\Storage"),
+                &BSTR::from(namespace),
                 &BSTR::new(),
                 &BSTR::new(),
                 &BSTR::new(),
@@ -334,6 +760,7 @@ fn query_physical_disks(
             windows_health_status: health_name(prop_u16(&o, "HealthStatus")),
             operational_status: Vec::new(),
             ata_smart_attributes: Vec::new(),
+            ata_table_available: None,
             reliability: StorageReliability::default(),
             severity: "Unknown".into(),
             summary: String::new(),
@@ -512,6 +939,9 @@ fn prop_u16(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Optio
             .and_then(|v| u16::try_from(v).ok())
     })
 }
+fn prop_bool(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<bool> {
+    bool::try_from(&get_variant(o, n)?).ok()
+}
 fn prop_u64(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<u64> {
     u64::try_from(&get_variant(o, n)?)
         .ok()
@@ -569,6 +999,7 @@ fn isolated_fault_to_telemetry(fault: CollectorFault) -> TelemetryError {
 
 fn query_ata_smart_attributes_bounded(
     index: u32,
+    expected: DiskIdentity,
     token: CancellationToken,
 ) -> Result<Vec<AtaSmartAttribute>> {
     run_isolated_gated_with_token(
@@ -578,7 +1009,7 @@ fn query_ata_smart_attributes_bounded(
         STORAGE_IOCTL_TIMEOUT,
         token,
         move |_control| {
-            query_ata_smart_attributes(index).map_err(|error| {
+            query_ata_smart_attributes(index, &expected).map_err(|error| {
                 CollectorFault::new(
                     "hardware-telemetry",
                     "ata-smart-ioctl",
@@ -591,7 +1022,67 @@ fn query_ata_smart_attributes_bounded(
     .map_err(isolated_fault_to_telemetry)
 }
 
-fn query_nvme_health_bounded(index: u32, token: CancellationToken) -> Result<NvmeHealthValues> {
+fn query_predict_failure_bounded(
+    index: u32,
+    expected: DiskIdentity,
+    token: CancellationToken,
+) -> Result<bool> {
+    run_isolated_gated_with_token(
+        direct_ioctl_gate(),
+        "hardware-telemetry",
+        "smart-predict-failure",
+        STORAGE_IOCTL_TIMEOUT,
+        token,
+        move |_control| {
+            query_predict_failure(index, &expected).map_err(|error| {
+                CollectorFault::new(
+                    "hardware-telemetry",
+                    "smart-predict-failure",
+                    fault_kind(&error),
+                    error.to_string(),
+                )
+            })
+        },
+    )
+    .map_err(isolated_fault_to_telemetry)
+}
+
+/// `IOCTL_STORAGE_PREDICT_FAILURE` answers a `STORAGE_PREDICT_FAILURE`: a `u32` and 512 vendor
+/// bytes. Read-only; a drive that does not support it fails the call, which is "not asked", not
+/// "no failure predicted".
+fn query_predict_failure(index: u32, expected: &DiskIdentity) -> Result<bool> {
+    let handle_owner = open_verified_drive(index, expected)?;
+    let mut answer = [0u8; 4 + 512];
+    let mut returned = 0u32;
+    unsafe {
+        DeviceIoControl(
+            handle_owner.get(),
+            IOCTL_STORAGE_PREDICT_FAILURE,
+            None,
+            0,
+            Some(answer.as_mut_ptr().cast()),
+            answer.len() as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .map_err(win)?;
+    let returned = usize::try_from(returned)
+        .ok()
+        .filter(|len| *len <= answer.len())
+        .ok_or_else(|| {
+            TelemetryError::MalformedResponse("failure-prediction byte count was invalid".into())
+        })?;
+    parse_predict_failure(&answer[..returned]).ok_or_else(|| {
+        TelemetryError::MalformedResponse("failure-prediction answer was too short".into())
+    })
+}
+
+fn query_nvme_health_bounded(
+    index: u32,
+    expected: DiskIdentity,
+    token: CancellationToken,
+) -> Result<NvmeHealthValues> {
     run_isolated_gated_with_token(
         direct_ioctl_gate(),
         "hardware-telemetry",
@@ -599,7 +1090,7 @@ fn query_nvme_health_bounded(index: u32, token: CancellationToken) -> Result<Nvm
         STORAGE_IOCTL_TIMEOUT,
         token,
         move |_control| {
-            query_nvme_health(index).map_err(|error| {
+            query_nvme_health(index, &expected).map_err(|error| {
                 CollectorFault::new(
                     "hardware-telemetry",
                     "nvme-health-ioctl",
@@ -612,23 +1103,12 @@ fn query_nvme_health_bounded(index: u32, token: CancellationToken) -> Result<Nvm
     .map_err(isolated_fault_to_telemetry)
 }
 
-fn query_ata_smart_attributes(index: u32) -> Result<Vec<AtaSmartAttribute>> {
-    let path = format!(r"\\.\PhysicalDrive{index}");
-    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-    const GENERIC_READ_ACCESS: u32 = 0x8000_0000;
-    let handle = unsafe {
-        CreateFileW(
-            PCWSTR(wide.as_ptr()),
-            GENERIC_READ_ACCESS,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            None,
-            OPEN_EXISTING,
-            FILE_FLAGS_AND_ATTRIBUTES(FILE_ATTRIBUTE_NORMAL.0),
-            None,
-        )
-    }
-    .map_err(win)?;
-    let _handle_owner = OwnedHandle::new(handle);
+fn query_ata_smart_attributes(
+    index: u32,
+    expected: &DiskIdentity,
+) -> Result<Vec<AtaSmartAttribute>> {
+    let handle_owner = open_verified_drive(index, expected)?;
+    let handle = handle_owner.get();
 
     // SMART_RCV_DRIVE_DATA is read-only. The target disk is selected by the handle; bDriveNumber is opaque to callers.
     let input = SENDCMDINPARAMS {
@@ -676,7 +1156,10 @@ fn query_ata_smart_attributes(index: u32) -> Result<Vec<AtaSmartAttribute>> {
     parse_ata_driver_response(&output, returned, data_offset)
 }
 
-fn query_nvme_health(index: u32) -> Result<NvmeHealthValues> {
+/// Opens `\\.\PhysicalDriveN` read-only and returns it only if it is the disk WMI described. A
+/// handle whose serial, bus or size differs (or that reports no serial to compare) is closed and
+/// refused: its IOCTL answers would be attributed to the wrong disk.
+fn open_verified_drive(index: u32, expected: &DiskIdentity) -> Result<OwnedHandle> {
     let path = format!(r"\\.\PhysicalDrive{index}");
     let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
     const GENERIC_READ_ACCESS: u32 = 0x8000_0000;
@@ -692,7 +1175,82 @@ fn query_nvme_health(index: u32) -> Result<NvmeHealthValues> {
         )
     }
     .map_err(win)?;
-    let _handle_owner = OwnedHandle::new(handle);
+    let owner = OwnedHandle::new(handle);
+    match bind_handle(expected, &opened_identity(&owner)?) {
+        HandleBinding::Confirmed => Ok(owner),
+        HandleBinding::Mismatch => Err(TelemetryError::Unavailable(
+            "the opened physical drive reports a different disk than the one WMI described".into(),
+        )),
+        HandleBinding::Unproven => Err(TelemetryError::Unavailable(
+            "the physical drive could not be proven to be the disk WMI described".into(),
+        )),
+    }
+}
+
+fn opened_identity(handle: &OwnedHandle) -> Result<DiskIdentity> {
+    // StorageDeviceProperty: bus type and serial number of the disk behind this handle.
+    let query_len = size_of::<STORAGE_PROPERTY_QUERY>();
+    let mut query = vec![0u64; query_len.div_ceil(8)];
+    unsafe {
+        let q = &mut *(query.as_mut_ptr() as *mut STORAGE_PROPERTY_QUERY);
+        q.PropertyId = StorageDeviceProperty;
+        q.QueryType = PropertyStandardQuery;
+    }
+    let mut descriptor = vec![0u8; 1024];
+    let mut returned = 0u32;
+    unsafe {
+        DeviceIoControl(
+            handle.get(),
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            Some(query.as_ptr().cast()),
+            query_len as u32,
+            Some(descriptor.as_mut_ptr().cast()),
+            descriptor.len() as u32,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .map_err(win)?;
+    let returned = usize::try_from(returned)
+        .ok()
+        .filter(|len| *len <= descriptor.len())
+        .ok_or_else(|| {
+            TelemetryError::MalformedResponse("storage descriptor byte count was invalid".into())
+        })?;
+    let (bus, serial) =
+        parse_storage_device_descriptor(&descriptor[..returned]).ok_or_else(|| {
+            TelemetryError::MalformedResponse("storage device descriptor was not valid".into())
+        })?;
+
+    // IOCTL_DISK_GET_LENGTH_INFO answers a GET_LENGTH_INFORMATION: one i64, the disk's length.
+    let mut length = [0u8; 8];
+    let mut length_returned = 0u32;
+    let size_bytes = unsafe {
+        DeviceIoControl(
+            handle.get(),
+            IOCTL_DISK_GET_LENGTH_INFO,
+            None,
+            0,
+            Some(length.as_mut_ptr().cast()),
+            length.len() as u32,
+            Some(&mut length_returned),
+            None,
+        )
+    }
+    .ok()
+    .filter(|_| length_returned as usize == length.len())
+    .and_then(|_| u64::try_from(i64::from_le_bytes(length)).ok())
+    .filter(|size| *size > 0);
+    Ok(DiskIdentity {
+        serial,
+        bus: bus_name(u16::try_from(bus).ok()),
+        size_bytes,
+    })
+}
+
+fn query_nvme_health(index: u32, expected: &DiskIdentity) -> Result<NvmeHealthValues> {
+    let handle_owner = open_verified_drive(index, expected)?;
+    let handle = handle_owner.get();
 
     // STORAGE_PROPERTY_QUERY ends in a one-byte flexible array. Microsoft requires the protocol
     // query to begin at AdditionalParameters rather than after sizeof(STORAGE_PROPERTY_QUERY).
@@ -774,23 +1332,10 @@ fn query_nvme_health(index: u32) -> Result<NvmeHealthValues> {
     let output_slice = unsafe { std::slice::from_raw_parts(output_ptr, returned) };
     parse_nvme_health_log(&output_slice[window])
 }
-fn merge_nvme(r: &mut StorageReliability, n: NvmeHealthValues) {
-    r.nvme_critical_warning = Some(n.critical);
-    r.nvme_available_spare_percent = Some(n.spare);
-    r.nvme_percentage_used = Some(n.used);
-    r.nvme_unsafe_shutdowns = Some(n.unsafe_shutdowns);
-    r.nvme_media_errors = Some(n.media_errors);
-    r.nvme_error_log_entries = Some(n.error_entries);
-    if r.temperature_c.is_none() {
-        r.temperature_c = n.temperature_c;
-    }
-    if r.wear_percent_used.is_none() {
-        r.wear_percent_used = Some(n.used as u32);
-    }
-}
-
 fn win(e: windows::core::Error) -> TelemetryError {
-    if e.code() == E_ACCESSDENIED || e.code().0 == WBEM_E_ACCESS_DENIED.0 {
+    if crate::is_absent_wmi_class(e.code().0) {
+        TelemetryError::Unavailable(e.to_string())
+    } else if e.code() == E_ACCESSDENIED || e.code().0 == WBEM_E_ACCESS_DENIED.0 {
         TelemetryError::PermissionDenied(e.to_string())
     } else {
         TelemetryError::Windows(e.to_string())

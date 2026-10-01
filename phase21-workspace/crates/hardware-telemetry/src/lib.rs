@@ -4,7 +4,13 @@ use aethercore_collector_runtime::CollectorFaultRecord;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+#[cfg(any(windows, test))]
+mod battery;
 pub mod measurements;
+#[cfg(any(windows, test))]
+mod network;
+#[cfg(any(windows, test))]
+mod thermal;
 
 #[derive(Debug, Error)]
 pub enum TelemetryError {
@@ -123,6 +129,8 @@ pub(crate) struct NvmeHealthValues {
     pub critical: u8,
     pub temperature_c: Option<i32>,
     pub spare: u8,
+    /// The device's own threshold for `spare`; below it the device flags a critical warning.
+    pub spare_threshold: u8,
     pub used: u8,
     pub unsafe_shutdowns: String,
     pub media_errors: String,
@@ -148,6 +156,7 @@ pub(crate) fn parse_nvme_health_log(data: &[u8]) -> Result<NvmeHealthValues> {
         critical: data[0],
         temperature_c: (temperature_kelvin > 0).then(|| i32::from(temperature_kelvin) - 273),
         spare: data[3],
+        spare_threshold: data[4],
         used: data[5],
         unsafe_shutdowns: read_u128(144).to_string(),
         media_errors: read_u128(160).to_string(),
@@ -222,6 +231,10 @@ pub struct StorageReliability {
     /// written before it was read.
     #[serde(default)]
     pub nvme_available_spare_threshold_percent: Option<u8>,
+    /// The drive's own failure prediction (`IOCTL_STORAGE_PREDICT_FAILURE`); absent when it could
+    /// not be asked, which is not "no failure predicted".
+    #[serde(default)]
+    pub smart_predict_failure: Option<bool>,
     pub nvme_percentage_used: Option<u8>,
     /// NVMe SMART counters are 128-bit values. Strings preserve the exact device-reported value.
     pub nvme_media_errors: Option<String>,
@@ -243,6 +256,11 @@ pub struct StorageDeviceTelemetry {
     pub operational_status: Vec<String>,
     #[serde(default)]
     pub ata_smart_attributes: Vec<AtaSmartAttribute>,
+    /// Whether the ATA SMART table could be read: `None` when it was never asked (not an ATA disk),
+    /// `Some(false)` when it was asked and did not answer. Coverage only; the table's values never
+    /// drive a verdict.
+    #[serde(default)]
+    pub ata_table_available: Option<bool>,
     pub reliability: StorageReliability,
     pub severity: String,
     pub summary: String,
@@ -266,8 +284,219 @@ pub struct HardwareTelemetrySnapshot {
     pub storage: Vec<StorageDeviceTelemetry>,
     pub memory: Option<MemoryTelemetry>,
     #[serde(default)]
+    pub thermal_zones: Vec<measurements::ThermalZone>,
+    #[serde(default)]
+    pub batteries: Vec<measurements::Battery>,
+    #[serde(default)]
+    pub network_adapters: Vec<measurements::NetworkAdapter>,
+    #[serde(default)]
     pub provider_faults: Vec<CollectorFaultRecord>,
     pub warnings: Vec<String>,
+}
+
+/// WMI HRESULTs that say the class or namespace is not there (invalid class, not found, not
+/// supported, invalid namespace): a machine that does not publish a source, which is "not
+/// measured". Any other WMI failure (an invalid query, an access error) is a real fault.
+#[cfg(any(windows, test))]
+pub(crate) fn is_absent_wmi_class(hresult: i32) -> bool {
+    matches!(
+        hresult as u32,
+        0x8004_1010 | 0x8004_1002 | 0x8004_100C | 0x8004_100E
+    )
+}
+
+/// What a disk says it is, as reported either by WMI (`MSFT_PhysicalDisk`) or by an opened
+/// `\\.\PhysicalDriveN` handle. Never leaves this crate: the serial number is not exposed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DiskIdentity {
+    pub serial: String,
+    pub bus: String,
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HandleBinding {
+    /// Both sides report the same serial, bus and size: the handle is this disk.
+    Confirmed,
+    /// A field both sides report differs: the handle is another disk.
+    Mismatch,
+    /// Nothing proves the handle is this disk (a missing serial); nothing proves it is not.
+    Unproven,
+}
+
+fn serial_key(serial: &str) -> String {
+    serial
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
+}
+
+/// ATA and SATA are one family; every other bus compares by name.
+fn bus_family(bus: &str) -> String {
+    let bus = bus.trim().to_ascii_lowercase();
+    if bus == "ata" || bus == "sata" {
+        "sata".into()
+    } else {
+        bus
+    }
+}
+
+/// Decides whether the IOCTL answers of `opened` may be attributed to the WMI record `reported`.
+/// The WMI `DeviceId` is not always the PhysicalDrive index (Storage Spaces, hot-swapped disks),
+/// so the index alone proves nothing. A disk without a serial is not confirmed by size and bus:
+/// two disks of one model and size would be mixed.
+pub fn bind_handle(reported: &DiskIdentity, opened: &DiskIdentity) -> HandleBinding {
+    let (a, b) = (bus_family(&reported.bus), bus_family(&opened.bus));
+    let bus_differs = !a.is_empty() && !b.is_empty() && a != b;
+    let size_differs =
+        matches!((reported.size_bytes, opened.size_bytes), (Some(x), Some(y)) if x != y);
+    let (sa, sb) = (serial_key(&reported.serial), serial_key(&opened.serial));
+    let serial_differs = !sa.is_empty() && !sb.is_empty() && sa != sb;
+    if bus_differs || size_differs || serial_differs {
+        HandleBinding::Mismatch
+    } else if sa.is_empty() || sb.is_empty() {
+        HandleBinding::Unproven
+    } else {
+        HandleBinding::Confirmed
+    }
+}
+
+/// Reads the bus type and serial number out of a `STORAGE_DEVICE_DESCRIPTOR`
+/// (`StorageDeviceProperty`). Offsets are the documented layout: `SerialNumberOffset` at 24,
+/// `BusType` at 28. An offset that points outside the returned bytes reads as "no serial", never
+/// as a panic or a read past the buffer.
+#[cfg(any(windows, test))]
+pub(crate) fn parse_storage_device_descriptor(bytes: &[u8]) -> Option<(u32, String)> {
+    let word = |at: usize| -> Option<u32> {
+        Some(u32::from_le_bytes(
+            bytes.get(at..at.checked_add(4)?)?.try_into().ok()?,
+        ))
+    };
+    let size = usize::try_from(word(4)?).ok()?;
+    if size < 36 || size > bytes.len() {
+        return None;
+    }
+    let bus = word(28)?;
+    let serial = match usize::try_from(word(24)?) {
+        Ok(offset) if offset != 0 && offset < size => {
+            let raw = &bytes[offset..size];
+            let end = raw.iter().position(|b| *b == 0).unwrap_or(raw.len());
+            String::from_utf8_lossy(&raw[..end]).trim().to_string()
+        }
+        _ => String::new(),
+    };
+    Some((bus, serial))
+}
+
+/// `STORAGE_PREDICT_FAILURE`: a `u32` that is non-zero when the drive predicts its own failure,
+/// followed by vendor bytes that are not interpreted. Fewer than four bytes is no answer.
+#[cfg(any(windows, test))]
+pub(crate) fn parse_predict_failure(bytes: &[u8]) -> Option<bool> {
+    let word: [u8; 4] = bytes.get(..4)?.try_into().ok()?;
+    Some(u32::from_le_bytes(word) != 0)
+}
+
+/// Adds what changed since `previous` to `current.reasons`, for the same disk only (same serial,
+/// bus and size). A counter that went down is a reset or a replacement, not an improvement, and
+/// says nothing; a counter that could not be read on either side says nothing.
+pub fn compare_counters(previous: &StorageDeviceTelemetry, current: &mut StorageDeviceTelemetry) {
+    let same = |d: &StorageDeviceTelemetry| DiskIdentity {
+        serial: d.serial_number.clone(),
+        bus: d.bus_type.clone(),
+        size_bytes: Some(d.size_bytes).filter(|size| *size > 0),
+    };
+    if bind_handle(&same(previous), &same(current)) != HandleBinding::Confirmed {
+        return;
+    }
+    let (p, c) = (&previous.reliability, &current.reliability);
+    let big = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<u128>().ok());
+    let pairs: [(u8, Option<u128>, Option<u128>); 3] = [
+        (
+            0,
+            p.read_errors_uncorrected.map(u128::from),
+            c.read_errors_uncorrected.map(u128::from),
+        ),
+        (
+            1,
+            p.write_errors_uncorrected.map(u128::from),
+            c.write_errors_uncorrected.map(u128::from),
+        ),
+        (2, big(&p.nvme_media_errors), big(&c.nvme_media_errors)),
+    ];
+    let mut compared_nonzero = false;
+    let mut grew = false;
+    for (kind, before, now) in pairs {
+        let (Some(before), Some(now)) = (before, now) else {
+            continue;
+        };
+        compared_nonzero |= now > 0;
+        if now > before {
+            grew = true;
+            let more = now - before;
+            current.reasons.push(match kind {
+                0 => format!("{more} more uncorrected read error(s) than at the previous scan."),
+                1 => format!("{more} more uncorrected write error(s) than at the previous scan."),
+                _ => format!(
+                    "{more} more NVMe media/data-integrity error(s) than at the previous scan."
+                ),
+            });
+        }
+    }
+    if compared_nonzero && !grew {
+        current
+            .reasons
+            .push("No increase in the reported error counters since the previous scan.".into());
+    }
+}
+
+/// Folds an NVMe health log into the reliability record. `PercentageUsed` may exceed 100 and is
+/// kept as reported; a temperature the device did not report stays absent.
+#[cfg(any(windows, test))]
+pub(crate) fn merge_nvme(r: &mut StorageReliability, n: NvmeHealthValues) {
+    r.nvme_critical_warning = Some(n.critical);
+    r.nvme_available_spare_percent = Some(n.spare);
+    r.nvme_available_spare_threshold_percent = Some(n.spare_threshold);
+    r.nvme_percentage_used = Some(n.used);
+    r.nvme_unsafe_shutdowns = Some(n.unsafe_shutdowns);
+    r.nvme_media_errors = Some(n.media_errors);
+    r.nvme_error_log_entries = Some(n.error_entries);
+    if r.temperature_c.is_none() {
+        r.temperature_c = n.temperature_c;
+    }
+    if r.wear_percent_used.is_none() {
+        r.wear_percent_used = Some(u32::from(n.used));
+    }
+}
+
+/// The NVMe critical-warning byte, bit by bit, as the specification defines it.
+fn critical_warning_meanings(flags: u8) -> Vec<&'static str> {
+    let named: [(u8, &str); 6] = [
+        (
+            0x01,
+            "NVMe reports the available spare has fallen below its threshold.",
+        ),
+        (
+            0x02,
+            "NVMe reports the temperature is outside its operating limits.",
+        ),
+        (0x04, "NVMe reports the device's reliability is degraded."),
+        (0x08, "NVMe reports the device has become read-only."),
+        (0x10, "NVMe reports its volatile memory backup has failed."),
+        (
+            0x20,
+            "NVMe reports its persistent memory region is unreliable.",
+        ),
+    ];
+    let mut out: Vec<&'static str> = named
+        .iter()
+        .filter(|(bit, _)| flags & bit != 0)
+        .map(|(_, text)| *text)
+        .collect();
+    if flags & 0xC0 != 0 {
+        out.push("NVMe critical-warning flags include bits this reader does not recognize.");
+    }
+    out
 }
 
 pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
@@ -282,6 +511,11 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
     // of health. `windows_health_status` is unaffected: it is Windows' own
     // independent verdict, read regardless of whether these counters exist.
     let mut unavailable = Vec::new();
+    // Coverage follows the bus: a SATA disk is not charged with counters only NVMe has, and an
+    // NVMe disk is not charged with an ATA table.
+    let is_nvme = device.bus_type.eq_ignore_ascii_case("NVMe");
+    let is_ata =
+        device.bus_type.eq_ignore_ascii_case("SATA") || device.bus_type.eq_ignore_ascii_case("ATA");
 
     if device
         .windows_health_status
@@ -303,11 +537,27 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
         None => unavailable.push("uncorrected write error count"),
     }
     match r.nvme_critical_warning {
-        Some(n) if n != 0 => action.push(format!(
-            "NVMe SMART critical-warning flags are set (0x{n:02X})."
-        )),
+        Some(n) if n != 0 => {
+            action.push(format!(
+                "NVMe SMART critical-warning flags are set (0x{n:02X})."
+            ));
+            action.extend(critical_warning_meanings(n).into_iter().map(String::from));
+        }
         Some(_) => {}
-        None => unavailable.push("NVMe critical-warning flags"),
+        None if is_nvme => unavailable.push("NVMe critical-warning flags"),
+        None => {}
+    }
+    // Below the device's own threshold, and the device has not (yet) raised the flag itself.
+    if let (Some(spare), Some(threshold)) = (
+        r.nvme_available_spare_percent,
+        r.nvme_available_spare_threshold_percent,
+    ) && threshold > 0
+        && spare < threshold
+        && r.nvme_critical_warning.unwrap_or(0) & 0x01 == 0
+    {
+        attention.push(format!(
+            "NVMe available spare ({spare}%) is below the device's own threshold ({threshold}%)."
+        ));
     }
     match r.nvme_media_errors.as_deref() {
         Some(v) => {
@@ -317,7 +567,14 @@ pub fn classify_storage(device: &mut StorageDeviceTelemetry) {
                 );
             }
         }
-        None => unavailable.push("NVMe media/data-integrity error count"),
+        None if is_nvme => unavailable.push("NVMe media/data-integrity error count"),
+        None => {}
+    }
+    if is_ata && device.ata_table_available == Some(false) {
+        unavailable.push("ATA SMART attribute table");
+    }
+    if r.smart_predict_failure == Some(true) {
+        action.push("The drive's own SMART self-assessment predicts a failure.".to_string());
     }
     if r.wear_percent_used.is_some_and(|v| v >= 100)
         || r.nvme_percentage_used.is_some_and(|v| v >= 100)
@@ -414,6 +671,359 @@ pub fn collect_with_cancellation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn identity(serial: &str, bus: &str, size: Option<u64>) -> DiskIdentity {
+        DiskIdentity {
+            serial: serial.into(),
+            bus: bus.into(),
+            size_bytes: size,
+        }
+    }
+
+    // P81-01: WMI says which disk this is; the opened `\\.\PhysicalDriveN` says which disk it
+    // is. Only when they agree may the IOCTL answers be attributed to the WMI record.
+    #[test]
+    fn a_handle_is_bound_only_to_the_disk_whose_serial_it_reports() {
+        let wmi = identity("0025_38B1_2320_C7E3.", "NVMe", Some(2_000_398_934_016));
+        let same = identity("002538B12320C7E3", "NVMe", Some(2_000_398_934_016));
+        assert_eq!(
+            bind_handle(&wmi, &same),
+            HandleBinding::Confirmed,
+            "punctuation and case are formatting"
+        );
+        // Two disks of one model and size differ only by serial: they must not be mixed.
+        let sibling = identity("002538B12320FFFF", "NVMe", Some(2_000_398_934_016));
+        assert_eq!(bind_handle(&wmi, &sibling), HandleBinding::Mismatch);
+    }
+
+    #[test]
+    fn the_device_descriptor_yields_bus_and_serial_and_never_reads_out_of_bounds() {
+        let mut d = vec![0u8; 64];
+        d[4..8].copy_from_slice(&64u32.to_le_bytes());
+        d[24..28].copy_from_slice(&40u32.to_le_bytes());
+        d[28..32].copy_from_slice(&17u32.to_le_bytes());
+        d[40..48].copy_from_slice(b"SN 42   ");
+        assert_eq!(
+            parse_storage_device_descriptor(&d),
+            Some((17, "SN 42".into()))
+        );
+        // An offset past the returned bytes is "no serial", and a short buffer is "no answer".
+        d[24..28].copy_from_slice(&9_000u32.to_le_bytes());
+        assert_eq!(
+            parse_storage_device_descriptor(&d),
+            Some((17, String::new()))
+        );
+        assert_eq!(parse_storage_device_descriptor(&d[..20]), None);
+        d[4..8].copy_from_slice(&4_000u32.to_le_bytes());
+        assert_eq!(
+            parse_storage_device_descriptor(&d),
+            None,
+            "a size larger than the buffer is malformed"
+        );
+    }
+
+    // P81-03: coverage follows the bus, and a counter is compared only with the same disk's own past.
+    fn disk(bus: &str) -> StorageDeviceTelemetry {
+        let mut d = StorageDeviceTelemetry {
+            windows_health_status: "Healthy".into(),
+            bus_type: bus.into(),
+            serial_number: "S1".into(),
+            size_bytes: 1_000,
+            ..Default::default()
+        };
+        d.reliability.read_errors_uncorrected = Some(0);
+        d.reliability.write_errors_uncorrected = Some(0);
+        d
+    }
+
+    fn with_attribute(mut d: StorageDeviceTelemetry) -> StorageDeviceTelemetry {
+        d.ata_smart_attributes = vec![AtaSmartAttribute {
+            id: 5,
+            current: 100,
+            worst: 100,
+            ..Default::default()
+        }];
+        d
+    }
+
+    #[test]
+    fn a_healthy_sata_disk_is_not_charged_with_missing_nvme_counters() {
+        let mut d = with_attribute(disk("SATA"));
+        classify_storage(&mut d);
+        assert_eq!(d.severity, "Normal");
+        assert!(
+            d.reasons.iter().all(|r| !r.contains("NVMe")),
+            "{:?}",
+            d.reasons
+        );
+        assert!(d.summary.contains("do not currently show"), "{}", d.summary);
+    }
+
+    #[test]
+    fn a_sata_disk_whose_smart_table_could_not_be_read_says_so_and_is_not_called_clean() {
+        let mut d = disk("SATA");
+        d.ata_table_available = Some(false);
+        classify_storage(&mut d);
+        assert!(
+            d.reasons
+                .iter()
+                .any(|r| r.contains("ATA SMART attribute table")),
+            "{:?}",
+            d.reasons
+        );
+        assert!(
+            !d.summary.contains("do not currently show"),
+            "{}",
+            d.summary
+        );
+        let mut usb = disk("USB");
+        classify_storage(&mut usb);
+        assert!(
+            usb.reasons
+                .iter()
+                .all(|r| !r.contains("NVMe") && !r.contains("ATA SMART")),
+            "a bridge we do not query is not charged with either: {:?}",
+            usb.reasons
+        );
+    }
+
+    #[test]
+    fn a_failure_prediction_from_the_drive_is_an_action_and_absence_is_not_a_verdict() {
+        let mut predicted = with_attribute(disk("SATA"));
+        predicted.reliability.smart_predict_failure = Some(true);
+        classify_storage(&mut predicted);
+        assert_eq!(predicted.severity, "ActionRequired");
+        assert!(
+            predicted.reasons.iter().any(|r| r.contains("predicts")),
+            "{:?}",
+            predicted.reasons
+        );
+        let mut fine = with_attribute(disk("SATA"));
+        fine.reliability.smart_predict_failure = Some(false);
+        classify_storage(&mut fine);
+        assert_eq!(fine.severity, "Normal");
+        assert_eq!(parse_predict_failure(&[1, 0, 0, 0, 9, 9]), Some(true));
+        assert_eq!(parse_predict_failure(&[0, 0, 0, 0]), Some(false));
+        assert_eq!(
+            parse_predict_failure(&[1, 0]),
+            None,
+            "a short answer is no answer"
+        );
+    }
+
+    #[test]
+    fn counters_are_compared_only_with_the_same_disk_and_never_go_negative() {
+        let mut before = disk("NVMe");
+        before.reliability.read_errors_uncorrected = Some(2);
+        before.reliability.nvme_media_errors = Some((u128::MAX - 3).to_string());
+        let mut now = before.clone();
+        now.reliability.read_errors_uncorrected = Some(5);
+        now.reliability.nvme_media_errors = Some(u128::MAX.to_string());
+        compare_counters(&before, &mut now);
+        let text = now.reasons.join(" | ");
+        assert!(
+            text.contains("3 more uncorrected read error(s) than at the previous scan."),
+            "{text}"
+        );
+        assert!(
+            text.contains("3 more NVMe media/data-integrity error(s)"),
+            "128-bit delta is exact: {text}"
+        );
+
+        let mut unchanged = before.clone();
+        compare_counters(&before, &mut unchanged);
+        assert!(
+            unchanged.reasons.iter().any(|r| r.contains("No increase")),
+            "{:?}",
+            unchanged.reasons
+        );
+
+        let mut reset = before.clone();
+        reset.reliability.read_errors_uncorrected = Some(1);
+        reset.reliability.nvme_media_errors = Some("0".into());
+        compare_counters(&before, &mut reset);
+        assert!(
+            reset.reasons.iter().all(|r| !r.contains("more")),
+            "a reset is not an improvement or a delta: {:?}",
+            reset.reasons
+        );
+
+        let mut replaced = before.clone();
+        replaced.serial_number = "S2".into();
+        replaced.reliability.read_errors_uncorrected = Some(9);
+        compare_counters(&before, &mut replaced);
+        assert!(
+            replaced.reasons.is_empty(),
+            "another disk has no past to compare with: {:?}",
+            replaced.reasons
+        );
+
+        let mut unread = before.clone();
+        unread.reliability.read_errors_uncorrected = None;
+        compare_counters(&before, &mut unread);
+        assert!(
+            unread.reasons.iter().all(|r| !r.contains("read")),
+            "{:?}",
+            unread.reasons
+        );
+    }
+
+    // P81-02: the NVMe health log, read for what it says.
+    fn nvme_log(critical: u8, kelvin: u16, spare: u8, threshold: u8, used: u8) -> Vec<u8> {
+        let mut log = vec![0u8; 512];
+        log[0] = critical;
+        log[1..3].copy_from_slice(&kelvin.to_le_bytes());
+        log[3] = spare;
+        log[4] = threshold;
+        log[5] = used;
+        log
+    }
+
+    fn nvme_disk(critical: u8, spare: u8, threshold: u8, used: u8) -> StorageDeviceTelemetry {
+        let mut device = StorageDeviceTelemetry {
+            windows_health_status: "Healthy".into(),
+            ..Default::default()
+        };
+        let values =
+            parse_nvme_health_log(&nvme_log(critical, 310, spare, threshold, used)).unwrap();
+        merge_nvme(&mut device.reliability, values);
+        device.reliability.read_errors_uncorrected = Some(0);
+        device.reliability.write_errors_uncorrected = Some(0);
+        classify_storage(&mut device);
+        device
+    }
+
+    #[test]
+    fn the_spare_threshold_is_read_and_a_spare_below_it_asks_for_review() {
+        let values = parse_nvme_health_log(&nvme_log(0, 310, 15, 20, 5)).unwrap();
+        assert_eq!(values.spare_threshold, 20);
+        let low = nvme_disk(0, 15, 20, 5);
+        assert_eq!(
+            low.severity, "Attention",
+            "spare 15% under its own 20% threshold"
+        );
+        assert!(
+            low.reasons
+                .iter()
+                .any(|r| r.contains("below the device's own threshold")),
+            "{:?}",
+            low.reasons
+        );
+        assert_eq!(nvme_disk(0, 100, 10, 5).severity, "Normal");
+        assert_eq!(
+            nvme_disk(0, 10, 10, 5).severity,
+            "Normal",
+            "equal is not below"
+        );
+    }
+
+    #[test]
+    fn critical_warning_bits_are_named_by_meaning_and_unknown_bits_are_not_dropped() {
+        let device = nvme_disk(0b1100_0101, 100, 10, 5);
+        assert_eq!(device.severity, "ActionRequired");
+        let reasons = device.reasons.join(" | ");
+        for meaning in [
+            "spare has fallen below its threshold",
+            "reliability is degraded",
+            "recognize",
+        ] {
+            assert!(
+                reasons.contains(meaning),
+                "{meaning} missing from {reasons}"
+            );
+        }
+        assert!(
+            !reasons.contains("read-only"),
+            "bit 3 was not set: {reasons}"
+        );
+        assert!(
+            device.summary.contains("back up important data"),
+            "the first advice is a backup, not a repair"
+        );
+    }
+
+    #[test]
+    fn wear_over_a_hundred_is_kept_and_a_zero_temperature_is_not_minus_273() {
+        let hot = parse_nvme_health_log(&nvme_log(0, 0, 100, 10, 105)).unwrap();
+        assert_eq!(hot.temperature_c, None, "0 K is 'not reported'");
+        assert_eq!(hot.used, 105);
+        let mut r = StorageReliability::default();
+        merge_nvme(&mut r, hot);
+        assert_eq!(r.nvme_percentage_used, Some(105));
+        assert_eq!(r.wear_percent_used, Some(105), "not clamped to 100");
+        assert_eq!(r.nvme_available_spare_threshold_percent, Some(10));
+        assert_eq!(r.temperature_c, None);
+    }
+
+    #[test]
+    fn counters_beyond_64_bits_keep_every_digit() {
+        let mut log = nvme_log(0, 310, 100, 10, 1);
+        log[160..176].copy_from_slice(&u128::MAX.to_le_bytes());
+        let values = parse_nvme_health_log(&log).unwrap();
+        assert_eq!(
+            values.media_errors,
+            "340282366920938463463374607431768211455"
+        );
+        assert!(
+            parse_nvme_health_log(&log[..100]).is_err(),
+            "a short buffer is an error, not a panic"
+        );
+    }
+
+    #[test]
+    fn only_an_absent_class_is_not_a_fault() {
+        for absent in [0x8004_1010_u32, 0x8004_1002, 0x8004_100C, 0x8004_100E] {
+            assert!(is_absent_wmi_class(absent as i32), "{absent:#X}");
+        }
+        assert!(
+            !is_absent_wmi_class(0x8004_1017_u32 as i32),
+            "an invalid query is a bug, not an absent class"
+        );
+        assert!(
+            !is_absent_wmi_class(0x8004_1003_u32 as i32),
+            "access denied is a fault"
+        );
+        assert!(!is_absent_wmi_class(0));
+    }
+
+    #[test]
+    fn a_different_bus_or_size_is_a_mismatch_even_when_the_serial_agrees() {
+        let wmi = identity("S123", "NVMe", Some(1_000));
+        assert_eq!(
+            bind_handle(&wmi, &identity("S123", "USB", Some(1_000))),
+            HandleBinding::Mismatch
+        );
+        assert_eq!(
+            bind_handle(&wmi, &identity("S123", "NVMe", Some(2_000))),
+            HandleBinding::Mismatch
+        );
+        assert_eq!(
+            bind_handle(
+                &identity("S123", "SATA", None),
+                &identity("S123", "ATA", None)
+            ),
+            HandleBinding::Confirmed,
+            "ATA and SATA are one family"
+        );
+    }
+
+    #[test]
+    fn a_disk_with_no_serial_is_never_confirmed_by_size_and_bus_alone() {
+        let a = identity("", "SATA", Some(500));
+        assert_eq!(
+            bind_handle(&a, &identity("", "SATA", Some(500))),
+            HandleBinding::Unproven
+        );
+        assert_eq!(
+            bind_handle(&a, &identity("S9", "SATA", Some(500))),
+            HandleBinding::Unproven
+        );
+        assert_eq!(
+            bind_handle(&a, &identity("", "SATA", Some(900))),
+            HandleBinding::Mismatch,
+            "a size that differs is proof of a different disk"
+        );
+    }
 
     #[test]
     fn storage_classifier_never_creates_a_score_and_escalates_uncorrected_errors() {

@@ -139,6 +139,10 @@ fn canonical_payload_state(payload: &FactPayload) -> Option<String> {
                 thermal_attention,
             ))
         }
+        FactPayload::ThermalZone {
+            temperature_c,
+            critical_c,
+        } => serde_json::to_string(&(temperature_c >= critical_c,)),
         FactPayload::MemoryPressure {
             memory_load_percent,
             pressure_label,

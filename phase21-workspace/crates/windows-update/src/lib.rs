@@ -140,6 +140,247 @@ pub struct UpdateHealthProbe {
     pub detail: String,
 }
 
+/// What an update attempt was: only installations are judged; an uninstall says nothing about
+/// whether an update took.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum HistoryOperation {
+    Installation,
+    Uninstallation,
+    Other,
+}
+
+/// `OperationResultCode` of a history entry.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum HistoryResult {
+    NotStarted,
+    InProgress,
+    Succeeded,
+    SucceededWithErrors,
+    Failed,
+    Aborted,
+    Unknown,
+}
+
+/// One row of the local Windows Update history (`IUpdateHistoryEntry`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateHistoryEntry {
+    pub update_id: String,
+    pub revision: i32,
+    pub title: String,
+    /// When the attempt was recorded; `None` when the agent gave no usable date.
+    pub unix_ms: Option<i64>,
+    pub operation: HistoryOperation,
+    pub result: HistoryResult,
+    pub hresult: i32,
+}
+
+/// The local history as read. `truncated` says older entries exist that were not read: an empty or
+/// short list is then "not everything", and an unreadable history is an error, never an empty list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateHistory {
+    pub entries: Vec<UpdateHistoryEntry>,
+    pub truncated: bool,
+}
+
+/// An update whose installation failed more than once with no later success of the same revision.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepeatedFailure {
+    pub update_id: String,
+    pub title: String,
+    pub failures: u32,
+    pub last_failure_unix_ms: Option<i64>,
+    /// Distinct failure codes, newest first, at most four.
+    pub hresults: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryAnalysis {
+    /// Installation failures with no later success of the same update and revision.
+    pub unresolved_failures: u32,
+    pub repeated_failures: Vec<RepeatedFailure>,
+}
+
+/// Reads the history as a record of attempts. A failure is closed only by a later success of the
+/// same update and revision (an undated success cannot be shown to come later). Nothing here
+/// says the machine is or is not up to date: the last success of some update is not compliance.
+pub fn analyze_history(entries: &[UpdateHistoryEntry]) -> HistoryAnalysis {
+    let installs = || {
+        entries
+            .iter()
+            .filter(|e| e.operation == HistoryOperation::Installation)
+    };
+    let closes = |failure: &UpdateHistoryEntry| {
+        installs().any(|success| {
+            matches!(
+                success.result,
+                HistoryResult::Succeeded | HistoryResult::SucceededWithErrors
+            ) && success.update_id == failure.update_id
+                && success.revision == failure.revision
+                && matches!((success.unix_ms, failure.unix_ms), (Some(after), Some(before)) if after >= before)
+        })
+    };
+    let mut unresolved: Vec<&UpdateHistoryEntry> = installs()
+        .filter(|e| matches!(e.result, HistoryResult::Failed | HistoryResult::Aborted))
+        .filter(|failure| !closes(failure))
+        .collect();
+    unresolved.sort_by_key(|e| std::cmp::Reverse(e.unix_ms));
+    let mut repeated = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for failure in &unresolved {
+        if !seen.insert(failure.update_id.clone()) {
+            continue;
+        }
+        let same: Vec<_> = unresolved
+            .iter()
+            .filter(|e| e.update_id == failure.update_id)
+            .collect();
+        if same.len() < 2 {
+            continue;
+        }
+        let mut hresults = Vec::new();
+        for e in &same {
+            if !hresults.contains(&e.hresult) && hresults.len() < 4 {
+                hresults.push(e.hresult);
+            }
+        }
+        repeated.push(RepeatedFailure {
+            update_id: failure.update_id.clone(),
+            title: failure.title.clone(),
+            failures: u32::try_from(same.len()).unwrap_or(u32::MAX),
+            last_failure_unix_ms: same[0].unix_ms,
+            hresults,
+        });
+    }
+    HistoryAnalysis {
+        unresolved_failures: u32::try_from(unresolved.len()).unwrap_or(u32::MAX),
+        repeated_failures: repeated,
+    }
+}
+
+/// One error the update client logged (`Microsoft-Windows-WindowsUpdateClient/Operational`, level
+/// Error): the event id, the `errorCode` field it carries and when it was logged. What the id means is
+/// not interpreted here.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientError {
+    pub event_id: u32,
+    pub error_code: u32,
+    pub unix_ms: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientErrorSummary {
+    pub count: u32,
+    pub newest_unix_ms: Option<i64>,
+    /// Distinct error codes, newest first, at most four.
+    pub codes: Vec<u32>,
+}
+
+/// The bounded subset of error events read locally; unsupported schemas are counted separately.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClientErrors {
+    pub errors: Vec<ClientError>,
+    pub unknown_events: u32,
+    pub truncated: bool,
+}
+
+const PROVIDER_ATTRIBUTE: &str = "Name=\"Microsoft-Windows-WindowsUpdateClient\"";
+
+fn xml_between<'a>(xml: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    let start = xml.find(open)? + open.len();
+    let end = xml[start..].find(close)? + start;
+    Some(&xml[start..end])
+}
+
+/// Reads the measured Operational schema (update client, event 25, version 1, Error level),
+/// with its named hexadecimal `errorCode` and UTC timestamp. Other schemas stay unknown.
+/// This reads Windows-rendered XML only; it is not a general XML parser.
+pub fn parse_client_error_xml(xml: &str) -> Option<ClientError> {
+    if xml.len() > 64 * 1024 {
+        return None;
+    }
+    // EvtRender uses double quotes; the machine fixture was captured with single quotes.
+    let normalized = xml.replace('\'', "\"");
+    let xml = normalized.as_str();
+    if !xml_between(xml, "<Provider ", "/>")?.contains(PROVIDER_ATTRIBUTE)
+        || xml_between(xml, "<Level>", "</Level>")? != "2"
+        || xml_between(xml, "<Version>", "</Version>")? != "1"
+        || xml_between(xml, "<Channel>", "</Channel>")?
+            != "Microsoft-Windows-WindowsUpdateClient/Operational"
+    {
+        return None;
+    }
+    let event_id = xml_between(xml, "<EventID>", "</EventID>")?
+        .trim()
+        .parse()
+        .ok()?;
+    // Only event 25, version 1 was measured. Other schemas stay unknown.
+    if event_id != 25 {
+        return None;
+    }
+    let code = xml_between(xml, "<Data Name=\"errorCode\">", "</Data>")?.trim();
+    let error_code = u32::from_str_radix(
+        code.strip_prefix("0x")
+            .or_else(|| code.strip_prefix("0X"))?,
+        16,
+    )
+    .ok()?;
+    let created = xml_between(xml, "<TimeCreated ", "/>")?;
+    let stamp = xml_between(created, "SystemTime=\"", "\"")?;
+    let unix_ms = chrono::DateTime::parse_from_rfc3339(stamp)
+        .ok()?
+        .timestamp_millis();
+    Some(ClientError {
+        event_id,
+        error_code,
+        unix_ms,
+    })
+}
+
+/// Counts the errors as records of distinct (event, code, time), newest first.
+pub fn summarize_client_errors(errors: &[ClientError]) -> ClientErrorSummary {
+    // ponytail: O(n²) deduplication over the collector's 200-event cap; use a set if the cap grows.
+    let mut unique: Vec<ClientError> = Vec::new();
+    for error in errors {
+        if !unique.contains(error) {
+            unique.push(*error);
+        }
+    }
+    unique.sort_by_key(|e| std::cmp::Reverse(e.unix_ms));
+    let mut codes = Vec::new();
+    for error in &unique {
+        if !codes.contains(&error.error_code) && codes.len() < 4 {
+            codes.push(error.error_code);
+        }
+    }
+    ClientErrorSummary {
+        count: u32::try_from(unique.len()).unwrap_or(u32::MAX),
+        newest_unix_ms: unique.first().map(|e| e.unix_ms),
+        codes,
+    }
+}
+
+/// An OLE Automation date (days since 1899-12-30) as Unix milliseconds. 0 is "no date", and a value
+/// that is not finite or not a plausible date is `None`.
+pub fn ole_date_to_unix_ms(value: f64) -> Option<i64> {
+    if !value.is_finite() || value <= 0.0 || value > 1_000_000.0 {
+        return None;
+    }
+    Some(((value - 25_569.0) * 86_400_000.0).round() as i64)
+}
+
+/// A Unix-millisecond timestamp as a UTC calendar date (`YYYY-MM-DD`); `None` when out of range.
+pub fn unix_ms_to_iso_date(unix_ms: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp_millis(unix_ms).map(|dt| dt.format("%Y-%m-%d").to_string())
+}
+
 pub fn extract_version_from_update_title(title: &str) -> Option<String> {
     // WUA does not expose a universal target driver-version property. AetherCore therefore
     // treats a version parsed from the title as display-only metadata, never as a ranking
@@ -179,6 +420,15 @@ pub fn ole_automation_date_to_iso(value: f64) -> Option<String> {
 }
 
 #[cfg(windows)]
+mod client_events_windows;
+#[cfg(windows)]
+pub use client_events_windows::query_client_errors;
+#[cfg(not(windows))]
+pub fn query_client_errors(_max_entries: usize) -> Result<ClientErrors> {
+    Err(UpdateError::UnsupportedPlatform)
+}
+
+#[cfg(windows)]
 mod execution_windows;
 #[cfg(windows)]
 mod windows_impl;
@@ -189,7 +439,9 @@ mod bounded;
 #[cfg(windows)]
 pub use execution_windows::{ensure_servicing_available, execute_driver_updates};
 #[cfg(windows)]
-pub use windows_impl::{discover_driver_offers, last_online_search_iso, probe_update_health};
+pub use windows_impl::{
+    discover_driver_offers, last_online_search_iso, probe_update_health, query_update_history,
+};
 
 #[cfg(not(windows))]
 pub fn probe_update_health() -> UpdateHealthProbe {
@@ -199,6 +451,11 @@ pub fn probe_update_health() -> UpdateHealthProbe {
         pending_update_count: 0,
         detail: "Windows Update Agent is only available on Windows".into(),
     }
+}
+
+#[cfg(not(windows))]
+pub fn query_update_history(_max_entries: usize) -> Result<UpdateHistory> {
+    Err(UpdateError::UnsupportedPlatform)
 }
 
 #[cfg(not(windows))]
@@ -256,6 +513,213 @@ mod tests {
             extract_version_from_update_title("Vendor 31.0.101.5590 - Extension"),
             None
         );
+    }
+
+    // P83-03A: history is read as a record of attempts, not as a compliance statement.
+    fn entry(
+        id: &str,
+        revision: i32,
+        op: HistoryOperation,
+        result: HistoryResult,
+        at: Option<i64>,
+        hr: i32,
+    ) -> UpdateHistoryEntry {
+        UpdateHistoryEntry {
+            update_id: id.into(),
+            revision,
+            title: format!("Update {id}"),
+            unix_ms: at,
+            operation: op,
+            result,
+            hresult: hr,
+        }
+    }
+    use HistoryOperation::{Installation as Install, Uninstallation as Uninstall};
+    use HistoryResult::{Aborted, Failed, Succeeded, SucceededWithErrors};
+
+    #[test]
+    fn a_failure_followed_by_a_success_of_the_same_update_is_not_unresolved() {
+        let history = [
+            entry("A", 1, Install, Succeeded, Some(20), 0),
+            entry("A", 1, Install, Failed, Some(10), 0x8024_2016_u32 as i32),
+        ];
+        let analysis = analyze_history(&history);
+        assert!(analysis.repeated_failures.is_empty());
+        assert_eq!(analysis.unresolved_failures, 0);
+    }
+
+    #[test]
+    fn another_updates_success_or_another_revision_does_not_close_a_failure() {
+        let history = [
+            entry("B", 1, Install, Succeeded, Some(30), 0),
+            entry("A", 2, Install, Succeeded, Some(30), 0),
+            entry("A", 1, Install, Failed, Some(10), 1),
+        ];
+        assert_eq!(analyze_history(&history).unresolved_failures, 1);
+        let earlier_success = [
+            entry("A", 1, Install, Succeeded, Some(5), 0),
+            entry("A", 1, Install, Failed, Some(10), 1),
+        ];
+        assert_eq!(
+            analyze_history(&earlier_success).unresolved_failures,
+            1,
+            "a success before the failure does not resolve it"
+        );
+    }
+
+    #[test]
+    fn two_unresolved_failures_of_one_update_are_repeated_with_their_dates_and_codes() {
+        let history = [
+            entry("A", 1, Install, Failed, Some(300), 0x8007_0005_u32 as i32),
+            entry("A", 1, Install, Aborted, Some(200), 0x8024_2016_u32 as i32),
+            entry("A", 1, Install, Failed, Some(100), 0x8007_0005_u32 as i32),
+            entry("C", 1, Install, Failed, Some(50), 7),
+        ];
+        let analysis = analyze_history(&history);
+        assert_eq!(analysis.unresolved_failures, 4);
+        assert_eq!(
+            analysis.repeated_failures.len(),
+            1,
+            "C failed once: not repeated"
+        );
+        let repeated = &analysis.repeated_failures[0];
+        assert_eq!(
+            (
+                repeated.update_id.as_str(),
+                repeated.failures,
+                repeated.last_failure_unix_ms
+            ),
+            ("A", 3, Some(300))
+        );
+        assert_eq!(
+            repeated.hresults,
+            vec![0x8007_0005_u32 as i32, 0x8024_2016_u32 as i32],
+            "distinct codes, newest first"
+        );
+    }
+
+    #[test]
+    fn uninstalls_are_ignored_an_undated_failure_stays_unresolved_and_a_success_with_errors_resolves()
+     {
+        let history = [
+            entry("A", 1, Uninstall, Failed, Some(10), 1),
+            entry("D", 1, Install, Failed, None, 2),
+            entry("D", 1, Install, Succeeded, None, 0),
+            entry("E", 1, Install, Failed, Some(10), 3),
+            entry("E", 1, Install, SucceededWithErrors, Some(20), 0),
+        ];
+        let analysis = analyze_history(&history);
+        assert_eq!(
+            analysis.unresolved_failures, 1,
+            "only D: an undated success cannot be shown to come after"
+        );
+    }
+
+    #[test]
+    fn a_unix_time_becomes_its_utc_date() {
+        assert_eq!(unix_ms_to_iso_date(0).as_deref(), Some("1970-01-01"));
+        assert_eq!(
+            unix_ms_to_iso_date(1_790_669_658_556).as_deref(),
+            Some("2026-09-29")
+        );
+    }
+
+    // P83-03B: what the update client logged as errors, read by field name from the event XML.
+    // The XML is a real event read on a Windows 11 machine (computer and SID redacted).
+    const CLIENT_ERROR_XML: &str = "<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><Provider Name='Microsoft-Windows-WindowsUpdateClient' Guid='{945a8954-c147-4acd-923f-40c45405a658}'/><EventID>25</EventID><Version>1</Version><Level>2</Level><TimeCreated SystemTime='2026-09-28T19:26:29.4304781Z'/><Channel>Microsoft-Windows-WindowsUpdateClient/Operational</Channel></System><EventData><Data Name='errorCode'>0x80240438</Data><Data Name='serviceGuid'>{8b24b027-1dee-babb-9a95-3517dfb9c552}</Data></EventData></Event>";
+
+    #[test]
+    fn a_real_client_error_event_gives_its_id_code_and_time() {
+        let e = parse_client_error_xml(CLIENT_ERROR_XML).expect("an error");
+        assert_eq!((e.event_id, e.error_code), (25, 0x8024_0438));
+        assert_eq!(e.unix_ms, 1_790_623_589_430, "2026-09-28T19:26:29.430Z");
+    }
+
+    #[test]
+    fn an_event_without_its_fields_or_from_another_provider_is_not_an_error_record() {
+        assert!(
+            parse_client_error_xml(&CLIENT_ERROR_XML.replace("errorCode", "other")).is_none(),
+            "no errorCode field"
+        );
+        assert!(
+            parse_client_error_xml(
+                &CLIENT_ERROR_XML.replace("Microsoft-Windows-WindowsUpdateClient'", "Some-Other'")
+            )
+            .is_none(),
+            "another provider"
+        );
+        assert!(
+            parse_client_error_xml(
+                &CLIENT_ERROR_XML.replace("<Level>2</Level>", "<Level>4</Level>")
+            )
+            .is_none(),
+            "not an error level"
+        );
+        assert!(
+            parse_client_error_xml(&CLIENT_ERROR_XML.replace("0x80240438", "not-a-code")).is_none()
+        );
+        assert!(parse_client_error_xml("").is_none());
+    }
+
+    #[test]
+    fn client_error_schema_is_checked_and_native_xml_quotes_are_supported() {
+        assert_eq!(
+            parse_client_error_xml(&CLIENT_ERROR_XML.replace("'", "\"")),
+            parse_client_error_xml(CLIENT_ERROR_XML)
+        );
+        assert!(
+            parse_client_error_xml(
+                &CLIENT_ERROR_XML.replace("<Version>1</Version>", "<Version>2</Version>")
+            )
+            .is_none()
+        );
+        assert!(
+            parse_client_error_xml(
+                &CLIENT_ERROR_XML.replace("<EventID>25</EventID>", "<EventID>20</EventID>")
+            )
+            .is_none()
+        );
+        assert!(
+            parse_client_error_xml(&CLIENT_ERROR_XML.replace(
+                "<Channel>Microsoft-Windows-WindowsUpdateClient/Operational</Channel>",
+                "<Channel>System</Channel>"
+            ))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn errors_are_counted_by_distinct_code_newest_first_and_a_repeat_is_not_a_second_attempt() {
+        let e = |id, code, at| ClientError {
+            event_id: id,
+            error_code: code,
+            unix_ms: at,
+        };
+        let summary = summarize_client_errors(&[
+            e(25, 0x8024_0438, 300),
+            e(25, 0x8024_0438, 300),
+            e(20, 0x8007_0005, 200),
+            e(25, 0x8024_0438, 100),
+        ]);
+        assert_eq!(
+            summary.count, 3,
+            "the same event, same code, same instant is one record"
+        );
+        assert_eq!(summary.newest_unix_ms, Some(300));
+        assert_eq!(summary.codes, vec![0x8024_0438, 0x8007_0005]);
+        assert_eq!(summarize_client_errors(&[]), ClientErrorSummary::default());
+    }
+
+    #[test]
+    fn ole_dates_become_unix_milliseconds_and_nonsense_becomes_none() {
+        assert_eq!(
+            ole_date_to_unix_ms(25_569.0),
+            Some(0),
+            "the OLE date of 1970-01-01"
+        );
+        assert_eq!(ole_date_to_unix_ms(25_570.5), Some(129_600_000));
+        assert_eq!(ole_date_to_unix_ms(f64::NAN), None);
+        assert_eq!(ole_date_to_unix_ms(0.0), None, "0 is 'no date', not 1899");
     }
 
     #[test]

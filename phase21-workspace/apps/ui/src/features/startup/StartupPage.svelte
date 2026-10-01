@@ -8,9 +8,12 @@
   import { formatWhen, shortDigest, stageTone } from '../shared';
   import type { StartupDecision, StartupItem } from '../../lib/contracts';
   import { EmptyState } from '../../design/signature';
+  import MeasurementRows from '../diagnostics/MeasurementRows.svelte';
+  import { bootRows } from '../diagnostics/measurement-rows';
 
   $: snapshot = $streamState.snapshot;
   $: startupSnapshot = $streamState.startupSnapshot;
+  $: diagnostics = $streamState.diagnostics;
   $: startupPlan = $streamState.startupPlan;
   $: startupStatus = $streamState.startupStatus;
   $: startupHistory = $streamState.startupHistory;
@@ -66,6 +69,13 @@
   <article><span>{t('startup.manageable',locale)}</span><strong>{startupSnapshot.state === 'Ready' ? startupSnapshot.summary.manageable : '—'}</strong><small>{t('startup.manageableHint',locale)}</small></article>
   <article><span>{t('startup.protected',locale)}</span><strong>{startupSnapshot.state === 'Ready' ? startupSnapshot.summary.protected : '—'}</strong><small>{t('startup.protectedHint',locale)}</small></article>
   <article><span>{t('startup.disableReviewed',locale)}</span><strong>{selectedStartupDisables().length}</strong><small>{t('startup.disableReviewedHint',locale)}</small></article>
+</section>
+<section aria-label={t('measurement.boot.title',locale)}>
+  <p>{t('startup.bootHistory.context',locale)}</p>
+  {#if diagnostics.boots?.length}
+    <p>{t('startup.bootHistory.window',locale,{count:diagnostics.boots.length,days:diagnostics.eventWindowDays,when:diagnostics.completedUnixMs ? formatWhen(diagnostics.completedUnixMs,locale) : t('common.unknown',locale)})}</p>
+    <MeasurementRows title={t('measurement.boot.title',locale)} rows={bootRows(diagnostics.boots,locale)} {locale}/>
+  {:else}<p>{t('startup.bootHistory.unavailable',locale)}</p>{/if}
 </section>
 {#if startupSnapshot.state === 'Scanning'}<div class="indeterminate cleanup-scan-progress"><span></span></div>{/if}
 {#if startupSnapshot.errorMessage}<div class="error-banner"><strong>{t('startup.inventoryFailed',locale)}</strong><LocalizedOwnedText value={startupSnapshot.errorMessage} {locale}/></div>{/if}

@@ -21,7 +21,7 @@ use windows::{
             EventLog::{
                 EVT_HANDLE, EVT_VARIANT, EvtClose, EvtCreateRenderContext, EvtNext, EvtQuery,
                 EvtQueryChannelPath, EvtQueryReverseDirection, EvtRender, EvtRenderContextSystem,
-                EvtRenderContextUser, EvtRenderEventValues,
+                EvtRenderContextUser, EvtRenderContextValues, EvtRenderEventValues,
             },
         },
     },
@@ -30,7 +30,9 @@ use windows::{
 
 use crate::{
     CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EVENT_WINDOW_MS,
-    EventEvidence, Result, assemble_snapshot, classify_event, dump_in_window,
+    EventEvidence, Result, assemble_snapshot,
+    boot::{BootEvidence, boot_from_fields, dedupe_boots},
+    classify_event, dump_in_window,
 };
 
 const MAX_EVENTS: usize = 128;
@@ -39,10 +41,16 @@ const MAX_SYSTEM_RENDER_BYTES: usize = 64 * 1024;
 const MAX_USER_RENDER_BYTES: usize = 256 * 1024;
 const MAX_EVENT_PROPERTIES: usize = 256;
 const MAX_EVENT_STRING_UTF16: usize = 16 * 1024;
+/// A CPER is a header, a few descriptors and their sections: far below this.
+const MAX_WHEA_RECORD_BYTES: usize = 64 * 1024;
 const FILETIME_UNIX_EPOCH_TICKS: u64 = 116_444_736_000_000_000;
 
 static EVENTLOG_GATE: OnceLock<IsolationGate> = OnceLock::new();
 static MINIDUMP_GATE: OnceLock<IsolationGate> = OnceLock::new();
+static BOOT_GATE: OnceLock<IsolationGate> = OnceLock::new();
+fn boot_gate() -> &'static IsolationGate {
+    BOOT_GATE.get_or_init(IsolationGate::default)
+}
 fn eventlog_gate() -> &'static IsolationGate {
     EVENTLOG_GATE.get_or_init(IsolationGate::default)
 }
@@ -152,12 +160,117 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
         }
     };
 
-    Ok(assemble_snapshot(
-        event_log,
-        crashes,
-        provider_faults,
-        warnings,
-    ))
+    // Boots come from a separate channel and are optional: a machine without the channel, or with
+    // it disabled, leaves the list empty ("not measured"). Only a refusal, a timeout or a cancel is
+    // a fault. Nothing here enables a disabled log.
+    let boots = match run_isolated_gated_with_token(
+        boot_gate(),
+        "crash-diagnostics",
+        "boots",
+        DEFAULT_COLLECTOR_TIMEOUT,
+        parent.child(),
+        |control| collect_boots(&control).map_err(|error| collector_fault("boots", error)),
+    ) {
+        Ok(boots) => boots,
+        Err(error) => {
+            if error.kind != FaultKind::Unavailable {
+                provider_faults.push(CollectorFaultRecord::from(&error));
+            }
+            Vec::new()
+        }
+    };
+
+    let mut snapshot = assemble_snapshot(event_log, crashes, provider_faults, warnings);
+    snapshot.boots = boots;
+    Ok(snapshot)
+}
+
+/// The most recent boots from event 100 of the boot-performance channel, read by field name
+/// through an `EvtRenderContextValues` context so no value is taken by position or offset.
+fn collect_boots(control: &CollectorControl) -> Result<Vec<BootEvidence>> {
+    const FIELDS: [&str; 6] = [
+        "BootTsVersion",
+        "SystemBootInstance",
+        "BootTime",
+        "MainPathBootTime",
+        "BootPostBootTime",
+        "BootNumStartupApps",
+    ];
+    const MAX_BOOT_EVENTS_SCANNED: usize = 64;
+    checkpoint(control, "boot.begin")?;
+    let channel = w("Microsoft-Windows-Diagnostics-Performance/Operational");
+    let query = w(&format!(
+        "*[System[Provider[@Name='Microsoft-Windows-Diagnostics-Performance'] and (EventID=100) and TimeCreated[timediff(@SystemTime) <= {EVENT_WINDOW_MS}]]]"
+    ));
+    let result = EventHandle(
+        unsafe {
+            EvtQuery(
+                None,
+                PCWSTR(channel.as_ptr()),
+                PCWSTR(query.as_ptr()),
+                EvtQueryChannelPath.0 | EvtQueryReverseDirection.0,
+            )
+        }
+        .map_err(win)?,
+    );
+    let system_context = EventHandle(
+        unsafe { EvtCreateRenderContext(None, EvtRenderContextSystem.0) }.map_err(win)?,
+    );
+    let paths: Vec<Vec<u16>> = FIELDS
+        .iter()
+        .map(|name| w(&format!("Event/EventData/Data[@Name='{name}']")))
+        .collect();
+    let path_pointers: Vec<PCWSTR> = paths.iter().map(|p| PCWSTR(p.as_ptr())).collect();
+    let values_context = EventHandle(
+        unsafe { EvtCreateRenderContext(Some(&path_pointers), EvtRenderContextValues.0) }
+            .map_err(win)?,
+    );
+
+    let mut boots = Vec::new();
+    let mut scanned = 0usize;
+    while scanned < MAX_BOOT_EVENTS_SCANNED {
+        checkpoint(control, "boot.next")?;
+        let mut handles = [0isize; 1];
+        let mut returned = 0u32;
+        let timeout_ms = control.remaining_ms_capped(EVENTLOG_NEXT_SLICE);
+        match unsafe { EvtNext(result.0, &mut handles, timeout_ms, 0, &mut returned) } {
+            Ok(()) => {}
+            Err(error) if error.code() == ERROR_TIMEOUT.to_hresult() => continue,
+            Err(error) if error.code() == ERROR_NO_MORE_ITEMS.to_hresult() => break,
+            Err(error) => return Err(win(error)),
+        }
+        if returned != 1 || handles[0] == 0 {
+            return Err(CrashError::MalformedResponse(
+                "EvtNext returned an inconsistent handle count for the boot channel".into(),
+            ));
+        }
+        let event = EventHandle(EVT_HANDLE(handles[0]));
+        scanned += 1;
+        // An event that does not render is skipped: it is not a boot record we can read.
+        let Ok(system) = render_system(system_context.0, event.0) else {
+            continue;
+        };
+        let Ok(buffer) = render_values(values_context.0, event.0, MAX_USER_RENDER_BYTES) else {
+            continue;
+        };
+        let Ok(variants) = buffer.variants() else {
+            continue;
+        };
+        let texts: Vec<Option<String>> = variants
+            .iter()
+            .map(|variant| variant_to_bounded_text(variant, &buffer).ok().flatten())
+            .collect();
+        let field = |name: &str| {
+            FIELDS
+                .iter()
+                .position(|candidate| *candidate == name)
+                .and_then(|index| texts.get(index).cloned().flatten())
+        };
+        if let Some(boot) = boot_from_fields(&field, system.recorded_unix_ms) {
+            boots.push(boot);
+        }
+    }
+    Ok(dedupe_boots(boots))
 }
 
 fn collector_fault(operation: &'static str, error: CrashError) -> CollectorFault {
@@ -192,7 +305,7 @@ fn checkpoint(control: &CollectorControl, operation: &'static str) -> Result<()>
 /// in this file: the phase-6 static gate pins the bounded window to the collector.
 fn event_query(window_ms: u64) -> String {
     format!(
-        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) and TimeCreated[timediff(@SystemTime) <= {window_ms}]]]"
+        "*[System[(Provider[@Name='Microsoft-Windows-WHEA-Logger'] or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting'] or (Provider[@Name='Microsoft-Windows-MemoryDiagnostics-Results'] and (EventID=1201 or EventID=1202))) and TimeCreated[timediff(@SystemTime) <= {window_ms}]]]"
     )
 }
 
@@ -269,11 +382,11 @@ fn collect_events(
             checkpoint(control, "eventlog.render")?;
             match render_system(system_context.0, event.0) {
                 Ok(system) => {
-                    let payload = match render_user_values(user_context.0, event.0) {
-                        Ok(values) => values,
+                    let (payload, whea_record) = match render_user_values(user_context.0, event.0) {
+                        Ok(rendered) => rendered,
                         Err(_) => {
                             malformed_events = malformed_events.saturating_add(1);
-                            Vec::new()
+                            (Vec::new(), None)
                         }
                     };
                     out.push(classify_event(
@@ -281,6 +394,7 @@ fn collect_events(
                         system.event_id,
                         &payload,
                         system.recorded_unix_ms,
+                        whea_record.as_deref(),
                     ));
                 }
                 Err(_) => malformed_events = malformed_events.saturating_add(1),
@@ -333,18 +447,55 @@ fn render_system(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<RenderedEvent
     })
 }
 
-fn render_user_values(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<Vec<String>> {
+/// The event's user-data values as text, and the first binary value (a WHEA CPER record) when the
+/// event carries one and it fits the cap.
+fn render_user_values(
+    context: EVT_HANDLE,
+    event: EVT_HANDLE,
+) -> Result<(Vec<String>, Option<Vec<u8>>)> {
     let buffer = render_values(context, event, MAX_USER_RENDER_BYTES)?;
     let variants = buffer.variants()?;
     let mut values = Vec::new();
+    let mut binary = None;
     for variant in variants.iter().take(MAX_EVENT_PROPERTIES) {
+        if binary.is_none() {
+            binary = variant_binary(variant, &buffer)?;
+        }
         if let Some(value) = variant_to_bounded_text(variant, &buffer)?
             && !value.is_empty()
         {
             values.push(value);
         }
     }
-    Ok(values)
+    Ok((values, binary))
+}
+
+/// A `EvtVarTypeBinary` payload copied out of the render buffer. A pointer outside the buffer is a
+/// malformed render; a payload longer than the cap or than the buffer holds is simply not taken.
+fn variant_binary(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Result<Option<Vec<u8>>> {
+    const EVT_VAR_TYPE_BINARY: u32 = 14;
+    if variant_is_array(variant) || variant_base_type(variant) != EVT_VAR_TYPE_BINARY {
+        return Ok(None);
+    }
+    let ptr = unsafe { variant.Anonymous.BinaryVal };
+    let length = usize::try_from(variant.Count).unwrap_or(usize::MAX);
+    if ptr.is_null() || length == 0 {
+        return Ok(None);
+    }
+    let (start, end) = buffer.byte_range();
+    let address = ptr as *const u8;
+    if address < start || address >= end {
+        return Err(CrashError::MalformedResponse(
+            "EVT_VARIANT binary pointer escaped its render buffer".into(),
+        ));
+    }
+    let remaining = (end as usize).saturating_sub(address as usize);
+    if length > remaining || length > MAX_WHEA_RECORD_BYTES {
+        return Ok(None);
+    }
+    Ok(Some(
+        unsafe { std::slice::from_raw_parts(address, length) }.to_vec(),
+    ))
 }
 
 fn checked_render_property_count(properties: u32) -> Result<usize> {
@@ -750,9 +901,14 @@ fn parse_dump(path: &Path) -> Result<CrashRecord> {
 fn w(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
+/// `ERROR_EVT_CHANNEL_NOT_FOUND` as an HRESULT: the channel does not exist on this machine.
+const EVT_CHANNEL_NOT_FOUND: i32 = 0x8007_3A9F_u32 as i32;
+
 fn win(error: windows::core::Error) -> CrashError {
     if error.code() == E_ACCESSDENIED {
         CrashError::PermissionDenied(error.to_string())
+    } else if error.code().0 == EVT_CHANNEL_NOT_FOUND {
+        CrashError::Unavailable(error.to_string())
     } else {
         CrashError::Windows(error.to_string())
     }

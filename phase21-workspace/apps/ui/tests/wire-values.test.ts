@@ -205,6 +205,26 @@ test('hardware verdict: not-collected, unavailable, partial, action and clear ar
   assert.equal(hardwareVerdict(snap({ storage: [disk('Normal')], memory })).denied, false);
 });
 
+// P81-04: three disks stay three verdicts. What one disk did not report is said for that disk
+// only, by its own bus; the first advice for a data-risk disk is a backup, never a repair.
+test('each disk states what it did not report, by its bus, and the first advice is a backup', async () => {
+  const { missingDiskMetrics, diskAdvice } = await import('../src/features/diagnostics/disk-facts.ts');
+  const has = { hasTemperature: true, hasWear: true, hasPowerOnHours: true, hasReadErrorsUncorrected: true, hasWriteErrorsUncorrected: true, hasNvmeCriticalWarning: true, hasNvmeAvailableSpare: true };
+  const critical = { busType: 'NVMe', severity: 'ActionRequired', reliability: { ...has, wearPercentUsed: 105 } } as never;
+  const usb = { busType: 'USB', severity: 'Unknown', reliability: null } as never;
+  const sata = { busType: 'SATA', severity: 'Normal', reliability: { ...has, hasNvmeCriticalWarning: false, hasNvmeAvailableSpare: false } } as never;
+  assert.deepEqual(missingDiskMetrics(critical), [], 'everything an NVMe disk reports was reported');
+  assert.deepEqual(missingDiskMetrics(sata), [], 'a SATA disk is not charged with NVMe-only fields');
+  const missing = missingDiskMetrics(usb);
+  assert.ok(missing.includes('hardware.temperature') && missing.includes('hardware.wear'), 'a disk that reported nothing lists what is missing');
+  assert.ok(!missing.includes('hardware.nvmeSpare'), 'and only what applies to its bus');
+  assert.deepEqual(missingDiskMetrics({ busType: 'NVMe', severity: 'Normal', reliability: { ...has, hasTemperature: false, hasNvmeAvailableSpare: false } } as never), ['hardware.temperature', 'hardware.nvmeSpare']);
+  assert.equal(diskAdvice(critical), 'hardware.disk.backupFirst');
+  assert.equal(diskAdvice(usb), 'hardware.disk.unsupported', 'an unknown disk is unknown, not fine');
+  assert.equal(diskAdvice(sata), null);
+  assert.equal((critical as { reliability: { wearPercentUsed: number } }).reliability.wearPercentUsed, 105, 'wear over 100 is kept');
+});
+
 // P80-02B: presence survives to the screen. A sensor that read 0 shows 0; one that read nothing
 // shows no value and says why (denied is not empty, unknown is not measured); bad input is skipped.
 test('measurement rows keep "not read" apart from zero and survive malformed input', async () => {
@@ -227,6 +247,48 @@ test('measurement rows keep "not read" apart from zero and survive malformed inp
   assert.equal(bootRows([{ recordedUnixMs: 1_700_000_000_000, hasDuration: false, durationMs: 0, coverage: cov(2) }], 'en')[0].value, null);
   const many = thermalRows(Array.from({ length: 32 }, (_, i) => ({ stableId: `z${i}`, hasTemperature: true, temperatureC: i, coverage: cov(1) })), 'ar');
   assert.equal(many.length, 32);
+});
+
+// P83-02: a down link, an unplugged cable and a virtual adapter are states in words, and an
+// unreported media state is not "disconnected".
+test('network adapter rows state the adapter, not the internet', async () => {
+  const { networkRows } = await import('../src/features/diagnostics/measurement-rows.ts');
+  const cov = { source: 'MSFT_NetAdapter', hasObservedUnixMs: true, observedUnixMs: 1, availability: 1, reasonKey: '' };
+  const base = { stableId: 'g', displayName: 'Wi-Fi', hasLinkSpeed: false, linkSpeedBps: 0, coverage: cov };
+  const down = networkRows([{ ...base, hasOperationalStatus: true, operationalStatus: 2, hasConnected: false, connected: false, hasIsVirtual: true, isVirtual: false }] as never, 'en')[0];
+  assert.equal(down.note, 'Link down', 'an unreported media state adds no "disconnected"');
+  assert.equal(down.value, null);
+  const vpn = networkRows([{ ...base, hasLinkSpeed: true, linkSpeedBps: 10_000_000, hasOperationalStatus: true, operationalStatus: 1, hasConnected: true, connected: true, hasIsVirtual: true, isVirtual: true }] as never, 'en')[0];
+  assert.equal(vpn.value, '10 Mbit/s');
+  assert.match(vpn.note ?? '', /Link up · Media connected · Virtual adapter/);
+  const unplugged = networkRows([{ ...base, hasOperationalStatus: true, operationalStatus: 2, hasConnected: true, connected: false, hasIsVirtual: false, isVirtual: false }] as never, 'ar')[0];
+  assert.match(unplugged.note ?? '', /[\u0600-\u06FF]/);
+  assert.equal(networkRows([{ ...base, hasOperationalStatus: true, operationalStatus: 99 }] as never, 'en')[0].note, 'State unknown', 'an out-of-range status is unknown');
+});
+
+// P82-03B: what Windows Memory Diagnostic last said, dated; a missing test is "not tested", and an
+// unreadable event log is "unknown", never "not tested" and never a pass.
+test('the memory-test summary is dated, and a missing or unreadable result is not a pass', async () => {
+  const { memoryTestSummary } = await import('../src/features/diagnostics/memory-test.ts');
+  const result = (eventId: number, at: number) => ({ eventId, category: 'MemoryTestResult', provider: 'Microsoft-Windows-MemoryDiagnostics-Results', recordedUnixMs: at });
+  const other = { eventId: 1201, category: 'SystemEvent', provider: 'Some-Other', recordedUnixMs: 9 };
+  assert.deepEqual(memoryTestSummary({ events: [], eventWindowDays: 30 } as never), { state: 'notTested', unixMs: null, windowDays: 30 });
+  assert.equal(memoryTestSummary({ events: [], eventWindowDays: 0 } as never).state, 'unknown', 'the log could not be read');
+  assert.deepEqual(memoryTestSummary({ events: [result(1201, 100)], eventWindowDays: 30 } as never), { state: 'noErrors', unixMs: 100, windowDays: 30 });
+  assert.equal(memoryTestSummary({ events: [result(1201, 100), result(1202, 200)], eventWindowDays: 30 } as never).state, 'errors', 'the latest result wins');
+  assert.equal(memoryTestSummary({ events: [result(1202, 100), result(1201, 200)], eventWindowDays: 30 } as never).state, 'noErrors');
+  assert.equal(memoryTestSummary({ events: [other], eventWindowDays: 30 } as never).state, 'notTested', "another provider's 1201 is not a test result");
+});
+
+// P82-02A: why a zone has no temperature is said on the row, in the reader's language.
+test('a thermal zone with no reading says why, and the cut warning reads in Arabic', async () => {
+  const { thermalRows } = await import('../src/features/diagnostics/measurement-rows.ts');
+  const { localizeOwnedText } = await import('../src/lib/i18n/index.ts');
+  const zone = { stableId: 'z', displayName: 'ACPI\\ThermalZone\\TZ00_0', hasTemperature: false, temperatureC: 0, coverage: { source: 'MSAcpi_ThermalZoneTemperature', hasObservedUnixMs: true, observedUnixMs: 1, availability: 3, reasonKey: 'measurement.reason.noReading' } };
+  assert.match(thermalRows([zone] as never, 'en')[0].note ?? '', /No reading/);
+  assert.match(thermalRows([zone] as never, 'ar')[0].note ?? '', /[\u0600-\u06FF]/);
+  assert.equal(thermalRows([{ ...zone, coverage: { ...zone.coverage, reasonKey: 'made.up.key' } }] as never, 'en')[0].note, null, 'an unknown reason key is not printed');
+  assert.match(localizeOwnedText('Only the first 32 thermal zones are shown.', 'ar').text, /[\u0600-\u06FF]/);
 });
 
 test('disk activity a provider says it did not measure reads unmeasured, not 0%', async () => {
@@ -484,4 +546,20 @@ test('the message of a repair cancelled before any change reads in Arabic', asyn
   const shown = localizeOwnedText(message, 'ar').text;
   assert.notEqual(shown, td('text.unavailable', 'ar'));
   assert.match(shown, arabic);
+});
+
+test('P83-05B boot history is dated evidence, with no boot-type baseline or application attribution', async () => {
+  assert.match(td('startup.bootHistory.context', 'en'), /historical/i);
+  assert.match(td('startup.bootHistory.context', 'ar'), arabic);
+  const { bootRows } = await import('../src/features/diagnostics/measurement-rows.ts');
+  const boot = { recordedUnixMs: 1_700_000_000_000, hasDuration: true, durationMs: 25414,
+    coverage: { source: 'Diagnostics-Performance', hasObservedUnixMs: true, observedUnixMs: 1_700_000_000_000, availability: 1 } };
+  for (const locale of ['en', 'ar'] as const) {
+    const row = bootRows([boot], locale)[0];
+    assert.match(td('startup.bootHistory.window', locale, {count:2, days:30, when:'2026-09-30'}), /2026-09-30/);
+    assert.equal(row.observedUnixMs, boot.recordedUnixMs);
+    assert.equal(row.note, null, 'no inferred baseline or per-app saving');
+    assert.ok(row.value && row.name, 'duration and event date are retained');
+    assert.deepEqual(bootRows([], locale), [], 'an unavailable channel never becomes a zero-second boot');
+  }
 });

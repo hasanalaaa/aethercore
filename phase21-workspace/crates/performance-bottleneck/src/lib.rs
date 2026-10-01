@@ -434,24 +434,34 @@ fn thermal_clamp(window: &[PerfSnapshot]) -> Option<RuleOutput> {
         .find(|snap| snap.power.throttle_active)
         .map(|snap| snap.power.throttle_reason)
         .unwrap_or_default();
-    let (code, title, summary) = match reason {
+    // A cause is named only when a source measured it. A frequency limit whose cause nobody
+    // measured (`Unspecified`, `None`) is reported as that limit and nothing more.
+    let (code, title, summary, role) = match reason {
         aethercore_performance_telemetry::ThermalThrottleReason::Power
         | aethercore_performance_telemetry::ThermalThrottleReason::Vrm
         | aethercore_performance_telemetry::ThermalThrottleReason::Current => (
             "POWER_LIMIT_CLAMP",
             "perf.finding.powerClamp.title",
             "perf.finding.powerClamp.summary",
+            Role::RootCause,
         ),
-        _ => (
+        aethercore_performance_telemetry::ThermalThrottleReason::Thermal => (
             "THERMAL_CLAMP",
             "perf.finding.thermalClamp.title",
             "perf.finding.thermalClamp.summary",
+            Role::RootCause,
+        ),
+        _ => (
+            "FREQUENCY_LIMIT_OBSERVED",
+            "perf.finding.frequencyLimit.title",
+            "perf.finding.frequencyLimit.summary",
+            Role::Symptom,
         ),
     };
     Some(RuleOutput {
         code,
         tier: Tier::Hardware,
-        role: Role::RootCause,
+        role,
         confidence: if majority {
             Confidence::Confirmed
         } else {

@@ -12,11 +12,16 @@ use aethercore_collector_runtime::{
     FaultKind, IsolationGate, run_isolated_gated, run_isolated_gated_with_token,
 };
 use aethercore_crash_diagnostics::{
-    CrashDiagnosticsSnapshot, CrashError, CrashRecord, EventEvidence,
+    CrashDiagnosticsSnapshot, CrashError, CrashLink, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS,
+    EventEvidence, boot::BootEvidence, link_dump_to_events,
 };
 use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
-    measurements::{Battery, BootRecord, NetworkAdapter, ThermalZone},
+    compare_counters,
+    measurements::{
+        Availability, Battery, BootRecord, Coverage, MAX_BATTERIES, MAX_NETWORK_ADAPTERS,
+        MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped,
+    },
 };
 // The service converts these to the wire and depends on this crate, not on the telemetry one.
 pub use aethercore_hardware_telemetry::measurements;
@@ -681,6 +686,59 @@ fn join_provider<T>(
     }
 }
 
+/// P81-03: says what changed for a disk since the owner's previous stored scan. Only the same
+/// disk is compared (`compare_counters` checks serial, bus and size); a missing or unreadable
+/// previous scan says nothing. No new persistence: it reads the snapshot the engine already keeps.
+fn compare_with_previous_scan(
+    db: &Database,
+    owner_principal_key: &str,
+    storage: &mut [StorageDeviceTelemetry],
+) {
+    let Ok(Some(record)) = db.latest_diagnostic_snapshot_for_owner(owner_principal_key) else {
+        return;
+    };
+    let Ok(previous) = serde_json::from_str::<DiagnosticsSnapshot>(&record.snapshot_json) else {
+        return;
+    };
+    for device in storage.iter_mut().filter(|d| !d.serial_number.is_empty()) {
+        let serial = device.serial_number.clone();
+        for before in previous
+            .storage
+            .iter()
+            .filter(|b| b.serial_number == serial)
+        {
+            compare_counters(before, device);
+        }
+    }
+}
+
+/// P83-01A: the boot-performance events as measurement records. `BootTime` is the whole boot in
+/// milliseconds; a record without it is unsupported, never a zero-second boot.
+fn boot_records(boots: &[BootEvidence]) -> Vec<BootRecord> {
+    boots
+        .iter()
+        .map(|b| BootRecord {
+            recorded_unix_ms: b.recorded_unix_ms,
+            duration_ms: b.boot_time_ms,
+            coverage: Coverage {
+                source: "Microsoft-Windows-Diagnostics-Performance event 100".into(),
+                observed_unix_ms: Some(b.recorded_unix_ms),
+                window_days: Some(DEFAULT_EVENT_WINDOW_DAYS),
+                availability: if b.boot_time_ms.is_some() {
+                    Availability::Measured
+                } else {
+                    Availability::Unsupported
+                },
+                reason_key: if b.boot_time_ms.is_some() {
+                    String::new()
+                } else {
+                    "measurement.reason.noBootTime".into()
+                },
+            },
+        })
+        .collect()
+}
+
 fn run(inner: Arc<Inner>, owner_principal_key: String) {
     const PROVIDER_WATCHDOG: Duration = Duration::from_secs(10);
     let scan_id = {
@@ -751,11 +809,46 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         warnings.extend(c.warnings.clone());
         provider_faults.extend(c.provider_faults.iter().map(ProviderFaultRecord::from));
     }
-    let storage = hardware
+    let mut storage = hardware
         .as_ref()
         .map(|h| h.storage.clone())
         .unwrap_or_default();
+    compare_with_previous_scan(&inner.db, &owner_principal_key, &mut storage);
     let memory = hardware.as_ref().and_then(|h| h.memory.clone());
+    let boots = crash
+        .as_ref()
+        .map(|c| boot_records(&c.boots))
+        .unwrap_or_default();
+    let (thermal_zones, thermal_cut) = capped(
+        hardware
+            .as_ref()
+            .map(|h| h.thermal_zones.clone())
+            .unwrap_or_default(),
+        MAX_THERMAL_ZONES,
+    );
+    if thermal_cut {
+        warnings.push("Only the first 32 thermal zones are shown.".into());
+    }
+    let (network_adapters, adapters_cut) = capped(
+        hardware
+            .as_ref()
+            .map(|h| h.network_adapters.clone())
+            .unwrap_or_default(),
+        MAX_NETWORK_ADAPTERS,
+    );
+    if adapters_cut {
+        warnings.push("Only the first 128 network adapters are shown.".into());
+    }
+    let (batteries, batteries_cut) = capped(
+        hardware
+            .as_ref()
+            .map(|h| h.batteries.clone())
+            .unwrap_or_default(),
+        MAX_BATTERIES,
+    );
+    if batteries_cut {
+        warnings.push("Only the first 32 batteries are shown.".into());
+    }
     let event_window_days = reported_event_window_days(crash.as_ref());
     let events = crash.as_ref().map(|c| c.events.clone()).unwrap_or_default();
     let crashes = crash
@@ -799,9 +892,10 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         cards,
         provider_faults,
         warnings,
-        // P80-02A: the producers arrive with P81 (storage), P82 (thermal, power) and P83 (boot,
-        // network); until each lands its domain is empty, which reads as "not measured".
-        ..Default::default()
+        thermal_zones,
+        batteries,
+        boots,
+        network_adapters,
     };
     let persistence_result = serde_json::to_string(&snapshot)
         .map_err(|error| {
@@ -1025,6 +1119,17 @@ fn build_cards_with_availability(
                 format!("Bugcheck: {}", c.bugcheck_hex)
             },
         ];
+        // One crash is one incident: say when the System log recorded this dump too, or when the
+        // two disagree about the code. Nothing here names a culprit.
+        match link_dump_to_events(c, events) {
+            CrashLink::Linked => evidence.push(
+                "The System log also recorded this crash (Windows Error Reporting event).".into(),
+            ),
+            CrashLink::CodeMismatch => {
+                evidence.push("The System log and this dump name different bugcheck codes.".into())
+            }
+            CrashLink::Unlinked => {}
+        }
         if !nearby_whea.is_empty() {
             evidence.push(format!(
                 "{} WHEA event(s) were logged within ±10 minutes of the dump timestamp; this is correlation, not proof of causation.",
@@ -1107,6 +1212,245 @@ mod tests {
         ) -> std::result::Result<CrashDiagnosticsSnapshot, CollectorFault> {
             Ok(self.c.clone())
         }
+    }
+    struct GrowingErrors(std::sync::atomic::AtomicU64);
+    impl Backend for GrowingErrors {
+        fn hardware(
+            &self,
+            _control: CollectorControl,
+        ) -> std::result::Result<HardwareTelemetrySnapshot, CollectorFault> {
+            let n = self.0.fetch_add(3, std::sync::atomic::Ordering::SeqCst);
+            let mut disk = StorageDeviceTelemetry {
+                serial_number: "S1".into(),
+                bus_type: "SATA".into(),
+                size_bytes: 1_000,
+                windows_health_status: "Healthy".into(),
+                ..Default::default()
+            };
+            disk.reliability.read_errors_uncorrected = Some(2 + n);
+            Ok(HardwareTelemetrySnapshot {
+                storage: vec![disk],
+                ..Default::default()
+            })
+        }
+        fn crashes(
+            &self,
+            _control: CollectorControl,
+        ) -> std::result::Result<CrashDiagnosticsSnapshot, CollectorFault> {
+            Ok(CrashDiagnosticsSnapshot::default())
+        }
+    }
+    #[test]
+    fn a_second_scan_says_what_changed_for_the_same_disk() {
+        let (db, _tmp) = db();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(GrowingErrors(std::sync::atomic::AtomicU64::new(0))),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let first = wait_for_scan(&e);
+        assert!(
+            first.storage[0].reasons.iter().all(|r| !r.contains("more")),
+            "{:?}",
+            first.storage[0].reasons
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let second = wait_for_scan(&e);
+        assert!(
+            second.storage[0]
+                .reasons
+                .iter()
+                .any(|r| r == "3 more uncorrected read error(s) than at the previous scan."),
+            "{:?}",
+            second.storage[0].reasons
+        );
+        drop(e);
+        drop(db);
+    }
+    #[test]
+    fn thermal_zones_reach_the_snapshot_and_a_cut_is_said() {
+        let (db, _tmp) = db();
+        let zones: Vec<ThermalZone> = (0..40)
+            .map(|i| ThermalZone {
+                stable_id: format!("z{i}"),
+                temperature_c: Some(40),
+                ..Default::default()
+            })
+            .collect();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot {
+                    thermal_zones: zones,
+                    ..Default::default()
+                },
+                c: CrashDiagnosticsSnapshot::default(),
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let snapshot = wait_for_scan(&e);
+        assert_eq!(snapshot.thermal_zones.len(), 32, "the domain's limit");
+        assert!(
+            snapshot
+                .warnings
+                .iter()
+                .any(|w| w == "Only the first 32 thermal zones are shown."),
+            "{:?}",
+            snapshot.warnings
+        );
+        drop(e);
+        drop(db);
+    }
+    #[test]
+    fn batteries_reach_the_snapshot_one_record_each_and_a_cut_is_said() {
+        let (db, _tmp) = db();
+        let batteries: Vec<Battery> = (0..33)
+            .map(|i| Battery {
+                stable_id: format!("b{i}"),
+                design_capacity_mwh: Some(50_000),
+                ..Default::default()
+            })
+            .collect();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot {
+                    batteries,
+                    ..Default::default()
+                },
+                c: CrashDiagnosticsSnapshot::default(),
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let snapshot = wait_for_scan(&e);
+        assert_eq!(
+            snapshot.batteries.len(),
+            32,
+            "the domain's limit, never averaged"
+        );
+        assert!(
+            snapshot
+                .warnings
+                .iter()
+                .any(|w| w == "Only the first 32 batteries are shown."),
+            "{:?}",
+            snapshot.warnings
+        );
+        drop(e);
+        drop(db);
+    }
+    #[test]
+    fn a_dump_and_its_log_event_are_one_crash_and_a_code_disagreement_is_shown() {
+        let event = |code: &str| EventEvidence {
+            provider: "Microsoft-Windows-WER-SystemErrorReporting".into(),
+            category: "BugcheckReport".into(),
+            recorded_unix_ms: 1_000,
+            bugcheck_hex: code.into(),
+            dump_file: r"C:\Windows\Minidump\a.dmp".into(),
+            ..Default::default()
+        };
+        let dump = CrashRecord {
+            bugcheck_code: Some(0x9F),
+            bugcheck_hex: "0x0000009F".into(),
+            dump_file: r"C:\Windows\Minidump\a.dmp".into(),
+            recorded_unix_ms: Some(1_000),
+            ..Default::default()
+        };
+        let evidence = |events: &[EventEvidence]| {
+            build_cards_with_availability(&[], None, events, std::slice::from_ref(&dump), true, 30)
+                .into_iter()
+                .find(|c| c.card_id == "crash:recent")
+                .expect("the dump card")
+                .evidence
+        };
+        assert!(
+            evidence(&[event("0x0000009F")])
+                .iter()
+                .any(|e| e.contains("also recorded this crash"))
+        );
+        assert!(
+            evidence(&[event("0x0000001A")])
+                .iter()
+                .any(|e| e.contains("different bugcheck codes"))
+        );
+        assert!(
+            evidence(&[]).iter().all(|e| !e.contains("System log")),
+            "no event, nothing said"
+        );
+    }
+    #[test]
+    fn boots_reach_the_snapshot_with_their_duration_and_a_missing_one_is_not_zero() {
+        let (db, _tmp) = db();
+        let boot = |instance, ms: Option<u64>| BootEvidence {
+            system_boot_instance: Some(instance),
+            recorded_unix_ms: 1_000 + instance as i64,
+            boot_time_ms: ms,
+            ..Default::default()
+        };
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot::default(),
+                c: CrashDiagnosticsSnapshot {
+                    boots: vec![boot(2, Some(25_414)), boot(1, None)],
+                    ..Default::default()
+                },
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let snapshot = wait_for_scan(&e);
+        assert_eq!(snapshot.boots.len(), 2);
+        assert_eq!(snapshot.boots[0].duration_ms, Some(25_414));
+        assert_eq!(
+            snapshot.boots[0].coverage.availability,
+            Availability::Measured
+        );
+        assert_eq!(snapshot.boots[1].duration_ms, None, "not 0 seconds");
+        assert_eq!(
+            snapshot.boots[1].coverage.reason_key,
+            "measurement.reason.noBootTime"
+        );
+        drop(e);
+        drop(db);
+    }
+    #[test]
+    fn network_adapters_reach_the_snapshot_as_reported_and_a_cut_is_said() {
+        let (db, _tmp) = db();
+        let adapters: Vec<NetworkAdapter> = (0..129)
+            .map(|i| NetworkAdapter {
+                stable_id: format!("a{i}"),
+                operational_status: Some(2),
+                connected: None,
+                ..Default::default()
+            })
+            .collect();
+        let e = DiagnosticEngine::with_backend(
+            db.clone(),
+            Arc::new(Mock {
+                h: HardwareTelemetrySnapshot {
+                    network_adapters: adapters,
+                    ..Default::default()
+                },
+                c: CrashDiagnosticsSnapshot::default(),
+            }),
+        );
+        start_scan_leased(&e, OWNER).unwrap();
+        let snapshot = wait_for_scan(&e);
+        assert_eq!(snapshot.network_adapters.len(), 128, "the domain's limit");
+        assert_eq!(
+            snapshot.network_adapters[0].connected, None,
+            "an unreported media state stays unknown"
+        );
+        assert!(
+            snapshot
+                .warnings
+                .iter()
+                .any(|w| w == "Only the first 128 network adapters are shown."),
+            "{:?}",
+            snapshot.warnings
+        );
+        drop(e);
+        drop(db);
     }
     struct PartialMock;
     impl Backend for PartialMock {

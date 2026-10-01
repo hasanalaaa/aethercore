@@ -79,7 +79,7 @@ export function describeTimelineEntry(entry: { domain: string; code: string }, l
 // generic label, never as the id.
 const collectorKeys: Record<string, MessageKey> = {
   cpu:'perf.collector.cpu', 'cpu.counters':'perf.collector.cpu.counters', gpu:'perf.collector.gpu', memory:'perf.collector.memory',
-  'memory.counters':'perf.collector.memory.counters', power:'perf.collector.power', 'power.temperature':'perf.collector.power.temperature',
+  'memory.counters':'perf.collector.memory.counters', power:'perf.collector.power', 'power.temperature':'perf.collector.power.temperature', 'power.throttle_cause':'perf.collector.power.throttleCause',
   processTop:'perf.collector.processTop', storage:'perf.collector.storage', 'storage.activeTime':'perf.collector.storage.activeTime',
   'storage.rates':'perf.collector.storage.rates', thermalPower:'perf.collector.thermalPower',
 };
@@ -94,7 +94,7 @@ const cleanupProviderKeys: Record<string, MessageKey> = {
 };
 const storageCounterKeys: Record<string, MessageKey> = {
   'uncorrected read error count':'tech.storage.counter.readErrors', 'uncorrected write error count':'tech.storage.counter.writeErrors',
-  'NVMe critical-warning flags':'tech.storage.counter.nvmeCritical', 'NVMe media/data-integrity error count':'tech.storage.counter.nvmeMedia',
+  'NVMe critical-warning flags':'tech.storage.counter.nvmeCritical', 'NVMe media/data-integrity error count':'tech.storage.counter.nvmeMedia', 'ATA SMART attribute table':'tech.storage.counter.ataTable',
 };
 export function localizeCollector(value: string, locale: Locale): string { return td(collectorKeys[value] ?? 'perf.collector.unknown', locale); }
 export function localizeCollectorFault(value: string, locale: Locale): string { return collectorFaultKeys[value] ? td(collectorFaultKeys[value], locale) : td('perf.fault.Internal', locale); }
@@ -150,6 +150,14 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Component store quick check':'tech.repair.componentQuick',
   'Protected system files':'tech.repair.protectedFiles',
   'System volume online scan':'tech.repair.volumeScan',
+  "Windows Update client events":'tech.update.clientTitle',
+  "Microsoft-Windows-WindowsUpdateClient/Operational":'tech.update.clientChannel',
+  "The Windows Update client event channel could not be read; update installation status is unknown.":'tech.update.clientUnavailable',
+  "MemoryTestResult":'hardware.memtest.title',
+  "Windows Update history":'tech.update.historyTitle',
+  "The Windows Update history could not be read; this says nothing about whether updates installed.":'tech.update.historyUnavailable',
+  "Windows Update history shows no update that failed to install more than once without a later success in the entries read.":'tech.update.historyClear',
+  "Windows Update history shows no update that failed to install more than once without a later success in the newest entries read; older entries were not read.":'tech.update.historyClearCut',
   'DISM CheckHealth':'tech.repair.dismCheck',
   'DISM ScanHealth':'tech.repair.dismScan',
   'DISM RestoreHealth':'tech.repair.dismRestore',
@@ -203,6 +211,18 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Networking, storage, input, accessibility, or other protected service role.':'tech.startup.protectedRole',
   'NVMe SMART/Health log via IOCTL_STORAGE_QUERY_PROPERTY':'tech.storage.sourceNvme',
   'Direct NVMe SMART/Health log was not available for this device.':'tech.storage.sourceNvmeUnavailable',
+  'NVMe reports the available spare has fallen below its threshold.':'tech.storage.nvmeBit.spare',
+  'NVMe reports the temperature is outside its operating limits.':'tech.storage.nvmeBit.temperature',
+  "NVMe reports the device's reliability is degraded.":'tech.storage.nvmeBit.reliability',
+  "The drive's own SMART self-assessment predicts a failure.":'tech.storage.predictFailure',
+  'No increase in the reported error counters since the previous scan.':'tech.storage.noIncrease',
+  'Only the first 32 thermal zones are shown.':'tech.thermal.zonesCut',
+  'Only the first 32 batteries are shown.':'tech.battery.cut',
+  'Only the first 128 network adapters are shown.':'tech.network.cut',
+  'NVMe reports the device has become read-only.':'tech.storage.nvmeBit.readOnly',
+  'NVMe reports its volatile memory backup has failed.':'tech.storage.nvmeBit.volatileBackup',
+  'NVMe reports its persistent memory region is unreliable.':'tech.storage.nvmeBit.persistentMemory',
+  'NVMe critical-warning flags include bits this reader does not recognize.':'tech.storage.nvmeBit.unknown',
   'ATA SMART attribute table via SMART_RCV_DRIVE_DATA; raw values are vendor-defined and are not converted into AetherCore health claims.':'tech.storage.sourceAta',
   'Direct ATA SMART attributes were not available through SMART_RCV_DRIVE_DATA; standardized Windows reliability counters remain authoritative when present.':'tech.storage.sourceAtaUnavailable',
   'Physical disk DeviceId was not reported.':'tech.storage.deviceIdMissing',
@@ -216,6 +236,12 @@ const exactOwnedText: Record<string, MessageKey> = {
   'The device does not expose enough standardized reliability information for a health conclusion.':'tech.storage.summaryUnknown',
   'Windows Hardware Error Architecture recorded a hardware error.':'tech.event.wheaSummary',
   'WHEA logged a memory-related hardware error. This is hardware evidence, but it does not identify a specific DIMM without deeper decoding/testing.':'tech.event.wheaMemory',
+  'WHEA logged a memory error that the hardware corrected. A single corrected error does not show that a memory module is failing.':'tech.event.wheaMemoryCorrected',
+  'Windows Memory Diagnostic recorded a test result.':'tech.event.memtestSummary',
+  'The System log also recorded this crash (Windows Error Reporting event).':'tech.crash.linkedEvent',
+  'The System log and this dump name different bugcheck codes.':'tech.crash.codeMismatch',
+  'Windows Memory Diagnostic reported memory errors when it ran.':'tech.event.memtestErrors',
+  'Windows Memory Diagnostic finished when it ran and reported no errors. This is the result of that run, not a statement about the memory now.':'tech.event.memtestOk',
   'WHEA logged a processor/cache-related hardware error. Treat this as evidence, not a complete root-cause attribution.':'tech.event.wheaProcessor',
   'WHEA logged PCI/PCIe-related hardware-error evidence.':'tech.event.wheaPcie',
   'WHEA logged a hardware error; the summarized event data is not sufficient to name a failed component with confidence.':'tech.event.wheaGeneric',
@@ -389,6 +415,10 @@ export function localizeOwnedText(value: string, locale: Locale, options: { data
   let m: RegExpMatchArray | null;
   if ((m = value.match(/^(\d+) uncorrected read error\(s\) were reported\.$/))) return { text: t('tech.storage.readErrors', locale, { count: m[1] }), localized: true };
   if ((m = value.match(/^(\d+) uncorrected write error\(s\) were reported\.$/))) return { text: t('tech.storage.writeErrors', locale, { count: m[1] }), localized: true };
+  if ((m = value.match(/^(\d+) client error event\(s\) in the last 30 days; newest: (\S+) \(([^)]*)\); (\d+) unsupported event\(s\); (older events were not read|all matching events were read)\. These events are separate from installation attempts\.$/))) return { text: t(m[5] === 'older events were not read' ? 'tech.update.clientSummaryCut' : 'tech.update.clientSummary', locale, { count:m[1], date:m[2], codes:m[3], unknown:m[4] }), localized:true };
+  if ((m = value.match(/^(\d+) update\(s\) failed to install more than once with no later success; the newest failure was recorded on (\S+) \(([^)]*)\)\.$/))) return { text: t('tech.update.historyFailures', locale, { count: m[1], date: m[2], codes: m[3] }), localized: true };
+  if ((m = value.match(/^(\d+) more (uncorrected read|uncorrected write|NVMe media\/data-integrity) error\(s\) than at the previous scan\.$/))) { const key = m[2] === 'uncorrected read' ? 'tech.storage.moreReadErrors' : m[2] === 'uncorrected write' ? 'tech.storage.moreWriteErrors' : 'tech.storage.moreMediaErrors'; return { text: t(key, locale, { count: m[1] }), localized: true }; }
+  if ((m = value.match(/^NVMe available spare \((\d+)%\) is below the device's own threshold \((\d+)%\)\.$/))) return { text: t('tech.storage.spareBelowThreshold', locale, { spare: m[1], threshold: m[2] }), localized: true };
   if ((m = value.match(/^NVMe SMART critical-warning flags are set \((0x[0-9A-Fa-f]+)\)\.$/))) return { text: t('tech.storage.nvmeCritical', locale, { flag: m[1] }), localized: true };
   if ((m = value.match(/^Current temperature \(([-\d.]+) °C\) is at or above the device\/Windows-reported maximum \(([-\d.]+) °C\)\.$/))) return { text: t('tech.storage.temperatureLimit', locale, { current:m[1], max:m[2] }), localized: true };
   if ((m = value.match(/^Windows reports a maximum (read|write|flush) latency above 10 seconds in the storage reliability counters\.$/))) {

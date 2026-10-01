@@ -849,6 +849,12 @@ fn network_adapter_proto(a: NetworkAdapter) -> v1::NetworkAdapterInfo {
         has_link_speed: a.link_speed_bps.is_some(),
         link_speed_bps: a.link_speed_bps.unwrap_or_default(),
         coverage: Some(coverage_proto(a.coverage)),
+        has_operational_status: a.operational_status.is_some(),
+        operational_status: u32::from(a.operational_status.unwrap_or_default()),
+        has_connected: a.connected.is_some(),
+        connected: a.connected.unwrap_or_default(),
+        has_is_virtual: a.is_virtual.is_some(),
+        is_virtual: a.is_virtual.unwrap_or_default(),
     }
 }
 
@@ -1390,5 +1396,29 @@ mod measurement_tests {
             "denied stays denied and is not folded into empty"
         );
         assert!(wire.thermal_zones.is_empty() && wire.network_adapters.is_empty());
+    }
+
+    // P83-02: an adapter that did not report its media state is not a disconnected one.
+    #[test]
+    fn an_unreported_media_state_is_not_a_disconnected_cable() {
+        use aethercore_diagnostic_engine::measurements::NetworkAdapter;
+        let unknown = network_adapter_proto(NetworkAdapter {
+            operational_status: Some(2),
+            connected: None,
+            ..Default::default()
+        });
+        let unplugged = network_adapter_proto(NetworkAdapter {
+            operational_status: Some(2),
+            connected: Some(false),
+            is_virtual: Some(true),
+            ..Default::default()
+        });
+        assert!(!unknown.has_connected && unplugged.has_connected);
+        assert!(
+            !unknown.connected && !unplugged.connected,
+            "the value beside a false flag is a filler"
+        );
+        assert!(unknown.has_operational_status && unknown.operational_status == 2);
+        assert!(!unknown.has_is_virtual && unplugged.has_is_virtual && unplugged.is_virtual);
     }
 }

@@ -10,7 +10,7 @@ use std::time::Duration;
 use super::{
     CollectedSubsystems, CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample,
     PerfPlatform, PerfSnapshot, PowerSample, ProcessCpuTopEntry, Reading, StorageQueueSample,
-    ThermalThrottleReason,
+    power_from_processor_information,
 };
 use windows::Win32::System::Power::{
     CallNtPowerInformation, POWER_INFORMATION_LEVEL, PROCESSOR_POWER_INFORMATION,
@@ -450,7 +450,6 @@ fn unreachable_fault(collector: &str) -> CollectorFault {
 
 /// CallNtPowerInformation(ProcessorInformation) — thermal + power-limit evidence without WMI.
 fn sample_power(partial: &mut Vec<CollectorFault>) -> Reading<PowerSample> {
-    let mut sample = PowerSample::default();
     // PROCESSOR_POWER_INFORMATION is variable by count; start conservative and cap the buffer.
     let max_processors: u32 = super::MAX_CPU_COUNT as u32;
     let entry_size = std::mem::size_of::<PROCESSOR_POWER_INFORMATION>();
@@ -477,69 +476,32 @@ fn sample_power(partial: &mut Vec<CollectorFault>) -> Reading<PowerSample> {
         }
         buffer_len = max_processors as usize * entry_size;
     }
-    // §20.1.1 site 3: this condition shipped as `!buffer.iter().all(..) || true`,
-    // which is unconditionally true, so the `else` below — and with it the power
-    // `Unavailable` fault — was dead code. The availability decision now reads
-    // the actual outcome of `CallNtPowerInformation`.
-    if queried && !buffer.iter().all(|byte| *byte == 0) {
-        // Parse the current MHz fields to detect clamping relative to max MHz when available.
-        // Fields after MaxMhz/CurrentMhz are informational only; we never fabricate values.
-        let stride = entry_size;
-        if stride > 0 && buffer.len() >= stride {
-            // Layout (x64): Number(u32), MaxMhz(u32), CurrentMhz(u32), MhzLimit(u32),
-            // MaxIdleState(u32), CurrentIdleState(u32), IdleTime(u64), ... We read conservatively
-            // within the first entry only; multi-packet aggregation stays product debt.
-            let read_u32 = |offset: usize| -> Option<u32> {
-                if offset + 4 <= buffer.len() {
-                    Some(u32::from_le_bytes(
-                        buffer[offset..offset + 4].try_into().ok()?,
-                    ))
+    // What the buffer can honestly say (see `power_from_processor_information`): an idle clock is
+    // not a throttle, a `MhzLimit` under `MaxMhz` is a limit whose cause the OS does not give, and
+    // an unpopulated buffer is no answer. This path measures no temperature, so it never names heat.
+    let sample = match power_from_processor_information(&buffer) {
+        Some(read) if queried => read,
+        _ => {
+            return Reading::unavailable(CollectorFault {
+                collector: "power".into(),
+                kind: "Unavailable".into(),
+                detail: if queried {
+                    "CallNtPowerInformation(ProcessorInformation) returned no populated processor entry"
+                        .into()
                 } else {
-                    None
-                }
-            };
-            let max_mhz = read_u32(4);
-            let current_mhz = read_u32(8);
-            let mhz_limit = read_u32(12);
-            if let (Some(max), Some(current)) = (max_mhz, current_mhz)
-                && max > 0
-                && current > 0
-            {
-                let ratio_bp = ((u64::from(current) * 10_000) / u64::from(max)).min(10_000) as u32;
-                // A sustained ratio materially below max indicates a clamp in effect.
-                if ratio_bp < 8_500 {
-                    sample.throttle_active = true;
-                    // Without vendor MSRs we cannot distinguish VRM vs package power here;
-                    // report the conservative generic power clamp and surface raw evidence.
-                    sample.throttle_reason = ThermalThrottleReason::Power;
-                }
-            }
-            if let Some(limit) = mhz_limit
-                && limit < 100
-            {
-                sample.throttle_active = true;
-                if sample.throttle_reason == ThermalThrottleReason::Unspecified {
-                    sample.throttle_reason = ThermalThrottleReason::Thermal;
-                }
-            }
+                    "CallNtPowerInformation(ProcessorInformation) failed".into()
+                },
+            });
         }
-    } else {
-        return Reading::unavailable(CollectorFault {
-            collector: "power".into(),
-            kind: "Unavailable".into(),
-            detail: if queried {
-                "CallNtPowerInformation(ProcessorInformation) returned an all-zero buffer".into()
-            } else {
-                "CallNtPowerInformation(ProcessorInformation) failed".into()
-            },
+    };
+    if sample.throttle_active {
+        partial.push(CollectorFault {
+            collector: "power.throttle_cause".into(),
+            kind: "Degraded".into(),
+            detail: "the OS reports a processor frequency limit but not why; no source measured the cause"
+                .into(),
         });
     }
-    sample.throttle_reason = match sample.throttle_reason {
-        ThermalThrottleReason::Unspecified if !sample.throttle_active => {
-            ThermalThrottleReason::None
-        }
-        other => other,
-    };
     // DBT-P45-003 (found in this session's own sweep, not in the brief's
     // starter list): no line of this file has ever written `has_temperature`
     // or `temperature_c` — `CallNtPowerInformation(ProcessorInformation)`

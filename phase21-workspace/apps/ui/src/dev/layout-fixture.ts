@@ -206,34 +206,44 @@ const diagnostics: DiagnosticsSnapshot = {
     memoryLoadPercent: 72, pressureLabel: 'Elevated',
     pressureExplanation: 'Windows currently reports 72% physical-memory load. This is resource pressure, not a RAM hardware-health verdict.',
   }),
-  storage: [0, 1].map((i) => fill<StorageTelemetry>({
+  storage: [0, 1, 2].map((i) => fill<StorageTelemetry>({
     deviceId: `\\\\.\\PHYSICALDRIVE${i}`,
     friendlyName: 'Samsung SSD 990 PRO with Heatsink 2TB NVMe M.2',
-    firmwareVersion: '4B2QJXD7', serialNumber: 'S6Z1NJ0T512345X', busType: 'NVMe', mediaType: 'SSD',
+    firmwareVersion: '4B2QJXD7', serialNumber: `S6Z1NJ0T51234${i}X`, busType: i === 2 ? 'USB' : 'NVMe', mediaType: 'SSD',
     sizeBytes: 2_000_398_934_016, windowsHealthStatus: 'Healthy', operationalStatus: ['OK'],
-    severity: i ? 'Attention' : 'Normal',
+    severity: i === 2 ? 'Unknown' : i ? 'ActionRequired' : 'Normal',
     // P76: what crates/hardware-telemetry emits for a disk Windows calls healthy whose
     // counters the device did not report (the owner's install showed it in English).
-    summary: i
-      ? 'One or more reported storage reliability indicators deserve review.'
+    summary: i === 2
+      ? 'The device does not expose enough standardized reliability information for a health conclusion.'
+      : i
+      ? 'Storage reliability evidence requires attention; back up important data before heavy write activity.'
       : 'Windows reports this disk healthy; 2 SMART/reliability counter(s) were not reported and could not be independently checked.',
-    reasons: i
-      ? ['Windows reports a maximum read latency above 10 seconds in the storage reliability counters.']
+    reasons: i === 2 ? [] : i
+      ? ['NVMe reports the device\'s reliability is degraded.', '3 more uncorrected read error(s) than at the previous scan.', 'The device-reported wear estimate has reached or exceeded its estimated wear limit.']
       : ['uncorrected read error count: not reported', 'uncorrected write error count: not reported'],
     sourceNotes: ['NVMe SMART/Health log via IOCTL_STORAGE_QUERY_PROPERTY'],
-    reliability: fill<StorageReliability>({
-      hasTemperature: true, temperatureC: 44, hasWear: true, wearPercentUsed: 4,
+    reliability: i === 2 ? fill<StorageReliability>({}) : fill<StorageReliability>({
+      hasNvmeAvailableSpareThreshold: true, nvmeAvailableSpareThresholdPercent: 10,
+      hasTemperature: true, temperatureC: 44, hasWear: true, wearPercentUsed: i ? 105 : 4,
       hasPowerOnHours: true, powerOnHours: 6_214, hasNvmeAvailableSpare: true, nvmeAvailableSparePercent: 100,
-      hasNvmePercentageUsed: true, nvmePercentageUsed: 4, nvmeMediaErrors: '0', nvmeUnsafeShutdowns: '12', nvmeErrorLogEntries: '0',
+      hasNvmePercentageUsed: true, nvmePercentageUsed: i ? 105 : 4, nvmeMediaErrors: '0', nvmeUnsafeShutdowns: '12', nvmeErrorLogEntries: '0',
     }),
     ataSmartAttributes: [5, 9, 187, 194].map((id) => fill({ id, current: 100, worst: 100, rawValueDecimal: '0', rawValueHex: '0x000000000000' })),
   })),
-  events: [0, 1, 2].map((i) => fill<HardwareEvent>({
+  events: [...[0, 1, 2].map((i) => fill<HardwareEvent>({
     eventId: 41 + i, provider: 'Microsoft-Windows-Kernel-Power', recordedUnixMs: NOW - i * 86_400_000,
     category: 'UnexpectedShutdown', severity: 'Attention', confidence: 'EventHigh/CauseLow',
     summary: 'Windows recorded an unexpected shutdown or restart.',
     detail: 'Kernel-Power Event 41 confirms an unclean shutdown; by itself it does not identify why power was lost or the system crashed.',
   })),
+    fill<HardwareEvent>({
+      eventId: 1201, provider: 'Microsoft-Windows-MemoryDiagnostics-Results', recordedUnixMs: NOW - 3 * 86_400_000,
+      category: 'MemoryTestResult', severity: 'Info', confidence: 'EventOnly',
+      summary: 'Windows Memory Diagnostic recorded a test result.',
+      detail: 'Windows Memory Diagnostic finished when it ran and reported no errors. This is the result of that run, not a statement about the memory now.',
+    }),
+  ],
   crashes: [0, 1].map((i) => fill<CrashRecord>({
     crashId: `crash-${i}`, recordedUnixMs: NOW - i * 172_800_000, hasBugcheckCode: true,
     bugcheckCode: 26, bugcheckHex: '0x0000001A', parameters: ['0x41792', '0xFFFFF', '0x0', '0x0'],
@@ -260,7 +270,7 @@ const diagnostics: DiagnosticsSnapshot = {
   })],
   boots: [fill<BootMeasurement>({ recordedUnixMs: NOW, hasDuration: true, durationMs: 41500, coverage: fill<MeasurementCoverage>({ source: 'Diagnostics-Performance', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }) })],
   networkAdapters: [fill<NetworkAdapterMeasurement>({
-    stableId: '{6A1F0E52-77D2-4A1B-9C3E-5B0D8E2F4A19}', displayName: 'Intel(R) Wi-Fi 6E AX211 160MHz', hasLinkSpeed: false, linkSpeedBps: 0,
+    stableId: '{6A1F0E52-77D2-4A1B-9C3E-5B0D8E2F4A19}', displayName: 'Intel(R) Wi-Fi 6E AX211 160MHz', hasLinkSpeed: false, linkSpeedBps: 0, hasOperationalStatus: true, operationalStatus: 2, hasConnected: false, connected: false, hasIsVirtual: true, isVirtual: false,
     coverage: fill<MeasurementCoverage>({ source: 'MSFT_NetAdapter', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 2 }),
   })],
 };

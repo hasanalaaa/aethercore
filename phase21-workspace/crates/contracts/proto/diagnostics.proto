@@ -92,6 +92,10 @@ message NetworkAdapterInfo {
   string display_name = 2;
   bool has_link_speed = 3; uint64 link_speed_bps = 4;
   MeasurementCoverageInfo coverage = 5;
+  // P83-02: IF_OPER_STATUS (1 up, 2 down, 3 testing, 4 unknown, 5 dormant, 6 not present, 7 lower layer down).
+  bool has_operational_status = 6; uint32 operational_status = 7;
+  bool has_connected = 8; bool connected = 9;
+  bool has_is_virtual = 10; bool is_virtual = 11;
 }
 message StorageDeviceTelemetryInfo {
   string device_id = 1;

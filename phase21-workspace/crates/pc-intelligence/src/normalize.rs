@@ -223,6 +223,35 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot, now: i64) -> Vec<SystemFact> 
             ),
         ));
     }
+    // A zone is a fact only when it gives both a reading and its own rated critical trip point:
+    // without the threshold nothing can be called too hot.
+    for zone in &snapshot.thermal_zones {
+        let (Some(temperature_c), Some(critical_c)) = (zone.temperature_c, zone.critical_c) else {
+            continue;
+        };
+        let observed = zone
+            .coverage
+            .observed_unix_ms
+            .unwrap_or(snapshot.completed_unix_ms);
+        out.push(SystemFact::new(
+            Domain::Hardware,
+            "hardware-telemetry",
+            ResourceRef::private(
+                "thermal-zone",
+                &zone.stable_id,
+                display(&zone.display_name, "Thermal zone"),
+            ),
+            observed,
+            measured_freshness(observed, now, MEMORY_WINDOW_MS),
+            Confidence::High,
+            FactPayload::ThermalZone {
+                temperature_c: i64::from(temperature_c),
+                critical_c: i64::from(critical_c),
+            },
+            EvidenceKind::DeviceState,
+            format!("temperatureC={temperature_c};ratedCriticalC={critical_c}"),
+        ));
+    }
     for e in &snapshot.events {
         out.push(SystemFact::new(
             Domain::Hardware,
