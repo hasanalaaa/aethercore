@@ -238,13 +238,20 @@ fn fallback_facts(
     locale: Locale,
 ) -> Option<(String, Vec<Citation>)> {
     let question = question.to_lowercase();
-    // ponytail: fallback recognizes maintenance/recurrence topics only; add typed topics with new evidence.
+    // ponytail: fallback uses a narrow topic match over the same typed facts; unknown questions refuse.
     let maintenance = ["maintenance", "صيانة"]
         .iter()
         .any(|word| question.contains(word));
     let recurrence = ["recur", "repeated failure", "تكرر", "تكرار"]
         .iter()
         .any(|word| question.contains(word));
+    let diagnostics = ["diagnostic", "finding", "تشخيص", "نتيجة"]
+        .iter()
+        .any(|word| question.contains(word));
+    let repair = ["repair", "إصلاح"]
+        .iter()
+        .any(|word| question.contains(word));
+    let care = ["care", "عناية"].iter().any(|word| question.contains(word));
     let ids =
         pack.propositions
             .iter()
@@ -254,7 +261,9 @@ fn fallback_facts(
                 | crate::model::Fact::PlanCancelled { .. } => maintenance,
                 crate::model::Fact::RepeatedFailure { .. } => recurrence,
                 crate::model::Fact::DiagnosticAttention { .. }
-                | crate::model::Fact::DiagnosticsIncomplete => false,
+                | crate::model::Fact::DiagnosticsIncomplete => diagnostics,
+                crate::model::Fact::RepairObservation { .. } => repair,
+                crate::model::Fact::CareResult { .. } => care,
             })
             .take(4)
             .map(|(index, _)| (index + 1).to_string())

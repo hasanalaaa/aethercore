@@ -20,10 +20,12 @@ use aethercore_persistence::{
     RepairRebootResumeRecord, RepairTimelineEventRecord,
 };
 use aethercore_windows_repair_intelligence::{
-    DiagnosisConfidence, FactState, RecoveryReadiness, RepairActionKind, RepairDomain, RepairFact,
-    RepairGraph, RepairIntelligenceSnapshot, RepairObservationSet, RepairOutcome, RepairSafetyTier,
+    DiagnosisConfidence, RecoveryReadiness, RepairActionKind, RepairDomain, RepairGraph,
+    RepairIntelligenceSnapshot, RepairObservationSet, RepairOutcome, RepairSafetyTier,
     analyze as analyze_windows_repair, canonical_machine_state_fingerprint, reboot_resume_token,
 };
+// Public assessment consumers can read typed facts without another dependency.
+pub use aethercore_windows_repair_intelligence::{FactState, RepairFact};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;

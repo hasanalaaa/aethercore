@@ -61,6 +61,7 @@ pub enum EvidenceSurface {
     SecurityFinding,
     /// Owner-scoped diagnostic snapshot observations.
     Diagnostics,
+    CareHistory,
 }
 
 /// One advisory insight. THE ONLY output type of the reasoner (I1).
@@ -171,6 +172,22 @@ impl MaintenanceDomain {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum RepairStatus {
+    Corruption,
+    Failed,
+    SourceRequired,
+    RebootRequired,
+    Attention,
+}
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CareStatus {
+    Finished,
+    Failed,
+    Stopped,
+    Partial,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Fact {
     PlanCompleted { domain: MaintenanceDomain },
@@ -178,11 +195,51 @@ pub enum Fact {
     RepeatedFailure { occurrences: u32 },
     DiagnosticAttention { action_required: bool },
     DiagnosticsIncomplete,
+    RepairObservation { status: RepairStatus },
+    CareResult { status: CareStatus },
 }
 
 impl Fact {
     pub fn sentence(&self, locale: Locale) -> String {
         match (self, locale) {
+            (Self::RepairObservation { status }, locale) => match (status, locale) {
+                (RepairStatus::Corruption, Locale::En) => "Repair diagnostics detected corruption",
+                (RepairStatus::Corruption, Locale::Ar) => "رصد تشخيص الإصلاح تلفاً",
+                (RepairStatus::Failed, Locale::En) => {
+                    "A repair observation recorded a failed repair"
+                }
+                (RepairStatus::Failed, Locale::Ar) => "سجّلت ملاحظة الإصلاح إخفاقاً في الإصلاح",
+                (RepairStatus::SourceRequired, Locale::En) => {
+                    "Repair diagnostics require a repair source"
+                }
+                (RepairStatus::SourceRequired, Locale::Ar) => "يتطلب تشخيص الإصلاح مصدر إصلاح",
+                (RepairStatus::RebootRequired, Locale::En) => {
+                    "Repair diagnostics recorded a reboot requirement"
+                }
+                (RepairStatus::RebootRequired, Locale::Ar) => {
+                    "سجّل تشخيص الإصلاح الحاجة إلى إعادة التشغيل"
+                }
+                (RepairStatus::Attention, Locale::En) => {
+                    "Repair diagnostics recorded a condition requiring attention"
+                }
+                (RepairStatus::Attention, Locale::Ar) => "سجّل تشخيص الإصلاح حالة تتطلب الانتباه",
+            }
+            .into(),
+            (Self::CareResult { status }, locale) => match (status, locale) {
+                (CareStatus::Finished, Locale::En) => "A Care run finished",
+                (CareStatus::Finished, Locale::Ar) => "انتهت دورة العناية",
+                (CareStatus::Failed, Locale::En) => "A Care run failed",
+                (CareStatus::Failed, Locale::Ar) => "أخفقت دورة العناية",
+                (CareStatus::Stopped, Locale::En) => "A Care run stopped before all steps finished",
+                (CareStatus::Stopped, Locale::Ar) => "توقفت دورة العناية قبل انتهاء جميع الخطوات",
+                (CareStatus::Partial, Locale::En) => {
+                    "A Care run finished with incomplete or failed steps"
+                }
+                (CareStatus::Partial, Locale::Ar) => {
+                    "انتهت دورة العناية بخطوات غير مكتملة أو فاشلة"
+                }
+            }
+            .into(),
             (
                 Self::DiagnosticAttention {
                     action_required: true,
@@ -287,6 +344,8 @@ impl TypedEvidencePack {
             Fact::DiagnosticAttention { .. } | Fact::DiagnosticsIncomplete => {
                 citation.surface == EvidenceSurface::Diagnostics
             }
+            Fact::RepairObservation { .. } => citation.surface == EvidenceSurface::RepairDiagnosis,
+            Fact::CareResult { .. } => citation.surface == EvidenceSurface::CareHistory,
             Fact::RepeatedFailure { occurrences } => {
                 citation.surface == EvidenceSurface::TimelinePattern && occurrences >= 2
             }
@@ -333,6 +392,7 @@ impl TypedEvidencePack {
                 EvidenceSurface::MaintenanceHistory => 3,
                 EvidenceSurface::SecurityFinding => 4,
                 EvidenceSurface::Diagnostics => 5,
+                EvidenceSurface::CareHistory => 6,
             }]);
             hasher.update(item.detail.as_bytes());
         }

@@ -98,6 +98,7 @@ pub struct AssistantCoordinator {
     engine: Arc<AssistantEngine>,
     live: Arc<LiveTurns>,
     diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
+    repair: Arc<aethercore_system_repair::RepairCoordinator>,
 }
 
 impl AssistantCoordinator {
@@ -107,10 +108,12 @@ impl AssistantCoordinator {
         db: Arc<Database>,
         reasoner: Option<Box<dyn StreamingReasoner>>,
         diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
+        repair: Arc<aethercore_system_repair::RepairCoordinator>,
     ) -> Self {
         Self {
             db,
             diagnostics,
+            repair,
             engine: Arc::new(AssistantEngine::new(reasoner)),
             live: Arc::new(LiveTurns::default()),
         }
@@ -127,6 +130,7 @@ impl AssistantCoordinator {
             self.db.as_ref(),
             owner,
             self.diagnostics.as_ref(),
+            self.repair.as_ref(),
         )
     }
 
@@ -276,6 +280,7 @@ fn surface_name(surface: aethercore_intelligence_core::EvidenceSurface) -> &'sta
         S::MaintenanceHistory => "maintenanceHistory",
         S::SecurityFinding => "securityFinding",
         S::Diagnostics => "diagnostics",
+        S::CareHistory => "careHistory",
     }
 }
 

@@ -195,6 +195,7 @@ pub fn compose_current_evidence_pack(
     db: &Database,
     owner: &str,
     diagnostics: &aethercore_diagnostic_engine::DiagnosticEngine,
+    repair: &aethercore_system_repair::RepairCoordinator,
 ) -> TypedEvidencePack {
     let now = chrono::Utc::now().timestamp_millis();
     let mut pack = TypedEvidencePack::default();
@@ -216,6 +217,13 @@ pub fn compose_current_evidence_pack(
     if let Some(snapshot) = snapshot {
         append_diagnostics(&mut pack, &snapshot, now);
     }
+    if let Ok(assessment) = repair.assessment_for_owner(owner)
+        && assessment.state == aethercore_system_repair::RepairAssessmentState::Ready
+        && let Some(snapshot) = assessment.intelligence
+    {
+        append_repair_facts(&mut pack, &assessment.assessment_id, &snapshot.facts, now);
+    }
+    append_care_history(&mut pack, db, owner, now);
     let history = compose_evidence_pack(db, owner);
     for item in history.items {
         pack.push(item);
@@ -285,6 +293,85 @@ fn append_diagnostics(
     }
 }
 
+fn append_repair_facts(
+    pack: &mut TypedEvidencePack,
+    assessment_id: &str,
+    facts: &[aethercore_system_repair::RepairFact],
+    now: i64,
+) {
+    use aethercore_intelligence_core::model::RepairStatus as R;
+    use aethercore_system_repair::FactState as S;
+    for fact in facts
+        .iter()
+        .filter(|fact| current_observation(fact.observed_unix_ms, now))
+        .take(8)
+    {
+        let status = match fact.state {
+            S::CorruptionDetected => R::Corruption,
+            S::RepairFailed | S::Failure => R::Failed,
+            S::SourceRequired => R::SourceRequired,
+            S::RebootRequired => R::RebootRequired,
+            S::Repairable | S::UnexpectedConfiguration | S::Degraded => R::Attention,
+            _ => continue,
+        };
+        let citation = Citation {
+            evidence_id: format!("{assessment_id}:{}", fact.id),
+            surface: EvidenceSurface::RepairDiagnosis,
+        };
+        pack.push(EvidenceItem {
+            evidence_id: citation.evidence_id.clone(),
+            surface: citation.surface,
+            detail: format!(
+                "repair state {:?} observedUnixMs {}",
+                fact.state, fact.observed_unix_ms
+            ),
+        });
+        pack.push_fact_at(
+            citation,
+            Fact::RepairObservation { status },
+            fact.observed_unix_ms,
+        );
+    }
+}
+
+fn append_care_history(pack: &mut TypedEvidencePack, db: &Database, owner: &str, now: i64) {
+    use aethercore_intelligence_core::model::CareStatus as C;
+    let Ok(rows) = db.care_runs_for_owner(owner, 4) else {
+        return;
+    };
+    for row in rows {
+        let Some(observed) = row
+            .completed_unix_ms
+            .filter(|time| *time > 0 && *time <= now)
+        else {
+            continue;
+        };
+        let status = match row.state.as_str() {
+            "Failed" => C::Failed,
+            "Cancelled" | "Aborted" => C::Stopped,
+            "Completed" if row.detail == "care.status.stoppedForConsent" => C::Stopped,
+            "Completed"
+                if row.detail == "care.status.completedWithFailures"
+                    || row.steps_done < row.steps_total =>
+            {
+                C::Partial
+            }
+            "Completed" => C::Finished,
+            _ => continue,
+        };
+        let citation = Citation {
+            evidence_id: row.run_id,
+            surface: EvidenceSurface::CareHistory,
+        };
+        pack.push(EvidenceItem {
+            evidence_id: citation.evidence_id.clone(),
+            surface: citation.surface,
+            detail: format!("care final state {:?} observedUnixMs {observed}", status),
+        });
+        pack.push_fact_at(citation, Fact::CareResult { status }, observed);
+    }
+}
+
 /// The owner's detected recurrence patterns, built the way the timeline page
 /// builds them (`timeline.rs`): the service's own clock is the freshness
 /// watermark, so a future-stamped row can neither order nor recur. An
@@ -315,6 +402,7 @@ pub struct IntelligenceCoordinator {
     selector: Arc<ReasonerSelector>,
     pub session: Arc<EphemeralInsights>,
     diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
+    repair: Arc<aethercore_system_repair::RepairCoordinator>,
 }
 
 impl IntelligenceCoordinator {
@@ -324,10 +412,12 @@ impl IntelligenceCoordinator {
         db: Arc<Database>,
         model_reasoner: Option<Box<dyn aethercore_intelligence_core::LocalReasoner>>,
         diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
+        repair: Arc<aethercore_system_repair::RepairCoordinator>,
     ) -> Self {
         Self {
             db,
             diagnostics,
+            repair,
             selector: Arc::new(ReasonerSelector::new(model_reasoner)),
             session: Arc::new(EphemeralInsights::default()),
         }
@@ -360,6 +450,7 @@ impl IntelligenceCoordinator {
             self.db.as_ref(),
             owner_principal_key,
             self.diagnostics.as_ref(),
+            self.repair.as_ref(),
         );
 
         // Empty evidence → typed empty response; no inference call is made.
@@ -400,6 +491,7 @@ impl IntelligenceCoordinator {
                             EvidenceSurface::MaintenanceHistory => "maintenanceHistory".into(),
                             EvidenceSurface::SecurityFinding => "securityFinding".into(),
                             EvidenceSurface::Diagnostics => "diagnostics".into(),
+                            EvidenceSurface::CareHistory => "careHistory".into(),
                         },
                     })
                     .collect(),
@@ -642,6 +734,12 @@ mod tests {
         let (db, path) = journal_db(&[]);
         let db = Arc::new(db);
         let diagnostics = aethercore_diagnostic_engine::DiagnosticEngine::new(db.clone());
+        let repair = aethercore_system_repair::RepairCoordinator::new(
+            Arc::new(aethercore_operation_engine::OperationEngine::new(
+                db.clone(),
+            )),
+            db.clone(),
+        );
         let now = chrono::Utc::now().timestamp_millis();
         let mut snapshot = DiagnosticsSnapshot {
             scan_id: "fresh-diag".into(),
@@ -666,7 +764,7 @@ mod tests {
             .unwrap()
         };
         save(&snapshot);
-        let pack = compose_current_evidence_pack(&db, "owner-a", &diagnostics);
+        let pack = compose_current_evidence_pack(&db, "owner-a", &diagnostics, &repair);
         assert!(
             pack.items
                 .first()
@@ -675,14 +773,14 @@ mod tests {
         );
         assert!(!pack.propositions.is_empty());
         assert!(
-            compose_current_evidence_pack(&db, "owner-b", &diagnostics)
+            compose_current_evidence_pack(&db, "owner-b", &diagnostics, &repair)
                 .items
                 .is_empty()
         );
         snapshot.completed_unix_ms = now - 24 * DAY_MS;
         save(&snapshot);
         assert!(
-            compose_current_evidence_pack(&db, "owner-a", &diagnostics)
+            compose_current_evidence_pack(&db, "owner-a", &diagnostics, &repair)
                 .propositions
                 .is_empty()
         );
@@ -690,10 +788,66 @@ mod tests {
         snapshot.state = ScanState::Failed;
         save(&snapshot);
         assert!(
-            compose_current_evidence_pack(&db, "owner-a", &diagnostics)
+            compose_current_evidence_pack(&db, "owner-a", &diagnostics, &repair)
                 .propositions
                 .is_empty()
         );
+        let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn repair_and_care_facts_preserve_failure_and_stop_states() {
+        use aethercore_system_repair::{FactState, RepairFact};
+        let now = chrono::Utc::now().timestamp_millis();
+        let fact = RepairFact {
+            id: "repair-failure".into(),
+            domain: serde_json::from_str("\"systemFiles\"").unwrap(),
+            state: FactState::RepairFailed,
+            resource: String::new(),
+            evidence_code: String::new(),
+            technical_code: String::new(),
+            detail: "healthy completed 99".into(),
+            observed_unix_ms: now,
+            confidence: serde_json::from_str("\"confirmed\"").unwrap(),
+        };
+        let mut pack = TypedEvidencePack::default();
+        append_repair_facts(&mut pack, "assessment-a", &[fact.clone()], now);
+        assert_eq!(pack.propositions.len(), 1);
+        assert!(
+            pack.propositions[0]
+                .fact
+                .sentence(Locale::En)
+                .contains("failed")
+        );
+        let mut stale = fact;
+        stale.observed_unix_ms = now - CURRENT_EVIDENCE_MAX_AGE_MS - 1;
+        append_repair_facts(&mut pack, "assessment-old", &[stale], now);
+        assert_eq!(pack.propositions.len(), 1);
+        let (db, path) = journal_db(&[]);
+        db.upsert_care_run(&aethercore_persistence::CareRunRecord {
+            run_id: "care-stopped".into(),
+            owner_principal_key: "owner-a".into(),
+            state: "Completed".into(),
+            detail: "care.status.stoppedForConsent".into(),
+            created_unix_ms: now,
+            updated_unix_ms: now,
+            completed_unix_ms: Some(now),
+            steps_total: 2,
+            steps_done: 1,
+            ..Default::default()
+        })
+        .unwrap();
+        append_care_history(&mut pack, &db, "owner-a", now);
+        assert!(
+            pack.propositions
+                .last()
+                .unwrap()
+                .fact
+                .sentence(Locale::En)
+                .contains("stopped")
+        );
+        let mut other = TypedEvidencePack::default();
+        append_care_history(&mut other, &db, "owner-b", now);
+        assert!(other.items.is_empty());
         let _ = std::fs::remove_file(path);
     }
 }

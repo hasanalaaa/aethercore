@@ -153,6 +153,7 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
         db.clone(),
         Some(Box::new(model.clone())),
         diagnostics.clone(),
+        repair.clone(),
     ));
     let assistant_reasoner: Option<Box<dyn aethercore_intelligence_core::StreamingReasoner>> =
         Some(Box::new(model));
@@ -168,6 +169,7 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
         db.clone(),
         assistant_reasoner,
         diagnostics.clone(),
+        repair.clone(),
     ));
 
     // Recovery is centralized and deliberately observation-only. A failure aborts service startup;
