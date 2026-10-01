@@ -1032,9 +1032,22 @@ mod tests {
                 &self,
                 pack: &TypedEvidencePack,
                 _: &str,
-                _: Locale,
+                locale: Locale,
                 _: std::time::Instant,
             ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
+                let selected = aethercore_intelligence_core::engine::insights_from_fact_selection(
+                    r#"{"facts":[1]}"#,
+                    pack,
+                    locale,
+                );
+                assert!(
+                    !selected.is_empty(),
+                    "valid model selection must produce a candidate"
+                );
+                assert_eq!(
+                    selected[0].engine,
+                    aethercore_intelligence_core::InsightEngineKind::LocalModel
+                );
                 self.0
                     .upsert_maintenance_execution(
                         &aethercore_persistence::MaintenanceExecutionRecord {
@@ -1046,19 +1059,7 @@ mod tests {
                         },
                     )
                     .unwrap();
-                Ok(vec![
-                    aethercore_intelligence_core::Insight::build(
-                        "insight.summary.observation",
-                        "A plan completed",
-                        aethercore_intelligence_core::InsightConfidence::Moderate,
-                        vec![Citation {
-                            evidence_id: pack.items[0].evidence_id.clone(),
-                            surface: pack.items[0].surface,
-                        }],
-                        aethercore_intelligence_core::InsightEngineKind::LocalModel,
-                    )
-                    .unwrap(),
-                ])
+                Ok(selected)
             }
         }
         let (db, path) = journal_db(&[]);

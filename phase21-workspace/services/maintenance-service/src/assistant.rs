@@ -12,9 +12,9 @@
 //! 1. **`engine_label` never lies.** It reports what the engine IS —
 //!    `localModel` when the artifact verified and loaded, `disabled` when it did
 //!    not. A generation failure is a FAULTED turn carrying a reason key. It never
-//!    becomes `ruleFallback`: the rule engine summarises evidence and cannot
-//!    answer a question, so letting it answer one under the model's label is
-//!    exactly the silent fallback the brief forbids.
+//!    labels a model failure as successful generation. P86 typed fact fallback
+//!    is admitted without generation while disabled/loading, and answered turns
+//!    explicitly report `ruleFallback`.
 //! 2. **No turn ends in an empty answer.** Every path here terminates in one of
 //!    ANSWERED / REFUSED / FAULTED / CANCELLED, and each carries its reason.
 //! 3. **Cancellation stops generation**, rather than merely marking the turn
@@ -62,15 +62,15 @@ impl LiveTurns {
         flag
     }
 
-    fn finish(&self, owner: &str, turn_id: &str) {
-        if let Some(turns) = self
-            .flags
+    /// Closes admission and captures cancellation under the same lock as `cancel`.
+    /// A cancel accepted before removal must win; a later cancel returns false.
+    fn finish(&self, owner: &str, turn_id: &str) -> bool {
+        self.flags
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .get_mut(owner)
-        {
-            turns.remove(turn_id);
-        }
+            .and_then(|turns| turns.remove(turn_id))
+            .is_some_and(|flag| flag.load(Ordering::SeqCst))
     }
 
     /// Raises the flag. Returns false when the turn is not in flight — which is
@@ -161,21 +161,25 @@ impl AssistantCoordinator {
         if pack.items.is_empty() {
             return refused(turn_id, label, RefusalReason::NoEvidence, &pack);
         }
-        if label == "loading" {
-            return faulted(
-                turn_id,
-                label,
-                aethercore_intelligence_core::assistant::FAULT_MODEL_LOADING,
-                &pack,
-            );
-        }
         if label != "localModel" {
-            return faulted(
-                turn_id,
-                label,
-                aethercore_intelligence_core::assistant::FAULT_MODEL_UNAVAILABLE,
+            // Use the existing bounded fact fallback without a reasoner. The loading
+            // artifact could become ready here; never start inference on the RPC thread.
+            let outcome = AssistantEngine::new(None).ask(
                 &pack,
+                question,
+                locale,
+                false,
+                Arc::new(AtomicBool::new(false)),
+                &mut |_| {},
             );
+            let outcome = match outcome {
+                TurnOutcome::Faulted { detail, .. } if label == "loading" => TurnOutcome::Faulted {
+                    fault_key: aethercore_intelligence_core::assistant::FAULT_MODEL_LOADING,
+                    detail,
+                },
+                other => other,
+            };
+            return terminal(turn_id, label, outcome, &pack);
         }
 
         let flag = self.live.register(owner, turn_id);
@@ -187,6 +191,9 @@ impl AssistantCoordinator {
         let turn = turn_id.to_owned();
         let question = question.to_owned();
         let pack_for_worker = pack.clone();
+        let db = Arc::clone(&self.db);
+        let diagnostics = Arc::clone(&self.diagnostics);
+        let repair = Arc::clone(&self.repair);
 
         // A worker, not the request thread: generation is seconds of CPU, and an
         // RPC that blocks for it would hold an inflight slot and be indistinguishable
@@ -215,11 +222,32 @@ impl AssistantCoordinator {
                     Arc::clone(&flag),
                     &mut sink,
                 );
-                live.finish(&owner_key, &turn);
+                let current = crate::intelligence::compose_current_evidence_pack(
+                    db.as_ref(),
+                    &owner_key,
+                    diagnostics.as_ref(),
+                    repair.as_ref(),
+                );
+                let cancelled = live.finish(&owner_key, &turn);
+                let outcome = if cancelled {
+                    let tokens = match &outcome {
+                        TurnOutcome::Answered { tokens, .. }
+                        | TurnOutcome::Cancelled { tokens } => *tokens,
+                        _ => 0,
+                    };
+                    TurnOutcome::Cancelled { tokens }
+                } else if matches!(outcome, TurnOutcome::Answered { .. })
+                    && pack_for_worker.digest_sha256() != current.digest_sha256()
+                {
+                    // Same owner, fresh facts: the old selection cannot authorize an answer.
+                    TurnOutcome::Refused(RefusalReason::NotCovered)
+                } else {
+                    outcome
+                };
                 publish(
                     &events,
                     &owner_key,
-                    terminal(&turn, label, outcome, &pack_for_worker),
+                    terminal(&turn, label, outcome, &current),
                 );
             })
             .map(|_| opening.clone())
@@ -438,6 +466,253 @@ pub fn validate(turn_id: &str, question: &str) -> Result<(), &'static str> {
 mod tests {
     use super::*;
 
+    fn fixture(
+        reasoner: Option<Box<dyn StreamingReasoner>>,
+    ) -> (AssistantCoordinator, std::path::PathBuf) {
+        let path =
+            std::env::temp_dir().join(format!("assistant-admission-{}.db", uuid::Uuid::new_v4()));
+        let db = Arc::new(Database::open(&path).unwrap());
+        for owner in ["owner-a", "owner-b"] {
+            let id = format!("plan-{owner}");
+            db.insert_plan(
+                &aethercore_persistence::PlanRecord {
+                    id: id.clone(),
+                    title: "fixture".into(),
+                    state: "Completed".into(),
+                    digest: id.clone(),
+                    risk: "Low".into(),
+                    immutable_json: "{}".into(),
+                    created_unix_ms: 1_000,
+                    updated_unix_ms: 1_000,
+                    owner_principal_key: owner.into(),
+                },
+                "created",
+            )
+            .unwrap();
+            db.upsert_maintenance_execution(&aethercore_persistence::MaintenanceExecutionRecord {
+                plan_id: id,
+                domain: "Cleanup".into(),
+                stage: "Completed".into(),
+                updated_unix_ms: 2_000,
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let diagnostics = Arc::new(aethercore_diagnostic_engine::DiagnosticEngine::new(
+            db.clone(),
+        ));
+        let repair = Arc::new(aethercore_system_repair::RepairCoordinator::new(
+            Arc::new(aethercore_operation_engine::OperationEngine::new(
+                db.clone(),
+            )),
+            db.clone(),
+        ));
+        (
+            AssistantCoordinator::new(db, reasoner, diagnostics, repair),
+            path,
+        )
+    }
+    struct Loading;
+    impl StreamingReasoner for Loading {
+        fn is_loaded(&self) -> bool {
+            false
+        }
+        fn is_loading(&self) -> bool {
+            true
+        }
+        fn generate(
+            &self,
+            _: &TypedEvidencePack,
+            _: &str,
+            _: aethercore_intelligence_core::Locale,
+            _: &aethercore_intelligence_core::GenerationBudget,
+            _: &mut dyn FnMut(&str),
+        ) -> Result<aethercore_intelligence_core::Generated, String> {
+            panic!("loading must not generate")
+        }
+    }
+    fn immediate_fallback(reasoner: Option<Box<dyn StreamingReasoner>>, fault: &str) {
+        let (coordinator, path) = fixture(reasoner);
+        let events = EventBus::new(16);
+        let turn = coordinator.ask(
+            "owner-a",
+            "known",
+            "maintenance",
+            aethercore_intelligence_core::Locale::En,
+            false,
+            events.clone(),
+        );
+        assert_eq!(
+            turn.state,
+            v1::AssistantTurnState::Answered as i32,
+            "{turn:?}"
+        );
+        assert_eq!(turn.engine_label, "ruleFallback");
+        assert_eq!(turn.tokens_emitted, 0);
+        assert_eq!(turn.citations.len(), 1);
+        assert_eq!(turn.citations[0].evidence_id, "plan-owner-a");
+        assert!(!turn.answer.is_empty());
+        let unknown = coordinator.ask(
+            "owner-a",
+            "unknown",
+            "weather forecast",
+            aethercore_intelligence_core::Locale::En,
+            false,
+            events.clone(),
+        );
+        assert_eq!(unknown.state, v1::AssistantTurnState::Faulted as i32);
+        assert_eq!(unknown.fault_key, fault);
+        assert_eq!(events.current_sequence("owner-a"), 0);
+        drop(coordinator);
+        let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn coordinator_absent_model_answers_known_owner_facts_without_generation() {
+        immediate_fallback(
+            None,
+            aethercore_intelligence_core::assistant::FAULT_MODEL_UNAVAILABLE,
+        );
+    }
+    #[test]
+    fn coordinator_loading_model_answers_known_owner_facts_without_generation() {
+        immediate_fallback(
+            Some(Box::new(Loading)),
+            aethercore_intelligence_core::assistant::FAULT_MODEL_LOADING,
+        );
+    }
+    struct Deferred {
+        entered: std::sync::mpsc::Sender<()>,
+        release: Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+    impl StreamingReasoner for Deferred {
+        fn is_loaded(&self) -> bool {
+            true
+        }
+        fn generate(
+            &self,
+            _: &TypedEvidencePack,
+            _: &str,
+            _: aethercore_intelligence_core::Locale,
+            _: &aethercore_intelligence_core::GenerationBudget,
+            _: &mut dyn FnMut(&str),
+        ) -> Result<aethercore_intelligence_core::Generated, String> {
+            self.entered.send(()).unwrap();
+            self.release
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            Ok(aethercore_intelligence_core::Generated {
+                text: r#"{"facts":[1]}"#.into(),
+                tokens: 4,
+                cancelled: false,
+            })
+        }
+    }
+    fn deferred_change(changed_owner: Option<&str>, expect_answer: bool, cancel: bool) {
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (coordinator, path) = fixture(Some(Box::new(Deferred {
+            entered: entered_tx,
+            release: Mutex::new(release_rx),
+        })));
+        let events = EventBus::new(16);
+        let (subscription, _) = events.subscribe("owner-a", 0);
+        let opening = coordinator.ask(
+            "owner-a",
+            "deferred",
+            "maintenance",
+            aethercore_intelligence_core::Locale::En,
+            false,
+            events.clone(),
+        );
+        assert_eq!(opening.state, v1::AssistantTurnState::Streaming as i32);
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        if let Some(owner) = changed_owner {
+            coordinator
+                .db
+                .upsert_maintenance_execution(&aethercore_persistence::MaintenanceExecutionRecord {
+                    plan_id: format!("plan-{owner}"),
+                    domain: "Cleanup".into(),
+                    stage: "Cancelled".into(),
+                    updated_unix_ms: 3_000,
+                    ..Default::default()
+                })
+                .unwrap();
+        }
+        if cancel {
+            assert!(coordinator.cancel("owner-a", "deferred"));
+        }
+        release_tx.send(()).unwrap();
+        let aethercore_operation_kernel::SubscriptionItem::Event(event) =
+            subscription.recv_timeout(Duration::from_secs(5))
+        else {
+            panic!("missing terminal");
+        };
+        let Some(v1::event_envelope::Payload::AssistantTurn(turn)) = event.payload else {
+            panic!("wrong payload");
+        };
+        if cancel {
+            assert_eq!(
+                turn.state,
+                v1::AssistantTurnState::Cancelled as i32,
+                "{turn:?}"
+            );
+            assert!(turn.answer.is_empty());
+            assert!(turn.citations.is_empty());
+        } else if expect_answer {
+            assert_eq!(
+                turn.state,
+                v1::AssistantTurnState::Answered as i32,
+                "{turn:?}"
+            );
+            assert_eq!(turn.citations[0].evidence_id, "plan-owner-a");
+            assert!(!turn.answer.is_empty());
+        } else {
+            assert_eq!(
+                turn.state,
+                v1::AssistantTurnState::Refused as i32,
+                "{turn:?}"
+            );
+            assert_eq!(turn.refusal, v1::AssistantRefusalReason::NotCovered as i32);
+            assert!(turn.answer.is_empty());
+            assert!(turn.citations.is_empty());
+            assert!(
+                turn.pack
+                    .iter()
+                    .all(|item| !item.detail.contains("Completed")),
+                "old evidence escaped"
+            );
+        }
+        assert!(!coordinator.cancel("owner-a", "deferred"));
+        let (_, replay) = events.subscribe("owner-a", 0);
+        assert_eq!(replay.events.len(), 1);
+        drop(coordinator);
+        let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn coordinator_changed_owner_evidence_discards_old_terminal_answer() {
+        deferred_change(Some("owner-a"), false, false);
+    }
+    #[test]
+    fn coordinator_unchanged_evidence_keeps_terminal_answer() {
+        deferred_change(None, true, false);
+    }
+    #[test]
+    fn coordinator_other_owner_evidence_change_keeps_terminal_answer() {
+        deferred_change(Some("owner-b"), true, false);
+    }
+
+    #[test]
+    fn coordinator_accepted_cancel_blocks_answer_even_when_backend_returns_selection() {
+        deferred_change(None, false, true);
+    }
+
+    #[test]
+    fn coordinator_accepted_cancel_keeps_cancelled_when_evidence_changes() {
+        deferred_change(Some("owner-a"), false, true);
+    }
+
     #[test]
     fn a_turn_id_that_is_not_a_handle_is_rejected_at_the_boundary() {
         assert!(validate("turn-1", "why?").is_ok());
@@ -477,7 +752,7 @@ mod tests {
         assert!(!flag.load(Ordering::SeqCst));
         assert!(live.cancel("owner-a", "turn-1"));
         assert!(flag.load(Ordering::SeqCst));
-        live.finish("owner-a", "turn-1");
+        assert!(live.finish("owner-a", "turn-1"));
         assert!(!live.cancel("owner-a", "turn-1"));
     }
 
