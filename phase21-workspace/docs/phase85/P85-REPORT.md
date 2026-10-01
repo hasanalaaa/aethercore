@@ -96,3 +96,12 @@ audits passed; optional local YAML parsing remains unmeasured without PyYAML. Th
 seal verifies 1595 workspace files and seven workflow files. Native exact-commit portable
 fixtures and full phase CI are pending at this source receipt; no live servicing/cancellation claim is made. The
 isolated-VM and TrustedInstaller qualification limits above remain open.
+
+Native follow-up receipt: a clean detached Windows checkout of
+`1561c2547e1ca3eb98911233aa489a3518c36428`, transferred as a narrow Git bundle,
+verified all 1595 workspace and seven workflow hashes. With two build jobs, both
+`p85_cancel_during` actual-coordinator fixtures passed (2/2), and system-repair
+all-target Clippy with warnings denied passed, compiling the real Windows
+verification implementation. No live servicing or model inference was run. This
+qualifies the portable cancellation regression and native build, while final
+integration CI and the real-servicing limits above remain open.
