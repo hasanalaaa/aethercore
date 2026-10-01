@@ -1,11 +1,7 @@
 use std::{
-    io::Read,
-    os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::atomic::{AtomicBool, Ordering},
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use super::{
@@ -28,7 +24,6 @@ use windows::{
     core::PCWSTR,
 };
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 
 // P78-02: each assessment check has its own deadline, so one that never returns reads as unknown
@@ -224,21 +219,34 @@ impl RepairPlatform for WindowsRepairPlatform {
             begin_mutation()?;
         }
 
+        if control.cancel.load(Ordering::SeqCst) {
+            return Err(RepairError::RepairStopped);
+        }
         if start_required_service {
             emit(start_update_service()?);
+        }
+        if control.cancel.load(Ordering::SeqCst) {
+            return Err(RepairError::RepairStopped);
         }
         if action.run_component_store {
             emit(restore_online_image_health(control)?);
         }
+        if control.cancel.load(Ordering::SeqCst) {
+            return Err(RepairError::RepairStopped);
+        }
         if action.run_system_files {
+            (control.progress)(None);
             emit(run_sfc(
                 &system32.join("sfc.exe"),
                 &["/scannow"],
                 "sfc-repair",
                 "System File Checker repair",
                 &root,
-                None,
+                Some(control.cancel),
             )?);
+        }
+        if control.cancel.load(Ordering::SeqCst) {
+            return Err(RepairError::RepairStopped);
         }
         if action.run_disk_scan {
             let volume = system_volume()?;
@@ -479,14 +487,14 @@ fn run_sfc(
     // before it started, not from a tail that holds older runs (see `cbs`).
     let cbs_log = root.join("Logs").join("CBS").join("CBS.log");
     let baseline = cbs::CbsBaseline::capture(&cbs_log);
-    let mut check = run_with_accepted_codes(
+    let mut check = super::process::run_tool(
         exe,
         args,
-        id,
-        title,
-        "%WINDIR%\\Logs\\CBS\\CBS.log",
+        (id, title, "%WINDIR%\\Logs\\CBS\\CBS.log"),
         &[0, 1, 2],
         cancel,
+        args.iter().any(|arg| arg.eq_ignore_ascii_case("/scannow")),
+        COMMAND_TIMEOUT,
     )?;
 
     // Do not infer integrity state from localized console prose. SFC's console output is retained
@@ -539,14 +547,14 @@ fn run_chkdsk_scan(
     title: &str,
     cancel: Option<&AtomicBool>,
 ) -> Result<RepairCheck> {
-    let mut check = run_with_accepted_codes(
+    let mut check = super::process::run_tool(
         exe,
         &[volume, "/scan"],
-        id,
-        title,
-        "Event Viewer → Application → Chkdsk",
+        (id, title, "Event Viewer → Application → Chkdsk"),
         &[0, 1, 2, 3],
         cancel,
+        false,
+        COMMAND_TIMEOUT,
     )?;
     if check.exit_code == 0 {
         check.stage = "Completed".into();
@@ -590,134 +598,6 @@ fn restore_readiness_check(root: &Path) -> RepairCheck {
         detail: "System Restore availability and restore-point creation success are treated as runtime recovery evidence; directory presence alone is not claimed as protection.".into(),
         log_hint: String::new(),
     }
-}
-
-fn run_with_accepted_codes(
-    exe: &Path,
-    args: &[&str],
-    id: &str,
-    title: &str,
-    log_hint: &str,
-    accepted_codes: &[i32],
-    // Only for read-only checks: a mutating command is never killed part-way.
-    cancel: Option<&AtomicBool>,
-) -> Result<RepairCheck> {
-    if !exe.is_absolute() || !exe.is_file() {
-        return Err(RepairError::Command(format!(
-            "required Windows executable missing: {}",
-            exe.display()
-        )));
-    }
-
-    let mut child = Command::new(exe)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .map_err(|error| RepairError::Command(error.to_string()))?;
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let stdout_thread = match thread::Builder::new()
-        .name("aether-repair-stdout".into())
-        .spawn(move || read_tail(stdout, 32_768))
-    {
-        Ok(worker) => worker,
-        Err(error) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(RepairError::Command(format!(
-                "failed to create repair stdout reader: {error}"
-            )));
-        }
-    };
-    let stderr_thread = match thread::Builder::new()
-        .name("aether-repair-stderr".into())
-        .spawn(move || read_tail(stderr, 16_384))
-    {
-        Ok(worker) => worker,
-        Err(error) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = stdout_thread.join();
-            return Err(RepairError::Command(format!(
-                "failed to create repair stderr reader: {error}"
-            )));
-        }
-    };
-    let deadline = Instant::now() + COMMAND_TIMEOUT;
-
-    let status = loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| RepairError::Command(error.to_string()))?
-        {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = stdout_thread.join();
-            let _ = stderr_thread.join();
-            return Err(RepairError::Command(format!("{title} timed out")));
-        }
-        if cancel.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = stdout_thread.join();
-            let _ = stderr_thread.join();
-            return Err(RepairError::Cancelled);
-        }
-        thread::sleep(Duration::from_millis(500));
-    };
-
-    let mut notes = Vec::new();
-    let mut detail = super::joined_stream(stdout_thread.join(), "stdout", &mut notes);
-    let error_output = super::joined_stream(stderr_thread.join(), "stderr", &mut notes);
-    if !error_output.trim().is_empty() {
-        if !detail.is_empty() {
-            detail.push('\n');
-        }
-        detail.push_str(&error_output);
-    }
-    super::trim_to_tail(&mut detail, 48_000);
-    // After truncation, so a lost stream is never itself truncated away.
-    for note in notes {
-        if !detail.is_empty() {
-            detail.push('\n');
-        }
-        detail.push_str(&note);
-    }
-
-    let code = status.code().unwrap_or(-1);
-    if !accepted_codes.contains(&code) {
-        return Err(RepairError::Command(format!(
-            "{title} exited with code {code}; see {log_hint}"
-        )));
-    }
-
-    Ok(RepairCheck {
-        id: id.into(),
-        title: title.into(),
-        stage: "Completed".into(),
-        result_code: format!("ExitCode{code}"),
-        exit_code: code,
-        detail: sanitize(&detail),
-        log_hint: log_hint.into(),
-    })
-}
-
-fn read_tail<R: Read>(reader: Option<R>, limit: usize) -> String {
-    let Some(mut reader) = reader else {
-        return String::new();
-    };
-    let mut buffer = Vec::new();
-    let _ = reader.read_to_end(&mut buffer);
-    if buffer.len() > limit {
-        buffer.drain(..buffer.len() - limit);
-    }
-    String::from_utf8_lossy(&buffer).into_owned()
 }
 
 fn sanitize(value: &str) -> String {

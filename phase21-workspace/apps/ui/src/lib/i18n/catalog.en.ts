@@ -1940,6 +1940,14 @@ export const enCatalog = {
   'assistant.fault.generationFailed': 'Generation failed.',
   'assistant.fault.transport': 'Service did not answer.',
   'assistant.cancelled': 'Cancelled',
+  'repair.stopSafely': 'Stop at the first safe point',
+  'repair.stopRequested': 'Stop requested. Windows may need to finish the current step before it can stop safely.',
+  'repair.executionStarted': 'Started {started}.',
+  'tech.repair.stoppedAfterChange': 'The repair stopped after changes began. Run a new check before relying on this PC.',
+  'tech.repair.timeLimit': 'The repair exceeded its time limit. The current step has exited, but its result must be checked again.',
+  'tech.repair.streamUnreadable': 'Command output could not be read.',
+  'tech.repair.dismMutationOnly': 'DISM completed its changes. Component-store health still needs verification.',
+
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;

@@ -3,6 +3,14 @@
 
 use crate::RepairError;
 
+// ponytail: one process-wide DISM lifecycle; split only if the API supports independent lifetimes.
+static SESSION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn acquire_session() -> crate::Result<std::sync::MutexGuard<'static, ()>> {
+    SESSION.try_lock().map_err(|_| RepairError::ServicingBusy)
+}
+
 /// HRESULT_FROM_WIN32(ERROR_CANCELLED): the owner's cancel event reached the API.
 const E_CANCELLED: u32 = 0x8007_04C7;
 /// CBS_E_SOURCE_MISSING: the files a component-store repair needs are not available locally.
@@ -25,5 +33,19 @@ pub fn restore_error(hresult: i32) -> RepairError {
         ),
         E_CANCELLED => RepairError::RepairStopped,
         code => RepairError::Command(format!("DISM RestoreHealth failed: HRESULT=0x{code:08X}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn dism_sessions_cannot_overlap_and_the_slot_is_released_on_return() {
+        let first = super::acquire_session().expect("first session");
+        assert!(matches!(
+            super::acquire_session(),
+            Err(crate::RepairError::ServicingBusy)
+        ));
+        drop(first);
+        assert!(super::acquire_session().is_ok());
     }
 }

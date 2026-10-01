@@ -1937,4 +1937,12 @@ export const arCatalog = {
   'assistant.fault.generationFailed': 'فشل التوليد.',
   'assistant.fault.transport': 'لم تُجب الخدمة.',
   'assistant.cancelled': 'أُلغي',
+  'repair.stopSafely': 'إيقاف عند أول نقطة آمنة',
+  'repair.stopRequested': 'طُلب الإيقاف. قد يحتاج Windows إلى إكمال الخطوة الحالية قبل التوقف بأمان.',
+  'repair.executionStarted': 'بدأ عند {started}.',
+  'tech.repair.stoppedAfterChange': 'توقف الإصلاح بعد بدء التغييرات. شغّل فحصًا جديدًا قبل الاعتماد على حالة الجهاز.',
+  'tech.repair.timeLimit': 'تجاوز الإصلاح مهلته. انتهت الخطوة الحالية، لكن يلزم التحقق من نتيجتها مجددًا.',
+  'tech.repair.streamUnreadable': 'تعذّرت قراءة خرج الأمر.',
+  'tech.repair.dismMutationOnly': 'أكمل DISM تغييراته. ما زالت صحة مخزن المكونات تحتاج إلى تحقق.',
+
 } satisfies Record<MessageKey, string>;

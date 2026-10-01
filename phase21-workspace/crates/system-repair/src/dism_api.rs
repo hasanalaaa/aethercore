@@ -63,6 +63,7 @@ unsafe extern "system" {
 struct CancelWatcher {
     event: OwnedHandle,
     done: Arc<AtomicBool>,
+    timed_out: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -74,16 +75,17 @@ impl CancelWatcher {
         );
         let raw = event.get().0 as isize;
         let done = Arc::new(AtomicBool::new(false));
-        let (thread_done, cancel) = (done.clone(), cancel.clone());
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let (thread_done, cancel, expired) = (done.clone(), cancel.clone(), timed_out.clone());
         let began = std::time::Instant::now();
         let thread = std::thread::Builder::new()
             .name("aether-dism-cancel".into())
             .spawn(move || {
                 while !thread_done.load(Ordering::SeqCst) {
                     // The owner's cancel, or the deadline: either raises DISM's own cancel event, once.
-                    if cancel.load(Ordering::SeqCst)
-                        || deadline.is_some_and(|limit| began.elapsed() >= limit)
-                    {
+                    let passed_deadline = deadline.is_some_and(|limit| began.elapsed() >= limit);
+                    if cancel.load(Ordering::SeqCst) || passed_deadline {
+                        expired.store(passed_deadline, Ordering::SeqCst);
                         // SAFETY: the event is closed only after this thread joins (`Drop`).
                         let _ = unsafe { SetEvent(HANDLE(raw as *mut c_void)) };
                         return;
@@ -95,6 +97,7 @@ impl CancelWatcher {
         Ok(Self {
             event,
             done,
+            timed_out,
             thread: Some(thread),
         })
     }
@@ -151,6 +154,7 @@ fn check_image_health(
     title: &str,
     cancel: Option<&Arc<AtomicBool>>,
 ) -> Result<RepairCheck> {
+    let _session_guard = dism::acquire_session()?;
     let mut lifecycle = DismLifecycle {
         initialized: false,
         session: 0,
@@ -252,18 +256,21 @@ const RESTORE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2 *
 /// API's own progress and stopping through its cancel event when the owner cancels or the deadline
 /// passes. The API returning success is mutation evidence only; the plan still verifies afterwards.
 pub fn restore_online_image_health(control: &mut RepairControl<'_>) -> Result<RepairCheck> {
-    struct Sink<'a>(&'a mut dyn FnMut(Option<u32>));
+    struct Sink<'a>(std::sync::Mutex<&'a mut (dyn FnMut(Option<u32>) + Send)>);
 
     // A callback must not panic across the FFI boundary or touch anything shared: it forwards the
     // percent (or `None` when the API gives no total) to the coordinator's live telemetry.
     unsafe extern "system" fn on_progress(current: u32, total: u32, user_data: *mut c_void) {
         // SAFETY: `user_data` is the `Sink` below, alive for the whole `DismRestoreImageHealth` call.
-        let sink = unsafe { &mut *(user_data as *mut Sink<'_>) };
+        let sink = unsafe { &*(user_data as *const Sink<'_>) };
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            (sink.0)(dism::progress_percent(current, total));
+            if let Ok(mut progress) = sink.0.try_lock() {
+                progress(dism::progress_percent(current, total));
+            }
         }));
     }
 
+    let _session_guard = dism::acquire_session()?;
     let mut lifecycle = DismLifecycle {
         initialized: false,
         session: 0,
@@ -295,7 +302,7 @@ pub fn restore_online_image_health(control: &mut RepairControl<'_>) -> Result<Re
 
     (control.progress)(None);
     let watcher = CancelWatcher::start(control.cancel, Some(RESTORE_DEADLINE))?;
-    let mut sink = Sink(&mut *control.progress);
+    let mut sink = Sink(std::sync::Mutex::new(&mut *control.progress));
     let hr = unsafe {
         DismRestoreImageHealth(
             lifecycle.session,
@@ -307,7 +314,14 @@ pub fn restore_online_image_health(control: &mut RepairControl<'_>) -> Result<Re
             &mut sink as *mut Sink<'_> as *mut c_void,
         )
     };
+    let timed_out = watcher.timed_out.load(Ordering::SeqCst);
     drop(watcher);
+    if timed_out {
+        return Err(RepairError::RepairTimedOut);
+    }
+    if control.cancel.load(Ordering::SeqCst) {
+        return Err(RepairError::RepairStopped);
+    }
     if hr != S_OK {
         return Err(dism::restore_error(hr));
     }

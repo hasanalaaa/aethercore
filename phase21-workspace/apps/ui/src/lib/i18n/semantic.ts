@@ -317,6 +317,12 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Diagnostic scan stopped because an internal worker boundary failed.':'tech.warning.diagnosticWorker',
   'Durable mutation boundary crossed.':'tech.repair.mutationBoundary',
   'the repair was cancelled before any change was made':'tech.repair.cancelledBeforeChange',
+  'the repair was stopped after changes had begun; run a new check before relying on this PC':'tech.repair.stoppedAfterChange',
+  'the repair exceeded its time limit; the current step has exited, but its result must be checked again':'tech.repair.timeLimit',
+  'Command output could not be read.':'tech.repair.streamUnreadable',
+  'Windows could not find the source files a component-store repair needs (HRESULT 0x800F081F).':'tech.repair.sourceMissing',
+  'DISM RestoreHealth completed. This is mutation evidence only; component-store health must still be verified.':'tech.repair.dismMutationOnly',
+
   'This check did not finish in time and was stopped; its result is unknown.':'tech.repair.checkTimedOut',
   'An earlier attempt at this check is still running, so it was not started again; its result is unknown.':'tech.repair.checkStillRunning',
   'This check stopped without an answer; its result is unknown.':'tech.repair.checkNoAnswer',

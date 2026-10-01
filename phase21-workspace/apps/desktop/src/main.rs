@@ -691,6 +691,19 @@ async fn start_system_repair(plan_id: String) -> Result<v1::SystemRepairStatus, 
 }
 
 #[command]
+async fn cancel_system_repair(plan_id: String) -> Result<Option<v1::SystemRepairStatus>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resp = request(request::Payload::CancelSystemRepair(
+            v1::CancelSystemRepairRequest { plan_id },
+        ))
+        .map_err(|e| e.to_string())?;
+        extract_system_repair_status(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
 async fn get_system_repair_status(
     plan_id: String,
 ) -> Result<Option<v1::SystemRepairStatus>, String> {
@@ -3082,6 +3095,7 @@ fn main() {
             cancel_repair_assessment,
             create_system_repair_plan,
             start_system_repair,
+            cancel_system_repair,
             get_system_repair_status,
             start_cleanup_scan,
             get_cleanup_snapshot,

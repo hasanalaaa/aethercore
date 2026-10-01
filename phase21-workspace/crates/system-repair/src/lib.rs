@@ -42,6 +42,10 @@ pub enum RepairError {
         "the repair was stopped after changes had begun; run a new check before relying on this PC"
     )]
     RepairStopped,
+    #[error(
+        "the repair exceeded its time limit; the current step has exited, but its result must be checked again"
+    )]
+    RepairTimedOut,
     #[error("repair assessment is not ready")]
     AssessmentNotReady,
     #[error("repair assessment is stale")]
@@ -186,7 +190,7 @@ pub struct RepairControl<'a> {
     /// stop safely (the DISM API's cancel event); a stop after changes began needs recovery.
     pub cancel: &'a Arc<AtomicBool>,
     /// The running tool's own progress, from its callback: `None` when it cannot say.
-    pub progress: &'a mut dyn FnMut(Option<u32>),
+    pub progress: &'a mut (dyn FnMut(Option<u32>) + Send),
 }
 
 pub trait RepairPlatform: Send + Sync + 'static {
@@ -252,6 +256,7 @@ pub(crate) fn trim_to_tail(detail: &mut String, limit: usize) {
 pub mod bounded;
 pub mod cbs;
 pub mod dism;
+mod process;
 
 #[cfg(windows)]
 mod dism_api;
@@ -546,10 +551,9 @@ impl RepairCoordinator {
         Ok(current)
     }
 
-    /// P78-03: asks the owner's running repair plan not to cross the mutation barrier. Before the
-    /// barrier the repair stops with nothing changed; after it this stops nothing, because the
-    /// running tool cannot be stopped yet (P85) and a repair reported as cancelled while it runs
-    /// would be a guess. Another owner's or an unknown plan is refused; a plan that is not the
+    /// Asks the owner's running repair plan to stop at its first safe boundary. Before mutation
+    /// nothing changes; afterwards the servicing lease stays held until the current tool returns,
+    /// and no subsequent step starts. A stopped mutation remains unverified. Another owner's or an unknown plan is refused; a plan that is not the
     /// running one is left as it is, so an older plan's id cannot cancel the one that replaced it.
     pub fn cancel_repair(
         &self,
@@ -1493,6 +1497,11 @@ fn run_worker(
         );
     }
 
+    // A tool may finish successfully after declining cancellation. Stop the workflow here;
+    // another mutation or verification is never started on a cancelled plan.
+    if cancel.load(Ordering::SeqCst) {
+        return fail_repair(engine, db, plan_id, RepairError::RepairStopped);
+    }
     engine.transition(
         plan_id,
         PlanState::Executing,

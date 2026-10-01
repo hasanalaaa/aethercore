@@ -903,7 +903,7 @@ fn a_repair_cancelled_before_the_barrier_never_crosses_it() {
 /// cancel after the barrier stops nothing (a real stop of the running tool is P85) - the repair
 /// finishes and is verified as it would have been.
 #[test]
-fn a_stale_plan_id_and_a_cancel_after_the_barrier_stop_nothing() {
+fn a_stale_plan_id_stops_nothing_and_a_current_cancel_stops_at_the_next_boundary() {
     let root = temp_root("repair-cancel-edges");
     std::fs::create_dir_all(&root).expect("temp root");
     let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
@@ -940,9 +940,9 @@ fn a_stale_plan_id_and_a_cancel_after_the_barrier_stop_nothing() {
     platform
         .release
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    let status = wait_terminal(&coordinator, &past, "Completed");
+    let status = wait_terminal(&coordinator, &past, "Failed");
     assert!(
-        status.mutation_started && !status.recovery_required,
+        status.mutation_started && status.recovery_required,
         "{status:?}"
     );
     let _ = std::fs::remove_dir_all(root);
