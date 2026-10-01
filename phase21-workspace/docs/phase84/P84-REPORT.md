@@ -100,6 +100,28 @@ The five-package Mac check (`driver-backup`, `driver-install`, `driver-hub`,
 `maintenance-service`, `pc-intelligence`, locked, jobs=2) passed after the fix.
 Full CI at the integration head remains the merge gate; its receipt belongs to the PR.
 
+### Execution recovery: retain all four leased read routes
+
+PR #95's first CI run exposed an obsolete source token in the gate self-test and
+`service_routes_use_leased_read_start`: both counted three routes rather than four.
+At `32cac95`, driver discovery still acquired and transferred its `ReadBudgetLease`,
+but P84 added `search_scope(&request)` as its third argument. Before this fix,
+`test_gate_module_reader.py` failed with `got 3, wanted 4`, and the recursive audit
+failed only that check (120 checks). The matcher now counts both complete call
+shapes, retains the required total of four, requires exactly one request-scoped
+driver call, and retains the leased assessment assertion. No route or lease policy
+changed; neither the mutation assertion nor the service SID checks were changed.
+
+The module-reader self-test now checks deletion, duplication, a changed owner,
+a missing or changed lease, and an unconfirmed online scope against the real router.
+The audit's actual condition was also evaluated against those six negative controls
+and a missing assessment; each failed closed, while the original router passed.
+The complete CI gate-self-test list plus `test_ci_gates.py` passed after the updated
+source was sealed. The recursive audit passed 120/120, Zenith adversarial 35/35,
+enterprise adversarial 88/88, and localization parity passed. `static_validate.py`
+passed 349 checks; its optional `parse_yaml` measurement remained unavailable.
+Full native CI at the new exact head is still required before integration.
+
 - **D2 and D14.** The empty request reads the local cache. Online requires a confirmation that names Microsoft's service or the managed server, and holds for one scan. The router binds the scope to the caller's own request, so no confirmation is stored or reused. The install-time WUA access after approval is unchanged.
 - **D13.** No `ProblemStatus` wire field was needed.
 - **D15.** A downgrade is never recommended or selectable. The consent path for a deliberate downgrade was **not built**: it is closed as deferred, because no recommendation makes it part of this release.
