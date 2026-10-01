@@ -181,6 +181,110 @@ pub fn compose_evidence_pack(db: &Database, owner_principal_key: &str) -> TypedE
     pack
 }
 
+// Fresh current-state observations expire rather than silently becoming present-tense facts.
+const CURRENT_EVIDENCE_MAX_AGE_MS: i64 = 15 * 60_000;
+fn current_observation(observed: i64, now: i64) -> bool {
+    observed > 0
+        && now
+            .checked_sub(observed)
+            .is_some_and(|age| (0..=CURRENT_EVIDENCE_MAX_AGE_MS).contains(&age))
+}
+
+/// Both assistant and insights use these owner-scoped readers; asking never starts a scan.
+pub fn compose_current_evidence_pack(
+    db: &Database,
+    owner: &str,
+    diagnostics: &aethercore_diagnostic_engine::DiagnosticEngine,
+) -> TypedEvidencePack {
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut pack = TypedEvidencePack::default();
+    let snapshot = diagnostics
+        .snapshot_for_owner(owner)
+        .ok()
+        .filter(|snapshot| !snapshot.scan_id.is_empty())
+        .or_else(|| {
+            db.latest_diagnostic_snapshot_for_owner(owner)
+                .ok()
+                .flatten()
+                .and_then(|row| {
+                    serde_json::from_str::<aethercore_diagnostic_engine::DiagnosticsSnapshot>(
+                        &row.snapshot_json,
+                    )
+                    .ok()
+                })
+        });
+    if let Some(snapshot) = snapshot {
+        append_diagnostics(&mut pack, &snapshot, now);
+    }
+    let history = compose_evidence_pack(db, owner);
+    for item in history.items {
+        pack.push(item);
+    }
+    for proposition in history.propositions {
+        pack.push_fact(proposition.citation, proposition.fact);
+    }
+    pack
+}
+
+fn append_diagnostics(
+    pack: &mut TypedEvidencePack,
+    snapshot: &aethercore_diagnostic_engine::DiagnosticsSnapshot,
+    now: i64,
+) {
+    use aethercore_diagnostic_engine::ScanState;
+    if !matches!(snapshot.state, ScanState::Ready | ScanState::Partial)
+        || !current_observation(snapshot.completed_unix_ms, now)
+    {
+        return;
+    }
+    let mut cards = snapshot
+        .cards
+        .iter()
+        .filter(|card| matches!(card.severity.as_str(), "ActionRequired" | "Attention"))
+        .collect::<Vec<_>>();
+    cards.sort_by_key(|card| card.severity != "ActionRequired");
+    for card in cards.into_iter().take(4) {
+        let citation = Citation {
+            evidence_id: format!("{}:{}", snapshot.scan_id, card.card_id),
+            surface: EvidenceSurface::Diagnostics,
+        };
+        pack.push(EvidenceItem {
+            evidence_id: citation.evidence_id.clone(),
+            surface: citation.surface,
+            detail: format!(
+                "diagnostic finding severity {} observedUnixMs {}",
+                card.severity, snapshot.completed_unix_ms
+            ),
+        });
+        pack.push_fact_at(
+            citation,
+            Fact::DiagnosticAttention {
+                action_required: card.severity == "ActionRequired",
+            },
+            snapshot.completed_unix_ms,
+        );
+    }
+    if snapshot.state == ScanState::Partial || !snapshot.provider_faults.is_empty() {
+        let citation = Citation {
+            evidence_id: format!("{}:coverage", snapshot.scan_id),
+            surface: EvidenceSurface::Diagnostics,
+        };
+        pack.push(EvidenceItem {
+            evidence_id: citation.evidence_id.clone(),
+            surface: citation.surface,
+            detail: format!(
+                "diagnostic evidence incomplete observedUnixMs {}",
+                snapshot.completed_unix_ms
+            ),
+        });
+        pack.push_fact_at(
+            citation,
+            Fact::DiagnosticsIncomplete,
+            snapshot.completed_unix_ms,
+        );
+    }
+}
+
 /// The owner's detected recurrence patterns, built the way the timeline page
 /// builds them (`timeline.rs`): the service's own clock is the freshness
 /// watermark, so a future-stamped row can neither order nor recur. An
@@ -210,6 +314,7 @@ pub struct IntelligenceCoordinator {
     db: Arc<Database>,
     selector: Arc<ReasonerSelector>,
     pub session: Arc<EphemeralInsights>,
+    diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
 }
 
 impl IntelligenceCoordinator {
@@ -218,9 +323,11 @@ impl IntelligenceCoordinator {
     pub fn new(
         db: Arc<Database>,
         model_reasoner: Option<Box<dyn aethercore_intelligence_core::LocalReasoner>>,
+        diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
     ) -> Self {
         Self {
             db,
+            diagnostics,
             selector: Arc::new(ReasonerSelector::new(model_reasoner)),
             session: Arc::new(EphemeralInsights::default()),
         }
@@ -249,7 +356,11 @@ impl IntelligenceCoordinator {
         question: &str,
         locale: Locale,
     ) -> Result<v1::InsightsResponse, IntelligenceError> {
-        let pack = compose_evidence_pack(self.db.as_ref(), owner_principal_key);
+        let pack = compose_current_evidence_pack(
+            self.db.as_ref(),
+            owner_principal_key,
+            self.diagnostics.as_ref(),
+        );
 
         // Empty evidence → typed empty response; no inference call is made.
         if pack.items.is_empty() {
@@ -288,6 +399,7 @@ impl IntelligenceCoordinator {
                             EvidenceSurface::TimelinePattern => "timelinePattern".into(),
                             EvidenceSurface::MaintenanceHistory => "maintenanceHistory".into(),
                             EvidenceSurface::SecurityFinding => "securityFinding".into(),
+                            EvidenceSurface::Diagnostics => "diagnostics".into(),
                         },
                     })
                     .collect(),
@@ -519,6 +631,66 @@ mod tests {
         );
         assert!(
             compose_evidence_pack(&db, "owner-b")
+                .propositions
+                .is_empty()
+        );
+        let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn current_diagnostic_facts_are_owned_fresh_and_prioritized() {
+        use aethercore_diagnostic_engine::{DiagnosticCard, DiagnosticsSnapshot, ScanState};
+        let (db, path) = journal_db(&[]);
+        let db = Arc::new(db);
+        let diagnostics = aethercore_diagnostic_engine::DiagnosticEngine::new(db.clone());
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut snapshot = DiagnosticsSnapshot {
+            scan_id: "fresh-diag".into(),
+            state: ScanState::Ready,
+            completed_unix_ms: now,
+            cards: vec![DiagnosticCard {
+                card_id: "disk-risk".into(),
+                severity: "ActionRequired".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let save = |snapshot: &DiagnosticsSnapshot| {
+            db.save_diagnostic_snapshot(&aethercore_persistence::DiagnosticSnapshotRecord {
+                snapshot_id: snapshot.scan_id.clone(),
+                owner_principal_key: "owner-a".into(),
+                state: snapshot.state.as_str().into(),
+                collected_unix_ms: snapshot.completed_unix_ms,
+                snapshot_json: serde_json::to_string(snapshot).unwrap(),
+                warning_count: 0,
+            })
+            .unwrap()
+        };
+        save(&snapshot);
+        let pack = compose_current_evidence_pack(&db, "owner-a", &diagnostics);
+        assert!(
+            pack.items
+                .first()
+                .is_some_and(|item| item.evidence_id.contains("disk-risk")),
+            "{pack:?}"
+        );
+        assert!(!pack.propositions.is_empty());
+        assert!(
+            compose_current_evidence_pack(&db, "owner-b", &diagnostics)
+                .items
+                .is_empty()
+        );
+        snapshot.completed_unix_ms = now - 24 * DAY_MS;
+        save(&snapshot);
+        assert!(
+            compose_current_evidence_pack(&db, "owner-a", &diagnostics)
+                .propositions
+                .is_empty()
+        );
+        snapshot.completed_unix_ms = now;
+        snapshot.state = ScanState::Failed;
+        save(&snapshot);
+        assert!(
+            compose_current_evidence_pack(&db, "owner-a", &diagnostics)
                 .propositions
                 .is_empty()
         );

@@ -253,6 +253,8 @@ fn fallback_facts(
                 crate::model::Fact::PlanCompleted { .. }
                 | crate::model::Fact::PlanCancelled { .. } => maintenance,
                 crate::model::Fact::RepeatedFailure { .. } => recurrence,
+                crate::model::Fact::DiagnosticAttention { .. }
+                | crate::model::Fact::DiagnosticsIncomplete => false,
             })
             .take(4)
             .map(|(index, _)| (index + 1).to_string())

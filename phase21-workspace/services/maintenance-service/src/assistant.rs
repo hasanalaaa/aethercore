@@ -97,14 +97,20 @@ pub struct AssistantCoordinator {
     db: Arc<Database>,
     engine: Arc<AssistantEngine>,
     live: Arc<LiveTurns>,
+    diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
 }
 
 impl AssistantCoordinator {
     /// `reasoner` is `Some` only when the embedded artifact passed hash pinning
     /// at startup AND the build has the local-model feature (I5 fail-closed).
-    pub fn new(db: Arc<Database>, reasoner: Option<Box<dyn StreamingReasoner>>) -> Self {
+    pub fn new(
+        db: Arc<Database>,
+        reasoner: Option<Box<dyn StreamingReasoner>>,
+        diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
+    ) -> Self {
         Self {
             db,
+            diagnostics,
             engine: Arc::new(AssistantEngine::new(reasoner)),
             live: Arc::new(LiveTurns::default()),
         }
@@ -117,7 +123,11 @@ impl AssistantCoordinator {
     /// What the assistant can answer from, right now. The drawer's empty state
     /// is a count of these, not a list of capabilities.
     pub fn evidence_pack(&self, owner: &str) -> TypedEvidencePack {
-        crate::intelligence::compose_evidence_pack(self.db.as_ref(), owner)
+        crate::intelligence::compose_current_evidence_pack(
+            self.db.as_ref(),
+            owner,
+            self.diagnostics.as_ref(),
+        )
     }
 
     /// Starts a turn.
@@ -265,6 +275,7 @@ fn surface_name(surface: aethercore_intelligence_core::EvidenceSurface) -> &'sta
         S::TimelinePattern => "timelinePattern",
         S::MaintenanceHistory => "maintenanceHistory",
         S::SecurityFinding => "securityFinding",
+        S::Diagnostics => "diagnostics",
     }
 }
 

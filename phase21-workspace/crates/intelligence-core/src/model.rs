@@ -59,6 +59,8 @@ pub enum EvidenceSurface {
     /// Phase 32: security-audit finding (id = finding id + rule code anchor).
     /// Citation-resolvable against the audit report's findings_json lane.
     SecurityFinding,
+    /// Owner-scoped diagnostic snapshot observations.
+    Diagnostics,
 }
 
 /// One advisory insight. THE ONLY output type of the reasoner (I1).
@@ -174,11 +176,39 @@ pub enum Fact {
     PlanCompleted { domain: MaintenanceDomain },
     PlanCancelled { domain: MaintenanceDomain },
     RepeatedFailure { occurrences: u32 },
+    DiagnosticAttention { action_required: bool },
+    DiagnosticsIncomplete,
 }
 
 impl Fact {
     pub fn sentence(&self, locale: Locale) -> String {
         match (self, locale) {
+            (
+                Self::DiagnosticAttention {
+                    action_required: true,
+                },
+                Locale::En,
+            ) => "Diagnostics recorded a finding requiring action".into(),
+            (
+                Self::DiagnosticAttention {
+                    action_required: true,
+                },
+                Locale::Ar,
+            ) => "سجّل التشخيص نتيجة تتطلب إجراءً".into(),
+            (
+                Self::DiagnosticAttention {
+                    action_required: false,
+                },
+                Locale::En,
+            ) => "Diagnostics recorded a finding requiring attention".into(),
+            (
+                Self::DiagnosticAttention {
+                    action_required: false,
+                },
+                Locale::Ar,
+            ) => "سجّل التشخيص نتيجة تتطلب الانتباه".into(),
+            (Self::DiagnosticsIncomplete, Locale::En) => "Diagnostic evidence is incomplete".into(),
+            (Self::DiagnosticsIncomplete, Locale::Ar) => "أدلة التشخيص غير مكتملة".into(),
             (Self::PlanCompleted { domain }, Locale::En) => {
                 format!("A {} maintenance plan completed", domain.name(locale))
             }
@@ -206,6 +236,8 @@ impl Fact {
 pub struct Proposition {
     pub citation: Citation,
     pub fact: Fact,
+    #[serde(default)]
+    pub observed_unix_ms: Option<i64>,
 }
 
 /// Bounded, read-only evidence pack assembled from PUBLIC read APIs of existing
@@ -252,6 +284,9 @@ impl TypedEvidencePack {
             Fact::PlanCompleted { .. } | Fact::PlanCancelled { .. } => {
                 citation.surface == EvidenceSurface::MaintenanceHistory
             }
+            Fact::DiagnosticAttention { .. } | Fact::DiagnosticsIncomplete => {
+                citation.surface == EvidenceSurface::Diagnostics
+            }
             Fact::RepeatedFailure { occurrences } => {
                 citation.surface == EvidenceSurface::TimelinePattern && occurrences >= 2
             }
@@ -260,7 +295,21 @@ impl TypedEvidencePack {
         {
             return false;
         }
-        self.propositions.push(Proposition { citation, fact });
+        self.propositions.push(Proposition {
+            citation,
+            fact,
+            observed_unix_ms: None,
+        });
+        true
+    }
+
+    pub fn push_fact_at(&mut self, citation: Citation, fact: Fact, observed_unix_ms: i64) -> bool {
+        if observed_unix_ms <= 0 || !self.push_fact(citation, fact) {
+            return false;
+        }
+        if let Some(proposition) = self.propositions.last_mut() {
+            proposition.observed_unix_ms = Some(observed_unix_ms);
+        }
         true
     }
 
@@ -283,6 +332,7 @@ impl TypedEvidencePack {
                 EvidenceSurface::TimelinePattern => 2,
                 EvidenceSurface::MaintenanceHistory => 3,
                 EvidenceSurface::SecurityFinding => 4,
+                EvidenceSurface::Diagnostics => 5,
             }]);
             hasher.update(item.detail.as_bytes());
         }
