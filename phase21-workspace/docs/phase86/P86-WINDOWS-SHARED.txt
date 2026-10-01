@@ -1,0 +1,29 @@
+Source head: 2f01d4c634db2e471e633f7a127a02d4c0e3db04
+Tracked source overlay: none
+Raw log SHA256: afdaf88724b2be4d8b9fcc53eca03e5ca9b83c83ac356c7c9f2146bd959dbe1b
+P86 cold verify_ms=33827 load_ms=1817
+P86 sample locale=En index=0 generation_ms=1031 validation_us=54 accepted=true
+P86 sample locale=En index=1 generation_ms=964 validation_us=31 accepted=true
+P86 sample locale=En index=2 generation_ms=944 validation_us=29 accepted=true
+P86 sample locale=En index=3 generation_ms=930 validation_us=33 accepted=true
+P86 sample locale=En index=4 generation_ms=939 validation_us=30 accepted=true
+P86 sample locale=En index=5 generation_ms=937 validation_us=27 accepted=true
+P86 sample locale=En index=6 generation_ms=931 validation_us=32 accepted=true
+P86 sample locale=En index=7 generation_ms=952 validation_us=30 accepted=true
+P86 sample locale=En index=8 generation_ms=1092 validation_us=29 accepted=true
+P86 sample locale=En index=9 generation_ms=1051 validation_us=29 accepted=true
+P86 warm locale=En n=10 p50_ms=944 p95_ms=1092
+P86 sample locale=Ar index=0 generation_ms=929 validation_us=32 accepted=true
+P86 sample locale=Ar index=1 generation_ms=943 validation_us=32 accepted=true
+P86 sample locale=Ar index=2 generation_ms=977 validation_us=31 accepted=true
+P86 sample locale=Ar index=3 generation_ms=915 validation_us=31 accepted=true
+P86 sample locale=Ar index=4 generation_ms=941 validation_us=30 accepted=true
+P86 sample locale=Ar index=5 generation_ms=918 validation_us=29 accepted=true
+P86 sample locale=Ar index=6 generation_ms=921 validation_us=30 accepted=true
+P86 sample locale=Ar index=7 generation_ms=920 validation_us=29 accepted=true
+P86 sample locale=Ar index=8 generation_ms=921 validation_us=30 accepted=true
+P86 sample locale=Ar index=9 generation_ms=912 validation_us=31 accepted=true
+P86 warm locale=Ar n=10 p50_ms=921 p95_ms=977
+P86 insight locale=En generation_ms=912 n=1 engine=localModel
+P86 insight locale=Ar generation_ms=918 n=1 engine=localModel
+P86 schema rejected=0/20 pre_cancel_tokens=0

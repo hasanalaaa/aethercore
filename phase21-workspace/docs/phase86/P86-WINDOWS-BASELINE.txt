@@ -1,0 +1,27 @@
+Source head: 5bbe3fe894dbf53123142141bc4e02fff8412193
+Tracked source overlay: none
+Raw log SHA256: f52287f5d9a3302e5418152f73b34df31066c50636e1eb30f09ecd632874f595
+P86 cold verify_ms=34205 load_ms=1665
+P86 sample locale=En index=0 generation_ms=1043 validation_us=66 accepted=true
+P86 sample locale=En index=1 generation_ms=960 validation_us=26 accepted=true
+P86 sample locale=En index=2 generation_ms=943 validation_us=27 accepted=true
+P86 sample locale=En index=3 generation_ms=943 validation_us=28 accepted=true
+P86 sample locale=En index=4 generation_ms=943 validation_us=26 accepted=true
+P86 sample locale=En index=5 generation_ms=956 validation_us=28 accepted=true
+P86 sample locale=En index=6 generation_ms=961 validation_us=33 accepted=true
+P86 sample locale=En index=7 generation_ms=963 validation_us=30 accepted=true
+P86 sample locale=En index=8 generation_ms=967 validation_us=29 accepted=true
+P86 sample locale=En index=9 generation_ms=970 validation_us=30 accepted=true
+P86 warm locale=En n=10 p50_ms=960 p95_ms=1043
+P86 sample locale=Ar index=0 generation_ms=960 validation_us=29 accepted=true
+P86 sample locale=Ar index=1 generation_ms=1021 validation_us=31 accepted=true
+P86 sample locale=Ar index=2 generation_ms=994 validation_us=26 accepted=true
+P86 sample locale=Ar index=3 generation_ms=946 validation_us=27 accepted=true
+P86 sample locale=Ar index=4 generation_ms=922 validation_us=27 accepted=true
+P86 sample locale=Ar index=5 generation_ms=918 validation_us=28 accepted=true
+P86 sample locale=Ar index=6 generation_ms=909 validation_us=28 accepted=true
+P86 sample locale=Ar index=7 generation_ms=926 validation_us=27 accepted=true
+P86 sample locale=Ar index=8 generation_ms=925 validation_us=27 accepted=true
+P86 sample locale=Ar index=9 generation_ms=922 validation_us=27 accepted=true
+P86 warm locale=Ar n=10 p50_ms=925 p95_ms=1021
+P86 schema rejected=0/20 pre_cancel_tokens=0

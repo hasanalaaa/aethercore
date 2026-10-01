@@ -334,19 +334,23 @@ fn append_repair_facts(
 ) {
     use aethercore_intelligence_core::model::RepairStatus as R;
     use aethercore_system_repair::FactState as S;
-    for fact in facts
+    let mut current = facts
         .iter()
         .filter(|fact| current_observation(fact.observed_unix_ms, now))
-        .take(8)
-    {
-        let status = match fact.state {
-            S::CorruptionDetected => R::Corruption,
-            S::RepairFailed | S::Failure => R::Failed,
-            S::SourceRequired => R::SourceRequired,
-            S::RebootRequired => R::RebootRequired,
-            S::Repairable | S::UnexpectedConfiguration | S::Degraded => R::Attention,
-            _ => continue,
-        };
+        .filter_map(|fact| {
+            let (priority, status) = match fact.state {
+                S::CorruptionDetected => (0, R::Corruption),
+                S::RepairFailed | S::Failure => (0, R::Failed),
+                S::SourceRequired => (1, R::SourceRequired),
+                S::RebootRequired => (2, R::RebootRequired),
+                S::Repairable | S::UnexpectedConfiguration | S::Degraded => (3, R::Attention),
+                _ => return None,
+            };
+            Some((priority, fact, status))
+        })
+        .collect::<Vec<_>>();
+    current.sort_by_key(|(priority, _, _)| *priority);
+    for (_, fact, status) in current.into_iter().take(8) {
         let citation = Citation {
             evidence_id: format!("{assessment_id}:{}", fact.id),
             surface: EvidenceSurface::RepairDiagnosis,
@@ -925,10 +929,37 @@ mod tests {
                 .sentence(Locale::En)
                 .contains("failed")
         );
+        let mut healthy = fact.clone();
+        healthy.state = FactState::Healthy;
+        let mut ordered = vec![healthy; 8];
+        ordered.push(fact.clone());
+        append_repair_facts(&mut pack, "assessment-priority", &ordered, now);
+        assert_eq!(
+            pack.propositions.len(),
+            2,
+            "healthy items must not consume the problem-fact cap"
+        );
+        let mut warnings = (0..8)
+            .map(|index| {
+                let mut warning = fact.clone();
+                warning.id = format!("warning-{index}");
+                warning.state = FactState::Degraded;
+                warning
+            })
+            .collect::<Vec<_>>();
+        warnings.push(fact.clone());
+        let mut bounded = TypedEvidencePack::default();
+        append_repair_facts(&mut bounded, "assessment-bounded", &warnings, now);
+        assert_eq!(bounded.propositions.len(), 8);
+        assert_eq!(
+            bounded.propositions[0].citation.evidence_id,
+            "assessment-bounded:repair-failure"
+        );
+        assert_eq!(bounded.propositions[0].fact, pack.propositions[0].fact);
         let mut stale = fact;
         stale.observed_unix_ms = now - CURRENT_EVIDENCE_MAX_AGE_MS - 1;
         append_repair_facts(&mut pack, "assessment-old", &[stale], now);
-        assert_eq!(pack.propositions.len(), 1);
+        assert_eq!(pack.propositions.len(), 2);
         let (db, path) = journal_db(&[]);
         db.upsert_care_run(&aethercore_persistence::CareRunRecord {
             run_id: "care-stopped".into(),
@@ -1017,7 +1048,7 @@ mod tests {
                     .unwrap();
                 Ok(vec![
                     aethercore_intelligence_core::Insight::build(
-                        "insight.summary.maintenanceCompleted",
+                        "insight.summary.observation",
                         "A plan completed",
                         aethercore_intelligence_core::InsightConfidence::Moderate,
                         vec![Citation {
