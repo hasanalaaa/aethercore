@@ -554,7 +554,7 @@ export const arCatalog = {
   'cleanup.execution': 'تنفيذ التنظيف ضمن القائمة المسموحة',
   'cleanup.progressLabel': 'تقدم التنظيف',
   'cleanup.progressUnknown': 'التنظيف قيد التنفيذ',
-  'cleanup.reclaimed': 'تم استرداده',
+  'cleanup.reclaimed': 'بايتات الملفات المحذوفة',
   'cleanup.skippedSafely': 'تم تجاوزه بأمان',
   'cleanup.mutation': 'التعديل',
   'cleanup.started': 'بدأ',
@@ -1034,7 +1034,7 @@ export const arCatalog = {
   "tech.cleanup.queued": "تم وضع التنظيف المُراجَع في قائمة الانتظار.",
   "tech.cleanup.preflight": "جارٍ إعادة التحقق من أهداف التنظيف المدرجة في قائمة السماح.",
   "tech.cleanup.executing": "جارٍ حذف العناصر المُراجَعة مع التحقق من المسار النهائي.",
-  "tech.cleanup.verifying": "جارٍ التحقق من سجل التنظيف وإجمالي المساحة المستعادة.",
+  "tech.cleanup.verifying": "جارٍ التحقق من سجل التنظيف وأحجام الملفات المحذوفة.",
   "tech.cleanup.completed": "اكتمل التنظيف المُراجَع. تُركت الملفات المقفلة أو المتغيرة دون مساس.",
   "tech.cleanup.stopped": "توقف التنظيف؛ لن يُعاد تنفيذ أي هدف تلقائيًا.",
   "tech.cleanup.interruptedAfter": "توقف التنظيف بعد بدء الحذف. لم يُعد تنفيذ أي حذف تلقائيًا.",
@@ -1961,4 +1961,5 @@ export const arCatalog = {
 
   'tech.cleanup.skippedUnsafe': 'تُخطّيت الملفات التي تعذّر حذفها بأمان؛ لا تُحسب ضمن المساحة المستردة.',
 
+  'tech.cleanup.skipCauses': 'ملفات متجاوزة لا تُحسب ضمن المحذوف: قيد الاستخدام {inUse}، تغيّرت بعد المعاينة {changed}، روابط صلبة متعددة {links}، فحوص أمان أخرى {other}.',
 } satisfies Record<MessageKey, string>;

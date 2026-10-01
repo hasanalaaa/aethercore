@@ -11,7 +11,7 @@ use std::{
 
 use windows::{
     Win32::{
-        Foundation::{FILETIME, HANDLE},
+        Foundation::{ERROR_LOCK_VIOLATION, ERROR_SHARING_VIOLATION, FILETIME, HANDLE},
         Storage::FileSystem::{
             BY_HANDLE_FILE_INFORMATION, CreateFileW, FILE_ATTRIBUTE_NORMAL,
             FILE_ATTRIBUTE_REPARSE_POINT, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
@@ -70,17 +70,36 @@ impl CleanupPlatform for WindowsCleanupPlatform {
     fn delete_action(&self, action: &CleanupDeleteAction) -> Result<(u64, u64, String)> {
         let mut deleted = 0u64;
         let mut skipped = 0u64;
+        // Stable internal reasons, never localized OS error prose or raw file paths.
+        let mut causes = [0u64; 4]; // in use, changed, multiple links, other safety checks
         for file in &action.files {
             match delete_evidence(file) {
                 Ok(bytes) => deleted = deleted.saturating_add(bytes),
-                Err(_) => skipped = skipped.saturating_add(file.size_bytes),
+                Err(error) => {
+                    skipped = skipped.saturating_add(file.size_bytes);
+                    let cause = match error {
+                        CleanerError::Safety(reason) => match reason.as_str() {
+                            "cleanup target is in use" => 0,
+                            "approved cleanup root identity changed since scan"
+                            | "file size or timestamp changed since cleanup scan"
+                            | "file identity changed since cleanup scan" => 1,
+                            "cleanup target has multiple hard links" => 2,
+                            _ => 3,
+                        },
+                        _ => 3,
+                    };
+                    causes[cause] = causes[cause].saturating_add(1);
+                }
             }
         }
         Ok((
             deleted,
             skipped,
-            if skipped > 0 {
-                "Files that could not be safely removed were skipped; they are not counted as reclaimed.".into()
+            if causes.iter().any(|count| *count > 0) {
+                format!(
+                    "Skipped files (not reclaimed): in use {}, changed since preview {}, multiple hard links {}, other safety checks {}.",
+                    causes[0], causes[1], causes[2], causes[3]
+                )
             } else {
                 format!("{} provider completed", action.provider)
             },
@@ -386,7 +405,7 @@ fn delete_evidence(file: &CleanupFileEvidence) -> Result<u64> {
             None,
         )
     }
-    .map_err(|error| CleanerError::Safety(error.to_string()))?;
+    .map_err(deletion_error)?;
     let guard = OwnedHandle::new(handle);
 
     let final_path = strip_device_prefix(&final_path(handle)?);
@@ -424,10 +443,21 @@ fn delete_evidence(file: &CleanupFileEvidence) -> Result<u64> {
             std::mem::size_of::<FILE_DISPOSITION_INFO>() as u32,
         )
     }
-    .map_err(|error| CleanerError::Safety(error.to_string()))?;
+    .map_err(deletion_error)?;
 
     drop(guard);
     Ok(file.size_bytes)
+}
+
+fn deletion_error(error: windows::core::Error) -> CleanerError {
+    if error.code() == ERROR_SHARING_VIOLATION.to_hresult()
+        || error.code() == ERROR_LOCK_VIOLATION.to_hresult()
+    {
+        CleanerError::Safety("cleanup target is in use".into())
+    } else {
+        // The aggregate summary records the safety failure, without exposing this OS prose.
+        CleanerError::Safety(error.to_string())
+    }
 }
 
 fn reject_path_chain(root: &Path, path: &Path) -> Result<()> {
@@ -541,6 +571,71 @@ mod phase9_tests {
 #[cfg(test)]
 mod p85_tests {
     use super::*;
+    #[test]
+    fn sharing_and_lock_hresult_errors_have_the_same_stable_in_use_reason() {
+        for code in [ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION] {
+            let error = deletion_error(windows::core::Error::from_hresult(code.to_hresult()));
+            assert!(
+                matches!(error, CleanerError::Safety(reason) if reason == "cleanup target is in use")
+            );
+        }
+    }
+
+    #[test]
+    fn skipped_file_causes_are_counted_without_claiming_their_bytes() {
+        let root = std::env::temp_dir().join(format!("aether-p85-causes-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let (guard, final_root) = open_stable_root(&root).unwrap();
+        let names = [
+            "locked.tmp",
+            "hardlink.tmp",
+            "changed.tmp",
+            "unchanged.tmp",
+            "unsafe.tmp",
+        ];
+        let mut files = Vec::new();
+        for name in names {
+            let path = root.join(name);
+            std::fs::write(&path, b"AAAA").unwrap();
+            files.push(evidence_from_handle(&path, &root, &final_root).unwrap());
+        }
+        // Invalid frozen root is an unclassified safety check, never a raw path in the summary.
+        files[4].root = "relative".into();
+        let open = std::fs::File::open(root.join(names[0])).unwrap();
+        std::fs::hard_link(root.join(names[1]), root.join("alias.tmp")).unwrap();
+        std::fs::write(root.join(names[2]), b"CHANGED").unwrap();
+        let action = CleanupDeleteAction {
+            candidate_id: "fixture".into(),
+            scan_id: "fixture".into(),
+            inventory_epoch: 1,
+            provider: "UserTemp".into(),
+            title: "fixture".into(),
+            special_kind: "Files".into(),
+            files,
+            expected_bytes: 20,
+        };
+        let (deleted, skipped, detail) = WindowsCleanupPlatform.delete_action(&action).unwrap();
+        // Close owned fixture handles before any assertion can abort fixture cleanup.
+        drop(open);
+        drop(guard);
+        assert!(names[..3].iter().all(|name| root.join(name).exists()));
+        assert!(root.join(names[4]).exists());
+        assert!(!root.join(names[3]).exists());
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            deleted, 4,
+            "only the unchanged file's logical bytes were deleted"
+        );
+        assert_eq!(
+            skipped, 16,
+            "approved sizes of all four skipped files stay excluded"
+        );
+        assert_eq!(
+            detail,
+            "Skipped files (not reclaimed): in use 1, changed since preview 1, multiple hard links 1, other safety checks 1."
+        );
+    }
+
     #[test]
     fn a_hard_link_added_after_preview_cannot_be_deleted() {
         let root =

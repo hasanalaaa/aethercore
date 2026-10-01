@@ -189,6 +189,7 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Revalidating allowlisted cleanup targets':'tech.cleanup.preflight',
   'Deleting reviewed candidates with final-path validation':'tech.cleanup.executing',
   'Verifying cleanup journal and reclaimed totals':'tech.cleanup.verifying',
+  'Verifying cleanup journal and deleted file sizes':'tech.cleanup.verifying',
   'Reviewed cleanup completed. Locked or changed files were left untouched.':'tech.cleanup.completed',
   'Cleanup stopped; no targets will be replayed automatically.':'tech.cleanup.stopped',
   'Cleanup stopped after deletion began. No deletion was replayed automatically.':'tech.cleanup.interruptedAfter',
@@ -418,6 +419,7 @@ export function localizeOwnedText(value: string, locale: Locale, options: { data
   if ((m = value.match(/^(.+) temporary files$/))) return { text:t('tech.cleanup.userTempTitle',locale,{name:m[1]}),localized:true };
   if ((m = value.match(/^(.+) Direct3D shader cache$/))) return { text:t('tech.cleanup.shaderTitle',locale,{name:m[1]}),localized:true };
   if ((m = value.match(/^(.+) provider completed$/))) return { text:t('tech.cleanup.providerCompleted',locale,{provider:localizeCleanupProvider(m[1],locale)}),localized:true };
+  if ((m = value.match(/^Skipped files \(not reclaimed\): in use (\d+), changed since preview (\d+), multiple hard links (\d+), other safety checks (\d+)\.$/))) return { text:t('tech.cleanup.skipCauses',locale,{inUse:m[1],changed:m[2],links:m[3],other:m[4]}),localized:true };
   if ((m = value.match(/^(.+); skipped (\d+) bytes that changed, were locked, or failed validation$/))) {
     const detail=localizeOwnedText(m[1],locale).text;
     return { text:t('tech.cleanup.itemResult',locale,{detail,bytes:m[2]}),localized:true };

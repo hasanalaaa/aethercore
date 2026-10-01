@@ -1,6 +1,6 @@
 # P85 — supported repair and bounded cleanup
 
-Implementation: task work complete; phase acceptance remains pending the integration commit's full Windows CI and the qualification gaps below. No live repair or cleanup was run on the owner's host.
+Implementation source is available; phase acceptance remains open pending the integration commit's full Windows CI and the qualification gaps below. No live repair or cleanup was run on the owner's host.
 
 ## Changes and evidence
 
@@ -24,7 +24,7 @@ Implementation: task work complete; phase acceptance remains pending the integra
 
 ## Validation
 
-The task checks ran against local source and a dirty-source Windows overlay, not a clean claimed integration head. An exact committed checkout and source-seal check are required next, followed by root-owned phase CI.
+The initial task checks ran against local source and a dirty-source Windows overlay. A separate clean Windows checkout of `855b012` passed the 1572-file workspace and seven-file workflow seals. Root-owned integration CI remains the phase acceptance authority; the follow-up results below are also explicitly source-overlay results.
 
 - macOS: locked tests for cleaner, system-repair, repair-intelligence, maintenance-service and pc-intelligence passed; Clippy all-targets with warnings denied passed for those packages.
 - Windows (two build jobs, fixture-only): cleaner 14 passed, one live inventory test ignored; system-repair 38 passed, one live assessment ignored; repair-intelligence 34 passed. No ignored live test was counted as acceptance evidence.
@@ -39,5 +39,14 @@ The task checks ran against local source and a dirty-source Windows overlay, not
 3. CBS markers are not a stable public verdict API. Concurrent OS servicing attribution remains conservative and may return Unknown. This implementation does not claim an authoritative OS transaction identifier.
 4. Cleanup uses frozen file identity, ancestor reparse checks and an exclusive target deletion handle. It does not claim proof against every parent-directory rename/reparse race; stronger parent-chain ownership needs separate Windows qualification.
 5. Crash evidence is conservatively retained in all cases until incident linkage exists. This is narrower than the eventual review-only resolved-incident category. No new destructive category or retention expansion was added under D21.
-6. Skips are explained as unsafe removal and not counted as reclaimed. Existing wire data does not expose a per-file skip reason. Reclaimed bytes mean the exact removed logical file sizes, not measured physical free-space gain.
+6. Existing per-category detail now exposes deterministic counts of in-use, changed-after-preview, multiple-hardlink and other safety skips. No per-file path/error list or new wire field is claimed. Skipped approved bytes remain excluded. The displayed total is **deleted file bytes**, the exact removed logical file sizes, not measured physical free-space gain.
 7. WinRE enabled/disabled state remains Unknown until a supported locale-independent configuration proof is established. No configuration mutation was introduced.
+
+
+## P85-05 follow-up — explicit skip causes
+
+The existing deletion-action detail carries four stable counts: **in use**, **changed since preview**, **multiple hard links**, and **other safety checks**. Sharing and lock violations are classified by Win32 HRESULT before aggregation; other OS errors and paths are never interpolated into the user-facing summary. Internal file-identity/metadata safety reasons identify changed evidence. No protocol, dependency, destructive eligibility or retention change was introduced.
+
+Red-before: the native mixed deletion-action fixture returned only the generic unsafe-removal sentence; the Arabic UI test returned unavailable text. Green-after: a five-file temporary fixture deletes only the unchanged four-byte file; locked, hardlinked, changed and invalid-root files survive, each cause count is one, and sixteen approved skipped bytes are excluded. Both sharing and lock HRESULT controls pass. Native cleaner: 16 passed, one live inventory test ignored; native Clippy all targets with warnings denied passed. UI cause-count/wrapped-detail and logical-byte-label regressions passed (61/61 source UI tests); localization audit 34/34 passed. Svelte check and production build passed. Further validation is reported with the integration commit rather than inferred from this overlay.
+
+The existing cleanup total label and verification wording now say **deleted file bytes/sizes**, in English and Arabic, rather than implying a physical free-space measurement. The existing per-item detail/result fields persist and display the aggregate cause summary; per-file skip disclosure remains outside the current wire contract.
