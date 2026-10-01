@@ -1061,7 +1061,7 @@ marker(
     ],
 )
 checks["phase8_webview2_no_injectable_url"] = {
-    "ok": "[string]$Url" not in webview_ps and "Invoke-WebRequest" in webview_ps and "https://go.microsoft.com/fwlink/p/?LinkId=2124703" in webview_ps,
+    "ok": "[string]$Url" not in webview_ps and "curl.exe --fail --location" in webview_ps and "--connect-timeout 30 --max-time 120 --retry 2 --retry-max-time 360" in webview_ps and "https://go.microsoft.com/fwlink/p/?LinkId=2124703" in webview_ps,
     "note": "The release script owns the Microsoft bootstrapper URL and verifies Microsoft Authenticode before packaging it.",
 }
 
