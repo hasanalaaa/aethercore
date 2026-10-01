@@ -2,6 +2,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    path::PathBuf,
     sync::{Arc, Mutex, RwLock},
     thread,
 };
@@ -180,6 +181,10 @@ pub type CleanupMutationLease = Box<dyn std::any::Any>;
 
 pub trait CleanupPlatform: Send + Sync + 'static {
     fn scan(&self) -> Result<Vec<CleanupCandidate>>;
+    /// Roots resolved from the calling token by the service; never from request data.
+    fn scan_for_owner(&self, _roots: &[PathBuf]) -> Result<(Vec<CleanupCandidate>, Vec<String>)> {
+        self.scan().map(|candidates| (candidates, Vec::new()))
+    }
     /// Conservative inventory used only by the autonomous scheduler. Implementations may narrow
     /// scope further than the interactive scan to avoid reading profile-specific data.
     fn scan_passive(&self) -> Result<Vec<CleanupCandidate>> {
@@ -345,6 +350,7 @@ impl CleanupEngine {
     pub fn start_scan_with_lease(
         &self,
         owner_principal_key: &str,
+        owner_roots: &[PathBuf],
         lease: ReadBudgetLease,
     ) -> Result<CleanupSnapshot> {
         if !lease.matches(ReadWorkload::CleanupDiscovery) {
@@ -352,12 +358,13 @@ impl CleanupEngine {
                 "read budget lease identity mismatch".into(),
             ));
         }
-        self.start_scan_inner(owner_principal_key, lease)
+        self.start_scan_inner(owner_principal_key, owner_roots.to_vec(), lease)
     }
 
     fn start_scan_inner(
         &self,
         owner_principal_key: &str,
+        owner_roots: Vec<PathBuf>,
         read_budget_lease: ReadBudgetLease,
     ) -> Result<CleanupSnapshot> {
         let scan_id = Uuid::new_v4().to_string();
@@ -395,8 +402,8 @@ impl CleanupEngine {
             .spawn(move || {
                 let _read_budget_lease = read_budget_lease;
                 let completed = now_ms();
-                let next = match platform.scan() {
-                    Ok(candidates) => {
+                let next = match platform.scan_for_owner(&owner_roots) {
+                    Ok((candidates, warnings)) => {
                         let total_reclaimable_bytes = candidates
                             .iter()
                             .map(|candidate| candidate.reclaimable_bytes)
@@ -415,7 +422,7 @@ impl CleanupEngine {
                             total_reclaimable_bytes,
                             total_file_count,
                             candidates,
-                            warnings: Vec::new(),
+                            warnings,
                         }
                     }
                     Err(error) => CleanupSnapshot {

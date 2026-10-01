@@ -38,7 +38,7 @@ fn start_cleanup_scan(
     let lease = budget
         .try_acquire(ReadWorkload::CleanupDiscovery)
         .expect("read budget lease");
-    cleaner.start_scan_with_lease(owner, lease)
+    cleaner.start_scan_with_lease(owner, &[], lease)
 }
 
 #[derive(Clone)]
@@ -501,4 +501,59 @@ fn sql_probe_a_cleanup_whose_journal_write_fails_stays_recoverable() {
     let records = db.recovery_records(20).expect("recovery records");
     assert!(records.iter().any(|r| r.plan_id == plan), "{records:?}");
     let _ = std::fs::remove_dir_all(root);
+}
+
+// P85-05: roots travel with the principal through the actual coordinator worker.
+#[test]
+fn cleanup_scans_only_the_os_roots_of_the_calling_owner() {
+    use std::path::PathBuf;
+    struct Scoped(Mutex<Vec<Vec<PathBuf>>>);
+    impl CleanupPlatform for Scoped {
+        fn scan(&self) -> aethercore_cleaner::Result<Vec<CleanupCandidate>> {
+            panic!("unscoped profile scan");
+        }
+        fn scan_for_owner(
+            &self,
+            roots: &[PathBuf],
+        ) -> aethercore_cleaner::Result<(Vec<CleanupCandidate>, Vec<String>)> {
+            self.0.lock().unwrap().push(roots.to_vec());
+            Ok((Vec::new(), Vec::new()))
+        }
+        fn delete_action(
+            &self,
+            _: &CleanupDeleteAction,
+        ) -> aethercore_cleaner::Result<(u64, u64, String)> {
+            panic!("scan must not delete");
+        }
+        fn acquire_mutation_lease(&self) -> aethercore_cleaner::Result<CleanupMutationLease> {
+            Ok(Box::new(()))
+        }
+    }
+    let root = temp_root("owner-scan");
+    std::fs::create_dir_all(&root).unwrap();
+    let db = Arc::new(Database::open(root.join("state.db")).unwrap());
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let platform = Arc::new(Scoped(Mutex::new(Vec::new())));
+    let cleaner = CleanupEngine::with_platform(engine, db, platform.clone());
+    let budget = ReadBudgetManager::new(4);
+    for (owner, profile) in [(OWNER, "alice"), ("owner-b", "bob")] {
+        let roots = vec![root.join(profile)];
+        let lease = budget.try_acquire(ReadWorkload::CleanupDiscovery).unwrap();
+        cleaner.start_scan_with_lease(owner, &roots, lease).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while cleaner.snapshot_for_owner(owner).unwrap().state == CleanupScanState::Scanning {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+    assert_eq!(
+        *platform.0.lock().unwrap(),
+        vec![vec![root.join("alice")], vec![root.join("bob")]]
+    );
+    assert!(
+        cleaner.snapshot_for_owner(OWNER).is_err(),
+        "owner A read owner B's scan"
+    );
+    drop(cleaner); // Close SQLite before removing this fixture on Windows.
+    std::fs::remove_dir_all(root).unwrap();
 }

@@ -67,7 +67,7 @@ check('no_mutation_workload_representation', all(x not in variants for x in ['Dr
 for forbidden in ['start_driver_install','start_system_repair','start_cleanup(','start_startup_changes','create_driver_install_plan','create_cleanup_plan','create_startup_plan','consume_authorization','MutationWorkload::']:
     check('service_executor_forbids_'+re.sub(r'\W+','_',forbidden).strip('_'), forbidden not in service)
 check('scheduler_executor_only_passive_entrypoints',has(service,'passive_hardware_refresh','passive_event_log_refresh','passive_scan_with_fence'))
-check('cleanup_passive_scope_narrower',has(cleaner,'fn scan_passive','requires_explicit_confirmation') and has(cleaner_win,'scan_impl(false)','retain(|candidate| !candidate.requires_explicit_confirmation)'))
+check('cleanup_passive_scope_narrower',has(cleaner,'fn scan_passive','requires_explicit_confirmation') and has(cleaner_win,'let mut output = scan_impl(&[])?;','for profile in owner_roots','retain(|candidate| !candidate.requires_explicit_confirmation)') and '"Users"' not in cleaner_win)
 
 # Ownership / eligibility / active-user state.
 check('active_console_session_principal',has(win,'WTSGetActiveConsoleSessionId','WTSQueryUserToken','inspect_session_token(token.get(), session_id)','principal.binding_key()'))

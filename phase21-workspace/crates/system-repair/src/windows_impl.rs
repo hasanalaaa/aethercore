@@ -17,9 +17,10 @@ use aethercore_operation_engine::SystemRepairAction;
 use aethercore_windows_foundation::{MachineMutationGuard, OwnedServiceHandle};
 use windows::{
     Win32::System::Services::{
-        OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, SC_MANAGER_CONNECT,
-        SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START,
-        SERVICE_STATUS_PROCESS, StartServiceW,
+        OpenSCManagerW, OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfigW,
+        QueryServiceStatusEx, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_CONFIG,
+        SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START, SERVICE_STATUS_PROCESS,
+        StartServiceW,
     },
     core::PCWSTR,
 };
@@ -367,15 +368,73 @@ fn service_running(name: &str) -> Result<bool> {
     }
 }
 
+fn service_start_type() -> Result<u32> {
+    unsafe {
+        let scm = OwnedServiceHandle::new(
+            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)
+                .map_err(|e| RepairError::Command(format!("OpenSCManagerW: {e}")))?,
+        );
+        let wide = "wuauserv".encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+        let service = OwnedServiceHandle::new(
+            OpenServiceW(scm.get(), PCWSTR(wide.as_ptr()), SERVICE_QUERY_CONFIG)
+                .map_err(|e| RepairError::Command(format!("OpenServiceW(wuauserv): {e}")))?,
+        );
+        // QueryServiceConfigW's documented maximum is 8 KiB. usize storage preserves ABI alignment.
+        let mut buffer = [0usize; 8192 / std::mem::size_of::<usize>()];
+        let config = buffer.as_mut_ptr().cast::<QUERY_SERVICE_CONFIGW>();
+        let mut needed = 0;
+        QueryServiceConfigW(service.get(), Some(config), 8192, &mut needed)
+            .map_err(|e| RepairError::Command(format!("QueryServiceConfigW(wuauserv): {e}")))?;
+        Ok((*config).dwStartType.0)
+    }
+}
+
 fn required_update_service_check() -> RepairCheck {
-    match service_running("wuauserv") {
-        Ok(true) => RepairCheck { id:"required-service".into(), title:"Windows Update service".into(), stage:"Completed".into(), result_code:"ServiceRunning".into(), exit_code:0, detail:"The diagnosis-scoped Windows Update service is running.".into(), log_hint:"wuauserv".into() },
-        Ok(false) => RepairCheck { id:"required-service".into(), title:"Windows Update service".into(), stage:"Attention".into(), result_code:"ServiceStopped".into(), exit_code:0, detail:"Windows Update discovery failed and its required wuauserv service is not running. AetherCore may offer only this targeted service start; it will not reset unrelated services.".into(), log_hint:"wuauserv".into() },
-        Err(error) => RepairCheck { id:"required-service".into(), title:"Windows Update service".into(), stage:"Unknown".into(), result_code:"ServiceUnknown".into(), exit_code:-1, detail:sanitize(&error.to_string()), log_hint:"wuauserv".into() },
+    let result = service_running("wuauserv").and_then(|running| {
+        service_start_type().map(|start| super::service_start_verdict(running, start))
+    });
+    let (code, stage, detail) = match result {
+        Ok("ServiceRunning") => (
+            "ServiceRunning",
+            "Completed",
+            "The diagnosis-scoped Windows Update service is running.",
+        ),
+        Ok("ServiceDemandStopped") => (
+            "ServiceDemandStopped",
+            "Completed",
+            "The Windows Update service is stopped in demand-start mode. This alone does not require repair.",
+        ),
+        Ok("ServiceDisabled") => (
+            "ServiceDisabled",
+            "Attention",
+            "The Windows Update service is disabled. Its configuration may be managed by policy; AetherCore will not change it.",
+        ),
+        Ok("ServiceStopped") => (
+            "ServiceStopped",
+            "Attention",
+            "Windows Update discovery failed and its automatic-start service is stopped. Only this diagnosis-scoped start may be reviewed.",
+        ),
+        _ => (
+            "ServiceUnknown",
+            "Unknown",
+            "The Windows Update service configuration could not be established. No service change is recommended.",
+        ),
+    };
+    RepairCheck {
+        id: "required-service".into(),
+        title: "Windows Update service".into(),
+        stage: stage.into(),
+        result_code: code.into(),
+        exit_code: 0,
+        detail: detail.into(),
+        log_hint: "wuauserv".into(),
     }
 }
 
 fn start_update_service() -> Result<RepairCheck> {
+    if required_update_service_check().result_code != "ServiceStopped" {
+        return Err(RepairError::StaleAssessment);
+    }
     unsafe {
         let scm = OwnedServiceHandle::new(
             OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)

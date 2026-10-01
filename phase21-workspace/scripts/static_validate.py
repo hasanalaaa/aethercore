@@ -285,6 +285,7 @@ marker(
 repair = (ROOT / "crates/system-repair/src/lib.rs").read_text(encoding="utf-8")
 repair_win = (ROOT / "crates/system-repair/src/windows_impl.rs").read_text(encoding="utf-8")
 repair_dism_api = (ROOT / "crates/system-repair/src/dism_api.rs").read_text(encoding="utf-8")
+repair_process = (ROOT / "crates/system-repair/src/process.rs").read_text(encoding="utf-8")
 marker(
     "system_repair_state_and_recovery",
     repair,
@@ -301,14 +302,16 @@ marker(
 )
 marker(
     "system_repair_fixed_windows_workflow",
-    repair_win + "\n" + repair_dism_api,
+    repair_win + "\n" + repair_dism_api + "\n" + repair_process,
     [
-        'join("dism.exe")',
+        '#[link(name = "DismApi")]',
         'join("sfc.exe")',
         'join("chkdsk.exe")',
         "DismCheckImageHealth",
         "check_online_image_health",
-        '"/RestoreHealth"',
+        "restore_online_image_health(control)",
+        "DismRestoreImageHealth",
+        "1, // TRUE: LimitAccess disables Windows Update source lookup.",
         '"/scannow"',
         '"/verifyonly"',
         '"/scan"',
@@ -321,14 +324,19 @@ marker(
 )
 # Phase 19 replaces locale-sensitive /CheckHealth-/ScanHealth parsing with the structured
 # DISM API. The durable mutation barrier must still follow a fresh API preflight and precede
-# the first mutating RestoreHealth command.
+# the first mutating RestoreHealth API call.
 preflight_pos = repair_win.find('check_online_image_health(false')
 barrier_pos = repair_win.find('begin_mutation()?')
-restore_pos = repair_win.find('"/RestoreHealth"')
+restore_pos = repair_win.find('restore_online_image_health(control)')
 checks["repair_mutation_barrier_order"] = {
     "ok": preflight_pos >= 0 and barrier_pos > preflight_pos and restore_pos > barrier_pos,
     "positions": {"dism_api_preflight": preflight_pos, "mutation_barrier": barrier_pos, "restore_health": restore_pos},
 }
+
+repair_dism_policy = (ROOT / "crates/system-repair/src/dism.rs").read_text(encoding="utf-8")
+marker("p85_repair_cancel_timeout_serialized_lifecycle", repair_dism_api + repair_dism_policy + repair_process, [
+    "SESSION.try_lock()", "acquire_session()?", "DismCloseSession", "DismShutdown", "CancelWatcher::start(control.cancel, Some(RESTORE_DEADLINE))?", "watcher.event()", "RepairTimedOut", "RepairStopped", "if !mutating && timed_out", "if !mutating && stopped", "child.try_wait()", "child.wait()", "read_tail(stdout, 32_768)", "read_tail(stderr, 16_384)",
+])
 
 repair_forbidden = ["cmd.exe", "powershell.exe", '"/f"', '"/spotfix"', '"/r"']
 repair_hits = [token for token in repair_win.lower().splitlines() if False]  # keep structure simple
@@ -378,8 +386,9 @@ marker(
         "WindowsTemp",
         "UserTemp",
         "ShaderCache",
-        "WER",
-        "CrashDumps",
+        "for profile in owner_roots",
+        "basic.nNumberOfLinks != 1",
+        "FILE_SHARE_MODE(0)",
         "FILE_ATTRIBUTE_REPARSE_POINT",
         "reject_ancestor_reparse_chain",
         "open_stable_root",
@@ -391,6 +400,13 @@ marker(
         "MachineMutationGuard::try_acquire()",
     ],
 )
+cleanup_router = (ROOT / "services/maintenance-service/src/router/cleanup.rs").read_text(encoding="utf-8")
+checks["p85_cleanup_owner_and_incident_evidence_scope"] = {
+    "ok": "&call.peer.owner_roots()" in cleanup_router and "platform.scan_for_owner(&owner_roots)" in cleaner
+    and '"Users"' not in cleaner_win and '"WER"' not in cleaner_win and '"CrashDumps"' not in cleaner_win
+    and "unresolved-incident status is not known" in cleaner_win and "profile root was unavailable" in cleaner_win,
+}
+
 forbidden_cleanup = [
     "winsxs",
     "driverstore",
@@ -1910,7 +1926,7 @@ marker("phase14_resource_governor", resource14 + service14, ["cpu_budget_per_sec
 marker("phase14_windows_background_mode", windows14 + windows_foundation, ["BackgroundThreadMode::enter", "THREAD_MODE_BACKGROUND_BEGIN", "THREAD_MODE_BACKGROUND_END", "SetThreadPriority"])
 marker("phase14_durable_principal_scoped_cadence", persistence14 + migration14 + kernel14 + runtime14, ["autonomous_scheduler_runs", "owner_principal_key", "scheduler_cadence", "save_scheduler_cadence", "persist_cadence"])
 checks["phase14_cadence_contains_no_mutation_authority"] = {"ok": all(token not in migration14.lower() for token in ["command_path", "consent_token", "authorization_grant", "mutation_intent"])}
-checks["phase14_cleanup_passive_privacy_scope"] = {"ok": "scan_impl(false)" in cleaner14 and "if include_profile_roots" in cleaner14 and "retain(|candidate| !candidate.requires_explicit_confirmation)" in cleaner14}
+checks["phase14_cleanup_passive_privacy_scope"] = {"ok": "let mut output = scan_impl(&[])?;" in cleaner14 and "for profile in owner_roots" in cleaner14 and '"Users"' not in cleaner14 and "retain(|candidate| !candidate.requires_explicit_confirmation)" in cleaner14}
 marker("phase14_typed_scheduler_events", proto_scheduler14 + proto_events14, ["message SchedulerEvent", "SchedulerRunState", "EVENT_KIND_SCHEDULER = 18", "SchedulerEvent scheduler = 27"])
 checks["phase14_activity_is_observable_and_localized"] = {"ok": "schedulerEvent" in activity14 and "activity.schedulerTitle" in activity14 and "scheduler.reason." in activity14}
 checks["phase14_service_survives_scheduler_start_failure"] = {"ok": "scheduler::start(&context)" in main14 and "interactive maintenance remains available" in main14}

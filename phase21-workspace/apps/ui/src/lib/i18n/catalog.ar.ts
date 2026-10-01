@@ -1945,4 +1945,20 @@ export const arCatalog = {
   'tech.repair.streamUnreadable': 'تعذّرت قراءة خرج الأمر.',
   'tech.repair.dismMutationOnly': 'أكمل DISM تغييراته. ما زالت صحة مخزن المكونات تحتاج إلى تحقق.',
 
+  'tech.repair.serviceDemandStopped': 'خدمة تحديث Windows متوقفة في وضع البدء عند الطلب. هذا وحده لا يستدعي إصلاحًا.',
+  'tech.repair.serviceDisabledPolicy': 'خدمة تحديث Windows معطّلة. قد تديرها سياسة الجهاز؛ لن يغيّر AetherCore إعدادها.',
+  'tech.repair.serviceAutoStopped': 'فشل استعلام تحديث Windows وخدمته المهيأة للبدء التلقائي متوقفة. يمكن مراجعة بدء هذه الخدمة المحددة فقط.',
+  'tech.repair.serviceConfigurationUnknown': 'تعذّر التحقق من إعداد خدمة تحديث Windows. لا يُوصى بتغيير الخدمة.',
+
+  'tech.cleanup.evidenceRetained': 'تُستثنى تقارير الأعطال وملفات التفريغ لأن ارتباطها بحوادث لم تُحل بعد غير معلوم.',
+  'tech.cleanup.profileUnavailable': 'تعذّر تحديد مجلد مستخدم الطلب؛ لم تُفحص ملفاته المؤقتة ولا ذاكرة مظلّلاته.',
+  'tech.cleanup.profileNotLocal': 'مجلد مستخدم الطلب ليس مسارًا محليًا موثوقًا.',
+  'tech.cleanup.ownerTemp': 'ملفات المستخدم المؤقتة',
+  'tech.cleanup.shaderCache': 'ذاكرة مظلّلات Direct3D',
+  'tech.cleanup.ownerTempDetail': 'ملفات مؤقتة يزيد عمرها على سبعة أيام في مجلد صاحب الطلب. تتطلب مراجعة صريحة.',
+  'tech.cleanup.shaderDetail': 'ذاكرة مظلّلات اختيارية يزيد عمرها على 72 ساعة. قد يؤدي حذفها إلى إعادة التجميع وتقطّع مؤقت.',
+  'cleanup.noEligible': 'لم تُعثر على ملفات مؤهلة للحذف في المواقع المفحوصة. راجع الاستثناءات والمواقع المتعذّر فحصها أعلاه.',
+
+  'tech.cleanup.skippedUnsafe': 'تُخطّيت الملفات التي تعذّر حذفها بأمان؛ لا تُحسب ضمن المساحة المستردة.',
+
 } satisfies Record<MessageKey, string>;

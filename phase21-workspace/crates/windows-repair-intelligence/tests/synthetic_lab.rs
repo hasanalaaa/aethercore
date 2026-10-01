@@ -145,11 +145,10 @@ fn p19_07_update_offline_is_not_corruption() {
 }
 #[test]
 fn p19_08_required_service_stopped_is_targeted() {
-    let s = analyze(&obs(vec![fact(
-        "svc-wuauserv",
-        RepairDomain::Services,
-        FactState::Stopped,
-    )]));
+    let s = analyze(&obs(vec![
+        fact("svc-wuauserv", RepairDomain::Services, FactState::Stopped),
+        fact("update", RepairDomain::WindowsUpdate, FactState::Failure),
+    ]));
     assert_eq!(
         node(&s, "start-required-service").action,
         RepairActionKind::StartRequiredService
@@ -549,4 +548,19 @@ fn invariant_contradictory_destructive_recovery_rejected() {
         RepairGraph::new(vec![base, clean]),
         Err(GraphError::ContradictoryActions(_))
     ));
+}
+
+#[test]
+fn p85_a_stopped_service_without_a_failed_dependent_diagnosis_has_no_start_action() {
+    let s = analyze(&obs(vec![fact(
+        "svc",
+        RepairDomain::Services,
+        FactState::Stopped,
+    )]));
+    assert!(
+        !s.graph
+            .nodes
+            .iter()
+            .any(|n| n.action == RepairActionKind::StartRequiredService)
+    );
 }

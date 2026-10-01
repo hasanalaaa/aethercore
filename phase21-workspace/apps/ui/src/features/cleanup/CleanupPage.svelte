@@ -39,6 +39,7 @@
 {#if cleanupSnapshot.warnings.length}<section class="warning-strip"><span>◇</span><div><strong>{t('cleanup.note',locale)}</strong>{#each cleanupSnapshot.warnings as warning}<LocalizedOwnedText value={warning} {locale} as="p"/>{/each}</div></section>{/if}
 
 {#if cleanupSnapshot.state === 'Ready'}
+  {#if cleanupSnapshot.candidates.length === 0}<p>{t('cleanup.noEligible', locale)}</p>{/if}
   <section class="cleanup-list">
     {#each cleanupSnapshot.candidates as candidate (candidate.candidateId)}
       <label class:explicit={candidate.requiresExplicitConfirmation} class="cleanup-card">

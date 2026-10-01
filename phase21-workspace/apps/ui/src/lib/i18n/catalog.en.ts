@@ -1948,6 +1948,22 @@ export const enCatalog = {
   'tech.repair.streamUnreadable': 'Command output could not be read.',
   'tech.repair.dismMutationOnly': 'DISM completed its changes. Component-store health still needs verification.',
 
+  'tech.repair.serviceDemandStopped': 'The Windows Update service is stopped in demand-start mode. This alone does not require repair.',
+  'tech.repair.serviceDisabledPolicy': 'The Windows Update service is disabled. Its configuration may be managed by policy; AetherCore will not change it.',
+  'tech.repair.serviceAutoStopped': 'Windows Update discovery failed and its automatic-start service is stopped. Only this diagnosis-scoped start may be reviewed.',
+  'tech.repair.serviceConfigurationUnknown': 'The Windows Update service configuration could not be established. No service change is recommended.',
+
+  'tech.cleanup.evidenceRetained': 'Crash reports and dumps are excluded because their unresolved-incident status is not known.',
+  'tech.cleanup.profileUnavailable': "The caller's profile root was unavailable; personal temporary files and shader caches were not scanned.",
+  'tech.cleanup.profileNotLocal': "The caller's profile root is not a trusted local path.",
+  'tech.cleanup.ownerTemp': 'User temporary files',
+  'tech.cleanup.shaderCache': 'Direct3D shader cache',
+  'tech.cleanup.ownerTempDetail': "Temporary files older than seven days in the calling owner's profile. Requires explicit review.",
+  'tech.cleanup.shaderDetail': 'Optional shader cache older than 72 hours. Deleting it can cause recompilation and temporary stutter.',
+  'cleanup.noEligible': 'No eligible files were found in the scanned locations. Check the exclusions and unavailable locations above.',
+
+  'tech.cleanup.skippedUnsafe': 'Files that could not be safely removed were skipped; they are not counted as reclaimed.',
+
 } as const;
 
 export type MessageKey = keyof typeof enCatalog;

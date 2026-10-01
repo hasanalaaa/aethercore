@@ -308,7 +308,7 @@ pub fn restore_online_image_health(control: &mut RepairControl<'_>) -> Result<Re
             lifecycle.session,
             ptr::null(),
             0,
-            1,
+            1, // TRUE: LimitAccess disables Windows Update source lookup.
             watcher.event(),
             Some(on_progress),
             &mut sink as *mut Sink<'_> as *mut c_void,

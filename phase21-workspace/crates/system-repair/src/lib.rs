@@ -1145,7 +1145,7 @@ fn check_to_fact(check: &RepairCheck) -> Option<RepairFact> {
         }
         "required-service" => {
             let state = match check.result_code.as_str() {
-                "ServiceRunning" => FactState::Healthy,
+                "ServiceRunning" | "ServiceDemandStopped" => FactState::Healthy,
                 "ServiceStopped" => FactState::Stopped,
                 "ServiceDisabled" => FactState::Disabled,
                 _ => FactState::Unknown,
@@ -1803,5 +1803,33 @@ mod dbt_p46_b9_tests {
         let mut detail = "short".to_string();
         trim_to_tail(&mut detail, 48_000);
         assert_eq!(detail, "short");
+    }
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn service_start_verdict(running: bool, start_type: u32) -> &'static str {
+    if running {
+        return "ServiceRunning";
+    }
+    match start_type {
+        2 => "ServiceStopped", // SERVICE_AUTO_START, only after dependent update failure
+        3 => "ServiceDemandStopped", // trigger/manual-start idle is normal
+        4 => "ServiceDisabled", // policy is retained, never enabled automatically
+        _ => "ServiceUnknown",
+    }
+}
+
+#[cfg(test)]
+mod p85_service_tests {
+    #[test]
+    fn a_stopped_demand_start_or_disabled_service_is_not_a_start_candidate() {
+        assert_eq!(
+            super::service_start_verdict(false, 3),
+            "ServiceDemandStopped"
+        );
+        assert_eq!(super::service_start_verdict(false, 4), "ServiceDisabled");
+        assert_eq!(super::service_start_verdict(false, 2), "ServiceStopped");
+        assert_eq!(super::service_start_verdict(true, 3), "ServiceRunning");
+        assert_eq!(super::service_start_verdict(false, 999), "ServiceUnknown");
     }
 }

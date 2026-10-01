@@ -64,7 +64,9 @@ test('DBT-P76-005: cleanup category ids and kinds are named, not printed, in bot
     ...matches(rust, /push_root\(\s*&mut output,\s*"([A-Za-z]+)"/g),
     ...matches(rust, /candidate\(\s*"([A-Za-z]+)"/g),
   ]);
-  assert.deepEqual([...providers].sort(), ['CrashDumps', 'ShaderCache', 'UserTemp', 'WER', 'WindowsTemp']);
+  assert.deepEqual([...providers].sort(), ['ShaderCache', 'UserTemp', 'WindowsTemp']);
+  // Historical plans still need names after P85 retains crash evidence instead of deleting it.
+  providers.add('WER'); providers.add('CrashDumps');
   for (const id of providers) {
     assert.match(localizeCleanupProvider(id, 'ar'), arabic, id);
     assert.notEqual(localizeCleanupProvider(id, 'en'), id, id);
