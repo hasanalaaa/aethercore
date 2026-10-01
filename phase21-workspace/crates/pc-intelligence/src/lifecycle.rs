@@ -128,6 +128,13 @@ pub(crate) fn reconcile(
         let matching_healthy_fact_ids = facts
             .iter()
             .filter(|fact| fact.resource.stable_id == old_finding.affected_resource.stable_id)
+            // A finding raised on a specific physical resource is resolved only by a reading of
+            // that resource, not of whatever now sits in the same slot (P80-03). Findings stored
+            // without an identity keep matching on the slot alone.
+            .filter(|fact| {
+                old_finding.affected_resource.identity.is_none()
+                    || fact.resource.identity == old_finding.affected_resource.identity
+            })
             .filter(|fact| rules::explicitly_healthy(fact))
             .map(|fact| fact.id.clone())
             .collect::<Vec<_>>();
@@ -714,5 +721,223 @@ mod tests {
         finding.lifecycle = FindingLifecycle::Recurred;
         assert_eq!(finding.lifecycle, FindingLifecycle::Recurred);
         assert_eq!(finding.severity, Severity::High);
+    }
+
+    // P80-03: a reading resolves or raises a finding only while it is a current reading of the
+    // same physical resource.
+    fn disk_fact(
+        identity: &str,
+        freshness: Freshness,
+        health: &str,
+        read_errors: u64,
+    ) -> SystemFact {
+        SystemFact::new(
+            Domain::Storage,
+            "test",
+            ResourceRef::private("storage-device", "disk0", "Disk").with_identity(identity),
+            2,
+            freshness,
+            Confidence::Confirmed,
+            FactPayload::StorageHealth {
+                health_status: health.into(),
+                source_severity: if health == "Healthy" {
+                    "Healthy"
+                } else {
+                    "ActionRequired"
+                }
+                .into(),
+                uncorrected_read_errors: Some(read_errors),
+                uncorrected_write_errors: Some(0),
+                nvme_critical_warning: Some(0),
+                nvme_media_errors_nonzero: false,
+                wear_percent: Some(10),
+                temperature_c: Some(40),
+                temperature_max_c: Some(80),
+            },
+            EvidenceKind::StorageHealth,
+            "state",
+        )
+    }
+
+    fn storage_finding_of(fact: SystemFact) -> Finding {
+        crate::rules::evaluate(&[fact], 3)
+            .into_iter()
+            .find(|finding| finding.code.starts_with("STORAGE_"))
+            .expect("a storage finding")
+    }
+
+    #[test]
+    fn another_disk_in_the_same_slot_does_not_resolve_the_old_disks_finding() {
+        let (db, path) = test_db();
+        let old = storage_finding_of(disk_fact("SN-OLD", Freshness::Current, "Unhealthy", 5));
+        persist_finding(&db, "owner", &old, "Active");
+        let diagnostics = [collector("diagnostics", CollectorState::Completed)];
+        let same_slot_new_disk = disk_fact("SN-NEW", Freshness::Current, "Healthy", 0);
+        let result = reconcile(
+            &db,
+            "owner",
+            "scan-2",
+            20,
+            &[same_slot_new_disk],
+            &diagnostics,
+            &BTreeMap::new(),
+            Vec::new(),
+        );
+        assert_eq!(
+            result.visible_findings.len(),
+            1,
+            "the old disk's finding stays open"
+        );
+        assert_ne!(
+            result.visible_findings[0].lifecycle,
+            FindingLifecycle::Resolved
+        );
+
+        let same_disk_healthy = disk_fact("SN-OLD", Freshness::Current, "Healthy", 0);
+        let result = reconcile(
+            &db,
+            "owner",
+            "scan-3",
+            30,
+            &[same_disk_healthy],
+            &diagnostics,
+            &BTreeMap::new(),
+            Vec::new(),
+        );
+        assert_eq!(
+            result.persisted_findings[0].lifecycle,
+            FindingLifecycle::Resolved,
+            "the same disk, re-read healthy, resolves it"
+        );
+        drop(db);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn a_disk_that_stops_answering_leaves_its_finding_unresolved_and_unverified() {
+        for state in [
+            CollectorState::PermissionDenied,
+            CollectorState::Unavailable,
+        ] {
+            let (db, path) = test_db();
+            let old = storage_finding_of(disk_fact("SN-OLD", Freshness::Current, "Unhealthy", 5));
+            persist_finding(&db, "owner", &old, "Active");
+            let result = reconcile(
+                &db,
+                "owner",
+                "scan-2",
+                20,
+                &[],
+                &[collector("diagnostics", state)],
+                &BTreeMap::new(),
+                Vec::new(),
+            );
+            assert_eq!(result.visible_findings.len(), 1);
+            assert_eq!(
+                result.visible_findings[0].verification_status,
+                FindingVerificationStatus::VerificationUnavailable
+            );
+            drop(db);
+            cleanup(&path);
+        }
+    }
+
+    #[test]
+    fn a_stale_reading_neither_raises_nor_clears_a_finding() {
+        let stale_healthy = disk_fact("SN", Freshness::Stale, "Healthy", 0);
+        assert!(
+            !rules::explicitly_healthy(&stale_healthy),
+            "an old healthy reading proves nothing now"
+        );
+        assert!(rules::explicitly_healthy(&disk_fact(
+            "SN",
+            Freshness::Current,
+            "Healthy",
+            0
+        )));
+        let raised =
+            crate::rules::evaluate(&[disk_fact("SN", Freshness::Stale, "Unhealthy", 5)], 3);
+        assert!(
+            raised.iter().all(|f| !f.code.starts_with("STORAGE_")),
+            "a stale reading is not a current alarm"
+        );
+    }
+
+    #[test]
+    fn a_snapshot_is_stale_only_past_its_window_and_a_clock_that_moved_back_makes_no_negative_age()
+    {
+        use aethercore_diagnostic_engine::{DiagnosticsSnapshot, ScanState};
+        const MIN: i64 = 60_000;
+        let now = 1_000 * 24 * 60 * MIN;
+        let freshness_at = |completed: i64| {
+            let snapshot = DiagnosticsSnapshot {
+                state: ScanState::Ready,
+                completed_unix_ms: completed,
+                storage: vec![Default::default()],
+                memory: Some(Default::default()),
+                ..Default::default()
+            };
+            let facts = crate::normalize::diagnostics(&snapshot, now);
+            let of = |domain: Domain| {
+                facts
+                    .iter()
+                    .find(|f| f.domain == domain)
+                    .map(|f| f.freshness)
+                    .expect("fact")
+            };
+            (of(Domain::Storage), of(Domain::Memory))
+        };
+        assert_eq!(
+            freshness_at(now - MIN),
+            (Freshness::Current, Freshness::Current)
+        );
+        assert_eq!(
+            freshness_at(now - 10 * MIN),
+            (Freshness::Current, Freshness::Stale),
+            "memory load is a live reading, storage health is not"
+        );
+        assert_eq!(
+            freshness_at(now - 3 * 24 * 60 * MIN),
+            (Freshness::Stale, Freshness::Stale)
+        );
+        assert_eq!(
+            freshness_at(now + 60 * MIN),
+            (Freshness::Current, Freshness::Current)
+        );
+    }
+
+    #[test]
+    fn a_crash_stamped_slightly_after_now_by_a_moved_back_clock_still_counts() {
+        const MIN: i64 = 60_000;
+        let now = 1_000 * 24 * 60 * MIN;
+        let crash_at = |observed: i64| {
+            let fact = SystemFact::new(
+                Domain::Diagnostics,
+                "test",
+                ResourceRef::global("crash", "c1", "System crash"),
+                observed,
+                Freshness::Recent,
+                Confidence::Confirmed,
+                FactPayload::Crash {
+                    crash_id: "c1".into(),
+                    bugcheck_hex: "0x9F".into(),
+                },
+                EvidenceKind::CrashRecord,
+                "bugcheck=0x9F",
+            );
+            crate::rules::evaluate(&[fact], now)
+                .iter()
+                .any(|f| f.code == "RECENT_CRASH_EVIDENCE")
+        };
+        assert!(crash_at(now - 60 * MIN));
+        assert!(
+            crash_at(now + 10 * MIN),
+            "a small backwards step of the clock is not a reason to drop it"
+        );
+        assert!(
+            !crash_at(now + 3 * 24 * 60 * MIN),
+            "a timestamp days ahead is not a recent crash"
+        );
+        assert!(!crash_at(now - 31 * 24 * 60 * MIN));
     }
 }

@@ -757,7 +757,9 @@ fn consume_task(
             facts.extend(normalize::driver(&value, task.completed_unix_ms))
         }
         Ok(Collected::Repair(value)) => facts.extend(normalize::repair(&value)),
-        Ok(Collected::Diagnostics(value)) => facts.extend(normalize::diagnostics(&value)),
+        Ok(Collected::Diagnostics(value)) => {
+            facts.extend(normalize::diagnostics(&value, task.completed_unix_ms))
+        }
         Ok(Collected::Startup(value)) => facts.extend(normalize::startup(&value)),
         Ok(Collected::Cleanup(value)) => facts.extend(normalize::cleanup(&value)),
         Err(_) if state != CollectorState::Cancelled => {

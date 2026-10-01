@@ -42,10 +42,23 @@ class CiGates(unittest.TestCase):
         dependencies = re.search(r'needs: \[(.*)\]', required)[1].split(', ')
         self.assertEqual(set(dependencies), set(blocks) - {'required'})
         command = re.search(r'^        run: (.+)$', required, re.M)[1]
-        results = dict.fromkeys(dependencies, {'result': 'success'})
+        results = {gate: {'result': 'success'} for gate in dependencies}
+        results['tested'] = {'result': 'success', 'outputs': {'skip': 'false'}}
         cases = [(results, 0), ({}, 1)]
         for gate, state in itertools.product(dependencies, ('failure', 'cancelled', 'skipped')):
-            cases.append(({**results, gate: {'result': state}}, 1))
+            # `tested` runs only for a push: a pull request leaves it skipped, which is not a failure.
+            cases.append(({**results, gate: {'result': state}}, 0 if (gate, state) == ('tested', 'skipped') else 1))
+        # Lane 1 step 0: windows may be skipped only when `tested` proved, for this exact SHA, that
+        # its own pull request already passed the windows job. Every other skip is a failure.
+        proven = {**results, 'windows': {'result': 'skipped'}, 'tested': {'result': 'success', 'outputs': {'skip': 'true'}}}
+        cases += [
+            (proven, 0),
+            ({**proven, 'tested': {'result': 'success', 'outputs': {'skip': 'false'}}}, 1),
+            ({**proven, 'tested': {'result': 'success'}}, 1),
+            ({**proven, 'tested': {'result': 'skipped'}}, 1),
+            ({**proven, 'tested': {'result': 'failure', 'outputs': {'skip': 'true'}}}, 1),
+            ({**proven, 'windows': {'result': 'failure'}}, 1),
+        ]
         for needs, expected in cases:
             run = subprocess.run(['bash', '-c', command], env={**os.environ, 'NEEDS': json.dumps(needs)},
                                  capture_output=True)

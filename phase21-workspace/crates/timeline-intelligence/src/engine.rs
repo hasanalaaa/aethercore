@@ -186,7 +186,9 @@ fn hex_lower(bytes: &[u8]) -> String {
 fn detect_recurrence_patterns(events: &[TimelineEvent]) -> Vec<RecurrencePattern> {
     let mut groups: HashMap<&str, Vec<&TimelineEvent>> = HashMap::new();
     for event in events {
-        if event.outcome != Outcome::Failed {
+        // A One-Click Care run is the owner's request wrapping domain plans that appear on their own;
+        // counting the run as well would report one failure twice, and a run is not a fault of the machine.
+        if event.outcome != Outcome::Failed || event.source_id.starts_with("care-run:") {
             continue;
         }
         groups

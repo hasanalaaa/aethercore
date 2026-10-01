@@ -2,13 +2,13 @@
   import { fluidPress } from '../design/motion';
   import { shellState } from './shell-state';
   import { streamState } from '../platform/stream-state';
-  import { FluidDialog, Pressable, TechnicalText } from '../design/primitives';
+  import { FluidDialog, LocalizedOwnedText, Pressable, TechnicalText } from '../design/primitives';
   import { localizeDirection, localizePlanKind, localizeRisk, localizeState, t, tp } from '../lib/i18n';
   import { authorizeAndInstall, closeDriverReview, driversUi } from '../features/drivers/controller';
   import { authorizeAndRepair, closeRepairReview, repairUi } from '../features/repair/controller';
   import { authorizeAndCleanup, cleanupUi, closeCleanupReview } from '../features/cleanup/controller';
   import { authorizeAndStartCare, careUi, closeCareConsent } from '../features/care/controller';
-  import { approvedStepCount } from '../features/care/approval';
+  import { approvedStepCount, eligibleCandidates } from '../features/care/approval';
   import {
     authorizeAndApplyStartup,
     authorizeAndRestoreStartup,
@@ -35,6 +35,11 @@
   $: restorePlan = $startupUi.restorePlan;
   $: careShown = $streamState.careStatus;
   $: careAutoSteps = careShown ? careShown.steps.filter((step) => step.safetyLevel <= 0) : [];
+  // What the approval covers, from the scan the plan was prepared from (P79-04B): what would be deleted,
+  // how much, and how much was left out for the owner to choose in Deep Clean.
+  $: careCandidates = eligibleCandidates($streamState.cleanupSnapshot);
+  $: careBytes = careCandidates.reduce((sum, candidate) => sum + candidate.reclaimableBytes, 0);
+  $: careExcluded = $careUi.domains.find((domain) => domain.domain === 'cleanup')?.reviewRequiredCandidates ?? 0;
 </script>
 
 {#if installPlan}
@@ -167,6 +172,15 @@
         <li>{localizePlanKind(step.domainKind, locale)} · <TechnicalText value={step.domainPlanId.slice(0, 8)} /></li>
       {/each}
     </ol>
+    {#if careCandidates.length}
+      <ul class="consent-list">
+        {#each careCandidates as candidate (candidate.candidateId)}
+          <li><LocalizedOwnedText value={candidate.title} {locale} /> · <TechnicalText value={formatBytes(candidate.reclaimableBytes, locale)} /></li>
+        {/each}
+      </ul>
+      <p class="review-copy">{t('care.consentTotal', locale, { size: formatBytes(careBytes, locale) })}</p>
+    {/if}
+    {#if careExcluded > 0}<p class="review-copy">{t('care.consentExcluded', locale, { count: careExcluded })}</p>{/if}
   {:else}
     <p class="review-copy">{t('care.empty', locale)}</p>
   {/if}
