@@ -1,0 +1,218 @@
+{
+  "source_head": "5bbe3fe894dbf53123142141bc4e02fff8412193",
+  "tracked_source_overlay": "none; detached exact head, tracked source clean before build",
+  "target_dir": "C:/dev/lanes/l3/target-p86-codex",
+  "build_jobs": 2,
+  "profile": "debug",
+  "host": {
+    "os": "Windows 11 Pro",
+    "build": "10.0.26200",
+    "cpu": "Intel Core i7-14700K",
+    "logical_processors": 28,
+    "physical_ram_bytes": 34022739968,
+    "toolchain": "1.97.1"
+  },
+  "model": {
+    "name": "Qwen2.5-1.5B-Instruct Q4_K_M",
+    "bytes": 1117320736,
+    "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
+  },
+  "conditions": {
+    "self_hosted_ci_jobs_active_at_scheduling": 2,
+    "isolated_performance_qualified": false,
+    "filesystem_cache_flushed": false,
+    "low_mid_hardware_matrix": "NOT RUN"
+  },
+  "cold": {
+    "verify_ms": 34205,
+    "load_ms": 1665
+  },
+  "sample_count": {
+    "En": 10,
+    "Ar": 10,
+    "total": 20
+  },
+  "samples": [
+    {
+      "locale": "En",
+      "index": 0,
+      "generation_ms": 1043,
+      "validation_us": 66,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 1,
+      "generation_ms": 960,
+      "validation_us": 26,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 2,
+      "generation_ms": 943,
+      "validation_us": 27,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 3,
+      "generation_ms": 943,
+      "validation_us": 28,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 4,
+      "generation_ms": 943,
+      "validation_us": 26,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 5,
+      "generation_ms": 956,
+      "validation_us": 28,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 6,
+      "generation_ms": 961,
+      "validation_us": 33,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 7,
+      "generation_ms": 963,
+      "validation_us": 30,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 8,
+      "generation_ms": 967,
+      "validation_us": 29,
+      "accepted": true
+    },
+    {
+      "locale": "En",
+      "index": 9,
+      "generation_ms": 970,
+      "validation_us": 30,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 0,
+      "generation_ms": 960,
+      "validation_us": 29,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 1,
+      "generation_ms": 1021,
+      "validation_us": 31,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 2,
+      "generation_ms": 994,
+      "validation_us": 26,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 3,
+      "generation_ms": 946,
+      "validation_us": 27,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 4,
+      "generation_ms": 922,
+      "validation_us": 27,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 5,
+      "generation_ms": 918,
+      "validation_us": 28,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 6,
+      "generation_ms": 909,
+      "validation_us": 28,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 7,
+      "generation_ms": 926,
+      "validation_us": 27,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 8,
+      "generation_ms": 925,
+      "validation_us": 27,
+      "accepted": true
+    },
+    {
+      "locale": "Ar",
+      "index": 9,
+      "generation_ms": 922,
+      "validation_us": 27,
+      "accepted": true
+    }
+  ],
+  "warm": [
+    {
+      "locale": "En",
+      "n": 10,
+      "p50_ms": 960,
+      "p95_ms": 1043
+    },
+    {
+      "locale": "Ar",
+      "n": 10,
+      "p50_ms": 925,
+      "p95_ms": 1021
+    }
+  ],
+  "insights": [],
+  "schema": {
+    "accepted": 20,
+    "rejected": 0,
+    "total": 20
+  },
+  "pre_cancel_tokens": 0,
+  "fixtures": {
+    "core_unit": 30,
+    "adversarial": 27,
+    "offline_boundary": 1,
+    "passed": true
+  },
+  "raw_logs": [
+    {
+      "path": "/private/tmp/p86-windows-acceptance.log",
+      "sha256": "f52287f5d9a3302e5418152f73b34df31066c50636e1eb30f09ecd632874f595"
+    },
+    {
+      "path": "/private/tmp/p86-windows-fixtures.log",
+      "sha256": "94d9f0219dda278136a4b64aadc306781734154f25974f358fbf4c53ebfc6b1e"
+    }
+  ],
+  "commands": [
+    "cargo test --locked -p aethercore-intelligence-core --test embedded_generation windows_fact_acceptance_measurement -- --ignored --nocapture --test-threads=1",
+    "cargo test --locked -p aethercore-intelligence-core --lib --test adversarial --test offline_boundary -- --test-threads=1"
+  ]
+}
