@@ -12,8 +12,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::model::{
-    Citation, EvidenceItem, Insight, InsightConfidence, InsightEngineKind, Locale,
-    MAX_INSIGHTS_PER_CALL, TypedEvidencePack,
+    Citation, Insight, InsightConfidence, InsightEngineKind, Locale, MAX_INSIGHTS_PER_CALL,
+    TypedEvidencePack,
 };
 
 /// Hard inference ceiling (I4). The model path must return inside this budget or the
@@ -49,8 +49,8 @@ pub trait LocalReasoner: Send + Sync {
     fn is_loading(&self) -> bool {
         false
     }
-    /// Returns raw candidate insights, their prose in `locale`; the ENGINE enforces
-    /// citations before emission.
+    /// Returns candidate insights in `locale`; the engine accepts only exact
+    /// owned fact templates with matching registered citations.
     fn infer(
         &self,
         pack: &TypedEvidencePack,
@@ -62,9 +62,8 @@ pub trait LocalReasoner: Send + Sync {
 
 /// Deterministic rule-based reasoner over structured evidence roles (I3).
 ///
-/// Rules read ONLY the typed fields of the pack: bottleneck role codes, repair
-/// verification states, recurrence pattern counts. Output is stable for identical
-/// packs (byte-identical explanation strings).
+/// Typed packs use the shared owned fact templates. Untyped packs prove only
+/// the count/availability of evidence items. Neither path reads raw detail prose.
 pub struct DeterministicFallbackReasoner {
     loaded: bool,
 }
@@ -98,160 +97,40 @@ impl LocalReasoner for DeterministicFallbackReasoner {
         locale: Locale,
         _deadline: std::time::Instant,
     ) -> Result<Vec<Insight>, String> {
-        let _ = question; // fallback summarizes; it does not answer open questions
-        let in_locale = |en: String, ar: String| match locale {
-            Locale::En => en,
-            Locale::Ar => ar,
-        };
-        let mut out = Vec::new();
-
-        // Rule 1: dominant bottleneck role summary.
-        let bottleneck_ids: Vec<&EvidenceItem> = pack
-            .items
-            .iter()
-            .filter(|item| {
-                matches!(
-                    item.surface,
-                    crate::model::EvidenceSurface::BottleneckReport
-                )
-            })
-            .collect();
-        if !bottleneck_ids.is_empty() {
-            let anchor = bottleneck_ids[0];
-            if let Some(insight) = Insight::build(
-                "insight.summary.bottleneck",
-                in_locale(
-                    format!(
-                        "{} performance finding(s) reported; primary: {}.",
-                        bottleneck_ids.len(),
-                        anchor.evidence_id
-                    ),
-                    format!(
-                        "عدد نتائج الأداء المُبلَّغ عنها: {}؛ أبرزها: {}.",
-                        bottleneck_ids.len(),
-                        anchor.evidence_id
-                    ),
-                ),
-                InsightConfidence::Moderate,
-                bottleneck_ids
-                    .iter()
-                    .take(4)
-                    .map(|item| Citation {
-                        evidence_id: item.evidence_id.clone(),
-                        surface: item.surface,
-                    })
-                    .collect(),
-                InsightEngineKind::RuleFallback,
-            ) {
-                out.push(insight);
+        let _ = question;
+        if !pack.propositions.is_empty() {
+            let ids = (1..=pack.propositions.len().min(4))
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut out =
+                insights_from_fact_selection(&format!("{{\"facts\":[{ids}]}}"), pack, locale);
+            for insight in &mut out {
+                insight.engine = InsightEngineKind::RuleFallback;
             }
+            return Ok(out);
         }
-
-        // Rule 2: repair verification state summary.
-        let repair_items: Vec<&EvidenceItem> = pack
-            .items
-            .iter()
-            .filter(|item| matches!(item.surface, crate::model::EvidenceSurface::RepairDiagnosis))
-            .collect();
-        if !repair_items.is_empty()
-            && let Some(insight) = Insight::build(
-                "insight.summary.repairState",
-                in_locale(
-                    format!(
-                        "{} repair diagnosis entr(ies) present with their own verification states.",
-                        repair_items.len()
-                    ),
-                    format!(
-                        "عدد تشخيصات الإصلاح الموجودة: {}، ولكلٍّ منها حالة تحقق خاصة به.",
-                        repair_items.len()
-                    ),
-                ),
-                InsightConfidence::Weak,
-                repair_items
-                    .iter()
-                    .take(4)
-                    .map(|item| Citation {
-                        evidence_id: item.evidence_id.clone(),
-                        surface: item.surface,
-                    })
-                    .collect(),
-                InsightEngineKind::RuleFallback,
-            )
-        {
-            out.push(insight);
-        }
-
-        // Rule 3: recurrence pattern summary.
-        let pattern_items: Vec<&EvidenceItem> = pack
-            .items
-            .iter()
-            .filter(|item| matches!(item.surface, crate::model::EvidenceSurface::TimelinePattern))
-            .collect();
-        if !pattern_items.is_empty()
-            && let Some(insight) = Insight::build(
-                "insight.summary.recurrence",
-                in_locale(
-                    format!(
-                        "{} recurring pattern(s) detected by timeline intelligence with full evidence matrices.",
-                        pattern_items.len()
-                    ),
-                    format!(
-                        "عدد الأنماط المتكررة التي رصدها تحليل السجل الزمني: {}، مع مصفوفات أدلتها كاملة.",
-                        pattern_items.len()
-                    ),
-                ),
-                InsightConfidence::Strong,
-                pattern_items
-                    .iter()
-                    .take(4)
-                    .map(|item| Citation {
-                        evidence_id: item.evidence_id.clone(),
-                        surface: item.surface,
-                    })
-                    .collect(),
-                InsightEngineKind::RuleFallback,
-            )
-        {
-            out.push(insight);
-        }
-
-        // Rule 4 (Phase 32): security-finding posture summary. Cites the
-        // SecFinding evidence ids verbatim; the surface stays citation-
-        // resolvable through the audit report lane.
-        let security_items: Vec<&EvidenceItem> = pack
-            .items
-            .iter()
-            .filter(|item| matches!(item.surface, crate::model::EvidenceSurface::SecurityFinding))
-            .collect();
-        if !security_items.is_empty()
-            && let Some(insight) = Insight::build(
-                "insight.summary.securityPosture",
-                in_locale(
-                    format!(
-                        "{} security finding(s) in the current posture snapshot; review the cited evidence.",
-                        security_items.len()
-                    ),
-                    format!(
-                        "عدد النتائج الأمنية في لقطة الوضع الحالية: {}؛ راجع الأدلة المذكورة.",
-                        security_items.len()
-                    ),
-                ),
-                InsightConfidence::Moderate,
-                security_items
-                    .iter()
-                    .take(4)
-                    .map(|item| Citation {
-                        evidence_id: item.evidence_id.clone(),
-                        surface: item.surface,
-                    })
-                    .collect(),
-                InsightEngineKind::RuleFallback,
-            )
-        {
-            out.push(insight);
-        }
-
-        Ok(out)
+        // Untyped observations prove availability/count only, never health, success or recurrence.
+        let explanation = match locale {
+            Locale::En => format!("{} evidence item(s) available", pack.items.len()),
+            Locale::Ar => format!("عدد عناصر الأدلة المتاحة: {}", pack.items.len()),
+        };
+        Ok(Insight::build(
+            "insight.summary.observation",
+            explanation,
+            InsightConfidence::Weak,
+            pack.items
+                .iter()
+                .take(4)
+                .map(|item| Citation {
+                    evidence_id: item.evidence_id.clone(),
+                    surface: item.surface,
+                })
+                .collect(),
+            InsightEngineKind::RuleFallback,
+        )
+        .into_iter()
+        .collect())
     }
 }
 
@@ -352,6 +231,7 @@ impl ReasonerSelector {
 
         if let Some(model) = &self.model_reasoner
             && model.is_loaded()
+            && !pack.propositions.is_empty()
         {
             // Unavailable / busy / unparseable / over budget → silent degrade (I3).
             let cited = cited_only(
@@ -360,8 +240,9 @@ impl ReasonerSelector {
                     .infer(pack, question, locale, deadline)
                     .unwrap_or_default(),
             );
-            if !cited.is_empty() {
-                return Ok(self.serve(cited, InsightEngineKind::LocalModel));
+            let canonical = canonical_fact_candidates(pack, cited, locale);
+            if !canonical.is_empty() && std::time::Instant::now() <= deadline {
+                return Ok(self.serve(canonical, InsightEngineKind::LocalModel));
             }
         }
 
@@ -390,6 +271,49 @@ impl ReasonerSelector {
 }
 
 /// I2 gate: keeps only insights whose citations ALL resolve against THIS pack.
+/// Converts strict model-selected IDs using the same product templates as the assistant.
+pub fn insights_from_fact_selection(
+    raw: &str,
+    pack: &TypedEvidencePack,
+    locale: Locale,
+) -> Vec<Insight> {
+    crate::assistant::selected_fact_ids(raw, pack)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|id| canonical_fact(&pack.propositions[id - 1], locale))
+        .collect()
+}
+
+fn canonical_fact(proposition: &crate::model::Proposition, locale: Locale) -> Option<Insight> {
+    Insight::build(
+        "insight.summary.observation",
+        proposition.fact.sentence(locale),
+        InsightConfidence::Moderate,
+        vec![proposition.citation.clone()],
+        InsightEngineKind::LocalModel,
+    )
+}
+
+fn canonical_fact_candidates(
+    pack: &TypedEvidencePack,
+    candidates: Vec<Insight>,
+    locale: Locale,
+) -> Vec<Insight> {
+    candidates
+        .into_iter()
+        .filter_map(|candidate| {
+            pack.propositions
+                .iter()
+                .find(|proposition| {
+                    candidate.citations == [proposition.citation.clone()]
+                        && candidate.explanation == proposition.fact.sentence(locale)
+                })
+                .and_then(|proposition| canonical_fact(proposition, locale))
+        })
+        .take(MAX_INSIGHTS_PER_CALL)
+        .collect()
+}
+
 fn cited_only(pack: &TypedEvidencePack, candidates: Vec<Insight>) -> Vec<Insight> {
     candidates
         .into_iter()

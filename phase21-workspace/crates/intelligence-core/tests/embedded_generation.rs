@@ -238,6 +238,20 @@ fn product_shaped_pack() -> TypedEvidencePack {
             surface: EvidenceSurface::MaintenanceHistory,
             detail: format!("plan {id} domain {domain} stage {stage}"),
         });
+        if *stage == "Completed" {
+            pack.push_fact(
+                Citation {
+                    evidence_id: id,
+                    surface: EvidenceSurface::MaintenanceHistory,
+                },
+                aethercore_intelligence_core::model::Fact::PlanCompleted {
+                    domain: aethercore_intelligence_core::model::MaintenanceDomain::from_record(
+                        domain,
+                    )
+                    .unwrap(),
+                },
+            );
+        }
     }
     for (id, code, count) in [
         (
@@ -258,6 +272,13 @@ fn product_shaped_pack() -> TypedEvidencePack {
                 "recurring failure: class operation code {code}, {count} occurrences, recurrence confidence weak"
             ),
         });
+        pack.push_fact(
+            Citation {
+                evidence_id: id.into(),
+                surface: EvidenceSurface::TimelinePattern,
+            },
+            aethercore_intelligence_core::model::Fact::RepeatedFailure { occurrences: count },
+        );
     }
     pack
 }
@@ -584,7 +605,11 @@ fn the_real_model_writes_insights_in_arabic_when_arabic_is_requested() {
         started.elapsed().as_millis()
     ));
     let insights = match result {
-        Ok(generated) => aethercore_intelligence_core::insights_from_text(&generated.text, &pack),
+        Ok(generated) => aethercore_intelligence_core::engine::insights_from_fact_selection(
+            &generated.text,
+            &pack,
+            Locale::Ar,
+        ),
         Err(error) => {
             assert!(
                 !cfg!(target_os = "macos") && error.contains("deadline exceeded"),
@@ -748,6 +773,33 @@ fn windows_fact_acceptance_measurement() {
             "P86 warm locale={locale:?} n=10 p50_ms={} p95_ms={}",
             timings[4], timings[9]
         ));
+    }
+    let selector = ReasonerSelector::new(Some(Box::new(reasoner.clone())));
+    for locale in [Locale::En, Locale::Ar] {
+        let started = Instant::now();
+        let insights = selector
+            .request_insights(&facts, "what maintenance has run?", locale, false)
+            .expect("insight call");
+        measured(&format!(
+            "P86 insight locale={locale:?} generation_ms={} n={} engine={}",
+            started.elapsed().as_millis(),
+            insights.len(),
+            selector.engine_label()
+        ));
+        assert!(!insights.is_empty());
+        assert!(
+            insights
+                .iter()
+                .all(|insight| insight.engine == InsightEngineKind::LocalModel
+                    && facts
+                        .propositions
+                        .iter()
+                        .any(
+                            |proposition| insight.citations == [proposition.citation.clone()]
+                                && insight.explanation == proposition.fact.sentence(locale)
+                        )),
+            "{insights:?}"
+        );
     }
     let cancelled = reasoner
         .generate(

@@ -283,21 +283,10 @@ pub fn render_fact_selection(
     pack: &TypedEvidencePack,
     locale: Locale,
 ) -> Option<(String, Vec<Citation>)> {
-    if raw.len() > 1024 {
-        return None;
-    }
-    let selected: FactSelection = serde_json::from_str(raw).ok()?;
-    if selected.facts.is_empty() || selected.facts.len() > 4 {
-        return None;
-    }
-    let mut seen = Vec::new();
+    let selected = selected_fact_ids(raw, pack)?;
     let mut sentences = Vec::new();
     let mut citations = Vec::new();
-    for id in selected.facts {
-        if seen.contains(&id) {
-            return None;
-        }
-        seen.push(id);
+    for id in selected {
         let proposition = pack.propositions.get(id.checked_sub(1)?)?;
         let index = pack.items.iter().position(|item| {
             item.evidence_id == proposition.citation.evidence_id
@@ -309,6 +298,29 @@ pub fn render_fact_selection(
         }
     }
     Some((sentences.join(" "), citations))
+}
+
+/// Shared by both assistant and advisory insights; no second schema or parser.
+pub(crate) fn selected_fact_ids(raw: &str, pack: &TypedEvidencePack) -> Option<Vec<usize>> {
+    if raw.len() > 1024 {
+        return None;
+    }
+    let selected: FactSelection = serde_json::from_str(raw).ok()?;
+    if selected.facts.is_empty() || selected.facts.len() > 4 {
+        return None;
+    }
+    let mut seen = Vec::new();
+    for id in &selected.facts {
+        if seen.contains(id) {
+            return None;
+        }
+        seen.push(*id);
+        let proposition = pack.propositions.get(id.checked_sub(1)?)?;
+        if !pack.resolves(&proposition.citation) {
+            return None;
+        }
+    }
+    Some(selected.facts)
 }
 
 /// The citation gate.

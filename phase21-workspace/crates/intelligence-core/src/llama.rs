@@ -408,7 +408,7 @@ impl LlamaCppReasoner {
 
     /// The insight generation itself, exposed so a test can read its token
     /// count and wall time; [`LocalReasoner::infer`] is this plus
-    /// [`insights_from_text`].
+    /// the shared fact-selection parser and owned templates.
     pub fn generate_insight_text(
         &self,
         pack: &TypedEvidencePack,
@@ -418,12 +418,13 @@ impl LlamaCppReasoner {
     ) -> Result<crate::assistant::Generated, String> {
         // DBT-P46-B23: an empty pack would ask the model the question with NO
         // evidence, and anything it answered would be uncitable by construction.
-        if pack.items.is_empty() {
-            return Err("an empty evidence pack has nothing to cite".into());
+        if pack.propositions.is_empty() {
+            return Err("no typed facts are available for model selection".into());
         }
+        let _ = locale; // Product templates own the requested language.
         let prompt = chat_prompt(
-            &crate::assistant::system_prompt_in(INSIGHT_SYSTEM_PROMPT, locale),
-            &crate::assistant::render_user_message(pack, question),
+            crate::assistant::FACT_SYSTEM_PROMPT,
+            &crate::assistant::render_fact_user_message(pack, question),
         );
         if prompt.len() > Self::MAX_PROMPT_CHARS {
             return Err("prompt exceeds bounded context contract".into());
@@ -440,7 +441,7 @@ impl LlamaCppReasoner {
             self.decode_loop(
                 &prompt,
                 &budget,
-                Some(&insight_grammar(pack.items.len())),
+                Some(&fact_grammar(pack.propositions.len())),
                 &mut |_| {},
             )
         }
@@ -475,7 +476,7 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
     /// P75 — `DBT-P56-002`'s other half. This returned `Err` unconditionally
     /// ("token-level generation requires the context pool…"), so every insight in
     /// the product's life came from the rule engine. It now generates under the
-    /// insight grammar and admits only complete, fully cited lines.
+    /// fact-ID grammar and renders only the shared product-owned templates.
     fn infer(
         &self,
         pack: &TypedEvidencePack,
@@ -484,7 +485,11 @@ impl crate::engine::LocalReasoner for LlamaCppReasoner {
         deadline: std::time::Instant,
     ) -> Result<Vec<Insight>, String> {
         let generated = self.generate_insight_text(pack, question, locale, deadline)?;
-        Ok(insights_from_text(&generated.text, pack))
+        Ok(crate::engine::insights_from_fact_selection(
+            &generated.text,
+            pack,
+            locale,
+        ))
     }
 }
 

@@ -1019,3 +1019,115 @@ fn known_facts_are_available_while_the_model_is_loading_or_disabled() {
         ));
     }
 }
+
+#[test]
+fn legacy_insight_prose_cannot_reverse_a_completed_fact_in_either_locale() {
+    struct ReversesCompleted;
+    impl LocalReasoner for ReversesCompleted {
+        fn load(&mut self, _: &std::path::Path) -> Result<(), String> {
+            Ok(())
+        }
+        fn is_loaded(&self) -> bool {
+            true
+        }
+        fn infer(
+            &self,
+            pack: &TypedEvidencePack,
+            _: &str,
+            locale: Locale,
+            _: Instant,
+        ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
+            Ok(vec![
+                aethercore_intelligence_core::Insight::build(
+                    "insight.summary.observation",
+                    if locale == Locale::En {
+                        "The maintenance plan was cancelled"
+                    } else {
+                        "أُلغيت خطة الصيانة"
+                    },
+                    InsightConfidence::Strong,
+                    vec![Citation {
+                        evidence_id: pack.items[0].evidence_id.clone(),
+                        surface: pack.items[0].surface,
+                    }],
+                    InsightEngineKind::LocalModel,
+                )
+                .unwrap(),
+            ])
+        }
+    }
+    use aethercore_intelligence_core::model::{Fact, MaintenanceDomain};
+    let fact = Fact::PlanCompleted {
+        domain: MaintenanceDomain::Cleanup,
+    };
+    let mut pack = TypedEvidencePack::default();
+    pack.push(item("completed", EvidenceSurface::MaintenanceHistory));
+    pack.push_fact(
+        Citation {
+            evidence_id: "completed".into(),
+            surface: EvidenceSurface::MaintenanceHistory,
+        },
+        fact.clone(),
+    );
+    for locale in [Locale::En, Locale::Ar] {
+        let selector = ReasonerSelector::new(Some(Box::new(ReversesCompleted)));
+        let out = selector
+            .request_insights(&pack, "maintenance", locale, false)
+            .unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].explanation, fact.sentence(locale));
+        assert_eq!(out[0].engine, InsightEngineKind::RuleFallback);
+        assert_ne!(out[0].confidence, InsightConfidence::Strong);
+    }
+}
+
+#[test]
+fn insight_fact_selection_reuses_the_strict_schema_and_owned_templates() {
+    use aethercore_intelligence_core::engine::insights_from_fact_selection;
+    let pack = populated_pack();
+    for locale in [Locale::En, Locale::Ar] {
+        let out = insights_from_fact_selection(r#"{"facts":[1]}"#, &pack, locale);
+        assert_eq!(out.len(), 1);
+        assert_eq!(
+            out[0].explanation,
+            pack.propositions[0].fact.sentence(locale)
+        );
+        for raw in [
+            r#"{"facts":[1],"answer":"cancelled"}"#,
+            r#"{"facts":[99]}"#,
+            r#"{"facts":[1,1]}"#,
+            "A plan stopped [E1]",
+        ] {
+            assert!(
+                insights_from_fact_selection(raw, &pack, locale).is_empty(),
+                "{raw}"
+            );
+        }
+    }
+    struct UntypedMustNotGenerate;
+    impl LocalReasoner for UntypedMustNotGenerate {
+        fn load(&mut self, _: &std::path::Path) -> Result<(), String> {
+            Ok(())
+        }
+        fn is_loaded(&self) -> bool {
+            true
+        }
+        fn infer(
+            &self,
+            _: &TypedEvidencePack,
+            _: &str,
+            _: Locale,
+            _: Instant,
+        ) -> Result<Vec<aethercore_intelligence_core::Insight>, String> {
+            panic!("untyped evidence may count, but must not ask the model to invent fact meanings")
+        }
+    }
+    let mut untyped = TypedEvidencePack::default();
+    untyped.push(item("unknown-status", EvidenceSurface::MaintenanceHistory));
+    let out = ReasonerSelector::new(Some(Box::new(UntypedMustNotGenerate)))
+        .request_insights(&untyped, "explain", Locale::En, false)
+        .unwrap();
+    assert_eq!(out[0].explanation, "1 evidence item(s) available");
+    assert_eq!(out[0].engine, InsightEngineKind::RuleFallback);
+    assert_eq!(out[0].confidence, InsightConfidence::Weak);
+}
