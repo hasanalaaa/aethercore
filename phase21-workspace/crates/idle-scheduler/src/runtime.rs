@@ -13,7 +13,7 @@ use aethercore_collector_runtime::{
     run_isolated_gated_with_token,
 };
 use aethercore_contracts::v1::{self, EventKind, SchedulerRunState, event_envelope};
-use aethercore_operation_kernel::{OperationKernel, ReadWorkload};
+use aethercore_operation_kernel::{OperationKernel, ReadBudgetLease, ReadWorkload};
 use chrono::Utc;
 use rand::RngExt;
 use tracing::{info, warn};
@@ -43,6 +43,7 @@ pub trait PassiveWorkExecutor: Send + Sync + 'static {
         token: CancellationToken,
         commit_fence: CommitFence,
         governor: &ResourceGovernor,
+        read: Arc<ReadBudgetLease>,
     ) -> Result<PassiveWorkReport, String>;
 }
 
@@ -358,6 +359,7 @@ fn run_loop(
                 }
             };
 
+            let read = Arc::new(read);
             let token = CancellationToken::new();
             let commit_fence = CommitFence::new();
             let monitor_token = token.clone();
@@ -464,6 +466,7 @@ fn run_loop(
             let governor_exec = governor.clone();
             let work_token = token.clone();
             let work_fence = commit_fence.clone();
+            let worker_read = Arc::clone(&read);
             let result = run_isolated_gated_with_token(
                 &gates[&workload],
                 "idle-scheduler",
@@ -478,6 +481,7 @@ fn run_loop(
                             control.cancellation(),
                             work_fence,
                             &governor_exec,
+                            worker_read,
                         )
                     })
                     .map_err(|error| {

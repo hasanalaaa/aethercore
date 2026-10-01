@@ -28,9 +28,14 @@ impl Drop for InFlight {
 
 /// Runs `search` on its own thread for at most `deadline`. `search` is handed the stop flag and
 /// must check it while it waits on the agent.
-pub(crate) fn search_bounded<F>(deadline: Duration, search: F) -> Result<DiscoveryResult>
+pub(crate) fn search_bounded<F, G>(
+    deadline: Duration,
+    keepalive: G,
+    search: F,
+) -> Result<DiscoveryResult>
 where
     F: FnOnce(&AtomicBool) -> Result<DiscoveryResult> + Send + 'static,
+    G: Send + 'static,
 {
     if IN_FLIGHT.swap(true, Ordering::SeqCst) {
         return Err(UpdateError::SearchStillStopping);
@@ -42,6 +47,8 @@ where
         .name("aether-wua-driver-search".into())
         .spawn(move || {
             let _in_flight = InFlight;
+            // Observer timeout cannot release resource ownership before this real worker exits.
+            let _keepalive = keepalive;
             // A caller that already gave up has dropped the receiver; nothing reads this then.
             let _ = sender.send(search(&flag));
         });
@@ -86,7 +93,9 @@ mod tests {
     #[test]
     fn a_search_that_answers_in_time_is_its_answer() {
         let _turn = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-        let result = search_bounded(Duration::from_secs(5), |_| Ok(DiscoveryResult::default()));
+        let result = search_bounded(Duration::from_secs(5), (), |_| {
+            Ok(DiscoveryResult::default())
+        });
         assert!(result.is_ok());
         wait_until_idle();
     }
@@ -99,7 +108,7 @@ mod tests {
         let aborts = Arc::new(Mutex::new(0u32));
         let seen = Arc::clone(&aborts);
         let started = Instant::now();
-        let result = search_bounded(Duration::from_millis(50), move |stop| {
+        let result = search_bounded(Duration::from_millis(50), (), move |stop| {
             while !stop.load(Ordering::SeqCst) {
                 thread::sleep(Duration::from_millis(2));
             }
@@ -118,22 +127,67 @@ mod tests {
             started.elapsed()
         );
         assert!(matches!(
-            search_bounded(Duration::from_secs(1), |_| Ok(DiscoveryResult::default())),
+            search_bounded(Duration::from_secs(1), (), |_| Ok(
+                DiscoveryResult::default()
+            )),
             Err(UpdateError::SearchStillStopping)
         ));
         wait_until_idle();
         assert_eq!(*aborts.lock().unwrap(), 1);
-        assert!(search_bounded(Duration::from_secs(1), |_| Ok(DiscoveryResult::default())).is_ok());
+        assert!(
+            search_bounded(Duration::from_secs(1), (), |_| Ok(
+                DiscoveryResult::default()
+            ))
+            .is_ok()
+        );
         wait_until_idle();
+    }
+
+    #[test]
+    fn observer_timeout_retains_its_guard_until_actual_completion_once() {
+        let _turn = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        struct Guard(Arc<std::sync::atomic::AtomicUsize>);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let drops = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let guard = Guard(Arc::clone(&drops));
+        let (finish, blocked) = mpsc::channel();
+        let result = search_bounded(Duration::from_millis(20), guard, move |_| {
+            blocked.recv().unwrap();
+            Ok(DiscoveryResult::default()) // This late result must never reach its old observer.
+        });
+        assert!(matches!(result, Err(UpdateError::SearchTimedOut)));
+        let drops_at_timeout = drops.load(Ordering::SeqCst);
+        assert!(matches!(
+            search_bounded(Duration::from_secs(1), (), |_| Ok(
+                DiscoveryResult::default()
+            )),
+            Err(UpdateError::SearchStillStopping)
+        ));
+        finish.send(()).unwrap();
+        wait_until_idle();
+        assert_eq!(
+            drops_at_timeout, 0,
+            "observer timeout released the worker's guard"
+        );
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
     }
 
     #[test]
     fn a_search_that_panics_frees_the_runner() {
         let _turn = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-        let result = search_bounded(Duration::from_secs(1), |_| panic!("the agent crashed"));
+        let result = search_bounded(Duration::from_secs(1), (), |_| panic!("the agent crashed"));
         assert!(matches!(result, Err(UpdateError::Wua(_))), "{result:?}");
         wait_until_idle();
-        assert!(search_bounded(Duration::from_secs(1), |_| Ok(DiscoveryResult::default())).is_ok());
+        assert!(
+            search_bounded(Duration::from_secs(1), (), |_| Ok(
+                DiscoveryResult::default()
+            ))
+            .is_ok()
+        );
         wait_until_idle();
     }
 }

@@ -440,7 +440,8 @@ mod bounded;
 pub use execution_windows::{ensure_servicing_available, execute_driver_updates};
 #[cfg(windows)]
 pub use windows_impl::{
-    discover_driver_offers, last_online_search_iso, probe_update_health, query_update_history,
+    discover_driver_offers, discover_driver_offers_with_keepalive, last_online_search_iso,
+    probe_update_health, query_update_history,
 };
 
 #[cfg(not(windows))]
@@ -460,6 +461,14 @@ pub fn query_update_history(_max_entries: usize) -> Result<UpdateHistory> {
 
 #[cfg(not(windows))]
 pub fn discover_driver_offers(_scope: SearchScope) -> Result<DiscoveryResult> {
+    Err(UpdateError::UnsupportedPlatform)
+}
+
+#[cfg(not(windows))]
+pub fn discover_driver_offers_with_keepalive<G: Send + 'static>(
+    _scope: SearchScope,
+    _keepalive: G,
+) -> Result<DiscoveryResult> {
     Err(UpdateError::UnsupportedPlatform)
 }
 
