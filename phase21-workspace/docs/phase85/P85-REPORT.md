@@ -41,6 +41,17 @@ Svelte check (zero errors/warnings), production build, static validation, schedu
 EN/AR localization passed. Full CI at the exact PR head remains the phase merge gate. The
 ledger keeps the unmeasured qualification work open.
 
+## CI gate recovery
+
+The first integrated full CI passed its Rust and UI checks but rejected obsolete source
+assertions for the moved child runner and scoped read arguments. The recursive audit now
+checks fallible reader creation and both joins in each teardown branch in `process.rs`,
+read-only kill guards versus retained mutating-child ownership, and DISM API LimitAccess,
+cancel event and mutation-barrier order. Negative controls remove each property and remain
+rejected. The four required leased read routes now include the exact request-scoped driver
+and OS-peer-root cleanup forms; replacing owner, roots, scope or lease is rejected. No gate,
+required count or deadline was removed. Fresh full CI at the correction head gates integration.
+
 ## Qualification limits
 
 1. No isolated Windows VM is configured. Real SFC/cooperative console cancellation and TrustedInstaller lifetime after child exit are unverified. D19 wording is **stop at the first safe point**. The deadline requests/records stop; it cannot guarantee bounded completion if the mutating child or system call stalls. The UI retains pending state until service evidence arrives.

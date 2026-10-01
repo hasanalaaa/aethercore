@@ -69,6 +69,7 @@ CASES: list[tuple[str, str, bool]] = [
     ("scripts/phase14-scheduler-audit.py", "crates/idle-scheduler/src/policy.rs", False),
     ("scripts/zenith-adversarial-audit.py", "apps/ui/src/design/motion/fluid-press.ts", False),
     ("scripts/zenith-recursive-audit.py", "services/maintenance-service/src/streaming.rs", False),
+    ("scripts/zenith-recursive-audit.py", "crates/system-repair/src/process.rs", False),
     # Retired in P76 (retired-audits/README.md); its reader still has to fail closed.
     ("retired-audits/phase19-windows-repair-audit.py", "crates/operation-engine/src/lib.rs", False),
 ]

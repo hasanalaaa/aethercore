@@ -119,6 +119,44 @@ def main() -> int:
            gate_has(gate_diag, "hardware_gate:IsolationGate",
                     "hardware_gate:QuarantineGate"), False)
 
+    # P85: execute the recursive gate's actual predicates against its loaded
+    # child runner, then break one safety property at a time. No source is edited.
+    repair_gate = run_gate("zenith-recursive-audit.py")
+    runner = repair_gate["repair_process"]
+    fallible = repair_gate["repair_readers_are_fallible"]
+    ownership = repair_gate["repair_timeout_preserves_ownership"]
+    limited_dism = repair_gate["repair_mutation_uses_limited_dism"]
+    win, api = repair_gate["repair_windows"], repair_gate["repair_dism_api"]
+    for name in ("repair_pipe_readers_are_fallible", "repair_timeout_joins_pipe_readers",
+                 "maintenance_service_does_not_write_restrict_arbitrary_windows_mutations"):
+        expect(f"P85 real recursive gate {name}", repair_gate["checks"][name]["ok"], True)
+    for stream in ("stdout", "stderr"):
+        start = runner.index(f"let {stream}_thread =")
+        broken = runner[:start] + runner[start:].replace("match thread::Builder::new()", "match thread::spawn", 1)
+        expect(f"P85 {stream} reader lost fallible Builder", fallible(broken), False)
+    for branch, end in (("if !mutating && timed_out {", "if !mutating && stopped {"),
+                        ("if !mutating && stopped {", "thread::sleep(")):
+        start, finish = runner.index(branch), runner.index(end, runner.index(branch) + len(branch))
+        for stream in ("stdout", "stderr"):
+            part = runner[start:finish]
+            lost = f"let _ = {stream}_thread.join();"
+            assert lost in part
+            broken = runner[:start] + part.replace(lost, "", 1) + runner[finish:]
+            expect(f"P85 {branch} lost {stream} join (other joins remain)", ownership(broken), False)
+        expect(f"P85 {branch} allowed mutating kill", ownership(runner.replace(branch, branch.replace("!mutating && ", ""), 1)), False)
+    expect("P85 unguarded mutating kill", ownership(runner.replace("if mutating {", "if mutating { let _ = child.kill();", 1)), False)
+    expect("P85 creation failure killed mutating child", ownership(runner.replace("if !mutating {", "if true {", 1)), False)
+    expect("P85 lost polling ownership wait", ownership(runner.replace("// Keep ownership until this exact child exits, even if polling its handle failed.\n                let _ = child.wait();", "", 1)), False)
+    for stream in ("stdout", "stderr"):
+        lost = f'joined_stream({stream}_thread.join(), "{stream}"'
+        assert lost in runner
+        expect(f"P85 normal completion lost {stream} join", ownership(runner.replace(lost, f'joined_stream({stream}_thread, "{stream}"', 1)), False)
+    expect("P85 stderr creation failure lost stdout join", fallible(runner.replace("let _ = stdout_thread.join();", "", 1)), False)
+    expect("P85 lost typed mutating timeout", ownership(runner.replace("RepairError::RepairTimedOut", "RepairError::Cancelled")), False)
+    expect("P85 LimitAccess disabled", limited_dism(win, api.replace("1, // TRUE: LimitAccess", "0, // TRUE: LimitAccess")), False)
+    expect("P85 missing DISM cancel event", limited_dism(win, api.replace("watcher.event()", "0")), False)
+    expect("P85 missing durable mutation barrier", limited_dism(win.replace("begin_mutation()?", ""), api), False)
+
     print()
     if failures:
         print(f"{len(failures)} case(s) failed:")
