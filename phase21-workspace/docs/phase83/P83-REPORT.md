@@ -103,8 +103,8 @@ Fresh cumulative Mac validation completed for P81/P82/P83 at the same source tre
 The old phase30/phase35 audit scripts were also executed. They fail the historical wire-freeze and
 Phase35 baseline/contract checks; those phase-scoped audits are not acceptance authority for this
 additive P83 tree. Their failures remain explicit and neither gates nor baselines were modified.
-The inherited/inactive phase-gate archive is a coordinator-owned lane. The full Windows phase gate
-and live native collector run remain pending the coordinator's exact-source checkout.
+The inherited/inactive phase-gate archive is a coordinator-owned lane. The full Windows phase gate remains coordinator-owned. The exact-source native quick/live run
+completed later, as recorded in §7.
 
 The continuation exceeds the plan's approximate 300-line guide when parser tests, native resource
 bounds, assessment wiring and translations are counted together; the native module alone is 154
@@ -137,3 +137,29 @@ The full CI-equivalent UI phase checks were then rerun at this UI tree: 60/60 la
 leak pages, 5/5 injected-sentinel pages. Startup's sample text and duration were inspected visually.
 Backend source remains the fully tested P83-03B commit; this follow-up changes only UI presentation,
 translations, the UI check and phase records. Final Windows full-phase/merge CI remains root-owned.
+
+## 7. Native Windows continuation verification
+
+At exact source commit `599e054557266355ca62750c3fde95a369610a06`, the clean detached Windows
+checkout at `C:\dev\lanes\l2` was fetched from the coordinator-pushed branch. With
+`CARGO_BUILD_JOBS=2` and a separate `CARGO_TARGET_DIR=C:\dev\lanes\l2\target-codex-l2`:
+
+- `cargo fmt --all -- --check`: exit 0.
+- `cargo test -p aethercore-windows-update -p aethercore-system-repair --locked`: exit 0,
+  41 passed, three live tests correctly ignored (online discovery and elevated full assessment were
+  not invoked). This compiled and ran the Windows-native assessment integration.
+- `cargo test -p aethercore-windows-update --test live_wua --locked reads_live_client_errors_without_an_online_search -- --ignored --exact --nocapture`:
+  exit 0, one local native reader smoke passed. It checks a successful bounded read, recognized event
+  schemas and the 200-event bound. It does not prove a specific failure was logged or that updates
+  are compliant; the test intentionally prints no personal event contents.
+- `python scripts/source_seal.py`: OK, 1580/1580 workspace files and 7/7 .github files.
+
+The final marker was `P83_WINDOWS_QUICK_PASS 599e054557266355ca62750c3fde95a369610a06`.
+No full remote workspace test or invasive DISM/SFC/CHKDSK assessment ran alongside the shared CI.
+The native test finished before any further source checkout change. The UI-only follow-up is
+`24c4602121b5c7c5d999fde2f0599e4b90cb848e`; backend source is unchanged from the native-tested commit.
+The full final-head Windows phase check and integration CI remain coordinator-owned.
+
+Full UI negative controls also passed: planted text, attribute and sentence-argument leaks were
+all detected (one positive detection each). The final tracked source tree was sealed again after
+these records; no baseline, gate, timeout, dependency or pipe DACL was weakened.
