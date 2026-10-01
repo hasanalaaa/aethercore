@@ -272,3 +272,69 @@ fn synthetic_platform_stays_deterministic_for_identical_windows() {
     );
     assert_eq!(aggregate.cpu_busy_bp_avg, 4_200);
 }
+
+#[test]
+fn cpu_window_metadata_uses_the_observed_pair_not_the_requested_cadence() {
+    use aethercore_performance_telemetry::{
+        CollectedSubsystems, CollectorFault, CpuSample, Reading,
+    };
+    let unavailable = || CollectorFault {
+        collector: "fixture".into(),
+        kind: "Unavailable".into(),
+        detail: "not sampled".into(),
+    };
+    let start = std::time::Instant::now();
+    for elapsed_ms in [125, 475] {
+        let finish = start + Duration::from_millis(elapsed_ms);
+        let cpu = CpuSample::default()
+            .measured_over(finish.duration_since(start))
+            .unwrap();
+        let snapshot = CollectedSubsystems {
+            cpu: Reading::from_evidence(Some(cpu), unavailable),
+            power: Reading::unavailable(unavailable()),
+            memory: Reading::unavailable(unavailable()),
+            storage: Reading::unavailable(unavailable()),
+            gpu: Reading::unavailable(unavailable()),
+            process_top: Reading::unavailable(unavailable()),
+        }
+        .into_snapshot(Duration::from_secs(2));
+        assert_eq!(snapshot.cpu.sample_elapsed_ms, Some(elapsed_ms as u32));
+        assert_eq!(
+            snapshot.interval_ms, 2_000,
+            "the poll cadence is a separate contract"
+        );
+    }
+    assert!(CpuSample::default().measured_over(Duration::ZERO).is_none());
+    assert_eq!(
+        CpuSample::default().sample_elapsed_ms,
+        None,
+        "unavailable has no zero-valued measurement window"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_cpu_pair_has_monotonic_elapsed_metadata() {
+    use aethercore_performance_telemetry::{PerfPlatform, WindowsPerfPlatform};
+    let started = std::time::Instant::now();
+    let snapshot = WindowsPerfPlatform.sample(Duration::from_secs(2));
+    let outer_ms = started.elapsed().as_millis();
+    assert!(
+        snapshot.measured_subsystems().cpu,
+        "native CPU unavailable: {:?}",
+        snapshot.collector_faults
+    );
+    let cpu_ms = snapshot
+        .cpu
+        .sample_elapsed_ms
+        .expect("measured CPU needs its pair window");
+    // Windows timer granularity gets 20ms tolerance on the nominal 100ms gap.
+    assert!(cpu_ms >= 80 && u128::from(cpu_ms) <= outer_ms);
+    let mut invalid = [0u8; 16];
+    invalid[..4].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert_eq!(
+        aethercore_performance_telemetry::__test::decode_pdh_double(&invalid),
+        None,
+        "a reset/unavailable counter is not a zero-percent reading"
+    );
+}

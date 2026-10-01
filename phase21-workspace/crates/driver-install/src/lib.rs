@@ -1584,6 +1584,7 @@ mod tests {
                 source_inf: inf.into(),
                 backup_directory: dst.display().to_string(),
                 manifest_path: "manifest".into(),
+                manifest_sha256: String::new(),
                 file_count: 1,
                 total_bytes: 1,
                 not_applicable: false,

@@ -84,6 +84,22 @@ All of these ran on the PC in `C:\dev\lanes\l3`, with `CARGO_TARGET_DIR` set to 
 
 ## 4. Decisions applied
 
+### Execution recovery: preserve the original backup seal
+
+The recovery review found that rewriting an exported file and its hash inside the mutable
+manifest could replace the original protection evidence. The regression
+`rewriting_the_export_and_its_manifest_does_not_reseal_the_original_evidence` failed on the
+original implementation (one failed test, exit 101). `seal_export` now captures SHA-256 of the
+exact manifest bytes in its returned evidence; `verify_export` compares those bytes with that
+captured hash before parsing or checking the directory. Older evidence without the hash
+deserializes but fails closed. The existing unchanged-export test also checks that legacy case.
+The install coordinator receives this evidence directly from the platform export and verifies
+it before its mutation barrier. An independent read-only review traced that caller and the
+checkpoint serialization; no new wire field, dependency or live driver install was needed.
+The five-package Mac check (`driver-backup`, `driver-install`, `driver-hub`,
+`maintenance-service`, `pc-intelligence`, locked, jobs=2) passed after the fix.
+Full CI at the integration head remains the merge gate; its receipt belongs to the PR.
+
 - **D2 and D14.** The empty request reads the local cache. Online requires a confirmation that names Microsoft's service or the managed server, and holds for one scan. The router binds the scope to the caller's own request, so no confirmation is stored or reused. The install-time WUA access after approval is unchanged.
 - **D13.** No `ProblemStatus` wire field was needed.
 - **D15.** A downgrade is never recommended or selectable. The consent path for a deliberate downgrade was **not built**: it is closed as deferred, because no recommendation makes it part of this release.

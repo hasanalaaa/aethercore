@@ -172,3 +172,310 @@ fn empty_history_builds_empty_deterministic_timeline() {
         "same persisted history must digest identically"
     );
 }
+
+#[test]
+fn p87_history_is_globally_bounded_after_merging_sources() {
+    use aethercore_persistence::CareRunRecord;
+    use aethercore_timeline_intelligence::{MAX_TIMELINE_EVENTS, ingest};
+    let dir = TempDir::new().unwrap();
+    let db = open_db(&dir);
+    seed_plan(&db, "p87-history", OWNER, 0);
+    for at in 1..=MAX_TIMELINE_EVENTS {
+        db.append_plan_event("p87-history", "Completed", "transition", "", at as i64)
+            .unwrap();
+    }
+    for (id, at) in [("care-a", 10_000), ("care-b", 10_000), ("future", 20_000)] {
+        db.upsert_care_run(&CareRunRecord {
+            run_id: id.into(),
+            owner_principal_key: OWNER.into(),
+            state: "Completed".into(),
+            created_unix_ms: at,
+            updated_unix_ms: at,
+            completed_unix_ms: Some(at),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    for at in 1..=MAX_TIMELINE_EVENTS {
+        db.insert_repair_timeline_event(&RepairTimelineEventRecord {
+            event_id: format!("p87-repair-{at}"),
+            plan_id: "p87-history".into(),
+            owner_principal_key: OWNER.into(),
+            created_unix_ms: 2_500 + at as i64,
+            event_kind: "verification".into(),
+            domain: "WindowsRepair".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    let candidates = ingest::ingest_owner_history_with_watermark(&db, OWNER, 11_000).unwrap();
+    assert_eq!(
+        candidates.len(),
+        MAX_TIMELINE_EVENTS,
+        "per-source caps exceed the global builder ceiling"
+    );
+    assert!(
+        candidates
+            .iter()
+            .all(|e| e.observed_unix_ms > 2_502 && e.observed_unix_ms <= 11_000)
+    );
+    assert!(
+        ingest::ingest_owner_history_with_watermark(&db, OTHER, 11_000)
+            .unwrap()
+            .is_empty()
+    );
+    let mut builder = TimelineBuilder::new().watermark(11_000);
+    builder.ingest_all(candidates).unwrap();
+    let timeline = builder.build();
+    assert_eq!(timeline.events.len(), MAX_TIMELINE_EVENTS);
+    let recent: Vec<_> = timeline
+        .events
+        .iter()
+        .filter(|e| e.observed_unix_ms == 10_000)
+        .map(|e| e.source_id.as_str())
+        .collect();
+    assert_eq!(recent, ["care-run:care-a", "care-run:care-b"]);
+    assert_eq!(timeline.watermark_unix_ms, 11_000);
+    let mut repeated = TimelineBuilder::new().watermark(11_000);
+    repeated
+        .ingest_all(ingest::ingest_owner_history_with_watermark(&db, OWNER, 11_000).unwrap())
+        .unwrap();
+    assert_eq!(timeline.digest_sha256, repeated.build().digest_sha256);
+}
+
+#[test]
+fn p87_distinct_source_rows_at_the_same_time_survive() {
+    use aethercore_timeline_intelligence::{EventClass, TimelineEvent};
+    let mut builder = TimelineBuilder::new();
+    let first = TimelineEvent::new(
+        "journal:1",
+        EventClass::Operation,
+        "Cleanup",
+        "Completed",
+        Outcome::Neutral,
+        100,
+    );
+    let second = TimelineEvent::new(
+        "journal:2",
+        EventClass::Operation,
+        "Cleanup",
+        "Completed",
+        Outcome::Neutral,
+        100,
+    );
+    builder.ingest_all([first.clone(), first, second]).unwrap();
+    let timeline = builder.build();
+    assert_eq!(
+        timeline.events.len(),
+        2,
+        "distinct persisted rows were collapsed as one fact"
+    );
+    assert_eq!(timeline.duplicates_collapsed, 1);
+}
+
+// P79-02: the One-Click Care run is part of the persisted history the timeline reads. It is one
+// event per run, from the run's own terminal time and state, and it never claims more than the
+// run recorded: a completed run is neutral (verification lives in the domain plans' own events),
+// a run that finished with failed steps or failed is failed, a cancelled run is neutral under its own code.
+fn care_run(
+    id: &str,
+    owner: &str,
+    state: &str,
+    detail: &str,
+    created: i64,
+    completed: Option<i64>,
+) -> aethercore_persistence::CareRunRecord {
+    aethercore_persistence::CareRunRecord {
+        run_id: id.into(),
+        owner_principal_key: owner.into(),
+        state: state.into(),
+        stage: state.into(),
+        plan_digest_sha256: "d".repeat(64),
+        session_consent_granted: true,
+        steps_total: 2,
+        steps_done: 2,
+        detail: detail.into(),
+        created_unix_ms: created,
+        updated_unix_ms: completed.unwrap_or(created),
+        completed_unix_ms: completed,
+    }
+}
+
+fn care_events(db: &Database, owner: &str) -> Vec<aethercore_timeline_intelligence::TimelineEvent> {
+    aethercore_timeline_intelligence::ingest::ingest_owner_history_with_watermark(
+        db,
+        owner,
+        i64::MAX / 2,
+    )
+    .unwrap()
+    .into_iter()
+    .filter(|event| event.source_id.starts_with("care-run:"))
+    .collect()
+}
+
+#[test]
+fn a_persisted_care_run_is_one_event_with_the_state_it_recorded() {
+    let dir = TempDir::new().unwrap();
+    let db = open_db(&dir);
+    db.upsert_care_run(&care_run(
+        "done",
+        OWNER,
+        "Completed",
+        "care.status.completed",
+        1_000,
+        Some(5_000),
+    ))
+    .unwrap();
+    db.upsert_care_run(&care_run(
+        "partial",
+        OWNER,
+        "Completed",
+        "care.status.completedWithFailures",
+        2_000,
+        Some(6_000),
+    ))
+    .unwrap();
+    db.upsert_care_run(&care_run("failed", OWNER, "Failed", "", 3_000, Some(7_000)))
+        .unwrap();
+    db.upsert_care_run(&care_run(
+        "stopped",
+        OWNER,
+        "Cancelled",
+        "",
+        4_000,
+        Some(8_000),
+    ))
+    .unwrap();
+    let events = care_events(&db, OWNER);
+    let by = |id: &str| {
+        events
+            .iter()
+            .find(|e| e.source_id == format!("care-run:{id}"))
+            .unwrap_or_else(|| panic!("no event for {id}"))
+    };
+    assert_eq!(events.len(), 4, "one event per run");
+    assert_eq!(
+        by("done").observed_unix_ms,
+        5_000,
+        "the run's own end time, not its start or now"
+    );
+    assert_eq!(by("done").domain, "oneClickCare");
+    assert_eq!(
+        by("done").outcome,
+        Outcome::Neutral,
+        "a completed run is not documented as verified success"
+    );
+    assert_eq!(
+        by("partial").outcome,
+        Outcome::Failed,
+        "finished with failed steps is not a success"
+    );
+    assert_eq!(by("failed").outcome, Outcome::Failed);
+    assert_eq!(
+        by("stopped").outcome,
+        Outcome::Neutral,
+        "a cancelled run is neutral"
+    );
+    assert_eq!(
+        by("stopped").code,
+        "care.run:Cancelled",
+        "under its own code, not as a failure or a completion"
+    );
+}
+
+#[test]
+fn a_run_updated_again_stays_one_event_and_two_runs_stay_two() {
+    let dir = TempDir::new().unwrap();
+    let db = open_db(&dir);
+    db.upsert_care_run(&care_run("r1", OWNER, "Running", "", 1_000, None))
+        .unwrap();
+    db.upsert_care_run(&care_run(
+        "r1",
+        OWNER,
+        "Completed",
+        "care.status.completed",
+        1_000,
+        Some(3_000),
+    ))
+    .unwrap();
+    db.upsert_care_run(&care_run(
+        "r2",
+        OWNER,
+        "Completed",
+        "care.status.completed",
+        2_000,
+        Some(4_000),
+    ))
+    .unwrap();
+    let events = care_events(&db, OWNER);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.source_id == "care-run:r1")
+            .count(),
+        1,
+        "an update of a run is not a second event"
+    );
+    assert_eq!(events.len(), 2, "two runs keep two identities");
+    let mut builder = TimelineBuilder::new().watermark(10_000);
+    builder.ingest_all(events.clone()).unwrap();
+    builder.ingest_all(events).unwrap();
+    assert_eq!(
+        builder.build().events.len(),
+        2,
+        "ingesting the same runs again does not repeat them"
+    );
+}
+
+#[test]
+fn another_owners_care_runs_never_reach_this_owners_timeline() {
+    let dir = TempDir::new().unwrap();
+    let db = open_db(&dir);
+    db.upsert_care_run(&care_run(
+        "mine",
+        OWNER,
+        "Completed",
+        "care.status.completed",
+        1_000,
+        Some(2_000),
+    ))
+    .unwrap();
+    db.upsert_care_run(&care_run("theirs", OTHER, "Failed", "", 1_000, Some(2_000)))
+        .unwrap();
+    let mine = care_events(&db, OWNER);
+    assert!(
+        mine.iter().all(|e| e.source_id == "care-run:mine"),
+        "{mine:?}"
+    );
+    assert!(
+        care_events(&db, OTHER)
+            .iter()
+            .all(|e| e.source_id == "care-run:theirs")
+    );
+}
+
+#[test]
+fn repeated_failed_care_runs_are_not_a_recurring_fault() {
+    let dir = TempDir::new().unwrap();
+    let db = open_db(&dir);
+    for (index, id) in ["a", "b", "c", "d"].iter().enumerate() {
+        let at = 1_000 + index as i64 * 86_400_000;
+        db.upsert_care_run(&care_run(id, OWNER, "Failed", "", at, Some(at + 500)))
+            .unwrap();
+    }
+    let mut builder = TimelineBuilder::new().watermark(10_000_000_000);
+    builder.ingest_all(care_events(&db, OWNER)).unwrap();
+    let timeline = builder.build();
+    assert!(
+        timeline
+            .patterns
+            .iter()
+            .all(|pattern| pattern.domain != "oneClickCare"),
+        "a run the owner started is not a recurring fault of the machine: {:?}",
+        timeline
+            .patterns
+            .iter()
+            .map(|p| (&p.domain, &p.code))
+            .collect::<Vec<_>>()
+    );
+}

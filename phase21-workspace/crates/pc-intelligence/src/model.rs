@@ -186,6 +186,11 @@ pub struct ResourceRef {
     pub kind: String,
     pub stable_id: String,
     pub display_name: String,
+    /// What makes this the same physical thing when `stable_id` is only a slot (a disk's serial
+    /// number behind `PHYSICALDRIVE0`). Findings stored before this existed have none, and keep
+    /// matching on `stable_id` alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
 }
 
 impl ResourceRef {
@@ -198,6 +203,7 @@ impl ResourceRef {
             kind: kind.into(),
             stable_id: private_id(raw_identity),
             display_name: display_name.into(),
+            identity: None,
         }
     }
 
@@ -210,7 +216,15 @@ impl ResourceRef {
             kind: kind.into(),
             stable_id: stable_id.into(),
             display_name: display_name.into(),
+            identity: None,
         }
+    }
+
+    /// An empty identity is no identity: a disk that reports no serial number is not "the same disk"
+    /// as another one that reports none.
+    pub fn with_identity(mut self, raw_identity: &str) -> Self {
+        self.identity = (!raw_identity.trim().is_empty()).then(|| private_id(raw_identity));
+        self
     }
 }
 

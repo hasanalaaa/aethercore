@@ -142,7 +142,22 @@ pub fn repair(snapshot: &RepairAssessment) -> Vec<SystemFact> {
         .collect()
 }
 
-pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
+/// How long a storage-health reading stays a statement about the disk as it is now.
+const STORAGE_WINDOW_MS: i64 = 24 * 60 * 60_000;
+/// A memory-load reading is a live one; minutes later it describes a moment that has passed.
+const MEMORY_WINDOW_MS: i64 = 5 * 60_000;
+
+/// A reading is current inside its window and stale after it. The age is never negative: a clock
+/// that moved back after the scan makes a reading "now", not "from the future".
+fn measured_freshness(observed_unix_ms: i64, now: i64, window_ms: i64) -> Freshness {
+    if now.saturating_sub(observed_unix_ms) <= window_ms {
+        Freshness::Current
+    } else {
+        Freshness::Stale
+    }
+}
+
+pub fn diagnostics(snapshot: &DiagnosticsSnapshot, now: i64) -> Vec<SystemFact> {
     let mut out = Vec::new();
     if !matches!(
         snapshot.state,
@@ -151,18 +166,20 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
         return out;
     }
     for d in &snapshot.storage {
+        // The device id is a slot (PHYSICALDRIVE0); the serial number is what makes it this disk.
         let resource = ResourceRef::private(
             "storage-device",
             &d.device_id,
             display(&d.friendly_name, "Storage device"),
-        );
+        )
+        .with_identity(&d.serial_number);
         let r = &d.reliability;
         out.push(SystemFact::new(
             Domain::Storage,
             "diagnostic-engine",
             resource,
             snapshot.completed_unix_ms,
-            Freshness::Current,
+            measured_freshness(snapshot.completed_unix_ms, now, STORAGE_WINDOW_MS),
             Confidence::Confirmed,
             FactPayload::StorageHealth {
                 health_status: d.windows_health_status.clone(),
@@ -190,7 +207,7 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot) -> Vec<SystemFact> {
             "diagnostic-engine",
             ResourceRef::global("memory", "system-memory", "System memory"),
             snapshot.completed_unix_ms,
-            Freshness::Current,
+            measured_freshness(snapshot.completed_unix_ms, now, MEMORY_WINDOW_MS),
             Confidence::Confirmed,
             FactPayload::MemoryPressure {
                 memory_load_percent: m.memory_load_percent,

@@ -16,7 +16,10 @@ use aethercore_crash_diagnostics::{
 };
 use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
+    measurements::{Battery, BootRecord, NetworkAdapter, ThermalZone},
 };
+// The service converts these to the wire and depends on this crate, not on the telemetry one.
+pub use aethercore_hardware_telemetry::measurements;
 use aethercore_operation_kernel::{ReadBudgetLease, ReadWorkload};
 use aethercore_persistence::{Database, DiagnosticSnapshotRecord};
 use chrono::Utc;
@@ -125,6 +128,15 @@ pub struct DiagnosticsSnapshot {
     #[serde(default)]
     pub provider_faults: Vec<ProviderFaultRecord>,
     pub warnings: Vec<String>,
+    // P80-02A: snapshots stored before these domains existed decode with them empty.
+    #[serde(default)]
+    pub thermal_zones: Vec<ThermalZone>,
+    #[serde(default)]
+    pub batteries: Vec<Battery>,
+    #[serde(default)]
+    pub boots: Vec<BootRecord>,
+    #[serde(default)]
+    pub network_adapters: Vec<NetworkAdapter>,
 }
 impl Default for DiagnosticsSnapshot {
     fn default() -> Self {
@@ -141,6 +153,10 @@ impl Default for DiagnosticsSnapshot {
             cards: vec![],
             provider_faults: vec![],
             warnings: vec![],
+            thermal_zones: vec![],
+            batteries: vec![],
+            boots: vec![],
+            network_adapters: vec![],
         }
     }
 }
@@ -783,6 +799,9 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         cards,
         provider_faults,
         warnings,
+        // P80-02A: the producers arrive with P81 (storage), P82 (thermal, power) and P83 (boot,
+        // network); until each lands its domain is empty, which reads as "not measured".
+        ..Default::default()
     };
     let persistence_result = serde_json::to_string(&snapshot)
         .map_err(|error| {

@@ -115,7 +115,14 @@ export type HardwareEvent = { eventId:number; provider:string; recordedUnixMs:nu
 export type CrashRecord = { crashId:string; recordedUnixMs:number; hasBugcheckCode:boolean; bugcheckCode:number; bugcheckHex:string; parameters:string[]; dumpFile:string; dumpSizeBytes:number; source:string; confidence:string; summary:string };
 export type DiagnosticCard = { cardId:string; domain:string; severity:string; confidence:string; title:string; summary:string; evidence:string[]; actions:string[] };
 export type ProviderFault = { provider:string; operation:string; detail:string; kind:string; kindCode:number };
-export type DiagnosticsSnapshot = { scanId:string; state:string; startedUnixMs:number; completedUnixMs:number; eventWindowDays:number; storage:StorageTelemetry[]; memory:MemoryTelemetry|null; events:HardwareEvent[]; crashes:CrashRecord[]; cards:DiagnosticCard[]; warnings:string[]; providerFaults:ProviderFault[] };
+// P80-02B. `availability` is the wire enum: 1 measured, 2 not measured, 3 unsupported, 4 denied, 5 failed,
+// anything else unknown. A `has*` flag says the value beside it was read; without it the number is a filler.
+export type MeasurementCoverage = { source:string; hasObservedUnixMs:boolean; observedUnixMs:number; hasWindowDays:boolean; windowDays:number; availability:number; reasonKey:string };
+export type ThermalZoneMeasurement = { stableId:string; displayName:string; hasTemperature:boolean; temperatureC:number; hasCritical:boolean; criticalC:number; hasHighestObserved:boolean; highestObservedC:number; coverage:MeasurementCoverage };
+export type BatteryMeasurement = { stableId:string; displayName:string; hasDesignCapacity:boolean; designCapacityMwh:number; hasFullChargeCapacity:boolean; fullChargeCapacityMwh:number; hasCycleCount:boolean; cycleCount:number; coverage:MeasurementCoverage };
+export type BootMeasurement = { recordedUnixMs:number; hasDuration:boolean; durationMs:number; coverage:MeasurementCoverage };
+export type NetworkAdapterMeasurement = { stableId:string; displayName:string; hasLinkSpeed:boolean; linkSpeedBps:number; coverage:MeasurementCoverage };
+export type DiagnosticsSnapshot = { scanId:string; state:string; startedUnixMs:number; completedUnixMs:number; eventWindowDays:number; storage:StorageTelemetry[]; memory:MemoryTelemetry|null; events:HardwareEvent[]; crashes:CrashRecord[]; cards:DiagnosticCard[]; warnings:string[]; providerFaults:ProviderFault[]; thermalZones:ThermalZoneMeasurement[]; batteries:BatteryMeasurement[]; boots:BootMeasurement[]; networkAdapters:NetworkAdapterMeasurement[] };
 export type DiagnosticHistoryEntry = { scanId:string; state:string; collectedUnixMs:number; warningCount:number; cardCount:number };
 export type ConsentIntentEvent = { intentId:string; planId:string; planDigest:string; title:string; risk:string; actionCount:number; expiresUnixMs:number; riskCode:number };
 export type MutationLeaseEvent = { leaseId:string; workload:number; planId:string; state:number; acquiredUnixMs:number; changedUnixMs:number };
@@ -213,7 +220,7 @@ export type TimelineEntry = {
 };
 export type TimelineResponse = {
   entries:TimelineEntry[]; hasMore:boolean; nextBeforeSequence:number;
-  digestSha256:string; duplicatesCollapsed:number
+  digestSha256:string; duplicatesCollapsed:number; historyWindowLimit?:number
 };
 export type RecurrenceEvidence = { sourceId:string; observedUnixMs:number; gapFromPreviousMs:number };
 export type RecurrencePattern = {
@@ -222,7 +229,7 @@ export type RecurrencePattern = {
   firstObservedUnixMs:number; lastObservedUnixMs:number; meanGapMs:number;
   evidence:RecurrenceEvidence[]
 };
-export type RecurrencePatternsResponse = { patterns:RecurrencePattern[]; digestSha256:string };
+export type RecurrencePatternsResponse = { patterns:RecurrencePattern[]; digestSha256:string; historyWindowLimit?:number };
 
 // ---------------------------------------------------------------------------
 // Phase 22 — One-Click Care orchestration
@@ -235,6 +242,11 @@ export type CareRunStatus = {
   runId:string; state:string; stage:string; sessionConsentGranted:boolean;
   planDigestSha256:string; steps:CareStepReport[]; updatedUnixMs:number; summaryKey:string
 };
+/** P79-04A: why a domain has, or has not, something prepared. */
+export type CareDomainEligibility = {
+  domain:string; reason:string; scannedUnixMs:number; eligibleCandidates:number; reviewRequiredCandidates:number
+};
+export type CarePreview = { status:CareRunStatus; domains:CareDomainEligibility[] };
 
 // Phase 23 — Local Intelligence (advisory-only)
 export type InsightCitation = { evidenceId:string; surface:'bottleneckReport'|'repairDiagnosis'|'timelinePattern'|'maintenanceHistory'|'securityFinding' };

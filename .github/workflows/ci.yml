@@ -37,7 +37,34 @@ defaults:
     working-directory: phase21-workspace
 
 jobs:
+  # Lane 1 step 0: a fast-forward push to main lands a commit that already ran this whole workflow as a
+  # pull request of this repository, on the same SHA; running the ~40 minute windows job again on main
+  # tests nothing new. This job says so only when it can prove it: a `pull_request` run of this workflow
+  # for exactly this SHA, from this repository's own branch, whose `windows` job succeeded. Any doubt -
+  # nothing found, a failure, a fork, a lookup that errors - and `windows` runs as before. Pull requests,
+  # `workflow_dispatch` and everything else never reach this job.
+  tested:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      skip: ${{ steps.lookup.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - id: lookup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_windows_already_tested.py
+
   windows:
+    needs: tested
+    # `!cancelled()` and not `always()`: a cancelled run stays cancelled. `tested` is skipped for
+    # everything but a push, and an unset or failed lookup leaves `skip` empty, so the job runs.
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
     # P76: the job runs on the owner's own Windows PC (a self-hosted runner) only when the
     # repository variable WINDOWS_RUNNER is 'self' - unset it and every run goes back to
     # windows-2025 with no code change - and only for code that is already trusted: a push, or
@@ -220,12 +247,6 @@ jobs:
           }
       - name: Rust unit/integration tests
         run: cargo test --locked --workspace
-      - name: UI accessibility/type gate
-        run: pnpm --dir apps/ui check
-      # P75 ui-truth: pure UI logic (keyboard shortcuts, Fleet run outcomes) under node's own
-      # test runner; no test dependency. Files are listed, not globbed: a missing file fails.
-      - name: UI unit tests
-        run: node --experimental-strip-types --import ./apps/ui/tests/resolve-ts.mjs --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts apps/ui/tests/care.test.ts apps/ui/tests/wire-values.test.ts apps/ui/tests/timeline-text.test.ts apps/ui/tests/localized-text.test.ts apps/ui/tests/repair-progress.test.ts
       - name: UI production build
         run: pnpm --dir apps/ui build
       - name: Locked Rust workspace check
@@ -292,6 +313,7 @@ jobs:
                    scripts/test_gate_readers.py scripts/test_omega_delivered_set.py \
                    scripts/test_source_seal.py scripts/test_windows_server_support.py \
                    scripts/test-phase12-localization.py scripts/ps_marker_scan.py \
+                   scripts/test_ci_windows_already_tested.py \
                    scripts/test_bootstrap_pwsh.py; do
             echo "== $t"
             python3 "$t"
@@ -376,3 +398,45 @@ jobs:
       - name: Stop the fixture server
         if: always()
         run: kill "$(cat "$RUNNER_TEMP/vite.pid")" 2>/dev/null || true
+
+  # P87-01: local UI feedback has no native build dependency.
+  fast-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.16.0
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.22.0
+      - name: Frozen dependency restore
+        run: pnpm --dir apps/ui install --frozen-lockfile
+      - name: EN/AR locale gate
+        run: python3 scripts/test-phase12-localization.py
+      - name: UI accessibility/type gate
+        run: pnpm --dir apps/ui check
+      # P75 ui-truth: pure UI logic (keyboard shortcuts, Fleet run outcomes) under node's own
+      # test runner; no test dependency. Files are listed, not globbed: a missing file fails.
+      - name: UI unit tests
+        run: node --experimental-strip-types --import ./apps/ui/tests/resolve-ts.mjs --test apps/ui/tests/navigation.test.ts apps/ui/tests/fleet.test.ts apps/ui/tests/care.test.ts apps/ui/tests/wire-values.test.ts apps/ui/tests/timeline-text.test.ts apps/ui/tests/localized-text.test.ts apps/ui/tests/repair-progress.test.ts
+      - name: CI gate regression tests
+        run: python3 scripts/test_ci_gates.py
+
+  required:
+    name: CI required
+    runs-on: ubuntu-latest
+    needs: [tested, windows, gate-self-tests, linux-provider-clippy, deny-check, ui-leak-gate, fast-ui]
+    if: ${{ always() }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Every mandatory gate succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        # `windows` may be skipped only when `tested` proved, for this SHA, that its pull request
+        # already passed it (lane 1 step 0); `tested` itself is skipped for everything but a push.
+        run: jq -e 'length == 7 and (.tested.result | IN("success", "skipped")) and (.windows.result == "success" or (.windows.result == "skipped" and .tested.result == "success" and .tested.outputs.skip == "true")) and all(del(.tested, .windows)[]; .result == "success")' <<< "$NEEDS"

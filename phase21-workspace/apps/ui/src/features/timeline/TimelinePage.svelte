@@ -70,6 +70,9 @@
     <Pressable className="ghost-action" onclick={loadTimeline}>{t('timeline.refresh', locale)}</Pressable>
   </div>
 
+  {#if page && (page.historyWindowLimit ?? 0) > 0}
+    <p class="empty">{t('timeline.boundedWindow', locale)}</p>
+  {/if}
   {#if page && page.entries.length > 0}
     <ol class="timeline-list">
       {#each page.entries as entry (entry.sourceId)}

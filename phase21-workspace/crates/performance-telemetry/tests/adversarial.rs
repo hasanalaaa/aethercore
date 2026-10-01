@@ -39,6 +39,7 @@ fn hostile_counter_values_are_clamped_into_contract_ranges() {
             dpc_isr_busy_bp: u32::MAX,
             context_switches_per_sec: u64::MAX,
             processor_queue_length_x100: u64::MAX,
+            sample_elapsed_ms: None,
         },
         memory: MemorySample {
             memory_load_percent: u32::MAX,

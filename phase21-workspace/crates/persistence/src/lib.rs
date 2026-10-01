@@ -495,6 +495,30 @@ impl Database {
         ).optional().map_err(Into::into)
     }
 
+    /// Bounded Care sources for one trusted principal. Recovery keeps using
+    /// `plans_in_states`, whose global scope is intentional.
+    pub fn care_plan_candidates(
+        &self,
+        owner_principal_key: &str,
+        limit: usize,
+    ) -> Result<Vec<PlanRecord>> {
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|_| PersistenceError::Poisoned)?;
+        let mut stmt = conn.prepare(
+            "SELECT id,title,state,digest,risk,immutable_json,created_unix_ms,updated_unix_ms,owner_principal_key
+             FROM plans WHERE owner_principal_key=? AND state IN ('ReadyForReview','AwaitingAuthorization')
+             ORDER BY updated_unix_ms ASC,id ASC LIMIT ?",
+        )?;
+        let rows = stmt.query_map(
+            params![owner_principal_key, limit.min(100) as i64],
+            row_to_plan,
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn plans_in_states(&self, states: &[&str]) -> Result<Vec<PlanRecord>> {
         if states.is_empty() {
             return Ok(Vec::new());

@@ -34,6 +34,8 @@ pub struct BackupEvidence {
     pub source_inf: String,
     pub backup_directory: String,
     pub manifest_path: String,
+    #[serde(default)]
+    pub manifest_sha256: String,
     pub file_count: u32,
     pub total_bytes: u64,
     pub not_applicable: bool,
@@ -74,11 +76,13 @@ pub fn seal_export(source_inf: &str, destination: &Path) -> Result<BackupEvidenc
         files,
     };
     let manifest_path = destination.join(MANIFEST_NAME);
-    fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest)?)?;
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
+    fs::write(&manifest_path, &manifest_bytes)?;
     Ok(BackupEvidence {
         source_inf: manifest.source_inf.clone(),
         backup_directory: destination.to_string_lossy().into_owned(),
         manifest_path: manifest_path.to_string_lossy().into_owned(),
+        manifest_sha256: hex::encode(Sha256::digest(&manifest_bytes)),
         file_count: manifest.files.len().try_into().unwrap_or(u32::MAX),
         total_bytes: manifest.files.iter().map(|f| f.bytes).sum(),
         not_applicable: false,
@@ -96,7 +100,13 @@ pub fn verify_export(evidence: &BackupEvidence) -> Result<()> {
             "the manifest is not in the export".into(),
         ));
     }
-    let sealed: BackupManifest = serde_json::from_slice(&fs::read(&evidence.manifest_path)?)?;
+    let manifest_bytes = fs::read(&evidence.manifest_path)?;
+    if hex::encode(Sha256::digest(&manifest_bytes)) != evidence.manifest_sha256 {
+        return Err(BackupError::Changed(
+            "a file was changed, added or removed".into(),
+        ));
+    }
+    let sealed: BackupManifest = serde_json::from_slice(&manifest_bytes)?;
     let mut present = read_export(directory)?;
     present.retain(|f| f.relative_path != MANIFEST_NAME);
     let mut expected = sealed.files;
@@ -260,6 +270,14 @@ mod tests {
         assert_eq!(evidence.file_count, 2);
         verify_export(&evidence).expect("unchanged export verifies");
 
+        let mut legacy = serde_json::to_value(&evidence).unwrap();
+        legacy.as_object_mut().unwrap().remove("manifestSha256");
+        let legacy: BackupEvidence = serde_json::from_value(legacy).unwrap();
+        assert!(matches!(
+            verify_export(&legacy),
+            Err(BackupError::Changed(_))
+        ));
+
         fs::write(dir.join("sub").join("driver.sys"), b"other").unwrap();
         assert!(matches!(
             verify_export(&evidence),
@@ -288,6 +306,31 @@ mod tests {
         let dir = export_dir("noinf");
         fs::remove_file(dir.join("oem7.inf")).unwrap();
         assert!(seal_export("oem7.inf", &dir).is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rewriting_the_export_and_its_manifest_does_not_reseal_the_original_evidence() {
+        let dir = export_dir("rewritten-manifest");
+        let evidence = seal_export("oem7.inf", &dir).expect("sealed");
+        let mut manifest: BackupManifest =
+            serde_json::from_slice(&fs::read(&evidence.manifest_path).unwrap()).unwrap();
+        fs::write(dir.join("sub").join("driver.sys"), b"other").unwrap();
+        let file = manifest
+            .files
+            .iter_mut()
+            .find(|file| file.relative_path == "sub/driver.sys")
+            .unwrap();
+        file.sha256 = hex::encode(Sha256::digest(b"other"));
+        fs::write(
+            &evidence.manifest_path,
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            verify_export(&evidence).is_err(),
+            "rewriting the files and manifest must not replace the original seal"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

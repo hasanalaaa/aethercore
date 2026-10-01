@@ -48,6 +48,50 @@ message StorageReliabilityInfo {
   bool has_read_latency_max = 22; uint64 read_latency_max_ms = 23;
   bool has_write_latency_max = 24; uint64 write_latency_max_ms = 25;
   bool has_flush_latency_max = 26; uint64 flush_latency_max_ms = 27;
+  bool has_nvme_available_spare_threshold = 28; uint32 nvme_available_spare_threshold_percent = 29;
+}
+// P80-02A (D6). Every reading has an explicit presence flag: an absent one is not zero.
+enum MeasurementAvailability {
+  MEASUREMENT_AVAILABILITY_UNKNOWN = 0;
+  MEASUREMENT_AVAILABILITY_MEASURED = 1;
+  MEASUREMENT_AVAILABILITY_NOT_MEASURED = 2;
+  MEASUREMENT_AVAILABILITY_UNSUPPORTED = 3;
+  MEASUREMENT_AVAILABILITY_DENIED = 4;
+  MEASUREMENT_AVAILABILITY_FAILED = 5;
+}
+message MeasurementCoverageInfo {
+  string source = 1;
+  bool has_observed_unix_ms = 2; int64 observed_unix_ms = 3;
+  bool has_window_days = 4; uint32 window_days = 5;
+  MeasurementAvailability availability = 6;
+  string reason_key = 7;
+}
+message ThermalZoneInfo {
+  string stable_id = 1;
+  string display_name = 2;
+  bool has_temperature = 3; int32 temperature_c = 4;
+  bool has_critical = 5; int32 critical_c = 6;
+  bool has_highest_observed = 7; int32 highest_observed_c = 8;
+  MeasurementCoverageInfo coverage = 9;
+}
+message BatteryInfo {
+  string stable_id = 1;
+  string display_name = 2;
+  bool has_design_capacity = 3; uint64 design_capacity_mwh = 4;
+  bool has_full_charge_capacity = 5; uint64 full_charge_capacity_mwh = 6;
+  bool has_cycle_count = 7; uint32 cycle_count = 8;
+  MeasurementCoverageInfo coverage = 9;
+}
+message BootRecordInfo {
+  int64 recorded_unix_ms = 1;
+  bool has_duration = 2; uint64 duration_ms = 3;
+  MeasurementCoverageInfo coverage = 4;
+}
+message NetworkAdapterInfo {
+  string stable_id = 1;
+  string display_name = 2;
+  bool has_link_speed = 3; uint64 link_speed_bps = 4;
+  MeasurementCoverageInfo coverage = 5;
 }
 message StorageDeviceTelemetryInfo {
   string device_id = 1;
@@ -123,6 +167,10 @@ message DiagnosticsSnapshot {
   uint32 event_window_days = 11;
   DiscoveryState state_code = 12;
   repeated ProviderFaultInfo provider_faults = 13;
+  repeated ThermalZoneInfo thermal_zones = 14;
+  repeated BatteryInfo batteries = 15;
+  repeated BootRecordInfo boots = 16;
+  repeated NetworkAdapterInfo network_adapters = 17;
 }
 // DBT-P46-B4: has_card_count is false only when the stored snapshot JSON for
 // this history row could not be parsed (corrupted or schema-incompatible) —

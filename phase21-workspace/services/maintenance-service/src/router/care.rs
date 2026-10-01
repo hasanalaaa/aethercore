@@ -7,6 +7,14 @@ use super::*;
 /// what is due, which is a 500 the caller can distinguish from a refusal.
 fn care_err(error: aethercore_care_orchestrator::CareError) -> ServiceError {
     match error {
+        aethercore_care_orchestrator::CareError::SourceLimit => ServiceError::new(
+            429,
+            v1::ErrorCode::Busy,
+            "care",
+            "care.error.sourceLimit",
+            error.to_string(),
+            false,
+        ),
         aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(_) => {
             ServiceError::internal(
                 "care",
@@ -34,6 +42,18 @@ fn care_err(error: aethercore_care_orchestrator::CareError) -> ServiceError {
     }
 }
 
+/// The One-Click Care requests, routed as one arm so the dispatcher stays within its line ratchet.
+pub(super) fn route(call: &Call<'_>, payload: request::Payload) -> Routed {
+    match payload {
+        request::Payload::GetCareStatus(_) => get_care_status(call),
+        request::Payload::PrepareCarePreview(_) => prepare_care_preview(call),
+        request::Payload::GrantCareSessionConsent(v) => grant_consent(call, v),
+        request::Payload::StartCareRun(_) => start_care_run(call),
+        request::Payload::CancelCareRun(_) => cancel_care_run(call),
+        other => Err(format!("not a care request: {other:?}").into()),
+    }
+}
+
 pub(super) fn get_care_status(call: &Call<'_>) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
@@ -48,6 +68,43 @@ pub(super) fn get_care_status(call: &Call<'_>) -> Routed {
     Ok(Some(response::Payload::CareStatus(
         v1::CareStatusResponse {
             status: Some(status),
+        },
+    )))
+}
+
+/// P79-04A (D5): prepares what care could run and says why when it cannot. It reads and prepares
+/// only - the cleanup scan is local, the plan is unapproved, nothing is granted or deleted.
+pub(super) fn prepare_care_preview(call: &Call<'_>) -> Routed {
+    let ctx = call.ctx;
+    let principal_key = &call.principal_key;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
+    // The same lease, scan, event and watcher as Deep Clean's own start: one path, not a second copy.
+    let start_scan = || -> Result<(), String> {
+        super::cleanup::start_cleanup_scan(call)
+            .map(|_| ())
+            .map_err(|error| format!("{error:?}"))
+    };
+    let prepared = crate::care::prepare_preview(
+        &ctx.cleaner,
+        &|| ctx.care.plan_preview(principal_key),
+        principal_key,
+        now_ms,
+        &start_scan,
+    )
+    .map_err(care_err)?;
+    publish(
+        ctx,
+        principal_key,
+        EventKind::CareRun,
+        "",
+        Some(event_envelope::Payload::CareStatus(prepared.status.clone())),
+    );
+    Ok(Some(response::Payload::CarePreview(
+        v1::CarePreviewResponse {
+            status: Some(prepared.status),
+            domains: prepared.domains,
         },
     )))
 }

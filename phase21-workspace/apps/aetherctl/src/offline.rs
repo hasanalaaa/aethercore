@@ -587,7 +587,7 @@ fn export_verify(file: &str) -> Result<serde_json::Value, CliError> {
 }
 
 /// `keys generate --out <path>` — EXPLICIT owner action. Writes the 32-byte seed as
-/// lowercase hex to a NEW file (0600 on unix; the inherited ACL on Windows) and
+/// lowercase hex to a NEW file (0600 on Unix; protected owner-only ACL on Windows) and
 /// prints the public-key fingerprint.
 /// Key material is never created anywhere else in the product.
 fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
@@ -609,6 +609,7 @@ fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
         .map(|b| format!("{b:02x}"))
         .collect();
     let path = std::path::Path::new(out);
+    #[cfg(unix)]
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| CliError::LocalIo {
             message_key: "local.io.write".to_string(),
@@ -617,13 +618,19 @@ fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
     }
     // create_new (O_EXCL / CREATE_NEW): overwriting would destroy the previous signing
     // key for good, so an existing path — file, directory or symlink — is refused.
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    // 0600 is applied by the creating open itself, so the seed is never on disk
-    // readable by others; create-then-chmod left exactly that window.
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut file = options.open(path).map_err(|e| match e.kind() {
+    let created = {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)
+            .map(|file| (file, ()))
+    };
+    #[cfg(windows)]
+    let created = windows_key::create(path);
+    let (mut file, _parent_guard) = created.map_err(|e| match e.kind() {
         std::io::ErrorKind::AlreadyExists => CliError::local_io_with(
             "local.keys.exists",
             format!("refusing to overwrite existing key file {out}"),
@@ -642,9 +649,9 @@ fn keys_generate(out: &str) -> Result<serde_json::Value, CliError> {
         })?;
         format!("{:04o}", metadata.permissions().mode() & 0o777)
     };
-    // Nothing here narrows the Windows ACL: the file inherits its directory's.
+    // Creation and handle-based readback verified the protected, owner-only DACL.
     #[cfg(windows)]
-    let permissions = "inherited".to_string();
+    let permissions = "owner-only-protected".to_string();
     Ok(serde_json::json!({
         "generated": true,
         "out": out,
@@ -746,4 +753,403 @@ fn db_check_sqlite(path: &str) -> Result<serde_json::Value, CliError> {
             "digest": report.digest,
         })
     }))
+}
+
+#[cfg(windows)]
+mod windows_key {
+    // Documented Win32 FFI, as in security-audit's ACL reader. No freeze/dependency change.
+    use std::{
+        ffi::c_void,
+        io,
+        mem::size_of,
+        os::windows::{
+            ffi::OsStrExt,
+            fs::{MetadataExt, OpenOptionsExt},
+            io::{AsRawHandle, FromRawHandle, OwnedHandle},
+        },
+        path::{Path, PathBuf},
+    };
+    #[repr(C)]
+    struct UnicodeString {
+        len: u16,
+        capacity: u16,
+        data: *mut u16,
+    }
+    #[repr(C)]
+    struct ObjectAttributes {
+        len: u32,
+        root: *mut c_void,
+        name: *mut UnicodeString,
+        flags: u32,
+        descriptor: *mut c_void,
+        quality: *mut c_void,
+    }
+    #[repr(C)]
+    struct IoStatus {
+        status: usize,
+        information: usize,
+    }
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn NtCreateFile(
+            handle: *mut *mut c_void,
+            access: u32,
+            attributes: *const ObjectAttributes,
+            status: *mut IoStatus,
+            allocation: *const i64,
+            file_attributes: u32,
+            share: u32,
+            disposition: u32,
+            options: u32,
+            ea: *const c_void,
+            ea_len: u32,
+        ) -> i32;
+        fn RtlNtStatusToDosError(status: i32) -> u32;
+    }
+    #[link(name = "advapi32")]
+    unsafe extern "system" {
+        fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32;
+        fn GetTokenInformation(
+            token: *mut c_void,
+            class: i32,
+            buffer: *mut c_void,
+            len: u32,
+            needed: *mut u32,
+        ) -> i32;
+        fn GetLengthSid(sid: *const c_void) -> u32;
+        fn ConvertSidToStringSidW(sid: *const c_void, text: *mut *mut u16) -> i32;
+        fn ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            text: *const u16,
+            revision: u32,
+            descriptor: *mut *mut c_void,
+            len: *mut u32,
+        ) -> i32;
+        fn GetSecurityInfo(
+            handle: *mut c_void,
+            kind: i32,
+            info: u32,
+            owner: *mut *mut c_void,
+            group: *mut *mut c_void,
+            dacl: *mut *mut c_void,
+            sacl: *mut *mut c_void,
+            descriptor: *mut *mut c_void,
+        ) -> u32;
+        fn GetSecurityDescriptorControl(
+            descriptor: *const c_void,
+            control: *mut u16,
+            revision: *mut u32,
+        ) -> i32;
+        fn GetAce(acl: *const c_void, index: u32, ace: *mut *mut c_void) -> i32;
+        fn EqualSid(a: *const c_void, b: *const c_void) -> i32;
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentProcess() -> *mut c_void;
+        fn LocalFree(memory: *mut c_void) -> *mut c_void;
+        fn GetFinalPathNameByHandleW(
+            handle: *mut c_void,
+            path: *mut u16,
+            len: u32,
+            flags: u32,
+        ) -> u32;
+    }
+    struct Local(*mut c_void);
+    impl Drop for Local {
+        fn drop(&mut self) {
+            unsafe {
+                LocalFree(self.0);
+            }
+        }
+    }
+    fn checked(ok: i32) -> io::Result<()> {
+        if ok == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+    fn refused() -> io::Error {
+        io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "key target security could not be verified",
+        )
+    }
+
+    fn final_path(file: &std::fs::File) -> io::Result<PathBuf> {
+        let mut path = vec![0u16; 32768];
+        let len = unsafe {
+            GetFinalPathNameByHandleW(
+                file.as_raw_handle(),
+                path.as_mut_ptr(),
+                path.len() as u32,
+                0,
+            )
+        } as usize;
+        if len == 0 || len >= path.len() {
+            return Err(refused());
+        }
+        Ok(PathBuf::from(
+            String::from_utf16(&path[..len]).map_err(|_| refused())?,
+        ))
+    }
+
+    // Only a single child name is resolved against the held directory object.
+    // Directory creation preserves inherited permissions; key creation supplies the live SD.
+    fn create_relative(
+        parent: &std::fs::File,
+        name: &std::ffi::OsStr,
+        descriptor: *mut c_void,
+        directory: bool,
+    ) -> io::Result<std::fs::File> {
+        let mut units: Vec<u16> = name.encode_wide().collect();
+        let len = u16::try_from(units.len().checked_mul(2).ok_or_else(refused)?)
+            .map_err(|_| refused())?;
+        if len == 0 {
+            return Err(refused());
+        }
+        let mut name = UnicodeString {
+            len,
+            capacity: len,
+            data: units.as_mut_ptr(),
+        };
+        let attributes = ObjectAttributes {
+            len: size_of::<ObjectAttributes>() as u32,
+            root: parent.as_raw_handle(),
+            name: &mut name,
+            flags: 0x1040, // CASE_INSENSITIVE | DONT_REPARSE
+            descriptor,
+            quality: std::ptr::null_mut(),
+        };
+        let mut status = IoStatus {
+            status: 0,
+            information: 0,
+        };
+        let mut raw = std::ptr::null_mut();
+        // LIST_DIRECTORY makes directory sharing effective; metadata-only opens do not pin names.
+        // SAFETY: all buffers/handles and the null or Local-owned SD outlive this synchronous call.
+        let result = unsafe {
+            NtCreateFile(
+                &mut raw,
+                if directory { 0x0010_00a1 } else { 0x4012_0000 },
+                &attributes,
+                &mut status,
+                std::ptr::null(),
+                if directory { 0x10 } else { 0x80 },
+                if directory { 3 } else { 0 },
+                if directory { 3 } else { 2 }, // OPEN_IF / CREATE
+                if directory { 0x0020_0021 } else { 0x0020_0060 }, // sync, reparse, dir/non-dir
+                std::ptr::null(),
+                0,
+            )
+        };
+        if result < 0 {
+            return Err(io::Error::from_raw_os_error(
+                unsafe { RtlNtStatusToDosError(result) } as i32,
+            ));
+        }
+        if raw.is_null() {
+            return Err(refused());
+        }
+        Ok(unsafe { std::fs::File::from_raw_handle(raw) })
+    }
+
+    pub(super) fn create(path: &Path) -> io::Result<(std::fs::File, Vec<std::fs::File>)> {
+        let path = std::path::absolute(path)?;
+        let parent = path.parent().ok_or_else(refused)?;
+        // Pin each directory from root to leaf, refusing reparse points and delete sharing.
+        // The caller retains these handles until the seed write completes.
+        let mut ancestors = parent.ancestors().collect::<Vec<_>>().into_iter().rev();
+        let root = std::fs::OpenOptions::new()
+            .access_mode(0xa1)
+            .share_mode(3) // list/attributes/traverse; deny DELETE
+            .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
+            .open(ancestors.next().ok_or_else(refused)?)?;
+        let mut parents = vec![root];
+        for ancestor in ancestors {
+            let metadata = parents.last().ok_or_else(refused)?.metadata()?;
+            if !metadata.is_dir() || metadata.file_attributes() & 0x400 != 0 {
+                return Err(refused());
+            }
+            let directory = create_relative(
+                parents.last().ok_or_else(refused)?,
+                ancestor.file_name().ok_or_else(refused)?,
+                std::ptr::null_mut(),
+                true,
+            )?;
+            parents.push(directory);
+        }
+        if !parents
+            .last()
+            .ok_or_else(refused)?
+            .metadata()
+            .is_ok_and(|m| m.is_dir() && m.file_attributes() & 0x400 == 0)
+        {
+            return Err(refused());
+        }
+        // Resolve the opened directory object, never a path that a new reparse point can redirect.
+        let expected = final_path(parents.last().ok_or_else(refused)?)?
+            .join(path.file_name().ok_or_else(refused)?);
+        unsafe {
+            let mut raw_token = std::ptr::null_mut();
+            checked(OpenProcessToken(
+                GetCurrentProcess(),
+                0x0008,
+                &mut raw_token,
+            ))?; // TOKEN_QUERY
+            let token = OwnedHandle::from_raw_handle(raw_token);
+            let mut needed = 0;
+            GetTokenInformation(
+                token.as_raw_handle(),
+                1,
+                std::ptr::null_mut(),
+                0,
+                &mut needed,
+            ); // TokenUser
+            if !(size_of::<usize>() as u32..=65536).contains(&needed) {
+                return Err(refused());
+            }
+            let mut user = vec![0usize; (needed as usize).div_ceil(size_of::<usize>())];
+            checked(GetTokenInformation(
+                token.as_raw_handle(),
+                1,
+                user.as_mut_ptr().cast(),
+                needed,
+                &mut needed,
+            ))?;
+            let sid = user[0] as *const c_void;
+            let start = user.as_ptr() as usize;
+            let end = start + user.len() * size_of::<usize>();
+            if (sid as usize) < start || (sid as usize).checked_add(8).is_none_or(|n| n > end) {
+                return Err(refused());
+            }
+            let sid_len = GetLengthSid(sid) as usize;
+            if sid_len < 8 || (sid as usize).checked_add(sid_len).is_none_or(|n| n > end) {
+                return Err(refused());
+            }
+            let mut text = std::ptr::null_mut();
+            checked(ConvertSidToStringSidW(sid, &mut text))?;
+            let _text = Local(text.cast());
+            let mut len = 0;
+            while len < 256 && *text.add(len) != 0 {
+                len += 1;
+            }
+            if len == 256 {
+                return Err(refused());
+            }
+            let sid_text =
+                String::from_utf16(std::slice::from_raw_parts(text, len)).map_err(|_| refused())?;
+            let sddl: Vec<u16> = format!("O:{sid_text}D:P(A;;FA;;;{sid_text})")
+                .encode_utf16()
+                .chain(Some(0))
+                .collect();
+            let mut sd = std::ptr::null_mut();
+            checked(ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                1,
+                &mut sd,
+                std::ptr::null_mut(),
+            ))?;
+            let _sd = Local(sd);
+            // FILE_CREATE (CREATE_NEW semantics), no sharing, parent-relative, no reparse traversal.
+            let file = create_relative(
+                parents.last().ok_or_else(refused)?,
+                path.file_name().ok_or_else(refused)?,
+                sd,
+                false,
+            )?;
+            if final_path(&file)? != expected
+                || parents
+                    .iter()
+                    .any(|p| !p.metadata().is_ok_and(|m| m.file_attributes() & 0x400 == 0))
+            {
+                return Err(refused());
+            }
+            let (mut owner, mut dacl, mut actual) = (
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+            let status = GetSecurityInfo(
+                file.as_raw_handle(),
+                1,
+                5,
+                &mut owner,
+                std::ptr::null_mut(),
+                &mut dacl,
+                std::ptr::null_mut(),
+                &mut actual,
+            );
+            let _actual = Local(actual);
+            if status != 0 {
+                return Err(io::Error::from_raw_os_error(status as i32));
+            }
+            let (mut control, mut revision) = (0, 0);
+            checked(GetSecurityDescriptorControl(
+                actual,
+                &mut control,
+                &mut revision,
+            ))?;
+            // ACL header's AceCount is at byte 4. Require exactly one non-inherited owner allow.
+            if control & 0x1000 == 0
+                || owner.is_null()
+                || EqualSid(owner, sid) == 0
+                || dacl.is_null()
+                || std::ptr::read_unaligned(dacl.cast::<u8>().add(4).cast::<u16>()) != 1
+            {
+                return Err(refused());
+            }
+            let mut ace = std::ptr::null_mut();
+            checked(GetAce(dacl, 0, &mut ace))?;
+            let ace = ace.cast::<u8>();
+            if *ace != 0
+                || *ace.add(1) != 0
+                || std::ptr::read_unaligned(ace.add(4).cast::<u32>()) != 0x001f_01ff
+                || EqualSid(ace.add(8).cast(), sid) == 0
+            {
+                return Err(refused());
+            }
+            Ok((file, parents)) // No seed is written until every check above succeeds.
+        }
+    }
+
+    #[cfg(test)]
+    #[test]
+    fn key_parent_is_pinned_until_seed_write_finishes() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let parent =
+            std::env::temp_dir().join(format!("key-pinned-{}-{nonce}", std::process::id()));
+        let moved = parent.with_extension("moved");
+        std::fs::create_dir_all(&parent).unwrap();
+        // Prove directory handles alone pin names, before any open key can mask a weak guard.
+        let root = std::fs::OpenOptions::new()
+            .access_mode(0xa1)
+            .share_mode(3)
+            .custom_flags(0x0220_0000)
+            .open(&parent)
+            .unwrap();
+        assert!(std::fs::rename(&parent, &moved).is_err());
+        let held = create_relative(
+            &root,
+            std::ffi::OsStr::new("nested"),
+            std::ptr::null_mut(),
+            true,
+        )
+        .unwrap();
+        assert!(std::fs::rename(parent.join("nested"), parent.join("other")).is_err());
+        drop((held, root));
+        let (file, parents) = create(&parent.join("nested").join("owner.key")).unwrap();
+        assert!(std::fs::rename(&parent, &moved).is_err());
+        assert_eq!(
+            final_path(&file).unwrap(),
+            final_path(parents.last().unwrap())
+                .unwrap()
+                .join("owner.key")
+        );
+        drop((file, parents));
+        std::fs::rename(&parent, &moved).unwrap();
+        std::fs::remove_dir_all(moved).unwrap();
+    }
 }
