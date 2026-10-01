@@ -307,36 +307,66 @@ impl RepairPlatform for WindowsRepairPlatform {
         Ok(())
     }
 
-    fn verify(&self, action: &SystemRepairAction, emit: &mut dyn FnMut(RepairCheck)) -> Result<()> {
+    fn verify(
+        &self,
+        action: &SystemRepairAction,
+        control: &mut RepairControl<'_>,
+        emit: &mut dyn FnMut(RepairCheck),
+    ) -> Result<()> {
+        let checkpoint = || {
+            if control.cancel.load(Ordering::SeqCst) {
+                Err(RepairError::RepairStopped)
+            } else {
+                Ok(())
+            }
+        };
+        let stopped = |error| match error {
+            RepairError::Cancelled => RepairError::RepairStopped,
+            other => other,
+        };
+        checkpoint()?;
         let root = system_root()?;
         let system32 = root.join("System32");
         if action.run_component_store {
-            emit(check_online_image_health(
-                true,
-                "verify-dism",
-                "Verify component store",
-            )?);
+            emit(
+                check_online_image_health_cancellable(
+                    true,
+                    "verify-dism",
+                    "Verify component store",
+                    control.cancel,
+                )
+                .map_err(stopped)?,
+            );
         }
+        checkpoint()?;
         if action.run_system_files {
-            emit(run_sfc(
-                &system32.join("sfc.exe"),
-                &["/verifyonly"],
-                "verify-sfc",
-                "Verify protected system files",
-                &root,
-                None,
-            )?);
+            emit(
+                run_sfc(
+                    &system32.join("sfc.exe"),
+                    &["/verifyonly"],
+                    "verify-sfc",
+                    "Verify protected system files",
+                    &root,
+                    Some(control.cancel),
+                )
+                .map_err(stopped)?,
+            );
         }
+        checkpoint()?;
         if action.run_disk_scan {
             let volume = system_volume()?;
-            emit(run_chkdsk_scan(
-                &system32.join("chkdsk.exe"),
-                &volume,
-                "verify-disk",
-                "Verify system volume",
-                None,
-            )?);
+            emit(
+                run_chkdsk_scan(
+                    &system32.join("chkdsk.exe"),
+                    &volume,
+                    "verify-disk",
+                    "Verify system volume",
+                    Some(control.cancel),
+                )
+                .map_err(stopped)?,
+            );
         }
+        checkpoint()?;
         if action
             .repair_action_ids
             .iter()
@@ -346,12 +376,13 @@ impl RepairPlatform for WindowsRepairPlatform {
             check.id = "verify-required-service".into();
             check.title = "Verify required Windows Update service".into();
             emit(check);
+            checkpoint()?;
             let mut update = update_health_check();
             update.id = "verify-windows-update".into();
             update.title = "Verify Windows Update discovery".into();
             emit(update);
         }
-        Ok(())
+        checkpoint()
     }
 }
 

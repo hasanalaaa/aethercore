@@ -208,7 +208,13 @@ pub trait RepairPlatform: Send + Sync + 'static {
         begin_mutation: &mut dyn FnMut() -> Result<()>,
         emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()>;
-    fn verify(&self, action: &SystemRepairAction, emit: &mut dyn FnMut(RepairCheck)) -> Result<()>;
+    /// Verification observes the same owner's cancellation and stops between read-only checks.
+    fn verify(
+        &self,
+        action: &SystemRepairAction,
+        control: &mut RepairControl<'_>,
+        emit: &mut dyn FnMut(RepairCheck),
+    ) -> Result<()>;
 }
 
 /// Takes one output-reader thread's join result, recording a note instead of an
@@ -291,6 +297,7 @@ impl RepairPlatform for WindowsRepairPlatform {
     fn verify(
         &self,
         _action: &SystemRepairAction,
+        _control: &mut RepairControl<'_>,
         _emit: &mut dyn FnMut(RepairCheck),
     ) -> Result<()> {
         Err(RepairError::UnsupportedPlatform)
@@ -838,7 +845,7 @@ impl RepairCoordinator {
                     &owner,
                     &telemetry,
                     &id,
-                    &cancel,
+                    (&cancel, &running),
                 ) {
                     let _ = fail_repair(&engine, &db, &id, error);
                 }
@@ -1306,7 +1313,7 @@ fn run_worker(
     owner_principal_key: &str,
     telemetry: &ProgressTelemetryStore,
     plan_id: &str,
-    cancel: &Arc<AtomicBool>,
+    (cancel, running): (&Arc<AtomicBool>, &Mutex<Option<String>>),
 ) -> Result<()> {
     let action = engine.system_repair_action(plan_id)?;
     timeline_event(
@@ -1526,7 +1533,7 @@ fn run_worker(
         true,
         None,
     )?;
-    if let Err(error) = platform.verify(&action, &mut emit) {
+    if let Err(error) = platform.verify(&action, &mut control, &mut emit) {
         timeline_event(
             db,
             owner_principal_key,
@@ -1539,6 +1546,12 @@ fn run_worker(
             &action.machine_state_fingerprint,
         );
         return fail_repair(engine, db, plan_id, error);
+    }
+    // Linearize the final cancellation check with cancel_repair's flag store. The lock is
+    // acquired only after all child/API work has returned and held through the terminal commit.
+    let _completion_guard = running.lock().map_err(|_| RepairError::Busy)?;
+    if cancel.load(Ordering::SeqCst) {
+        return fail_repair(engine, db, plan_id, RepairError::RepairStopped);
     }
     let verification_steps = db.maintenance_items(plan_id)?;
     if !verification_proves_success(&action, &verification_steps) {
