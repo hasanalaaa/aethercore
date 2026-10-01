@@ -19,6 +19,8 @@ export const TURN_CANCELLED = 5;
  * screen or screen reader can reach, whatever a later edit to the drawer does.
  */
 export function replaceTurn(state: AssistantState, received: AssistantTurn): AssistantState {
+  // The question is the session's admission ticket: clearing it also invalidates every late reply.
+  if (!state.transcript.some((entry) => entry.kind === 'question' && entry.id === received.turnId)) return state;
   const turn = received.state === TURN_ANSWERED ? received : { ...received, answer: '' };
   let found = false;
   const transcript = state.transcript.map((entry) => {

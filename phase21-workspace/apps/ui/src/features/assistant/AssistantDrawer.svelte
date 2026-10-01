@@ -55,6 +55,7 @@
     loadAssistantPack,
     packCounts,
     segmentAnswer,
+    suggestedAssistantQuestion,
   } from './controller';
 
   export let open = false;
@@ -71,6 +72,11 @@
   $: state = $assistantState;
   $: inFlight = state.inFlight !== '';
   $: counts = packCounts(state.pack);
+  $: if ($suggestedAssistantQuestion) {
+    draft = $suggestedAssistantQuestion;
+    suggestedAssistantQuestion.set('');
+    tick().then(() => input?.focus());
+  }
 
   /** `Ctrl+/` opens AND focuses the input — the shortcut is the whole entry. */
   $: if (open && !wasOpen) {
@@ -218,6 +224,8 @@
              generation failed — that is a FAULTED turn with a reason. -->
         {#if state.engineLabel === 'loading'}
           {t('assistant.engineLoading', locale)}
+        {:else if state.engineLabel === 'ruleFallback'}
+          {t('insight.engine.ruleFallback', locale)}
         {:else if state.engineLabel && state.engineLabel !== 'localModel'}
           {t('assistant.engineDisabled', locale)}
         {:else}

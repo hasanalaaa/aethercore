@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AskFinding from '../assistant/AskFinding.svelte';
   import { fluidPress } from '../../design/motion';
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
@@ -128,7 +129,7 @@
   </section>
   <section class="diagnostic-cards"><div class="panel-head"><div><p class="eyebrow">{t('hardware.triageEyebrow',locale)}</p><h3>{t('hardware.triageTitle',locale)}</h3></div></div>
     {#each diagnostics.cards.filter((card) => card.domain !== 'Crash') as card (card.cardId)}
-      <article class="triage-card"><div class="triage-head"><div><span>{localizeDomain(card.domain,locale)}</span><h4><LocalizedOwnedText value={card.title} {locale}/></h4></div><em>{localizeSeverity(card.severity,locale)} · {localizeConfidence(card.confidence,locale)}</em></div><LocalizedOwnedText value={card.summary} {locale} as="p"/>{#if card.evidence.length}<ul>{#each card.evidence as evidence}<li><LocalizedOwnedText value={evidence} {locale}/></li>{/each}</ul>{/if}<div class="guided-actions">{#each card.actions as action}<span class="guided-action"><LocalizedOwnedText value={action} {locale}/></span>{/each}</div></article>
+      <article class="triage-card"><div class="triage-head"><div><span>{localizeDomain(card.domain,locale)}</span><h4><LocalizedOwnedText value={card.title} {locale}/></h4></div><em>{localizeSeverity(card.severity,locale)} · {localizeConfidence(card.confidence,locale)}</em></div><LocalizedOwnedText value={card.summary} {locale} as="p"/>{#if card.evidence.length}<ul>{#each card.evidence as evidence}<li><LocalizedOwnedText value={evidence} {locale}/></li>{/each}</ul>{/if}<div class="guided-actions">{#each card.actions as action}<span class="guided-action"><LocalizedOwnedText value={action} {locale}/></span>{/each}</div><AskFinding evidenceId={`${diagnostics.scanId}:${card.cardId}`} surface="diagnostics" {locale}/></article>
     {/each}
   </section>
 {/if}

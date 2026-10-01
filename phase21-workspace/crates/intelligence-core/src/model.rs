@@ -59,6 +59,9 @@ pub enum EvidenceSurface {
     /// Phase 32: security-audit finding (id = finding id + rule code anchor).
     /// Citation-resolvable against the audit report's findings_json lane.
     SecurityFinding,
+    /// Owner-scoped diagnostic snapshot observations.
+    Diagnostics,
+    CareHistory,
 }
 
 /// One advisory insight. THE ONLY output type of the reasoner (I1).
@@ -116,7 +119,7 @@ impl Insight {
 
 /// The language the reader asked for (DBT-P75-052). It selects the language of
 /// the prose; tags, the `NO EVIDENCE` token and every gate are the same in both.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Locale {
     #[default]
     En,
@@ -135,6 +138,165 @@ impl Locale {
     }
 }
 
+/// P86-02: these meanings are supplied by domain readers, never inferred from detail text.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MaintenanceDomain {
+    Cleanup,
+    Startup,
+    WindowsRepair,
+    Drivers,
+}
+
+impl MaintenanceDomain {
+    pub fn from_record(value: &str) -> Option<Self> {
+        match value {
+            "Cleanup" => Some(Self::Cleanup),
+            "Startup" => Some(Self::Startup),
+            "SystemRepair" | "WindowsRepair" => Some(Self::WindowsRepair),
+            "Drivers" => Some(Self::Drivers),
+            _ => None,
+        }
+    }
+
+    fn name(self, locale: Locale) -> &'static str {
+        match (self, locale) {
+            (Self::Cleanup, Locale::En) => "cleanup",
+            (Self::Cleanup, Locale::Ar) => "للتنظيف",
+            (Self::Startup, Locale::En) => "startup",
+            (Self::Startup, Locale::Ar) => "لبدء التشغيل",
+            (Self::WindowsRepair, Locale::En) => "Windows repair",
+            (Self::WindowsRepair, Locale::Ar) => "لإصلاح Windows",
+            (Self::Drivers, Locale::En) => "driver",
+            (Self::Drivers, Locale::Ar) => "للتعريفات",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum RepairStatus {
+    Corruption,
+    Failed,
+    SourceRequired,
+    RebootRequired,
+    Attention,
+}
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CareStatus {
+    Finished,
+    Failed,
+    Stopped,
+    Partial,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Fact {
+    PlanCompleted { domain: MaintenanceDomain },
+    PlanCancelled { domain: MaintenanceDomain },
+    RepeatedFailure { occurrences: u32 },
+    DiagnosticAttention { action_required: bool },
+    DiagnosticsIncomplete,
+    RepairObservation { status: RepairStatus },
+    CareResult { status: CareStatus },
+}
+
+impl Fact {
+    pub fn sentence(&self, locale: Locale) -> String {
+        match (self, locale) {
+            (Self::RepairObservation { status }, locale) => match (status, locale) {
+                (RepairStatus::Corruption, Locale::En) => "Repair diagnostics detected corruption",
+                (RepairStatus::Corruption, Locale::Ar) => "رصد تشخيص الإصلاح تلفاً",
+                (RepairStatus::Failed, Locale::En) => {
+                    "A repair observation recorded a failed repair"
+                }
+                (RepairStatus::Failed, Locale::Ar) => "سجّلت ملاحظة الإصلاح إخفاقاً في الإصلاح",
+                (RepairStatus::SourceRequired, Locale::En) => {
+                    "Repair diagnostics require a repair source"
+                }
+                (RepairStatus::SourceRequired, Locale::Ar) => "يتطلب تشخيص الإصلاح مصدر إصلاح",
+                (RepairStatus::RebootRequired, Locale::En) => {
+                    "Repair diagnostics recorded a reboot requirement"
+                }
+                (RepairStatus::RebootRequired, Locale::Ar) => {
+                    "سجّل تشخيص الإصلاح الحاجة إلى إعادة التشغيل"
+                }
+                (RepairStatus::Attention, Locale::En) => {
+                    "Repair diagnostics recorded a condition requiring attention"
+                }
+                (RepairStatus::Attention, Locale::Ar) => "سجّل تشخيص الإصلاح حالة تتطلب الانتباه",
+            }
+            .into(),
+            (Self::CareResult { status }, locale) => match (status, locale) {
+                (CareStatus::Finished, Locale::En) => "A Care run finished",
+                (CareStatus::Finished, Locale::Ar) => "انتهت دورة العناية",
+                (CareStatus::Failed, Locale::En) => "A Care run failed",
+                (CareStatus::Failed, Locale::Ar) => "أخفقت دورة العناية",
+                (CareStatus::Stopped, Locale::En) => "A Care run stopped before all steps finished",
+                (CareStatus::Stopped, Locale::Ar) => "توقفت دورة العناية قبل انتهاء جميع الخطوات",
+                (CareStatus::Partial, Locale::En) => {
+                    "A Care run finished with incomplete or failed steps"
+                }
+                (CareStatus::Partial, Locale::Ar) => {
+                    "انتهت دورة العناية بخطوات غير مكتملة أو فاشلة"
+                }
+            }
+            .into(),
+            (
+                Self::DiagnosticAttention {
+                    action_required: true,
+                },
+                Locale::En,
+            ) => "Diagnostics recorded a finding requiring action".into(),
+            (
+                Self::DiagnosticAttention {
+                    action_required: true,
+                },
+                Locale::Ar,
+            ) => "سجّل التشخيص نتيجة تتطلب إجراءً".into(),
+            (
+                Self::DiagnosticAttention {
+                    action_required: false,
+                },
+                Locale::En,
+            ) => "Diagnostics recorded a finding requiring attention".into(),
+            (
+                Self::DiagnosticAttention {
+                    action_required: false,
+                },
+                Locale::Ar,
+            ) => "سجّل التشخيص نتيجة تتطلب الانتباه".into(),
+            (Self::DiagnosticsIncomplete, Locale::En) => "Diagnostic evidence is incomplete".into(),
+            (Self::DiagnosticsIncomplete, Locale::Ar) => "أدلة التشخيص غير مكتملة".into(),
+            (Self::PlanCompleted { domain }, Locale::En) => {
+                format!("A {} maintenance plan completed", domain.name(locale))
+            }
+            (Self::PlanCompleted { domain }, Locale::Ar) => {
+                format!("اكتملت خطة صيانة {}", domain.name(locale))
+            }
+            (Self::PlanCancelled { domain }, Locale::En) => {
+                format!("A {} maintenance plan was cancelled", domain.name(locale))
+            }
+            (Self::PlanCancelled { domain }, Locale::Ar) => {
+                format!("أُلغيت خطة صيانة {}", domain.name(locale))
+            }
+            (Self::RepeatedFailure { occurrences }, Locale::En) => {
+                format!("A failure recurred {occurrences} times")
+            }
+            (Self::RepeatedFailure { occurrences }, Locale::Ar) => {
+                format!("عدد مرات تكرار الإخفاق: {occurrences}")
+            }
+        }
+    }
+}
+
+/// Its one-based position is its prompt ID. Neither IDs nor facts travel in technical strings.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Proposition {
+    pub citation: Citation,
+    pub fact: Fact,
+    #[serde(default)]
+    pub observed_unix_ms: Option<i64>,
+}
+
 /// Bounded, read-only evidence pack assembled from PUBLIC read APIs of existing
 /// domains (I1/I4). Items are pre-typed structured data — never raw attacker
 /// controlled prose (threat-model mitigation, see docs/phase23/ARCHITECTURE.md).
@@ -142,6 +304,8 @@ impl Locale {
 #[serde(rename_all = "camelCase")]
 pub struct TypedEvidencePack {
     pub items: Vec<EvidenceItem>,
+    #[serde(default)]
+    pub propositions: Vec<Proposition>,
 }
 
 /// One structured evidence item. `payload` is a bounded key:value summary rendered
@@ -172,6 +336,42 @@ impl TypedEvidencePack {
         self.items.push(item);
     }
 
+    pub fn push_fact(&mut self, citation: Citation, fact: Fact) -> bool {
+        let supported = match fact {
+            Fact::PlanCompleted { .. } | Fact::PlanCancelled { .. } => {
+                citation.surface == EvidenceSurface::MaintenanceHistory
+            }
+            Fact::DiagnosticAttention { .. } | Fact::DiagnosticsIncomplete => {
+                citation.surface == EvidenceSurface::Diagnostics
+            }
+            Fact::RepairObservation { .. } => citation.surface == EvidenceSurface::RepairDiagnosis,
+            Fact::CareResult { .. } => citation.surface == EvidenceSurface::CareHistory,
+            Fact::RepeatedFailure { occurrences } => {
+                citation.surface == EvidenceSurface::TimelinePattern && occurrences >= 2
+            }
+        };
+        if !supported || !self.resolves(&citation) || self.propositions.len() >= MAX_EVIDENCE_ITEMS
+        {
+            return false;
+        }
+        self.propositions.push(Proposition {
+            citation,
+            fact,
+            observed_unix_ms: None,
+        });
+        true
+    }
+
+    pub fn push_fact_at(&mut self, citation: Citation, fact: Fact, observed_unix_ms: i64) -> bool {
+        if observed_unix_ms <= 0 || !self.push_fact(citation, fact) {
+            return false;
+        }
+        if let Some(proposition) = self.propositions.last_mut() {
+            proposition.observed_unix_ms = Some(observed_unix_ms);
+        }
+        true
+    }
+
     /// Resolves a citation handle against current pack content (I2).
     pub fn resolves(&self, citation: &Citation) -> bool {
         self.items.iter().any(|item| {
@@ -191,9 +391,12 @@ impl TypedEvidencePack {
                 EvidenceSurface::TimelinePattern => 2,
                 EvidenceSurface::MaintenanceHistory => 3,
                 EvidenceSurface::SecurityFinding => 4,
+                EvidenceSurface::Diagnostics => 5,
+                EvidenceSurface::CareHistory => 6,
             }]);
             hasher.update(item.detail.as_bytes());
         }
+        hasher.update(format!("{:?}", self.propositions).as_bytes());
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let bytes = hasher.finalize();
         bytes.iter().fold(String::new(), |mut out, &b| {

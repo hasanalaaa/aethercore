@@ -1970,6 +1970,8 @@ export const enCatalog = {
   'insight.surface.bottleneckReport': 'performance',
   'insight.surface.repairDiagnosis': 'repair',
   'insight.surface.timelinePattern': 'timeline pattern',
+  'insight.surface.diagnostics': 'Diagnostics',
+  'insight.surface.careHistory': 'Care history',
   'insight.surface.maintenanceHistory': 'history',
   'insight.surface.securityFinding': 'security',
   'insight.summary.bottleneck': 'Performance findings summary',
@@ -2049,6 +2051,8 @@ export const enCatalog = {
      Every string here is a label or a reading. The one place words survive is a
      refusal, where the words ARE the fact: which scan would produce the evidence
      the question needed. */
+  'assistant.askFinding': 'Ask about this finding',
+  'assistant.contextQuestion': 'What requires attention in the recorded diagnostics?',
   'assistant.title': 'Assistant',
   'nav.assistant': 'Ask the assistant',
   'nav.assistantDescription': 'Answers questions about this PC from what AetherCore measured',

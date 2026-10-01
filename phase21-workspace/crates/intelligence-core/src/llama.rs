@@ -126,6 +126,20 @@ pub fn insight_grammar(pack_len: usize) -> String {
     )
 }
 
+/// P86-02B: the existing sampler constrains selection to IDs supplied by the trusted composer.
+pub fn fact_grammar(fact_count: usize) -> String {
+    let ids = (1..=fact_count.max(1))
+        .map(|id| format!("\"{id}\""))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    format!(
+        r#"root ::= "{{" ws "\"facts\"" ws ":" ws "[" ws (idx (ws "," ws idx)? (ws "," ws idx)? (ws "," ws idx)?)? ws "]" ws "}}" ws
+ws ::= [ \t\n\r]*
+idx ::= {ids}
+"#
+    )
+}
+
 /// Turns generated insight text into insights. Pure, so every rule below is
 /// tested without a model.
 ///
@@ -502,8 +516,8 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
         // back into the answer ("Mark every claim with the tag of the evidence
         // it rests on: NO EVIDENCE") and kept writing past its conclusion.
         let prompt = chat_prompt(
-            &crate::assistant::system_prompt_in(crate::assistant::SYSTEM_PROMPT, locale),
-            &crate::assistant::render_user_message(pack, question),
+            crate::assistant::FACT_SYSTEM_PROMPT,
+            &crate::assistant::render_fact_user_message(pack, question),
         );
         if prompt.len() > Self::MAX_PROMPT_CHARS {
             return Err(format!(
@@ -514,11 +528,17 @@ impl crate::assistant::StreamingReasoner for LlamaCppReasoner {
         }
         #[cfg(feature = "embedded-model")]
         {
-            self.decode_loop(&prompt, budget, None, sink)
+            let _ = locale; // Locale belongs to the product templates, never to model prose.
+            self.decode_loop(
+                &prompt,
+                budget,
+                Some(&fact_grammar(pack.propositions.len())),
+                sink,
+            )
         }
         #[cfg(not(feature = "embedded-model"))]
         {
-            let _ = (budget, sink);
+            let _ = (locale, budget, sink);
             Err("embedded-model feature not compiled".into())
         }
     }

@@ -56,6 +56,8 @@ export type AssistantState = {
   packRead: boolean;
 };
 
+export const suggestedAssistantQuestion = writable('');
+
 export const assistantState = writable<AssistantState>({
   transcript: [],
   inFlight: '',
@@ -67,6 +69,17 @@ export const assistantState = writable<AssistantState>({
 /** Streaming text is never an answer. Derived from state, never from the text. */
 export function isProvisional(turn: AssistantTurn): boolean {
   return turn.state === TURN_STREAMING;
+}
+
+let transcriptLocale: Locale = 'en';
+
+/** Changing language discards the old conversation before any asynchronous cancellation. */
+export function setAssistantLocale(locale: Locale): void {
+  if (locale === transcriptLocale) return;
+  transcriptLocale = locale;
+  const turnId = get(assistantState).inFlight;
+  assistantState.update((state) => ({ ...state, transcript: [], inFlight: '' }));
+  if (turnId) void serviceInvoke('cancel_assistant_turn', { turnId }).catch(() => {});
 }
 
 /**
@@ -145,7 +158,10 @@ export function bindAssistantStream(): void {
  * has to do that before the user has asked anything — which is why this verb
  * exists (`GetAssistantPack`, P57) rather than the drawer waiting for a turn.
  */
-export async function loadAssistantPack(): Promise<void> {
+let packReadInFlight: Promise<void> | null = null;
+export function loadAssistantPack(): Promise<void> {
+  if (packReadInFlight) return packReadInFlight;
+  packReadInFlight = (async () => {
   try {
     const response = await serviceInvoke<AssistantPackResponse>('get_assistant_pack');
     assistantState.update((state) => ({
@@ -159,6 +175,8 @@ export async function loadAssistantPack(): Promise<void> {
     // false so the drawer says "not collected yet" rather than "zero rows" —
     // the two are different claims and only one of them was measured.
   }
+  })().finally(() => { packReadInFlight = null; });
+  return packReadInFlight;
 }
 
 /**

@@ -152,6 +152,8 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
     let intelligence_core = Arc::new(crate::intelligence::IntelligenceCoordinator::new(
         db.clone(),
         Some(Box::new(model.clone())),
+        diagnostics.clone(),
+        repair.clone(),
     ));
     let assistant_reasoner: Option<Box<dyn aethercore_intelligence_core::StreamingReasoner>> =
         Some(Box::new(model));
@@ -166,6 +168,8 @@ pub fn build(data_path: &Path, product_data_root: &Path) -> Result<ServiceContex
     let assistant = Arc::new(crate::assistant::AssistantCoordinator::new(
         db.clone(),
         assistant_reasoner,
+        diagnostics.clone(),
+        repair.clone(),
     ));
 
     // Recovery is centralized and deliberately observation-only. A failure aborts service startup;

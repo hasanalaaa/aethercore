@@ -13,9 +13,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use aethercore_contracts::v1;
+use aethercore_intelligence_core::model::{Fact, MaintenanceDomain};
 use aethercore_intelligence_core::{
-    EvidenceItem, EvidenceSurface, IntelligenceError, LlamaCppReasoner, Locale, ReasonerSelector,
-    TypedEvidencePack,
+    Citation, EvidenceItem, EvidenceSurface, IntelligenceError, LlamaCppReasoner, Locale,
+    ReasonerSelector, TypedEvidencePack,
 };
 use aethercore_persistence::Database;
 use aethercore_timeline_intelligence::RecurrenceConfidence;
@@ -52,42 +53,75 @@ pub fn load_in_background(model: LlamaCppReasoner, product_root: std::path::Path
 /// insights it had no way to name and every dismissal missed. One field, one
 /// decider — what is stored and what is sent cannot drift apart.
 #[derive(Default)]
+struct CachedInsights {
+    digest: String,
+    insights: Vec<v1::Insight>,
+}
+
+#[derive(Default)]
 pub struct EphemeralInsights {
     next_id: AtomicU32,
-    items: Mutex<HashMap<String, Vec<v1::Insight>>>,
+    items: Mutex<HashMap<(String, Locale), CachedInsights>>,
 }
 
 impl EphemeralInsights {
     /// Replaces the session set and returns it stamped with the handles the
     /// client must send back to dismiss.
-    fn replace_all(&self, owner: &str, insights: Vec<v1::Insight>) -> Vec<v1::Insight> {
-        let mut all = self.items.lock().unwrap_or_else(|p| p.into_inner());
-        let store = all.entry(owner.to_owned()).or_default();
-        store.clear();
-        for mut insight in insights {
+    fn replace_all(
+        &self,
+        owner: &str,
+        locale: Locale,
+        digest: &str,
+        mut insights: Vec<v1::Insight>,
+    ) -> Vec<v1::Insight> {
+        for insight in &mut insights {
             insight.id = format!("insight-{}", self.next_id.fetch_add(1, Ordering::SeqCst));
-            store.push(insight);
         }
-        store.clone()
+        self.items.lock().unwrap_or_else(|p| p.into_inner()).insert(
+            (owner.to_owned(), locale),
+            CachedInsights {
+                digest: digest.to_owned(),
+                insights: insights.clone(),
+            },
+        );
+        insights
     }
 
-    fn list(&self, owner: &str) -> Vec<v1::Insight> {
+    fn list(&self, owner: &str, locale: Locale, digest: &str) -> Vec<v1::Insight> {
+        let mut all = self.items.lock().unwrap_or_else(|p| p.into_inner());
+        let key = (owner.to_owned(), locale);
+        if all.get(&key).is_some_and(|store| store.digest != digest) {
+            all.remove(&key);
+        }
+        all.get(&key)
+            .map(|store| store.insights.clone())
+            .unwrap_or_default()
+    }
+
+    fn locale_for_handle(&self, owner: &str, insight_id: &str) -> Option<Locale> {
         self.items
             .lock()
             .unwrap_or_else(|p| p.into_inner())
-            .get(owner)
-            .cloned()
-            .unwrap_or_default()
+            .iter()
+            .find(|((key, _), store)| {
+                key == owner
+                    && store
+                        .insights
+                        .iter()
+                        .any(|insight| insight.id == insight_id)
+            })
+            .map(|((_, locale), _)| *locale)
     }
 
     fn dismiss(&self, owner: &str, insight_id: &str) -> bool {
         let mut all = self.items.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(store) = all.get_mut(owner) else {
-            return false;
-        };
-        let before = store.len();
-        store.retain(|insight| insight.id != insight_id);
-        store.len() != before
+        let mut removed = false;
+        for (_, store) in all.iter_mut().filter(|((key, _), _)| key == owner) {
+            let before = store.insights.len();
+            store.insights.retain(|insight| insight.id != insight_id);
+            removed |= store.insights.len() != before;
+        }
+        removed
     }
 }
 
@@ -121,6 +155,22 @@ pub fn compose_evidence_pack(db: &Database, owner_principal_key: &str) -> TypedE
                     }
                 ),
             });
+            if let Some(domain) = MaintenanceDomain::from_record(&row.domain) {
+                let fact = match row.stage.as_str() {
+                    "Completed" if !row.recovery_required => Some(Fact::PlanCompleted { domain }),
+                    "Cancelled" => Some(Fact::PlanCancelled { domain }),
+                    _ => None,
+                };
+                if let Some(fact) = fact {
+                    pack.push_fact(
+                        Citation {
+                            evidence_id: row.plan_id,
+                            surface: EvidenceSurface::MaintenanceHistory,
+                        },
+                        fact,
+                    );
+                }
+            }
         }
     }
 
@@ -147,12 +197,212 @@ pub fn compose_evidence_pack(db: &Database, owner_principal_key: &str) -> TypedE
                     RecurrenceConfidence::Strong => "strong",
                 }
             ),
-            evidence_id: pattern.semantic_identity_sha256,
+            evidence_id: pattern.semantic_identity_sha256.clone(),
             surface: EvidenceSurface::TimelinePattern,
         });
+        if let Ok(occurrences) = u32::try_from(pattern.occurrence_count) {
+            pack.push_fact(
+                Citation {
+                    evidence_id: pattern.semantic_identity_sha256,
+                    surface: EvidenceSurface::TimelinePattern,
+                },
+                Fact::RepeatedFailure { occurrences },
+            );
+        }
     }
 
     pack
+}
+
+// Fresh current-state observations expire rather than silently becoming present-tense facts.
+const CURRENT_EVIDENCE_MAX_AGE_MS: i64 = 15 * 60_000;
+fn current_observation(observed: i64, now: i64) -> bool {
+    observed > 0
+        && now
+            .checked_sub(observed)
+            .is_some_and(|age| (0..=CURRENT_EVIDENCE_MAX_AGE_MS).contains(&age))
+}
+
+/// Both assistant and insights use these owner-scoped readers; asking never starts a scan.
+pub fn compose_current_evidence_pack(
+    db: &Database,
+    owner: &str,
+    diagnostics: &aethercore_diagnostic_engine::DiagnosticEngine,
+    repair: &aethercore_system_repair::RepairCoordinator,
+) -> TypedEvidencePack {
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut pack = TypedEvidencePack::default();
+    let snapshot = diagnostics
+        .snapshot_for_owner(owner)
+        .ok()
+        .filter(|snapshot| !snapshot.scan_id.is_empty())
+        .or_else(|| {
+            db.latest_diagnostic_snapshot_for_owner(owner)
+                .ok()
+                .flatten()
+                .and_then(|row| {
+                    serde_json::from_str::<aethercore_diagnostic_engine::DiagnosticsSnapshot>(
+                        &row.snapshot_json,
+                    )
+                    .ok()
+                })
+        });
+    if let Some(snapshot) = snapshot {
+        append_diagnostics(&mut pack, &snapshot, now);
+    }
+    if let Ok(assessment) = repair.assessment_for_owner(owner)
+        && assessment.state == aethercore_system_repair::RepairAssessmentState::Ready
+        && let Some(snapshot) = assessment.intelligence
+    {
+        append_repair_facts(&mut pack, &assessment.assessment_id, &snapshot.facts, now);
+    }
+    append_care_history(&mut pack, db, owner, now);
+    let history = compose_evidence_pack(db, owner);
+    for item in history.items {
+        pack.push(item);
+    }
+    for proposition in history.propositions {
+        pack.push_fact(proposition.citation, proposition.fact);
+    }
+    pack
+}
+
+fn append_diagnostics(
+    pack: &mut TypedEvidencePack,
+    snapshot: &aethercore_diagnostic_engine::DiagnosticsSnapshot,
+    now: i64,
+) {
+    use aethercore_diagnostic_engine::ScanState;
+    if !matches!(snapshot.state, ScanState::Ready | ScanState::Partial)
+        || !current_observation(snapshot.completed_unix_ms, now)
+    {
+        return;
+    }
+    let mut cards = snapshot
+        .cards
+        .iter()
+        .filter(|card| matches!(card.severity.as_str(), "ActionRequired" | "Attention"))
+        .collect::<Vec<_>>();
+    cards.sort_by_key(|card| card.severity != "ActionRequired");
+    for card in cards.into_iter().take(4) {
+        let citation = Citation {
+            evidence_id: format!("{}:{}", snapshot.scan_id, card.card_id),
+            surface: EvidenceSurface::Diagnostics,
+        };
+        pack.push(EvidenceItem {
+            evidence_id: citation.evidence_id.clone(),
+            surface: citation.surface,
+            detail: format!(
+                "diagnostic finding severity {} observedUnixMs {}",
+                card.severity, snapshot.completed_unix_ms
+            ),
+        });
+        pack.push_fact_at(
+            citation,
+            Fact::DiagnosticAttention {
+                action_required: card.severity == "ActionRequired",
+            },
+            snapshot.completed_unix_ms,
+        );
+    }
+    if snapshot.state == ScanState::Partial || !snapshot.provider_faults.is_empty() {
+        let citation = Citation {
+            evidence_id: format!("{}:coverage", snapshot.scan_id),
+            surface: EvidenceSurface::Diagnostics,
+        };
+        pack.push(EvidenceItem {
+            evidence_id: citation.evidence_id.clone(),
+            surface: citation.surface,
+            detail: format!(
+                "diagnostic evidence incomplete observedUnixMs {}",
+                snapshot.completed_unix_ms
+            ),
+        });
+        pack.push_fact_at(
+            citation,
+            Fact::DiagnosticsIncomplete,
+            snapshot.completed_unix_ms,
+        );
+    }
+}
+
+fn append_repair_facts(
+    pack: &mut TypedEvidencePack,
+    assessment_id: &str,
+    facts: &[aethercore_system_repair::RepairFact],
+    now: i64,
+) {
+    use aethercore_intelligence_core::model::RepairStatus as R;
+    use aethercore_system_repair::FactState as S;
+    for fact in facts
+        .iter()
+        .filter(|fact| current_observation(fact.observed_unix_ms, now))
+        .take(8)
+    {
+        let status = match fact.state {
+            S::CorruptionDetected => R::Corruption,
+            S::RepairFailed | S::Failure => R::Failed,
+            S::SourceRequired => R::SourceRequired,
+            S::RebootRequired => R::RebootRequired,
+            S::Repairable | S::UnexpectedConfiguration | S::Degraded => R::Attention,
+            _ => continue,
+        };
+        let citation = Citation {
+            evidence_id: format!("{assessment_id}:{}", fact.id),
+            surface: EvidenceSurface::RepairDiagnosis,
+        };
+        pack.push(EvidenceItem {
+            evidence_id: citation.evidence_id.clone(),
+            surface: citation.surface,
+            detail: format!(
+                "repair state {:?} observedUnixMs {}",
+                fact.state, fact.observed_unix_ms
+            ),
+        });
+        pack.push_fact_at(
+            citation,
+            Fact::RepairObservation { status },
+            fact.observed_unix_ms,
+        );
+    }
+}
+
+fn append_care_history(pack: &mut TypedEvidencePack, db: &Database, owner: &str, now: i64) {
+    use aethercore_intelligence_core::model::CareStatus as C;
+    let Ok(rows) = db.care_runs_for_owner(owner, 4) else {
+        return;
+    };
+    for row in rows {
+        let Some(observed) = row
+            .completed_unix_ms
+            .filter(|time| *time > 0 && *time <= now)
+        else {
+            continue;
+        };
+        let status = match row.state.as_str() {
+            "Failed" => C::Failed,
+            "Cancelled" | "Aborted" => C::Stopped,
+            "Completed" if row.detail == "care.status.stoppedForConsent" => C::Stopped,
+            "Completed"
+                if row.detail == "care.status.completedWithFailures"
+                    || row.steps_done < row.steps_total =>
+            {
+                C::Partial
+            }
+            "Completed" => C::Finished,
+            _ => continue,
+        };
+        let citation = Citation {
+            evidence_id: row.run_id,
+            surface: EvidenceSurface::CareHistory,
+        };
+        pack.push(EvidenceItem {
+            evidence_id: citation.evidence_id.clone(),
+            surface: citation.surface,
+            detail: format!("care final state {:?} observedUnixMs {observed}", status),
+        });
+        pack.push_fact_at(citation, Fact::CareResult { status }, observed);
+    }
 }
 
 /// The owner's detected recurrence patterns, built the way the timeline page
@@ -184,6 +434,8 @@ pub struct IntelligenceCoordinator {
     db: Arc<Database>,
     selector: Arc<ReasonerSelector>,
     pub session: Arc<EphemeralInsights>,
+    diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
+    repair: Arc<aethercore_system_repair::RepairCoordinator>,
 }
 
 impl IntelligenceCoordinator {
@@ -192,9 +444,13 @@ impl IntelligenceCoordinator {
     pub fn new(
         db: Arc<Database>,
         model_reasoner: Option<Box<dyn aethercore_intelligence_core::LocalReasoner>>,
+        diagnostics: Arc<aethercore_diagnostic_engine::DiagnosticEngine>,
+        repair: Arc<aethercore_system_repair::RepairCoordinator>,
     ) -> Self {
         Self {
             db,
+            diagnostics,
+            repair,
             selector: Arc::new(ReasonerSelector::new(model_reasoner)),
             session: Arc::new(EphemeralInsights::default()),
         }
@@ -205,10 +461,17 @@ impl IntelligenceCoordinator {
     }
 
     /// Lists current session insights without running inference.
-    pub fn list(&self, owner: &str) -> v1::InsightsResponse {
+    pub fn list(&self, owner: &str, locale: Locale) -> v1::InsightsResponse {
+        let digest = compose_current_evidence_pack(
+            self.db.as_ref(),
+            owner,
+            self.diagnostics.as_ref(),
+            self.repair.as_ref(),
+        )
+        .digest_sha256();
         v1::InsightsResponse {
             engine_label: self.engine_label().into(),
-            insights: self.session.list(owner),
+            insights: self.session.list(owner, locale, &digest),
         }
     }
 
@@ -223,7 +486,12 @@ impl IntelligenceCoordinator {
         question: &str,
         locale: Locale,
     ) -> Result<v1::InsightsResponse, IntelligenceError> {
-        let pack = compose_evidence_pack(self.db.as_ref(), owner_principal_key);
+        let pack = compose_current_evidence_pack(
+            self.db.as_ref(),
+            owner_principal_key,
+            self.diagnostics.as_ref(),
+            self.repair.as_ref(),
+        );
 
         // Empty evidence → typed empty response; no inference call is made.
         if pack.items.is_empty() {
@@ -262,6 +530,8 @@ impl IntelligenceCoordinator {
                             EvidenceSurface::TimelinePattern => "timelinePattern".into(),
                             EvidenceSurface::MaintenanceHistory => "maintenanceHistory".into(),
                             EvidenceSurface::SecurityFinding => "securityFinding".into(),
+                            EvidenceSurface::Diagnostics => "diagnostics".into(),
+                            EvidenceSurface::CareHistory => "careHistory".into(),
                         },
                     })
                     .collect(),
@@ -276,18 +546,39 @@ impl IntelligenceCoordinator {
             })
             .collect();
 
+        // An observation may change while the model runs. Never cache or return that old answer.
+        let digest = pack.digest_sha256();
+        let current = compose_current_evidence_pack(
+            self.db.as_ref(),
+            owner_principal_key,
+            self.diagnostics.as_ref(),
+            self.repair.as_ref(),
+        );
+        if digest != current.digest_sha256() {
+            return Ok(v1::InsightsResponse {
+                engine_label: self.engine_label().into(),
+                insights: Vec::new(),
+            });
+        }
         // Return what the registry now holds, not the pre-registration vector:
         // the ids are assigned during registration, and a response without them
         // is one the client cannot act on.
         Ok(v1::InsightsResponse {
             engine_label: self.engine_label().into(),
-            insights: self.session.replace_all(owner_principal_key, wire),
+            insights: self
+                .session
+                .replace_all(owner_principal_key, locale, &digest, wire),
         })
     }
 
     /// Dismisses one session insight. Returns true when it existed.
-    pub fn dismiss(&self, owner: &str, insight_id: &str) -> bool {
-        self.session.dismiss(owner, insight_id)
+    pub fn dismiss(&self, owner: &str, insight_id: &str) -> Locale {
+        let locale = self
+            .session
+            .locale_for_handle(owner, insight_id)
+            .unwrap_or(Locale::En);
+        self.session.dismiss(owner, insight_id);
+        locale
     }
 }
 
@@ -317,7 +608,12 @@ mod tests {
     #[test]
     fn a_dismissal_by_list_index_removes_nothing() {
         let registry = EphemeralInsights::default();
-        registry.replace_all("owner-a", vec![insight("a"), insight("b"), insight("c")]);
+        registry.replace_all(
+            "owner-a",
+            Locale::En,
+            "generation-a",
+            vec![insight("a"), insight("b"), insight("c")],
+        );
 
         for index in 0..3 {
             assert!(
@@ -325,7 +621,10 @@ mod tests {
                 "list index {index} must not name an insight"
             );
         }
-        assert_eq!(registry.list("owner-a").len(), 3);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            3
+        );
     }
 
     /// The handle the client is given is the handle the registry matches on.
@@ -334,21 +633,40 @@ mod tests {
     #[test]
     fn every_listed_insight_carries_the_handle_that_dismisses_it() {
         let registry = EphemeralInsights::default();
-        let listed =
-            registry.replace_all("owner-a", vec![insight("a"), insight("b"), insight("c")]);
+        let listed = registry.replace_all(
+            "owner-a",
+            Locale::En,
+            "generation-a",
+            vec![insight("a"), insight("b"), insight("c")],
+        );
         assert_eq!(listed.len(), 3);
         assert!(listed.iter().all(|i| !i.id.is_empty()), "{listed:?}");
 
         // replace_all's return and list() are the same set, ids included.
         let ids: Vec<&str> = listed.iter().map(|i| i.id.as_str()).collect();
-        let relisted: Vec<String> = registry.list("owner-a").into_iter().map(|i| i.id).collect();
+        let relisted: Vec<String> = registry
+            .list("owner-a", Locale::En, "generation-a")
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
         assert_eq!(ids, relisted.iter().map(String::as_str).collect::<Vec<_>>());
 
         assert!(registry.dismiss("owner-a", &listed[1].id));
-        let after: Vec<String> = registry.list("owner-a").into_iter().map(|i| i.id).collect();
+        let after: Vec<String> = registry
+            .list("owner-a", Locale::En, "generation-a")
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
         assert_eq!(after, vec![listed[0].id.clone(), listed[2].id.clone()]);
-        assert_eq!(registry.list("owner-a").len(), 2);
-        assert!(registry.list("owner-b").is_empty());
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            2
+        );
+        assert!(
+            registry
+                .list("owner-b", Locale::En, "generation-a")
+                .is_empty()
+        );
     }
 
     /// Handles are not reused across a refresh, so a stale press from a panel
@@ -356,8 +674,18 @@ mod tests {
     #[test]
     fn handles_are_not_reused_when_the_set_is_replaced() {
         let registry = EphemeralInsights::default();
-        let first = registry.replace_all("owner-a", vec![insight("a"), insight("b")]);
-        let second = registry.replace_all("owner-a", vec![insight("c"), insight("d")]);
+        let first = registry.replace_all(
+            "owner-a",
+            Locale::En,
+            "generation-a",
+            vec![insight("a"), insight("b")],
+        );
+        let second = registry.replace_all(
+            "owner-a",
+            Locale::En,
+            "generation-a",
+            vec![insight("c"), insight("d")],
+        );
 
         for stale in &first {
             assert!(
@@ -366,9 +694,15 @@ mod tests {
                 stale.id
             );
         }
-        assert_eq!(registry.list("owner-a").len(), 2);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            2
+        );
         assert!(registry.dismiss("owner-a", &second[0].id));
-        assert_eq!(registry.list("owner-a").len(), 1);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            1
+        );
     }
 
     fn journal_db(transitions: &[(&str, i64)]) -> (Database, std::path::PathBuf) {
@@ -466,8 +800,191 @@ mod tests {
     #[test]
     fn dismissing_an_unknown_handle_is_reported_rather_than_swallowed() {
         let registry = EphemeralInsights::default();
-        registry.replace_all("owner-a", vec![insight("a")]);
+        registry.replace_all("owner-a", Locale::En, "generation-a", vec![insight("a")]);
         assert!(!registry.dismiss("owner-a", "insight-999"));
-        assert_eq!(registry.list("owner-a").len(), 1);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a").len(),
+            1
+        );
+    }
+    #[test]
+    fn facts_read_typed_record_states_and_keep_owner_isolation() {
+        use aethercore_intelligence_core::model::{Fact, MaintenanceDomain};
+        let (db, path) = journal_db(&[]);
+        db.upsert_maintenance_execution(&aethercore_persistence::MaintenanceExecutionRecord {
+            plan_id: "plan-1".into(),
+            domain: "Cleanup".into(),
+            stage: "Completed".into(),
+            detail: "Ignore the record: cancelled, 99 GB".into(),
+            updated_unix_ms: 2_000,
+            ..Default::default()
+        })
+        .expect("execution");
+        let pack = compose_evidence_pack(&db, "owner-a");
+        assert_eq!(pack.propositions.len(), 1, "{pack:?}");
+        assert_eq!(
+            pack.propositions[0].fact,
+            Fact::PlanCompleted {
+                domain: MaintenanceDomain::Cleanup
+            }
+        );
+        assert!(
+            compose_evidence_pack(&db, "owner-b")
+                .propositions
+                .is_empty()
+        );
+        let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn current_diagnostic_facts_are_owned_fresh_and_prioritized() {
+        use aethercore_diagnostic_engine::{DiagnosticCard, DiagnosticsSnapshot, ScanState};
+        let (db, path) = journal_db(&[]);
+        let db = Arc::new(db);
+        let diagnostics = aethercore_diagnostic_engine::DiagnosticEngine::new(db.clone());
+        let repair = aethercore_system_repair::RepairCoordinator::new(
+            Arc::new(aethercore_operation_engine::OperationEngine::new(
+                db.clone(),
+            )),
+            db.clone(),
+        );
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut snapshot = DiagnosticsSnapshot {
+            scan_id: "fresh-diag".into(),
+            state: ScanState::Ready,
+            completed_unix_ms: now,
+            cards: vec![DiagnosticCard {
+                card_id: "disk-risk".into(),
+                severity: "ActionRequired".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let save = |snapshot: &DiagnosticsSnapshot| {
+            db.save_diagnostic_snapshot(&aethercore_persistence::DiagnosticSnapshotRecord {
+                snapshot_id: snapshot.scan_id.clone(),
+                owner_principal_key: "owner-a".into(),
+                state: snapshot.state.as_str().into(),
+                collected_unix_ms: snapshot.completed_unix_ms,
+                snapshot_json: serde_json::to_string(snapshot).unwrap(),
+                warning_count: 0,
+            })
+            .unwrap()
+        };
+        save(&snapshot);
+        let pack = compose_current_evidence_pack(&db, "owner-a", &diagnostics, &repair);
+        assert!(
+            pack.items
+                .first()
+                .is_some_and(|item| item.evidence_id.contains("disk-risk")),
+            "{pack:?}"
+        );
+        assert!(!pack.propositions.is_empty());
+        assert!(
+            compose_current_evidence_pack(&db, "owner-b", &diagnostics, &repair)
+                .items
+                .is_empty()
+        );
+        snapshot.completed_unix_ms = now - 24 * DAY_MS;
+        save(&snapshot);
+        assert!(
+            compose_current_evidence_pack(&db, "owner-a", &diagnostics, &repair)
+                .propositions
+                .is_empty()
+        );
+        snapshot.completed_unix_ms = now;
+        snapshot.state = ScanState::Failed;
+        save(&snapshot);
+        assert!(
+            compose_current_evidence_pack(&db, "owner-a", &diagnostics, &repair)
+                .propositions
+                .is_empty()
+        );
+        let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn repair_and_care_facts_preserve_failure_and_stop_states() {
+        use aethercore_system_repair::{FactState, RepairFact};
+        let now = chrono::Utc::now().timestamp_millis();
+        let fact = RepairFact {
+            id: "repair-failure".into(),
+            domain: serde_json::from_str("\"systemFiles\"").unwrap(),
+            state: FactState::RepairFailed,
+            resource: String::new(),
+            evidence_code: String::new(),
+            technical_code: String::new(),
+            detail: "healthy completed 99".into(),
+            observed_unix_ms: now,
+            confidence: serde_json::from_str("\"confirmed\"").unwrap(),
+        };
+        let mut pack = TypedEvidencePack::default();
+        append_repair_facts(&mut pack, "assessment-a", &[fact.clone()], now);
+        assert_eq!(pack.propositions.len(), 1);
+        assert!(
+            pack.propositions[0]
+                .fact
+                .sentence(Locale::En)
+                .contains("failed")
+        );
+        let mut stale = fact;
+        stale.observed_unix_ms = now - CURRENT_EVIDENCE_MAX_AGE_MS - 1;
+        append_repair_facts(&mut pack, "assessment-old", &[stale], now);
+        assert_eq!(pack.propositions.len(), 1);
+        let (db, path) = journal_db(&[]);
+        db.upsert_care_run(&aethercore_persistence::CareRunRecord {
+            run_id: "care-stopped".into(),
+            owner_principal_key: "owner-a".into(),
+            state: "Completed".into(),
+            detail: "care.status.stoppedForConsent".into(),
+            created_unix_ms: now,
+            updated_unix_ms: now,
+            completed_unix_ms: Some(now),
+            steps_total: 2,
+            steps_done: 1,
+            ..Default::default()
+        })
+        .unwrap();
+        append_care_history(&mut pack, &db, "owner-a", now);
+        assert!(
+            pack.propositions
+                .last()
+                .unwrap()
+                .fact
+                .sentence(Locale::En)
+                .contains("stopped")
+        );
+        let mut other = TypedEvidencePack::default();
+        append_care_history(&mut other, &db, "owner-b", now);
+        assert!(other.items.is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn cached_insights_are_scoped_to_locale_and_evidence_generation() {
+        let registry = EphemeralInsights::default();
+        registry.replace_all("owner-a", Locale::En, "generation-a", vec![insight("en")]);
+        registry.replace_all("owner-a", Locale::Ar, "generation-a", vec![insight("ar")]);
+        assert_eq!(
+            registry.list("owner-a", Locale::En, "generation-a")[0].summary_key,
+            "en"
+        );
+        assert_eq!(
+            registry.list("owner-a", Locale::Ar, "generation-a")[0].summary_key,
+            "ar"
+        );
+        assert!(
+            registry
+                .list("owner-b", Locale::En, "generation-a")
+                .is_empty()
+        );
+        assert!(
+            registry
+                .list("owner-a", Locale::En, "generation-b")
+                .is_empty()
+        );
+        assert!(
+            registry
+                .list("owner-a", Locale::En, "generation-a")
+                .is_empty(),
+            "a stale generation stays invalidated"
+        );
     }
 }
