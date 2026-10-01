@@ -269,6 +269,9 @@ jobs:
       - name: Supply-chain audit
         shell: pwsh
         run: ./scripts/audit-dependencies.ps1
+      - name: Prerequisite transfer bounds and Microsoft signature fixtures
+        shell: pwsh
+        run: ./scripts/test-prerequisite-downloads.ps1
       - name: Build unsigned production packaging candidate
         shell: pwsh
         run: ./scripts/build-release.ps1 -SkipOnlineSupplyChain

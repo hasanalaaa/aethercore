@@ -110,11 +110,18 @@ $webview = Join-Path $Prereqs 'MicrosoftEdgeWebview2Setup.exe'
 & "$PSScriptRoot\fetch-webview2.ps1" -OutputPath ([IO.Path]::GetRelativePath($Root,$webview))
 if ($LASTEXITCODE -ne 0) { throw 'WebView2 prerequisite acquisition failed.' }
 $vcredist = Join-Path $Prereqs 'vc_redist.x64.exe'
-Invoke-WebRequest -Uri 'https://aka.ms/vc14/vc_redist.x64.exe' -OutFile $vcredist
-$vcSignature = Get-AuthenticodeSignature $vcredist
+$vcTemporary = "$vcredist.download"
+Write-Host 'Acquiring Microsoft VC++ redistributable (120 seconds per attempt, two retries).'
+& curl.exe --fail --location --silent --show-error --connect-timeout 30 --max-time 120 --retry 2 --retry-max-time 360 --output $vcTemporary 'https://aka.ms/vc14/vc_redist.x64.exe'
+if ($LASTEXITCODE -ne 0) {
+    Remove-Item $vcTemporary -Force -ErrorAction SilentlyContinue
+    throw "VC++ prerequisite download failed (curl exit $LASTEXITCODE)."
+}
+$vcSignature = Get-AuthenticodeSignature $vcTemporary
 if ($vcSignature.Status -ne 'Valid' -or -not $vcSignature.SignerCertificate -or $vcSignature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
     throw 'VC++ redistributable must have a valid Microsoft Authenticode signature.'
 }
+Move-Item $vcTemporary $vcredist -Force
 
 $msi = Join-Path $Artifacts "AetherCore-$Version-x64.msi"
 $bundle = Join-Path $Artifacts "AetherCoreSetup-$Version-x64.exe"

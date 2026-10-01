@@ -105,3 +105,11 @@ all-target Clippy with warnings denied passed, compiling the real Windows
 verification implementation. No live servicing or model inference was run. This
 qualifies the portable cancellation regression and native build, while final
 integration CI and the real-servicing limits above remain open.
+
+### Final recovery integration and prerequisite transfer bounds
+
+Root integration of verification cancellation passed 197 locked Rust tests using a separate build target. Reusing the intelligence lane's target had incorrectly retained its newer enum artifacts while checking the older repair tree; the independent target compiled the actual repair source and passed, without changing production code. Native verification controls and Windows all-target Clippy are recorded above at source `1561c25`.
+
+The superseded CI at `1943619` stalled during VC++ acquisition for hours: its download handle remained open on an unchanged partial file, with an established HTTPS connection and no child build process. The run was cancelled. Source `6b9ce96` uses native Windows curl for both existing fixed Microsoft prerequisite URLs, with a 30-second connect ceiling, 120 seconds per attempt, two retries and a 360-second retry-start ceiling. This bounds transfer attempts rather than claiming a strict total including backoff or signature validation. Temporary files are admitted only after the existing valid Microsoft Authenticode checks; partial downloads are removed on curl failure. There is no new dependency, CI duration increase or signature bypass.
+
+Four native loopback controls passed: stalled WebView2 and VC++ bodies each stop after three attempts without publishing an artifact; an initial503 followed by a complete unsigned response retries once and is rejected by the original signature checks. The fixture uses one-second test transfer ceilings and real curl/Authenticode, never downloads or installs Setup. The same fixture is now a Windows CI step before packaging. The strengthened source gate requires the fixed URL and complete transfer bounds. Final full CI must use the integration head including these corrections.
