@@ -1048,7 +1048,7 @@ mod tests {
                     .unwrap();
                 Ok(vec![
                     aethercore_intelligence_core::Insight::build(
-                        "insight.summary.maintenanceCompleted",
+                        "insight.summary.observation",
                         "A plan completed",
                         aethercore_intelligence_core::InsightConfidence::Moderate,
                         vec![Citation {
