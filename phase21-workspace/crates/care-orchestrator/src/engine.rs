@@ -157,14 +157,22 @@ pub fn run_care_plan(
     let mut stopped_for_consent = false;
 
     for (index, step) in plan.steps.iter().enumerate() {
-        if step.safety != CareSafety::Auto {
-            reports.push(skipped(index, step));
-            continue;
-        }
         // A revoked fence means the owner cancelled mid-run: stop cleanly.
-        if stopped_for_consent || !fence.is_valid() {
-            stopped_for_consent = true;
-            reports.push(skipped(index, step));
+        if step.safety != CareSafety::Auto || stopped_for_consent || !fence.is_valid() {
+            if step.safety == CareSafety::Auto {
+                stopped_for_consent = true;
+            }
+            let report = skipped(index, step);
+            journal.record_step_state(
+                run_id,
+                index,
+                &step.domain_plan_id,
+                &step.domain_kind,
+                step.safety.level(),
+                "Skipped",
+            )?;
+            journal.record_step_result(run_id, "Skipped", &report)?;
+            reports.push(report);
             continue;
         }
 

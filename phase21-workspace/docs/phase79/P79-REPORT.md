@@ -108,3 +108,28 @@ This source task does not finish the whole debt: localized result rendering, own
 restoration after relaunch and the Timeline details link follow in task B. Native Windows fixture
 qualification for this exact follow-up is pending the isolated test slot; no hardware or installed
 UI acceptance is inferred from these local fixtures.
+
+### Acceptance follow-up B1 — durable result history (2026-10-02)
+
+GetCareStatus restores the latest terminal run for the current owner when no new
+prepared plan exists. Historical approval is never session consent. Results keep
+the original timestamp and exact measured decimal deletion bytes; non-Cleanup,
+unverified, failed and skipped steps do not acquire a measurement. A fresh plan
+still returns a preview requiring new approval. Old journals with missing step
+records explicitly say that the history is incomplete.
+
+Skipped review/cancelled steps now have durable state and outcome records without
+entering Executing or reaching a domain. Final steps_done counts the terminal
+records after the final outcome is persisted. The existing review-only adversarial
+check now forbids Executing and requires Skipped audit records rather than
+forbidding all audit records for review work.
+
+Runtime red traces: restored run ID was empty; final steps_done was zero; skipped
+result audit count was zero; legacy missing-step history claimed a complete report.
+Green: 152 tests across 17 affected Rust suites, no failures/ignored; four-package
+all-target Clippy with -D warnings; UI 88/88 and static 351 checks passed. The UI
+runner uses the repository's resolve-ts loader. The new restart test reopens only
+a temporary SQLite fixture and asserts owner isolation, no inherited approval,
+measured zero, dated history, missing legacy rows and new-plan precedence. Native
+Windows fixture qualification and Care result UI/Timeline navigation remain
+pending; no installed device mutation was performed.

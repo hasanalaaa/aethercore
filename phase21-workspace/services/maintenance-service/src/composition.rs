@@ -633,6 +633,11 @@ mod p75_care_dispatch_tests {
                 bytes.to_string(),
                 "exact domain result, never estimated bytes or rounded JSON number"
             );
+            assert_eq!(
+                db.get_care_run("run-measured").unwrap().unwrap().steps_done,
+                1,
+                "the terminal history count includes the final completed step"
+            );
             drop(care);
             drop(engine);
             drop(db);

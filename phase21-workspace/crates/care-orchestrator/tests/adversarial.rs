@@ -439,6 +439,17 @@ fn revoked_fence_stops_remaining_steps_and_marks_them_skipped() {
             .iter()
             .all(|step| step.outcome == StepOutcome::Skipped)
     );
+    assert_eq!(
+        journal
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.contains(":Skipped:Skipped:"))
+            .count(),
+        2,
+        "a cancelled run's unexecuted steps must survive in its journal for history"
+    );
 }
 
 #[test]
@@ -538,14 +549,22 @@ fn review_only_steps_are_never_executed() {
         .find(|report| report.domain_plan_id == "drv-plan-1")
         .expect("the review step is still reported");
     assert_eq!(review.outcome, StepOutcome::Skipped);
+    let events = journal.events.lock().unwrap();
     assert!(
-        !journal
-            .events
-            .lock()
-            .unwrap()
+        !events
             .iter()
-            .any(|event| event.contains("drv-plan-1")),
+            .any(|event| event.contains("drv-plan-1:Executing")),
         "a step that never ran is not journaled as executing"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.contains("drv-plan-1:Skipped"))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.contains(":Skipped:Skipped:"))
     );
 }
 

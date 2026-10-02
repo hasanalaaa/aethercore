@@ -1946,6 +1946,7 @@ export const enCatalog = {
   'care.summary.failed': 'The run stopped on a failure; every step above cites what happened.',
   'care.summary.cancelled': 'Cancelled. Steps already verified keep their evidence.',
   'care.summary.completed': 'Run finished. Each step cites its own outcome.',
+  'care.summary.historyIncomplete': 'Previous run restored. Some step records are unavailable; this is not a complete outcome report.',
   'care.summary.completedVerified': 'Run finished. Every auto step was verified by its own domain checks.',
   'care.consentTitle': 'Approve this care plan for one run',
   'care.consentCopy': 'One click approves exactly the automatic steps of the plan shown, as they are now, for this run only. Care runs plans your domain scans already made; it never creates new actions.',

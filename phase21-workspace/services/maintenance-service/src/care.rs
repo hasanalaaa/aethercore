@@ -494,6 +494,14 @@ impl JournalTrait for PersistenceJournal {
             run.detail = detail.into();
             run.updated_unix_ms = chrono_now();
             run.completed_unix_ms = Some(chrono_now());
+            run.steps_done = self
+                .db
+                .care_steps_for_run(run_id)
+                .map_err(|e| aethercore_care_orchestrator::CareError::Journal(e.to_string()))?
+                .iter()
+                .filter(|step| matches!(step.state.as_str(), "Completed" | "Failed" | "Skipped"))
+                .count()
+                .min(u32::MAX as usize) as u32;
             self.db
                 .upsert_care_run(&run)
                 .map_err(|e| aethercore_care_orchestrator::CareError::Journal(e.to_string()))?;
@@ -642,6 +650,70 @@ impl CareCoordinator {
             &plan,
             &[],
         ))
+    }
+
+    pub fn current_status(
+        &self,
+        owner: &str,
+    ) -> Result<v1::CareRunStatus, aethercore_care_orchestrator::CareError> {
+        let preview = self.plan_preview(owner)?;
+        if !preview.steps.is_empty() {
+            return Ok(preview);
+        }
+        let error = |e: aethercore_persistence::PersistenceError| {
+            aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(e.to_string())
+        };
+        let Some(run) = self
+            .db
+            .care_runs_for_owner(owner, 1)
+            .map_err(error)?
+            .into_iter()
+            .next()
+            .filter(|run| matches!(run.state.as_str(), "Completed" | "Failed" | "Cancelled"))
+        else {
+            return Ok(preview);
+        };
+        let records = self.db.care_steps_for_run(&run.run_id).map_err(error)?;
+        let history_incomplete = records.len() != run.steps_total as usize;
+        let steps = records
+            .into_iter()
+            .map(|step| {
+                let bytes = step.actual_deleted_bytes.filter(|_| {
+                    step.domain_kind == "Cleanup"
+                        && step.state == "Completed"
+                        && step.outcome == "VerifiedByDomain"
+                        && step.verification_state == "Verified"
+                });
+                v1::CareStepReport {
+                    step_index: step.step_index,
+                    domain_plan_id: step.domain_plan_id,
+                    domain_kind: step.domain_kind,
+                    safety_level: step.safety_level,
+                    state: step.state,
+                    outcome: step.outcome,
+                    domain_verification_state: step.verification_state,
+                    failure_message_key: step.failure_message,
+                    has_actual_deleted_bytes: bytes.is_some(),
+                    actual_deleted_bytes: bytes.map(|v| v.to_string()).unwrap_or_default(),
+                }
+            })
+            .collect();
+        Ok(v1::CareRunStatus {
+            run_id: run.run_id,
+            state: run.state.clone(),
+            stage: "Report".into(),
+            session_consent_granted: false,
+            plan_digest_sha256: run.plan_digest_sha256,
+            steps,
+            updated_unix_ms: run.completed_unix_ms.unwrap_or(run.updated_unix_ms),
+            summary_key: match run.state.as_str() {
+                _ if history_incomplete => "care.summary.historyIncomplete",
+                "Failed" => "care.summary.failed",
+                "Cancelled" => "care.summary.cancelled",
+                _ => "care.summary.completed",
+            }
+            .into(),
+        })
     }
 
     /// Records the owner's approval of the plan they were shown (`shown_digest`), if it is
@@ -1502,5 +1574,130 @@ mod p79_prepare_tests {
         );
         drop((db, cleaner));
         let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[cfg(test)]
+mod p79_history_tests {
+    use super::*;
+    struct NoDispatch;
+    impl DomainDispatch for NoDispatch {
+        fn start_and_await(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &aethercore_care_orchestrator::MutationLeaseGuard,
+        ) -> Result<(String, String, String, Option<u64>), aethercore_care_orchestrator::CareError>
+        {
+            panic!("history cannot execute a domain")
+        }
+    }
+    #[test]
+    fn p79_relaunch_restores_owner_result_without_inheriting_consent_and_new_work_is_a_preview() {
+        let path = std::env::temp_dir().join(format!(
+            "aethercore-p79-history-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let db = Database::open(&path).unwrap();
+        db.upsert_care_run(&aethercore_persistence::CareRunRecord {
+            run_id: "previous".into(),
+            owner_principal_key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .into(),
+            state: "Completed".into(),
+            stage: "Report".into(),
+            plan_digest_sha256: "previous-digest".into(),
+            session_consent_granted: true,
+            steps_total: 1,
+            steps_done: 1,
+            detail: "care.status.completedVerified".into(),
+            updated_unix_ms: 10,
+            completed_unix_ms: Some(10),
+            ..Default::default()
+        })
+        .unwrap();
+        db.insert_care_step(&CareStepRecord {
+            run_id: "previous".into(),
+            domain_plan_id: "previous-plan".into(),
+            domain_kind: "Cleanup".into(),
+            state: "Completed".into(),
+            outcome: "VerifiedByDomain".into(),
+            verification_state: "Verified".into(),
+            actual_deleted_bytes: Some(0),
+            ..Default::default()
+        })
+        .unwrap();
+        drop(db);
+        let db = Arc::new(Database::open(&path).unwrap());
+        let care =
+            CareCoordinator::new(db.clone(), Arc::new(NoDispatch), MutationSupervisor::new());
+        let status = care
+            .current_status("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            .unwrap();
+        assert_eq!(status.run_id, "previous");
+        assert_eq!(status.state, "Completed");
+        assert!(
+            !status.session_consent_granted,
+            "historical approval is not consent for this session"
+        );
+        assert!(status.steps[0].has_actual_deleted_bytes);
+        assert_eq!(status.steps[0].actual_deleted_bytes, "0");
+        assert_eq!(
+            status.updated_unix_ms, 10,
+            "history is dated, not a new measurement"
+        );
+        assert!(
+            care.current_status("owner-b").unwrap().run_id.is_empty(),
+            "another owner cannot read the run"
+        );
+        let mut legacy = db
+            .care_runs_for_owner(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                1,
+            )
+            .unwrap()
+            .remove(0);
+        legacy.run_id = "legacy-missing-steps".into();
+        legacy.created_unix_ms = 11;
+        legacy.updated_unix_ms = 11;
+        legacy.steps_total = 2;
+        db.upsert_care_run(&legacy).unwrap();
+        assert_eq!(
+            care.current_status("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+                .unwrap()
+                .summary_key,
+            "care.summary.historyIncomplete",
+            "missing legacy steps cannot imply a complete report"
+        );
+        let engine = aethercore_operation_engine::OperationEngine::new(db.clone());
+        let plan = engine
+            .create_cleanup_plan(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                1,
+                "new-scan",
+                vec![aethercore_operation_engine::CleanupDeleteAction {
+                    candidate_id: "new".into(),
+                    scan_id: "new-scan".into(),
+                    inventory_epoch: 1,
+                    provider: "test".into(),
+                    title: "test".into(),
+                    special_kind: String::new(),
+                    files: Vec::new(),
+                    expected_bytes: 512,
+                }],
+            )
+            .unwrap();
+        let preview = care
+            .current_status("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            .unwrap();
+        assert_eq!(preview.state, "Idle");
+        assert!(preview.run_id.is_empty());
+        assert_eq!(preview.steps[0].domain_plan_id, plan.id);
+        assert!(!preview.steps[0].has_actual_deleted_bytes);
+        drop(engine);
+        drop(care);
+        drop(db);
+        let _ = std::fs::remove_file(path);
     }
 }
