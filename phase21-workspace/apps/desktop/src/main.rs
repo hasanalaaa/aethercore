@@ -1908,12 +1908,14 @@ fn extract_optimization_plan(resp: v1::Response) -> Result<v1::OptimizationPlanS
 async fn get_timeline_page(
     page_size: u32,
     before_sequence: u64,
+    snapshot_cursor: Option<String>,
 ) -> Result<v1::TimelineResponse, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let resp = request(request::Payload::GetTimelinePage(
             v1::GetTimelinePageRequest {
                 page_size,
                 before_sequence,
+                snapshot_cursor,
             },
         ))
         .map_err(|e| e.to_string())?;

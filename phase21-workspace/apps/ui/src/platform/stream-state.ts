@@ -87,6 +87,8 @@ export type StreamState = {
   /** The last SERVICE_LOG_LIMIT kernel events, oldest first. */
   serviceLog: readonly UiKernelEvent[];
   lastKernelSequence: number;
+  /** Renderer-only epoch: replay reset invalidates outstanding owner-scoped reads. */
+  resetGeneration: number;
 };
 
 export const emptyHubSummary: HubSummary = {
@@ -239,6 +241,7 @@ export function createInitialStreamState(): StreamState {
     },
     serviceLog: [],
     lastKernelSequence: 0,
+    resetGeneration: 0,
   };
 }
 
@@ -448,6 +451,7 @@ export function applyStreamReset(reset: UiStreamReset): void {
     },
     session: previous.session,
     lastKernelSequence: reset.currentSequence,
+    resetGeneration: previous.resetGeneration + 1,
   });
 }
 

@@ -10,6 +10,7 @@
    * - Bidi: timestamps, digests and counts are isolated with TechnicalText so Arabic
    *   layout never mirrors technical values.
    */
+  import { tick } from 'svelte';
   import { fluidPress } from '../../design/motion';
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
@@ -19,11 +20,25 @@
   import {
     loadRecurrencePatterns,
     loadTimeline,
+    loadOlderTimeline,
     timelineUi,
   } from './controller';
 
   $: locale = $shellState.locale;
-  $: page = $streamState.timelinePage;
+  $: page = $timelineUi.page;
+  let timelineList: HTMLOListElement | undefined;
+  let lastSelected = '';
+  $: if ($timelineUi.selectedEventSourceId !== lastSelected) {
+    lastSelected = $timelineUi.selectedEventSourceId;
+    if (lastSelected) void focusSelected(lastSelected);
+  }
+  async function focusSelected(sourceId: string): Promise<void> {
+    await tick();
+    if (sourceId !== $timelineUi.selectedEventSourceId) return;
+    const row = Array.from(timelineList?.querySelectorAll<HTMLElement>('[data-source-id]') ?? [])
+      .find((element) => element.dataset.sourceId === sourceId);
+    row?.scrollIntoView({ block: 'nearest' }); row?.focus({ preventScroll: true });
+  }
 
   function outcomeKey(outcome: string): MessageKey {
     switch (outcome) {
@@ -67,16 +82,24 @@
       <p class="eyebrow">{t('timeline.eyebrow', locale)}</p>
       <h3>{t('timeline.title', locale)}</h3>
     </div>
-    <Pressable className="ghost-action" onclick={loadTimeline}>{t('timeline.refresh', locale)}</Pressable>
+    <Pressable className="ghost-action" disabled={$timelineUi.loading} onclick={loadTimeline}>{t('timeline.refresh', locale)}</Pressable>
   </div>
 
+  {#if $timelineUi.reloadRequired}
+    <p class="empty" role="status">{t('timeline.reloadRequired', locale)}</p>
+  {:else if $timelineUi.newActivity}
+    <p class="empty" role="status">{t('timeline.newActivity', locale)}</p>
+  {/if}
+  {#if $timelineUi.readFailed && page}
+    <p class="empty">{t('timeline.readFailed', locale)}</p>
+  {/if}
   {#if page && (page.historyWindowLimit ?? 0) > 0}
     <p class="empty">{t('timeline.boundedWindow', locale)}</p>
   {/if}
   {#if page && page.entries.length > 0}
-    <ol class="timeline-list">
+    <ol class="timeline-list" bind:this={timelineList}>
       {#each page.entries as entry (entry.sourceId)}
-        <li class="timeline-row" class:failed={entry.outcome === 'TIMELINE_OUTCOME_FAILED'}>
+        <li class="timeline-row" data-source-id={entry.sourceId} tabindex="-1" class:selected={$timelineUi.selectedEventSourceId === entry.sourceId} class:failed={entry.outcome === 'TIMELINE_OUTCOME_FAILED'}>
           <span class="when"><TechnicalText value={formatTime(entry.observedUnixMs)} /></span>
           <span class="what">
             {td(classKey(entry.class), locale)}
@@ -86,10 +109,17 @@
         </li>
       {/each}
     </ol>
+    {#if page.hasMore}
+      <Pressable className="ghost-action" disabled={$timelineUi.loading} onclick={loadOlderTimeline}>{t('timeline.older', locale)}</Pressable>
+    {/if}
     <p class="digest">
       {t('timeline.digest', locale)}
       <TechnicalText value={page.digestSha256.slice(0, 16)} />
     </p>
+  {:else if $timelineUi.reloadRequired}
+    <!-- Reload is a declared invalid browsing session, never an empty-history claim. -->
+  {:else if $timelineUi.loading}
+    <p class="empty">{t('timeline.loading', locale)}</p>
   {:else if $timelineUi.readFailed}
     <p class="empty">{t('timeline.readFailed', locale)}</p>
   {:else}
@@ -133,6 +163,7 @@
     border-radius: var(--ac-radius-md);
     background: var(--ac-material-base);
   }
+  .timeline-row.selected { outline: 1px solid var(--ac-text-2); }
   .timeline-row.failed {
     background: var(--role-attention-wash);
   }

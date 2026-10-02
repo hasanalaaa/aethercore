@@ -152,6 +152,7 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
                 aethercore_contracts::v1::GetTimelinePageRequest {
                     page_size,
                     before_sequence,
+                    snapshot_cursor: None,
                 },
             ))?)?;
             timeline_page_value(&payload).ok_or_else(|| CliError::ProtocolViolation {

@@ -10,6 +10,23 @@ use aethercore_timeline_intelligence::{
     EventClass, MAX_PAGE_SIZE, Outcome, RecurrenceConfidence, Timeline,
 };
 
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+
+const SNAPSHOT_CURSOR_CAP: usize = 32;
+const SNAPSHOT_TTL: Duration = Duration::from_secs(5 * 60);
+
+struct SnapshotCursor {
+    owner: String,
+    timeline: Arc<Timeline>,
+    before_index: usize,
+    created: Instant,
+    issued: Instant,
+}
+
 // ---------------------------------------------------------------------------
 // Domain -> wire mappings
 // ---------------------------------------------------------------------------
@@ -100,6 +117,8 @@ fn timeline_page_proto(
     let has_more = start > 0;
     v1::TimelineResponse {
         entries,
+        next_snapshot_cursor: None,
+        reload_required: false,
         has_more,
         next_before_sequence: if has_more { start as u64 } else { 0 },
         digest_sha256: timeline.digest_sha256.clone(),
@@ -112,15 +131,19 @@ fn timeline_page_proto(
 // Service-side coordinator
 // ---------------------------------------------------------------------------
 
-/// Computes timelines from persisted owner history on demand. Stateless beyond the
-/// database handle; every request re-derives deterministic content.
+/// Legacy integer reads rebuild history. Additive cursors retain a bounded immutable
+/// owner snapshot for at most five minutes; restart/eviction requires a declared reload.
 pub struct TimelineCoordinator {
     db: std::sync::Arc<Database>,
+    cursors: Mutex<HashMap<String, SnapshotCursor>>,
 }
 
 impl TimelineCoordinator {
     pub fn new(db: std::sync::Arc<Database>) -> Self {
-        Self { db }
+        Self {
+            db,
+            cursors: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Builds the full owner timeline once per request pair (page + patterns share it).
@@ -166,6 +189,77 @@ impl TimelineCoordinator {
         let timeline = self.build_timeline(owner_principal_key)?;
         let page = timeline_page_proto(&timeline, page_size, before_index);
         Ok((page, timeline))
+    }
+
+    pub fn page_request(
+        &self,
+        owner: &str,
+        request: &v1::GetTimelinePageRequest,
+    ) -> Result<v1::TimelineResponse, aethercore_persistence::PersistenceError> {
+        let Some(cursor) = request.snapshot_cursor.as_deref() else {
+            return self
+                .page_for_owner(owner, request.page_size, request.before_sequence)
+                .map(|(page, _)| page);
+        };
+        let now = Instant::now();
+        let snapshot = if cursor.is_empty() && request.before_sequence == 0 {
+            let timeline = Arc::new(self.build_timeline(owner)?);
+            let end = timeline.events.len();
+            Some((timeline, end, now))
+        } else {
+            let mut cursors = self
+                .cursors
+                .lock()
+                .map_err(|_| aethercore_persistence::PersistenceError::Poisoned)?;
+            cursors.retain(|_, snapshot| now.duration_since(snapshot.created) < SNAPSHOT_TTL);
+            cursors
+                .get(cursor)
+                .filter(|snapshot| snapshot.owner == owner)
+                .map(|snapshot| {
+                    (
+                        Arc::clone(&snapshot.timeline),
+                        snapshot.before_index,
+                        snapshot.created,
+                    )
+                })
+        };
+        let Some((timeline, before_index, created)) = snapshot else {
+            return Ok(v1::TimelineResponse {
+                reload_required: true,
+                ..Default::default()
+            });
+        };
+        let size = request.page_size.clamp(1, MAX_PAGE_SIZE as u32) as usize;
+        let mut page = timeline_page_proto(&timeline, size, before_index);
+        if page.has_more {
+            let token = uuid::Uuid::new_v4().to_string();
+            let mut cursors = self
+                .cursors
+                .lock()
+                .map_err(|_| aethercore_persistence::PersistenceError::Poisoned)?;
+            let issued = Instant::now();
+            cursors.retain(|_, snapshot| issued.duration_since(snapshot.created) < SNAPSHOT_TTL);
+            if cursors.len() >= SNAPSHOT_CURSOR_CAP
+                && let Some(oldest) = cursors
+                    .iter()
+                    .min_by_key(|(_, snapshot)| snapshot.issued)
+                    .map(|(token, _)| token.clone())
+            {
+                cursors.remove(&oldest);
+            }
+            cursors.insert(
+                token.clone(),
+                SnapshotCursor {
+                    owner: owner.into(),
+                    timeline,
+                    before_index: page.next_before_sequence as usize,
+                    created,
+                    issued,
+                },
+            );
+            page.next_snapshot_cursor = Some(token);
+        }
+        Ok(page)
     }
 
     /// Principal-scoped recurrence patterns with their full evidence matrices.
@@ -288,6 +382,202 @@ mod tests {
             "created",
         )
         .expect("plan");
+    }
+
+    #[test]
+    fn snapshot_pages_keep_original_events_when_a_backdated_event_is_inserted() {
+        let (db, root) = database("snapshot");
+        for index in 1..=5 {
+            seed_plan(&db, &format!("original-{index}"), "owner-a", index * 1_000);
+        }
+        let coordinator = TimelineCoordinator::new(db.clone());
+        let mut request = v1::GetTimelinePageRequest {
+            page_size: 3,
+            before_sequence: 0,
+            snapshot_cursor: Some(String::new()),
+        };
+        let first = coordinator.page_request("owner-a", &request).unwrap();
+        assert!(
+            first.next_snapshot_cursor.is_some(),
+            "new client must receive a pinned cursor"
+        );
+        seed_plan(&db, "inserted", "owner-a", 1_500);
+        request.snapshot_cursor = first.next_snapshot_cursor.clone();
+        let second = coordinator.page_request("owner-a", &request).unwrap();
+        let mut entries = second.entries;
+        entries.extend(first.entries);
+        assert_eq!(entries.len(), 5);
+        assert!(
+            entries
+                .iter()
+                .all(|entry| !entry.source_id.contains("inserted"))
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| &entry.source_id)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            5
+        );
+        assert_eq!(second.digest_sha256, first.digest_sha256);
+        assert!(!second.has_more);
+        drop(coordinator);
+        drop(db);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unknown_snapshot_cursor_declares_reload_without_owner_data() {
+        let (db, root) = database("invalid");
+        seed_plan(&db, "private", "owner-a", 1_000);
+        let coordinator = TimelineCoordinator::new(db);
+        let page = coordinator
+            .page_request(
+                "owner-a",
+                &v1::GetTimelinePageRequest {
+                    page_size: 100,
+                    before_sequence: 0,
+                    snapshot_cursor: Some("tampered".into()),
+                },
+            )
+            .unwrap();
+        assert!(page.reload_required, "invalid cursor must declare reload");
+        assert!(page.entries.is_empty());
+        assert!(page.digest_sha256.is_empty());
+        drop(coordinator);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn snapshot_cursors_are_owner_bound_replayable_expiring_and_restart_local() {
+        let (db, root) = database("cursor-boundaries");
+        for index in 1..=3 {
+            seed_plan(&db, &format!("mine-{index}"), "owner-a", index * 1_000);
+        }
+        let coordinator = TimelineCoordinator::new(db.clone());
+        let mut request = v1::GetTimelinePageRequest {
+            page_size: 1,
+            before_sequence: 0,
+            snapshot_cursor: Some(String::new()),
+        };
+        let first = coordinator.page_request("owner-a", &request).unwrap();
+        let token = first.next_snapshot_cursor.unwrap();
+        request.snapshot_cursor = Some(token.clone());
+        let denied = coordinator.page_request("owner-b", &request).unwrap();
+        assert!(
+            denied.reload_required && denied.entries.is_empty() && denied.digest_sha256.is_empty()
+        );
+        let created = Instant::now() - (SNAPSHOT_TTL / 2);
+        coordinator
+            .cursors
+            .lock()
+            .unwrap()
+            .get_mut(&token)
+            .unwrap()
+            .created = created;
+        let second = coordinator.page_request("owner-a", &request).unwrap();
+        let next = second.next_snapshot_cursor.as_ref().unwrap();
+        assert_eq!(
+            coordinator
+                .cursors
+                .lock()
+                .unwrap()
+                .get(next)
+                .unwrap()
+                .created,
+            created,
+            "issuing another page must not extend the snapshot lifetime"
+        );
+        assert_eq!(
+            ids(&second),
+            ids(&coordinator.page_request("owner-a", &request).unwrap())
+        );
+        assert!(!second.reload_required && second.entries.len() == 1);
+        request.snapshot_cursor = Some(format!("{token}x"));
+        assert!(
+            coordinator
+                .page_request("owner-a", &request)
+                .unwrap()
+                .reload_required
+        );
+        request.snapshot_cursor = Some(token.clone());
+        coordinator
+            .cursors
+            .lock()
+            .unwrap()
+            .get_mut(&token)
+            .unwrap()
+            .created = Instant::now() - SNAPSHOT_TTL;
+        let expired = coordinator.page_request("owner-a", &request).unwrap();
+        assert!(expired.reload_required && expired.entries.is_empty());
+        assert!(!coordinator.cursors.lock().unwrap().contains_key(&token));
+        assert!(
+            TimelineCoordinator::new(db.clone())
+                .page_request("owner-a", &request)
+                .unwrap()
+                .reload_required
+        );
+        drop(coordinator);
+        drop(db);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn snapshot_cache_evicts_oldest_issue_at_cap_and_legacy_integer_reads_stay_uncached() {
+        let (db, root) = database("cursor-cap");
+        for index in 1..=3 {
+            seed_plan(&db, &format!("mine-{index}"), "owner-a", index * 1_000);
+        }
+        let coordinator = TimelineCoordinator::new(db.clone());
+        let mut request = v1::GetTimelinePageRequest {
+            page_size: 2,
+            before_sequence: 0,
+            snapshot_cursor: None,
+        };
+        let old = coordinator.page_request("owner-a", &request).unwrap();
+        assert!(old.next_snapshot_cursor.is_none() && !old.reload_required);
+        request.before_sequence = old.next_before_sequence;
+        assert_eq!(
+            coordinator
+                .page_request("owner-a", &request)
+                .unwrap()
+                .entries
+                .len(),
+            1
+        );
+        assert!(coordinator.cursors.lock().unwrap().is_empty());
+        request.before_sequence = 0;
+        request.snapshot_cursor = Some(String::new());
+        let token = coordinator
+            .page_request("owner-a", &request)
+            .unwrap()
+            .next_snapshot_cursor
+            .unwrap();
+        coordinator
+            .cursors
+            .lock()
+            .unwrap()
+            .get_mut(&token)
+            .unwrap()
+            .issued = Instant::now() - Duration::from_secs(1);
+        for _ in 0..SNAPSHOT_CURSOR_CAP {
+            coordinator.page_request("owner-a", &request).unwrap();
+        }
+        assert_eq!(
+            coordinator.cursors.lock().unwrap().len(),
+            SNAPSHOT_CURSOR_CAP
+        );
+        request.snapshot_cursor = Some(token);
+        assert!(
+            coordinator
+                .page_request("owner-a", &request)
+                .unwrap()
+                .reload_required
+        );
+        drop(coordinator);
+        drop(db);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     /// The coordinator over a real database: the caller's own history only, and a request for a huge

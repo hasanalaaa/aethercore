@@ -15,6 +15,9 @@ message GetTimelinePageRequest {
   // Server clamps into [1, 200] (MAX_PAGE_SIZE). Zero means "use the default".
   uint32 page_size = 1;
   uint64 before_sequence = 2;
+  // Absent preserves integer paging. Present empty starts an owner-pinned snapshot;
+  // otherwise an opaque cursor issued by this service. Never contains owner/host data.
+  optional string snapshot_cursor = 3;
 }
 
 message GetRecurrencePatternsRequest {
@@ -30,6 +33,10 @@ message TimelineResponse {
   // Maximum retained candidate events before paging. Each source is also bounded;
   // this is recent available history, not a complete archive. 0 = older server.
   uint32 history_window_limit = 6;
+  optional string next_snapshot_cursor = 7;
+  // Cursor invalid, expired, evicted, or from another owner/service lifetime.
+  // No entries are authorized; clients declare reload instead of empty success.
+  bool reload_required = 8;
 }
 
 message RecurrencePatternsResponse {
