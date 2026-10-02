@@ -30,6 +30,8 @@
     prepareCare,
   } from './controller';
   import { careEmptyReason } from './approval';
+  import { measuredDeletedBytes } from './result';
+  import { careDetails, openCareDetails } from './history';
 
   $: locale = $shellState.locale;
   $: care = $streamState.careStatus;
@@ -104,7 +106,7 @@
     {/if}
   {/each}
 
-  {#if !care || care.steps.length === 0}
+  {#if (!care || care.steps.length === 0) && !care?.runId}
     {#if emptyReason.kind === 'unavailable'}
       <EmptyState title={t('care.unavailable', locale)} body={t('care.unavailable.body', locale)} />
     {:else if emptyReason.kind === 'nothingEligible'}
@@ -128,6 +130,14 @@
           <span class="kind">{localizePlanKind(step.domainKind, locale)}</span>
           <span class="safety" class:auto={step.safetyLevel <= AUTO_LEVEL}>{safetyLabel(step.safetyLevel)}</span>
           <span class="outcome">{outcomeLabel(step)}</span>
+          {#if care.runId && step.domainKind === 'Cleanup'}
+            {@const bytes = measuredDeletedBytes(step, locale)}
+            <span class="measurement">
+              {t('care.deletedLogicalBytes', locale)}
+              {#if bytes}<TechnicalText value={bytes} title={step.actualDeletedBytes} />
+              {:else}{t('care.notMeasured', locale)}{/if}
+            </span>
+          {/if}
           {#if step.failureMessageKey && hasMessageKey(step.failureMessageKey)}
             <span class="failure">{td(step.failureMessageKey, locale)}</span>
           {/if}
@@ -138,6 +148,11 @@
       <p class="summary" class:verified={care.summaryKey === 'care.summary.completedVerified'}>
         {td(care.summaryKey, locale)}
       </p>
+    {/if}
+    {#if care.runId}
+      <p class="summary">{t('care.resultAt', locale, { time: formatDateTime(care.updatedUnixMs, locale) })}</p>
+      <Pressable className="ghost-action" disabled={$careDetails === 'loading'} onclick={() => openCareDetails(care.runId)}>{t('care.details', locale)}</Pressable>
+      {#if $careDetails === 'missing'}<p class="summary" role="status">{t('care.detailsNotLoaded', locale)}</p>{/if}
     {/if}
   {/if}
 </section>
@@ -186,6 +201,11 @@
     font-size: var(--ac-type-caption);
   }
   .failure {
+    flex-basis: 100%;
+    color: var(--ac-text-2);
+    font-size: var(--ac-type-caption);
+  }
+  .measurement {
     flex-basis: 100%;
     color: var(--ac-text-2);
     font-size: var(--ac-type-caption);

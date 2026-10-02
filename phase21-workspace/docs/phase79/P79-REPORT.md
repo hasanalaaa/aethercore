@@ -133,3 +133,27 @@ a temporary SQLite fixture and asserts owner isolation, no inherited approval,
 measured zero, dated history, missing legacy rows and new-plan precedence. Native
 Windows fixture qualification and Care result UI/Timeline navigation remain
 pending; no installed device mutation was performed.
+
+### Acceptance follow-up B2 — exact result UI and Timeline navigation (2026-10-02)
+
+The real Care panel shows each verified Cleanup step's measured logical deleted
+file bytes, including measured zero, or an explicit not-measured label. The
+formatter parses the decimal u64 with BigInt, scales/rounds using integer arithmetic,
+and localizes the number; the exact decimal remains in a bidi-isolated title.
+This describes logical file length, not recovered physical free space. Failed,
+skipped, unverified, non-Cleanup and invalid/missing values cannot display a count.
+Historical reports retain their date, summary and details action even with zero
+restored step rows. Details refreshes the bounded Timeline snapshot and selects
+only the exact care-run:<run_id> already in the loaded page. An absent entry is
+reported as not loaded, never as a fabricated link; changed session/run invalidates
+late replies. This reuses the sealed P87 selection controller without modifying it.
+
+Red: formatter returned null for measured zero; real EN/AR panel lacked result
+labels/details; no-op navigation left Overview active. Green: five new real
+source-to-render/formatter/controller tests (including u64 maximum, malformed
+values, absent source and stale session), UI 93/93, check zero errors/warnings,
+build and static 351 checks. The populated result browser fixture passed geometry
+8/8 (1280/640 × EN/AR × dark/light, zero horizontal overflow/clips/overlap) and
+Arabic clean leak checks 4/4. Browser files are under /private/tmp/p79-result-layout-geometry
+and /private/tmp/p79-result-layout. The 640px fixture is not Windows 200% zoom or
+Narrator qualification. Native fixture and installed-path evidence remain pending.

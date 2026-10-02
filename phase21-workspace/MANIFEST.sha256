@@ -424,7 +424,7 @@ eec37c71f08c871f07eb1f89b7a2c42910c1a2b0471ed35f73ef0274697a1b8d  apps/ui/src/de
 f89fb559ea97c1a165a0c3a503b760bf34fe5ab55117ad338b01072efef33e8e  apps/ui/src/design/styles/navigation.css
 70d35f82309f64a39253039e038aed554e48f621bf115a8f96b181d6b41a7152  apps/ui/src/design/styles/responsive.css
 6f2bf78f7b6055439a138c940ab14d6cdb47bb3fe75e18b68e0745a9897f7ba6  apps/ui/src/design/styles/typography.css
-857727f4e1465aa747d04128cb502005288e797a7e230122dff142681dd67b28  apps/ui/src/dev/layout-fixture.ts
+d342b09347e9a86e29026ce73073cb3922648381687c1cf75b8e248bde907fad  apps/ui/src/dev/layout-fixture.ts
 b8a693dddd449d5bcfabfbbf39104df7d62a793567b9153546a59f11d03fd273  apps/ui/src/features/RecoveryPanel.svelte
 6ade8fb850fd4982fe84f63eaad464c6dd7740c0fc7a425253bfee6e47e3a99c  apps/ui/src/features/activity/ActivityPage.svelte
 dff1ee914c43385abf7842c08a68d7eea82c97ee743610bea674b62b5ee361f7  apps/ui/src/features/assistant/AskFinding.svelte
@@ -432,9 +432,11 @@ dff1ee914c43385abf7842c08a68d7eea82c97ee743610bea674b62b5ee361f7  apps/ui/src/fe
 b76d0589b443514f73661b20bdade8ae3e40c49a53bad8d829925c09442c6fff  apps/ui/src/features/assistant/context.ts
 e20984a8ea21e24cf3a6a49b9b5d76ebca4f0536228db1c374d033ec08ca84b4  apps/ui/src/features/assistant/controller.ts
 a774f4f0408519cce7460bd85d7f633b7bf7f471c724a60d8b767b0505736a34  apps/ui/src/features/assistant/settle.ts
-46525cca55e41fedc03749e12cd537022f3918012d940300ec7e4ce99d5620e7  apps/ui/src/features/care/CarePanel.svelte
+b73a7dc2b59ce96926b90b313b1295dda273ab725ad1304a0599722ec0f9bccc  apps/ui/src/features/care/CarePanel.svelte
 7204ec3e3e3b747641016d84bae9fa271b76b3d78e68ea732fccbe3a1ac24b5c  apps/ui/src/features/care/approval.ts
 6da0d09b32734c287f987d52a3099a524b401b1d598fd92ca2925aa5abfde6fe  apps/ui/src/features/care/controller.ts
+b3e0912132d5b8d8a589afec89c3a6378bc6ea8cd410a9c00bba2333521cd70e  apps/ui/src/features/care/history.ts
+11a1023b2007807657fe314cfe1d4cf5f7c940c16f103d0dc13c67492323a6f1  apps/ui/src/features/care/result.ts
 b8362515dab3366b729e02aa515bbca1e38b16ce3b54815c1f7ee8f34447c5db  apps/ui/src/features/cleanup/CleanupPage.svelte
 5bf669667854c15a7f51917977aea62632b28cd397034f64a5c24bff0be117fc  apps/ui/src/features/cleanup/controller.ts
 024aae7586003a968e242e36949130610f84bba421df5124d14560a1983ca29e  apps/ui/src/features/diagnostics/CrashPage.svelte
@@ -473,11 +475,11 @@ fcacb4de6aed8a6d70c97c6e313c12c14e24e40d8b72de570cfdf372278f476e  apps/ui/src/fe
 bf03d49977c8767da45cd7593433d1a5d52d5004334d6dd253696573fc9c5757  apps/ui/src/features/timeline/TimelinePage.svelte
 9caecc4f0a3b568b7dcc0f82675380ed37f9e0d2911ce5192abdc3ec1d248cba  apps/ui/src/features/timeline/controller.ts
 cb9c1f7d007f94288013c0d8c886ac2ee4542b2f1174defcd623b4887704ba02  apps/ui/src/features/timeline/paging.ts
-05c9e826c35398337d038ecd87c7de65d5eae8a377e80e1b04ac5dfc67d92399  apps/ui/src/lib/contracts.ts
+4345fe538470e92b4eb59d965a5d784ac0c46c65560954bbbc8ceef95b0bbfdd  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-5411c43837e51a8ae39a78b14cd723a119479afc832ba9567a5c914bc64b7d96  apps/ui/src/lib/i18n/catalog.ar.ts
-45398eb54763eef52b05527a1ed7cec5dd78cf18983df5e8ad678fb9ecb154ec  apps/ui/src/lib/i18n/catalog.en.ts
+f8e02adb9b5e27a1abe3dff60fb0efa4b66a2a2e74b9d6ce50cc5b06db9b6141  apps/ui/src/lib/i18n/catalog.ar.ts
+a23be2c92bff621cf6b6592c2703dc9b497e981daa9bdd7cae8108e4f8b307c7  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 861d75f3596e142099802c67260c936723dcab045446c37bfd2c257d0e2339cd  apps/ui/src/lib/i18n/plurals.ar.ts
 132a089d249f086435a2c391863187ee056386bebc40c126354a954c64016c71  apps/ui/src/lib/i18n/plurals.en.ts
@@ -498,7 +500,8 @@ e725fb8554170ecba1a1bb8ec91fcc2e4be413c5d318903dccc5ffb1f0bbada7  apps/ui/src/st
 65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5  apps/ui/src/vite-env.d.ts
 db5cf419ed3fcc81c0180954f997d1bfe5f309fe4c2338450d0b3d176999433c  apps/ui/tests/assistant-context.test.ts
 874bbd1c81529b7b5171cd97b66513bd001d1ea1a03d36d029781367e1be1c85  apps/ui/tests/assistant.test.ts
-409211b095c9ad00096efd3ad88fc9e65d89bbd03705431db9a3461b59765e63  apps/ui/tests/care.test.ts
+302dee8cc1ba957ddf466a9602b8b1af825e3bc22f13194cd1a5896e8d6d0884  apps/ui/tests/care-result.test.ts
+310648e27ae417adfcccbe9f08b14ab0f67ee007eeb25b552b5899550420b3e7  apps/ui/tests/care.test.ts
 790254a22216049fca993a97eba41e29d4d02613fffe55c09cf5f6ddf73615f7  apps/ui/tests/finding-card.test.ts
 a4a092f82b169bb987ca5c82173a78e8c882c0adfb2a004912b360b4f4bef40b  apps/ui/tests/fleet.test.ts
 9aed44d763c9451c9fc407e129a36763e8ba0e36ee4658c2630f1e77fdab7419  apps/ui/tests/insights-scope.test.ts
@@ -1275,7 +1278,7 @@ d8b8e9b264e5ef77b2fe90324bbeeb123bb422876ac2c83fb4a528848e5c962d  docs/phase75/l
 930ed05af5152f0c3ea383809bb5f397ec125d11765fb5d2122a50c6ca065763  docs/phase76/P76-REPORT.md
 5028a36a6940cb2222a7486508cc2378bb5cbde9ddf867bf090ed79c08b7150b  docs/phase77/P77-REPORT.md
 27e0aeaf463cc827113ac5d704ad1d55a9296060c1c15274898e21424d6f3a1f  docs/phase78/P78-REPORT.md
-e0d8218ab10254c3731efc88673bf69c868b6d5f33eac6a077f682941dbea09c  docs/phase79/P79-REPORT.md
+59eb96702c390b85480c9d905ad5cbc6ed45c40c17e1228a20823bb2f280201b  docs/phase79/P79-REPORT.md
 17ab7ed0175a8b819af801735646461ebb0aebfdd42270f20462c90c83a9247a  docs/phase80/P80-REPORT.md
 929fd29d8add1e2bcc510b017e58b945c024947389cb09d53da7291b566afb9f  docs/phase81/P81-REPORT.md
 b93883472c6d0126862bf38663b7453084992196e165f9b9ce25313a533a24bb  docs/phase82/P82-REPORT.md
