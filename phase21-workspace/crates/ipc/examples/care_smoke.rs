@@ -5,17 +5,114 @@
 //! Flow: cleanup scan → a plan from the candidates the cleaner selects by default → the
 //! care plan preview → one approval (its digest must be the preview's) → one run (every
 //! automatic step must reach its domain; none may be refused for authorization) → a second
-//! run without a new approval must not run (the approval was used up).
+//! run without a new approval must not run (the approval was used up) → a fresh session
+//! must retain the exact run on Timeline. `--verify-run-id <UUID>` is read-only: a fresh
+//! session queries Timeline without starting a scan, granting consent, or running Care.
+
+#[derive(Debug, PartialEq, Eq)]
+enum Mode {
+    Run,
+    VerifyRun(String),
+}
+
+fn parse_mode(args: &[String]) -> Result<Mode, String> {
+    match args {
+        [] => Ok(Mode::Run),
+        [flag, run_id] if flag == "--verify-run-id" => {
+            let bytes = run_id.as_bytes();
+            let uuid = bytes.len() == 36
+                && bytes.iter().enumerate().all(|(index, byte)| {
+                    if matches!(index, 8 | 13 | 18 | 23) {
+                        *byte == b'-'
+                    } else {
+                        byte.is_ascii_hexdigit()
+                    }
+                });
+            if !uuid {
+                return Err(
+                    "--verify-run-id requires a UUID in 8-4-4-4-12 hexadecimal form".into(),
+                );
+            }
+            Ok(Mode::VerifyRun(run_id.to_ascii_lowercase()))
+        }
+        _ => Err("usage: care_smoke [--verify-run-id <UUID>]".into()),
+    }
+}
+
+#[cfg(any(windows, test))]
+fn require_run_entry(
+    page: &aethercore_contracts::v1::TimelineResponse,
+    run_id: &str,
+) -> Result<(), String> {
+    let source = format!("care-run:{run_id}");
+    if page.reload_required || !page.entries.iter().any(|entry| entry.source_id == source) {
+        return Err(format!(
+            "persisted {source} is not in the current owner's newest timeline page"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod argument_tests {
+    use super::*;
+    const RUN: &str = "ff0a7cd0-87cf-4152-9b98-326687fc634a";
+    #[test]
+    fn native_mode_requires_exact_uuid_and_declares_read_only_verification() {
+        assert_eq!(parse_mode(&[]).unwrap(), Mode::Run);
+        assert_eq!(
+            parse_mode(&["--verify-run-id".into(), RUN.to_uppercase()]).unwrap(),
+            Mode::VerifyRun(RUN.into())
+        );
+        for args in [
+            vec!["--unknown"],
+            vec!["--verify-run-id"],
+            vec!["--verify-run-id", "not-a-uuid"],
+            vec!["--verify-run-id", "ff0a7cd0-87cf-4152-9b98-326687fc634z"],
+            vec!["--verify-run-id", RUN, "extra"],
+        ] {
+            assert!(parse_mode(&args.into_iter().map(String::from).collect::<Vec<_>>()).is_err());
+        }
+    }
+    #[test]
+    fn persistence_verification_requires_exact_loaded_care_source() {
+        let mut page = aethercore_contracts::v1::TimelineResponse::default();
+        assert!(require_run_entry(&page, RUN).is_err());
+        page.entries.push(aethercore_contracts::v1::TimelineEntry {
+            source_id: format!("execution:{RUN}"),
+            ..Default::default()
+        });
+        assert!(require_run_entry(&page, RUN).is_err());
+        page.entries[0].source_id = format!("care-run:{RUN}-other");
+        assert!(require_run_entry(&page, RUN).is_err());
+        page.entries[0].source_id = format!("care-run:{RUN}");
+        assert!(require_run_entry(&page, RUN).is_ok());
+        page.reload_required = true;
+        assert!(require_run_entry(&page, RUN).is_err());
+    }
+}
 
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("care_smoke drives the Windows named pipe; it runs on Windows only");
+    match parse_mode(&std::env::args().skip(1).collect::<Vec<_>>()) {
+        Ok(Mode::Run) => {
+            eprintln!("care_smoke drives the Windows named pipe; it runs on Windows only")
+        }
+        Ok(Mode::VerifyRun(run_id)) => {
+            eprintln!("care_smoke verifies persisted Care run {run_id} on Windows only")
+        }
+        Err(error) => {
+            eprintln!("SMOKE: FAIL {error}");
+            std::process::exit(1);
+        }
+    }
     std::process::exit(2);
 }
 
 #[cfg(windows)]
 fn main() {
-    if let Err(error) = smoke::run() {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    if let Err(error) = parse_mode(&args).and_then(smoke::run) {
         println!("SMOKE: FAIL {error}");
         std::process::exit(1);
     }
@@ -83,8 +180,8 @@ mod smoke {
             .join(",")
     }
 
-    pub fn run() -> Result<(), String> {
-        let client = SessionClient::connect(
+    fn connect() -> Result<Arc<SessionClient>, String> {
+        SessionClient::connect(
             "care-smoke",
             "0",
             0,
@@ -92,8 +189,30 @@ mod smoke {
             Arc::new(|_| {}),
             Arc::new(|| {}),
         )
-        .map_err(|e| format!("connect: {e}"))?;
+        .map_err(|e| format!("connect: {e}"))
+    }
 
+    fn timeline(client: &SessionClient) -> Result<v1::TimelineResponse, String> {
+        match call(
+            client,
+            Req::GetTimelinePage(v1::GetTimelinePageRequest {
+                page_size: 100,
+                before_sequence: 0,
+                snapshot_cursor: None,
+            }),
+        )? {
+            Some(Resp::TimelinePage(page)) => Ok(page),
+            other => Err(format!("expected a timeline page, got {other:?}")),
+        }
+    }
+
+    pub(super) fn run(mode: super::Mode) -> Result<(), String> {
+        let client = connect()?;
+        if let super::Mode::VerifyRun(run_id) = mode {
+            super::require_run_entry(&timeline(&client)?, &run_id)?;
+            println!("SMOKE: persisted-care-run={run_id}");
+            return Ok(());
+        }
         let scan = cleanup(call(&client, Req::StartCleanupScan(Default::default()))?)?;
         let deadline = Instant::now() + Duration::from_secs(180);
         let snapshot = loop {
@@ -190,17 +309,9 @@ mod smoke {
         }
         // P76 DBT-P76-006: the run and the cleanup it executed are on the newest timeline page
         // (0 = newest). On the owner's install the page stayed empty after a real run.
-        let page = match call(
-            &client,
-            Req::GetTimelinePage(v1::GetTimelinePageRequest {
-                page_size: 100,
-                before_sequence: 0,
-                snapshot_cursor: None,
-            }),
-        )? {
-            Some(Resp::TimelinePage(page)) => page,
-            other => return Err(format!("expected a timeline page, got {other:?}")),
-        };
+        let page = timeline(&client)?;
+        super::require_run_entry(&page, &report.run_id)?;
+        println!("SMOKE: care-run-id={}", report.run_id);
         let run_entry = format!("care-run:{}", report.run_id);
         let executions = page
             .entries
@@ -236,6 +347,16 @@ mod smoke {
         if again.state == "Completed" && !again.steps.is_empty() {
             return Err("a used-up approval ran a second time".into());
         }
+        let previous_session = client.hello.session_id.clone();
+        drop(client);
+        let reconnected = connect()?;
+        if reconnected.hello.session_id.is_empty()
+            || reconnected.hello.session_id == previous_session
+        {
+            return Err("reconnect did not create a fresh IPC session".into());
+        }
+        super::require_run_entry(&timeline(&reconnected)?, &report.run_id)?;
+        println!("SMOKE: reconnected-care-run={}", report.run_id);
         Ok(())
     }
 }
