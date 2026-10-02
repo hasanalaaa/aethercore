@@ -412,6 +412,7 @@ impl JournalTrait for PersistenceJournal {
                     failure_message: String::new(),
                     started_unix_ms: now,
                     updated_unix_ms: now,
+                    actual_deleted_bytes: None,
                 })
                 .map_err(|e| aethercore_care_orchestrator::CareError::Journal(e.to_string()))?;
         } else {
@@ -450,13 +451,10 @@ impl JournalTrait for PersistenceJournal {
     fn record_step_result(
         &self,
         run_id: &str,
-        step_index: usize,
         state: &str,
-        outcome: StepOutcome,
-        verification_state: &str,
-        failure_message_key: &str,
+        report: &aethercore_care_orchestrator::CareStepReport,
     ) -> Result<(), aethercore_care_orchestrator::CareError> {
-        let outcome_str = match outcome {
+        let outcome_str = match report.outcome {
             StepOutcome::VerifiedByDomain => "VerifiedByDomain",
             StepOutcome::CompletedUnverified => "CompletedUnverified",
             StepOutcome::Failed => "Failed",
@@ -468,12 +466,13 @@ impl JournalTrait for PersistenceJournal {
             .map_err(|e| aethercore_care_orchestrator::CareError::Journal(e.to_string()))?;
         let mut step = existing
             .into_iter()
-            .find(|step| step.step_index as usize == step_index)
+            .find(|step| step.step_index as usize == report.step_index)
             .unwrap_or_default();
         step.state = state.into();
         step.outcome = outcome_str.into();
-        step.verification_state = verification_state.into();
-        step.failure_message = failure_message_key.into();
+        step.verification_state = report.domain_verification_state.clone();
+        step.failure_message = report.failure_message_key.clone();
+        step.actual_deleted_bytes = report.actual_deleted_bytes;
         step.updated_unix_ms = chrono_now();
         self.db
             .update_care_step(&step)
@@ -562,17 +561,19 @@ impl DomainStepExecutor for ServiceExecutor {
         owner: &str,
         step: &CareStep,
         lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-    ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError> {
+    ) -> Result<(StepOutcome, String, String, Option<u64>), aethercore_care_orchestrator::CareError>
+    {
         let domain_plan_id = &step.domain_plan_id;
-        let (plan_state, verification_state, failure_key) = self.dispatch.start_and_await(
-            owner,
-            domain_plan_id,
-            &step.domain_kind,
-            &step.domain_plan_digest,
-            lease,
-        )?;
+        let (plan_state, verification_state, failure_key, actual_deleted_bytes) =
+            self.dispatch.start_and_await(
+                owner,
+                domain_plan_id,
+                &step.domain_kind,
+                &step.domain_plan_digest,
+                lease,
+            )?;
         if is_terminal_plan_state(&plan_state) && plan_state != "Completed" {
-            return Ok((StepOutcome::Failed, verification_state, failure_key));
+            return Ok((StepOutcome::Failed, verification_state, failure_key, None));
         }
         if plan_state == "Completed" {
             if !verification_state.is_empty() {
@@ -580,12 +581,14 @@ impl DomainStepExecutor for ServiceExecutor {
                     StepOutcome::VerifiedByDomain,
                     verification_state,
                     String::new(),
+                    actual_deleted_bytes,
                 ));
             }
             return Ok((
                 StepOutcome::CompletedUnverified,
                 String::new(),
                 String::new(),
+                None,
             ));
         }
         // Non-terminal after deadline (RebootPending counts as terminal-but-unverified).
@@ -811,6 +814,11 @@ pub(crate) fn status_proto(
             failure_message_key: report
                 .map(|r| r.failure_message_key.clone())
                 .unwrap_or_default(),
+            has_actual_deleted_bytes: report.and_then(|r| r.actual_deleted_bytes).is_some(),
+            actual_deleted_bytes: report
+                .and_then(|r| r.actual_deleted_bytes)
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
         });
     }
     let summary_key = if plan.steps.is_empty() && matches!(state, "Idle" | "AwaitingConsent") {
@@ -961,7 +969,8 @@ mod p75_care_consent_tests {
             _domain_kind: &str,
             _approved_digest: &str,
             lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-        ) -> Result<(String, String, String), aethercore_care_orchestrator::CareError> {
+        ) -> Result<(String, String, String, Option<u64>), aethercore_care_orchestrator::CareError>
+        {
             self.started.fetch_add(1, Ordering::SeqCst);
             let step = lease.delegate(
                 aethercore_operation_kernel::MutationWorkload::Cleanup,
@@ -983,7 +992,7 @@ mod p75_care_consent_tests {
             {
                 self.others_admitted.fetch_add(1, Ordering::SeqCst);
             }
-            Ok(("Completed".into(), "Verified".into(), String::new()))
+            Ok(("Completed".into(), "Verified".into(), String::new(), None))
         }
     }
 

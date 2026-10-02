@@ -210,4 +210,7 @@ pub struct CareStepReport {
     pub domain_verification_state: String,
     /// Domain's own failure message key when outcome == Failed.
     pub failure_message_key: String,
+    /// Logical deleted-file bytes measured by a completed, verified Cleanup domain.
+    /// Absent for unmeasured, failed, skipped and other domain steps; measured zero is Some(0).
+    pub actual_deleted_bytes: Option<u64>,
 }

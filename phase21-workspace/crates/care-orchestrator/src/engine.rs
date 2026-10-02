@@ -33,7 +33,7 @@ pub trait DomainStepExecutor {
         owner_principal_key: &str,
         step: &CareStep,
         lease: &MutationLeaseGuard,
-    ) -> Result<(StepOutcome, String, String), CareError>;
+    ) -> Result<(StepOutcome, String, String, Option<u64>), CareError>;
 }
 
 /// Phase 23 / Part A — typed dispatch into real domain coordinators. Implemented by
@@ -53,7 +53,7 @@ pub trait DomainDispatch: Send + Sync {
         domain_kind: &str,
         approved_digest: &str,
         lease: &MutationLeaseGuard,
-    ) -> Result<(String, String, String), CareError>;
+    ) -> Result<(String, String, String, Option<u64>), CareError>;
 }
 
 /// Handle proving the orchestrator currently owns the machine-wide mutation lease.
@@ -97,11 +97,8 @@ pub trait CareJournal {
     fn record_step_result(
         &self,
         run_id: &str,
-        step_index: usize,
         state: &str,
-        outcome: StepOutcome,
-        verification_state: &str,
-        failure_message_key: &str,
+        report: &CareStepReport,
     ) -> Result<(), CareError>;
     fn record_run_finished(&self, run_id: &str, state: &str, detail: &str)
     -> Result<(), CareError>;
@@ -181,64 +178,58 @@ pub fn run_care_plan(
         )?;
 
         match executor.execute_step(owner_principal_key, step, &guard) {
-            Ok((outcome, verification_state, failure_key)) => {
+            Ok((outcome, verification_state, failure_key, actual_deleted_bytes)) => {
                 if outcome != StepOutcome::VerifiedByDomain && outcome != StepOutcome::Skipped {
                     all_verified = false;
                 }
+                let report = CareStepReport {
+                    step_index: index,
+                    domain_plan_id: step.domain_plan_id.clone(),
+                    domain_kind: step.domain_kind.clone(),
+                    outcome,
+                    actual_deleted_bytes: actual_deleted_bytes.filter(|_| {
+                        step.domain_kind == "Cleanup"
+                            && outcome == StepOutcome::VerifiedByDomain
+                            && verification_state == "Verified"
+                    }),
+                    domain_verification_state: verification_state,
+                    failure_message_key: failure_key,
+                };
                 journal.record_step_result(
                     run_id,
-                    index,
                     if outcome == StepOutcome::Failed {
                         "Failed"
                     } else {
                         "Completed"
                     },
-                    outcome,
-                    &verification_state,
-                    &failure_key,
+                    &report,
                 )?;
-                reports.push(CareStepReport {
-                    step_index: index,
-                    domain_plan_id: step.domain_plan_id.clone(),
-                    domain_kind: step.domain_kind.clone(),
-                    outcome,
-                    domain_verification_state: verification_state,
-                    failure_message_key: failure_key,
-                });
+                reports.push(report);
             }
             // The plan's content is no longer what the owner approved: refuse this step
             // only. The other steps are still the approved bytes.
             Err(CareError::DigestChanged) => {
                 all_verified = false;
-                journal.record_step_result(
-                    run_id,
-                    index,
-                    "Failed",
-                    StepOutcome::Failed,
-                    "",
-                    DIGEST_CHANGED_KEY,
-                )?;
-                reports.push(CareStepReport {
+                let report = CareStepReport {
                     step_index: index,
                     domain_plan_id: step.domain_plan_id.clone(),
                     domain_kind: step.domain_kind.clone(),
                     outcome: StepOutcome::Failed,
                     domain_verification_state: String::new(),
                     failure_message_key: DIGEST_CHANGED_KEY.to_string(),
-                });
+                    actual_deleted_bytes: None,
+                };
+                journal.record_step_result(run_id, "Failed", &report)?;
+                reports.push(report);
             }
             Err(error) => {
                 // Domain rejection / timeout / poisoned lock: journal the failure as
                 // evidence and stop the run. Never continue past an opaque failure.
                 // (`all_verified` is irrelevant here — the run returns Err.)
-                journal.record_step_result(
-                    run_id,
-                    index,
-                    "Failed",
-                    StepOutcome::Failed,
-                    "",
-                    "care.error.domainFailure",
-                )?;
+                let mut report = skipped(index, step);
+                report.outcome = StepOutcome::Failed;
+                report.failure_message_key = "care.error.domainFailure".into();
+                journal.record_step_result(run_id, "Failed", &report)?;
                 journal.record_run_finished(run_id, "Failed", "care.error.domainFailure")?;
                 return Err(error);
             }
@@ -274,5 +265,6 @@ fn skipped(index: usize, step: &CareStep) -> CareStepReport {
         outcome: StepOutcome::Skipped,
         domain_verification_state: String::new(),
         failure_message_key: String::new(),
+        actual_deleted_bytes: None,
     }
 }

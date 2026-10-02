@@ -76,12 +76,13 @@ impl CareJournal for MemoryJournal {
     fn record_step_result(
         &self,
         run_id: &str,
-        step_index: usize,
         state: &str,
-        outcome: StepOutcome,
-        verification_state: &str,
-        failure_key: &str,
+        report: &aethercore_care_orchestrator::CareStepReport,
     ) -> Result<(), CareError> {
+        let step_index = report.step_index;
+        let outcome = report.outcome;
+        let verification_state = &report.domain_verification_state;
+        let failure_key = &report.failure_message_key;
         self.log(format!(
             "result:{run_id}:{step_index}:{state}:{outcome:?}:{verification_state}:{failure_key}"
         ))
@@ -98,6 +99,51 @@ impl CareJournal for MemoryJournal {
 
 /// One scripted executor call: the outcome it returns, or the domain rejection it fails with.
 type ScriptedCall = Result<(StepOutcome, String, String), CareError>;
+
+#[test]
+fn only_verified_cleanup_can_carry_measured_deleted_bytes() {
+    struct Executor(StepOutcome, &'static str);
+    impl aethercore_care_orchestrator::DomainStepExecutor for Executor {
+        fn execute_step(
+            &self,
+            _: &str,
+            _: &CareStep,
+            _: &aethercore_care_orchestrator::MutationLeaseGuard,
+        ) -> Result<(StepOutcome, String, String, Option<u64>), CareError> {
+            Ok((self.0, self.1.into(), String::new(), Some(0)))
+        }
+    }
+    for (kind, outcome, verification, expected) in [
+        (
+            "Cleanup",
+            StepOutcome::VerifiedByDomain,
+            "Verified",
+            Some(0),
+        ),
+        ("Startup", StepOutcome::VerifiedByDomain, "Verified", None),
+        ("Cleanup", StepOutcome::VerifiedByDomain, "Unverified", None),
+        ("Cleanup", StepOutcome::CompletedUnverified, "", None),
+        ("Cleanup", StepOutcome::Failed, "Verified", None),
+        ("Cleanup", StepOutcome::Skipped, "Verified", None),
+    ] {
+        let plan = CarePlan::build(vec![step("p", kind, CareSafety::Auto)]).unwrap();
+        let result = run_care_plan(
+            &MutationSupervisor::new(),
+            &Executor(outcome, verification),
+            &MemoryJournal::default(),
+            &CommitFence::new(),
+            OWNER,
+            "r",
+            &plan,
+            Some(&plan.plan_digest_sha256),
+        )
+        .unwrap();
+        assert_eq!(
+            result.steps[0].actual_deleted_bytes, expected,
+            "{kind}: {outcome:?}/{verification}"
+        );
+    }
+}
 
 /// Scriptable fake executor.
 struct FakeExecutor {
@@ -128,7 +174,7 @@ impl aethercore_care_orchestrator::DomainStepExecutor for FakeExecutor {
         _owner: &str,
         step: &CareStep,
         _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-    ) -> Result<(StepOutcome, String, String), CareError> {
+    ) -> Result<(StepOutcome, String, String, Option<u64>), CareError> {
         let (domain_plan_id, domain_kind) = (&step.domain_plan_id, &step.domain_kind);
         self.calls.fetch_add(1, Ordering::SeqCst);
         let mut script = self.script.lock().expect("script");
@@ -142,7 +188,7 @@ impl aethercore_care_orchestrator::DomainStepExecutor for FakeExecutor {
             script.remove(0)
         };
         match outcome {
-            Ok(value) => Ok(value),
+            Ok(value) => Ok((value.0, value.1, value.2, None)),
             Err(CareError::DomainRejected { .. }) => Err(CareError::DomainRejected {
                 domain_kind: domain_kind.to_string(),
                 detail: format!("plan {domain_plan_id} rejected"),
