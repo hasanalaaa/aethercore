@@ -50,7 +50,7 @@ function Write-BlockedAcceptance([string]$Path,[string]$Locale,[string]$Reason) 
     [ordered]@{schema='aethercore.p87-installed-acceptance.v1';source_commit=$ExpectedSourceSha;bundle_sha256=$ExpectedBundleSha256;locale=$Locale;ordinary_user=$false;cases=@();disposition='blocked';reason=$Reason} |
         ConvertTo-Json -Depth 6 | Set-Content $Path -Encoding utf8
 }
-function Invoke-OrdinaryInstalledAcceptance([string]$Locale) {
+function Invoke-OrdinaryInstalledAcceptance([string]$Locale,[string]$VerifyCareRunId='',[string]$ExpectedOwnerSid='',[switch]$AllowRestartPending,[DateTimeOffset]$ObservationDeadline=[DateTimeOffset]::UtcNow.AddSeconds(660)) {
     $output=Join-Path $acceptanceRoot "installed-$Locale.json"
     $owners=@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | ForEach-Object {
         $owner=Invoke-CimMethod -InputObject $_ -MethodName GetOwnerSid
@@ -60,13 +60,16 @@ function Invoke-OrdinaryInstalledAcceptance([string]$Locale) {
         Write-BlockedAcceptance $output $Locale 'No unique ordinary interactive desktop is available.'
         throw 'Ordinary installed acceptance is blocked: no unique explorer owner.'
     }
+    if ($ExpectedOwnerSid -and $owners[0] -ne $ExpectedOwnerSid) { throw 'Ordinary verification desktop owner changed.' }
+    if ([DateTimeOffset]::UtcNow -ge $ObservationDeadline) { throw 'Ordinary acceptance observation budget expired before task start.' }
     # Permission is local to disposable test evidence; service/pipe/install ACLs are unchanged.
     $acl=Get-Acl $acceptanceRoot
     $sid=[Security.Principal.SecurityIdentifier]::new($owners[0])
     $rule=[Security.AccessControl.FileSystemAccessRule]::new($sid,'Modify','ContainerInherit,ObjectInherit','None','Allow')
     $acl.SetAccessRule($rule);Set-Acl $acceptanceRoot $acl
     $quote={param($value) "'" + ($value -replace "'","''") + "'"}
-    $command="`$ErrorActionPreference='Stop'; try { & $(& $quote $packagedScript) -ReleaseRoot $(& $quote $release) -ExpectedSourceSha $(& $quote $ExpectedSourceSha) -ExpectedBundleSha256 $(& $quote $ExpectedBundleSha256) -Locale $(& $quote $Locale) -OutputPath $(& $quote $output) -TimeoutSeconds 300 -AcknowledgeDisposableMachine; exit 0 } catch { exit 1 }"
+    $verifyArgument=if ($VerifyCareRunId) { ' -VerifyCareRunId ' + (& $quote $VerifyCareRunId) } else { '' }
+    $command="`$ErrorActionPreference='Stop'; try { & $(& $quote $packagedScript) -ReleaseRoot $(& $quote $release) -ExpectedSourceSha $(& $quote $ExpectedSourceSha) -ExpectedBundleSha256 $(& $quote $ExpectedBundleSha256) -Locale $(& $quote $Locale) -OutputPath $(& $quote $output) -TimeoutSeconds 300 -AcknowledgeDisposableMachine$verifyArgument; exit 0 } catch { exit 1 }"
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $name='AetherCore-RC-Acceptance-' + [Guid]::NewGuid().ToString('N')
     $action=New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument "-NoProfile -NonInteractive -EncodedCommand $encoded" -WorkingDirectory $release
@@ -77,13 +80,12 @@ function Invoke-OrdinaryInstalledAcceptance([string]$Locale) {
     try {
         Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -ErrorAction Stop | Out-Null
         $started=Get-Date;$script:acceptanceStillRunning=$true;Start-ScheduledTask -TaskName $name -ErrorAction Stop
-        $deadline=[DateTimeOffset]::UtcNow.AddSeconds(660)
         do {
             $task=Get-ScheduledTask -TaskName $name -ErrorAction Stop
             $info=Get-ScheduledTaskInfo -TaskName $name -ErrorAction Stop
             if ($task.State -eq 'Ready' -and $info.LastRunTime -ge $started.AddSeconds(-2)) { $completed=$true;$script:acceptanceStillRunning=$false;break }
             Start-Sleep -Milliseconds 250
-        } while ([DateTimeOffset]::UtcNow -lt $deadline)
+        } while ([DateTimeOffset]::UtcNow -lt $ObservationDeadline)
         if (-not $completed) {
             $script:acceptanceStillRunning=$true
             Write-BlockedAcceptance $output $Locale "Ordinary test task remains active: $name"
@@ -99,12 +101,38 @@ function Invoke-OrdinaryInstalledAcceptance([string]$Locale) {
             $script:acceptanceStillRunning=$true
             throw 'Ordinary installed acceptance did not release nested worker ownership; service cleanup retained.'
         }
-        if ($info.LastTaskResult -ne 0 -or -not (Test-Path $output)) {
+        $pendingRestart=$AllowRestartPending -and $info.LastTaskResult -eq 1 -and $receipt.restart_pending -is [bool] -and $receipt.restart_pending
+        if (($info.LastTaskResult -ne 0 -and -not $pendingRestart) -or -not (Test-Path $output)) {
             if (-not (Test-Path $output)) { Write-BlockedAcceptance $output $Locale 'Ordinary probe exited without evidence.' }
             throw 'Ordinary installed acceptance did not produce successful evidence.'
         }
+        return [pscustomobject]@{Receipt=$receipt;OwnerSid=$owners[0]}
     } finally {
         if ($completed) { Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction Stop }
+    }
+}
+function Invoke-InstalledAcceptanceWithRestart([string]$Locale) {
+    # The existing pre-install guards reject any pre-existing service or product directory.
+    if (-not $installed -or $service -ne 'AetherCoreMaintenance' -or (-not $AcknowledgeDisposableMachine -and $env:AETHERCORE_INSTALLER_TEST_MACHINE -ne '1')) { throw 'Care restart requires this disposable isolated installed service.' }
+    $deadline=[DateTimeOffset]::UtcNow.AddSeconds(660)
+    $first=Invoke-OrdinaryInstalledAcceptance $Locale -AllowRestartPending -ObservationDeadline $deadline
+    $receipt=$first.Receipt
+    if ($receipt.source_commit -ne $ExpectedSourceSha -or $receipt.bundle_sha256 -ne $ExpectedBundleSha256 -or $receipt.locale -ne $Locale -or $receipt.read_only -isnot [bool] -or $receipt.read_only -or $receipt.token.sid -ne $first.OwnerSid) { throw 'Care restart report identity does not match this signed RC and desktop.' }
+    if ($receipt.restart_pending -is [bool] -and $receipt.restart_pending) {
+        $care=@($receipt.cases | Where-Object id -eq 'p76-care-timeline-persistence')
+        $runId=$receipt.care_run_id
+        if ($runId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' -or $receipt.desktop_closed -isnot [bool] -or -not $receipt.desktop_closed -or $care.Count -ne 1 -or $care[0].checks.reconnect -isnot [bool] -or -not $care[0].checks.reconnect -or $care[0].checks.restart -isnot [bool] -or $care[0].checks.restart) { throw 'Care restart lacks a drained same-run reconnect receipt.' }
+        if ([DateTimeOffset]::UtcNow.AddSeconds(60) -ge $deadline) { throw 'Care restart observation budget is exhausted.' }
+        $controller=Get-Service -Name $service -ErrorAction Stop
+        try {
+            $controller.Stop()
+            $controller.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))
+            $controller.Start()
+            $controller.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(30))
+        } finally { $controller.Dispose() }
+        $verified=Invoke-OrdinaryInstalledAcceptance $Locale -VerifyCareRunId $runId -ExpectedOwnerSid $first.OwnerSid -ObservationDeadline $deadline
+        $finalCare=@($verified.Receipt.cases | Where-Object id -eq 'p76-care-timeline-persistence')
+        if ($verified.Receipt.care_run_id -ne $runId -or $verified.Receipt.restart_pending -isnot [bool] -or $verified.Receipt.restart_pending -or $finalCare.Count -ne 1 -or $finalCare[0].checks.restart -isnot [bool] -or -not $finalCare[0].checks.restart) { throw 'Same Care run was not proved after isolated service restart.' }
     }
 }
 $acceptanceStillRunning=$false
@@ -122,7 +150,7 @@ try{
     }
     if ($InstalledAcceptanceScript) {
         foreach ($locale in @('en','ar')) {
-            Invoke-OrdinaryInstalledAcceptance $locale
+            Invoke-InstalledAcceptanceWithRestart $locale
         }
     }
     Run-Step 'burn-uninstall' { Run-Process $bundle @('/uninstall','/quiet','/norestart') 'Burn uninstall';$script:installed=$false }

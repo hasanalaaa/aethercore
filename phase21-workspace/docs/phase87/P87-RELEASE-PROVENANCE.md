@@ -69,3 +69,29 @@ CurrentUser or LocalMachine My store. The raw JSON's SHA256 is
 `c641a40951f4b2cc25301bfc60baa0071c19e894e3d952cdbb8186d45931ed65`.
 This is a concrete signer provisioning blocker; the local report location is
 not treated as a portable qualification artifact.
+
+## Disposable Care restart source handoff
+
+The lifecycle now accepts the producer's first expected partial exit only when it
+explicitly reports released worker ownership and a pending Care restart. Before any
+service operation the parent checks the signed source/bundle/locale identity, the
+selected desktop SID, actual reconnect proof, a recorded Care UUID and a closed
+desktop. Only the newly installed isolated AetherCoreMaintenance service may be
+stopped/started; each actual status wait is bounded to 30 seconds. Verification
+uses a second Limited InteractiveToken task, the same SID/output/RC and
+`-VerifyCareRunId` containing that exact UUID. It does not relabel another case.
+One 660-second observer deadline spans both tasks and restart for each locale.
+An expired deadline schedules no further work; timeout or unknown worker ownership
+retains the service.
+
+The native fixture executes the actual parent functions with substituted scheduler
+and service-controller objects: eleven controls cover the original task cases,
+same-run restart and its exact encoded argument, an unowned service, active nested
+work, a changed desktop, missing disposable acknowledgement and an expired budget.
+The flow was red before the restart parent existed, then green. The 29-case native
+verifier suite and all eight active Python audits remain green. No real service was
+restarted. Integration must pair the root-owned producer's VerifyCareRunId mode and
+the real care_smoke reconnect/persisted-run helper (source handoff 4e1d549); the
+combined source seal/static gate and real signed installed qualification remain
+root-owned. Missing actual unavailable-provider or other runtime evidence still
+blocks promotion.
