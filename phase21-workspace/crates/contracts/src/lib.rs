@@ -39,3 +39,39 @@ mod locale_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod timeline_compatibility {
+    use super::v1::{GetTimelinePageRequest, TimelineResponse};
+    use prost::Message;
+    #[test]
+    fn additive_timeline_cursor_preserves_legacy_presence_and_response_defaults() {
+        let old = GetTimelinePageRequest::decode(&b"\x08\x03\x10\x02"[..]).unwrap();
+        assert_eq!(old.page_size, 3);
+        assert_eq!(old.before_sequence, 2);
+        assert!(old.snapshot_cursor.is_none());
+        assert_eq!(old.encode_to_vec(), b"\x08\x03\x10\x02");
+        let initial = GetTimelinePageRequest {
+            snapshot_cursor: Some(String::new()),
+            ..Default::default()
+        };
+        assert_eq!(initial.encode_to_vec(), b"\x1a\x00");
+        assert_eq!(
+            GetTimelinePageRequest::decode(initial.encode_to_vec().as_slice())
+                .unwrap()
+                .snapshot_cursor
+                .as_deref(),
+            Some("")
+        );
+        let old_response = TimelineResponse::decode(&[][..]).unwrap();
+        assert!(!old_response.reload_required && old_response.next_snapshot_cursor.is_none());
+        assert_eq!(
+            TimelineResponse {
+                reload_required: true,
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            b"\x40\x01"
+        );
+    }
+}

@@ -220,7 +220,8 @@ export type TimelineEntry = {
 };
 export type TimelineResponse = {
   entries:TimelineEntry[]; hasMore:boolean; nextBeforeSequence:number;
-  digestSha256:string; duplicatesCollapsed:number; historyWindowLimit?:number
+  digestSha256:string; duplicatesCollapsed:number; historyWindowLimit?:number;
+  nextSnapshotCursor?:string; reloadRequired?:boolean
 };
 export type RecurrenceEvidence = { sourceId:string; observedUnixMs:number; gapFromPreviousMs:number };
 export type RecurrencePattern = {

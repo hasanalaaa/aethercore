@@ -195,6 +195,7 @@ mod smoke {
             Req::GetTimelinePage(v1::GetTimelinePageRequest {
                 page_size: 100,
                 before_sequence: 0,
+                snapshot_cursor: None,
             }),
         )? {
             Some(Resp::TimelinePage(page)) => page,
