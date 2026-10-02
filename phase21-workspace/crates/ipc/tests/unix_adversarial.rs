@@ -220,3 +220,31 @@ fn shutdown_is_graceful_and_repeatable_safe() {
     client.shutdown().expect("graceful shutdown");
     let _ = server.join();
 }
+
+#[test]
+fn server_write_deadline_does_not_expire_the_idle_reader() {
+    let (path, listener, _dir) = unique_listener("write-deadline");
+    let server = std::thread::spawn(move || {
+        let mut session = listener.accept().expect("accept");
+        session
+            .set_write_timeout(Duration::from_millis(20))
+            .expect("write bound");
+        let mut buffer = Vec::new();
+        session
+            .recv_frame(&mut buffer, 1024)
+            .expect("idle reader stays open");
+        let stalled = session.send_frame(&vec![0; 4 * 1024 * 1024], 5 * 1024 * 1024);
+        assert!(
+            matches!(stalled, Err(TransportError::Io(error))
+            if matches!(error.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut)),
+            "a client that does not read cannot stall the server writer forever"
+        );
+        buffer
+    });
+    let mut client = UnixSocketSession::connect(&path).expect("connect");
+    std::thread::sleep(Duration::from_millis(70));
+    client
+        .send_frame(b"after-write-deadline", 1024)
+        .expect("send");
+    assert_eq!(server.join().expect("server"), b"after-write-deadline");
+}
