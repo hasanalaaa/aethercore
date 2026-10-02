@@ -64,3 +64,34 @@ no provider was added, and the lists are empty until P81–P83.
   re-export in `diagnostic-engine`; and `crash-diagnostics` was not changed (boot records live in
   `measurements`; per D10 no coupling was added).
 - P80-02B is ~360 changed lines including catalogs, fixture and tests (the cap is ~300 non-generated).
+
+
+## P80-01 acceptance follow-up — DBT-P80-005 (2026-10-02)
+
+The card now states the number and dates of its cited observations, missing observation time,
+limits of that evidence and a single next step. Hardware-error evidence explicitly does not identify
+an individual failed component, DIMM or driver. Other findings explicitly limit their scope to the
+cited observations, without claiming an exhaustive resource test or an established underlying cause.
+The existing owned uncertainty key remains visible. The next step comes only from an exact matching
+remediation candidate with an owned translation; missing/unknown candidates require evidence review.
+An unavailable or missing recheck instead asks for a fresh local scan before acting. No mutation is
+started by the card. EN/AR use the existing catalogs, original wire facts and remediation candidates;
+there are no wire, dependency or deadline changes.
+
+`citedOnly` decorates each finding with an evidence chip under the same property name as its typed
+facts. DeepScanPage now preserves those original facts before decoration and restores them at the
+card boundary. A real populated-browser check caught this integration issue before completion.
+
+Validation: four real Svelte server-render tests failed before implementation (EN/AR measured scope,
+limits and next action absent), then passed; the complete UI test suite passed 82/82. Svelte check
+reported zero errors/warnings; the production build passed (existing chunk-size advisory unchanged).
+Static validation passed 351 checks. On this checkout's isolated fixture server at port 1483, eight
+Deep Scan layout cases (1280/640 px, EN/AR, dark/light) had zero overflow, clipping or control overlap.
+The Arabic rendered-DOM/font gate passed 7/7; clean/injected leak gates passed, and the planted text
+negative control was detected (one sentinel). Rendered gates follow the real Overview scan button
+because Deep Scan is no longer a rail item; gate assertions are unchanged. The gate route change is
+separate commit `1032850` and is sealed together with this follow-up.
+
+These fixture checks prove transformation and browser rendering. 640 px is a narrow-layout check,
+not evidence of native Windows 200% zoom or Narrator acceptance; that installed qualification remains
+NOT RUN for this follow-up. Hardware coverage matrices remain explicit separate qualification gaps.
