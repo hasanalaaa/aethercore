@@ -4,7 +4,8 @@ param(
     [switch]$InstallLifecycle,
     [switch]$VerifyInstalledStateOnly,
     [switch]$AcknowledgeDisposableMachine,
-    [switch]$RequireSignedArtifacts
+    [switch]$RequireSignedArtifacts,
+    [string]$ExpectedPayloadDirectory
 )
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Installer security verification requires Windows.' }
@@ -159,6 +160,14 @@ function Verify-InstalledState {
     if ((Execution-Level $desktop) -ne 'asInvoker') { throw 'Desktop PE manifest is not asInvoker.' }
     if ((Execution-Level $broker) -ne 'requireAdministrator') { throw 'Consent broker PE manifest is not requireAdministrator.' }
     if ((Execution-Level $updateBroker) -ne 'requireAdministrator') { throw 'Update broker PE manifest is not requireAdministrator.' }
+
+    if ($ExpectedPayloadDirectory) {
+        foreach ($name in @('aethercore-desktop.exe','aethercore-maintenance-service.exe','aethercore-consent-broker.exe','aethercore-update-broker.exe','aethercore-install-hardener.exe','aetherctl.exe')) {
+            $expected = Join-Path $ExpectedPayloadDirectory $name
+            $actual = Join-Path $InstallDir $name
+            if ((Get-FileHash $actual -Algorithm SHA256).Hash -ne (Get-FileHash $expected -Algorithm SHA256).Hash) { throw "Installed RC payload bytes differ: $name" }
+        }
+    }
 
     if ($RequireSignedArtifacts) {
         foreach ($file in @($desktop,$broker,$updateBroker,(Join-Path $InstallDir 'aethercore-maintenance-service.exe'),(Join-Path $InstallDir 'aethercore-install-hardener.exe'))) {
