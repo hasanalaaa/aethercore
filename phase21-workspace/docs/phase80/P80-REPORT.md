@@ -95,3 +95,10 @@ separate commit `1032850` and is sealed together with this follow-up.
 These fixture checks prove transformation and browser rendering. 640 px is a narrow-layout check,
 not evidence of native Windows 200% zoom or Narrator acceptance; that installed qualification remains
 NOT RUN for this follow-up. Hardware coverage matrices remain explicit separate qualification gaps.
+
+Root integration verification (2026-10-02): all 82 UI tests passed independently with the full
+`apps/ui/tests/*.test.ts` selection; Svelte check reported zero errors and warnings; the production
+build passed with the pre-existing chunk-size advisory. CI's formerly fixed list omitted newer
+regressions, including this card test, assistant context and Insights scope tests. The same full
+glob now selects every test file in the fast UI job. This does not alter the mandatory Windows,
+localization, leak, seal, freeze or aggregate gates. Native qualification is still NOT RUN.
