@@ -48,3 +48,13 @@ CI adds actual Ubuntu Unix adversarial/service/authorization tests and feature-e
 its existing Linux provider gate. The macOS embedded-model test remains macOS-specific. Linux CI
 at the final source head is pending in the PR; Windows native CI must also pass before integration.
 No Windows installed, Narrator, hardware matrix or signed-RC qualification is claimed by this fix.
+
+## First Linux CI and correction
+
+At source `6dbf1d2`, CI run `36993848471` passed all nine native transport tests and both
+real-ServiceContext live/reset tests. The older service-process test then failed because it
+hard-coded `macos` for both capability and engine-source responses while Ubuntu correctly
+returned `linux`. Both assertions now compare against `std::env::consts::OS`; the native
+availability and authorization assertions remain unchanged. This is a platform-specific test
+expectation correction, not a product fallback or removed assertion. Raw completed-job log:
+`/tmp/aethercore-unix-linux-job.txt`. Final-head Linux CI must pass after this correction.

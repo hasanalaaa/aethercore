@@ -267,7 +267,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
             assert_eq!(response.status_code, 0, "capabilities succeed");
             match response.payload {
                 Some(v1::response::Payload::PlatformCapabilitiesResponse(matrix)) => {
-                    assert_eq!(matrix.platform, "macos");
+                    assert_eq!(matrix.platform, std::env::consts::OS);
                     let cpu = matrix
                         .capabilities
                         .iter()
@@ -289,7 +289,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
         other => panic!("expected Response frame, got {other:?}"),
     }
 
-    // GetEngineSource round trip — native on this macOS host.
+    // GetEngineSource round trip — native on the compiling Unix host.
     let source = exchange(&mut session, &session_request(engine_source_request()));
     match source.payload {
         Some(server_frame::Payload::Response(response)) => {
@@ -297,7 +297,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
             match response.payload {
                 Some(v1::response::Payload::EngineSourceResponse(source)) => {
                     assert_eq!(source.source, "native");
-                    assert_eq!(source.platform, "macos");
+                    assert_eq!(source.platform, std::env::consts::OS);
                 }
                 other => panic!("expected EngineSourceResponse, got {other:?}"),
             }
