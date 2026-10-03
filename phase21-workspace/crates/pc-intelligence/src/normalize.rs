@@ -252,6 +252,46 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot, now: i64) -> Vec<SystemFact> 
             format!("temperatureC={temperature_c};ratedCriticalC={critical_c}"),
         ));
     }
+    for battery in &snapshot.batteries {
+        use aethercore_diagnostic_engine::measurements::Availability;
+        let (Some(design), Some(full), Some(observed)) = (
+            battery.design_capacity_mwh,
+            battery.full_charge_capacity_mwh,
+            battery.coverage.observed_unix_ms,
+        ) else {
+            continue;
+        };
+        if design == 0
+            || full == 0
+            || battery.design_capacity_relative.is_some()
+            || battery.full_charge_capacity_relative.is_some()
+            || battery.coverage.availability != Availability::Measured
+            || observed <= 0
+            || observed > now
+            || battery.stable_id.trim().is_empty()
+            || battery.coverage.source.trim().is_empty()
+        {
+            continue;
+        }
+        out.push(SystemFact::new(
+            Domain::Hardware,
+            &battery.coverage.source,
+            ResourceRef::private(
+                "battery",
+                &battery.stable_id,
+                display(&battery.display_name, "Battery"),
+            ),
+            observed,
+            measured_freshness(observed, now, MEMORY_WINDOW_MS),
+            Confidence::Confirmed,
+            FactPayload::BatteryCapacity {
+                design_capacity_mwh: design,
+                full_charge_capacity_mwh: full,
+            },
+            EvidenceKind::DeviceState,
+            format!("designCapacityMwh={design};fullChargeCapacityMwh={full}"),
+        ));
+    }
     // An accumulated lifetime counter or unavailable/reset window is not a current fault or
     // resolution proof. Default routes, cable/media and virtual status do not diagnose internet.
     for adapter in &snapshot.network_adapters {
@@ -666,5 +706,85 @@ mod measured_network_tests {
             assert!(crate::rules::evaluate(&facts, 1000).is_empty());
         }
         assert!(findings(base, 3600000).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod battery_capacity_tests {
+    use super::*;
+    use aethercore_diagnostic_engine::measurements::{Availability, Battery, Coverage};
+    fn battery() -> Battery {
+        Battery {
+            stable_id: "pack0".into(),
+            display_name: "Battery".into(),
+            design_capacity_mwh: Some(56000),
+            full_charge_capacity_mwh: Some(41000),
+            coverage: Coverage {
+                source: "IOCTL_BATTERY_QUERY_INFORMATION".into(),
+                observed_unix_ms: Some(1000),
+                availability: Availability::Measured,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+    fn facts(value: Battery, now: i64) -> Vec<SystemFact> {
+        diagnostics(
+            &DiagnosticsSnapshot {
+                state: DiagnosticScanState::Ready,
+                completed_unix_ms: 1000,
+                batteries: vec![value],
+                ..Default::default()
+            },
+            now,
+        )
+    }
+    #[test]
+    fn absolute_capacity_loss_is_an_informational_estimate_with_its_measured_basis() {
+        let found = crate::rules::evaluate(&facts(battery(), 1000), 1000);
+        let value = found
+            .iter()
+            .find(|f| f.code == "BATTERY_CAPACITY_BELOW_DESIGN")
+            .expect("capacity interpretation");
+        assert_eq!(value.severity, Severity::Informational);
+        assert!(!value.remediation_available && !value.automatic_eligible);
+        assert_eq!(value.message_args["designCapacityMwh"], "56000");
+        assert_eq!(value.message_args["fullChargeCapacityMwh"], "41000");
+        assert_eq!(value.message_args["lossPercent"], "26.7");
+        assert_eq!(value.evidence[0].source, "IOCTL_BATTERY_QUERY_INFORMATION");
+        assert_eq!(value.evidence[0].observed_unix_ms, 1000);
+    }
+    #[test]
+    fn relative_zero_missing_failed_and_old_capacity_cannot_become_a_health_percentage() {
+        let base = battery();
+        let mut variants = vec![];
+        let mut relative = base.clone();
+        relative.design_capacity_mwh = None;
+        relative.full_charge_capacity_mwh = None;
+        relative.design_capacity_relative = Some(100);
+        relative.full_charge_capacity_relative = Some(87);
+        variants.push(relative);
+        let mut mixed = base.clone();
+        mixed.design_capacity_relative = Some(100);
+        variants.push(mixed);
+        let mut zero = base.clone();
+        zero.design_capacity_mwh = Some(0);
+        variants.push(zero);
+        let mut missing = base.clone();
+        missing.coverage.observed_unix_ms = None;
+        variants.push(missing);
+        let mut failed = base.clone();
+        failed.coverage.availability = Availability::Failed;
+        variants.push(failed);
+        for value in variants {
+            let facts = facts(value, 1000);
+            assert!(
+                facts
+                    .iter()
+                    .all(|f| f.payload.kind_name() != "batteryCapacity")
+            );
+            assert!(crate::rules::evaluate(&facts, 1000).is_empty());
+        }
+        assert!(crate::rules::evaluate(&facts(base, 3600000), 3600000).is_empty());
     }
 }

@@ -1499,6 +1499,56 @@ mod measurement_tests {
         assert!(!absent.has_design_capacity_relative && !absent.has_full_charge_capacity_relative);
     }
 
+    #[test]
+    fn actual_deep_scan_wire_keeps_network_u64_counts_exact_in_the_raw_evidence_inspector() {
+        use aethercore_pc_intelligence::{
+            Confidence, Domain, EvidenceKind, FactPayload, Freshness, ResourceRef, SystemFact,
+        };
+        let raw = format!(
+            "windowMs={};inErrors={};outErrors=0;inDiscards=0;outDiscards=0",
+            u64::MAX,
+            u64::MAX
+        );
+        let fact = SystemFact::new(
+            Domain::Hardware,
+            "GetIfEntry2",
+            ResourceRef::private("network-adapter", "guid", "VPN"),
+            1000,
+            Freshness::Current,
+            Confidence::Confirmed,
+            FactPayload::NetworkCounterWindow {
+                elapsed_ms: u64::MAX,
+                in_errors: u64::MAX,
+                out_errors: 0,
+                in_discards: 0,
+                out_discards: 0,
+            },
+            EvidenceKind::DeviceState,
+            raw.clone(),
+        );
+        let findings = aethercore_pc_intelligence::evaluate_rules(&[fact], 1000);
+        let wire = deep_scan_snapshot_proto(aethercore_pc_intelligence::DeepScanSnapshot {
+            facts_count: 1,
+            findings,
+            ..Default::default()
+        });
+        let bytes = serde_json::to_vec(&wire).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(
+            json.get("facts").is_none() && json.get("payload").is_none(),
+            "raw model payloads are not exposed to JavaScript"
+        );
+        let args = json["findings"][0]["messageArgs"].as_array().unwrap();
+        for key in ["windowMs", "inErrors"] {
+            let value = args.iter().find(|arg| arg["key"] == key).unwrap();
+            assert_eq!(value["value"].as_str(), Some(u64::MAX.to_string().as_str()));
+        }
+        assert_eq!(
+            json["findings"][0]["evidence"][0]["technicalValue"].as_str(),
+            Some(raw.as_str())
+        );
+    }
+
     // P80-02B: presence survives the service boundary. A zone that read 0 °C and a zone that
     // read nothing must not arrive looking the same.
     #[test]

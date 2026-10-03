@@ -340,6 +340,11 @@ pub enum FactPayload {
         in_discards: u64,
         out_discards: u64,
     },
+    /// Absolute-unit capacities from one battery. Relative units cannot enter this fact.
+    BatteryCapacity {
+        design_capacity_mwh: u64,
+        full_charge_capacity_mwh: u64,
+    },
     HardwareEvent {
         category: String,
         provider: String,
@@ -390,6 +395,7 @@ impl FactPayload {
             Self::MemoryPressure { .. } => "memoryPressure",
             Self::ThermalZone { .. } => "thermalZone",
             Self::NetworkCounterWindow { .. } => "networkCounterWindow",
+            Self::BatteryCapacity { .. } => "batteryCapacity",
             Self::HardwareEvent { .. } => "hardwareEvent",
             Self::Crash { .. } => "crash",
             Self::StartupFootprint { .. } => "startupFootprint",

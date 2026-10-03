@@ -72,3 +72,21 @@ for (const locale of ['en', 'ar'] as const) {
     assert.ok(!html.includes('finding.networkWindow.'));
   });
 }
+
+
+for (const locale of ['en', 'ar'] as const) {
+  test(`${locale}: absolute battery interpretation keeps measured capacities, estimate and owned limits`, () => {
+    const args = { designCapacityMwh: '56000', fullChargeCapacityMwh: '41000', lossPercent: '26.7' };
+    const value = { ...finding, code: 'BATTERY_CAPACITY_BELOW_DESIGN', severity: 1, confidence: 5,
+      titleKey: 'finding.batteryCapacity.title', summaryKey: 'finding.batteryCapacity.summary',
+      messageArgs: Object.entries(args).map(([key, value]) => ({ key, value })),
+      uncertaintyKey: 'finding.batteryCapacity.limits', remediationAvailable: false,
+      evidence: [{ factId: 'capacity', kind: 'DeviceState', source: 'IOCTL_BATTERY_QUERY_INFORMATION', observedUnixMs: 1000, technicalValue: 'designCapacityMwh=56000;fullChargeCapacityMwh=41000' }],
+    } as PcFinding;
+    const html = card(locale, value, []);
+    assert.ok(html.includes(td('finding.batteryCapacity.summary' as never, locale, args)));
+    assert.ok(html.includes(td('finding.batteryCapacity.limits' as never, locale)));
+    assert.ok(html.includes(td('deepScan.severity.informational' as never, locale)));
+    assert.ok(!html.includes('finding.batteryCapacity.'));
+  });
+}

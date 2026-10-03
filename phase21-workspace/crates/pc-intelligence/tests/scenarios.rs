@@ -504,3 +504,50 @@ fn network_window_findings_roundtrip_with_exact_counts_and_no_critical_or_mutati
     );
     assert!(evaluate_rules(&[zero_window], NOW).is_empty());
 }
+
+#[test]
+fn battery_capacity_interpretation_is_exact_informational_and_not_a_hardware_alarm() {
+    let measured = fact(
+        Domain::Hardware,
+        "battery",
+        NOW,
+        FactPayload::BatteryCapacity {
+            design_capacity_mwh: u64::MAX,
+            full_charge_capacity_mwh: 1,
+        },
+    );
+    let findings = evaluate_rules(std::slice::from_ref(&measured), NOW);
+    assert_eq!(findings.len(), 1);
+    let finding = &findings[0];
+    assert_eq!(finding.code, "BATTERY_CAPACITY_BELOW_DESIGN");
+    assert_eq!(finding.severity, Severity::Informational);
+    assert_eq!(
+        finding.message_args["designCapacityMwh"],
+        u64::MAX.to_string()
+    );
+    assert_eq!(finding.message_args["lossPercent"], "99.9");
+    assert!(remediation_candidates(&findings).is_empty());
+    let restored: aethercore_pc_intelligence::Finding =
+        serde_json::from_slice(&serde_json::to_vec(finding).unwrap()).unwrap();
+    assert_eq!(&restored, finding);
+    for (design, full, freshness) in [
+        (0, 1, Freshness::Current),
+        (100, 0, Freshness::Current),
+        (100, 100, Freshness::Current),
+        (100, 101, Freshness::Current),
+        (100, 87, Freshness::Stale),
+        (100, 87, Freshness::Historical),
+    ] {
+        let mut sample = fact(
+            Domain::Hardware,
+            "battery",
+            NOW,
+            FactPayload::BatteryCapacity {
+                design_capacity_mwh: design,
+                full_charge_capacity_mwh: full,
+            },
+        );
+        sample.freshness = freshness;
+        assert!(evaluate_rules(&[sample], NOW).is_empty());
+    }
+}

@@ -1,27 +1,30 @@
 # P83 report
 
-P83 adds boots, network adapters, Windows Update history and client error events, and one thermal finding. What the plan
-lists beyond that is recorded open in the ledger, not built. Lane 2's work is P80 to P83; a statement
-without the command that produced it is labelled a belief.
+P83 reads boots, bounded local network counters/routes and Windows Update history/client errors.
+It publishes typed thermal, absolute battery-capacity and network-window observations. The initial
+implementation receipts below remain historical; acceptance continuations distinguish implemented
+source from exact native evidence and physical qualification. Boot attribution/comparable baseline
+and the remaining WU service/System scope stay open until their source and evidence are verified.
 
 ## 1. Tasks
 
 | task | commit | what changed |
 |---|---|---|
 | P83-01A | `2224d58` | recent boots from event 100, by field name, schema-version checked |
-| P83-02 | `a836ff1`, `ec80c55`, `8703278` | network adapters as Windows reports them (local WMI, no packet) with additive wire fields; `8703278` fixes the query found invalid on the PC |
+| P83-02 | initial WMI receipts below; `7b2c994`, `a6ee7ea` | bounded IP Helper counters/routes, checked monotonic deltas, exact decimal transport and EN/AR display; native7b2c994 tested, later final-head CI and physical matrix pending |
 | P83-03A/B | `3162d0c` | the local Windows Update history, and an evidence-only `update-history` assessment step |
 | P83-03B follow-up | Codex continuation below | bounded local Operational errors, measured event 25/version 1, with a separate translated assessment check |
-| P83-05A | `be6287b`, `c6c9bb0` and the shared P80 contract | thermal zones and batteries reach the Hardware rows via the owner-scoped snapshot |
+| P83-05A | `be6287b`, `c6c9bb0`, `ed89a0a` and P80 | owner-scoped thermal and absolute/relative battery rows with recorded time and distinct missing states |
 | P83-05B follow-up | Codex continuation §6 | Startup reuses dated historical boot rows; comparable-type baseline and per-application attribution remain open |
-| P83-06A | `9e404fd` | `THERMAL_TRIP_EXCEEDED` for a zone at its own rated critical trip point |
+| P83-06A | `9e404fd`; battery continuation below | thermal trip at firmware threshold; absolute capacity interpretation is informational, not a damage verdict |
+| P83-06B | `d64484a`; boot pending | measured network error/discard window is informational; reset/down/missing/stale data cannot invent a rate or resolve an old observation |
 | P83-04 | — | closed as deferred (D12): nothing built |
 
-Not done and recorded open: P83-01B/05B (startup attribution and the boot baseline, `DBT-P83-006`),
-the adapter counters and default routes (`DBT-P83-007`), System-channel/reboot event evidence and
-update-service configuration (`DBT-P83-008`), and the battery, boot and network findings of P83-06
-(`DBT-P83-005`, by design). The Operational error subset of DBT-P83-008 is implemented; that does
-not close the remaining service/reboot scope.
+Remaining source gaps: P83-01B/05B startup attribution/comparable baseline (DBT-P83-006),
+WU service/System/reboot scope (DBT-P83-008, lane2/coordinator continuation), and comparable
+boot findings (DBT-P83-005). Counter/default-route and battery/network interpretation source
+are implemented by the acceptance continuations; their final native/physical qualification remains
+explicitly pending. Operational WU errors alone do not close the remaining update scope.
 
 ## 2. Evidence
 
@@ -327,3 +330,51 @@ versions and templates only, with no event-user data, subscription, service
 change or product action. Missing providers remain explicitly unmeasured. The
 metadata artifact is navigation/semantic evidence for the pending boot work,
 not a boot baseline/attribution or full-phase acceptance pass.
+
+### P83-06A battery interpretation and raw-inspector precision proof
+
+BatteryCapacity is an additive typed fact for one measured battery with two
+positive absolute mWh capacities. Relative/mixed units, missing/zero capacities,
+failed coverage and missing/future time are excluded. The recorded five-minute
+live-source freshness window prevents old readings from raising a current
+interpretation. Full-charge capacity below design emits only the Informational
+BATTERY_CAPACITY_BELOW_DESIGN observation, with the exact two measured values
+and an estimated loss truncated to0.1%. u128 arithmetic prevents overflow at
+u64MAX; division by zero is excluded. Capacity variation/calibration and unknown
+cause are owned EN/AR limits, not a Critical battery alarm, health certificate,
+auto action or repair candidate. Relative-unit packs acquire no percentage.
+
+The same resource needs a current valid full/design remeasurement and Completed
+diagnostics authority to resolve this capacity observation. Missing, partial,
+zero-design or stale evidence is not a resolution proof. This resolves only the
+below-design observation; it does not prove overall battery health. Volatile
+capacity interpretations do not enter the durable machine-state fingerprint.
+
+Runtime red: the actual normalized absolute capacities produced no capacity
+interpretation. Green checks cover relative/mixed/zero/missing/failed/old inputs,
+u64MAX exact arithmetic and finding JSON roundtrip, no automatic remediation,
+persisted resolution guards and actual FindingCard EN/AR rendering. Targeted
+pc-intelligence+service154 tests across9 suites passed, all-target Clippy with
+warnings denied passed, UI107 passed, check0 errors/warnings and build passed,
+static351 passed, dependency freeze approved. The populated two-observation
+DeepScan layout8/8 (1280/640, EN/AR, dark/light) passed. Arabic clean leak2/2 also passed. The first browser run
+lost its navigation target; the stable-source retry passed with unchanged
+assertions/time limits. Native final-head and real battery qualification remain
+NOT RUN; the coordinator's Windows CI is the native route while SSH is down.
+
+Precision review also traced the raw evidence inspector. There is no SystemFact
+or FactPayload transport in intelligence.proto or the UI contracts. DeepScan
+exposes facts_count and findings; PcMessageArg.value and PcEvidenceRef.
+technical_value are strings. The coordinator serializes raw facts only for a
+byte-size estimate; persistence stores DeepScanSnapshot without raw fact
+payloads. protocol.rs copies argument/evidence strings into the real snapshot
+wire. DeepScanPage's inspector joins technicalValue strings without Number
+conversion. An additional actual deep_scan_snapshot_proto→JSON test passed,
+asserting u64MAX exact strings for interval/error arguments and raw technical
+value, and absence of a raw facts/payload field. Final service all-target Clippy
+passed after this test. No speculative serde format migration was necessary.
+
+The source battery/network interpretation scope is implemented, while physical
+qualification and P83-06B's comparable boot baseline remain distinct pending
+work. Boot publisher metadata capture and WU reboot source are coordinator/
+lane2-owned; this checkpoint adds neither guessed boot types nor event schemas.
