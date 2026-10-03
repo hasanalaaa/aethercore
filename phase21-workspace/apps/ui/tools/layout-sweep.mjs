@@ -317,10 +317,10 @@ async function main() {
             dropped.length = 0;
             await cdp.send('Page.navigate', { url: `${args.base}/${entry}` });
             await settle(cdp);
-            // Navigate the way a user does, by pressing the rail button, so the
-            // measured page is one the app actually routed to.
+            // Follow the real rail route, or the Overview scan button for Deep Scan.
             const reached = await evaluate(cdp, `(async () => {
-              const button = document.querySelector('button[data-nav-item][data-page=' + JSON.stringify(${JSON.stringify(page)}) + ']');
+              const button = document.querySelector('button[data-nav-item][data-page=' + JSON.stringify(${JSON.stringify(page)}) + ']')
+                ?? (${JSON.stringify(page)} === 'deepScan' ? document.querySelector('.overview-header-side button.primary') : null);
               if (!button) return false;
               button.click();
               await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));

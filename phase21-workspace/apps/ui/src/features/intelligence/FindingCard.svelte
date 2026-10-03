@@ -1,17 +1,29 @@
 <script lang="ts">
   import { MaterialSurface, TechnicalText } from '../../design/primitives';
   import { EvidenceChip, type Evidence } from '../../design/signature';
-  import type { PcFinding } from '../../lib/contracts';
+  import type { PcFinding, PcRemediationCandidate } from '../../lib/contracts';
   import { formatDateTime, formatNumber, hasMessageKey, td, t, type Locale, type MessageKey } from '../../lib/i18n';
 
   export let finding: PcFinding;
   export let locale: Locale;
+  export let candidates: readonly PcRemediationCandidate[] = [];
   /**
    * The observation this finding cites. Required: `DeepScanPage` runs findings
    * through `citedOnly` before rendering any of them, so a card is only ever
    * built for a finding that already has one.
    */
   export let evidence: Evidence;
+
+  $: citedTimes = finding.evidence.map((fact) => fact.observedUnixMs).filter((time) => time > 0);
+  let limitsKey: MessageKey;
+  $: limitsKey = finding.code === 'HARDWARE_ERROR_EVIDENCE' || finding.code === 'CRASH_WITH_HARDWARE_EVIDENCE'
+    ? 'deepScan.limits.hardware' : 'deepScan.limits.observations';
+  $: nextKey = nextAction(finding,candidates);
+  function nextAction(value: PcFinding, actions: readonly PcRemediationCandidate[]): MessageKey {
+    if (value.verificationStatus === 'VerificationUnavailable' || value.verificationStatus === 'NotRechecked') return 'deepScan.next.recheck';
+    const candidate = actions.find((item) => item.findingId === value.id && hasMessageKey(item.descriptionKey));
+    return candidate && hasMessageKey(candidate.descriptionKey) ? candidate.descriptionKey : 'deepScan.next.review';
+  }
 
   function message(key: string): string {
     if (!hasMessageKey(key)) return key;
@@ -52,6 +64,17 @@
   <div class="finding-evidence">
     <EvidenceChip {evidence} {locale} />
   </div>
+  <div class="finding-limits">
+    <span>{t('deepScan.findingScope',locale,{count:formatNumber(finding.evidence.length,locale)})}</span>
+    {#if citedTimes.length}
+      <span>{formatDateTime(Math.min(...citedTimes),locale)} — {formatDateTime(Math.max(...citedTimes),locale)}</span>
+    {/if}
+    {#if citedTimes.length !== finding.evidence.length}<span>{t('deepScan.findingTimeUnknown',locale)}</span>{/if}
+    <strong>{t('deepScan.findingLimits',locale)}</strong>
+    <span>{td(limitsKey,locale)}</span>
+    {#if hasMessageKey(finding.uncertaintyKey)}<span>{message(finding.uncertaintyKey)}</span>{/if}
+    <p><strong>{t('deepScan.nextAction',locale)}:</strong> {message(nextKey)}</p>
+  </div>
   <div class="finding-properties">
     <span>{t('deepScan.resource',locale,{resource:finding.affectedResource?.displayName ?? '—'})}</span>
     <span>{t('deepScan.reboot',locale,{value:rebootLabel(finding.rebootRequirement)})}</span>
@@ -89,6 +112,7 @@
   .finding-properties{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0 0;padding-top:10px;border-top:1px solid var(--ac-border-subtle);color:var(--ac-text-3);font-size:var(--ac-type-body)}:global(.finding-card details){margin-top:10px}:global(.finding-card summary){cursor:pointer;color:var(--ac-text-2);font-weight:600}:global(.finding-card details>p){color:var(--ac-text-2)}
   .correlation-detail{display:grid;gap:5px;margin:9px 0;padding:10px 11px;border-radius:10px;background:var(--ac-material-base);color:var(--ac-text-2);font-size:var(--ac-type-body)}.correlation-detail strong{font-weight:650;color:var(--ac-text-1)}
   .finding-evidence{margin:12px 0 0}
+  .finding-limits{display:grid;gap:5px;margin:12px 0 0;color:var(--ac-text-2);font-size:var(--ac-type-body);line-height:1.55}.finding-limits p{margin:5px 0 0}.finding-limits strong{font-weight:600;color:var(--ac-text-1)}
   :global(.finding-card small){color:var(--ac-text-3)}
   @media (prefers-contrast:more){.severity-mark,.safety-badge,.verification-note{border-width:2px}}
 </style>
