@@ -119,9 +119,14 @@ export type ProviderFault = { provider:string; operation:string; detail:string; 
 // anything else unknown. A `has*` flag says the value beside it was read; without it the number is a filler.
 export type MeasurementCoverage = { source:string; hasObservedUnixMs:boolean; observedUnixMs:number; hasWindowDays:boolean; windowDays:number; availability:number; reasonKey:string };
 export type ThermalZoneMeasurement = { stableId:string; displayName:string; hasTemperature:boolean; temperatureC:number; hasCritical:boolean; criticalC:number; hasHighestObserved:boolean; highestObservedC:number; coverage:MeasurementCoverage };
-export type BatteryMeasurement = { stableId:string; displayName:string; hasDesignCapacity:boolean; designCapacityMwh:number; hasFullChargeCapacity:boolean; fullChargeCapacityMwh:number; hasCycleCount:boolean; cycleCount:number; coverage:MeasurementCoverage };
+export type BatteryMeasurement = { stableId:string; displayName:string; hasDesignCapacity:boolean; designCapacityMwh:number; hasFullChargeCapacity:boolean; fullChargeCapacityMwh:number; hasCycleCount:boolean; cycleCount:number; coverage:MeasurementCoverage; hasDesignCapacityRelative?:boolean; designCapacityRelative?:number; hasFullChargeCapacityRelative?:boolean; fullChargeCapacityRelative?:number };
 export type BootMeasurement = { recordedUnixMs:number; hasDuration:boolean; durationMs:number; coverage:MeasurementCoverage };
-export type NetworkAdapterMeasurement = { stableId:string; displayName:string; hasLinkSpeed:boolean; linkSpeedBps:number; coverage:MeasurementCoverage; hasOperationalStatus:boolean; operationalStatus:number; hasConnected:boolean; connected:boolean; hasIsVirtual:boolean; isVirtual:boolean };
+export type NetworkCounters = { inOctets:string; outOctets:string; inErrors:string; outErrors:string; inDiscards:string; outDiscards:string };
+export type NetworkAdapterMeasurement = { stableId:string; displayName:string; hasLinkSpeed:boolean; linkSpeedBps:number; coverage:MeasurementCoverage; hasOperationalStatus:boolean; operationalStatus:number; hasConnected:boolean; connected:boolean; hasIsVirtual:boolean; isVirtual:boolean;
+  hasAdminEnabled?:boolean; adminEnabled?:boolean; hasIpv4Apipa?:boolean; ipv4Apipa?:boolean;
+  hasDefaultRouteV4?:boolean; defaultRouteV4?:boolean; hasDefaultRouteV6?:boolean; defaultRouteV6?:boolean;
+  counters?:NetworkCounters|null; counterDelta?:{ elapsedMs:string; counts:NetworkCounters|null }|null;
+  counterAvailability?:number; routeAvailability?:number };
 export type DiagnosticsSnapshot = { scanId:string; state:string; startedUnixMs:number; completedUnixMs:number; eventWindowDays:number; storage:StorageTelemetry[]; memory:MemoryTelemetry|null; events:HardwareEvent[]; crashes:CrashRecord[]; cards:DiagnosticCard[]; warnings:string[]; providerFaults:ProviderFault[]; thermalZones:ThermalZoneMeasurement[]; batteries:BatteryMeasurement[]; boots:BootMeasurement[]; networkAdapters:NetworkAdapterMeasurement[] };
 export type DiagnosticHistoryEntry = { scanId:string; state:string; collectedUnixMs:number; warningCount:number; cardCount:number };
 export type ConsentIntentEvent = { intentId:string; planId:string; planDigest:string; title:string; risk:string; actionCount:number; expiresUnixMs:number; riskCode:number };

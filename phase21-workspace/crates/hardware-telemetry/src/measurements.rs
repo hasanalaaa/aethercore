@@ -62,6 +62,11 @@ pub struct Battery {
     /// What the battery was built for, kept apart from what it holds now.
     pub design_capacity_mwh: Option<u64>,
     pub full_charge_capacity_mwh: Option<u64>,
+    /// Undefined relative units reported by BATTERY_CAPACITY_RELATIVE; never mWh.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub design_capacity_relative: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub full_charge_capacity_relative: Option<u32>,
     pub cycle_count: Option<u32>,
     pub coverage: Coverage,
 }
@@ -87,7 +92,46 @@ pub struct NetworkAdapter {
     pub connected: Option<bool>,
     /// Windows' own flag for a virtual adapter (VPN, virtual switch): a name, not a fault.
     pub is_virtual: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ipv4_apipa: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_route_v4: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_route_v6: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub counters: Option<NetworkCounters>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub counter_delta: Option<NetworkCounterDelta>,
+    #[serde(skip_serializing_if = "unknown_availability")]
+    pub counter_availability: Availability,
+    #[serde(skip_serializing_if = "unknown_availability")]
+    pub route_availability: Availability,
     pub coverage: Coverage,
+}
+
+fn unknown_availability(value: &Availability) -> bool {
+    *value == Availability::Unknown
+}
+
+/// Cumulative interface counters; zero is a successful measurement.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct NetworkCounters {
+    pub in_octets: u64,
+    pub out_octets: u64,
+    pub in_errors: u64,
+    pub out_errors: u64,
+    pub in_discards: u64,
+    pub out_discards: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct NetworkCounterDelta {
+    pub elapsed_ms: u64,
+    pub counts: NetworkCounters,
 }
 
 /// Applies a domain's limit. The flag says something was cut, so the producer can warn instead

@@ -4,7 +4,48 @@
 //! is resolved, and no MAC, IP or SSID is collected. A link that is down, an unplugged cable and a
 //! virtual adapter are states of an adapter, not statements about "the internet".
 
-use crate::measurements::{Availability, Coverage, NetworkAdapter};
+use crate::measurements::{
+    Availability, Coverage, NetworkAdapter, NetworkCounterDelta, NetworkCounters,
+};
+
+#[derive(Default)]
+pub(crate) struct CounterWindow(std::collections::BTreeMap<String, (u64, u64, NetworkCounters)>);
+impl CounterWindow {
+    pub fn observe(
+        &mut self,
+        id: &str,
+        luid: u64,
+        now: u64,
+        counters: NetworkCounters,
+    ) -> Option<NetworkCounterDelta> {
+        if !self.0.contains_key(id) && self.0.len() == crate::measurements::MAX_NETWORK_ADAPTERS {
+            self.0.pop_first();
+        }
+        let (old_luid, old_time, old) = self.0.insert(id.into(), (luid, now, counters))?;
+        let elapsed_ms = now.checked_sub(old_time).filter(|ms| *ms > 0)?;
+        if old_luid != luid {
+            return None;
+        }
+        Some(NetworkCounterDelta {
+            elapsed_ms,
+            counts: NetworkCounters {
+                in_octets: counters.in_octets.checked_sub(old.in_octets)?,
+                out_octets: counters.out_octets.checked_sub(old.out_octets)?,
+                in_errors: counters.in_errors.checked_sub(old.in_errors)?,
+                out_errors: counters.out_errors.checked_sub(old.out_errors)?,
+                in_discards: counters.in_discards.checked_sub(old.in_discards)?,
+                out_discards: counters.out_discards.checked_sub(old.out_discards)?,
+            },
+        })
+    }
+    pub fn retain_present(&mut self, adapters: &[NetworkAdapter]) {
+        self.0.retain(|id, _| {
+            adapters
+                .iter()
+                .any(|adapter| adapter.stable_id == *id && adapter.counters.is_some())
+        });
+    }
+}
 
 const SOURCE: &str = "MSFT_NetAdapter";
 
@@ -61,12 +102,60 @@ pub(crate) fn adapter_from_wmi(
                 "measurement.reason.noAdapterState".into()
             },
         },
+        ..Default::default()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn counter_window_needs_two_real_samples_and_reset_or_identity_change_never_spikes() {
+        let mut window = CounterWindow::default();
+        let zero = NetworkCounters::default();
+        assert_eq!(window.observe("guid", 1, 100, zero), None);
+        let delta = window
+            .observe("guid", 1, 1100, zero)
+            .expect("measured zero traffic");
+        assert_eq!(delta.elapsed_ms, 1000);
+        assert_eq!(delta.counts, zero);
+        let current = NetworkCounters {
+            in_octets: 10,
+            out_errors: 2,
+            ..zero
+        };
+        assert_eq!(
+            window.observe("guid", 1, 2100, current).unwrap().counts,
+            current
+        );
+        assert_eq!(
+            window.observe("guid", 1, 2100, current),
+            None,
+            "no real elapsed window"
+        );
+        assert_eq!(window.observe("guid", 1, 2200, zero), None, "counter reset");
+        assert_eq!(
+            window.observe("guid", 2, 2300, current),
+            None,
+            "LUID changed"
+        );
+        assert_eq!(
+            window.observe("other-guid", 2, 2400, current),
+            None,
+            "GUID changed"
+        );
+        window.retain_present(&[]);
+        assert_eq!(
+            window.observe("guid", 1, 2500, current),
+            None,
+            "hot unplug drops the baseline"
+        );
+        for id in 0..1000 {
+            window.observe(&id.to_string(), id, 3000, zero);
+        }
+        assert_eq!(window.0.len(), crate::measurements::MAX_NETWORK_ADAPTERS);
+    }
 
     #[test]
     fn a_reported_state_is_kept_as_reported() {

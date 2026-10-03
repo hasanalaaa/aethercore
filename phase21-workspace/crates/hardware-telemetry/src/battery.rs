@@ -1,7 +1,7 @@
 //! Batteries (`GUID_DEVINTERFACE_BATTERY`, `IOCTL_BATTERY_QUERY_INFORMATION`), P82-02B.
 //!
-//! One record per battery, never averaged. Capacity is reported only in the absolute unit it was
-//! measured in: a battery that reports relative capacity has no mWh, and a zero is "not reported",
+//! One record per battery, never averaged. Relative capacity retains its undefined relative unit
+//! and has no mWh. A zero is "not reported",
 //! never a value to divide by.
 
 use crate::measurements::{Availability, Battery, Coverage};
@@ -25,13 +25,13 @@ pub(crate) fn battery_from_information(
 ) -> Battery {
     let relative = capabilities & CAPACITY_RELATIVE != 0;
     let absolute = |value: u32| (!relative && value > 0).then_some(u64::from(value));
-    let (availability, reason_key) = if relative {
+    let (availability, reason_key) = if designed_capacity == 0 && full_charged_capacity == 0 {
+        (Availability::Unsupported, "measurement.reason.noCapacity")
+    } else if relative {
         (
-            Availability::Unsupported,
+            Availability::Measured,
             "measurement.reason.relativeCapacity",
         )
-    } else if designed_capacity == 0 && full_charged_capacity == 0 {
-        (Availability::Unsupported, "measurement.reason.noCapacity")
     } else {
         (Availability::Measured, "")
     };
@@ -40,6 +40,9 @@ pub(crate) fn battery_from_information(
         display_name: display_name.to_string(),
         design_capacity_mwh: absolute(designed_capacity),
         full_charge_capacity_mwh: absolute(full_charged_capacity),
+        design_capacity_relative: (relative && designed_capacity > 0).then_some(designed_capacity),
+        full_charge_capacity_relative: (relative && full_charged_capacity > 0)
+            .then_some(full_charged_capacity),
         cycle_count: (cycle_count > 0 && cycle_count != u32::MAX).then_some(cycle_count),
         coverage: Coverage {
             source: SOURCE.into(),
@@ -83,8 +86,23 @@ mod tests {
             (b.design_capacity_mwh, b.full_charge_capacity_mwh),
             (None, None)
         );
-        assert_eq!(b.coverage.availability, Availability::Unsupported);
+        assert_eq!(b.coverage.availability, Availability::Measured);
         assert_eq!(b.coverage.reason_key, "measurement.reason.relativeCapacity");
+    }
+
+    #[test]
+    fn relative_capacity_is_a_measurement_in_its_own_unit() {
+        let relative =
+            battery_from_information("relative", "Battery", CAPACITY_RELATIVE, 100, 87, 5, 9);
+        assert_eq!(relative.coverage.availability, Availability::Measured);
+        assert_eq!(relative.design_capacity_mwh, None);
+        assert_eq!(relative.full_charge_capacity_mwh, None);
+        assert_eq!(relative.design_capacity_relative, Some(100));
+        assert_eq!(relative.full_charge_capacity_relative, Some(87));
+        let zero = battery_from_information("b0", "Battery", CAPACITY_RELATIVE, 0, 0, 0, 9);
+        assert_eq!(zero.design_capacity_relative, None);
+        assert_eq!(zero.full_charge_capacity_relative, None);
+        assert_eq!(zero.coverage.availability, Availability::Unsupported);
     }
 
     #[test]

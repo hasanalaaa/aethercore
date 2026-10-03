@@ -163,3 +163,109 @@ The full final-head Windows phase check and integration CI remain coordinator-ow
 Full UI negative controls also passed: planted text, attribute and sentence-argument leaks were
 all detected (one positive detection each). The final tracked source tree was sealed again after
 these records; no baseline, gate, timeout, dependency or pipe DACL was weakened.
+
+### Acceptance follow-up P83-02A — bounded native counters/routes (2026-10-03)
+
+The optional WMI adapter inventory is replaced by local GetAdaptersAddresses,
+GetIfEntry2 and GetIpForwardTable2. SDK bindings were checked against the installed
+pinned windows0.62.2 and Microsoft's APIs. The existing crate enables only
+IpHelper/Ndis/WinSock features; package versions and Cargo.lock remain unchanged.
+The approved manifest freeze hashes are refreshed, not the lock/version pins.
+
+Acquisition retries buffer growth at most three times under1MiB, enumerates at
+most128 adapters and256 unicast records each, and bounds route traversal at4096.
+Bounds/cycles/errors are failures rather than invented empty success. Buffer
+pointers are checked before reading; the route allocation is freed through RAII.
+Only the IPv4 link-local flag is retained, not addresses/MAC/SSID. Virtual,
+disconnected, disabled and no-default-route states imply no internet diagnosis.
+No probe/resolve/socket/connect or adapter mutation API is called.
+
+Cumulative six-direction counters preserve u64 and measured zero. The bounded
+session cache keys GUID plus LUID, prunes disappeared/failed-read adapters, and
+publishes checked deltas only across a positive monotonic interval. First samples,
+non-increasing clocks, decreased/reset/wrapped counters and changed identity
+produce no delta. Separate compact counter/route availability uses the common
+reading timestamp/source. Unknown/absent additive data is omitted on storage
+serialization and restores as unknown, not healthy.
+
+Runtime red: measured zero traffic had no delta. A genuine existing payload gate
+also failed at296060 bytes after duplicating Coverage objects; compact availability
+and absent-value omission fixed it without changing the256KiB limit or original
+padded fixture. The additional measured128-adapter fixture uses u64MAX and256
+CJK alias characters, stays in the same budget and roundtrips exact values.
+Mac66 tests (hardware+diagnostic), host all-target Clippy, Windows GNU all-target
+Clippy, static351 and dependency-freeze check passed. Windows-only buffer/APIPA
+fixtures compile through the cross check. Native execution, wire/render exposure
+(P83-02B), capture proving no outgoing probes, IPv6/VPN/hot-unplug physical
+qualification and network findings remain pending; this source checkpoint does
+not close DBT-P83-007 or the phase.
+
+Primary API sources: https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses;
+https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getifentry2;
+https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getipforwardtable2.
+
+
+### Exact native P83-02A checkpoint and Task B transport/render (2026-10-03)
+
+Native source was clean detached `7b2c994d9531aba9ea1e95825445b6bd9caacd94`
+in the isolated `C:\dev\codex-care-fixtures` checkout, without a source overlay.
+Windows 11 Pro build26200, jobs2, lane3-owned target; workspace1615 and GitHub7
+source hashes verified. Hardware fixtures40 passed, one live test ignored by the
+ordinary suite. The separately authorized existing read-only collector passed1;
+all-target Clippy with warnings denied passed. First/second samples each had2
+storage devices,1 thermal zone,0 batteries,6 adapters and6 cumulative readings;
+deltas0 then6, IPv4 defaults2, IPv6 defaults0, faults0. Only aggregate counts were
+printed. No app/service/model action, repair, cleanup or installation was invoked.
+
+Native raw receipts (kept outside the sealed workspace):
+
+| receipt | SHA256 |
+|---|---|
+| `/private/tmp/p83-network-native-fixtures-7b2c994.log` | `999a11b614b7e8c9e8300893e78a3b663b05b8d383ea5124ce33ba2c5d77adb7` |
+| `/private/tmp/p83-network-native-live-7b2c994.log` | `92c0c81709955f8c2870f0f295ab4b330c9c6137a84cc460828fefe6294879e4` |
+| `/private/tmp/p83-network-native-clippy-7b2c994.log` | `f072560d65b4ff6c22421e47bec19f73ff4e8a5d8b64b935a76bf59cce746f9b` |
+
+Task B adds NetworkAdapterInfo tags12–23, presence/value flags for admin/APIPA
+and IPv4/IPv6 default routes, separate availability, and typed cumulative/delta
+messages. All six counters and elapsed milliseconds cross JSON as canonical
+unsigned decimal strings; no JavaScript Number conversion occurs. UI BigInt
+validation rejects malformed/overflow strings and nonpositive delta intervals.
+Measured zero remains measured zero. The service wire fixture preserves u64MAX
+and zero; the actual128-adapter JSON wire fixture stays below the existing256KiB
+budget, in addition to the original full-domain and measured source-budget tests.
+
+Actual MeasurementRows SSR in EN/AR displays owned cumulative and interval
+counts, source and the recorded reading date. The interval is a measured sample
+window, not an internet throughput claim. Unknown/failed reads, first samples,
+missing routes and invalid data show owned limitations. A missing observation
+date is omitted, never replaced by the current time; older dated samples are
+historical readings, never asserted current/fresh. An IPv6 default avoids the
+no-default label; a disabled/virtual/down adapter or missing default route never
+becomes an internet or Critical verdict. Legacy additive fields may be absent.
+Native malformed unicast data now propagates its existing failure instead of
+silently losing the APIPA flag. No new probe, dependency/version, budget, schema
+tag reuse, mutation or gate change was introduced.
+
+Runtime red before implementation: service exact-counter assertion1 failed
+(null instead of u64MAX decimal); actual EN/AR SSR4 failed for missing readings
+and owned limitations. Both became green. Final UI99/99 passed (including two
+recorded-date/unknown regressions); check0 errors/0 warnings and build passed.
+Affected Rust162 tests across13 suites passed before the additional actual wire
+budget fixture; the new fixture and final service suite passed afterward.
+Hardware Windows GNU all-target Clippy and affected host all-target Clippy passed;
+static351 passed. Populated Hardware layout8/8 (1280/640, EN/AR, dark/light)
+passed with no overflow/clips/overlap. Arabic clean leak4/4 passed; a planted
+sentinel remains detectable. The build retains its existing chunk-size warning.
+
+The Task B native final-head test remains distinct from the earlier7b2c994
+native receipt: direct SSH currently times out, while root reports the Windows
+Actions runner online. Final native source/CI qualification belongs to the
+coordinator; no earlier receipt is relabelled as testing this changed head.
+Physical IPv6-only/VPN-only/hot-unplug, packet-capture no-probe proof, battery
+hardware, Narrator and200% Arabic qualification remain NOT RUN. This closes the
+source transport/render portion of DBT-P83-007, not the entire P83 phase.
+P83-01B/05B comparable boot baseline and per-entry attribution, P83-03 service/
+reboot/System evidence, P83-06 typed network/boot/battery rules and P82 relative
+battery units remain separate approved source tasks. A real network finding
+requires a valid measured delta and source/time evidence; missing first-sample
+or reset data cannot be treated as healthy or a diagnosed fault.

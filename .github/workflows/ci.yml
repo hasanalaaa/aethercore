@@ -182,6 +182,30 @@ jobs:
       # hashes the WORKING TREE, so a checkout that rewrote line endings fails it.
       - name: Delivered source seal
         run: python scripts/source_seal.py
+      - name: Read-only Windows boot publisher metadata
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $records=@()
+          foreach ($name in @('Microsoft-Windows-Diagnostics-Performance','Microsoft-Windows-Kernel-Boot')) {
+            try {
+              $provider=Get-WinEvent -ListProvider $name -ErrorAction Stop
+              $events=@($provider.Events | Where-Object { $name -ne 'Microsoft-Windows-Diagnostics-Performance' -or $_.Id -in @(100,101,102,103) } | Select-Object Id,Version,Template,Description)
+              $records+=@{provider=$name;status='measured';events=$events}
+            } catch {
+              $records+=@{provider=$name;status='unmeasured';error_type=$_.Exception.GetType().FullName}
+            }
+          }
+          New-Item -ItemType Directory -Force out/p83-provider-metadata | Out-Null
+          $os=Get-CimInstance Win32_OperatingSystem
+          @{schema='aethercore.p83-provider-metadata.v1';observed_utc=[DateTime]::UtcNow.ToString('o');windows_build=$os.BuildNumber;windows_product=$os.Caption;providers=$records} | ConvertTo-Json -Depth 12 | Set-Content out/p83-provider-metadata/publishers.json -Encoding utf8NoBOM
+          Get-FileHash out/p83-provider-metadata/publishers.json -Algorithm SHA256 | Format-List
+      - name: Upload boot publisher metadata (no event records)
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: aethercore-p83-provider-metadata-${{ github.sha }}
+          path: phase21-workspace/out/p83-provider-metadata/publishers.json
+          if-no-files-found: error
       - name: Installed acceptance and signed RC rejection controls
         shell: pwsh
         run: |

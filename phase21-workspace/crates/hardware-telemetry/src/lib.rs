@@ -9,6 +9,8 @@ mod battery;
 pub mod measurements;
 #[cfg(any(windows, test))]
 mod network;
+#[cfg(windows)]
+mod network_windows;
 #[cfg(any(windows, test))]
 mod thermal;
 
@@ -1246,6 +1248,39 @@ mod tests {
                 .as_ref()
                 .is_some_and(|memory| memory.total_physical_bytes > 0)
         );
+        for (sample, value) in [
+            (1, snapshot),
+            (2, collect().expect("second read-only sample")),
+        ] {
+            println!(
+                "read_only_hardware sample={sample} storage={} thermal={} batteries={} adapters={} counters={} deltas={} v4_default={} v6_default={} faults={}",
+                value.storage.len(),
+                value.thermal_zones.len(),
+                value.batteries.len(),
+                value.network_adapters.len(),
+                value
+                    .network_adapters
+                    .iter()
+                    .filter(|a| a.counters.is_some())
+                    .count(),
+                value
+                    .network_adapters
+                    .iter()
+                    .filter(|a| a.counter_delta.is_some())
+                    .count(),
+                value
+                    .network_adapters
+                    .iter()
+                    .filter(|a| a.default_route_v4 == Some(true))
+                    .count(),
+                value
+                    .network_adapters
+                    .iter()
+                    .filter(|a| a.default_route_v6 == Some(true))
+                    .count(),
+                value.provider_faults.len()
+            );
+        }
     }
 
     #[test]

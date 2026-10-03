@@ -81,6 +81,9 @@ message BatteryInfo {
   bool has_full_charge_capacity = 5; uint64 full_charge_capacity_mwh = 6;
   bool has_cycle_count = 7; uint32 cycle_count = 8;
   MeasurementCoverageInfo coverage = 9;
+  // Undefined relative units are retained separately; never converted to mWh.
+  bool has_design_capacity_relative = 10; uint32 design_capacity_relative = 11;
+  bool has_full_charge_capacity_relative = 12; uint32 full_charge_capacity_relative = 13;
 }
 message BootRecordInfo {
   int64 recorded_unix_ms = 1;
@@ -96,6 +99,24 @@ message NetworkAdapterInfo {
   bool has_operational_status = 6; uint32 operational_status = 7;
   bool has_connected = 8; bool connected = 9;
   bool has_is_virtual = 10; bool is_virtual = 11;
+  bool has_admin_enabled = 12; bool admin_enabled = 13;
+  bool has_ipv4_apipa = 14; bool ipv4_apipa = 15;
+  bool has_default_route_v4 = 16; bool default_route_v4 = 17;
+  bool has_default_route_v6 = 18; bool default_route_v6 = 19;
+  NetworkCountersInfo counters = 20;
+  NetworkCounterDeltaInfo counter_delta = 21;
+  MeasurementAvailability counter_availability = 22;
+  MeasurementAvailability route_availability = 23;
+}
+// Exact decimal u64; the JSON bridge must not round these through JavaScript Number.
+message NetworkCountersInfo {
+  string in_octets = 1; string out_octets = 2;
+  string in_errors = 3; string out_errors = 4;
+  string in_discards = 5; string out_discards = 6;
+}
+message NetworkCounterDeltaInfo {
+  string elapsed_ms = 1;
+  NetworkCountersInfo counts = 2;
 }
 message StorageDeviceTelemetryInfo {
   string device_id = 1;
