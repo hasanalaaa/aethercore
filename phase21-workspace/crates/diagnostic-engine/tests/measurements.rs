@@ -5,7 +5,7 @@ use aethercore_diagnostic_engine::DiagnosticsSnapshot;
 use aethercore_hardware_telemetry::StorageReliability;
 use aethercore_hardware_telemetry::measurements::{
     Availability, Battery, BootRecord, Coverage, MAX_BATTERIES, MAX_BOOTS, MAX_NETWORK_ADAPTERS,
-    MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped,
+    MAX_THERMAL_ZONES, NetworkAdapter, NetworkCounterDelta, NetworkCounters, ThermalZone, capped,
 };
 
 fn coverage() -> Coverage {
@@ -172,4 +172,53 @@ fn the_limits_are_applied_and_the_largest_snapshot_fits_its_byte_budget() {
         bytes < 256 * 1024,
         "the four domains at their limits take {bytes} bytes"
     );
+}
+
+#[test]
+fn measured_iphelper_inventory_at_its_cap_preserves_exact_u64_and_the_snapshot_budget() {
+    let counts = NetworkCounters {
+        in_octets: u64::MAX,
+        out_octets: u64::MAX,
+        in_errors: u64::MAX,
+        out_errors: u64::MAX,
+        in_discards: u64::MAX,
+        out_discards: u64::MAX,
+    };
+    let snapshot = DiagnosticsSnapshot {
+        network_adapters: (0..MAX_NETWORK_ADAPTERS)
+            .map(|_| NetworkAdapter {
+                stable_id: "12345678-1234-1234-1234-123456789abc".into(),
+                display_name: "界".repeat(256),
+                admin_enabled: Some(true),
+                ipv4_apipa: Some(false),
+                default_route_v4: Some(false),
+                default_route_v6: Some(true),
+                counters: Some(counts),
+                counter_delta: Some(NetworkCounterDelta {
+                    elapsed_ms: u64::MAX,
+                    counts,
+                }),
+                counter_availability: Availability::Measured,
+                route_availability: Availability::Measured,
+                coverage: Coverage {
+                    source: "GetAdaptersAddresses/GetIfEntry2".into(),
+                    ..coverage()
+                },
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let bytes = serde_json::to_vec(&snapshot).unwrap();
+    assert!(
+        bytes.len() < 256 * 1024,
+        "measured bounded source cannot enlarge the payload budget: {}",
+        bytes.len()
+    );
+    let restored: DiagnosticsSnapshot = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        restored.network_adapters[0].counter_delta.unwrap().counts,
+        counts
+    );
+    assert_eq!(restored.network_adapters[0].default_route_v6, Some(true));
 }

@@ -169,3 +169,20 @@ DB fixture with a valid source beside an empty ID or malformed digest failed at
 runtime before the fix and passes after it. Full service/core verification passed
 111 tests, all-target Clippy -D warnings and static 351 checks. The existing true
 empty-plan test still passes. No domain execution or owner-device mutation occurs.
+
+### Native source qualification for follow-ups A/B/C (2026-10-03)
+
+Exact native source f0f34683cd5e859f0148fd84386a4cd87461404f was cloned from
+an immutable Git bundle into C:\dev\codex-care-fixtures. Windows 11 Pro
+10.0.26200/build26200 ran the four-package locked test command with jobs2 and
+lane3's own target-p86-codex cache: 154 tests across17 suites passed, no failures
+or ignored tests. The same four packages' all-target Clippy -D warnings passed
+(exit0, 2m43s). No source overlay was applied. The only untracked Git-root files
+were the two receipt logs outside the sealed phase21-workspace. No installed
+service/app/model/provider was invoked; test databases/files were fixtures.
+
+Native test receipt SHA256:630e5cf6c73fc6c209f2b8afc228e357e9c7892b2cc8c62a0efdf86c5bea9a37;
+Clippy receipt SHA256:ac8cc0a12691f346f2ea2bb3bc422bfb8a737b352536b72bb54b6aea6b4f0f68.
+Copies: /private/tmp/p79-care-native-f0f3468.log and
+/private/tmp/p79-care-native-clippy-f0f3468.log. This qualifies the native source
+fixtures, not installed Care mutation, Narrator, 200% zoom or a hardware matrix.

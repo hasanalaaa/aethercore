@@ -59,9 +59,7 @@ use crate::{
     battery::battery_from_information,
     bind_handle, checked_protocol_window, classify_memory_pressure, classify_storage,
     measurements::{Availability, Battery, Coverage, MAX_BATTERIES, NetworkAdapter, ThermalZone},
-    merge_nvme,
-    network::adapter_from_wmi,
-    parse_ata_driver_response, parse_nvme_health_log, parse_predict_failure,
+    merge_nvme, parse_ata_driver_response, parse_nvme_health_log, parse_predict_failure,
     parse_storage_device_descriptor,
     thermal::zone_from_wmi,
 };
@@ -119,7 +117,7 @@ fn push_fault_bounded(faults: &mut Vec<CollectorFaultRecord>, fault: CollectorFa
     }
 }
 
-fn checkpoint(control: &CollectorControl, operation: &'static str) -> Result<()> {
+pub(crate) fn checkpoint(control: &CollectorControl, operation: &'static str) -> Result<()> {
     control
         .checkpoint("hardware-telemetry", operation)
         .map_err(|fault| match fault.kind {
@@ -252,8 +250,7 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
         }
     };
 
-    // Network adapters: a local WMI read, no packet sent. A machine that does not publish the class
-    // leaves the list empty ("not measured"); a refusal, timeout or cancel is a fault.
+    // Network adapters: bounded local IP Helper reads, no packet sent. A refusal, timeout or cancel is a fault.
     let network_adapters = match run_isolated_gated_with_token(
         network_gate(),
         "hardware-telemetry",
@@ -507,33 +504,7 @@ fn query_battery(path: &str, observed_unix_ms: i64) -> Result<Battery> {
 }
 
 fn collect_network_adapters(control: &CollectorControl) -> Result<Vec<NetworkAdapter>> {
-    checkpoint(control, "network.begin")?;
-    let _com = init_com()?;
-    let services = connect_wmi("ROOT\\StandardCimv2")?;
-    let objects = query(
-        &services,
-        "SELECT Name,InterfaceGuid,InterfaceOperationalStatus,MediaConnectState,Speed,Virtual FROM MSFT_NetAdapter",
-        control,
-    )?;
-    let observed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or_default();
-    Ok(objects
-        .iter()
-        .map(|o| {
-            let number = |name: &str| prop_u64(o, name);
-            adapter_from_wmi(
-                &prop_string(o, "InterfaceGuid").unwrap_or_default(),
-                &prop_string(o, "Name").unwrap_or_default(),
-                number("InterfaceOperationalStatus").and_then(|v| u32::try_from(v).ok()),
-                number("MediaConnectState").and_then(|v| u32::try_from(v).ok()),
-                number("Speed"),
-                prop_bool(o, "Virtual"),
-                observed,
-            )
-        })
-        .collect())
+    crate::network_windows::collect(control)
 }
 
 fn collect_thermal_zones(control: &CollectorControl) -> Result<Vec<ThermalZone>> {
@@ -938,9 +909,6 @@ fn prop_u16(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Optio
             .ok()
             .and_then(|v| u16::try_from(v).ok())
     })
-}
-fn prop_bool(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<bool> {
-    bool::try_from(&get_variant(o, n)?).ok()
 }
 fn prop_u64(o: &windows::Win32::System::Wmi::IWbemClassObject, n: &str) -> Option<u64> {
     u64::try_from(&get_variant(o, n)?)

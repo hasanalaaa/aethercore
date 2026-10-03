@@ -163,3 +163,43 @@ The full final-head Windows phase check and integration CI remain coordinator-ow
 Full UI negative controls also passed: planted text, attribute and sentence-argument leaks were
 all detected (one positive detection each). The final tracked source tree was sealed again after
 these records; no baseline, gate, timeout, dependency or pipe DACL was weakened.
+
+### Acceptance follow-up P83-02A — bounded native counters/routes (2026-10-03)
+
+The optional WMI adapter inventory is replaced by local GetAdaptersAddresses,
+GetIfEntry2 and GetIpForwardTable2. SDK bindings were checked against the installed
+pinned windows0.62.2 and Microsoft's APIs. The existing crate enables only
+IpHelper/Ndis/WinSock features; package versions and Cargo.lock remain unchanged.
+The approved manifest freeze hashes are refreshed, not the lock/version pins.
+
+Acquisition retries buffer growth at most three times under1MiB, enumerates at
+most128 adapters and256 unicast records each, and bounds route traversal at4096.
+Bounds/cycles/errors are failures rather than invented empty success. Buffer
+pointers are checked before reading; the route allocation is freed through RAII.
+Only the IPv4 link-local flag is retained, not addresses/MAC/SSID. Virtual,
+disconnected, disabled and no-default-route states imply no internet diagnosis.
+No probe/resolve/socket/connect or adapter mutation API is called.
+
+Cumulative six-direction counters preserve u64 and measured zero. The bounded
+session cache keys GUID plus LUID, prunes disappeared/failed-read adapters, and
+publishes checked deltas only across a positive monotonic interval. First samples,
+non-increasing clocks, decreased/reset/wrapped counters and changed identity
+produce no delta. Separate compact counter/route availability uses the common
+reading timestamp/source. Unknown/absent additive data is omitted on storage
+serialization and restores as unknown, not healthy.
+
+Runtime red: measured zero traffic had no delta. A genuine existing payload gate
+also failed at296060 bytes after duplicating Coverage objects; compact availability
+and absent-value omission fixed it without changing the256KiB limit or original
+padded fixture. The additional measured128-adapter fixture uses u64MAX and256
+CJK alias characters, stays in the same budget and roundtrips exact values.
+Mac66 tests (hardware+diagnostic), host all-target Clippy, Windows GNU all-target
+Clippy, static351 and dependency-freeze check passed. Windows-only buffer/APIPA
+fixtures compile through the cross check. Native execution, wire/render exposure
+(P83-02B), capture proving no outgoing probes, IPv6/VPN/hot-unplug physical
+qualification and network findings remain pending; this source checkpoint does
+not close DBT-P83-007 or the phase.
+
+Primary API sources: https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses;
+https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getifentry2;
+https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getipforwardtable2.
