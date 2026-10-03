@@ -414,6 +414,16 @@ function finding(over: Partial<PcFinding>): PcFinding {
 
 const FINDINGS: PcFinding[] = [
   finding({
+    id: 'finding-battery', code: 'BATTERY_CAPACITY_BELOW_DESIGN', domain: 2, severity: 1, confidence: 5,
+    titleKey: 'finding.batteryCapacity.title', summaryKey: 'finding.batteryCapacity.summary', technicalKey: 'finding.batteryCapacity.technical',
+    messageArgs: Object.entries({ designCapacityMwh: '56000', fullChargeCapacityMwh: '41000', lossPercent: '26.7' }).map(([key, value]) => ({ key, value })),
+    evidence: [{ ...evidenceRef(6, 'DeviceState', 'IOCTL_BATTERY_QUERY_INFORMATION', 'designCapacityMwh=56000;fullChargeCapacityMwh=41000'), observedUnixMs: NOW }],
+    affectedResource: { kind: 'battery', stableId: 'pack0', displayName: 'Battery' },
+    remediationAvailable: false, rebootRequirement: 'None', privilegeRequirement: 'None', reversibility: 'NotSoftwareReversible',
+    estimatedImpact: 'Minimal', uncertaintyKey: 'finding.batteryCapacity.limits', ruleId: 'P83-BAT-001', ruleVersion: 1,
+    verificationStatus: 'ConfirmedCurrent', resolutionAuthority: ['diagnostics'],
+  }),
+  finding({
     id: 'finding-network', code: 'NETWORK_COUNTER_ERRORS_OBSERVED', domain: 2, severity: 1, confidence: 5,
     titleKey: 'finding.networkWindow.title', summaryKey: 'finding.networkWindow.summary', technicalKey: 'finding.networkWindow.technical',
     messageArgs: Object.entries({ windowMs: '1000', inErrors: '18446744073709551615', outErrors: '0', inDiscards: '0', outDiscards: '0' }).map(([key, value]) => ({ key, value })),

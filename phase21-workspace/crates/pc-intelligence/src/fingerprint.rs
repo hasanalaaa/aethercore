@@ -145,6 +145,8 @@ fn canonical_payload_state(payload: &FactPayload) -> Option<String> {
         } => serde_json::to_string(&(temperature_c >= critical_c,)),
         // A changing sample interval/count is observation evidence, not durable machine state.
         FactPayload::NetworkCounterWindow { .. } => return None,
+        // Capacity estimates vary with the reported full-charge capacity, not a health verdict.
+        FactPayload::BatteryCapacity { .. } => return None,
         FactPayload::MemoryPressure {
             memory_load_percent,
             pressure_label,

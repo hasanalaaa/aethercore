@@ -38,6 +38,7 @@ pub(crate) fn default_resolution_authority(code: &str) -> Vec<String> {
         | "STORAGE_ATTENTION"
         | "HIGH_MEMORY_PRESSURE"
         | "NETWORK_COUNTER_ERRORS_OBSERVED"
+        | "BATTERY_CAPACITY_BELOW_DESIGN"
         | "HARDWARE_ERROR_EVIDENCE"
         | "RECENT_CRASH_EVIDENCE"
         | "CRASH_WITH_HARDWARE_EVIDENCE" => &["diagnostics"],
@@ -264,6 +265,7 @@ fn resolution_policy(code: &str) -> ResolutionPolicy {
         | "STORAGE_ATTENTION"
         | "HIGH_MEMORY_PRESSURE"
         | "NETWORK_COUNTER_ERRORS_OBSERVED"
+        | "BATTERY_CAPACITY_BELOW_DESIGN"
         | "HIGH_STARTUP_FOOTPRINT"
         | "APP_UPDATE_AVAILABLE" => ResolutionPolicy::MatchingHealthyState,
         _ => ResolutionPolicy::AuthoritativeAbsence,
@@ -496,6 +498,69 @@ mod tests {
                     vec![facts[0].id.clone()]
                 );
             }
+            drop(db);
+            cleanup(&path);
+        }
+    }
+
+    #[test]
+    fn battery_capacity_observation_requires_a_new_valid_capacity_read_to_resolve() {
+        let battery_fact = |design, full, freshness| {
+            SystemFact::new(
+                Domain::Hardware,
+                "IOCTL_BATTERY_QUERY_INFORMATION",
+                ResourceRef::private("battery", "pack0", "Battery"),
+                2,
+                freshness,
+                Confidence::Confirmed,
+                FactPayload::BatteryCapacity {
+                    design_capacity_mwh: design,
+                    full_charge_capacity_mwh: full,
+                },
+                EvidenceKind::DeviceState,
+                "capacityMwh",
+            )
+        };
+        let old = crate::rules::evaluate(&[battery_fact(100, 87, Freshness::Current)], 2).remove(0);
+        for (facts, state, resolves) in [
+            (vec![], CollectorState::Completed, false),
+            (
+                vec![battery_fact(0, 100, Freshness::Current)],
+                CollectorState::Completed,
+                false,
+            ),
+            (
+                vec![battery_fact(100, 100, Freshness::Stale)],
+                CollectorState::Completed,
+                false,
+            ),
+            (
+                vec![battery_fact(100, 100, Freshness::Current)],
+                CollectorState::CompletedWithWarnings,
+                false,
+            ),
+            (
+                vec![battery_fact(100, 100, Freshness::Current)],
+                CollectorState::Completed,
+                true,
+            ),
+        ] {
+            let (db, path) = test_db();
+            persist_finding(&db, "owner", &old, "Active");
+            let result = reconcile(
+                &db,
+                "owner",
+                "scan",
+                3,
+                &facts,
+                &[collector("diagnostics", state)],
+                &BTreeMap::new(),
+                vec![],
+            );
+            assert_eq!(
+                result.persisted_findings[0].lifecycle == FindingLifecycle::Resolved,
+                resolves
+            );
             drop(db);
             cleanup(&path);
         }

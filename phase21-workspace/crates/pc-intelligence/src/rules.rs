@@ -17,6 +17,12 @@ pub struct RuleDescriptor {
 
 pub const RULES: &[RuleDescriptor] = &[
     RuleDescriptor {
+        id: "P83-BAT-001",
+        version: 1,
+        domain: Domain::Hardware,
+        description: "Absolute full-charge capacity compared to design, as an informational estimate",
+    },
+    RuleDescriptor {
         id: "P83-NET-001",
         version: 1,
         domain: Domain::Hardware,
@@ -114,6 +120,7 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                     | FactPayload::MemoryPressure { .. }
                     | FactPayload::ThermalZone { .. }
                     | FactPayload::NetworkCounterWindow { .. }
+                    | FactPayload::BatteryCapacity { .. }
             )
         {
             continue;
@@ -422,6 +429,43 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                 Some(RemediationSafety::HardwareService),
                 ActionType::ReviewHardwareError,
             )),
+            FactPayload::BatteryCapacity {
+                design_capacity_mwh: design,
+                full_charge_capacity_mwh: full,
+            } if fact.freshness == Freshness::Current
+                && *design > 0
+                && *full > 0
+                && *full < *design =>
+            {
+                let mut observed = finding(
+                    fact,
+                    "BATTERY_CAPACITY_BELOW_DESIGN",
+                    Domain::Hardware,
+                    Severity::Informational,
+                    Confidence::Confirmed,
+                    "finding.batteryCapacity.title",
+                    "finding.batteryCapacity.summary",
+                    "finding.batteryCapacity.technical",
+                    "P83-BAT-001",
+                    1,
+                    None,
+                    ActionType::ReviewHardwareError,
+                );
+                // u128 makes the ratio exact even for the largest serialized u64 inputs.
+                let tenths = u128::from(design - full) * 1000 / u128::from(*design);
+                observed.message_args.insert(
+                    "lossPercent".into(),
+                    format!("{}.{:01}", tenths / 10, tenths % 10),
+                );
+                observed
+                    .message_args
+                    .insert("designCapacityMwh".into(), design.to_string());
+                observed
+                    .message_args
+                    .insert("fullChargeCapacityMwh".into(), full.to_string());
+                observed.uncertainty_key = "finding.batteryCapacity.limits".into();
+                findings.push(observed);
+            }
             FactPayload::NetworkCounterWindow {
                 elapsed_ms,
                 in_errors,
@@ -905,6 +949,10 @@ pub fn explicitly_healthy(fact: &SystemFact) -> bool {
                 && *in_discards == 0
                 && *out_discards == 0
         }
+        FactPayload::BatteryCapacity {
+            design_capacity_mwh: design,
+            full_charge_capacity_mwh: full,
+        } => fact.freshness == Freshness::Current && *design > 0 && *full >= *design,
         FactPayload::StartupFootprint {
             high_impact_count, ..
         } => *high_impact_count < 3,

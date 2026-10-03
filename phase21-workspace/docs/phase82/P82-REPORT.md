@@ -11,7 +11,7 @@ the command that produced it is labelled a belief.
 |---|---|---|
 | P82-01 | `ed1413f` | an idle clock is not a throttle; a limit of unknown cause is `FREQUENCY_LIMIT_OBSERVED`, not `THERMAL_CLAMP` |
 | P82-02A | `be6287b` | ACPI thermal zones (`MSAcpi_ThermalZoneTemperature`) with plausibility and reasons |
-| P82-02B | `c6c9bb0` | batteries via `GUID_DEVICE_BATTERY` and read-only IOCTLs, absolute units only |
+| P82-02B | `c6c9bb0`, `ed89a0a` | read-only battery IOCTLs; absolute and undefined relative capacities retained separately through persistence, wire and EN/AR rows; native battery qualification remains open |
 | P82-03A | `13c960e` | WHEA category from the CPER record's typed sections, never from translated words |
 | P82-03B | `2a11dea` | Windows Memory Diagnostic's last result, dated; "not tested" is not a pass |
 | P82-04 | `a058f25`, `0f563c5` | one crash is one incident; `0f563c5` fixes it against the real event shape |
