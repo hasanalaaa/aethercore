@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""Execute the RC acceptance/promotion verifier against hostile temporary packages.
+
+The signature API is substituted only for portable fixtures, never in the CLI.
+These prove the gate's decisions, not a production signing qualification.
+"""
+from __future__ import annotations
+import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
+SCRIPTS = Path(__file__).resolve().parent
+spec = importlib.util.spec_from_file_location('rc_provenance', SCRIPTS / 'rc-provenance.py')
+rc = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(rc)
+THUMB = 'A' * 40
+
+class PromotionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.tmp.cleanup)
+        base = Path(cls.tmp.name)
+        cls.source = base / 'repo' / 'phase21-workspace'
+        cls.source.mkdir(parents=True)
+        github = cls.source.parent / '.github'
+        github.mkdir()
+        (github / 'workflow.txt').write_text('protected signing flow')
+        for name in rc.INPUTS:
+            path = cls.source / name
+            if name.startswith('../') or name == 'MANIFEST.sha256': continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('frozen input\n')
+        (cls.source / 'Cargo.toml').write_text('fixture manifest')
+        (cls.source / 'scripts').mkdir()
+        (cls.source / 'scripts/p87-installed-acceptance.ps1').write_bytes(b'exact acceptance script')
+        for name in ['dependency-locks', 'dependency-manifests']:
+            entries = ['Cargo.lock', 'pnpm-lock.yaml'] if name.endswith('locks') else ['Cargo.toml']
+            (cls.source / ('release/' + name + '.sha256')).write_text(''.join(rc.digest(cls.source / p) + '  ' + p + '\n' for p in entries))
+        rc.write_json(cls.source / 'release/dependency-freeze.json', {
+            'schema':'aethercore.dependency-freeze.v1',
+            'cargo_lock_sha256':rc.digest(cls.source / 'Cargo.lock'),
+            'pnpm_lock_sha256':rc.digest(cls.source / 'pnpm-lock.yaml'),
+            'manifest_baseline_sha256':rc.digest(cls.source / 'release/dependency-manifests.sha256'),
+            'lock_baseline_sha256':rc.digest(cls.source / 'release/dependency-locks.sha256')})
+        def git(*args):
+            return subprocess.check_output(['git', *args], cwd=cls.source.parent, stderr=subprocess.DEVNULL).decode().strip()
+        git('init', '-q'); git('config', 'user.email', 'fixture@example.invalid'); git('config', 'user.name', 'fixture')
+        paths = [str(p.relative_to(cls.source.parent)) for p in cls.source.parent.rglob('*') if p.is_file() and '.git' not in p.parts]
+        git('add', '--', *paths)
+        subprocess.run([sys.executable, str(SCRIPTS / 'regenerate-source-manifest.py'), '--root', str(cls.source)], check=True, stdout=subprocess.DEVNULL)
+        git('add', '--', 'phase21-workspace/MANIFEST.sha256', '.github/MANIFEST.sha256')
+        git('commit', '-qm', 'sealed fixture')
+        cls.sha = git('rev-parse', 'HEAD')
+        cls.version = '0.1.11'
+    def setUp(self):
+        self.candidate_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.candidate_tmp.cleanup)
+        base = Path(self.candidate_tmp.name)
+        self.release = base / 'candidate'
+        self.signatures = patch.object(rc, 'signature', return_value={'status':'Valid', 'thumbprint':THUMB})
+        self.signatures.start(); self.addCleanup(self.signatures.stop)
+        self.release.mkdir()
+        self.names = rc.signed_paths(self.version)
+        for name in self.names:
+            p = self.release / name; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(b'unsigned fixture ' + name.encode())
+        rc.capture_unsigned(self.release, [self.release / p for p in self.names])
+        for name in self.names: (self.release / name).write_bytes(b'signed fixture ' + name.encode())
+        smoke = self.release / 'acceptance/care_smoke.exe'; smoke.parent.mkdir(); smoke.write_bytes(b'exact smoke bytes')
+        (smoke.parent / 'p87-installed-acceptance.ps1').write_bytes(b'exact acceptance script')
+        rc.write_json(self.release / 'RELEASE-METADATA.json', {'version':self.version,'source_commit':self.sha,'signing_required':True,'dependency_baseline_approved':True,'signer_thumbprint':THUMB})
+        paths = self.names + ['acceptance/care_smoke.exe','acceptance/p87-installed-acceptance.ps1','RELEASE-METADATA.json']
+        (self.release / 'SHA256SUMS.txt').write_text(''.join(rc.digest(self.release / p) + '  ' + p + '\n' for p in paths))
+        rc.create(self.release, self.source, self.sha, THUMB)
+        self.receipt = rc.digest(self.release / 'RC-PROVENANCE.json')
+        self.bundle = rc.digest(self.release / f'artifacts/AetherCoreSetup-{self.version}-x64.exe')
+        self.acceptance = base / 'acceptance.json'
+        self.lifecycle = base / 'lifecycle.json'
+        rc.write_json(self.lifecycle, {'schema':'aethercore.ga-installer-lifecycle.v1','ok':True,'version':self.version,'source_commit':self.sha,'bundle_sha256':self.bundle,'previous_source_commit':'f'*40,'previous_bundle_sha256':'f'*64,
+            'steps':[{'name':name,'ok':True} for name in rc.LIFECYCLE]})
+        self.installed = []
+        for locale in ['en','ar']:
+            (base / (locale+'.witness.txt')).write_text('controlled portable witness')
+            path=base / ('installed-' + locale + '.json'); self.installed.append(path)
+            rc.write_json(path, {'schema':'aethercore.p87-installed-acceptance.v1','source_commit':self.sha,'bundle_sha256':self.bundle,
+                'locale':locale,'read_only':False,'worker_ownership_released':True,'windows_build':26100,'windows_product_name':'Windows 11 Pro','product_type':'workstation','ordinary_user':True,'token':{'sid':'S-1-5-21-1-2-3-1001','elevated':False},
+                'cases':[{'id':name,'disposition':'passed','checks':{'terminal':True,'unavailable_provider':True,'reconnect':True,'restart':True,'no_op_explained':True},'witnesses':[{'path':locale+'.witness.txt','sha256':rc.digest(base / (locale+'.witness.txt'))}]} for name in rc.SYMPTOMS]})
+        rc.write_json(self.acceptance, {'schema':'aethercore.rc-acceptance.v1','source_commit':self.sha,'bundle_sha256':self.bundle,'provenance_sha256':self.receipt,'ok':True,
+            'evidence':{path.name:rc.digest(path) for path in [self.lifecycle]+self.installed}})
+        self.acceptance_hash = rc.digest(self.acceptance)
+    def verify(self):
+        return rc.verify(self.release, self.source, self.sha, THUMB, self.receipt, self.bundle)
+    def promote(self):
+        return rc.promote(self.release, self.source, self.sha, THUMB, self.receipt, self.bundle, self.acceptance, self.acceptance_hash)
+    def test_exact_signed_bytes_can_promote(self):
+        self.assertEqual(self.promote()['bundle_sha256'], self.bundle)
+    def test_missing_receipt_blocks(self):
+        (self.release / 'RC-PROVENANCE.json').unlink()
+        with self.assertRaisesRegex(rc.Rejected, 'missing'): self.promote()
+    def test_other_source_sha_blocks(self):
+        with self.assertRaisesRegex(rc.Rejected, 'source SHA'): rc.verify(self.release,self.source,'0'*40,THUMB,self.receipt,self.bundle)
+    def test_bundle_substitution_after_acceptance_blocks(self):
+        (self.release / f'artifacts/AetherCoreSetup-{self.version}-x64.exe').write_bytes(b'substitution')
+        with self.assertRaisesRegex(rc.Rejected, 'hash'): self.promote()
+    def test_invalid_signature_blocks(self):
+        with patch.object(rc,'signature',return_value={'status':'NotSigned','thumbprint':None}):
+            with self.assertRaisesRegex(rc.Rejected,'signature'): self.promote()
+    def test_other_valid_signer_blocks(self):
+        with patch.object(rc,'signature',return_value={'status':'Valid','thumbprint':'B'*40}):
+            with self.assertRaisesRegex(rc.Rejected,'signer'): self.promote()
+    def test_receipt_rewrite_blocks(self):
+        doc = rc.read_json(self.release / 'RC-PROVENANCE.json'); doc['source_commit']='0'*40
+        rc.write_json(self.release / 'RC-PROVENANCE.json',doc)
+        with self.assertRaisesRegex(rc.Rejected,'receipt hash'): self.promote()
+    def test_omitted_unsigned_transition_blocks(self):
+        doc=rc.read_json(self.release / 'RC-PROVENANCE.json');doc['artifacts'][0].pop('unsigned_sha256')
+        rc.write_json(self.release / 'RC-PROVENANCE.json',doc);self.receipt=rc.digest(self.release / 'RC-PROVENANCE.json')
+        with self.assertRaisesRegex(rc.Rejected,'unsigned'): self.verify()
+    def test_frozen_input_substitution_blocks(self):
+        original=(self.source / 'Cargo.lock').read_bytes()
+        self.addCleanup((self.source / 'Cargo.lock').write_bytes,original)
+        (self.source / 'Cargo.lock').write_text('changed dependency')
+        with self.assertRaises(rc.Rejected): self.promote()
+    def test_smoke_substitution_blocks(self):
+        (self.release / 'acceptance/care_smoke.exe').write_bytes(b'other smoke binary')
+        with self.assertRaisesRegex(rc.Rejected,'hash'): self.promote()
+    def test_acceptance_from_other_bundle_blocks(self):
+        doc=rc.read_json(self.acceptance);doc['bundle_sha256']='0'*64;rc.write_json(self.acceptance,doc);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'acceptance'): self.promote()
+    def test_acceptance_receipt_substitution_blocks(self):
+        self.acceptance.write_text('{}')
+        with self.assertRaisesRegex(rc.Rejected,'acceptance hash'): self.promote()
+    def test_omitted_installed_receipt_blocks(self):
+        doc=rc.read_json(self.acceptance);doc['evidence'].pop('installed-ar.json');rc.write_json(self.acceptance,doc);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'evidence'): self.promote()
+    def test_skipped_symptom_blocks(self):
+        doc=rc.read_json(self.installed[0]);doc['cases'][0]['disposition']='skipped';rc.write_json(self.installed[0],doc)
+        accepted=rc.read_json(self.acceptance);accepted['evidence']['installed-en.json']=rc.digest(self.installed[0]);rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'symptom'): self.promote()
+    def test_windows_server_is_not_windows11_qualification(self):
+        doc=rc.read_json(self.installed[0]);doc['windows_product_name']='Windows Server 2025';doc['product_type']='server';rc.write_json(self.installed[0],doc)
+        accepted=rc.read_json(self.acceptance);accepted['evidence']['installed-en.json']=rc.digest(self.installed[0]);rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'Windows 11'): self.promote()
+    def test_lifecycle_failure_blocks(self):
+        doc=rc.read_json(self.lifecycle);doc['steps'][0]['ok']=False;rc.write_json(self.lifecycle,doc)
+        accepted=rc.read_json(self.acceptance);accepted['evidence']['lifecycle.json']=rc.digest(self.lifecycle);rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'lifecycle'): self.promote()
+    def test_ordinary_user_proof_is_required(self):
+        doc=rc.read_json(self.installed[0]);doc['token']['elevated']=True;rc.write_json(self.installed[0],doc)
+        accepted=rc.read_json(self.acceptance);accepted['evidence']['installed-en.json']=rc.digest(self.installed[0]);rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'ordinary-user'): self.promote()
+    def test_raw_witness_substitution_blocks(self):
+        (self.acceptance.parent / 'en.witness.txt').write_text('substituted screen')
+        with self.assertRaisesRegex(rc.Rejected,'witness hash'): self.promote()
+    def test_accept_producer_checks_actual_evidence(self):
+        doc=rc.accept(self.release,self.source,self.sha,THUMB,self.receipt,self.bundle,self.acceptance.parent)
+        self.assertTrue(doc['ok'])
+        self.installed[1].unlink()
+        with self.assertRaisesRegex(rc.Rejected,'missing'): rc.accept(self.release,self.source,self.sha,THUMB,self.receipt,self.bundle,self.acceptance.parent)
+    def test_real_native_unsigned_artifact_has_no_fixture_signature_bypass(self):
+        if sys.platform != 'win32': self.skipTest('native Authenticode API only')
+        self.signatures.stop()
+        observed=rc.signature(self.release / self.names[0])
+        self.assertIn('status',observed)
+        self.assertNotEqual(observed['status'],'Valid')
+        with self.assertRaisesRegex(rc.Rejected,'signature'): self.verify()
+    def missing_runtime_check(self,case_id,key):
+        doc=rc.read_json(self.installed[0])
+        next(p for p in doc['cases'] if p['id'] == case_id)['checks'][key]=False
+        rc.write_json(self.installed[0],doc)
+        accepted=rc.read_json(self.acceptance);accepted['evidence']['installed-en.json']=rc.digest(self.installed[0]);rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'runtime check'): self.promote()
+    def test_missing_unavailable_provider_proof_blocks(self):
+        self.missing_runtime_check('p76-repair-assessment-terminal','unavailable_provider')
+    def test_missing_care_restart_proof_blocks(self):
+        self.missing_runtime_check('p76-care-timeline-persistence','restart')
+    def test_missing_noop_explanation_blocks(self):
+        self.missing_runtime_check('p76-care-eligibility-explanation','no_op_explained')
+    def test_active_nested_worker_does_not_promote(self):
+        doc=rc.read_json(self.installed[0]);doc['worker_ownership_released']=False;rc.write_json(self.installed[0],doc)
+        accepted=rc.read_json(self.acceptance);accepted['evidence']['installed-en.json']=rc.digest(self.installed[0]);rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'worker ownership'): self.promote()
+    def test_readonly_owner_observation_does_not_promote(self):
+        doc=rc.read_json(self.installed[0]);doc['read_only']=True;rc.write_json(self.installed[0],doc)
+        accepted=rc.read_json(self.acceptance);accepted['evidence']['installed-en.json']=rc.digest(self.installed[0]);rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'read-only'): self.promote()
+    def test_unsigned_platform_has_no_signature_fallback(self):
+        self.signatures.stop()
+        if sys.platform != 'win32':
+            with self.assertRaisesRegex(rc.Rejected,'Windows'): self.verify()
+
+class SigningProtectionTests(unittest.TestCase):
+    def setUp(self):
+        spec=importlib.util.spec_from_file_location('rc_preflight', SCRIPTS / 'rc-signing-preflight.py')
+        self.preflight=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.preflight)
+    def test_missing_reviewer_blocks(self):
+        with self.assertRaisesRegex(self.preflight.Blocked,'reviewer'): self.preflight.check({'protection_rules':[]})
+    def test_missing_ref_policy_blocks(self):
+        with self.assertRaisesRegex(self.preflight.Blocked,'branch/tag'): self.preflight.check({'protection_rules':[{'type':'required_reviewers','reviewers':[{'id':1}]}]})
+    def test_configured_review_and_refs_are_required(self):
+        self.preflight.check({'protection_rules':[{'type':'required_reviewers','reviewers':[{'id':1}]}], 'deployment_branch_policy':{'protected_branches':True}})
+
+if __name__ == '__main__': unittest.main()

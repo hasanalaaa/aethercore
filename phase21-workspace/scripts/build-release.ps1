@@ -51,6 +51,11 @@ if ($env:SOURCE_DATE_EPOCH -notmatch '^\d{9,12}$') { throw 'SOURCE_DATE_EPOCH is
 $env:CARGO_INCREMENTAL = '0'
 $env:TAURI_SIGNING_PRIVATE_KEY = ''
 
+if ($RequireSigning) {
+    & python (Join-Path $PSScriptRoot 'source_seal.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Signed RC source seal failed before building.' }
+}
+
 $ReleaseRoot = Join-Path $Root "out\release\$Version"
 $Payload = Join-Path $ReleaseRoot 'payload'
 $Artifacts = Join-Path $ReleaseRoot 'artifacts'
@@ -58,6 +63,13 @@ $Evidence = Join-Path $ReleaseRoot 'evidence'
 $Prereqs = Join-Path $ReleaseRoot 'prereqs'
 Remove-Item $ReleaseRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $Payload,$Artifacts,$Evidence,$Prereqs | Out-Null
+
+function Capture-UnsignedSigningInputs([string[]]$Paths) {
+    if ($RequireSigning) {
+        & python (Join-Path $PSScriptRoot 'rc-provenance.py') capture-unsigned --release-root $ReleaseRoot --paths @Paths
+        if ($LASTEXITCODE -ne 0) { throw 'Unsigned RC signing-input capture failed.' }
+    }
+}
 
 & pnpm --dir apps/ui install --frozen-lockfile
 if ($LASTEXITCODE -ne 0) { throw 'Frozen UI dependency restore failed.' }
@@ -103,6 +115,7 @@ if ($LASTEXITCODE -ne 0) { throw 'SBOM generation failed.' }
 & "$PSScriptRoot\verify-reproducible.ps1" -OutputPath ([IO.Path]::GetRelativePath($Root,(Join-Path $Evidence 'reproducibility.json')))
 if ($LASTEXITCODE -ne 0) { throw 'Reproducibility control verification failed.' }
 
+Capture-UnsignedSigningInputs @(Get-ChildItem $Payload -Filter '*.exe' | Select-Object -ExpandProperty FullName)
 & "$PSScriptRoot\sign-artifacts.ps1" -Path (Get-ChildItem $Payload -Filter '*.exe' | Select-Object -ExpandProperty FullName) -CertificateStore $CertificateStore -RequireSigning:$RequireSigning
 if ($LASTEXITCODE -ne 0) { throw 'Payload signing failed.' }
 
@@ -127,13 +140,25 @@ $msi = Join-Path $Artifacts "AetherCore-$Version-x64.msi"
 $bundle = Join-Path $Artifacts "AetherCoreSetup-$Version-x64.exe"
 & "$PSScriptRoot\build-installer.ps1" -PayloadDir $Payload -Version $Version -MsiOut ([IO.Path]::GetRelativePath($Root,$msi)) -BundleOut ([IO.Path]::GetRelativePath($Root,$bundle)) -WebView2Bootstrapper ([IO.Path]::GetRelativePath($Root,$webview)) -MsiOnly
 if ($LASTEXITCODE -ne 0) { throw 'MSI packaging failed.' }
+Capture-UnsignedSigningInputs @($msi)
 & "$PSScriptRoot\sign-artifacts.ps1" -Path $msi -CertificateStore $CertificateStore -RequireSigning:$RequireSigning
 if ($LASTEXITCODE -ne 0) { throw 'MSI signing failed.' }
 
 & "$PSScriptRoot\build-installer.ps1" -PayloadDir $Payload -Version $Version -MsiOut ([IO.Path]::GetRelativePath($Root,$msi)) -BundleOut ([IO.Path]::GetRelativePath($Root,$bundle)) -WebView2Bootstrapper ([IO.Path]::GetRelativePath($Root,$webview)) -VcRedist $vcredist -BundleOnly
 if ($LASTEXITCODE -ne 0) { throw 'Burn bundle packaging failed.' }
+Capture-UnsignedSigningInputs @($bundle)
 & "$PSScriptRoot\sign-burn-bundle.ps1" -BundlePath $bundle -CertificateStore $CertificateStore -RequireSigning:$RequireSigning
 if ($LASTEXITCODE -ne 0) { throw 'Burn engine/final bundle signing failed.' }
+
+$Acceptance = Join-Path $ReleaseRoot 'acceptance'
+New-Item -ItemType Directory -Force $Acceptance | Out-Null
+if ($RequireSigning) {
+    # A test-only client from this source; acceptance must consume it without rebuilding.
+    & cargo build --release --locked -p aethercore-ipc --example care_smoke
+    if ($LASTEXITCODE -ne 0) { throw 'RC acceptance client build failed.' }
+    Copy-Item (Join-Path $CargoTarget 'release/examples/care_smoke.exe') (Join-Path $Acceptance 'care_smoke.exe')
+    Copy-Item (Join-Path $PSScriptRoot 'p87-installed-acceptance.ps1') (Join-Path $Acceptance 'p87-installed-acceptance.ps1')
+}
 
 $sourceCommit = $null
 try {
@@ -176,7 +201,7 @@ $metadata | ConvertTo-Json -Depth 4 | Set-Content $metadataPath -Encoding utf8
 $hashFile = Join-Path $ReleaseRoot 'SHA256SUMS.txt'
 $metadataHash = (Get-FileHash $metadataPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $hashLines = @(
-    @($Payload,$Artifacts,$Evidence,$Prereqs) | ForEach-Object {
+    @($Payload,$Artifacts,$Evidence,$Prereqs,$Acceptance) | ForEach-Object {
         Get-ChildItem $_ -Recurse -File | Sort-Object FullName | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             $rel = [IO.Path]::GetRelativePath($ReleaseRoot,$_.FullName) -replace '\\','/'
@@ -186,4 +211,9 @@ $hashLines = @(
     "$metadataHash  RELEASE-METADATA.json"
 )
 $hashLines | Set-Content $hashFile -Encoding ascii
+if ($RequireSigning) {
+    $expectedThumb = ($env:AETHERCORE_CODESIGN_THUMBPRINT -replace '\s','').ToUpperInvariant()
+    & python (Join-Path $PSScriptRoot 'rc-provenance.py') create --release-root $ReleaseRoot --expected-sha $sourceCommit --thumbprint $expectedThumb
+    if ($LASTEXITCODE -ne 0) { throw 'Signed RC provenance receipt failed.' }
+}
 Write-Host "AetherCore production release candidate built: $ReleaseRoot" -ForegroundColor Green

@@ -1,28 +1,59 @@
 name: Signed Release Candidate
 
-# P58: moved here from `phase21-workspace/.github/workflows/`, where GitHub
-# never read it. See the note in `ci.yml`. Being a real workflow does not make
-# it runnable: it targets a self-hosted signing runner that does not exist
-# (0 registered), an environment that does not exist (0 defined) and three
-# repository variables that are not set (0 defined). Dispatching it queues
-# indefinitely. That is the code-signing certificate deferral, not a defect in
-# this file.
+# Protected signing remains blocked until its isolated runner, certificate,
+# required reviewers and approved deployment refs are provisioned. No unsigned fallback.
 on:
   workflow_dispatch:
+    inputs:
+      previous_run_id:
+        description: Immutable workflow run holding the previous signed RC
+        type: string
+      previous_artifact:
+        description: Previous signed RC artifact name
+        type: string
+      previous_source_sha:
+        description: Previous signed source commit
+        type: string
+      previous_receipt_sha256:
+        description: Protected previous RC provenance SHA256
+        type: string
+      previous_bundle_sha256:
+        description: Protected previous signed bundle SHA256
+        type: string
   push:
     tags:
       - 'v*'
 permissions:
   contents: read
+  actions: read
 
 # Private keys never transit workflow secrets. This job is intentionally restricted to an
 # isolated, patched self-hosted Windows signing runner with a non-exportable certificate already
 # provisioned in the Windows certificate store. GitHub's selected action releases are immutable
 # release tags; Dependabot is enabled to review future updates rather than floating major tags.
 jobs:
+  signing-protection:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prove same-byte RC and protection rejection controls
+        run: python3 phase21-workspace/scripts/test_rc_provenance.py
+      - name: Require protected signing review before scheduling a signer
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: python3 phase21-workspace/scripts/rc-signing-preflight.py --repository "$REPOSITORY"
+
   signed-release:
+    needs: signing-protection
     environment: production-signing
     runs-on: [self-hosted, windows, x64, aethercore-signing]
+    outputs:
+      receipt_sha256: ${{ steps.rc.outputs.receipt_sha256 }}
+      bundle_sha256: ${{ steps.rc.outputs.bundle_sha256 }}
+      version: ${{ steps.rc.outputs.version }}
     defaults:
       run:
         working-directory: phase21-workspace
@@ -31,6 +62,9 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Prove ordinary-user lifecycle task ownership controls
+        shell: pwsh
+        run: ./scripts/test-rc-lifecycle-hook.ps1
       - name: Verify clean source and release tag
         shell: pwsh
         run: |
@@ -89,10 +123,28 @@ jobs:
         env:
           AETHERCORE_CODESIGN_THUMBPRINT: ${{ vars.AETHERCORE_CODESIGN_THUMBPRINT }}
           AETHERCORE_TIMESTAMP_URL: ${{ vars.AETHERCORE_TIMESTAMP_URL }}
+          AETHERCORE_UPDATE_TRUST_PATH: ${{ vars.AETHERCORE_UPDATE_TRUST_PATH }}
+          SIGNER_RUNNER_OS: ${{ runner.os }}
+          SIGNER_RUNNER_ARCH: ${{ runner.arch }}
+          SIGNER_RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: |
+          if ($env:SIGNER_RUNNER_OS -ne 'Windows' -or $env:SIGNER_RUNNER_ARCH -ne 'X64' -or $env:SIGNER_RUNNER_ENVIRONMENT -ne 'self-hosted') { throw 'Isolated signing runner context is invalid.' }
           if (-not $env:AETHERCORE_CODESIGN_THUMBPRINT) { throw 'Signing certificate thumbprint is not configured in the protected environment.' }
           if ($env:AETHERCORE_TIMESTAMP_URL -notmatch '^https://') { throw 'HTTPS timestamp service is not configured.' }
           if (-not $env:AETHERCORE_UPDATE_TRUST_PATH) { throw 'Protected AETHERCORE_UPDATE_TRUST_PATH is not configured.' }
+          $thumb = ($env:AETHERCORE_CODESIGN_THUMBPRINT -replace '\s','').ToUpperInvariant()
+          $cert = Get-Item "Cert:\CurrentUser\My\$thumb" -ErrorAction Stop
+          if (-not $cert.HasPrivateKey -or $cert.NotAfter -le (Get-Date) -or $cert.NotBefore -gt (Get-Date)) { throw 'Protected signing certificate is missing/expired.' }
+          if ('1.3.6.1.5.5.7.3.3' -notin @($cert.EnhancedKeyUsageList.ObjectId.Value)) { throw 'Certificate is not enabled for code signing.' }
+          $key = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+          if (-not $key) { $key = [Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::GetECDsaPrivateKey($cert) }
+          try {
+            if ($key -is [Security.Cryptography.RSACryptoServiceProvider]) {
+              if ($key.CspKeyContainerInfo.Exportable) { throw 'Signing private key must be non-exportable.' }
+            } elseif ($key -is [Security.Cryptography.RSACng] -or $key -is [Security.Cryptography.ECDsaCng]) {
+              if ($key.Key.ExportPolicy -ne [Security.Cryptography.CngExportPolicies]::None) { throw 'Signing private key must be non-exportable.' }
+            } else { throw 'Certificate key provider cannot prove non-exportable ownership.' }
+          } finally { if ($key) { $key.Dispose() } }
       - name: Zenith adversarial source gate before signing and packaging
         shell: pwsh
         run: ./scripts/zenith-adversarial-audit.ps1
@@ -106,9 +158,149 @@ jobs:
           AETHERCORE_TIMESTAMP_URL: ${{ vars.AETHERCORE_TIMESTAMP_URL }}
           AETHERCORE_UPDATE_TRUST_PATH: ${{ vars.AETHERCORE_UPDATE_TRUST_PATH }}
         run: ./scripts/verify-enterprise.ps1 -ReleasePackaging -RequireSigning -UpdateTrustPath $env:AETHERCORE_UPDATE_TRUST_PATH
+      - name: Commit exact signed RC byte pins
+        id: rc
+        shell: pwsh
+        run: |
+          $version = & ./scripts/Get-ProductVersion.ps1
+          $release = Join-Path 'out/release' $version
+          $receipt = (Get-FileHash (Join-Path $release 'RC-PROVENANCE.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+          $bundle = (Get-FileHash (Join-Path $release "artifacts/AetherCoreSetup-$version-x64.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+          "receipt_sha256=$receipt" >> $env:GITHUB_OUTPUT
+          "bundle_sha256=$bundle" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@v7.0.1
         with:
-          name: aethercore-enterprise-converged-signed-release-candidate
-          path: phase21-workspace/out/release/**
+          name: aethercore-signed-rc-${{ github.sha }}
+          path: phase21-workspace/out/release/${{ steps.rc.outputs.version }}/**
+          if-no-files-found: error
+          retention-days: 30
+
+  signed-installed-acceptance:
+    needs: signed-release
+    # A dedicated disposable Windows 11 VM; the owner's existing service is not this lane.
+    runs-on: [self-hosted, windows, x64, aethercore-acceptance-win11]
+    environment: production-signing
+    outputs:
+      acceptance_sha256: ${{ steps.accept.outputs.acceptance_sha256 }}
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    env:
+      RC_VERSION: ${{ needs.signed-release.outputs.version }}
+      RC_SHA: ${{ github.sha }}
+      RC_RECEIPT: ${{ needs.signed-release.outputs.receipt_sha256 }}
+      RC_BUNDLE: ${{ needs.signed-release.outputs.bundle_sha256 }}
+      AETHERCORE_CODESIGN_THUMBPRINT: ${{ vars.AETHERCORE_CODESIGN_THUMBPRINT }}
+      PREVIOUS_SHA: ${{ inputs.previous_source_sha || vars.AETHERCORE_PREVIOUS_RC_SOURCE_SHA }}
+      PREVIOUS_RECEIPT: ${{ inputs.previous_receipt_sha256 || vars.AETHERCORE_PREVIOUS_RC_RECEIPT_SHA256 }}
+      PREVIOUS_BUNDLE: ${{ inputs.previous_bundle_sha256 || vars.AETHERCORE_PREVIOUS_RC_BUNDLE_SHA256 }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify signing protections still exist
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/rc-signing-preflight.py --repository $env:REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Protected signing review is unavailable.' }
+      - uses: actions/download-artifact@v8
+        with:
+          name: aethercore-signed-rc-${{ github.sha }}
+          path: phase21-workspace/out/rc
+      - name: Require immutable signed upgrade baseline pins
+        shell: pwsh
+        env:
+          PREVIOUS_RUN: ${{ inputs.previous_run_id || vars.AETHERCORE_PREVIOUS_RC_RUN_ID }}
+          PREVIOUS_ARTIFACT: ${{ inputs.previous_artifact || vars.AETHERCORE_PREVIOUS_RC_ARTIFACT }}
+        run: |
+          if ($env:PREVIOUS_RUN -notmatch '^\d+$' -or -not $env:PREVIOUS_ARTIFACT -or $env:PREVIOUS_SHA -notmatch '^[0-9a-f]{40,64}$' -or $env:PREVIOUS_RECEIPT -notmatch '^[0-9a-f]{64}$' -or $env:PREVIOUS_BUNDLE -notmatch '^[0-9a-f]{64}$') { throw 'Previous signed upgrade baseline is not provisioned.' }
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.previous_artifact || vars.AETHERCORE_PREVIOUS_RC_ARTIFACT }}
+          run-id: ${{ inputs.previous_run_id || vars.AETHERCORE_PREVIOUS_RC_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: phase21-workspace/out/previous-rc
+      - name: Verify actual signed bytes and frozen source before any install
+        shell: pwsh
+        run: |
+          $thumb = ($env:AETHERCORE_CODESIGN_THUMBPRINT -replace '\s','').ToUpperInvariant()
+          python scripts/rc-provenance.py verify --release-root out/rc --expected-sha $env:RC_SHA --thumbprint $thumb --receipt-sha256 $env:RC_RECEIPT --bundle-sha256 $env:RC_BUNDLE
+          if ($LASTEXITCODE -ne 0) { throw 'Signed RC byte/source/signature verification failed.' }
+          python scripts/rc-provenance.py verify-baseline --release-root out/previous-rc --expected-sha $env:PREVIOUS_SHA --thumbprint $thumb --receipt-sha256 $env:PREVIOUS_RECEIPT --bundle-sha256 $env:PREVIOUS_BUNDLE
+          if ($LASTEXITCODE -ne 0) { throw 'Previous signed RC provenance verification failed.' }
+          $previous = Get-Content out/previous-rc/RELEASE-METADATA.json -Raw | ConvertFrom-Json
+          if ([version]$previous.version -ge [version]$env:RC_VERSION) { throw 'Upgrade baseline must be an older signed version.' }
+          $os = Get-CimInstance Win32_OperatingSystem
+          if ($os.ProductType -ne 1 -or $os.Caption -notmatch 'Windows 11') { throw 'Signed installed qualification requires a disposable Windows 11 workstation.' }
+      - name: Installed lifecycle, six-symptom EN/AR and signed upgrade acceptance
+        shell: pwsh
+        run: |
+          $previous = @(Get-ChildItem out/previous-rc/artifacts -Filter 'AetherCoreSetup-*-x64.exe')
+          if ($previous.Count -ne 1) { throw 'Previous signed bundle must be unique.' }
+          ./scripts/phase16-installer-lifecycle.ps1 -ReleaseRoot out/rc -AcknowledgeDisposableMachine -OutputPath out/rc-acceptance/lifecycle.json -InstalledAcceptanceScript (Resolve-Path out/rc/acceptance/p87-installed-acceptance.ps1).Path -ExpectedSourceSha $env:RC_SHA -ExpectedBundleSha256 $env:RC_BUNDLE -AcceptanceEvidenceDirectory (Join-Path (Get-Location) 'out/rc-acceptance') -PreviousBundlePath $previous[0].FullName -ExpectedPreviousBundleSha256 $env:PREVIOUS_BUNDLE -ExpectedPreviousSourceSha $env:PREVIOUS_SHA
+      - name: Attest required acceptance over the same signed bundle
+        id: accept
+        shell: pwsh
+        run: |
+          $thumb = ($env:AETHERCORE_CODESIGN_THUMBPRINT -replace '\s','').ToUpperInvariant()
+          python scripts/rc-provenance.py accept --release-root out/rc --expected-sha $env:RC_SHA --thumbprint $thumb --receipt-sha256 $env:RC_RECEIPT --bundle-sha256 $env:RC_BUNDLE --evidence-directory out/rc-acceptance --out out/rc-acceptance/ACCEPTANCE.json
+          if ($LASTEXITCODE -ne 0) { throw 'Required signed installed acceptance failed or is blocked.' }
+          $hash = (Get-FileHash out/rc-acceptance/ACCEPTANCE.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          "acceptance_sha256=$hash" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: aethercore-signed-acceptance-${{ github.sha }}
+          path: phase21-workspace/out/rc-acceptance/**
+          if-no-files-found: warn
+          retention-days: 30
+
+  rc-promotion:
+    needs: [signed-release, signed-installed-acceptance]
+    runs-on: windows-2025
+    environment: production-signing
+    defaults:
+      run:
+        working-directory: phase21-workspace
+    env:
+      RC_SHA: ${{ github.sha }}
+      RC_RECEIPT: ${{ needs.signed-release.outputs.receipt_sha256 }}
+      RC_BUNDLE: ${{ needs.signed-release.outputs.bundle_sha256 }}
+      RC_ACCEPTANCE: ${{ needs.signed-installed-acceptance.outputs.acceptance_sha256 }}
+      AETHERCORE_CODESIGN_THUMBPRINT: ${{ vars.AETHERCORE_CODESIGN_THUMBPRINT }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recheck protected environment before promotion
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/rc-signing-preflight.py --repository $env:REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Protected promotion review is unavailable.' }
+      - uses: actions/download-artifact@v8
+        with:
+          name: aethercore-signed-rc-${{ github.sha }}
+          path: phase21-workspace/out/rc
+      - uses: actions/download-artifact@v8
+        with:
+          name: aethercore-signed-acceptance-${{ github.sha }}
+          path: phase21-workspace/out/rc-acceptance
+      - name: Same-byte promotion gate without rebuild
+        shell: pwsh
+        run: |
+          $thumb = ($env:AETHERCORE_CODESIGN_THUMBPRINT -replace '\s','').ToUpperInvariant()
+          python scripts/rc-provenance.py promote --release-root out/rc --expected-sha $env:RC_SHA --thumbprint $thumb --receipt-sha256 $env:RC_RECEIPT --bundle-sha256 $env:RC_BUNDLE --acceptance out/rc-acceptance/ACCEPTANCE.json --acceptance-sha256 $env:RC_ACCEPTANCE --out out/rc/PROMOTION-ELIGIBLE.json
+          if ($LASTEXITCODE -ne 0) { throw 'RC promotion rejected substituted/unqualified bytes.' }
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: aethercore-promotion-eligible-rc-${{ github.sha }}
+          path: phase21-workspace/out/rc/**
           if-no-files-found: error
           retention-days: 30
