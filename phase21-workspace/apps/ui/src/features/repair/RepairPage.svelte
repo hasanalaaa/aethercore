@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { fluidPress } from '../../design/motion';
   import { shellState } from '../../app/shell-state';
   import { streamState } from '../../platform/stream-state';
@@ -6,6 +7,11 @@
   import { formatDateTime, hasMessageKey, localizeFactState, localizeOwnedText, localizeState, t, td, tp } from '../../lib/i18n';
   import { cancelSystemRepair, repairStopRequested, cancelRepairAssessment, openRepairReview, repairActive, repairUi, reviewSystemRepair, setIncludeDiskScan, startRepairAssessment } from './controller';
   import { shortDigest, stageTone } from '../shared';
+  import { assessmentElapsedMs, runElapsedClock } from './elapsed';
+
+  let mounted = false, elapsedSinceObservationMs = 0, observationKey = '';
+  let stopClock = () => {};
+  onMount(() => { mounted = true; return () => { mounted = false; stopClock(); }; });
 
   $: snapshot = $streamState.snapshot;
   $: repairAssessment = $streamState.repairAssessment;
@@ -14,6 +20,21 @@
   $: repairStatus = $streamState.repairStatus;
   $: busy = $shellState.busy;
   $: locale = $shellState.locale;
+  $: observedUnixMs = $streamState.repairAssessmentObservedUnixMs;
+  $: timingScope = `${$streamState.resetGeneration}:${repairAssessment.assessmentId}:${observedUnixMs}`;
+  $: animateTime = snapshot.connected && repairAssessment.state === 'Scanning'
+    && assessmentElapsedMs(repairAssessment, observedUnixMs) !== null;
+  $: if (mounted) synchronizeClock(timingScope, animateTime);
+  $: elapsedMs = assessmentElapsedMs(repairAssessment, observedUnixMs, elapsedSinceObservationMs);
+  $: elapsedSeconds = Math.floor((elapsedMs ?? 0) / 1000);
+  $: validObservation = Number.isSafeInteger(observedUnixMs) && observedUnixMs >= repairAssessment.startedUnixMs
+    && observedUnixMs > 0 && observedUnixMs <= Date.now();
+
+  function synchronizeClock(scope: string, animate: boolean): void {
+    if (scope !== observationKey) { observationKey = scope; elapsedSinceObservationMs = 0; }
+    stopClock();
+    stopClock = animate ? runElapsedClock((value) => elapsedSinceObservationMs = value, elapsedSinceObservationMs) : () => {};
+  }
   $: includeDiskScan = $repairUi.includeDiskScan;
   $: recommendedNodes = intelligence?.graph.nodes.filter((node) => !['level0Diagnostic'].includes(node.safety)) ?? [];
   const runtimeExecutableActions = new Set(['repairComponentStore','repairSystemFiles','startRequiredService']);
@@ -35,7 +56,7 @@
 
   // P76 (DBT-P76-007): an assessment runs DISM ScanHealth, SFC and CHKDSK one after another
   // and can take many minutes; the page says which check is running, since when, and lets
-  // the owner stop it. A start time, not a ticking clock: the renderer does not poll.
+  // the owner stop it. The local elapsed display below invokes no service query.
   function checkLabel(id: string): string {
     if (!id) return t('repair.check.starting', locale);
     const key = `repair.check.${id}`;
@@ -85,6 +106,15 @@
   </div>
   {#if repairAssessment.state === 'Scanning'}<div class="indeterminate"><span></span></div>{/if}
 </section>
+
+{#if repairAssessment.assessmentId && repairAssessment.state !== 'Idle'}
+  <!-- Separate from the phase live region: a screen reader hears stage changes, not seconds. -->
+  <div class="assessment-timing" aria-live="off">
+    <span role="timer" aria-live="off">{elapsedMs === null ? t('repair.timeUnavailable', locale) : t('repair.elapsed', locale, { minutes: Math.floor(elapsedSeconds / 60), seconds: elapsedSeconds % 60 })}</span>
+    {#if !snapshot.connected && repairAssessment.state === 'Scanning'}<span>{t('repair.elapsedPaused', locale)}</span>{/if}
+    <span>{t('repair.lastServiceUpdate', locale)} {validObservation ? formatDateTime(observedUnixMs, locale) : t('common.unknown', locale)}</span>
+  </div>
+{/if}
 
 {#if intelligence}
   <section class="repair-health-grid" aria-label={t('repair.healthGrid', locale)}>
@@ -179,3 +209,7 @@
 <!-- The non-destructive boundary paragraph is gone. It is the policy band's
      promise, spelled out in 31 words on one screen — and the band says it on
      every screen, permanently. -->
+
+<style>
+  .assessment-timing { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; color: var(--muted); }
+</style>
