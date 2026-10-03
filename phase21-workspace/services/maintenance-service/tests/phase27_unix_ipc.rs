@@ -207,6 +207,60 @@ fn exchange(session: &mut aethercore_ipc::UnixSocketSession, frame: &ClientFrame
     }
 }
 
+fn cpu_availability_matches_observation(wire: &v1::CapabilityAvailability, measured: bool) -> bool {
+    use aethercore_platform_capabilities::{
+        Availability, TelemetryObservation, matrix_for_current_platform_observed,
+    };
+    let expected = matrix_for_current_platform_observed(TelemetryObservation {
+        cpu: measured,
+        ..TelemetryObservation::UNOBSERVED
+    })
+    .into_iter()
+    .find(|(name, _)| *name == "telemetryCpu")
+    .expect("CPU capability present")
+    .1;
+    match expected {
+        Availability::Native => wire.state == "native" && wire.key.is_empty(),
+        Availability::Degraded { note_key } => wire.state == "degraded" && wire.key == note_key,
+        Availability::NotAvailable { .. } => false,
+    }
+}
+
+#[test]
+fn cpu_wire_availability_requires_the_observed_contract_and_reason() {
+    use aethercore_platform_capabilities::keys::COLLECTOR_REPORTED_NOTHING;
+    let native = v1::CapabilityAvailability {
+        state: "native".into(),
+        key: String::new(),
+    };
+    let unmeasured = v1::CapabilityAvailability {
+        state: "degraded".into(),
+        key: COLLECTOR_REPORTED_NOTHING.into(),
+    };
+    assert!(cpu_availability_matches_observation(&native, true));
+    assert!(cpu_availability_matches_observation(&unmeasured, false));
+    assert!(!cpu_availability_matches_observation(&native, false));
+    assert!(!cpu_availability_matches_observation(&unmeasured, true));
+    for (state, key) in [
+        ("degraded", ""),
+        ("degraded", "cap.reason.unrelated"),
+        ("native", COLLECTOR_REPORTED_NOTHING),
+        ("synthetic", ""),
+        ("notAvailable", COLLECTOR_REPORTED_NOTHING),
+        ("unknown", ""),
+    ] {
+        let invalid = v1::CapabilityAvailability {
+            state: state.into(),
+            key: key.into(),
+        };
+        assert!(
+            !cpu_availability_matches_observation(&invalid, true)
+                && !cpu_availability_matches_observation(&invalid, false),
+            "invalid CPU wire availability: {invalid:?}"
+        );
+    }
+}
+
 #[test]
 #[cfg(unix)]
 fn unix_socket_round_trip_capabilities_ping_engine_source() {
@@ -274,7 +328,16 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
                         .find(|c| c.name == "telemetryCpu")
                         .expect("telemetryCpu row present");
                     let availability = cpu.availability.as_ref().expect("availability set");
-                    assert_eq!(availability.state, "native");
+                    // The native provider may report no CPU observation (e.g. a cold
+                    // sampling window with no tick delta). H3 requires the reconciled
+                    // capability, not unconditional Native. The wire omits the sample,
+                    // so validate both possible observations against the real contract;
+                    // Degraded must carry exactly its declared typed reason.
+                    assert!(
+                        cpu_availability_matches_observation(availability, true)
+                            || cpu_availability_matches_observation(availability, false),
+                        "CPU capability contradicts the observation contract: {availability:?}"
+                    );
                     let drivers = matrix
                         .capabilities
                         .iter()
