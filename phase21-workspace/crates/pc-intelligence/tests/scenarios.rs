@@ -460,3 +460,47 @@ fn remediation_plan_is_deterministic_for_same_consent_snapshot() {
     assert_eq!(first.digest, second.digest);
     assert_eq!(first.plan_id, second.plan_id);
 }
+
+#[test]
+fn network_window_findings_roundtrip_with_exact_counts_and_no_critical_or_mutation() {
+    let measured = fact(
+        Domain::Hardware,
+        "network",
+        NOW,
+        FactPayload::NetworkCounterWindow {
+            elapsed_ms: 1000,
+            in_errors: u64::MAX,
+            out_errors: 0,
+            in_discards: 0,
+            out_discards: 0,
+        },
+    );
+    let findings = evaluate_rules(std::slice::from_ref(&measured), NOW);
+    assert_eq!(findings.len(), 1);
+    let finding = &findings[0];
+    assert_eq!(finding.code, "NETWORK_COUNTER_ERRORS_OBSERVED");
+    assert_eq!(finding.severity, Severity::Informational);
+    assert_eq!(finding.message_args["inErrors"], u64::MAX.to_string());
+    assert!(remediation_candidates(&findings).is_empty());
+    let restored: aethercore_pc_intelligence::Finding =
+        serde_json::from_slice(&serde_json::to_vec(finding).unwrap()).unwrap();
+    assert_eq!(&restored, finding);
+    for freshness in [Freshness::Historical, Freshness::Stale] {
+        let mut old = measured.clone();
+        old.freshness = freshness;
+        assert!(evaluate_rules(&[old], NOW).is_empty());
+    }
+    let zero_window = fact(
+        Domain::Hardware,
+        "network",
+        NOW,
+        FactPayload::NetworkCounterWindow {
+            elapsed_ms: 0,
+            in_errors: u64::MAX,
+            out_errors: 0,
+            in_discards: 0,
+            out_discards: 0,
+        },
+    );
+    assert!(evaluate_rules(&[zero_window], NOW).is_empty());
+}

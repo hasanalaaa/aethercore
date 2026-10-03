@@ -99,7 +99,10 @@ both missing presence flags. The affected four-package Rust run passed166 tests
 across13 suites; all-target host Clippy and hardware Windows GNU Clippy with
 warnings denied passed. UI103 tests passed, check0 errors/0 warnings, build and
 static351 passed; dependency freeze approved without manifest/version changes.
-The build retains its pre-existing large-chunk warning.
+The build retains its pre-existing large-chunk warning. Populated Hardware layout8/8
+(1280/640, EN/AR, dark/light) and Arabic clean leak4/4 passed. An initial layout
+run lost its Chrome target during navigation; the stable-source rerun passed
+without changing assertions, gate budgets or tools.
 
 Native final-head execution and physical relative/multiple-battery/tag-change
 qualification remain NOT RUN. Current direct SSH is unavailable; Windows-native

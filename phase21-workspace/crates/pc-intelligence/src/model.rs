@@ -332,6 +332,14 @@ pub enum FactPayload {
         temperature_c: i64,
         critical_c: i64,
     },
+    /// Two comparable measured readings from an enabled, operational adapter.
+    NetworkCounterWindow {
+        elapsed_ms: u64,
+        in_errors: u64,
+        out_errors: u64,
+        in_discards: u64,
+        out_discards: u64,
+    },
     HardwareEvent {
         category: String,
         provider: String,
@@ -381,6 +389,7 @@ impl FactPayload {
             Self::StorageHealth { .. } => "storageHealth",
             Self::MemoryPressure { .. } => "memoryPressure",
             Self::ThermalZone { .. } => "thermalZone",
+            Self::NetworkCounterWindow { .. } => "networkCounterWindow",
             Self::HardwareEvent { .. } => "hardwareEvent",
             Self::Crash { .. } => "crash",
             Self::StartupFootprint { .. } => "startupFootprint",

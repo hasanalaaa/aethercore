@@ -53,3 +53,22 @@ for (const locale of ['en', 'ar'] as const) {
     assert.ok(!unknown.includes('raw.unknown'));
   });
 }
+
+
+for (const locale of ['en', 'ar'] as const) {
+  test(`${locale}: real adapter window card keeps exact counts, time, source and owned limits`, () => {
+    const args = { windowMs: '1000', inErrors: '18446744073709551615', outErrors: '0', inDiscards: '0', outDiscards: '0' };
+    const value = { ...finding, code: 'NETWORK_COUNTER_ERRORS_OBSERVED', severity: 1, confidence: 5,
+      titleKey: 'finding.networkWindow.title', summaryKey: 'finding.networkWindow.summary',
+      messageArgs: Object.entries(args).map(([key, value]) => ({ key, value })),
+      uncertaintyKey: 'finding.networkWindow.limits', remediationAvailable: false,
+      evidence: [{ factId: 'window', kind: 'DeviceState', source: 'GetIfEntry2', observedUnixMs: 1000, technicalValue: 'windowMs=1000' }],
+    } as PcFinding;
+    const html = card(locale, value, []);
+    assert.ok(html.includes(td('finding.networkWindow.summary' as never, locale, args)));
+    assert.ok(html.includes(td('finding.networkWindow.limits' as never, locale)));
+    assert.ok(html.includes(td('deepScan.severity.informational' as never, locale)));
+    assert.ok(html.includes('18446744073709551615'));
+    assert.ok(!html.includes('finding.networkWindow.'));
+  });
+}

@@ -17,6 +17,12 @@ pub struct RuleDescriptor {
 
 pub const RULES: &[RuleDescriptor] = &[
     RuleDescriptor {
+        id: "P83-NET-001",
+        version: 1,
+        domain: Domain::Hardware,
+        description: "Measured adapter error/discard delta, without an internet or causal diagnosis",
+    },
+    RuleDescriptor {
         id: "P17-DRV-001",
         version: 2,
         domain: Domain::Drivers,
@@ -107,6 +113,7 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                 FactPayload::StorageHealth { .. }
                     | FactPayload::MemoryPressure { .. }
                     | FactPayload::ThermalZone { .. }
+                    | FactPayload::NetworkCounterWindow { .. }
             )
         {
             continue;
@@ -415,6 +422,42 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
                 Some(RemediationSafety::HardwareService),
                 ActionType::ReviewHardwareError,
             )),
+            FactPayload::NetworkCounterWindow {
+                elapsed_ms,
+                in_errors,
+                out_errors,
+                in_discards,
+                out_discards,
+            } if fact.freshness == Freshness::Current
+                && *elapsed_ms > 0
+                && (*in_errors > 0 || *out_errors > 0 || *in_discards > 0 || *out_discards > 0) =>
+            {
+                let mut observed = finding(
+                    fact,
+                    "NETWORK_COUNTER_ERRORS_OBSERVED",
+                    Domain::Hardware,
+                    Severity::Informational,
+                    Confidence::Confirmed,
+                    "finding.networkWindow.title",
+                    "finding.networkWindow.summary",
+                    "finding.networkWindow.technical",
+                    "P83-NET-001",
+                    1,
+                    None,
+                    ActionType::ReviewHardwareError,
+                );
+                for (key, value) in [
+                    ("windowMs", elapsed_ms),
+                    ("inErrors", in_errors),
+                    ("outErrors", out_errors),
+                    ("inDiscards", in_discards),
+                    ("outDiscards", out_discards),
+                ] {
+                    observed.message_args.insert(key.into(), value.to_string());
+                }
+                observed.uncertainty_key = "finding.networkWindow.limits".into();
+                findings.push(observed);
+            }
             FactPayload::MemoryPressure {
                 memory_load_percent,
                 ..
@@ -848,6 +891,20 @@ pub fn explicitly_healthy(fact: &SystemFact) -> bool {
             memory_load_percent,
             pressure_label,
         } => *memory_load_percent < 95 && !pressure_label.eq_ignore_ascii_case("Critical"),
+        FactPayload::NetworkCounterWindow {
+            elapsed_ms,
+            in_errors,
+            out_errors,
+            in_discards,
+            out_discards,
+        } => {
+            fact.freshness == Freshness::Current
+                && *elapsed_ms > 0
+                && *in_errors == 0
+                && *out_errors == 0
+                && *in_discards == 0
+                && *out_discards == 0
+        }
         FactPayload::StartupFootprint {
             high_impact_count, ..
         } => *high_impact_count < 3,

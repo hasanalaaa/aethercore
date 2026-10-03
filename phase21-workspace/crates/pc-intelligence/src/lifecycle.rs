@@ -37,6 +37,7 @@ pub(crate) fn default_resolution_authority(code: &str) -> Vec<String> {
         "STORAGE_RELIABILITY_CONCERN"
         | "STORAGE_ATTENTION"
         | "HIGH_MEMORY_PRESSURE"
+        | "NETWORK_COUNTER_ERRORS_OBSERVED"
         | "HARDWARE_ERROR_EVIDENCE"
         | "RECENT_CRASH_EVIDENCE"
         | "CRASH_WITH_HARDWARE_EVIDENCE" => &["diagnostics"],
@@ -262,6 +263,7 @@ fn resolution_policy(code: &str) -> ResolutionPolicy {
         | "STORAGE_RELIABILITY_CONCERN"
         | "STORAGE_ATTENTION"
         | "HIGH_MEMORY_PRESSURE"
+        | "NETWORK_COUNTER_ERRORS_OBSERVED"
         | "HIGH_STARTUP_FOOTPRINT"
         | "APP_UPDATE_AVAILABLE" => ResolutionPolicy::MatchingHealthyState,
         _ => ResolutionPolicy::AuthoritativeAbsence,
@@ -417,6 +419,86 @@ mod tests {
         let _ = std::fs::remove_file(path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));
         let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+    }
+
+    #[test]
+    fn network_observation_requires_matching_fresh_zero_window_and_completed_authority_to_resolve()
+    {
+        let network_fact = |errors, freshness| {
+            SystemFact::new(
+                Domain::Hardware,
+                "GetIfEntry2",
+                ResourceRef::private("network-adapter", "guid", "VPN"),
+                2,
+                freshness,
+                Confidence::Confirmed,
+                FactPayload::NetworkCounterWindow {
+                    elapsed_ms: 1000,
+                    in_errors: errors,
+                    out_errors: 0,
+                    in_discards: 0,
+                    out_discards: 0,
+                },
+                EvidenceKind::DeviceState,
+                "windowMs=1000",
+            )
+        };
+        let old = crate::rules::evaluate(&[network_fact(1, Freshness::Current)], 2).remove(0);
+        for (facts, state, resolves) in [
+            (vec![], CollectorState::Completed, false),
+            (
+                vec![network_fact(0, Freshness::Stale)],
+                CollectorState::Completed,
+                false,
+            ),
+            (
+                vec![network_fact(0, Freshness::Historical)],
+                CollectorState::Completed,
+                false,
+            ),
+            (
+                vec![network_fact(0, Freshness::Current)],
+                CollectorState::CompletedWithWarnings,
+                false,
+            ),
+            (
+                vec![network_fact(0, Freshness::Current)],
+                CollectorState::Cancelled,
+                false,
+            ),
+            (
+                vec![network_fact(0, Freshness::Current)],
+                CollectorState::Completed,
+                true,
+            ),
+        ] {
+            let (db, path) = test_db();
+            persist_finding(&db, "owner", &old, "Active");
+            let result = reconcile(
+                &db,
+                "owner",
+                "scan",
+                3,
+                &facts,
+                &[collector("diagnostics", state)],
+                &BTreeMap::new(),
+                vec![],
+            );
+            let stored = &result.persisted_findings[0];
+            assert_eq!(stored.lifecycle == FindingLifecycle::Resolved, resolves);
+            if resolves {
+                assert_eq!(
+                    stored.verification_status,
+                    crate::model::FindingVerificationStatus::ResolutionConfirmed
+                );
+                assert_eq!(
+                    stored.resolution_evidence[0].evidence_fact_ids,
+                    vec![facts[0].id.clone()]
+                );
+            }
+            drop(db);
+            cleanup(&path);
+        }
     }
 
     fn old_missing_driver() -> Finding {
