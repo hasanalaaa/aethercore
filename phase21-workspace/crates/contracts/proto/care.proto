@@ -72,6 +72,11 @@ message CareStepReport {
   string domain_verification_state = 7;
   // Domain's own failure message key when failed; resolved in renderer catalogs.
   string failure_message_key = 8;
+  // Completed verified Cleanup result only. Absent is not a measured zero.
+  bool has_actual_deleted_bytes = 9;
+  // Exact unsigned decimal logical deleted-file bytes (not physical free-space gain).
+  // Decimal data avoids uint64 rounding in the desktop's JSON transport.
+  string actual_deleted_bytes = 10;
 }
 
 message CareRunStatus {

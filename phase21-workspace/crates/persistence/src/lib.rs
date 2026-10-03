@@ -25,6 +25,7 @@ const MIGRATION_0014: &str = include_str!("../migrations/0014_phase22_care_orche
 const MIGRATION_0015: &str = include_str!("../migrations/0015_phase34_fleet.sql");
 const MIGRATION_0016: &str =
     include_str!("../migrations/0016_p46_byte_progress_determinedness.sql");
+const MIGRATION_0017: &str = include_str!("../migrations/0017_care_actual_deleted_bytes.sql");
 
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "0001_init", MIGRATION_0001),
@@ -43,6 +44,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (14, "0014_phase22_care_orchestration", MIGRATION_0014),
     (15, "0015_phase34_fleet", MIGRATION_0015),
     (16, "0016_p46_byte_progress_determinedness", MIGRATION_0016),
+    (17, "0017_care_actual_deleted_bytes", MIGRATION_0017),
 ];
 
 #[derive(Debug, Error)]
@@ -92,6 +94,7 @@ pub struct CareStepRecord {
     pub failure_message: String,
     pub started_unix_ms: i64,
     pub updated_unix_ms: i64,
+    pub actual_deleted_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -1286,8 +1289,8 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
-            "INSERT INTO care_steps(run_id,step_index,domain_plan_id,domain_kind,safety_level,state,outcome,verification_state,failure_message,started_unix_ms,updated_unix_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            params![s.run_id,s.step_index,s.domain_plan_id,s.domain_kind,s.safety_level,s.state,s.outcome,s.verification_state,s.failure_message,s.started_unix_ms,s.updated_unix_ms],
+            "INSERT INTO care_steps(run_id,step_index,domain_plan_id,domain_kind,safety_level,state,outcome,verification_state,failure_message,started_unix_ms,updated_unix_ms,actual_deleted_bytes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            params![s.run_id,s.step_index,s.domain_plan_id,s.domain_kind,s.safety_level,s.state,s.outcome,s.verification_state,s.failure_message,s.started_unix_ms,s.updated_unix_ms,s.actual_deleted_bytes.map(|v|v.to_string())],
         )?;
         Ok(())
     }
@@ -1299,8 +1302,8 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
-            "UPDATE care_steps SET state=?3,outcome=?4,verification_state=?5,failure_message=?6,updated_unix_ms=?7 WHERE run_id=?1 AND step_index=?2",
-            params![r.run_id,r.step_index,r.state,r.outcome,r.verification_state,r.failure_message,r.updated_unix_ms],
+            "UPDATE care_steps SET state=?3,outcome=?4,verification_state=?5,failure_message=?6,updated_unix_ms=?7,actual_deleted_bytes=?8 WHERE run_id=?1 AND step_index=?2",
+            params![r.run_id,r.step_index,r.state,r.outcome,r.verification_state,r.failure_message,r.updated_unix_ms,r.actual_deleted_bytes.map(|v|v.to_string())],
         )?;
         Ok(())
     }
@@ -1311,7 +1314,7 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         let mut stmt = conn.prepare(
-            "SELECT run_id,step_index,domain_plan_id,domain_kind,safety_level,state,outcome,verification_state,failure_message,started_unix_ms,updated_unix_ms FROM care_steps WHERE run_id=? ORDER BY step_index"
+            "SELECT run_id,step_index,domain_plan_id,domain_kind,safety_level,state,outcome,verification_state,failure_message,started_unix_ms,updated_unix_ms,actual_deleted_bytes FROM care_steps WHERE run_id=? ORDER BY step_index"
         )?;
         let rows = stmt.query_map([run_id], |row| {
             Ok(CareStepRecord {
@@ -1326,6 +1329,17 @@ impl Database {
                 failure_message: row.get(8)?,
                 started_unix_ms: row.get(9)?,
                 updated_unix_ms: row.get(10)?,
+                actual_deleted_bytes: row
+                    .get::<_, Option<String>>(11)?
+                    .map(|v| v.parse::<u64>())
+                    .transpose()
+                    .map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            11,
+                            rusqlite::types::Type::Text,
+                            Box::new(e),
+                        )
+                    })?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()

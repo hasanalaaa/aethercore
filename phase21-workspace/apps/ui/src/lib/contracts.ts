@@ -237,7 +237,8 @@ export type RecurrencePatternsResponse = { patterns:RecurrencePattern[]; digestS
 // ---------------------------------------------------------------------------
 export type CareStepReport = {
   stepIndex:number; domainPlanId:string; domainKind:string; safetyLevel:number;
-  state:string; outcome:string; domainVerificationState:string; failureMessageKey:string
+  state:string; outcome:string; domainVerificationState:string; failureMessageKey:string;
+  hasActualDeletedBytes:boolean; actualDeletedBytes:string
 };
 export type CareRunStatus = {
   runId:string; state:string; stage:string; sessionConsentGranted:boolean;

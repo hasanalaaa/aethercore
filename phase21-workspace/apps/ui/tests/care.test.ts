@@ -11,7 +11,7 @@ function status(digest: string, levels: number[] = [0]): CareRunStatus {
     runId: '', state: 'Idle', stage: 'Preview', sessionConsentGranted: false, planDigestSha256: digest,
     steps: levels.map((safetyLevel, stepIndex) => ({
       stepIndex, domainPlanId: `p${stepIndex}`, domainKind: 'Cleanup', safetyLevel, state: 'Pending',
-      outcome: 'Pending', domainVerificationState: '', failureMessageKey: '',
+      outcome: 'Pending', domainVerificationState: '', failureMessageKey: '', hasActualDeletedBytes: false, actualDeletedBytes: '',
     })),
     updatedUnixMs: 0, summaryKey: '',
   };

@@ -57,7 +57,7 @@ pub(super) fn route(call: &Call<'_>, payload: request::Payload) -> Routed {
 pub(super) fn get_care_status(call: &Call<'_>) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
-    let status = ctx.care.plan_preview(principal_key).map_err(care_err)?;
+    let status = ctx.care.current_status(principal_key).map_err(care_err)?;
     publish(
         ctx,
         principal_key,

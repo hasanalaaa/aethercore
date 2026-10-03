@@ -54,7 +54,8 @@ impl aethercore_care_orchestrator::DomainDispatch for FakeDomainDispatch {
         domain_kind: &str,
         _approved_digest: &str,
         _lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-    ) -> Result<(String, String, String), aethercore_care_orchestrator::CareError> {
+    ) -> Result<(String, String, String, Option<u64>), aethercore_care_orchestrator::CareError>
+    {
         if !self.owned_plans.iter().any(|p| p == domain_plan_id) {
             return Err(aethercore_care_orchestrator::CareError::DomainRejected {
                 domain_kind: domain_kind.to_string(),
@@ -64,7 +65,7 @@ impl aethercore_care_orchestrator::DomainDispatch for FakeDomainDispatch {
         self.executions.fetch_add(1, Ordering::SeqCst);
         std::thread::sleep(Duration::from_millis(self.latency_ms));
         // Simulate the domain's own verification pass succeeding.
-        Ok(("Completed".into(), "Verified".into(), String::new()))
+        Ok(("Completed".into(), "Verified".into(), String::new(), None))
     }
 }
 
@@ -117,12 +118,13 @@ impl aethercore_care_orchestrator::CareJournal for MemoryJournal {
     fn record_step_result(
         &self,
         run_id: &str,
-        step_index: usize,
         state: &str,
-        outcome: StepOutcome,
-        verification_state: &str,
-        failure_key: &str,
+        report: &aethercore_care_orchestrator::CareStepReport,
     ) -> Result<(), aethercore_care_orchestrator::CareError> {
+        let step_index = report.step_index;
+        let outcome = report.outcome;
+        let verification_state = &report.domain_verification_state;
+        let failure_key = &report.failure_message_key;
         self.events.lock().unwrap().push(format!(
             "result:{run_id}:{step_index}:{state}:{outcome:?}:{verification_state}:{failure_key}"
         ));
@@ -161,10 +163,12 @@ fn end_to_end_care_run_executes_real_dispatch_and_journals_outcomes() {
             owner: &str,
             step: &CareStep,
             lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-        ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError>
-        {
+        ) -> Result<
+            (StepOutcome, String, String, Option<u64>),
+            aethercore_care_orchestrator::CareError,
+        > {
             use aethercore_care_orchestrator::DomainDispatch;
-            let (state, verification, failure) = self.0.start_and_await(
+            let (state, verification, failure, bytes) = self.0.start_and_await(
                 owner,
                 &step.domain_plan_id,
                 &step.domain_kind,
@@ -180,6 +184,7 @@ fn end_to_end_care_run_executes_real_dispatch_and_journals_outcomes() {
                     } else {
                         failure
                     },
+                    None,
                 ));
             }
             if verification.is_empty() {
@@ -187,9 +192,15 @@ fn end_to_end_care_run_executes_real_dispatch_and_journals_outcomes() {
                     StepOutcome::CompletedUnverified,
                     String::new(),
                     String::new(),
+                    None,
                 ));
             }
-            Ok((StepOutcome::VerifiedByDomain, verification, String::new()))
+            Ok((
+                StepOutcome::VerifiedByDomain,
+                verification,
+                String::new(),
+                bytes,
+            ))
         }
     }
 
@@ -237,8 +248,10 @@ fn unowned_plan_surfaces_typed_rejection_not_fake_success() {
             owner: &str,
             step: &CareStep,
             lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-        ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError>
-        {
+        ) -> Result<
+            (StepOutcome, String, String, Option<u64>),
+            aethercore_care_orchestrator::CareError,
+        > {
             use aethercore_care_orchestrator::DomainDispatch;
             self.0.start_and_await(
                 owner,

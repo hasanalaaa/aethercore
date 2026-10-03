@@ -515,7 +515,7 @@ const fleetSnapshot = {
 
 const careStep = (stepIndex: number, domainKind: string, safetyLevel: number) => ({
   stepIndex, domainPlanId: `${stepIndex}f3c9a2e-7b1d-4c55-9e0a-${domainKind.length}c1d2e3f4a5b`, domainKind, safetyLevel,
-  state: 'Pending', outcome: 'Pending', domainVerificationState: '', failureMessageKey: '',
+  state: 'Pending', outcome: 'Pending', domainVerificationState: '', failureMessageKey: '', hasActualDeletedBytes: false, actualDeletedBytes: '',
 });
 const careStatus = (granted: boolean) => ({
   runId: '', state: 'Idle', stage: 'Preview', sessionConsentGranted: granted, planDigestSha256: 'c4'.repeat(32),
@@ -523,9 +523,9 @@ const careStatus = (granted: boolean) => ({
   updatedUnixMs: NOW, summaryKey: granted ? 'care.summary.completed' : 'care.summary.needsConsent',
 });
 const careRun = {
-  ...careStatus(true), state: 'Completed', stage: 'Report',
+  ...careStatus(true), runId: 'run-1', state: 'Completed', stage: 'Report',
   steps: [
-    { ...careStep(0, 'Cleanup', 0), state: 'Completed', outcome: 'VerifiedByDomain', domainVerificationState: 'Verified' },
+    { ...careStep(0, 'Cleanup', 0), state: 'Completed', outcome: 'VerifiedByDomain', domainVerificationState: 'Verified', hasActualDeletedBytes: true, actualDeletedBytes: '1536' },
     { ...careStep(1, 'Startup', 0), state: 'Failed', outcome: 'Failed', failureMessageKey: 'care.error.digestChanged' },
     { ...careStep(2, 'DriverInstall', 2), state: 'Skipped', outcome: 'Skipped' },
   ],
@@ -630,6 +630,7 @@ const emit = (kernelEvent: UiKernelEvent): void => {
     // One-Click Care: a plan with two automatic steps and one review-only step, approved and
     // run as the service does it (DBT-P75-045). Without these the care dialog was never measured.
     if (command === 'get_care_status' || command === 'grant_care_session_consent') {
+      if (command === 'get_care_status' && new URLSearchParams(location.search).has('careResult')) return careRun;
       return careStatus(command === 'grant_care_session_consent');
     }
     if (command === 'prepare_care_preview') {

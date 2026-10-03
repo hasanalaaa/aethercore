@@ -223,13 +223,22 @@ struct RealDomainDispatch {
 }
 
 /// What a domain reports once its plan stops moving.
-fn step_result(plan_state: String, verification_state: String) -> (String, String, String) {
+fn step_result(
+    plan_state: String,
+    verification_state: String,
+    actual_deleted_bytes: Option<u64>,
+) -> (String, String, String, Option<u64>) {
     let failure = if plan_state == "Failed" {
         "care.error.domainFailure"
     } else {
         ""
     };
-    (plan_state, verification_state, failure.into())
+    (
+        plan_state,
+        verification_state,
+        failure.into(),
+        actual_deleted_bytes,
+    )
 }
 
 fn verified_if(all: bool) -> String {
@@ -250,7 +259,8 @@ impl aethercore_care_orchestrator::DomainDispatch for RealDomainDispatch {
         domain_kind: &str,
         approved_digest: &str,
         lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-    ) -> Result<(String, String, String), aethercore_care_orchestrator::CareError> {
+    ) -> Result<(String, String, String, Option<u64>), aethercore_care_orchestrator::CareError>
+    {
         let rejected = |detail: String| aethercore_care_orchestrator::CareError::DomainRejected {
             domain_kind: domain_kind.to_string(),
             detail,
@@ -289,7 +299,7 @@ impl RealDomainDispatch {
         plan_id: &str,
         domain_kind: &str,
         lease: &aethercore_care_orchestrator::MutationLeaseGuard,
-    ) -> Result<(String, String, String), String> {
+    ) -> Result<(String, String, String, Option<u64>), String> {
         use crate::care::{DISPATCH_TIMEOUT_MS, await_terminal};
         use aethercore_operation_kernel::MutationWorkload;
         let deadline =
@@ -309,7 +319,13 @@ impl RealDomainDispatch {
                 .ok_or_else(no_status)?;
                 let verified =
                     !s.items.is_empty() && s.items.iter().all(|i| i.result_code == "Deleted");
-                Ok(step_result(s.plan_state, verified_if(verified)))
+                let actual_deleted_bytes =
+                    (s.plan_state == "Completed" && verified).then_some(s.reclaimed_bytes);
+                Ok(step_result(
+                    s.plan_state,
+                    verified_if(verified),
+                    actual_deleted_bytes,
+                ))
             }
             "Startup" => {
                 let step = lease.delegate(MutationWorkload::Startup, plan_id);
@@ -324,7 +340,7 @@ impl RealDomainDispatch {
                 .ok_or_else(no_status)?;
                 let verified =
                     !s.items.is_empty() && s.items.iter().all(|i| i.result_code == "Verified");
-                Ok(step_result(s.plan_state, verified_if(verified)))
+                Ok(step_result(s.plan_state, verified_if(verified), None))
             }
             other => Err(format!("plan {plan_id}: care cannot run {other:?} plans")),
         }
@@ -407,11 +423,8 @@ mod p75_care_dispatch_tests {
         fn record_step_result(
             &self,
             _: &str,
-            _: usize,
             _: &str,
-            _: StepOutcome,
-            _: &str,
-            _: &str,
+            _: &aethercore_care_orchestrator::CareStepReport,
         ) -> Result<(), aethercore_care_orchestrator::CareError> {
             Ok(())
         }
@@ -431,8 +444,10 @@ mod p75_care_dispatch_tests {
             owner: &str,
             step: &CareStep,
             lease: &MutationLeaseGuard,
-        ) -> Result<(StepOutcome, String, String), aethercore_care_orchestrator::CareError>
-        {
+        ) -> Result<
+            (StepOutcome, String, String, Option<u64>),
+            aethercore_care_orchestrator::CareError,
+        > {
             let answer = self.0.start_and_await(
                 owner,
                 &step.domain_plan_id,
@@ -441,7 +456,7 @@ mod p75_care_dispatch_tests {
                 lease,
             );
             *self.1.lock().unwrap() = Some(format!("{answer:?}"));
-            Ok((StepOutcome::Failed, String::new(), String::new()))
+            Ok((StepOutcome::Failed, String::new(), String::new(), None))
         }
     }
 
@@ -539,13 +554,20 @@ mod p75_care_dispatch_tests {
     }
 
     fn real_care(db: &Arc<Database>) -> (crate::care::CareCoordinator, Arc<OperationEngine>) {
+        care_with_platform(db, Arc::new(FailingCleanupPlatform))
+    }
+
+    fn care_with_platform(
+        db: &Arc<Database>,
+        platform: Arc<dyn CleanupPlatform>,
+    ) -> (crate::care::CareCoordinator, Arc<OperationEngine>) {
         let engine = Arc::new(OperationEngine::new(db.clone()));
         let dispatch = Arc::new(RealDomainDispatch {
             engine: engine.clone(),
             cleaner: Arc::new(CleanupEngine::with_platform(
                 engine.clone(),
                 db.clone(),
-                Arc::new(FailingCleanupPlatform),
+                platform,
             )),
             startup: Arc::new(StartupManager::new(
                 engine.clone(),
@@ -569,6 +591,58 @@ mod p75_care_dispatch_tests {
             uuid::Uuid::new_v4()
         ));
         (Arc::new(Database::open(&path).expect("database")), path)
+    }
+
+    struct MeasuredCleanupPlatform(u64);
+    impl CleanupPlatform for MeasuredCleanupPlatform {
+        fn scan(&self) -> aethercore_cleaner::Result<Vec<CleanupCandidate>> {
+            Ok(Vec::new())
+        }
+        fn delete_action(
+            &self,
+            _: &CleanupDeleteAction,
+        ) -> aethercore_cleaner::Result<(u64, u64, String)> {
+            // A domain fixture result only: this fake never touches files on the host.
+            Ok((self.0, 0, String::new()))
+        }
+        fn acquire_mutation_lease(&self) -> aethercore_cleaner::Result<CleanupMutationLease> {
+            Ok(Box::new(()))
+        }
+    }
+
+    #[test]
+    fn care_reports_actual_domain_deleted_bytes_including_measured_zero() {
+        for bytes in [0u64, 1536, 9_007_199_254_740_993] {
+            let (db, path) = temp_db();
+            let (care, engine) = care_with_platform(&db, Arc::new(MeasuredCleanupPlatform(bytes)));
+            let plan_id = cleanup_plan(&engine, "measured");
+            assert_eq!(
+                engine.cleanup_actions(&plan_id).unwrap()[0].expected_bytes,
+                0,
+                "preview is not the result"
+            );
+            let shown = care.plan_preview(OWNER).unwrap();
+            care.grant_session_consent(OWNER, &shown.plan_digest_sha256)
+                .unwrap();
+            let status = care.start_run(OWNER, "run-measured").unwrap();
+            assert_eq!(status.steps[0].outcome, "VerifiedByDomain");
+            let value = serde_json::to_value(&status.steps[0]).unwrap();
+            assert_eq!(value["hasActualDeletedBytes"], true);
+            assert_eq!(
+                value["actualDeletedBytes"],
+                bytes.to_string(),
+                "exact domain result, never estimated bytes or rounded JSON number"
+            );
+            assert_eq!(
+                db.get_care_run("run-measured").unwrap().unwrap().steps_done,
+                1,
+                "the terminal history count includes the final completed step"
+            );
+            drop(care);
+            drop(engine);
+            drop(db);
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     /// DBT-P75-045: one owner approval of the care plan runs every Auto step through the
