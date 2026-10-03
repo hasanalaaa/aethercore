@@ -414,6 +414,16 @@ function finding(over: Partial<PcFinding>): PcFinding {
 
 const FINDINGS: PcFinding[] = [
   finding({
+    id: 'finding-network', code: 'NETWORK_COUNTER_ERRORS_OBSERVED', domain: 2, severity: 1, confidence: 5,
+    titleKey: 'finding.networkWindow.title', summaryKey: 'finding.networkWindow.summary', technicalKey: 'finding.networkWindow.technical',
+    messageArgs: Object.entries({ windowMs: '1000', inErrors: '18446744073709551615', outErrors: '0', inDiscards: '0', outDiscards: '0' }).map(([key, value]) => ({ key, value })),
+    evidence: [{ ...evidenceRef(5, 'DeviceState', 'GetIfEntry2', 'windowMs=1000;inErrors=18446744073709551615;outErrors=0;inDiscards=0;outDiscards=0'), observedUnixMs: NOW }],
+    affectedResource: { kind: 'network-adapter', stableId: 'guid', displayName: 'VPN' },
+    remediationAvailable: false, rebootRequirement: 'None', privilegeRequirement: 'None', reversibility: 'NotSoftwareReversible',
+    estimatedImpact: 'Minimal', uncertaintyKey: 'finding.networkWindow.limits', ruleId: 'P83-NET-001', ruleVersion: 1,
+    verificationStatus: 'ConfirmedCurrent', resolutionAuthority: ['diagnostics'],
+  }),
+  finding({
     id: 'finding-device', severity: 4, code: 'AC-0031',
     evidence: [
       evidenceRef(0, 'PnpDeviceState', 'SetupAPI', 'CM_PROB_FAILED_START (28)'),

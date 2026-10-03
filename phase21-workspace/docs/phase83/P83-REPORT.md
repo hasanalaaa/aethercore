@@ -269,3 +269,43 @@ reboot/System evidence, P83-06 typed network/boot/battery rules and P82 relative
 battery units remain separate approved source tasks. A real network finding
 requires a valid measured delta and source/time evidence; missing first-sample
 or reset data cannot be treated as healthy or a diagnosed fault.
+
+
+### P83-06B network rule — measured window observation (2026-10-03)
+
+NetworkCounterWindow is an additive typed fact in the existing fact model, not
+an opaque payload or a new rule engine. It is normalized only from measured
+counter coverage on an enabled, operational adapter, with a valid identity,
+source, positive interval and a real observation timestamp no later than now.
+First/reset/missing/failed/down/disabled data is absent evidence. The existing
+five-minute live-reading window makes old observations stale. Cumulative
+lifetime totals, routes, APIPA, cable and virtual status do not enter this rule.
+
+A positive error/discard delta emits NETWORK_COUNTER_ERRORS_OBSERVED at
+Informational severity only. Owned EN/AR text carries the exact directional
+counts and measured millisecond interval. Source, resource and time are cited;
+limits expressly exclude internet outage, component failure or causal diagnosis.
+There is no remediation candidate or automatic action. Virtual/VPN readings
+are observations with the same limits, never Critical. Transient sampling
+windows are excluded from durable machine-state fingerprints.
+
+Resolution requires the same resource, a current valid positive zero-error/
+zero-discard window and Completed diagnostics authority. Absence, cancellation,
+partial scans and stale/historical zero windows do not resolve the old finding.
+A completed scan without comparable readings leaves it NotRechecked. This is
+not a general network health verdict or proof of connectivity.
+
+Runtime red: the actual diagnostics-normalize-evaluate path omitted the
+measured window finding. Green verification includes normalized source guards,
+exact u64MAX finding JSON roundtrip, stale/historical and zero-interval scenarios,
+no mutation candidates, persisted resolution controls and the real FindingCard
+EN/AR source-to-render path. Targeted pc-intelligence+service tests150 across9
+suites passed; all-target Clippy with warnings denied passed after correcting a
+new test's unnecessary clone. UI105 passed; static351 passed; check0 errors/0 warnings and build passed.
+Populated DeepScan layout8/8 (1280/640, EN/AR, dark/light) passed with the
+new exact-count card; Arabic clean leak2/2 passed. A navigation-target disconnect on the initial run was
+retested at stable source; no assertions or time budgets changed. Native final-head
+verification remains coordinator-owned because direct SSH is unavailable.
+Boot same-type baseline/attribution and battery interpretation are separate
+approved tasks; no guessed boot classification, impact or health percentage
+was added here. WU reboot/source review is now lane2/coordinator-owned.

@@ -252,6 +252,56 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot, now: i64) -> Vec<SystemFact> 
             format!("temperatureC={temperature_c};ratedCriticalC={critical_c}"),
         ));
     }
+    // An accumulated lifetime counter or unavailable/reset window is not a current fault or
+    // resolution proof. Default routes, cable/media and virtual status do not diagnose internet.
+    for adapter in &snapshot.network_adapters {
+        use aethercore_diagnostic_engine::measurements::Availability;
+        let (Some(delta), Some(observed)) =
+            (adapter.counter_delta, adapter.coverage.observed_unix_ms)
+        else {
+            continue;
+        };
+        if adapter.stable_id.trim().is_empty()
+            || adapter.coverage.source.trim().is_empty()
+            || adapter.coverage.availability != Availability::Measured
+            || adapter.counter_availability != Availability::Measured
+            || adapter.admin_enabled != Some(true)
+            || adapter.operational_status != Some(1)
+            || delta.elapsed_ms == 0
+            || observed <= 0
+            || observed > now
+        {
+            continue;
+        }
+        out.push(SystemFact::new(
+            Domain::Hardware,
+            &adapter.coverage.source,
+            ResourceRef::private(
+                "network-adapter",
+                &adapter.stable_id,
+                display(&adapter.display_name, "Network adapter"),
+            ),
+            observed,
+            measured_freshness(observed, now, MEMORY_WINDOW_MS),
+            Confidence::Confirmed,
+            FactPayload::NetworkCounterWindow {
+                elapsed_ms: delta.elapsed_ms,
+                in_errors: delta.counts.in_errors,
+                out_errors: delta.counts.out_errors,
+                in_discards: delta.counts.in_discards,
+                out_discards: delta.counts.out_discards,
+            },
+            EvidenceKind::DeviceState,
+            format!(
+                "windowMs={};inErrors={};outErrors={};inDiscards={};outDiscards={}",
+                delta.elapsed_ms,
+                delta.counts.in_errors,
+                delta.counts.out_errors,
+                delta.counts.in_discards,
+                delta.counts.out_discards
+            ),
+        ));
+    }
     for e in &snapshot.events {
         out.push(SystemFact::new(
             Domain::Hardware,
@@ -507,4 +557,114 @@ pub fn driver_change(item: &InstallItemRecord) -> SystemFact {
             !item.backup_path.is_empty()
         ),
     )
+}
+
+#[cfg(test)]
+mod measured_network_tests {
+    use super::*;
+    use aethercore_diagnostic_engine::measurements::{
+        Availability, Coverage, NetworkAdapter, NetworkCounterDelta, NetworkCounters,
+    };
+    fn adapter() -> NetworkAdapter {
+        NetworkAdapter {
+            stable_id: "guid-1".into(),
+            display_name: "VPN".into(),
+            admin_enabled: Some(true),
+            operational_status: Some(1),
+            is_virtual: Some(true),
+            default_route_v4: Some(false),
+            default_route_v6: Some(true),
+            counter_availability: Availability::Measured,
+            counters: Some(NetworkCounters {
+                in_errors: u64::MAX,
+                ..Default::default()
+            }),
+            counter_delta: Some(NetworkCounterDelta {
+                elapsed_ms: 1000,
+                counts: NetworkCounters {
+                    in_errors: 1,
+                    ..Default::default()
+                },
+            }),
+            coverage: Coverage {
+                source: "GetIfEntry2".into(),
+                observed_unix_ms: Some(1000),
+                availability: Availability::Measured,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+    fn findings(value: NetworkAdapter, now: i64) -> Vec<Finding> {
+        crate::rules::evaluate(
+            &diagnostics(
+                &DiagnosticsSnapshot {
+                    state: DiagnosticScanState::Ready,
+                    completed_unix_ms: 1000,
+                    network_adapters: vec![value],
+                    ..Default::default()
+                },
+                now,
+            ),
+            now,
+        )
+    }
+    #[test]
+    fn actual_network_delta_yields_only_an_informational_window_observation() {
+        let found = findings(adapter(), 1000);
+        let finding = found
+            .iter()
+            .find(|f| f.code == "NETWORK_COUNTER_ERRORS_OBSERVED")
+            .expect("measured error window");
+        assert_eq!(finding.severity, Severity::Informational);
+        assert!(!finding.remediation_available && !finding.automatic_eligible);
+        assert_eq!(finding.evidence[0].source, "GetIfEntry2");
+        assert_eq!(finding.evidence[0].observed_unix_ms, 1000);
+        assert!(
+            finding.evidence[0]
+                .technical_value
+                .contains("windowMs=1000")
+        );
+        assert_eq!(
+            finding.message_args["inErrors"], "1",
+            "the cumulative u64MAX is not this window"
+        );
+    }
+    #[test]
+    fn first_reset_down_missing_time_and_stale_network_samples_do_not_raise_or_resolve_a_fault() {
+        let base = adapter();
+        let mut variants = vec![];
+        let mut first = base.clone();
+        first.counter_delta = None;
+        variants.push(first);
+        let mut down = base.clone();
+        down.operational_status = Some(2);
+        variants.push(down);
+        let mut disabled = base.clone();
+        disabled.admin_enabled = Some(false);
+        variants.push(disabled);
+        let mut missing = base.clone();
+        missing.coverage.observed_unix_ms = None;
+        variants.push(missing);
+        let mut failed = base.clone();
+        failed.counter_availability = Availability::Failed;
+        variants.push(failed);
+        for value in variants {
+            let facts = diagnostics(
+                &DiagnosticsSnapshot {
+                    state: DiagnosticScanState::Ready,
+                    network_adapters: vec![value],
+                    ..Default::default()
+                },
+                1000,
+            );
+            assert!(
+                facts
+                    .iter()
+                    .all(|f| f.payload.kind_name() != "networkCounterWindow")
+            );
+            assert!(crate::rules::evaluate(&facts, 1000).is_empty());
+        }
+        assert!(findings(base, 3600000).is_empty());
+    }
 }
