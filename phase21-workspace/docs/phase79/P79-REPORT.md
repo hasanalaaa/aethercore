@@ -157,3 +157,15 @@ build and static 351 checks. The populated result browser fixture passed geometr
 Arabic clean leak checks 4/4. Browser files are under /private/tmp/p79-result-layout-geometry
 and /private/tmp/p79-result-layout. The 640px fixture is not Windows 200% zoom or
 Narrator qualification. Native fixture and installed-path evidence remain pending.
+
+### Acceptance follow-up C — malformed composed sources fail closed (2026-10-03)
+
+P79-03's remaining source gap was CarePlan::build falling back to an empty plan;
+a malformed source could also disappear while another valid step stayed approved.
+Composition now distinguishes an actually empty eligible list from invalid prepared
+IDs/digests and a failed non-empty build. The existing typed source-unavailable
+error propagates without new wire fields or approval-policy changes. A temporary
+DB fixture with a valid source beside an empty ID or malformed digest failed at
+runtime before the fix and passes after it. Full service/core verification passed
+111 tests, all-target Clippy -D warnings and static 351 checks. The existing true
+empty-plan test still passes. No domain execution or owner-device mutation occurs.

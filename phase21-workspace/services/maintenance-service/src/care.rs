@@ -110,7 +110,7 @@ pub fn compose_plan(
     if candidates.len() > aethercore_care_orchestrator::MAX_CARE_STEPS {
         return Err(aethercore_care_orchestrator::CareError::SourceLimit);
     }
-    let steps = candidates
+    let steps: Vec<_> = candidates
         .into_iter()
         .filter_map(|plan| {
             classify(plan_kind_of(&plan)).map(|safety| CareStep {
@@ -123,10 +123,31 @@ pub fn compose_plan(
         })
         .collect();
 
-    Ok(CarePlan::build(steps).unwrap_or_else(|| CarePlan {
-        steps: Vec::new(),
-        plan_digest_sha256: empty_plan_digest(),
-    }))
+    if steps.is_empty() {
+        return Ok(CarePlan {
+            steps,
+            plan_digest_sha256: empty_plan_digest(),
+        });
+    }
+    if steps.iter().any(|step| {
+        step.domain_plan_id.trim().is_empty()
+            || step.domain_plan_digest.len() != 64
+            || !step
+                .domain_plan_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+    }) {
+        return Err(
+            aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(
+                "invalid prepared care source identity or digest".into(),
+            ),
+        );
+    }
+    CarePlan::build(steps).ok_or_else(|| {
+        aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(
+            "prepared care plan could not be built".into(),
+        )
+    })
 }
 
 /// How old a cleanup scan may be and still be prepared into a plan. A first bound, not a
@@ -920,6 +941,39 @@ pub(crate) fn status_proto(
 #[cfg(test)]
 mod dbt_p46_b33_tests {
     use super::*;
+
+    #[test]
+    fn malformed_prepared_source_is_an_error_not_an_empty_or_partial_care_plan() {
+        for (id, digest) in [("", "a".repeat(64)), ("malformed", "bad-digest".into())] {
+            let (db, path) = test_db();
+            for (id, digest) in [("valid", "b".repeat(64)), (id, digest)] {
+                db.insert_plan(
+                    &aethercore_persistence::PlanRecord {
+                        id: id.into(),
+                        owner_principal_key: "owner".into(),
+                        state: "ReadyForReview".into(),
+                        digest,
+                        immutable_json: "{\"kind\":\"deleteCleanupCandidate\"}".into(),
+                        title: String::new(),
+                        risk: "Amber".into(),
+                        created_unix_ms: 0,
+                        updated_unix_ms: 0,
+                    },
+                    "fixture",
+                )
+                .unwrap();
+            }
+            assert!(
+                matches!(
+                    compose_plan(&db, "owner"),
+                    Err(aethercore_care_orchestrator::CareError::PlanSourcesUnavailable(_))
+                ),
+                "invalid prepared material cannot disappear or approve a partial plan"
+            );
+            drop(db);
+            let _ = std::fs::remove_file(path);
+        }
+    }
 
     fn test_db() -> (Database, std::path::PathBuf) {
         let path =
