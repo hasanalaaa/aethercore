@@ -44,3 +44,10 @@ source. Before combining P80, the full 84-test UI suite and seven service Timeli
 independently (`/tmp/aethercore-p87-root-ui-tests.log`, `/tmp/aethercore-p87-root-rust-tests.log`).
 The combined source is checked again and must pass full GitHub/Windows CI at its exact head
 before integration. Native installed UI, human Narrator and hardware qualification remain open.
+
+The final combined source also retains the separately reviewed native Unix live-event fix.
+Root checks: all 107 affected IPC/service Rust tests pass, full UI88 passes, Svelte reports
+zero errors/warnings, production build passes, 351 static checks pass, and feature-enabled
+all-target IPC/service Clippy passes with warnings denied. Raw logs:
+`/tmp/aethercore-p87-ipc-timeline-{rust,ui,static,clippy}.log` and
+`/tmp/aethercore-p87-combined-ui-{check,build}.log`.
