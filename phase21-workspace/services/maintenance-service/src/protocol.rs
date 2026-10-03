@@ -785,14 +785,7 @@ pub(crate) fn diagnostics_snapshot_proto(v: DiagnosticsSnapshot) -> v1::Diagnost
 }
 
 fn coverage_proto(c: Coverage) -> v1::MeasurementCoverageInfo {
-    let availability = match c.availability {
-        Availability::Measured => v1::MeasurementAvailability::Measured,
-        Availability::NotMeasured => v1::MeasurementAvailability::NotMeasured,
-        Availability::Unsupported => v1::MeasurementAvailability::Unsupported,
-        Availability::Denied => v1::MeasurementAvailability::Denied,
-        Availability::Failed => v1::MeasurementAvailability::Failed,
-        Availability::Unknown => v1::MeasurementAvailability::Unknown,
-    };
+    let availability = measurement_availability(c.availability);
     v1::MeasurementCoverageInfo {
         source: c.source,
         has_observed_unix_ms: c.observed_unix_ms.is_some(),
@@ -801,6 +794,17 @@ fn coverage_proto(c: Coverage) -> v1::MeasurementCoverageInfo {
         window_days: c.window_days.unwrap_or_default(),
         availability: availability as i32,
         reason_key: c.reason_key,
+    }
+}
+
+fn measurement_availability(value: Availability) -> v1::MeasurementAvailability {
+    match value {
+        Availability::Measured => v1::MeasurementAvailability::Measured,
+        Availability::NotMeasured => v1::MeasurementAvailability::NotMeasured,
+        Availability::Unsupported => v1::MeasurementAvailability::Unsupported,
+        Availability::Denied => v1::MeasurementAvailability::Denied,
+        Availability::Failed => v1::MeasurementAvailability::Failed,
+        Availability::Unknown => v1::MeasurementAvailability::Unknown,
     }
 }
 
@@ -855,6 +859,34 @@ fn network_adapter_proto(a: NetworkAdapter) -> v1::NetworkAdapterInfo {
         connected: a.connected.unwrap_or_default(),
         has_is_virtual: a.is_virtual.is_some(),
         is_virtual: a.is_virtual.unwrap_or_default(),
+        has_admin_enabled: a.admin_enabled.is_some(),
+        admin_enabled: a.admin_enabled.unwrap_or_default(),
+        has_ipv4_apipa: a.ipv4_apipa.is_some(),
+        ipv4_apipa: a.ipv4_apipa.unwrap_or_default(),
+        has_default_route_v4: a.default_route_v4.is_some(),
+        default_route_v4: a.default_route_v4.unwrap_or_default(),
+        has_default_route_v6: a.default_route_v6.is_some(),
+        default_route_v6: a.default_route_v6.unwrap_or_default(),
+        counters: a.counters.map(network_counters_proto),
+        counter_delta: a.counter_delta.map(|delta| v1::NetworkCounterDeltaInfo {
+            elapsed_ms: delta.elapsed_ms.to_string(),
+            counts: Some(network_counters_proto(delta.counts)),
+        }),
+        counter_availability: measurement_availability(a.counter_availability) as i32,
+        route_availability: measurement_availability(a.route_availability) as i32,
+    }
+}
+
+fn network_counters_proto(
+    c: aethercore_diagnostic_engine::measurements::NetworkCounters,
+) -> v1::NetworkCountersInfo {
+    v1::NetworkCountersInfo {
+        in_octets: c.in_octets.to_string(),
+        out_octets: c.out_octets.to_string(),
+        in_errors: c.in_errors.to_string(),
+        out_errors: c.out_errors.to_string(),
+        in_discards: c.in_discards.to_string(),
+        out_discards: c.out_discards.to_string(),
     }
 }
 
@@ -1364,6 +1396,86 @@ pub(crate) fn remediation_plan_proto(
 #[cfg(test)]
 mod measurement_tests {
     use super::*;
+
+    #[test]
+    fn network_window_and_routes_reach_wire_without_losing_zero_or_u64_precision() {
+        use aethercore_diagnostic_engine::measurements::{NetworkCounterDelta, NetworkCounters};
+        let counts = NetworkCounters {
+            in_octets: u64::MAX,
+            ..Default::default()
+        };
+        let wire = serde_json::to_value(network_adapter_proto(NetworkAdapter {
+            admin_enabled: Some(false),
+            ipv4_apipa: Some(false),
+            default_route_v4: Some(false),
+            default_route_v6: Some(true),
+            counters: Some(counts),
+            counter_delta: Some(NetworkCounterDelta {
+                elapsed_ms: 1000,
+                counts,
+            }),
+            counter_availability: Availability::Measured,
+            route_availability: Availability::Measured,
+            ..Default::default()
+        }))
+        .unwrap();
+        assert_eq!(wire["counters"]["inOctets"], u64::MAX.to_string());
+        assert_eq!(wire["counters"]["outErrors"], "0");
+        assert_eq!(wire["counterDelta"]["elapsedMs"], "1000");
+        assert_eq!(wire["hasDefaultRouteV6"], true);
+        assert_eq!(wire["defaultRouteV6"], true);
+        assert_eq!(wire["hasAdminEnabled"], true);
+        assert_eq!(wire["adminEnabled"], false);
+        let absent =
+            serde_json::to_value(network_adapter_proto(NetworkAdapter::default())).unwrap();
+        assert!(absent["counters"].is_null());
+        assert_eq!(absent["hasDefaultRouteV6"], false);
+    }
+
+    #[test]
+    fn measured_network_wire_inventory_fits_the_existing_payload_budget() {
+        use aethercore_diagnostic_engine::measurements::{
+            MAX_NETWORK_ADAPTERS, NetworkCounterDelta, NetworkCounters,
+        };
+        let counts = NetworkCounters {
+            in_octets: u64::MAX,
+            out_octets: u64::MAX,
+            in_errors: u64::MAX,
+            out_errors: u64::MAX,
+            in_discards: u64::MAX,
+            out_discards: u64::MAX,
+        };
+        let snapshot = DiagnosticsSnapshot {
+            network_adapters: (0..MAX_NETWORK_ADAPTERS)
+                .map(|_| NetworkAdapter {
+                    stable_id: "12345678-1234-1234-1234-123456789abc".into(),
+                    display_name: "界".repeat(256),
+                    counters: Some(counts),
+                    counter_delta: Some(NetworkCounterDelta {
+                        elapsed_ms: u64::MAX,
+                        counts,
+                    }),
+                    counter_availability: Availability::Measured,
+                    route_availability: Availability::Measured,
+                    default_route_v4: Some(false),
+                    default_route_v6: Some(true),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let bytes = serde_json::to_vec(&diagnostics_snapshot_proto(snapshot)).unwrap();
+        assert!(
+            bytes.len() < 256 * 1024,
+            "actual wire payload: {} bytes",
+            bytes.len()
+        );
+        let restored: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            restored["networkAdapters"][127]["counterDelta"]["counts"]["inOctets"],
+            u64::MAX.to_string()
+        );
+    }
 
     // P80-02B: presence survives the service boundary. A zone that read 0 °C and a zone that
     // read nothing must not arrive looking the same.

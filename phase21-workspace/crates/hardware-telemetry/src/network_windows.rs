@@ -212,7 +212,7 @@ pub(crate) fn collect(control: &CollectorControl) -> Result<Vec<NetworkAdapter>>
             (true, 2) => Some(false),
             _ => None,
         };
-        output.ipv4_apipa = apipa(&buffer, adapter.FirstUnicastAddress).ok();
+        output.ipv4_apipa = Some(apipa(&buffer, adapter.FirstUnicastAddress)?);
         output.counters = read.then_some(NetworkCounters {
             in_octets: row.InOctets,
             out_octets: row.OutOctets,

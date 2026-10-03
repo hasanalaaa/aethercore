@@ -271,7 +271,12 @@ const diagnostics: DiagnosticsSnapshot = {
   boots: [fill<BootMeasurement>({ recordedUnixMs: NOW, hasDuration: true, durationMs: 41500, coverage: fill<MeasurementCoverage>({ source: 'Diagnostics-Performance', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }) })],
   networkAdapters: [fill<NetworkAdapterMeasurement>({
     stableId: '{6A1F0E52-77D2-4A1B-9C3E-5B0D8E2F4A19}', displayName: 'Intel(R) Wi-Fi 6E AX211 160MHz', hasLinkSpeed: false, linkSpeedBps: 0, hasOperationalStatus: true, operationalStatus: 2, hasConnected: false, connected: false, hasIsVirtual: true, isVirtual: false,
-    coverage: fill<MeasurementCoverage>({ source: 'MSFT_NetAdapter', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 2 }),
+    hasAdminEnabled: true, adminEnabled: false, hasIpv4Apipa: true, ipv4Apipa: false,
+    hasDefaultRouteV4: true, defaultRouteV4: false, hasDefaultRouteV6: true, defaultRouteV6: true,
+    counters: { inOctets: '18446744073709551615', outOctets: '0', inErrors: '0', outErrors: '0', inDiscards: '0', outDiscards: '0' },
+    counterDelta: { elapsedMs: '1000', counts: { inOctets: '0', outOctets: '0', inErrors: '0', outErrors: '0', inDiscards: '0', outDiscards: '0' } },
+    counterAvailability: 1, routeAvailability: 1,
+    coverage: fill<MeasurementCoverage>({ source: 'GetAdaptersAddresses/GetIfEntry2', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }),
   })],
 };
 

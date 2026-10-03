@@ -101,6 +101,48 @@ const OPER_STATUS: Record<number, MessageKey> = {
   7: 'measurement.network.status.lowerLayerDown',
 };
 
+const COUNTERS = ['inOctets', 'outOctets', 'inErrors', 'outErrors', 'inDiscards', 'outDiscards'] as const;
+function unsigned(value: unknown): bigint | null {
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,19})$/.test(value)) return null;
+  const number = BigInt(value);
+  return number <= 18446744073709551615n ? number : null;
+}
+function counterValues(value: unknown, locale: Locale): Record<string, string> | null {
+  if (!isRecord(value)) return null;
+  const result: Record<string, string> = {};
+  for (const field of COUNTERS) {
+    const number = unsigned(value[field]);
+    if (number === null) return null;
+    result[field] = new Intl.NumberFormat(locale === 'ar' ? 'ar-IQ-u-nu-latn' : 'en-US').format(number);
+  }
+  return result;
+}
+function networkMetrics(item: Loose, locale: Locale): string[] {
+  const notes: string[] = [];
+  if (typeof item.counterAvailability === 'number') {
+    const values = item.counterAvailability === 1 ? counterValues(item.counters, locale) : null;
+    notes.push(values ? td('measurement.network.cumulative', locale, values) : td('measurement.network.countersUnavailable', locale));
+    const delta = item.counterAvailability === 1 && isRecord(item.counterDelta) ? item.counterDelta : null;
+    const counts = delta ? counterValues(delta.counts, locale) : null;
+    const elapsed = unsigned(delta?.elapsedMs);
+    notes.push(counts && elapsed !== null && elapsed > 0n ? td('measurement.network.delta', locale, {
+      ...counts, window: new Intl.NumberFormat(locale === 'ar' ? 'ar-IQ-u-nu-latn' : 'en-US').format(elapsed),
+    }) : td('measurement.network.twoSamples', locale));
+  }
+  if (typeof item.routeAvailability === 'number') {
+    if (item.routeAvailability !== 1 || item.hasDefaultRouteV4 !== true || item.hasDefaultRouteV6 !== true)
+      notes.push(td('measurement.network.routesUnavailable', locale));
+    else {
+      if (item.defaultRouteV4 === true) notes.push(td('measurement.network.v4Default', locale));
+      if (item.defaultRouteV6 === true) notes.push(td('measurement.network.v6Default', locale));
+      if (item.defaultRouteV4 !== true && item.defaultRouteV6 !== true) notes.push(td('measurement.network.noDefault', locale));
+    }
+  }
+  if (item.hasAdminEnabled === true && item.adminEnabled === false) notes.push(td('measurement.network.adminDisabled', locale));
+  if (item.hasIpv4Apipa === true && item.ipv4Apipa === true) notes.push(td('measurement.network.apipa', locale));
+  return notes;
+}
+
 /**
  * One line per adapter: link speed as reported, and its state in words. A down link, an unplugged
  * cable and a virtual adapter are states of an adapter; none is read as "no internet". An
@@ -115,6 +157,7 @@ export function networkRows(items: readonly NetworkAdapterMeasurement[] | undefi
       status === null ? '' : td(OPER_STATUS[status] ?? 'measurement.network.status.unknown', locale),
       item.hasConnected === true ? td(item.connected === true ? 'measurement.network.mediaConnected' : 'measurement.network.mediaDisconnected', locale) : '',
       item.hasIsVirtual === true && item.isVirtual === true ? td('measurement.network.virtual', locale) : '',
+      ...networkMetrics(item, locale),
     ].filter(Boolean);
     return { ...frame(item, locale, text(item.displayName)), value, note: notes.join(' · ') || null };
   });

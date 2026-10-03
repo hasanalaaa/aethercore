@@ -96,6 +96,24 @@ message NetworkAdapterInfo {
   bool has_operational_status = 6; uint32 operational_status = 7;
   bool has_connected = 8; bool connected = 9;
   bool has_is_virtual = 10; bool is_virtual = 11;
+  bool has_admin_enabled = 12; bool admin_enabled = 13;
+  bool has_ipv4_apipa = 14; bool ipv4_apipa = 15;
+  bool has_default_route_v4 = 16; bool default_route_v4 = 17;
+  bool has_default_route_v6 = 18; bool default_route_v6 = 19;
+  NetworkCountersInfo counters = 20;
+  NetworkCounterDeltaInfo counter_delta = 21;
+  MeasurementAvailability counter_availability = 22;
+  MeasurementAvailability route_availability = 23;
+}
+// Exact decimal u64; the JSON bridge must not round these through JavaScript Number.
+message NetworkCountersInfo {
+  string in_octets = 1; string out_octets = 2;
+  string in_errors = 3; string out_errors = 4;
+  string in_discards = 5; string out_discards = 6;
+}
+message NetworkCounterDeltaInfo {
+  string elapsed_ms = 1;
+  NetworkCountersInfo counts = 2;
 }
 message StorageDeviceTelemetryInfo {
   string device_id = 1;
