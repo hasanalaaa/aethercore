@@ -22,6 +22,7 @@ use aethercore_hardware_telemetry::{
         Availability, Battery, BootRecord, Coverage, MAX_BATTERIES, MAX_NETWORK_ADAPTERS,
         MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped,
     },
+    same_counter_device,
 };
 // The service converts these to the wire and depends on this crate, not on the telemetry one.
 pub use aethercore_hardware_telemetry::measurements;
@@ -688,11 +689,15 @@ fn join_provider<T>(
 
 /// P81-03: says what changed for a disk since the owner's previous stored scan. Only the same
 /// disk is compared (`compare_counters` checks serial, bus and size); a missing or unreadable
-/// previous scan says nothing. No new persistence: it reads the snapshot the engine already keeps.
+/// previous scan says nothing. The engine's persisted scan interval bounds when storage was read:
+/// it must finish before the current interval starts. Undated, overlapping or reversed intervals,
+/// inconsistent journal metadata and ambiguous disk identities cannot establish a baseline.
 fn compare_with_previous_scan(
     db: &Database,
     owner_principal_key: &str,
     storage: &mut [StorageDeviceTelemetry],
+    started_unix_ms: i64,
+    observed_unix_ms: i64,
 ) {
     let Ok(Some(record)) = db.latest_diagnostic_snapshot_for_owner(owner_principal_key) else {
         return;
@@ -700,14 +705,36 @@ fn compare_with_previous_scan(
     let Ok(previous) = serde_json::from_str::<DiagnosticsSnapshot>(&record.snapshot_json) else {
         return;
     };
-    for device in storage.iter_mut().filter(|d| !d.serial_number.is_empty()) {
-        let serial = device.serial_number.clone();
-        for before in previous
+    if started_unix_ms <= 0
+        || observed_unix_ms < started_unix_ms
+        || previous.started_unix_ms <= 0
+        || previous.completed_unix_ms < previous.started_unix_ms
+        || previous.completed_unix_ms >= started_unix_ms
+        || !matches!(previous.state, ScanState::Ready | ScanState::Partial)
+        || record.state != previous.state.as_str()
+        || record.collected_unix_ms != previous.completed_unix_ms
+        || record.snapshot_id != previous.scan_id
+    {
+        return;
+    }
+    for index in 0..storage.len() {
+        let device = &storage[index];
+        if storage
+            .iter()
+            .filter(|other| same_counter_device(other, device))
+            .count()
+            != 1
+        {
+            continue;
+        }
+        let mut matches = previous
             .storage
             .iter()
-            .filter(|b| b.serial_number == serial)
+            .filter(|before| same_counter_device(before, device));
+        if let Some(before) = matches.next()
+            && matches.next().is_none()
         {
-            compare_counters(before, device);
+            compare_counters(before, &mut storage[index]);
         }
     }
 }
@@ -741,13 +768,9 @@ fn boot_records(boots: &[BootEvidence]) -> Vec<BootRecord> {
 
 fn run(inner: Arc<Inner>, owner_principal_key: String) {
     const PROVIDER_WATCHDOG: Duration = Duration::from_secs(10);
-    let scan_id = {
-        inner
-            .snapshot
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .scan_id
-            .clone()
+    let (scan_id, started_unix_ms) = {
+        let snapshot = inner.snapshot.lock().unwrap_or_else(|p| p.into_inner());
+        (snapshot.scan_id.clone(), snapshot.started_unix_ms)
     };
 
     let hardware_backend = inner.backend.clone();
@@ -813,7 +836,13 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
         .as_ref()
         .map(|h| h.storage.clone())
         .unwrap_or_default();
-    compare_with_previous_scan(&inner.db, &owner_principal_key, &mut storage);
+    compare_with_previous_scan(
+        &inner.db,
+        &owner_principal_key,
+        &mut storage,
+        started_unix_ms,
+        Utc::now().timestamp_millis(),
+    );
     let memory = hardware.as_ref().and_then(|h| h.memory.clone());
     let boots = crash
         .as_ref()
@@ -878,11 +907,7 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
     let mut snapshot = DiagnosticsSnapshot {
         scan_id: scan_id.clone(),
         state,
-        started_unix_ms: inner
-            .snapshot
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .started_unix_ms,
+        started_unix_ms,
         completed_unix_ms: completed,
         event_window_days,
         storage,
@@ -1266,6 +1291,141 @@ mod tests {
         );
         drop(e);
         drop(db);
+    }
+
+    #[test]
+    fn actual_scan_only_uses_an_ordered_unambiguous_owner_baseline() {
+        let now = Utc::now().timestamp_millis();
+        // Real persistence and the actual scan coordinator, not an alternate comparator.
+        for case in 0..14 {
+            let (db, _tmp) = db();
+            let disk = StorageDeviceTelemetry {
+                serial_number: "S1".into(),
+                bus_type: "SATA".into(),
+                size_bytes: 1_000,
+                reliability: aethercore_hardware_telemetry::StorageReliability {
+                    read_errors_uncorrected: Some(2),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut previous = DiagnosticsSnapshot {
+                scan_id: "baseline".into(),
+                state: ScanState::Ready,
+                started_unix_ms: now - 2_000,
+                completed_unix_ms: now - 1_000,
+                storage: vec![disk.clone()],
+                ..Default::default()
+            };
+            let mut current_disk = disk.clone();
+            current_disk.reliability.read_errors_uncorrected = Some(5);
+            let mut current_storage = vec![current_disk.clone()];
+            if case == 9 {
+                current_storage.push(current_disk);
+            }
+            match case {
+                1 => previous.started_unix_ms = 0,
+                2 => previous.completed_unix_ms = 0,
+                3 => previous.started_unix_ms = now,
+                4 => previous.completed_unix_ms = now + 60_000,
+                5 => previous.state = ScanState::Collecting,
+                6 => previous.state = ScanState::Failed,
+                7 => previous.storage.push(disk),
+                11 => previous.state = ScanState::Partial,
+                _ => {}
+            }
+            db.save_diagnostic_snapshot(&DiagnosticSnapshotRecord {
+                snapshot_id: if case == 13 {
+                    "different-row".into()
+                } else {
+                    previous.scan_id.clone()
+                },
+                owner_principal_key: if case == 10 {
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into()
+                } else {
+                    OWNER.into()
+                },
+                state: if case == 12 {
+                    "Failed".into()
+                } else {
+                    previous.state.as_str().into()
+                },
+                collected_unix_ms: previous.completed_unix_ms + i64::from(case == 8),
+                warning_count: 0,
+                snapshot_json: serde_json::to_string(&previous).unwrap(),
+            })
+            .unwrap();
+            let e = DiagnosticEngine::with_backend(
+                db.clone(),
+                Arc::new(Mock {
+                    h: HardwareTelemetrySnapshot {
+                        storage: current_storage,
+                        ..Default::default()
+                    },
+                    c: CrashDiagnosticsSnapshot::default(),
+                }),
+            );
+            start_scan_leased(&e, OWNER).unwrap();
+            let current = wait_for_scan(&e);
+            let growth = current.storage[0]
+                .reasons
+                .iter()
+                .any(|r| r.contains("more"));
+            assert_eq!(
+                growth,
+                matches!(case, 0 | 11),
+                "baseline case {case}: {:?}",
+                current.storage[0].reasons
+            );
+        }
+    }
+
+    #[test]
+    fn storage_observation_windows_must_be_positive_and_strictly_ordered() {
+        let (db, _tmp) = db();
+        let mut disk = StorageDeviceTelemetry {
+            serial_number: "S1".into(),
+            bus_type: "SATA".into(),
+            size_bytes: 1_000,
+            ..Default::default()
+        };
+        disk.reliability.read_errors_uncorrected = Some(2);
+        let previous = DiagnosticsSnapshot {
+            scan_id: "baseline".into(),
+            state: ScanState::Ready,
+            started_unix_ms: 10,
+            completed_unix_ms: 20,
+            storage: vec![disk.clone()],
+            ..Default::default()
+        };
+        db.save_diagnostic_snapshot(&DiagnosticSnapshotRecord {
+            snapshot_id: previous.scan_id.clone(),
+            owner_principal_key: OWNER.into(),
+            state: previous.state.as_str().into(),
+            collected_unix_ms: previous.completed_unix_ms,
+            warning_count: 0,
+            snapshot_json: serde_json::to_string(&previous).unwrap(),
+        })
+        .unwrap();
+        disk.reliability.read_errors_uncorrected = Some(5);
+        for (start, observed, comparable) in [
+            (0, 30, false),
+            (-1, 30, false),
+            (19, 30, false),
+            (20, 30, false),
+            (21, 20, false),
+            (21, 21, true),
+            (21, 30, true),
+        ] {
+            let mut storage = vec![disk.clone()];
+            compare_with_previous_scan(&db, OWNER, &mut storage, start, observed);
+            assert_eq!(
+                !storage[0].reasons.is_empty(),
+                comparable,
+                "window {start}..{observed}: {:?}",
+                storage[0].reasons
+            );
+        }
     }
     #[test]
     fn thermal_zones_reach_the_snapshot_and_a_cut_is_said() {

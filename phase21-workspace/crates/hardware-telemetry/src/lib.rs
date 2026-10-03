@@ -397,16 +397,36 @@ pub(crate) fn parse_predict_failure(bytes: &[u8]) -> Option<bool> {
     Some(u32::from_le_bytes(word) != 0)
 }
 
-/// Adds what changed since `previous` to `current.reasons`, for the same disk only (same serial,
-/// bus and size). A counter that went down is a reset or a replacement, not an improvement, and
-/// says nothing; a counter that could not be read on either side says nothing.
-pub fn compare_counters(previous: &StorageDeviceTelemetry, current: &mut StorageDeviceTelemetry) {
+/// Counter history needs a complete identity on both observations. Handle binding may tolerate
+/// an unavailable bus or size while validating an opened handle; a historical trend cannot.
+pub fn same_counter_device(
+    previous: &StorageDeviceTelemetry,
+    current: &StorageDeviceTelemetry,
+) -> bool {
     let same = |d: &StorageDeviceTelemetry| DiskIdentity {
         serial: d.serial_number.clone(),
         bus: d.bus_type.clone(),
         size_bytes: Some(d.size_bytes).filter(|size| *size > 0),
     };
-    if bind_handle(&same(previous), &same(current)) != HandleBinding::Confirmed {
+    let known_bus = |d: &StorageDeviceTelemetry| {
+        let bus = d.bus_type.trim();
+        !bus.is_empty()
+            && !bus.eq_ignore_ascii_case("Unknown")
+            && !bus.eq_ignore_ascii_case("BusType 0")
+    };
+    known_bus(previous)
+        && known_bus(current)
+        && previous.size_bytes > 0
+        && current.size_bytes > 0
+        && bind_handle(&same(previous), &same(current)) == HandleBinding::Confirmed
+}
+
+/// Adds what changed since `previous` to `current.reasons`, for the same disk only (same serial,
+/// bus and size). A counter that went down is a reset or a replacement, not an improvement, and
+/// says nothing; a counter that could not be read on either side says nothing. The caller must
+/// first establish documented, ordered observation windows; this function does no clock reading.
+pub fn compare_counters(previous: &StorageDeviceTelemetry, current: &mut StorageDeviceTelemetry) {
+    if !same_counter_device(previous, current) {
         return;
     }
     let (p, c) = (&previous.reliability, &current.reliability);
@@ -426,10 +446,17 @@ pub fn compare_counters(previous: &StorageDeviceTelemetry, current: &mut Storage
     ];
     let mut compared_nonzero = false;
     let mut grew = false;
+    // Missing supported observations, malformed reported NVMe values and resets cannot justify
+    // a sentence reassuring about all reported counters. Both sides absent means unsupported.
+    let mut incomplete = [&p.nvme_media_errors, &c.nvme_media_errors]
+        .iter()
+        .any(|v| v.is_some() && big(v).is_none());
     for (kind, before, now) in pairs {
         let (Some(before), Some(now)) = (before, now) else {
+            incomplete |= before.is_some() || now.is_some();
             continue;
         };
+        incomplete |= now < before;
         compared_nonzero |= now > 0;
         if now > before {
             grew = true;
@@ -443,7 +470,7 @@ pub fn compare_counters(previous: &StorageDeviceTelemetry, current: &mut Storage
             });
         }
     }
-    if compared_nonzero && !grew {
+    if compared_nonzero && !grew && !incomplete {
         current
             .reasons
             .push("No increase in the reported error counters since the previous scan.".into());
@@ -843,7 +870,7 @@ mod tests {
         reset.reliability.nvme_media_errors = Some("0".into());
         compare_counters(&before, &mut reset);
         assert!(
-            reset.reasons.iter().all(|r| !r.contains("more")),
+            reset.reasons.is_empty(),
             "a reset is not an improvement or a delta: {:?}",
             reset.reasons
         );
@@ -866,6 +893,68 @@ mod tests {
             "{:?}",
             unread.reasons
         );
+    }
+
+    #[test]
+    fn a_reset_or_missing_counter_cannot_reassure_about_the_other_counters() {
+        let mut before = disk("NVMe");
+        before.reliability.read_errors_uncorrected = Some(2);
+        before.reliability.write_errors_uncorrected = Some(4);
+        for read in [Some(1), None] {
+            let mut now = before.clone();
+            now.reliability.read_errors_uncorrected = read;
+            compare_counters(&before, &mut now);
+            assert!(now.reasons.is_empty(), "{:?}", now.reasons);
+        }
+        for malformed in ["invalid", "-1", "340282366920938463463374607431768211456"] {
+            let mut now = before.clone();
+            now.reliability.nvme_media_errors = Some(malformed.into());
+            compare_counters(&before, &mut now);
+            assert!(now.reasons.is_empty(), "{:?}", now.reasons);
+        }
+        let mut now = before.clone();
+        now.reliability.read_errors_uncorrected = Some(1);
+        now.reliability.write_errors_uncorrected = Some(7);
+        compare_counters(&before, &mut now);
+        assert_eq!(
+            now.reasons,
+            ["3 more uncorrected write error(s) than at the previous scan."]
+        );
+    }
+
+    #[test]
+    fn a_counter_trend_requires_complete_matching_disk_identity() {
+        let mut before = disk("NVMe");
+        before.reliability.read_errors_uncorrected = Some(2);
+        for field in 0..10 {
+            let mut before = before.clone();
+            let mut now = before.clone();
+            now.reliability.read_errors_uncorrected = Some(5);
+            match field {
+                0 => before.bus_type.clear(),
+                1 => now.bus_type.clear(),
+                2 => before.size_bytes = 0,
+                3 => now.size_bytes = 0,
+                4 => now.size_bytes += 1,
+                5 => now.serial_number = "another-disk".into(),
+                6 => before.bus_type = "Unknown".into(),
+                7 => {
+                    before.bus_type = "Unknown".into();
+                    now.bus_type = "Unknown".into();
+                }
+                8 => {
+                    before.bus_type = "BusType 0".into();
+                    now.bus_type = "BusType 0".into();
+                }
+                _ => now.serial_number.clear(),
+            }
+            compare_counters(&before, &mut now);
+            assert!(
+                now.reasons.is_empty(),
+                "identity case {field}: {:?}",
+                now.reasons
+            );
+        }
     }
 
     // P81-02: the NVMe health log, read for what it says.
