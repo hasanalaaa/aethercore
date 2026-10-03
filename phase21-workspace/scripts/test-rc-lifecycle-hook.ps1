@@ -6,7 +6,7 @@ $source=Join-Path $PSScriptRoot 'phase16-installer-lifecycle.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Lifecycle source did not parse.' }
-foreach ($name in @('Write-BlockedAcceptance','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart')) {
+foreach ($name in @('Run-Process','Write-BlockedAcceptance','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if (-not $definition) { if ($name -eq 'Invoke-InstalledAcceptanceWithRestart') { continue };throw "Actual hook missing: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))
@@ -14,7 +14,7 @@ foreach ($name in @('Write-BlockedAcceptance','Invoke-OrdinaryInstalledAcceptanc
 $acceptanceRoot=Join-Path ([IO.Path]::GetTempPath()) ('aethercore-rc-hook-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $acceptanceRoot | Out-Null
 $ExpectedSourceSha='a'*40;$ExpectedBundleSha256='b'*64
-$release=$acceptanceRoot;$packagedScript=Join-Path $acceptanceRoot 'fixture-probe.ps1'
+$release=$acceptanceRoot;$packagedScript=Join-Path $acceptanceRoot ('fixture-probe' + '.ps1')
 Set-Content $packagedScript '# temporary fixture; never executed'
 $fixtureOwners=@();$fixtureStartFails=$false;$fixtureTaskExit=0;$fixtureOwnershipReleased=$true
 $registered=0;$unregistered=0;$principalObserved=$null;$restartFixture=$false;$fixtureSid='S-1-5-21-1-2-3-1001';$fixtureOwnerChanges=$false;$probeCalls=0;$serviceCalls=[Collections.Generic.List[string]]::new();$taskCommands=[Collections.Generic.List[string]]::new()
@@ -51,8 +51,24 @@ function Get-Service { param($Name,$ErrorAction)
     $value|Add-Member ScriptMethod Dispose { }
     return $value
 }
+$processCalls=[Collections.Generic.List[object]]::new();$fixtureProcessExit=0
+function Start-Process { param([string]$FilePath,[string[]]$ArgumentList,[switch]$PassThru,[switch]$Wait)
+    $processCalls.Add(@{File=$FilePath;Arguments=@($ArgumentList);PassThru=[bool]$PassThru;Wait=[bool]$Wait})
+    return [pscustomobject]@{ExitCode=$fixtureProcessExit}
+}
 function Require([bool]$Value,[string]$Reason) { if (-not $Value) { throw $Reason } }
 try {
+    Run-Process 'fixture-setup.exe' @('/install','/quiet','/norestart') 'Fixture install'
+    Require ($processCalls.Count -eq 1 -and ($processCalls[0].Arguments -join ',') -eq '/install,/quiet,/norestart') 'Actual Run-Process lost its installer arguments.'
+    Require ($processCalls[0].File -eq 'fixture-setup.exe' -and $processCalls[0].Wait -and $processCalls[0].PassThru) 'Actual Run-Process lost synchronous process ownership.'
+    $fixtureProcessExit=3010
+    Run-Process 'msiexec.exe' @('/fa','"C:\fixture path\test.msi"','/qn','/norestart') 'Fixture repair'
+    Require (($processCalls[1].Arguments -join ',') -eq '/fa,"C:\fixture path\test.msi",/qn,/norestart') 'Actual Run-Process changed quoted MSI arguments.'
+    $fixtureProcessExit=1603
+    try { Run-Process 'fixture-setup.exe' @('/uninstall','/quiet') 'Fixture uninstall';throw 'Failed process accepted.' } catch {
+        Require ($_.Exception.Message -eq 'Fixture uninstall failed with exit code 1603.') 'Actual Run-Process lost exit failure or label.'
+    }
+    $fixtureProcessExit=0
     $acceptanceStillRunning=$false
     try { Invoke-OrdinaryInstalledAcceptance 'en';throw 'No desktop was accepted.' } catch {
         Require ($_.Exception.Message -match 'no unique explorer owner') 'Wrong rejection for absent desktop.'
@@ -112,5 +128,5 @@ try {
         Require ($_.Exception.Message -match 'budget expired before task start') 'Wrong exhausted deadline rejection.'
     }
     Require ($registered -eq $beforeExpired) 'Expired shared observer budget scheduled new work.'
-    Write-Output 'RC_HOOK_FIXTURES_PASS: missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline.'
+    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline.'
 } finally { Remove-Item $acceptanceRoot -Recurse -Force }

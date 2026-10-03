@@ -45,7 +45,7 @@ if ($InstalledAcceptanceScript) {
 $out=[IO.Path]::GetFullPath((Join-Path $Root $OutputPath));New-Item -ItemType Directory -Force (Split-Path $out -Parent)|Out-Null
 $steps=New-Object System.Collections.Generic.List[object]
 function Run-Step([string]$Name,[scriptblock]$Body){$t=[DateTimeOffset]::UtcNow;try{&$Body;$steps.Add([pscustomobject]@{name=$Name;ok=$true;started_utc=$t.ToString('o');finished_utc=[DateTimeOffset]::UtcNow.ToString('o')})}catch{$steps.Add([pscustomobject]@{name=$Name;ok=$false;error=$_.Exception.Message;started_utc=$t.ToString('o');finished_utc=[DateTimeOffset]::UtcNow.ToString('o')});throw}}
-function Run-Process([string]$File,[string[]]$Args,[string]$Label){$p=Start-Process $File -ArgumentList $Args -PassThru -Wait;if($p.ExitCode -notin @(0,3010)){throw "$Label failed with exit code $($p.ExitCode)."}}
+function Run-Process([string]$File,[string[]]$ProcessArgs,[string]$Label){$p=Start-Process $File -ArgumentList $ProcessArgs -PassThru -Wait;if($p.ExitCode -notin @(0,3010)){throw "$Label failed with exit code $($p.ExitCode)."}}
 function Write-BlockedAcceptance([string]$Path,[string]$Locale,[string]$Reason) {
     [ordered]@{schema='aethercore.p87-installed-acceptance.v1';source_commit=$ExpectedSourceSha;bundle_sha256=$ExpectedBundleSha256;locale=$Locale;ordinary_user=$false;cases=@();disposition='blocked';reason=$Reason} |
         ConvertTo-Json -Depth 6 | Set-Content $Path -Encoding utf8
