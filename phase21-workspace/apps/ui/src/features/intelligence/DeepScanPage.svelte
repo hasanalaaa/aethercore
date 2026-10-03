@@ -31,7 +31,8 @@
     };
   }
 
-  const gateFindings = (items: readonly PcFinding[]) => citedOnly<PcFinding>(items, evidenceFor);
+  // citedOnly adds a chip called evidence; preserve the typed facts before that decoration.
+  const gateFindings = (items: readonly PcFinding[]) => citedOnly(items.map((finding) => ({ ...finding, citedFacts: finding.evidence })), evidenceFor);
 
 
   type Filter = 'all' | 'drivers' | 'windows' | 'hardware' | 'storage' | 'performance' | 'startup' | 'cleanup' | 'diagnostics';
@@ -139,7 +140,7 @@
     <h2 id="deep-scan-live-findings-heading" class="result-heading">{t('deepScan.findingsDuringScan',locale)}</h2>
     <p class="sr-only" aria-live="polite" aria-atomic="true">{t('deepScan.findingsDiscovered',locale,{count:formatNumber(scan.findings.length,locale)})}</p>
     <div class="finding-list">
-      {#each liveGate.cited as finding (finding.id)}<FindingCard {finding} evidence={finding.evidence} {locale} />{/each}
+      {#each liveGate.cited as finding (finding.id)}<FindingCard finding={{...finding,evidence:finding.citedFacts}} evidence={finding.evidence} candidates={scan.remediationCandidates} {locale} />{/each}
     </div>
   </section>
 {/if}
@@ -184,16 +185,16 @@
     {#if needsAction.length}<h2 class="result-heading">{t('deepScan.group.needsAction',locale)}</h2>{/if}
     <div class="finding-list">
       {#each needsAction as finding (finding.id)}
-        <FindingCard {finding} evidence={finding.evidence} {locale} />
+        <FindingCard finding={{...finding,evidence:finding.citedFacts}} evidence={finding.evidence} candidates={scan.remediationCandidates} {locale} />
       {/each}
     </div>
     {#if recommended.length}<h2 class="result-heading">{t('deepScan.group.recommended',locale)}</h2>{/if}
     <div class="finding-list">
-      {#each recommended as finding (finding.id)}<FindingCard {finding} evidence={finding.evidence} {locale} />{/each}
+      {#each recommended as finding (finding.id)}<FindingCard finding={{...finding,evidence:finding.citedFacts}} evidence={finding.evidence} candidates={scan.remediationCandidates} {locale} />{/each}
     </div>
     {#if optional.length}<h2 class="result-heading">{t('deepScan.group.optional',locale)}</h2>{/if}
     <div class="finding-list">
-      {#each optional as finding (finding.id)}<FindingCard {finding} evidence={finding.evidence} {locale} />{/each}
+      {#each optional as finding (finding.id)}<FindingCard finding={{...finding,evidence:finding.citedFacts}} evidence={finding.evidence} candidates={scan.remediationCandidates} {locale} />{/each}
     </div>
   {/if}
 

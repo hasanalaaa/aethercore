@@ -139,7 +139,8 @@ async function main() {
       await settle();
     } else if (PAGE !== 'overview') {
       const reached = await evaluate(`(async () => {
-        const button = document.querySelector('button[data-nav-item][data-page=' + JSON.stringify(${JSON.stringify(PAGE)}) + ']');
+        const button = document.querySelector('button[data-nav-item][data-page=' + JSON.stringify(${JSON.stringify(PAGE)}) + ']')
+          ?? (${JSON.stringify(PAGE)} === 'deepScan' ? document.querySelector('.overview-header-side button.primary') : null);
         if (!button) return false;
         button.click();
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
