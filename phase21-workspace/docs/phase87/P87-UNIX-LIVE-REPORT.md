@@ -58,3 +58,9 @@ returned `linux`. Both assertions now compare against `std::env::consts::OS`; th
 availability and authorization assertions remain unchanged. This is a platform-specific test
 expectation correction, not a product fallback or removed assertion. Raw completed-job log:
 `/tmp/aethercore-unix-linux-job.txt`. Final-head Linux CI must pass after this correction.
+
+The next Ubuntu run `36995198898` at `c8bb088` passed transport (9), live/reset (2),
+service round-trip (1) and owner authorization (6). Feature-enabled Clippy then caught
+the helper for the macOS-only embedded-model test being compiled unused on Linux.
+The helper now uses the same macOS condition as its only caller, without suppressing
+warnings or removing tests. Raw log: `/tmp/aethercore-unix-linux-platform-job.txt`.

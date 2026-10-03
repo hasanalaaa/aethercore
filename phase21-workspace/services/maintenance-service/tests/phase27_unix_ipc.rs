@@ -389,6 +389,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
     matches!(hello2.payload, Some(server_frame::Payload::Hello(_)));
 }
 
+#[cfg(target_os = "macos")]
 fn list_insights_label(session: &mut aethercore_ipc::UnixSocketSession) -> String {
     let request = Request {
         header: Some(RequestHeader {
