@@ -463,8 +463,9 @@ fc03aa2e32649d8eafef17c7c875b162afa59ab303e0b36e546c88dc5ba9e908  apps/ui/src/fe
 9feb719f33745cdf44594c2c7442f0f1cc83e335348c38b6f57635cdf20855bc  apps/ui/src/features/overview/instrument.ts
 e3f3ffa5cc177332bceb3f35a20daa935223c36a98ea232d63d638cbc7ff6731  apps/ui/src/features/performance/PerformancePage.svelte
 5211e502db11ce2e643c3b5b078d13600a8c7e2f65a1ec48dc1e811a931e5fc5  apps/ui/src/features/performance/controller.ts
-843611728a19a42ceca3e8d2139c9d34c71ee694bc8840d1f39e14f2e8f6fef9  apps/ui/src/features/repair/RepairPage.svelte
-3189aed1dd8876fa5ac049b924cd524c1f7838bef220e79722270da96be89691  apps/ui/src/features/repair/controller.ts
+9b6b47c433eda57cd29d846d0fd0a1b2c2a2269cc4dee6c61337c9a16a6be322  apps/ui/src/features/repair/RepairPage.svelte
+8371359ba4bfb9898eb2312c5e33c8156b9c0b7fa15c7a80a635a1703dfc931f  apps/ui/src/features/repair/controller.ts
+043173a121ee7b57e33b61079a95a7a0dc002c21eb6e52e9c5854157ca8481c1  apps/ui/src/features/repair/elapsed.ts
 e163388d37c1ebd268c15c0cb536910da81009e7315cdfbea7dd92bb85fc99cc  apps/ui/src/features/repair/settle.ts
 fa3c929868d129f2cc86f4fab47c7ddbaf2a66853b3a87da893fcd26bcb47a64  apps/ui/src/features/settings/SettingsPage.svelte
 963ec8708e592796751aa9553e7f0084642b752f0e898a64ffd93ac1defed0f5  apps/ui/src/features/shared.ts
@@ -478,8 +479,8 @@ cb9c1f7d007f94288013c0d8c886ac2ee4542b2f1174defcd623b4887704ba02  apps/ui/src/fe
 8539c84043151decc14d05aba2dc6d8f173299d49693657e91af05b7cbcecf1d  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-367dfbbb352ef330f63c240129756f6c02fcad6dee6c1047761bf10b5d79df7f  apps/ui/src/lib/i18n/catalog.ar.ts
-61cee74f216123f89930b87be4011056ffac08141134e693f0b923899a633edc  apps/ui/src/lib/i18n/catalog.en.ts
+58f19ab53ce6ea8c8d99f88dc470c8ee2d3042af40ac9201da2067be3258f033  apps/ui/src/lib/i18n/catalog.ar.ts
+3b4d3d1fd1f4aacd3cd5e5b5039078b4bf6bf4f34003d75122062924a80c19ad  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 861d75f3596e142099802c67260c936723dcab045446c37bfd2c257d0e2339cd  apps/ui/src/lib/i18n/plurals.ar.ts
 132a089d249f086435a2c391863187ee056386bebc40c126354a954c64016c71  apps/ui/src/lib/i18n/plurals.en.ts
@@ -492,7 +493,7 @@ ba3972510ca9dd84627297c5916b4d1f60a4179a117835eb6c1637d3da7187c1  apps/ui/src/li
 123c1ae8eaa5cbfbd042b4ec94c15f230a31750a55b2d390f73ed4ddc4c19bee  apps/ui/src/platform/kernel-session.ts
 33962cf0e3f33216b239028a1deb13faef4be14bb3700732dfa6189b543a3eb4  apps/ui/src/platform/service-client.ts
 a1cd97164a1bbc7d304fa24bda0b0f0cc06409013c652e2a5291cf0b9f1b8eb2  apps/ui/src/platform/snapshot.ts
-52096832293c5dd131801d971bfd372fdc60e8db50ebbd94d746352a7607f411  apps/ui/src/platform/stream-state.ts
+fc4499bac9740bcb5fae8afdcd7ec4dd29b654d37cf25f20c29bdf44c70d478e  apps/ui/src/platform/stream-state.ts
 8c1c3ce69ef61e305af78b40f7f07ed1abbb1deaa8f468baeeb7341836c4de7f  apps/ui/src/platform/transport-contract.ts
 ae40092216d2521405970c8a28bbbe3a0e7baef56fae214b7bd83ef4122b0020  apps/ui/src/platform/transport-env.ts
 86f1fb3631fa8deb91daad6c4fcc2291f20856e00b59c27299aa131d13266192  apps/ui/src/platform/transport.ts
@@ -510,6 +511,7 @@ a4a092f82b169bb987ca5c82173a78e8c882c0adfb2a004912b360b4f4bef40b  apps/ui/tests/
 59e1b489beeb808d961b6e5db7d7d8e965921b6f9ecd92e912914c4c1a05dc7d  apps/ui/tests/navigation.test.ts
 8a4d470283f161bf1e62dd5c61a00799c3af75009ddf894d3642ca0f71f872c6  apps/ui/tests/network-measurements.test.ts
 156d1ed85f934e5d1ee8ab08feefecec7a53c06731c1cf17202090c9a2d05f16  apps/ui/tests/repair-progress.test.ts
+6fc698c3abb37b7c89848839bafe9a913db7be6a02f25aa449daae890b465e15  apps/ui/tests/repair-timing.test.ts
 ad27fd90c77735a5d42b830cb5c054712f94b6196fe611cdb2c62cdfb3803ee4  apps/ui/tests/resolve-ts.mjs
 8f2be496080aa6163ab1bff41de52c7a2b6e1f3415675ea6f9dbdab5c054912b  apps/ui/tests/timeline-text.test.ts
 d0cc7140c0d07e63960be82aa38617831944a01ce857a3c144a593a6ded3d69e  apps/ui/tests/wire-values.test.ts
@@ -1280,6 +1282,7 @@ d8b8e9b264e5ef77b2fe90324bbeeb123bb422876ac2c83fb4a528848e5c962d  docs/phase75/l
 6ef522fb2423c7cd13478f60622292a8daf74c9445724d4574e49ce16fa52cbe  docs/phase75/lanes/windows-smoke.md
 930ed05af5152f0c3ea383809bb5f397ec125d11765fb5d2122a50c6ca065763  docs/phase76/P76-REPORT.md
 5028a36a6940cb2222a7486508cc2378bb5cbde9ddf867bf090ed79c08b7150b  docs/phase77/P77-REPORT.md
+544407112bfa7b540d6ba1904da44c441601bb848420ea0fb56e4096e5d64ec7  docs/phase78/P78-REPAIR-TIMING.md
 27e0aeaf463cc827113ac5d704ad1d55a9296060c1c15274898e21424d6f3a1f  docs/phase78/P78-REPORT.md
 f7c9f56d8de338c5f5dfd9d0ff64ef6650dbad01c1f1eba4bcebd956c874c83a  docs/phase79/P79-REPORT.md
 306a2708ecb81270ff7f9a2c084c62b3cc6339016a8a4070fb785c7463d2fe64  docs/phase80/P80-REPORT.md

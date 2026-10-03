@@ -19,7 +19,8 @@ export async function startRepairAssessment(): Promise<void> {
   await runBusy(async () => {
     patchStreamState({ repairPlan: null, repairStatus: null });
     const answer = await serviceInvoke<RepairAssessment>('start_repair_assessment');
-    streamState.update((state) => ({ ...state, repairAssessment: settleAssessment(state.repairAssessment, answer) }));
+    streamState.update((state) => ({ ...state, repairAssessment: settleAssessment(state.repairAssessment, answer),
+      repairAssessmentObservedUnixMs: answer.assessmentId === state.repairAssessment.assessmentId ? state.repairAssessmentObservedUnixMs : 0 }));
   });
 }
 
@@ -29,7 +30,8 @@ export async function cancelRepairAssessment(): Promise<void> {
   try {
     const { assessmentId } = get(streamState).repairAssessment;
     const answer = await serviceInvoke<RepairAssessment>('cancel_repair_assessment', { assessmentId });
-    streamState.update((state) => ({ ...state, repairAssessment: settleAssessment(state.repairAssessment, answer) }));
+    streamState.update((state) => ({ ...state, repairAssessment: settleAssessment(state.repairAssessment, answer),
+      repairAssessmentObservedUnixMs: answer.assessmentId === state.repairAssessment.assessmentId ? state.repairAssessmentObservedUnixMs : 0 }));
   } catch {
     /* the stream still carries the running assessment; the next event settles it */
   }
