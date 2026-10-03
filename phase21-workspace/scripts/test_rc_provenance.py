@@ -7,6 +7,7 @@ These prove the gate's decisions, not a production signing qualification.
 from __future__ import annotations
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,10 @@ spec = importlib.util.spec_from_file_location('rc_provenance', SCRIPTS / 'rc-pro
 rc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rc)
 THUMB = 'A' * 40
+SURFACE_PAGES = {'hardware':'hardware','deep-scan':'deepScan','repair':'repair',
+                 'care':'activity','timeline':'activity','assistant':'activity'}
+SURFACE_SELECTORS = {'hardware':'.storage-grid','deep-scan':'.deep-scan-header','repair':'main',
+                     'care':'.care-panel','timeline':'.timeline-panel','assistant':'.assistant-drawer'}
 
 class PromotionTests(unittest.TestCase):
     @classmethod
@@ -88,9 +93,25 @@ class PromotionTests(unittest.TestCase):
         for locale in ['en','ar']:
             (base / (locale+'.witness.txt')).write_text('controlled portable witness')
             path=base / ('installed-' + locale + '.json'); self.installed.append(path)
+            surfaces = {}
+            for surface, page in SURFACE_PAGES.items():
+                witnesses = []
+                for role in ('runtime','accessibility','screenshot'):
+                    file=base / f'{locale}.{surface}.{role}'
+                    if role == 'runtime':
+                        rc.write_json(file, {'tauri':True,'locale':locale,'page':page,'selector':SURFACE_SELECTORS[surface], 'text':'Controlled portable rendered surface', 'service':{'connected':True}})
+                    elif role == 'accessibility':
+                        rc.write_json(file, {'nodes':[{'nodeId':'1','role':{'type':'role','value':'heading'},'name':{'type':'string','value':'Portable surface'}}]})
+                    else:
+                        # Format control only: never installed/UI qualification.
+                        file.write_bytes(b'\x89PNG\r\n\x1a\ncontrolled portable fixture')
+                    witnesses.append({'role':role,'path':file.name,'sha256':rc.digest(file)})
+                surfaces[surface] = witnesses
             rc.write_json(path, {'schema':'aethercore.p87-installed-acceptance.v1','source_commit':self.sha,'bundle_sha256':self.bundle,
-                'locale':locale,'read_only':False,'worker_ownership_released':True,'windows_build':26100,'windows_product_name':'Windows 11 Pro','product_type':'workstation','ordinary_user':True,'token':{'sid':'S-1-5-21-1-2-3-1001','elevated':False},
-                'cases':[{'id':name,'disposition':'passed','checks':{'terminal':True,'unavailable_provider':True,'reconnect':True,'restart':True,'no_op_explained':True},'witnesses':[{'path':locale+'.witness.txt','sha256':rc.digest(base / (locale+'.witness.txt'))}]} for name in rc.SYMPTOMS]})
+                'locale':locale,'ok':True,'desktop_closed':True,'restart_pending':False,'care_run_id':'11111111-2222-4333-8444-555555555555',
+                'surface_witnesses':surfaces,
+                'read_only':False,'worker_ownership_released':True,'windows_build':26100,'windows_product_name':'Windows 11 Pro','product_type':'workstation','ordinary_user':True,'token':{'sid':'S-1-5-21-1-2-3-1001','elevated':False},
+                'cases':[{'id':name,'disposition':'passed','checks':{'terminal':True,'progress':True,'unavailable_provider':True,'reconnect':True,'restart':True,'no_op_explained':True},'witnesses':[{'path':locale+'.witness.txt','sha256':rc.digest(base / (locale+'.witness.txt'))}]} for name in rc.SYMPTOMS]})
         rc.write_json(self.acceptance, {'schema':'aethercore.rc-acceptance.v1','source_commit':self.sha,'bundle_sha256':self.bundle,'provenance_sha256':self.receipt,'ok':True,
             'evidence':{path.name:rc.digest(path) for path in [self.lifecycle]+self.installed}})
         self.acceptance_hash = rc.digest(self.acceptance)
@@ -98,6 +119,20 @@ class PromotionTests(unittest.TestCase):
         return rc.verify(self.release, self.source, self.sha, THUMB, self.receipt, self.bundle)
     def promote(self):
         return rc.promote(self.release, self.source, self.sha, THUMB, self.receipt, self.bundle, self.acceptance, self.acceptance_hash)
+    def test_installed_selectors_match_actual_surface_source(self):
+        files = {'hardware':'features/diagnostics/HardwarePage.svelte',
+                 'deep-scan':'features/intelligence/DeepScanPage.svelte',
+                 'repair':'app/AppShell.svelte', 'care':'features/care/CarePanel.svelte',
+                 'timeline':'features/timeline/TimelinePage.svelte',
+                 'assistant':'features/assistant/AssistantDrawer.svelte'}
+        for surface, file in files.items():
+            text=(SCRIPTS.parent / 'apps/ui/src' / file).read_text(encoding='utf-8')
+            selector=rc.SURFACE_SELECTORS[surface]
+            if selector.startswith('.'):
+                classes={c for group in re.findall(r'class="([^"{}]+)"',text) for c in group.split()}
+                self.assertIn(selector[1:],classes,surface)
+            else:
+                self.assertRegex(text,rf'<{re.escape(selector)}\b')
     def test_exact_signed_bytes_can_promote(self):
         self.assertEqual(self.promote()['bundle_sha256'], self.bundle)
     def test_missing_receipt_blocks(self):
@@ -178,6 +213,17 @@ class PromotionTests(unittest.TestCase):
         with self.assertRaisesRegex(rc.Rejected,'runtime check'): self.promote()
     def test_missing_unavailable_provider_proof_blocks(self):
         self.missing_runtime_check('p76-repair-assessment-terminal','unavailable_provider')
+    def test_missing_assessment_progress_proof_blocks(self):
+        self.missing_runtime_check('p76-repair-assessment-terminal','progress')
+    def test_failed_or_incomplete_installed_receipt_does_not_promote(self):
+        original=rc.read_json(self.installed[0])
+        for fields in ({'ok':False},{'ok':None},{'blocked_reason':'Restart verification failed'},
+                       {'desktop_closed':False},{'restart_pending':True},{'care_run_id':'invalid'}):
+            with self.subTest(fields=fields):
+                rc.write_json(self.installed[0],dict(original,**fields))
+                accepted=rc.read_json(self.acceptance);accepted['evidence']['installed-en.json']=rc.digest(self.installed[0])
+                rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+                with self.assertRaisesRegex(rc.Rejected,'installed acceptance'): self.promote()
     def test_missing_care_restart_proof_blocks(self):
         self.missing_runtime_check('p76-care-timeline-persistence','restart')
     def test_missing_noop_explanation_blocks(self):
@@ -194,6 +240,70 @@ class PromotionTests(unittest.TestCase):
         self.signatures.stop()
         if sys.platform != 'win32':
             with self.assertRaisesRegex(rc.Rejected,'Windows'): self.verify()
+
+    def update_installed(self, doc):
+        rc.write_json(self.installed[0],doc)
+        accepted=rc.read_json(self.acceptance)
+        accepted['evidence']['installed-en.json']=rc.digest(self.installed[0])
+        rc.write_json(self.acceptance,accepted); self.acceptance_hash=rc.digest(self.acceptance)
+
+    def test_missing_surface_map_blocks(self):
+        doc=rc.read_json(self.installed[0]); del doc['surface_witnesses'];self.update_installed(doc)
+        with self.assertRaisesRegex(rc.Rejected,'surface'): self.promote()
+
+    def test_each_required_installed_surface_blocks_when_omitted(self):
+        original=rc.read_json(self.installed[0])
+        for surface in SURFACE_PAGES:
+            with self.subTest(surface=surface):
+                doc=json.loads(json.dumps(original));del doc['surface_witnesses'][surface];self.update_installed(doc)
+                with self.assertRaisesRegex(rc.Rejected,'surface'): self.promote()
+
+    def test_missing_or_duplicate_surface_roles_block(self):
+        original=rc.read_json(self.installed[0])
+        for role in ('runtime','accessibility','screenshot'):
+            for duplicate in (False,True):
+                with self.subTest(role=role,duplicate=duplicate):
+                    doc=json.loads(json.dumps(original));w=doc['surface_witnesses']['assistant']
+                    if duplicate: next(p for p in w if p['role']==role)['role']=next(p['role'] for p in w if p['role']!=role)
+                    else: w[:]=[p for p in w if p['role']!=role]
+                    self.update_installed(doc)
+                    with self.assertRaisesRegex(rc.Rejected,'surface'): self.promote()
+
+    def test_surface_runtime_must_be_actual_locale_page_and_connected(self):
+        original=rc.read_json(self.installed[0]);w=original['surface_witnesses']['assistant'][0]
+        file=self.acceptance.parent / w['path'];runtime=rc.read_json(file)
+        for fields in ({'tauri':False},{'locale':'ar'},{'page':'overview'},{'text':''},{'service':{'connected':False}}):
+            with self.subTest(fields=fields):
+                rc.write_json(file,dict(runtime,**fields))
+                doc=json.loads(json.dumps(original));doc['surface_witnesses']['assistant'][0]['sha256']=rc.digest(file);self.update_installed(doc)
+                with self.assertRaisesRegex(rc.Rejected,'surface runtime'): self.promote()
+
+    def test_surface_accessibility_requires_actual_nodes(self):
+        original=rc.read_json(self.installed[0]);file=self.acceptance.parent / original['surface_witnesses']['timeline'][1]['path']
+        for nodes in ([], 'fixture', [{}]):
+            with self.subTest(nodes=nodes):
+                rc.write_json(file,{'nodes':nodes});doc=json.loads(json.dumps(original))
+                doc['surface_witnesses']['timeline'][1]['sha256']=rc.digest(file);self.update_installed(doc)
+                with self.assertRaisesRegex(rc.Rejected,'surface accessibility'): self.promote()
+
+    def test_text_file_cannot_qualify_as_surface_screenshot(self):
+        doc=rc.read_json(self.installed[0]);w=doc['surface_witnesses']['deep-scan'][2]
+        file=self.acceptance.parent / w['path'];file.write_bytes(b'This is a screenshot')
+        w['sha256']=rc.digest(file);self.update_installed(doc)
+        with self.assertRaisesRegex(rc.Rejected,'surface screenshot'): self.promote()
+
+    def test_surface_witness_substitution_blocks(self):
+        doc=rc.read_json(self.installed[0]);w=doc['surface_witnesses']['hardware'][0]
+        (self.acceptance.parent / w['path']).write_bytes(b'replaced')
+        with self.assertRaisesRegex(rc.Rejected,'surface witness'): self.promote()
+
+    def test_care_capture_cannot_substitute_for_timeline_or_assistant(self):
+        original=rc.read_json(self.installed[0])
+        for surface in ('timeline','assistant'):
+            with self.subTest(surface=surface):
+                doc=json.loads(json.dumps(original));doc['surface_witnesses'][surface]=doc['surface_witnesses']['care']
+                self.update_installed(doc)
+                with self.assertRaisesRegex(rc.Rejected,'surface runtime'): self.promote()
 
 class SigningProtectionTests(unittest.TestCase):
     def setUp(self):

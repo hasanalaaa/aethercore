@@ -95,3 +95,16 @@ the real care_smoke reconnect/persisted-run helper (source handoff 4e1d549); the
 combined source seal/static gate and real signed installed qualification remain
 root-owned. Missing actual unavailable-provider or other runtime evidence still
 blocks promotion.
+
+## Paired source integration (2026-10-03)
+
+The integration now includes the actual installed producer, its actual-function
+controls and `care_smoke` exact-run reconnect/persistence helper. See
+`P87-INSTALLED-ACCEPTANCE.md` for the flow and ownership limits. The earlier
+missing-producer static-reference rejection above is a historical isolated-lane
+receipt, not a waived gate. Current integration repeats static validation and
+both source seals with the paired tracked files. Receipt validation additionally
+requires `ok=true`, no blocked reason, a closed desktop, no pending restart, a
+valid Care UUID and repair progress. Each required screen binds distinct typed
+runtime/accessibility/screenshot witnesses and its actual installed selector.
+Full native CI and real signed installed qualification remain separate gates.

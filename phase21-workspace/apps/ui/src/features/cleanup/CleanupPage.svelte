@@ -40,7 +40,7 @@
 
 {#if cleanupSnapshot.state === 'Ready'}
   {#if cleanupSnapshot.candidates.length === 0}<p>{t('cleanup.noEligible', locale)}</p>{/if}
-  <section class="cleanup-list">
+  <section class="cleanup-list" data-scan-id={cleanupSnapshot.scanId}>
     {#each cleanupSnapshot.candidates as candidate (candidate.candidateId)}
       <label class:explicit={candidate.requiresExplicitConfirmation} class="cleanup-card">
         <input type="checkbox" checked={!!cleanupSelected[candidate.candidateId]} onchange={(e) => toggleCleanup(candidate.candidateId, (e.currentTarget as HTMLInputElement).checked)}/><span class="cleanup-check"></span>

@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT / "scripts"))
-from gate_reader import module_text  # noqa: E402
+from gate_reader import contains, module_text  # noqa: E402
 
 # `DBT-P63-004`: the maintenance service router is a module tree now -
 # `router.rs` plus `router/*.rs`. These checks assert its verbs.
@@ -52,6 +52,31 @@ def catalog_keys(path: Path) -> set[str]:
     return set(re.findall(r"^\s*'([^']+)'\s*:", path.read_text(encoding="utf-8"), flags=re.M))
 
 
+def diagnostic_fault_contract(normalization: str, producer: str) -> bool:
+    return all(marker in normalization for marker in (
+        "FactPayload::HardwareDevice", "driver-install-journal", "InstalledDriverEvidence",
+    )) and all(contains(normalization, marker) for marker in (
+        'match fault.kind.as_str()', '"Timeout" => CollectorState::TimedOut',
+        '"Cancelled" => CollectorState::Cancelled', '"Unavailable" => CollectorState::Unavailable',
+        '"PermissionDenied" => CollectorState::PermissionDenied', '_ => CollectorState::Failed',
+    )) and all(contains(producer, marker) for marker in (
+        'kind: format!("{:?}", fault.kind)',
+        'TelemetryError::PermissionDenied(_) => FaultKind::PermissionDenied',
+        'CrashError::PermissionDenied(_) => FaultKind::PermissionDenied',
+    ))
+
+
+def remediation_description_keys(rules: str) -> set[str]:
+    body = rules.partition('pub fn remediation_candidates(')[2]
+    admitted = re.search(r'let\s+action_type\s*=\s*match\s+finding\.code\.as_str\(\)\s*\{(.*?)\n\s*\};', body, re.S)
+    if not admitted or not contains(admitted[1], '_ => continue') or not contains(body, 'description_key: format!("remediation.{}", finding.code.to_ascii_lowercase())'):
+        raise ValueError('unrecognized remediation admission/description contract')
+    codes = set(re.findall(r'"([A-Z0-9_]+)"', admitted[1]))
+    if not codes:
+        raise ValueError('no admitted remediation codes found')
+    return {'remediation.' + code.lower() for code in codes}
+
+
 required_files = [
     "crates/pc-intelligence/Cargo.toml",
     "crates/pc-intelligence/src/model.rs",
@@ -86,9 +111,11 @@ require_text("P17-STATIC-004C", "crates/pc-intelligence/src/coordinator.rs", [
     "recent_verified_driver_install_items_for_owner", "normalize::driver_change", "publish_interim_intelligence",
     "ScanMetrics", "record_stream_event", "persistence_write_count",
 ])
-require_text("P17-STATIC-004D", "crates/pc-intelligence/src/normalize.rs", [
-    "FactPayload::HardwareDevice", "driver-install-journal", "InstalledDriverEvidence", "FaultKind::PermissionDenied",
-])
+normalization = (ROOT / "crates/pc-intelligence/src/normalize.rs").read_text(encoding="utf-8")
+diagnostic_producer = (ROOT / "crates/diagnostic-engine/src/lib.rs").read_text(encoding="utf-8")
+add("P17-STATIC-004D", "PASS" if diagnostic_fault_contract(normalization, diagnostic_producer) else "FAIL",
+    "hardware/driver markers and typed permission-denial serialization/normalization contract",
+    ["crates/pc-intelligence/src/normalize.rs", "crates/diagnostic-engine/src/lib.rs"])
 rules_text = (ROOT / "crates/pc-intelligence/src/rules.rs").read_text(encoding="utf-8")
 rule_ids = sorted(set(re.findall(r'id:\s*"(P17-[A-Z]+-\d{3})"', rules_text)))
 corr_ids = [r for r in rule_ids if "CORR" in r]
@@ -132,14 +159,15 @@ for p in source_files:
     text = p.read_text(encoding="utf-8")
     used.update(re.findall(r"['\"]((?:deepScan|finding|remediation)\.[A-Za-z0-9_.-]+)['\"]", text))
 used.update(["nav.deepScan", "nav.deepScanDescription", "overview.intelligenceEyebrow", "overview.intelligenceTitle", "overview.intelligenceCopy", "overview.scanMyPc"])
-# generated remediation keys from executable finding codes
-finding_codes = set(re.findall(r'finding\(\s*fact,\s*"([A-Z0-9_]+)"', rules_text))
-for code in finding_codes:
-    if code in {"HIGH_MEMORY_PRESSURE"}:  # no remediation candidate is generated for this finding
-        continue
-    used.add("remediation." + code.lower())
+# Only the action admission match generates candidate descriptions. A finding
+# with remediation safety but no admitted action (thermal trip) generates none.
+remediation_error = ""
+try:
+    used.update(remediation_description_keys(rules_text))
+except ValueError as exc:
+    remediation_error = str(exc)
 missing_en, missing_ar = sorted(used - en), sorted(used - ar)
-add("P17-STATIC-015", "PASS" if parity and not missing_en and not missing_ar else "FAIL", f"catalog parity={parity}; phase keys={len(phase_keys)}; missing EN={missing_en}; missing AR={missing_ar}", [str(en_path.relative_to(ROOT)), str(ar_path.relative_to(ROOT))])
+add("P17-STATIC-015", "PASS" if parity and not missing_en and not missing_ar and not remediation_error else "FAIL", f"catalog parity={parity}; phase keys={len(phase_keys)}; missing EN={missing_en}; missing AR={missing_ar}; remediation contract={remediation_error or 'recognized'}", [str(en_path.relative_to(ROOT)), str(ar_path.relative_to(ROOT))])
 
 # SQLite migrations and FK behavior.
 try:

@@ -128,5 +128,24 @@ try {
         Require ($_.Exception.Message -match 'budget expired before task start') 'Wrong exhausted deadline rejection.'
     }
     Require ($registered -eq $beforeExpired) 'Expired shared observer budget scheduled new work.'
+    # Execute the actual encoded shell with an exit-only fixture, never a product probe.
+    # A child's explicit exit belongs to the called script; the observer needs that code.
+    function Observe-FixtureExit([string]$Command) {
+        $start=[Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
+        $start.UseShellExecute=$false
+        foreach ($argument in @('-NoProfile','-NonInteractive','-EncodedCommand',[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command)))) { $start.ArgumentList.Add($argument) }
+        $child=[Diagnostics.Process]::Start($start)
+        try {
+            Require ($child.WaitForExit(20000)) 'Exit-only fixture did not settle.'
+            return $child.ExitCode
+        } finally { $child.Dispose() }
+    }
+    Set-Content $packagedScript 'exit 1'
+    $actualCommand=$taskCommands[0]
+    $maskedCommand=$actualCommand.Replace('exit $LASTEXITCODE','exit 0')
+    Require ((Observe-FixtureExit $maskedCommand) -eq 0) 'Historical exit-masking control did not reproduce.'
+    Require ((Observe-FixtureExit $actualCommand) -eq 1) 'Actual observer shell lost the probe failure/pending exit.'
+    Set-Content $packagedScript 'exit 0'
+    Require ((Observe-FixtureExit $actualCommand) -eq 0) 'Actual observer shell changed a successful probe exit.'
     Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline.'
 } finally { Remove-Item $acceptanceRoot -Recurse -Force }

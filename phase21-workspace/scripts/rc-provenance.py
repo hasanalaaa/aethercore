@@ -26,6 +26,10 @@ LIFECYCLE = ('burn-install','installed-security-boundaries','program-data-preser
              'repair-closes-acl-drift','burn-uninstall','uninstall-clean-state','signed-upgrade-preserves-owner-data')
 PAYLOAD = ('aethercore-desktop', 'aethercore-maintenance-service', 'aethercore-consent-broker',
            'aethercore-update-broker', 'aethercore-install-hardener', 'aetherctl')
+SURFACE_PAGES = {'hardware':'hardware','deep-scan':'deepScan','repair':'repair',
+                 'care':'activity','timeline':'activity','assistant':'activity'}
+SURFACE_SELECTORS = {'hardware':'.storage-grid','deep-scan':'.deep-scan-header','repair':'main',
+                     'care':'.care-panel','timeline':'.timeline-panel','assistant':'.assistant-drawer'}
 
 class Rejected(ValueError): pass
 
@@ -167,6 +171,36 @@ def verify(release, source, sha, thumb, receipt_hash, bundle_hash):
     require(digest(release / names[-1]) == bundle_hash, 'bundle hash mismatch')
     return receipt
 
+def validate_surfaces(directory, doc, locale):
+    surfaces=doc.get('surface_witnesses',{})
+    require(isinstance(surfaces,dict) and set(surfaces) == set(SURFACE_PAGES), 'required installed surface omitted/extra')
+    for surface,page in SURFACE_PAGES.items():
+        witnesses=surfaces[surface]
+        require(isinstance(witnesses,list) and len(witnesses) == 3
+                and all(isinstance(w,dict) for w in witnesses)
+                and {w.get('role') for w in witnesses} == {'runtime','accessibility','screenshot'}
+                and len({w.get('path') for w in witnesses}) == 3, 'surface witness roles omitted/duplicated')
+        for witness in witnesses:
+            path=safe_path(directory,witness['path'])
+            require(digest(path) == witness['sha256'], 'surface witness hash mismatch')
+            if witness['role'] == 'runtime':
+                runtime=read_json(path)
+                require(isinstance(runtime,dict) and runtime.get('tauri') is True
+                        and runtime.get('locale') == locale and runtime.get('page') == page
+                        and runtime.get('selector') == SURFACE_SELECTORS[surface]
+                        and isinstance(runtime.get('text'),str) and runtime['text'].strip()
+                        and isinstance(runtime.get('service'),dict) and runtime['service'].get('connected') is True,
+                        'surface runtime is absent/disconnected or belongs to another locale/page')
+            elif witness['role'] == 'accessibility':
+                ax=read_json(path);nodes=ax.get('nodes') if isinstance(ax,dict) else None
+                require(isinstance(nodes,list) and nodes
+                        and all(isinstance(n,dict) and isinstance(n.get('nodeId'),str) and n['nodeId'] for n in nodes)
+                        and any(isinstance(n.get('role'),dict) and n['role'].get('value') for n in nodes),
+                        'surface accessibility nodes omitted/malformed')
+            else:
+                with path.open('rb') as stream:
+                    require(stream.read(8) == b'\x89PNG\r\n\x1a\n', 'surface screenshot is not PNG evidence')
+
 def validate_evidence(directory, evidence, sha, bundle_hash, version):
     require(set(evidence) == {'lifecycle.json','installed-en.json','installed-ar.json'}, 'required installed/lifecycle evidence omitted')
     for name, expected in evidence.items():
@@ -179,6 +213,9 @@ def validate_evidence(directory, evidence, sha, bundle_hash, version):
     for locale in ('en','ar'):
         doc=read_json(directory / ('installed-' + locale + '.json'))
         require(doc.get('schema') == 'aethercore.p87-installed-acceptance.v1' and doc.get('source_commit') == sha and doc.get('bundle_sha256') == bundle_hash and doc.get('locale') == locale, 'installed acceptance identity mismatch')
+        require(doc.get('ok') is True and 'blocked_reason' not in doc and doc.get('desktop_closed') is True
+                and doc.get('restart_pending') is False and re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',doc.get('care_run_id','')),
+                'installed acceptance failed or remains incomplete')
         require(doc.get('read_only') is False, 'read-only installed observation cannot qualify')
         require(doc.get('worker_ownership_released') is True, 'installed worker ownership was not released')
         require(isinstance(doc.get('windows_build'),int) and doc['windows_build'] >= 22000 and doc.get('product_type') == 'workstation' and 'Windows 11' in doc.get('windows_product_name',''), 'Windows 11 workstation acceptance required')
@@ -188,7 +225,7 @@ def validate_evidence(directory, evidence, sha, bundle_hash, version):
         require(len(cases) == len(SYMPTOMS) and {p.get('id') for p in cases} == set(SYMPTOMS) and all(p.get('disposition') == 'passed' for p in cases), 'required symptom was failed/skipped/blocked/omitted')
         for case in cases:
             required_checks = {
-                'p76-repair-assessment-terminal': ('terminal','unavailable_provider'),
+                'p76-repair-assessment-terminal': ('terminal','progress','unavailable_provider'),
                 'p76-care-timeline-persistence': ('reconnect','restart'),
                 'p76-care-eligibility-explanation': ('no_op_explained',),
             }.get(case['id'], ())
@@ -197,6 +234,7 @@ def validate_evidence(directory, evidence, sha, bundle_hash, version):
             require(witnesses, 'symptom raw witness omitted')
             for witness in witnesses:
                 require(digest(safe_path(directory,witness['path'])) == witness['sha256'], 'symptom witness hash mismatch')
+        validate_surfaces(directory,doc,locale)
 
 def accept(release, source, sha, thumb, receipt_hash, bundle_hash, directory):
     receipt=verify(release,source,sha,thumb,receipt_hash,bundle_hash)

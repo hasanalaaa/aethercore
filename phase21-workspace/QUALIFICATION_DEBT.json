@@ -342,6 +342,9 @@
    "subsystem": "macOS native performance telemetry provider (macos_impl.rs)",
    "windowsApiDependency": "n/a (unix provider)",
    "requiredNativeScenario": "Validate Mach host_statistics64/vm64/sysctl/proc_pidinfo collectors across Apple Silicon AND Intel Macs, multiple macOS majors, and under heavy load / low-memory conditions; confirm tick-delta correctness across sleep/wake.",
+   "expectedEvidence": "Per-host receipts identify architecture, macOS build and load/sleep-wake scenario, cross-check CPU tick deltas and memory/process readings against OS observations, and retain structurally valid sampled aggregates/findings with explicit unavailable/degraded collectors. Existing Apple Silicon evidence alone does not qualify the Intel or macOS-version matrix.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "On each matrix Mac: cargo test --locked -p aethercore-performance-telemetry --test native_providers --test phase27_real_sample. Existing real_macos_sample_is_normalized_and_honestly_degraded and real_sampler_aggregate_analyze_pipeline_is_wellformed hooks cover host-local sample/structure only; manual load, low-memory and sleep/wake receipts remain required per docs/phase27/ARCHITECTURE.md sections 1.1, 4 and 7.",
    "status": "open",
    "notes": "Validated on this Apple Silicon host only (P27). Intel + macOS-version spread deferred to P28+ qualification."
   },
@@ -350,6 +353,9 @@
    "subsystem": "Linux native performance telemetry provider (linux_impl.rs)",
    "windowsApiDependency": "n/a (unix provider)",
    "requiredNativeScenario": "Run the /proc-based provider across a kernel-version matrix (LTS bounds) and representative distros; verify parser tolerance to layout drift (diskstats fields added by newer kernels), cgroup-v2 memory accounting deltas, and thermal-zone absence paths.",
+   "expectedEvidence": "Per-kernel/distro native receipts retain raw /proc and thermal-source observations, demonstrate bounded CPU/memory readings and parser behavior across diskstats layouts, and record typed absence/failure without invented measurements. Compare cgroup-v2 accounting scope and document unsupported container limits explicitly; storage queue proxies remain Degraded. Fixture or single-host success alone does not qualify the live matrix.",
+   "severityIfUnqualified": "High",
+   "qualificationHook": "On each matrix Linux host: cargo test --locked -p aethercore-performance-telemetry --test native_providers (real_linux_sample_is_normalized and linux_parsers fixtures). These existing hooks do not automate the kernel/distro, cgroup-v2 or absent-thermal matrix; capture those native scenarios separately per docs/phase27/ARCHITECTURE.md sections 1.2 and 7, retaining the QD-026-002 proxy limitation.",
    "status": "open",
    "notes": "Proven via fixture tests on macOS; live Linux validation requires real hardware. QD-026-002 notes refined in docs/phase27: storage queue metrics are proxies and stay Degraded."
   },

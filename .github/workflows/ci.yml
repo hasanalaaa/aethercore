@@ -182,6 +182,14 @@ jobs:
       # hashes the WORKING TREE, so a checkout that rewrote line endings fails it.
       - name: Delivered source seal
         run: python scripts/source_seal.py
+      - name: Installed acceptance and signed RC rejection controls
+        shell: pwsh
+        run: |
+          ./scripts/p87-installed-acceptance.ps1 -SelfTest
+          ./scripts/test-p87-installed-acceptance.ps1
+          ./scripts/test-rc-lifecycle-hook.ps1
+          python scripts/test_rc_provenance.py
+          if ($LASTEXITCODE -ne 0) { throw 'Signed RC rejection controls failed.' }
       - name: Verify approved dependency freeze
         shell: pwsh
         run: ./scripts/freeze-dependencies.ps1 -VerifyOnly
@@ -317,7 +325,7 @@ jobs:
                    scripts/test_source_seal.py scripts/test_windows_server_support.py \
                    scripts/test-phase12-localization.py scripts/ps_marker_scan.py \
                    scripts/test_ci_windows_already_tested.py \
-                   scripts/test_bootstrap_pwsh.py; do
+                   scripts/test_bootstrap_pwsh.py scripts/test_rc_provenance.py; do
             echo "== $t"
             python3 "$t"
           done

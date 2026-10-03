@@ -73,7 +73,7 @@
     <button use:fluidPress={{ pressedScale:0.985 }} class="primary" onclick={() => startDiagnosticsScan('hardware')} disabled={busy || !snapshot.connected}>{t('hardware.collect',locale)}</button>
   </EmptyState></section>
 {:else}
-  <section class="storage-grid">
+  <section class="storage-grid" data-scan-id={diagnostics.scanId}>
     {#each diagnostics.storage as disk (disk.deviceId)}
       <article class="storage-card" class:attention={disk.severity === 'Attention'} class:critical={disk.severity === 'ActionRequired'}>
         <div class="storage-head"><div><p class="eyebrow"><TechnicalText value={`${disk.busType} · ${disk.mediaType}`}/></p><h3>{#if disk.friendlyName === 'Physical disk' || !disk.friendlyName}{t('tech.card.storagePhysical',locale)} {#if disk.deviceId}<TechnicalText value={disk.deviceId}/>{/if}{:else}<TechnicalText value={disk.friendlyName}/>{/if}</h3><LocalizedOwnedText value={disk.summary} {locale} as="p"/></div><span class="diagnostic-severity">{localizeSeverity(disk.severity,locale)}</span></div>

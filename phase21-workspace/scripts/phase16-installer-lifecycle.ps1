@@ -69,7 +69,7 @@ function Invoke-OrdinaryInstalledAcceptance([string]$Locale,[string]$VerifyCareR
     $acl.SetAccessRule($rule);Set-Acl $acceptanceRoot $acl
     $quote={param($value) "'" + ($value -replace "'","''") + "'"}
     $verifyArgument=if ($VerifyCareRunId) { ' -VerifyCareRunId ' + (& $quote $VerifyCareRunId) } else { '' }
-    $command="`$ErrorActionPreference='Stop'; try { & $(& $quote $packagedScript) -ReleaseRoot $(& $quote $release) -ExpectedSourceSha $(& $quote $ExpectedSourceSha) -ExpectedBundleSha256 $(& $quote $ExpectedBundleSha256) -Locale $(& $quote $Locale) -OutputPath $(& $quote $output) -TimeoutSeconds 300 -AcknowledgeDisposableMachine$verifyArgument; exit 0 } catch { exit 1 }"
+    $command="`$ErrorActionPreference='Stop'; try { & $(& $quote $packagedScript) -ReleaseRoot $(& $quote $release) -ExpectedSourceSha $(& $quote $ExpectedSourceSha) -ExpectedBundleSha256 $(& $quote $ExpectedBundleSha256) -Locale $(& $quote $Locale) -OutputPath $(& $quote $output) -TimeoutSeconds 300 -AcknowledgeDisposableMachine$verifyArgument; exit `$LASTEXITCODE } catch { exit 1 }"
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $name='AetherCore-RC-Acceptance-' + [Guid]::NewGuid().ToString('N')
     $action=New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument "-NoProfile -NonInteractive -EncodedCommand $encoded" -WorkingDirectory $release

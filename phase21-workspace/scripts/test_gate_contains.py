@@ -23,8 +23,10 @@ Run: `python3 scripts/test_gate_contains.py`
 """
 from __future__ import annotations
 
+import ast
 import contextlib
 import io
+import re
 import sys
 from pathlib import Path
 
@@ -58,6 +60,18 @@ def run_gate(filename: str) -> dict:
         pass
     finally:
         sys.argv = argv
+    return namespace
+
+
+def phase17_predicates() -> dict:
+    """Load the real static predicates without running the audit's Rust/UI commands."""
+    path = ROOT / "scripts" / "phase17-intelligence-audit.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = {"diagnostic_fault_contract", "remediation_description_keys"}
+    definitions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
+    assert {node.name for node in definitions} == names
+    namespace = {"re": re, "contains": contains}
+    exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), "exec"), namespace)
     return namespace
 
 
@@ -156,6 +170,48 @@ def main() -> int:
     expect("P85 LimitAccess disabled", limited_dism(win, api.replace("1, // TRUE: LimitAccess", "0, // TRUE: LimitAccess")), False)
     expect("P85 missing DISM cancel event", limited_dism(win, api.replace("watcher.event()", "0")), False)
     expect("P85 missing durable mutation barrier", limited_dism(win.replace("begin_mutation()?", ""), api), False)
+
+    # Phase17: the serialized collector kind is matched by its explicit Debug name;
+    # remediation descriptions exist only for codes admitted by the action match.
+    predicates = phase17_predicates()
+    normalization = read("crates/pc-intelligence/src/normalize.rs")
+    typed_faults = predicates["diagnostic_fault_contract"]
+    expect("P17 actual producer-to-normalizer fault contract", typed_faults(normalization, diag), True)
+    for token in ('"PermissionDenied" => CollectorState::PermissionDenied',
+                  '_ => CollectorState::Failed'):
+        assert token in normalization
+        expect(f"P17 removed normalizer {token}", typed_faults(normalization.replace(token, "", 1), diag), False)
+    expect("P17 permission denial incorrectly normalized as failure",
+           typed_faults(normalization.replace('"PermissionDenied" => CollectorState::PermissionDenied',
+                                              '"PermissionDenied" => CollectorState::Failed'), diag), False)
+    for token in ('kind: format!("{:?}", fault.kind)',
+                  'TelemetryError::PermissionDenied(_) => FaultKind::PermissionDenied',
+                  'CrashError::PermissionDenied(_) => FaultKind::PermissionDenied'):
+        assert token in diag
+        expect(f"P17 removed typed producer {token}", typed_faults(normalization, diag.replace(token, "")), False)
+    rules = read("crates/pc-intelligence/src/rules.rs")
+    descriptions = predicates["remediation_description_keys"]
+    keys = descriptions(rules)
+    en = set(re.findall(r"^\s*'([^']+)'\s*:", read("apps/ui/src/lib/i18n/catalog.en.ts"), re.M))
+    ar = set(re.findall(r"^\s*'([^']+)'\s*:", read("apps/ui/src/lib/i18n/catalog.ar.ts"), re.M))
+    expect("P17 actual generated candidate descriptions localized", keys <= en and keys <= ar, True)
+    expect("P17 thermal finding without a candidate emits no remediation description",
+           "remediation.thermal_trip_exceeded" in keys, False)
+    marker = '"RECENT_CRASH_EVIDENCE" => ActionType::ReviewCrashEvidence,'
+    assert marker in rules
+    admitted = rules.replace(marker, '"THERMAL_TRIP_EXCEEDED" => ActionType::ReviewHardwareError,\n' + marker, 1)
+    newly_required = descriptions(admitted)
+    expect("P17 actually admitted thermal action requires its missing EN/AR key",
+           newly_required <= en and newly_required <= ar, False)
+    expect("P17 removed actual candidate catalog key detected",
+           keys <= (en - {"remediation.storage_attention"}) and keys <= ar, False)
+    rejected = False
+    try:
+        descriptions(rules.replace('description_key: format!("remediation.{}", finding.code.to_ascii_lowercase())',
+                                   'description_key: "unchecked".into()'))
+    except ValueError:
+        rejected = True
+    expect("P17 unrecognized generated-description shape fails closed", rejected, True)
 
     print()
     if failures:
