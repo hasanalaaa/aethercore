@@ -1002,6 +1002,7 @@ export const enCatalog = {
   'measurement.availability.unknown': 'Unknown',
   'measurement.thermal.critical': 'Rated critical: {value}',
   'measurement.thermal.highest': 'Highest observed: {value}',
+  'measurement.unit.relative': '{value} relative units',
   'measurement.battery.design': 'Design capacity: {value}',
   'measurement.battery.cycles': '{count} charge cycles',
   'measurement.unit.mwh': '{value} mWh',

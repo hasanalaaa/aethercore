@@ -62,6 +62,11 @@ pub struct Battery {
     /// What the battery was built for, kept apart from what it holds now.
     pub design_capacity_mwh: Option<u64>,
     pub full_charge_capacity_mwh: Option<u64>,
+    /// Undefined relative units reported by BATTERY_CAPACITY_RELATIVE; never mWh.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub design_capacity_relative: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub full_charge_capacity_relative: Option<u32>,
     pub cycle_count: Option<u32>,
     pub coverage: Coverage,
 }

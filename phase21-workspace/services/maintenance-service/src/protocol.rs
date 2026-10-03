@@ -831,6 +831,10 @@ fn battery_proto(b: Battery) -> v1::BatteryInfo {
         design_capacity_mwh: b.design_capacity_mwh.unwrap_or_default(),
         has_full_charge_capacity: b.full_charge_capacity_mwh.is_some(),
         full_charge_capacity_mwh: b.full_charge_capacity_mwh.unwrap_or_default(),
+        has_design_capacity_relative: b.design_capacity_relative.is_some(),
+        design_capacity_relative: b.design_capacity_relative.unwrap_or_default(),
+        has_full_charge_capacity_relative: b.full_charge_capacity_relative.is_some(),
+        full_charge_capacity_relative: b.full_charge_capacity_relative.unwrap_or_default(),
         has_cycle_count: b.cycle_count.is_some(),
         cycle_count: b.cycle_count.unwrap_or_default(),
         coverage: Some(coverage_proto(b.coverage)),
@@ -1475,6 +1479,24 @@ mod measurement_tests {
             restored["networkAdapters"][127]["counterDelta"]["counts"]["inOctets"],
             u64::MAX.to_string()
         );
+    }
+
+    #[test]
+    fn relative_battery_wire_values_keep_their_unit_and_missing_capacity_flags() {
+        let wire = battery_proto(Battery {
+            design_capacity_relative: Some(100),
+            full_charge_capacity_relative: Some(87),
+            ..Default::default()
+        });
+        let json = serde_json::to_value(wire).unwrap();
+        assert_eq!(json["hasDesignCapacityRelative"], true);
+        assert_eq!(json["designCapacityRelative"], 100);
+        assert_eq!(json["hasFullChargeCapacityRelative"], true);
+        assert_eq!(json["fullChargeCapacityRelative"], 87);
+        assert_eq!(json["hasDesignCapacity"], false);
+        assert_eq!(json["hasFullChargeCapacity"], false);
+        let absent = battery_proto(Battery::default());
+        assert!(!absent.has_design_capacity_relative && !absent.has_full_charge_capacity_relative);
     }
 
     // P80-02B: presence survives the service boundary. A zone that read 0 °C and a zone that

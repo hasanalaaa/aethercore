@@ -71,14 +71,21 @@ export function thermalRows(items: readonly ThermalZoneMeasurement[] | undefined
 export function batteryRows(items: readonly BatteryMeasurement[] | undefined, locale: Locale): MeasurementRow[] {
   const mwh = (value: number) => td('measurement.unit.mwh', locale, { value: formatNumber(value, locale) });
   return rows(items, locale, (item) => {
-    const full = read(item, 'hasFullChargeCapacity', 'fullChargeCapacityMwh');
-    const design = read(item, 'hasDesignCapacity', 'designCapacityMwh');
+    const relative = item.hasDesignCapacityRelative === true || item.hasFullChargeCapacityRelative === true;
+    const conflict = relative && (item.hasDesignCapacity === true || item.hasFullChargeCapacity === true);
+    const capacity = (has: string, field: string): number | null => {
+      const value = read(item, has, field);
+      return value !== null && Number.isInteger(value) && value > 0 && value <= 4294967295 ? value : null;
+    };
+    const full = conflict ? null : relative ? capacity('hasFullChargeCapacityRelative', 'fullChargeCapacityRelative') : read(item, 'hasFullChargeCapacity', 'fullChargeCapacityMwh');
+    const design = conflict ? null : relative ? capacity('hasDesignCapacityRelative', 'designCapacityRelative') : read(item, 'hasDesignCapacity', 'designCapacityMwh');
+    const unit = relative ? (value: number) => td('measurement.unit.relative', locale, { value: formatNumber(value, locale) }) : mwh;
     const cycles = read(item, 'hasCycleCount', 'cycleCount');
     const notes = [
-      design === null ? '' : td('measurement.battery.design', locale, { value: mwh(design) }),
+      design === null ? '' : td('measurement.battery.design', locale, { value: unit(design) }),
       cycles === null ? '' : td('measurement.battery.cycles', locale, { count: formatNumber(cycles, locale) }),
     ].filter(Boolean);
-    return { ...frame(item, locale, text(item.displayName)), value: full === null ? null : mwh(full), note: notes.join(' · ') || null };
+    return { ...frame(item, locale, text(item.displayName)), value: full === null ? null : unit(full), note: notes.join(' · ') || null };
   });
 }
 

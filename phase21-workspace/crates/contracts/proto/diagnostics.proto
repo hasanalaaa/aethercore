@@ -81,6 +81,9 @@ message BatteryInfo {
   bool has_full_charge_capacity = 5; uint64 full_charge_capacity_mwh = 6;
   bool has_cycle_count = 7; uint32 cycle_count = 8;
   MeasurementCoverageInfo coverage = 9;
+  // Undefined relative units are retained separately; never converted to mWh.
+  bool has_design_capacity_relative = 10; uint32 design_capacity_relative = 11;
+  bool has_full_charge_capacity_relative = 12; uint32 full_charge_capacity_relative = 13;
 }
 message BootRecordInfo {
   int64 recorded_unix_ms = 1;

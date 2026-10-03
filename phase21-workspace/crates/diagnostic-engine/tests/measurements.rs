@@ -222,3 +222,19 @@ fn measured_iphelper_inventory_at_its_cap_preserves_exact_u64_and_the_snapshot_b
     );
     assert_eq!(restored.network_adapters[0].default_route_v6, Some(true));
 }
+
+#[test]
+fn relative_battery_capacity_persists_without_acquiring_an_absolute_unit() {
+    let battery = Battery {
+        design_capacity_relative: Some(100),
+        full_charge_capacity_relative: Some(87),
+        ..Default::default()
+    };
+    let restored: Battery = serde_json::from_slice(&serde_json::to_vec(&battery).unwrap()).unwrap();
+    assert_eq!(restored, battery);
+    assert_eq!(restored.design_capacity_mwh, None);
+    assert_eq!(restored.full_charge_capacity_mwh, None);
+    let legacy: Battery = serde_json::from_str("{}").unwrap();
+    assert_eq!(legacy.design_capacity_relative, None);
+    assert_eq!(legacy.full_charge_capacity_relative, None);
+}

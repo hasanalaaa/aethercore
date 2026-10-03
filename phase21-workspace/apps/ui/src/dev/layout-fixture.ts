@@ -267,6 +267,11 @@ const diagnostics: DiagnosticsSnapshot = {
   batteries: [fill<BatteryMeasurement>({
     stableId: 'BAT0', displayName: 'DELL 0KJ7NC Li-ion battery', hasDesignCapacity: true, designCapacityMwh: 56000, hasFullChargeCapacity: true, fullChargeCapacityMwh: 41000,
     hasCycleCount: false, cycleCount: 0, coverage: fill<MeasurementCoverage>({ source: 'Windows battery IOCTL', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }),
+  }), fill<BatteryMeasurement>({
+    stableId: 'BAT1', displayName: 'Relative-capacity battery', hasDesignCapacity: false, designCapacityMwh: 0,
+    hasFullChargeCapacity: false, fullChargeCapacityMwh: 0, hasCycleCount: true, cycleCount: 5,
+    hasDesignCapacityRelative: true, designCapacityRelative: 100, hasFullChargeCapacityRelative: true, fullChargeCapacityRelative: 87,
+    coverage: fill<MeasurementCoverage>({ source: 'IOCTL_BATTERY_QUERY_INFORMATION', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }),
   })],
   boots: [fill<BootMeasurement>({ recordedUnixMs: NOW, hasDuration: true, durationMs: 41500, coverage: fill<MeasurementCoverage>({ source: 'Diagnostics-Performance', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }) })],
   networkAdapters: [fill<NetworkAdapterMeasurement>({

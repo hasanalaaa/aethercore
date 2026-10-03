@@ -1004,6 +1004,7 @@ export const arCatalog = {
   'measurement.availability.unknown': 'غير معروف',
   'measurement.thermal.critical': 'الحد الحرج المصنّف: {value}',
   'measurement.thermal.highest': 'أعلى قراءة مرصودة: {value}',
+  'measurement.unit.relative': '{value} وحدة نسبية',
   'measurement.battery.design': 'السعة التصميمية: {value}',
   'measurement.battery.cycles': '{count} دورة شحن',
   'measurement.unit.mwh': '{value} مللي واط·ساعة',

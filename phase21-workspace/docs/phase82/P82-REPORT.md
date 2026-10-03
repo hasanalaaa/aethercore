@@ -66,3 +66,43 @@ These results supplement the original per-task evidence; Mac tests do not execut
 storage/battery/event code. Exact combined-head Windows validation and merge CI remain coordinator
 owned. The historical phase30/35 audits still fail their old wire/baseline checks; they were not
 weakened or re-baselined. The remaining hardware and accessibility gaps in §4 remain open.
+
+
+## Acceptance continuation — P82-02B relative capacity (2026-10-03)
+
+A battery reporting BATTERY_CAPACITY_RELATIVE previously lost its measured raw
+capacities and was marked unsupported. The typed Battery now retains separate
+optional u32 design/full capacities in undefined relative units, with absent
+fields omitted and legacy deserialization defaulting to absent. The absolute
+mWh fields remain absent for relative packs. A zero design/full remains absent;
+two missing capacities remain unsupported. Cycle semantics and native device
+acquisition are unchanged; there is no division, guessed percentage or damage
+verdict. Absolute batteries preserve their existing capacities and units.
+
+Microsoft BATTERY_INFORMATION specifies relative units when0x40000000 is set;
+see https://learn.microsoft.com/en-us/windows/win32/power/battery-information-str.
+No conversion into mWh is defined. Additive BatteryInfo tags10–13 preserve
+relative values and their presence independently across the actual service JSON
+bridge. u32 fits JavaScript's exact integer range; UI still rejects noninteger,
+negative, overflow, zero or conflicting absolute/relative capacity payloads.
+Owned EN/AR rows show separate design/full relative values, cycle count, source
+and recorded time. No battery record is invented on desktops; no batteries are
+combined or averaged. The populated Hardware fixture contains both absolute
+and relative packs to exercise the actual page.
+
+Runtime red: relative raw capacities had Unsupported instead of Measured.
+Actual MeasurementRows EN/AR SSR4 failed for missing relative values and an
+ambiguous mixed-unit payload exposing mWh. The implementation made these green.
+Persistence JSON roundtrip preserves relative values without acquiring mWh;
+legacy payload restores absent values. Real wire conversion verifies values and
+both missing presence flags. The affected four-package Rust run passed166 tests
+across13 suites; all-target host Clippy and hardware Windows GNU Clippy with
+warnings denied passed. UI103 tests passed, check0 errors/0 warnings, build and
+static351 passed; dependency freeze approved without manifest/version changes.
+The build retains its pre-existing large-chunk warning.
+
+Native final-head execution and physical relative/multiple-battery/tag-change
+qualification remain NOT RUN. Current direct SSH is unavailable; Windows-native
+integration CI remains coordinator-owned. The earlier7b2c994 read-only collector
+receipt observed0 batteries on a desktop, so it does not qualify relative packs.
+This closes the approved relative-unit source loss, not all physical P82 claims.
