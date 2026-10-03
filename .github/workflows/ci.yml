@@ -212,6 +212,8 @@ jobs:
           ./scripts/p87-installed-acceptance.ps1 -SelfTest
           ./scripts/test-p87-installed-acceptance.ps1
           ./scripts/test-rc-lifecycle-hook.ps1
+          python scripts/test_wua_servicing_preflight.py
+          if ($LASTEXITCODE -ne 0) { throw 'WUA servicing preflight controls failed.' }
           python scripts/test_rc_provenance.py
           if ($LASTEXITCODE -ne 0) { throw 'Signed RC rejection controls failed.' }
       - name: Verify approved dependency freeze
@@ -349,7 +351,8 @@ jobs:
                    scripts/test_source_seal.py scripts/test_windows_server_support.py \
                    scripts/test-phase12-localization.py scripts/ps_marker_scan.py \
                    scripts/test_ci_windows_already_tested.py \
-                   scripts/test_bootstrap_pwsh.py scripts/test_rc_provenance.py; do
+                   scripts/test_bootstrap_pwsh.py scripts/test_rc_provenance.py \
+                   scripts/test_wua_servicing_preflight.py; do
             echo "== $t"
             python3 "$t"
           done

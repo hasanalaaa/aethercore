@@ -17,9 +17,10 @@ use windows::{
                 IInstallationCompletedCallback, IInstallationCompletedCallback_Impl,
                 IInstallationCompletedCallbackArgs, IInstallationJob,
                 IInstallationProgressChangedCallback, IInstallationProgressChangedCallback_Impl,
-                IInstallationProgressChangedCallbackArgs, IUpdate, IUpdateInstaller2,
-                IUpdateSession, IWindowsDriverUpdate, UpdateSession, orcAborted, orcFailed,
-                orcInProgress, orcNotStarted, orcSucceeded, orcSucceededWithErrors,
+                IInstallationProgressChangedCallbackArgs, ISystemInformation, IUpdate,
+                IUpdateInstaller2, IUpdateSession, IWindowsDriverUpdate, SystemInformation,
+                UpdateSession, orcAborted, orcFailed, orcInProgress, orcNotStarted, orcSucceeded,
+                orcSucceededWithErrors,
             },
             Variant::VARIANT,
         },
@@ -93,7 +94,8 @@ impl IInstallationCompletedCallback_Impl for InstallationCompletedCallback_Impl 
 /// Conservative servicing preflight used by non-WUA maintenance flows (for example DISM/SFC).
 /// The caller must hold AetherCore's machine-wide mutation lock for the entire operation. This
 /// function only asks the Windows Update Agent whether another installer is active or Windows
-/// requires a reboot; it does not reserve the WUA pipeline and performs no update mutation.
+/// requires a general or pre-install reboot; it does not reserve the WUA pipeline and performs
+/// no update mutation. An unreadable reboot state remains an error, never "available".
 pub fn ensure_servicing_available() -> Result<()> {
     let _com = ComApartment::mta()
         .map_err(|hr| UpdateError::Wua(format!("CoInitializeEx failed: 0x{:08X}", hr.0 as u32)))?;
@@ -109,6 +111,11 @@ pub fn ensure_servicing_available() -> Result<()> {
             .map_err(wua_err)?;
         if installer.IsBusy().map_err(wua_err)?.as_bool() {
             return Err(UpdateError::Busy);
+        }
+        let system: ISystemInformation =
+            CoCreateInstance(&SystemInformation, None, CLSCTX_INPROC_SERVER).map_err(wua_err)?;
+        if system.RebootRequired().map_err(wua_err)?.as_bool() {
+            return Err(UpdateError::RebootPending);
         }
         if installer
             .RebootRequiredBeforeInstallation()

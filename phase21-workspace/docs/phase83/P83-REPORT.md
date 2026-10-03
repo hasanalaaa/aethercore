@@ -309,3 +309,21 @@ verification remains coordinator-owned because direct SSH is unavailable.
 Boot same-type baseline/attribution and battery interpretation are separate
 approved tasks; no guessed boot classification, impact or health percentage
 was added here. WU reboot/source review is now lane2/coordinator-owned.
+
+### General WUA reboot preflight source correction
+
+`ensure_servicing_available` now reads the existing ISystemInformation
+RebootRequired property after IsBusy and before the installer-specific preinstall
+flag. True preserves the existing RebootPending result; query failure preserves
+Wua error/Unknown through existing system-repair callers. Seven actual-function
+COM controls changed from three failures to all passing;19 crate tests and host/
+Windows GNU all-target Clippy passed. Native/live verification remains pending.
+This read-only flag concerns reboot needed to finish update installation or
+uninstallation, as specified by [Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/wuapi/nf-wuapi-isysteminformation-get_rebootrequired); it makes no third-party reboot claim.
+
+The integrated Windows CI additionally captures provider event metadata for
+Diagnostics-Performance100–103 and Kernel-Boot. This reads publisher schemas,
+versions and templates only, with no event-user data, subscription, service
+change or product action. Missing providers remain explicitly unmeasured. The
+metadata artifact is navigation/semantic evidence for the pending boot work,
+not a boot baseline/attribution or full-phase acceptance pass.
