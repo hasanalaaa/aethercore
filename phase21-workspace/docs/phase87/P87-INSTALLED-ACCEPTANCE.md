@@ -78,3 +78,11 @@ cases:39 passed and the native-only Authenticode case was explicitly skipped. It
 source selector check rejects the former nonexistent Timeline class. Final
 Windows CI executes the updated73 producer assertions and native observer exit
 controls; earlier69-assertion native evidence is not relabelled as this new head.
+
+First integrated native CI37123653317 at d94d984 executed the prior69 producer
+controls successfully, then rejected the new Case5 fixture. The fixture's generic
+`$state` controller collided with the actual Wait-Terminal snapshot variable via
+PowerShell dynamic scope. The controller was renamed and diagnostic case/events
+retained; production and assertions were unchanged. That run remains failed.
+The next exact-head native run must prove the updated fixture and the observer
+exit controls before merge.

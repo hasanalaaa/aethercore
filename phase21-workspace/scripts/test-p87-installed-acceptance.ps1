@@ -287,39 +287,41 @@ try {
         $ReadOnlyInstalled=$ReadOnly;$Locale='en';$deadline=[DateTime]::UtcNow.AddSeconds(5)
         $doc=@{cases=@($ids | ForEach-Object {@{id=$_;disposition='blocked';reason='Not executed.';checks=@{};witnesses=@()}})}
         $events=[Collections.Generic.List[string]]::new()
-        $state=@{started=$false;completed=$false;prepared=$false;polls=0}
+        $noOpController=@{started=$false;completed=$false;prepared=$false;polls=0}
         function Page($Name){$events.Add("page:$Name")}
         function Capture($Name,$Selector){return @(@{path='isolated-noop-witness'})}
         function Js([string]$Expression) {
             if ($Expression -match "invoke\('([^']+)',") {
                 $command=$Matches[1];$events.Add($command)
                 switch ($command) {
-                    'start_cleanup_scan' {$state.started=$true;return @{state='Scanning';scanId='fresh-owned'}}
+                    'start_cleanup_scan' {$noOpController.started=$true;return @{state='Scanning';scanId='fresh-owned'}}
                     'get_cleanup_snapshot' {
                         if ($ForeignScan) {return @{state='Scanning';scanId='existing-unowned';candidates=@()}}
-                        if (-not $state.started) {return @{state='Ready';scanId='old-pre-cleanup';candidates=@(@{selectedByDefault=$true;requiresExplicitConfirmation=$false})}}
-                        $state.polls++
-                        if ($state.polls -eq 1) {return @{state='Scanning';scanId='fresh-owned';candidates=@()}}
-                        $state.completed=$true;return @{state='Ready';scanId='fresh-owned';candidates=@()}
+                        if (-not $noOpController.started) {return @{state='Ready';scanId='old-pre-cleanup';candidates=@(@{selectedByDefault=$true;requiresExplicitConfirmation=$false})}}
+                        $noOpController.polls++
+                        if ($noOpController.polls -eq 1) {return @{state='Scanning';scanId='fresh-owned';candidates=@()}}
+                        $noOpController.completed=$true;return @{state='Ready';scanId='fresh-owned';candidates=@()}
                     }
                     default {throw "Unexpected actual Case5 IPC command $command"}
                 }
             }
             if ($Expression.Contains('.overview-header-side button.secondary')) {
                 $events.Add('actual-ui-prepare')
-                if (-not $state.completed) {throw 'Actual UI preparation reused the old Ready inventory.'}
-                $state.prepared=$true;return $true
+                if (-not $noOpController.completed) {throw 'Actual UI preparation reused the old Ready inventory.'}
+                $noOpController.prepared=$true;return $true
             }
             if ($Expression.Contains('.care-panel p')) {
-                if (-not $state.prepared) {throw 'No actual no-op preparation was requested.'}
+                if (-not $noOpController.prepared) {throw 'No actual no-op preparation was requested.'}
                 return @('Nothing eligible for automatic care was found: the default cleanup category had nothing to clean.')
             }
             throw 'Unexpected Case5 DOM controller expression.'
         }
         Case 5 $case5Body
-        return @{Case=$doc.cases[5];Events=$events.ToArray();State=$state}
+        return @{Case=$doc.cases[5];Events=$events.ToArray();State=$noOpController}
     }
     $noOp=Invoke-NoOpPreparationFixture
+    Write-Host ('CASE5_DIAGNOSTIC=' + ($noOp.Case | ConvertTo-Json -Depth 6 -Compress))
+    Write-Host ('CASE5_EVENTS=' + ($noOp.Events | ConvertTo-Json -Compress))
     Assert ($noOp.Case.disposition -eq 'passed' -and $noOp.Case.checks.no_op_explained -eq $true) 'actual Case5 prepares no-op only after a fresh owned terminal read'
     Assert ($noOp.State.polls -ge 2 -and [Array]::IndexOf($noOp.Events,'start_cleanup_scan') -lt [Array]::IndexOf($noOp.Events,'actual-ui-prepare')) 'actual Case5 waits through Scanning before clicking UI preparation'
     $foreign=Invoke-NoOpPreparationFixture -ForeignScan $true
