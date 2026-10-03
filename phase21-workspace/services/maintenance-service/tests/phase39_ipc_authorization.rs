@@ -31,7 +31,6 @@ use aethercore_contracts::{
         client_frame, server_frame,
     },
 };
-use aethercore_ipc::Transport;
 
 /// The canonical AWS documentation example key. It matches the secrets provider's
 /// `(AKIA|ASIA)[0-9A-Z]{16}` detector, so a scan that reaches it returns a finding whose
@@ -61,6 +60,8 @@ fn spawn_service(data_dir: &Path) -> ServiceProcess {
         .args([
             "--foreground",
             "--unix-ipc-data-dir",
+            data_dir.to_str().expect("utf8 data dir"),
+            "--data-dir",
             data_dir.to_str().expect("utf8 data dir"),
         ])
         .stdout(Stdio::piped())
@@ -153,11 +154,45 @@ fn exchange(session: &mut aethercore_ipc::UnixSocketSession, frame: &ClientFrame
     session
         .send_frame(&frame.encode_to_vec(), MAX_CLIENT_SESSION_FRAME_BYTES)
         .expect("send frame");
-    let mut buffer = Vec::new();
-    session
-        .recv_frame(&mut buffer, MAX_SERVER_SESSION_FRAME_BYTES)
-        .expect("recv frame");
-    ServerFrame::decode(buffer.as_slice()).expect("decode server frame")
+    let request_id = match frame.payload.as_ref() {
+        Some(client_frame::Payload::Request(envelope)) => envelope
+            .request
+            .as_ref()
+            .and_then(|request| request.header.as_ref())
+            .map(|header| header.request_id.as_str()),
+        _ => None,
+    };
+    // Live events share this stream; wait for this RPC's response, never the next arbitrary frame.
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "response deadline elapsed"
+        );
+        session
+            .set_io_timeouts(deadline.saturating_duration_since(std::time::Instant::now()))
+            .expect("bound client frame read");
+        let mut buffer = Vec::new();
+        session
+            .recv_frame(&mut buffer, MAX_SERVER_SESSION_FRAME_BYTES)
+            .expect("recv frame");
+        let answer = ServerFrame::decode(buffer.as_slice()).expect("decode server frame");
+        match (&answer.payload, request_id) {
+            (Some(server_frame::Payload::Event(_)), Some(_)) => continue,
+            (Some(server_frame::Payload::Response(response)), Some(expected)) => {
+                assert_eq!(
+                    response
+                        .header
+                        .as_ref()
+                        .map(|header| header.request_id.as_str()),
+                    Some(expected)
+                );
+                return answer;
+            }
+            (_, None) => return answer,
+            (other, _) => panic!("expected matching response or live event, got {other:?}"),
+        }
+    }
 }
 
 fn response_of(frame: ServerFrame) -> v1::Response {

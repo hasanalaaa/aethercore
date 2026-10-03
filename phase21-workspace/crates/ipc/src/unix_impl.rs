@@ -245,6 +245,11 @@ impl UnixSocketSession {
         self.stream.set_read_timeout(Some(timeout))?;
         self.stream.set_write_timeout(Some(timeout))
     }
+
+    /// Bounds a stalled server writer without timing out the idle request reader.
+    pub fn set_write_timeout(&self, timeout: std::time::Duration) -> std::io::Result<()> {
+        self.stream.set_write_timeout(Some(timeout))
+    }
 }
 
 impl Transport for UnixSocketSession {

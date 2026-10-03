@@ -23,7 +23,6 @@ use aethercore_contracts::{
         client_frame, server_frame,
     },
 };
-use aethercore_ipc::Transport;
 
 fn service_bin() -> &'static std::path::Path {
     std::path::Path::new(env!("CARGO_BIN_EXE_aethercore-maintenance-service"))
@@ -167,17 +166,50 @@ fn exchange(session: &mut aethercore_ipc::UnixSocketSession, frame: &ClientFrame
     session
         .send_frame(&frame.encode_to_vec(), MAX_CLIENT_SESSION_FRAME_BYTES)
         .expect("send frame");
-    let mut buffer = Vec::new();
-    session
-        .recv_frame(&mut buffer, MAX_SERVER_SESSION_FRAME_BYTES)
-        .expect("recv frame");
-    ServerFrame::decode(buffer.as_slice()).expect("decode server frame")
+    let request_id = match frame.payload.as_ref() {
+        Some(client_frame::Payload::Request(envelope)) => envelope
+            .request
+            .as_ref()
+            .and_then(|request| request.header.as_ref())
+            .map(|header| header.request_id.as_str()),
+        _ => None,
+    };
+    // Live events share this stream; wait for this RPC's response, never the next arbitrary frame.
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "response deadline elapsed"
+        );
+        session
+            .set_io_timeouts(deadline.saturating_duration_since(std::time::Instant::now()))
+            .expect("bound client frame read");
+        let mut buffer = Vec::new();
+        session
+            .recv_frame(&mut buffer, MAX_SERVER_SESSION_FRAME_BYTES)
+            .expect("recv frame");
+        let answer = ServerFrame::decode(buffer.as_slice()).expect("decode server frame");
+        match (&answer.payload, request_id) {
+            (Some(server_frame::Payload::Event(_)), Some(_)) => continue,
+            (Some(server_frame::Payload::Response(response)), Some(expected)) => {
+                assert_eq!(
+                    response
+                        .header
+                        .as_ref()
+                        .map(|header| header.request_id.as_str()),
+                    Some(expected)
+                );
+                return answer;
+            }
+            (_, None) => return answer,
+            (other, _) => panic!("expected matching response or live event, got {other:?}"),
+        }
+    }
 }
 
 #[test]
 #[cfg(unix)]
 fn unix_socket_round_trip_capabilities_ping_engine_source() {
-    use prost::Message as _;
     use std::os::unix::fs::PermissionsExt;
 
     // Short /tmp root: macOS $TMPDIR (~70 chars) + socket path would exceed sun_path=104.
@@ -190,7 +222,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
     let socket_path = wait_for_socket_line(&mut service);
 
     // The private-dir contract holds on the REAL bound socket: 0700 dir, 0600 file.
-    let dir_meta = std::fs::metadata(&temp.join("ipc")).expect("ipc dir");
+    let dir_meta = std::fs::metadata(temp.join("ipc")).expect("ipc dir");
     assert_eq!(dir_meta.permissions().mode() & 0o777, 0o700, "dir is 0700");
     let sock_meta = std::fs::metadata(&socket_path).expect("socket file");
     assert_eq!(
@@ -235,7 +267,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
             assert_eq!(response.status_code, 0, "capabilities succeed");
             match response.payload {
                 Some(v1::response::Payload::PlatformCapabilitiesResponse(matrix)) => {
-                    assert_eq!(matrix.platform, "macos");
+                    assert_eq!(matrix.platform, std::env::consts::OS);
                     let cpu = matrix
                         .capabilities
                         .iter()
@@ -257,7 +289,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
         other => panic!("expected Response frame, got {other:?}"),
     }
 
-    // GetEngineSource round trip — native on this macOS host.
+    // GetEngineSource round trip — native on the compiling Unix host.
     let source = exchange(&mut session, &session_request(engine_source_request()));
     match source.payload {
         Some(server_frame::Payload::Response(response)) => {
@@ -265,7 +297,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
             match response.payload {
                 Some(v1::response::Payload::EngineSourceResponse(source)) => {
                     assert_eq!(source.source, "native");
-                    assert_eq!(source.platform, "macos");
+                    assert_eq!(source.platform, std::env::consts::OS);
                 }
                 other => panic!("expected EngineSourceResponse, got {other:?}"),
             }
@@ -357,6 +389,7 @@ fn unix_socket_round_trip_capabilities_ping_engine_source() {
     matches!(hello2.payload, Some(server_frame::Payload::Hello(_)));
 }
 
+#[cfg(target_os = "macos")]
 fn list_insights_label(session: &mut aethercore_ipc::UnixSocketSession) -> String {
     let request = Request {
         header: Some(RequestHeader {

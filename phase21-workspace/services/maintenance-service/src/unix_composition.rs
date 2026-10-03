@@ -15,7 +15,7 @@
 
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread,
@@ -26,6 +26,7 @@ use aethercore_contracts::{
     MAX_CLIENT_SESSION_FRAME_BYTES, MAX_SERVER_SESSION_FRAME_BYTES, PROTOCOL_VERSION,
     v1::{ClientFrame, ServerFrame, ServerHello, client_frame, server_frame},
 };
+use aethercore_operation_kernel::{CancellationRegistry, SubscriptionItem};
 use chrono::Utc;
 use prost::Message as _;
 use tracing::{info, warn};
@@ -66,6 +67,31 @@ struct UnixSessionGuard;
 impl Drop for UnixSessionGuard {
     fn drop(&mut self) {
         UNIX_SESSIONS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+// The reader and event pump share one lifetime; shutdown wakes blocked I/O before joining.
+struct UnixSessionEnd {
+    alive: Arc<AtomicBool>,
+    writer: Arc<Mutex<aethercore_ipc::UnixSocketSession>>,
+    cancellations: CancellationRegistry,
+    session_id: String,
+    pump: Option<thread::JoinHandle<()>>,
+}
+
+impl Drop for UnixSessionEnd {
+    fn drop(&mut self) {
+        self.alive.store(false, Ordering::Release);
+        self.cancellations.cancel_session(&self.session_id);
+        use aethercore_ipc::Transport;
+        let _ = self
+            .writer
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .shutdown();
+        if let Some(pump) = self.pump.take() {
+            let _ = pump.join();
+        }
     }
 }
 
@@ -190,10 +216,14 @@ fn serve_unix_session(
     // Subscription installation and replay capture stay inside one EventBus critical
     // section — the same replay->live race-freedom argument as the Windows host.
     // Named, not `_`: the binding keeps the subscription alive for the whole session.
-    let (_subscription, replay) = context
+    let (subscription, replay) = context
         .kernel
         .events()
         .subscribe(&owner, hello.replay_after_sequence);
+
+    let writer_session = session.try_clone()?;
+    writer_session.set_write_timeout(GRACEFUL_DRAIN_WINDOW)?;
+    let writer = Arc::new(Mutex::new(writer_session));
 
     write_server_frame(
         &mut session,
@@ -242,6 +272,60 @@ fn serve_unix_session(
                 })),
             },
         )?;
+    }
+
+    let alive = Arc::new(AtomicBool::new(true));
+    let pump_alive = alive.clone();
+    let pump_writer = writer.clone();
+    let pump_context = context.clone();
+    let pump_owner = owner.clone();
+    let pump = thread::Builder::new()
+        .name("aether-unix-events".into())
+        .spawn(move || {
+            while pump_alive.load(Ordering::Acquire) {
+                let frame = match subscription.recv_timeout(Duration::from_millis(50)) {
+                    SubscriptionItem::Event(event) => ServerFrame {
+                        payload: Some(server_frame::Payload::Event(*event)),
+                    },
+                    SubscriptionItem::Lagged => {
+                        use aethercore_contracts::v1::{StreamReset, StreamResetReason};
+                        let bus = pump_context.kernel.events();
+                        let reset = ServerFrame {
+                            payload: Some(server_frame::Payload::StreamReset(StreamReset {
+                                reason: StreamResetReason::SubscriberLagged as i32,
+                                current_sequence: bus.current_sequence(&pump_owner),
+                                replay_floor_sequence: bus.replay_floor_sequence(&pump_owner),
+                                message_key: "ipc.streamReset.subscriberLagged".into(),
+                            })),
+                        };
+                        if write_shared_frame(&pump_writer, &reset).is_err() {
+                            break;
+                        }
+                        crate::streaming::publish_hydration(&pump_context, &pump_owner);
+                        continue;
+                    }
+                    SubscriptionItem::Timeout => continue,
+                    SubscriptionItem::Disconnected => break,
+                };
+                if write_shared_frame(&pump_writer, &frame).is_err() {
+                    break;
+                }
+            }
+            use aethercore_ipc::Transport;
+            let _ = pump_writer
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .shutdown();
+        })?;
+    let _session_end = UnixSessionEnd {
+        alive,
+        writer: writer.clone(),
+        cancellations: context.kernel.cancellations().clone(),
+        session_id: session_id.clone(),
+        pump: Some(pump),
+    };
+    if !replay.complete {
+        crate::streaming::publish_hydration(&context, &owner);
     }
 
     // Request loop: one worker thread per in-flight request, bounded by the kernel's
@@ -298,13 +382,7 @@ fn serve_unix_session(
                 };
                 let ctx = context.clone();
                 let peer = peer.clone();
-                let writer_session = match session.try_clone() {
-                    Ok(writer) => writer,
-                    Err(error) => {
-                        warn!(error = %error, "unix session clone failed; ending session");
-                        break;
-                    }
-                };
+                let worker_writer = writer.clone();
                 let cancels = context.kernel.cancellations().clone();
                 let worker_scoped = scoped.clone();
                 let spawn = thread::Builder::new()
@@ -312,9 +390,8 @@ fn serve_unix_session(
                     .spawn(move || {
                         let response = ctx.handle(&peer, &request_context, req);
                         cancels.remove(&worker_scoped);
-                        let mut writer = writer_session;
-                        let _ = write_server_frame(
-                            &mut writer,
+                        let _ = write_shared_frame(
+                            &worker_writer,
                             &ServerFrame {
                                 payload: Some(server_frame::Payload::Response(response)),
                             },
@@ -328,8 +405,14 @@ fn serve_unix_session(
             None => {}
         }
     }
-    context.kernel.cancellations().cancel_session(&session_id);
     Ok(())
+}
+
+fn write_shared_frame(
+    writer: &Arc<Mutex<aethercore_ipc::UnixSocketSession>>,
+    frame: &ServerFrame,
+) -> anyhow::Result<()> {
+    write_server_frame(&mut writer.lock().unwrap_or_else(|p| p.into_inner()), frame)
 }
 
 fn recv_client_frame(
@@ -350,4 +433,114 @@ fn write_server_frame(
 ) -> anyhow::Result<()> {
     session.send_frame(&frame.encode_to_vec(), MAX_SERVER_SESSION_FRAME_BYTES)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aethercore_contracts::v1::{ClientHello, EventKind};
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn live_events_follow_hello_without_another_client_request() {
+        exercise_live_session(0);
+    }
+
+    #[test]
+    fn reset_replay_is_followed_by_current_typed_state() {
+        exercise_live_session(1);
+    }
+
+    fn exercise_live_session(replay_after_sequence: u64) {
+        let root = std::path::PathBuf::from("/tmp").join(format!("ux-{}", Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let context = crate::composition::build(&root.join("state.db"), &root).unwrap();
+        let events = context.kernel.events().clone();
+        let owner = aethercore_security::socket_owner_principal().binding_key();
+        let listener = aethercore_ipc::UnixSocketListener::bind(&root).unwrap();
+        let mut client =
+            aethercore_ipc::UnixSocketSession::connect(listener.socket_path()).unwrap();
+        client.set_io_timeouts(Duration::from_secs(2)).unwrap();
+        let server = thread::spawn(move || {
+            let session = listener.accept().unwrap();
+            serve_unix_session(session, context)
+        });
+        client
+            .send_frame(
+                &ClientFrame {
+                    payload: Some(client_frame::Payload::Hello(ClientHello {
+                        protocol_version: PROTOCOL_VERSION,
+                        client_name: "live-regression".into(),
+                        client_version: "0".into(),
+                        replay_after_sequence,
+                    })),
+                }
+                .encode_to_vec(),
+                MAX_CLIENT_SESSION_FRAME_BYTES,
+            )
+            .unwrap();
+        let mut buffer = Vec::new();
+        client
+            .recv_frame(&mut buffer, MAX_SERVER_SESSION_FRAME_BYTES)
+            .unwrap();
+        assert!(matches!(
+            ServerFrame::decode(buffer.as_slice()).unwrap().payload,
+            Some(server_frame::Payload::Hello(_))
+        ));
+        let mut hydrated = false;
+        if replay_after_sequence != 0 {
+            client
+                .recv_frame(&mut buffer, MAX_SERVER_SESSION_FRAME_BYTES)
+                .unwrap();
+            assert!(
+                matches!(ServerFrame::decode(buffer.as_slice()).unwrap().payload,
+                Some(server_frame::Payload::StreamReset(reset)) if reset.reason == aethercore_contracts::v1::StreamResetReason::SequenceReset as i32)
+            );
+            hydrated = client
+                .recv_frame(&mut buffer, MAX_SERVER_SESSION_FRAME_BYTES)
+                .is_ok()
+                && matches!(ServerFrame::decode(buffer.as_slice()).unwrap().payload,
+                    Some(server_frame::Payload::Event(event)) if event.payload.is_some());
+        }
+        events.publish("foreign-owner", EventKind::PlanChanged, "foreign", None);
+        let published = events.publish(&owner, EventKind::PlanChanged, "owned-live", None);
+        let received = loop {
+            match client.recv_frame(&mut buffer, MAX_SERVER_SESSION_FRAME_BYTES) {
+                Ok(_) => {
+                    let frame = ServerFrame::decode(buffer.as_slice()).unwrap();
+                    if let Some(server_frame::Payload::Event(event)) = &frame.payload {
+                        assert_ne!(event.plan_id, "foreign");
+                        if event == &published {
+                            break Ok(frame);
+                        }
+                        hydrated |= event.payload.is_some();
+                    } else {
+                        panic!("unexpected live frame: {frame:?}");
+                    }
+                }
+                Err(error) => break Err(error),
+            }
+        };
+        // Always release the real server thread, including the pre-fix timeout case.
+        let _ = client.send_frame(
+            &ClientFrame {
+                payload: Some(client_frame::Payload::Goodbye(Default::default())),
+            }
+            .encode_to_vec(),
+            MAX_CLIENT_SESSION_FRAME_BYTES,
+        );
+        drop(client);
+        server.join().unwrap().unwrap();
+        let subscribers = events.metrics_for_owner(&owner).subscribers;
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(subscribers, 0, "goodbye must release the live subscription");
+        if replay_after_sequence != 0 {
+            assert!(hydrated, "reset must publish typed current state");
+        }
+        assert!(
+            matches!(received.unwrap().payload, Some(server_frame::Payload::Event(event)) if event == published),
+            "only the owned live event is delivered"
+        );
+    }
 }

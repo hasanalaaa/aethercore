@@ -341,6 +341,13 @@ jobs:
       - name: Linux telemetry provider clippy
         run: cargo clippy -p aethercore-performance-telemetry --lib --locked -- -D warnings
 
+      - name: Native Unix frame deadlines and live session delivery
+        run: |
+          cargo test --locked -p aethercore-ipc --test unix_adversarial
+          cargo test --locked -p aethercore-maintenance-service --bin aethercore-maintenance-service unix_composition::tests
+          cargo test --locked -p aethercore-maintenance-service --features unix-ipc --test phase27_unix_ipc --test phase39_ipc_authorization
+          cargo clippy --locked -p aethercore-ipc -p aethercore-maintenance-service --all-targets --features unix-ipc -- -D warnings
+
   deny-check:
     runs-on: ubuntu-latest
     steps:
