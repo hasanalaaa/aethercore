@@ -157,10 +157,6 @@ pub(crate) fn collect(control: &CollectorControl) -> Result<Vec<NetworkAdapter>>
     }
     let routes = default_routes(control);
     checkpoint(control)?;
-    let observed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or_default();
     let mut pointer = buffer.as_mut_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>();
     let mut adapters = Vec::new();
     let mut luids = Vec::new();
@@ -181,6 +177,11 @@ pub(crate) fn collect(control: &CollectorControl) -> Result<Vec<NetworkAdapter>>
             ..Default::default()
         };
         let read = unsafe { GetIfEntry2(&mut row) }.0 == 0;
+        let read_at = u64::try_from(clock.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let observed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+            .unwrap_or_default();
         let name = if read {
             String::from_utf16_lossy(
                 &row.Alias[..row
@@ -237,7 +238,7 @@ pub(crate) fn collect(control: &CollectorControl) -> Result<Vec<NetworkAdapter>>
             output.default_route_v6 = Some(flags.1);
         }
         adapters.push(output);
-        luids.push(luid);
+        luids.push((luid, read_at));
         pointer = adapter.Next;
     }
     if !pointer.is_null() {
@@ -250,13 +251,7 @@ pub(crate) fn collect(control: &CollectorControl) -> Result<Vec<NetworkAdapter>>
         .get_or_init(|| Mutex::new(CounterWindow::default()))
         .lock()
         .map_err(|_| TelemetryError::Windows("counter cache poisoned".into()))?;
-    samples.retain_present(&adapters);
-    let now = u64::try_from(clock.elapsed().as_millis()).unwrap_or(u64::MAX);
-    for (adapter, luid) in adapters.iter_mut().zip(luids) {
-        if let Some(counters) = adapter.counters {
-            adapter.counter_delta = samples.observe(&adapter.stable_id, luid, now, counters);
-        }
-    }
+    samples.attach_samples(&mut adapters, &luids);
     Ok(adapters)
 }
 

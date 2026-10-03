@@ -378,3 +378,32 @@ The source battery/network interpretation scope is implemented, while physical
 qualification and P83-06B's comparable boot baseline remain distinct pending
 work. Boot publisher metadata capture and WU reboot source are coordinator/
 lane2-owned; this checkpoint adds neither guessed boot types nor event schemas.
+
+## Measurement boundary corrections — 2026-10-03
+
+Independent review of source head `3ecacc3` found four measurement defects; that head is not
+promoted merely because its existing tests pass. Two actual normalization/rule controls first
+failed: a missing observation timestamp was treated as current, and firmware readings 3731 < 3732
+decikelvin rounded to the same displayed Celsius value and raised a false thermal trip.
+
+The collector now retains both exact firmware readings alongside the existing rounded display.
+Normalization requires measured coverage, a positive nonfuture observation, source/zone identity
+and plausible exact readings. Legacy rounded-only samples remain displayable but cannot raise or
+resolve a thermal finding. The rule and fingerprint compare exact units, with the exact readings
+kept in technical evidence. Missing, failed, future and unidentified samples are rejected.
+
+Battery enumeration now accepts only `ERROR_NO_MORE_ITEMS` as a successful end; every other
+native error reaches the existing collector-fault path, including errors after partial inventory.
+This follows the [SetupDiEnumDeviceInterfaces contract](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdienumdeviceinterfaces).
+Native boundary controls cover successful continuation, normal end and denial/data/buffer failures.
+The network collector records each counter read's own monotonic and wall-clock observation time;
+variable delays reading later adapters no longer stretch the first adapter's interval. The actual
+shared counter attachment control uses 1000 ms and 1500 ms windows in the same inventory.
+
+Quick source validation: 241 affected Rust tests passed before the final counter control, the
+counter controls and host/Windows GNU all-target bindings are checked separately. The fully measured
+snapshot still fits its unchanged byte budget. Native Windows execution of this final correction,
+physical battery devices, firmware thresholds and no-egress capture remain pending; cross-compilation
+is not native qualification. Raw red/green receipts are retained externally under
+`/tmp/aethercore-p83-thermal-*`, `measurement-guards-*`, `counter-time-*` and
+`measurement-native-cross-clippy.log` with the full `aethercore-p83-` prefix.

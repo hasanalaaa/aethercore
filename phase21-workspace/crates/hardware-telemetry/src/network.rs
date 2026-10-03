@@ -45,6 +45,14 @@ impl CounterWindow {
                 .any(|adapter| adapter.stable_id == *id && adapter.counters.is_some())
         });
     }
+    pub fn attach_samples(&mut self, adapters: &mut [NetworkAdapter], reads: &[(u64, u64)]) {
+        self.retain_present(adapters);
+        for (adapter, &(luid, read_at)) in adapters.iter_mut().zip(reads) {
+            if let Some(counters) = adapter.counters {
+                adapter.counter_delta = self.observe(&adapter.stable_id, luid, read_at, counters);
+            }
+        }
+    }
 }
 
 const SOURCE: &str = "MSFT_NetAdapter";
@@ -109,6 +117,31 @@ pub(crate) fn adapter_from_wmi(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_counter_window_uses_its_read_time_not_the_inventory_tail() {
+        let mut samples = CounterWindow::default();
+        let mut adapters: Vec<_> = ["first", "last"]
+            .into_iter()
+            .map(|id| NetworkAdapter {
+                stable_id: id.into(),
+                counters: Some(NetworkCounters::default()),
+                ..Default::default()
+            })
+            .collect();
+        samples.attach_samples(&mut adapters, &[(1, 0), (2, 0)]);
+        assert!(
+            adapters
+                .iter()
+                .all(|adapter| adapter.counter_delta.is_none())
+        );
+        samples.attach_samples(&mut adapters, &[(1, 1_000), (2, 1_500)]);
+        assert_eq!(adapters[0].counter_delta.unwrap().elapsed_ms, 1_000);
+        assert_eq!(adapters[1].counter_delta.unwrap().elapsed_ms, 1_500);
+        samples.attach_samples(&mut adapters, &[(1, 2_000), (2, 3_000)]);
+        assert_eq!(adapters[0].counter_delta.unwrap().elapsed_ms, 1_000);
+        assert_eq!(adapters[1].counter_delta.unwrap().elapsed_ms, 1_500);
+    }
 
     #[test]
     fn counter_window_needs_two_real_samples_and_reset_or_identity_change_never_spikes() {

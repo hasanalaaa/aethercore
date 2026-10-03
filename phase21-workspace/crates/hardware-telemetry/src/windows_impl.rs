@@ -18,7 +18,7 @@ use windows::{
             SP_DEVICE_INTERFACE_DETAIL_DATA_W, SetupDiDestroyDeviceInfoList,
             SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
         },
-        Foundation::E_ACCESSDENIED,
+        Foundation::{E_ACCESSDENIED, ERROR_NO_MORE_ITEMS},
         Storage::FileSystem::{
             CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ,
             FILE_SHARE_WRITE, OPEN_EXISTING,
@@ -325,7 +325,7 @@ fn collect_batteries(control: &CollectorControl) -> Result<Vec<Battery>> {
             ..Default::default()
         };
         // ERROR_NO_MORE_ITEMS ends the enumeration.
-        if unsafe {
+        if battery_enumeration_has_ended(unsafe {
             SetupDiEnumDeviceInterfaces(
                 devices.0,
                 None,
@@ -333,9 +333,7 @@ fn collect_batteries(control: &CollectorControl) -> Result<Vec<Battery>> {
                 index,
                 &mut interface,
             )
-        }
-        .is_err()
-        {
+        })? {
             break;
         }
         let path = device_interface_path(&devices, &interface)?;
@@ -359,6 +357,16 @@ fn collect_batteries(control: &CollectorControl) -> Result<Vec<Battery>> {
         );
     }
     Ok(out)
+}
+
+fn battery_enumeration_has_ended(result: windows::core::Result<()>) -> Result<bool> {
+    match result {
+        Ok(()) => Ok(false),
+        Err(error) if error.code() == windows::core::HRESULT::from_win32(ERROR_NO_MORE_ITEMS.0) => {
+            Ok(true)
+        }
+        Err(error) => Err(win(error)),
+    }
 }
 
 fn device_interface_path(
@@ -1307,5 +1315,24 @@ fn win(e: windows::core::Error) -> TelemetryError {
         TelemetryError::PermissionDenied(e.to_string())
     } else {
         TelemetryError::Windows(e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod battery_enumeration_tests {
+    use super::*;
+
+    #[test]
+    fn only_no_more_items_is_a_successful_end_of_inventory() {
+        assert!(!battery_enumeration_has_ended(Ok(())).unwrap());
+        let error =
+            |code| windows::core::Error::from_hresult(windows::core::HRESULT::from_win32(code));
+        assert!(battery_enumeration_has_ended(Err(error(ERROR_NO_MORE_ITEMS.0))).unwrap());
+        for code in [5, 13, 31, 122] {
+            assert!(
+                battery_enumeration_has_ended(Err(error(code))).is_err(),
+                "enumeration error {code} is not evidence of no battery"
+            );
+        }
     }
 }

@@ -109,3 +109,8 @@ qualification remain NOT RUN. Current direct SSH is unavailable; Windows-native
 integration CI remains coordinator-owned. The earlier7b2c994 read-only collector
 receipt observed0 batteries on a desktop, so it does not qualify relative packs.
 This closes the approved relative-unit source loss, not all physical P82 claims.
+
+The 2026-10-03 measurement-boundary continuation in P83-REPORT corrects exact thermal threshold
+comparison and rejects unmeasured/future/rounded-only thermal evidence. It also preserves native
+battery enumeration failures instead of calling them an empty inventory. These source corrections
+require final exact-head Windows CI; absent battery hardware remains unqualified.
