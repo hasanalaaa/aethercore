@@ -54,7 +54,7 @@ pub(crate) fn guard_root(path: &Path, create: bool) -> Result<Vec<fs::File>> {
         }
         let file = fs::OpenOptions::new()
             .access_mode(0x81) // LIST_DIRECTORY | READ_ATTRIBUTES
-            .share_mode(3) // READ | WRITE, deliberately no DELETE
+            .share_mode(1) // READ only: no writer may replace an in-place reparse tag; no DELETE.
             .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
             .open(&cursor)?;
         let metadata = file.metadata()?;
@@ -175,8 +175,16 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> PathBuf {
-        let root =
-            std::env::temp_dir().join(format!("aethercore-export-{name}-{}", std::process::id()));
+        let root = fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(format!(
+                "aethercore-export-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
         fs::create_dir(&root).unwrap();
         root
     }
@@ -200,10 +208,20 @@ mod tests {
         fs::create_dir(&target).unwrap();
         let link = root.join("link");
         let cmd = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32/cmd.exe");
+        // cmd's built-in rejects the canonical \\?\ prefix; fixture paths below MAX_PATH use
+        // their ordinary drive spelling. Production guards retain the original path semantics.
+        let link_arg = link
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_string();
+        let target_arg = target
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_string();
         let output = Command::new(cmd)
             .args(["/D", "/C", "mklink", "/J"])
-            .arg(&link)
-            .arg(&target)
+            .arg(link_arg)
+            .arg(target_arg)
             .output()
             .unwrap();
         assert!(output.status.success(), "junction fixture: {:?}", output);
@@ -223,6 +241,132 @@ mod tests {
         assert!(!called.get());
         assert!(!target.join("child").exists());
         fs::remove_dir(link).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn held_directory_refuses_the_writable_handle_needed_to_set_a_reparse_tag() {
+        let root = fixture("tag-write");
+        let destination = root.join("empty");
+        let guards = guard_root(&destination, true).unwrap();
+        let writable = || {
+            fs::OpenOptions::new()
+                .access_mode(0x4000_0000) // GENERIC_WRITE
+                .share_mode(3)
+                .custom_flags(0x0220_0000)
+                .open(&destination)
+        };
+        let while_held = writable();
+        drop(guards);
+        assert!(
+            writable().is_ok(),
+            "positive control: ordinary empty directory allows tag-write access"
+        );
+        let held_was_refused = while_held.is_err();
+        drop(while_held);
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            held_was_refused,
+            "holding the export path must refuse tag-write access"
+        );
+    }
+
+    #[test]
+    fn held_directory_refuses_in_place_reparse_tag_changes() {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::{
+            Foundation::HANDLE,
+            System::{
+                IO::DeviceIoControl,
+                Ioctl::{FSCTL_GET_REPARSE_POINT, FSCTL_SET_REPARSE_POINT},
+            },
+        };
+        let root = fixture("tag-ioctl");
+        let target = root.join("target");
+        fs::create_dir(&target).unwrap();
+        let link = root.join("template");
+        let spelling = |p: &Path| p.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+        let cmd = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32/cmd.exe");
+        assert!(
+            Command::new(cmd)
+                .args(["/D", "/C", "mklink", "/J"])
+                .arg(spelling(&link))
+                .arg(spelling(&target))
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+        let open = |path: &Path, access| {
+            fs::OpenOptions::new()
+                .access_mode(access)
+                .share_mode(3)
+                .custom_flags(0x0220_0000)
+                .open(path)
+        };
+        let template = open(&link, 0x80).unwrap();
+        let mut data = vec![0u8; 16 * 1024];
+        let mut returned = 0;
+        unsafe {
+            DeviceIoControl(
+                HANDLE(template.as_raw_handle()),
+                FSCTL_GET_REPARSE_POINT,
+                None,
+                0,
+                Some(data.as_mut_ptr().cast()),
+                data.len() as u32,
+                Some(&mut returned),
+                None,
+            )
+        }
+        .unwrap();
+        data.truncate(returned as usize);
+        drop(template);
+        let set = |file: &fs::File| {
+            let mut returned = 0;
+            unsafe {
+                DeviceIoControl(
+                    HANDLE(file.as_raw_handle()),
+                    FSCTL_SET_REPARSE_POINT,
+                    Some(data.as_ptr().cast()),
+                    data.len() as u32,
+                    None,
+                    0,
+                    Some(&mut returned),
+                    None,
+                )
+            }
+        };
+        let control = root.join("control");
+        fs::create_dir(&control).unwrap();
+        let writable = open(&control, 0x4000_0000).unwrap();
+        set(&writable)
+            .expect("positive control: actual junction tag can be set on an unguarded directory");
+        drop(writable);
+        assert_ne!(
+            fs::symlink_metadata(&control).unwrap().file_attributes() & 0x400,
+            0
+        );
+        let destination = root.join("guarded");
+        let guards = guard_root(&destination, true).unwrap();
+        // Metadata-only handles may still be shared by the OS. They must not change the tag.
+        for access in [0x80, 0x100] {
+            // READ_ATTRIBUTES / WRITE_ATTRIBUTES
+            if let Ok(file) = open(&destination, access) {
+                assert!(set(&file).is_err());
+            }
+        }
+        assert_eq!(
+            fs::symlink_metadata(&destination)
+                .unwrap()
+                .file_attributes()
+                & 0x400,
+            0
+        );
+        fs::write(destination.join("child.inf"), b"[Version]").unwrap();
+        drop(guards);
+        fs::remove_dir(&link).unwrap();
+        fs::remove_dir(&control).unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 }
