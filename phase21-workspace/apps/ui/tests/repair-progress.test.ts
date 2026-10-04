@@ -80,12 +80,7 @@ test('repair stop binds to the shown plan and says safe-boundary pending in both
   assert.match(desktop, /CancelSystemRepairRequest\s*\{\s*plan_id/);
 });
 
-test('OS servicing drain reads unverified pending in both locales rather than completion', () => {
-  for (const key of ['tech.repair.servicingDrain', 'tech.repair.servicingUnverified']) {
-    assert.ok(hasMessageKey(key), key);
-    assert.match(td(key as never, 'ar'), arabic, key);
-    assert.match(td(key as never, 'en'), /unverified/);
-  }
+test('a timed-out check does not claim the worker was stopped', () => {
   assert.doesNotMatch(td('tech.repair.checkTimedOut', 'en'), /was stopped/);
 });
 

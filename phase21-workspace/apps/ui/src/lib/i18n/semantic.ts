@@ -141,8 +141,6 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Checking servicing safety':'tech.repair.preflight',
   'Repair workflow is frozen; waiting for the servicing mutation barrier':'tech.repair.frozen',
   'Running supported Windows repair tools':'tech.repair.executing',
-  'The owned repair call has ended; Windows servicing completion remains unverified. Admission is retained.':'tech.repair.servicingDrain',
-  'Windows servicing completion is unverified; no further servicing work was started.':'tech.repair.servicingUnverified',
   'Verifying component store and protected files':'tech.repair.verifying',
   'Repair workflow completed and verification commands finished successfully.':'tech.repair.completed',
   'Repair stopped. No command will be replayed automatically.':'tech.repair.stopped',

@@ -20,7 +20,7 @@ use windows::{
         OpenSCManagerW, OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfigW,
         QueryServiceStatusEx, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_CONFIG,
         SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START, SERVICE_STATUS_PROCESS,
-        SERVICE_STOPPED, StartServiceW,
+        StartServiceW,
     },
     core::PCWSTR,
 };
@@ -104,7 +104,6 @@ impl WindowsRepairPlatform {
                             "dism-scan",
                             "Component store",
                             &stop,
-                            None,
                         )
                     })
                 },
@@ -129,7 +128,6 @@ impl WindowsRepairPlatform {
                             "Protected system files",
                             &root,
                             Some(&*stop),
-                            None,
                         )
                     })
                 },
@@ -347,9 +345,8 @@ impl RepairPlatform for WindowsRepairPlatform {
         // Revalidate the component-store state using the DISM API immediately before mutation.
         // A now-healthy image invalidates the old repair assumption rather than replaying RestoreHealth.
         if action.run_component_store {
-            let (id, title) = ("dism-preflight", "Component store preflight");
-            let pending = Some(&mut *control.servicing_pending);
-            let check = check_online_image_health(false, id, title, pending)?;
+            let check =
+                check_online_image_health(false, "dism-preflight", "Component store preflight")?;
             match check.result_code.as_str() {
                 "ComponentStoreRepairable" => emit(check),
                 "ComponentStoreHealthy" => return Err(RepairError::StaleAssessment),
@@ -390,7 +387,6 @@ impl RepairPlatform for WindowsRepairPlatform {
                 "System File Checker repair",
                 &root,
                 Some(control.cancel),
-                Some(&mut *control.servicing_pending),
             )?);
         }
         if control.cancel.load(Ordering::SeqCst) {
@@ -436,7 +432,6 @@ impl RepairPlatform for WindowsRepairPlatform {
                     "verify-dism",
                     "Verify component store",
                     control.cancel,
-                    Some(&mut *control.servicing_pending),
                 )
                 .map_err(stopped)?,
             );
@@ -451,7 +446,6 @@ impl RepairPlatform for WindowsRepairPlatform {
                     "Verify protected system files",
                     &root,
                     Some(control.cancel),
-                    Some(&mut *control.servicing_pending),
                 )
                 .map_err(stopped)?,
             );
@@ -519,10 +513,6 @@ fn update_health_check() -> RepairCheck {
 
 fn service_running(name: &str) -> Result<bool> {
     Ok(service_state(name)? == SERVICE_RUNNING)
-}
-
-pub(crate) fn trusted_installer_stopped() -> bool {
-    super::servicing::explicitly_stopped(service_state("TrustedInstaller").ok(), SERVICE_STOPPED)
 }
 
 fn service_state(
@@ -774,14 +764,12 @@ fn run_sfc(
     title: &str,
     root: &Path,
     cancel: Option<&AtomicBool>,
-    pending: Option<&mut (dyn FnMut() + Send)>,
 ) -> Result<RepairCheck> {
     // P85-01: the verdict comes from what THIS run wrote to the CBS log, found from a baseline taken
     // before it started, not from a tail that holds older runs (see `cbs`).
     let cbs_log = root.join("Logs").join("CBS").join("CBS.log");
     let baseline = cbs::CbsBaseline::capture(&cbs_log);
-    let drain = super::servicing::ServicingDrain::before_owned_call(pending)?;
-    let result = super::process::run_tool(
+    let mut check = super::process::run_tool(
         exe,
         args,
         (id, title, "%WINDIR%\\Logs\\CBS\\CBS.log"),
@@ -789,10 +777,7 @@ fn run_sfc(
         cancel,
         args.iter().any(|arg| arg.eq_ignore_ascii_case("/scannow")),
         COMMAND_TIMEOUT,
-    );
-    // Every child/read failure has already drained its owned handles before the OS fence.
-    drop(drain);
-    let mut check = result?;
+    )?;
 
     // Do not infer integrity state from localized console prose. SFC's console output is retained
     // only as bounded diagnostic context; a run the log cannot be attributed to stays Unknown and
