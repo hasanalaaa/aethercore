@@ -116,25 +116,33 @@ impl Drop for CancelWatcher {
     }
 }
 
-struct DismLifecycle {
+struct DismLifecycle<'a> {
     initialized: bool,
     session: u32,
+    drain: super::servicing::ServicingDrain<'a>,
 }
-impl Drop for DismLifecycle {
+impl Drop for DismLifecycle<'_> {
     fn drop(&mut self) {
-        unsafe {
-            if self.session != 0 {
-                let _ = DismCloseSession(self.session);
-            }
-            if self.initialized {
-                let _ = DismShutdown();
-            }
-        }
+        super::servicing::finish_dism_lifecycle(
+            self.initialized,
+            self.session,
+            |session| unsafe { DismCloseSession(session) },
+            || unsafe { DismShutdown() },
+            || self.drain.note_pending(),
+            || std::thread::sleep(std::time::Duration::from_millis(250)),
+        );
+        // Field drop performs the SCM fence only after confirmed lifecycle cleanup. If
+        // cleanup is uncertain, this owned worker and all admission remain retained.
     }
 }
 
-pub fn check_online_image_health(scan_image: bool, id: &str, title: &str) -> Result<RepairCheck> {
-    check_image_health(scan_image, id, title, None)
+pub fn check_online_image_health(
+    scan_image: bool,
+    id: &str,
+    title: &str,
+    pending: Option<&mut (dyn FnMut() + Send)>,
+) -> Result<RepairCheck> {
+    check_image_health(scan_image, id, title, None, pending)
 }
 
 /// As [`check_online_image_health`], stopped through DISM's own cancel event once `cancel`
@@ -144,8 +152,9 @@ pub fn check_online_image_health_cancellable(
     id: &str,
     title: &str,
     cancel: &Arc<AtomicBool>,
+    pending: Option<&mut (dyn FnMut() + Send)>,
 ) -> Result<RepairCheck> {
-    check_image_health(scan_image, id, title, Some(cancel))
+    check_image_health(scan_image, id, title, Some(cancel), pending)
 }
 
 fn check_image_health(
@@ -153,11 +162,14 @@ fn check_image_health(
     id: &str,
     title: &str,
     cancel: Option<&Arc<AtomicBool>>,
+    pending: Option<&mut (dyn FnMut() + Send)>,
 ) -> Result<RepairCheck> {
     let _session_guard = dism::acquire_session()?;
+    let drain = super::servicing::ServicingDrain::before_owned_call(pending)?;
     let mut lifecycle = DismLifecycle {
         initialized: false,
         session: 0,
+        drain,
     };
     let init = unsafe { DismInitialize(DISM_LOG_ERRORS_WARNINGS_INFO, ptr::null(), ptr::null()) };
     if init != S_OK {
@@ -271,9 +283,12 @@ pub fn restore_online_image_health(control: &mut RepairControl<'_>) -> Result<Re
     }
 
     let _session_guard = dism::acquire_session()?;
+    let drain =
+        super::servicing::ServicingDrain::before_owned_call(Some(&mut *control.servicing_pending))?;
     let mut lifecycle = DismLifecycle {
         initialized: false,
         session: 0,
+        drain,
     };
     let init = unsafe { DismInitialize(DISM_LOG_ERRORS_WARNINGS_INFO, ptr::null(), ptr::null()) };
     if init != S_OK {

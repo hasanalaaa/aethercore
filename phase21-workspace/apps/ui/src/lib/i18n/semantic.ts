@@ -141,6 +141,8 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Checking servicing safety':'tech.repair.preflight',
   'Repair workflow is frozen; waiting for the servicing mutation barrier':'tech.repair.frozen',
   'Running supported Windows repair tools':'tech.repair.executing',
+  'The owned repair call has ended; Windows servicing completion remains unverified. Admission is retained.':'tech.repair.servicingDrain',
+  'Windows servicing completion is unverified; no further servicing work was started.':'tech.repair.servicingUnverified',
   'Verifying component store and protected files':'tech.repair.verifying',
   'Repair workflow completed and verification commands finished successfully.':'tech.repair.completed',
   'Repair stopped. No command will be replayed automatically.':'tech.repair.stopped',
@@ -152,6 +154,7 @@ const exactOwnedText: Record<string, MessageKey> = {
   'System volume online scan':'tech.repair.volumeScan',
   "Windows Update client events":'tech.update.clientTitle',
   "Microsoft-Windows-WindowsUpdateClient/Operational":'tech.update.clientChannel',
+  "Microsoft-Windows-WindowsUpdateClient/Operational + System":'tech.update.clientChannels',
   "The Windows Update client event channel could not be read; update installation status is unknown.":'tech.update.clientUnavailable',
   "MemoryTestResult":'hardware.memtest.title',
   "Windows Update history":'tech.update.historyTitle',
@@ -166,6 +169,13 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Verify protected system files':'tech.repair.verifyFiles',
   'Verify system volume':'tech.repair.verifyVolume',
   'Event Viewer → Application → Chkdsk':'tech.repair.eventViewerHint',
+  "Background Intelligent Transfer Service":'tech.update.bitsTitle',
+  "Windows Modules Installer service":'tech.update.installerTitle',
+  "The update dependency service is running; this alone does not establish update health.":'tech.update.serviceRunning',
+  "The update dependency service is stopped in demand-start mode. This alone does not require repair.":'tech.update.serviceDemandStopped',
+  "The update dependency service is disabled. Its configuration may be managed by policy; AetherCore will not change it.":'tech.update.serviceDisabled',
+  "The update dependency service is stopped in automatic-start mode. This evidence alone does not authorize a service change.":'tech.update.serviceStopped',
+  "The update dependency service state or configuration could not be established. No service change is recommended.":'tech.update.serviceUnknown',
   "Windows Update service":'tech.repair.serviceTitle',
   "The diagnosis-scoped Windows Update service is running.":'tech.repair.serviceRunning',
   "Windows Update discovery failed and its required wuauserv service is not running. AetherCore may offer only this targeted service start; it will not reset unrelated services.":'tech.repair.serviceStopped',
@@ -179,6 +189,9 @@ const exactOwnedText: Record<string, MessageKey> = {
   "Windows Update Agent is only available on Windows":'tech.update.windowsOnly',
   "Windows Update Agent answered from its local cache, which lists no pending updates; this does not show that Windows is up to date.":'tech.update.localCacheEmpty',
   "Windows Recovery Environment":'tech.recovery.winreTitle',
+  "REAgentC reports Windows RE as configured. Recovery-image usability and boot readiness remain unverified; recovery protection is unknown.":'tech.recovery.winreConfigured',
+  "REAgentC reports Windows RE as disabled for this installation.":'tech.recovery.winreDisabled',
+  "Windows RE configuration could not be verified from a supported REAgentC response; recovery protection is unknown.":'tech.recovery.winreInfoUnknown',
   "REAgentC is available, but Phase 19 does not infer enabled/disabled WinRE state from localized console prose. Live state qualification remains pending on Windows.":'tech.recovery.winreUnverified',
   "The supported REAgentC executable was not found at the trusted System32 path; recovery state is unknown, not assumed unavailable.":'tech.recovery.winreMissing',
   "System Restore readiness":'tech.recovery.restoreTitle',
@@ -371,7 +384,7 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Windows could not find the source files a component-store repair needs (HRESULT 0x800F081F).':'tech.repair.sourceMissing',
   'DISM RestoreHealth completed. This is mutation evidence only; component-store health must still be verified.':'tech.repair.dismMutationOnly',
 
-  'This check did not finish in time and was stopped; its result is unknown.':'tech.repair.checkTimedOut',
+  'This check did not finish in time. A stop was requested; the earlier worker may still be running and its result is unknown.':'tech.repair.checkTimedOut',
   'An earlier attempt at this check is still running, so it was not started again; its result is unknown.':'tech.repair.checkStillRunning',
   'This check stopped without an answer; its result is unknown.':'tech.repair.checkNoAnswer',
   'Evidence-specific post-repair verification proved the intended state.':'tech.repair.evidenceProved',
@@ -434,7 +447,11 @@ export function localizeOwnedText(value: string, locale: Locale, options: { data
   let m: RegExpMatchArray | null;
   if ((m = value.match(/^(\d+) uncorrected read error\(s\) were reported\.$/))) return { text: t('tech.storage.readErrors', locale, { count: m[1] }), localized: true };
   if ((m = value.match(/^(\d+) uncorrected write error\(s\) were reported\.$/))) return { text: t('tech.storage.writeErrors', locale, { count: m[1] }), localized: true };
-  if ((m = value.match(/^(\d+) client error event\(s\) in the last 30 days; newest: (\S+) \(([^)]*)\); (\d+) unsupported event\(s\); (older events were not read|all matching events were read)\. These events are separate from installation attempts\.$/))) return { text: t(m[5] === 'older events were not read' ? 'tech.update.clientSummaryCut' : 'tech.update.clientSummary', locale, { count:m[1], date:m[2], codes:m[3], unknown:m[4] }), localized:true };
+  if ((m = value.match(/^(\d+) client error event\(s\) in the last 30 days; newest: (\S+) \(([^)]*)\); (\d+) unsupported event\(s\); (older events were not read|all matching events were read|one or more channels could not be read)\. These events are separate from installation attempts\.(?: (\d+) historical restart notification\(s\); these do not establish whether a restart is required now\.)?$/))) {
+    const key = m[5] === 'one or more channels could not be read' ? 'tech.update.clientSummaryUnavailable' : m[5] === 'older events were not read' ? 'tech.update.clientSummaryCut' : 'tech.update.clientSummary';
+    const summary = t(key, locale, { count:m[1], date:m[2], codes:m[3], unknown:m[4] });
+    return { text: m[6] ? summary + ' ' + t('tech.update.clientHistoricalRestart', locale, { count:m[6] }) : summary, localized:true };
+  }
   if ((m = value.match(/^(\d+) update\(s\) failed to install more than once with no later success; the newest failure was recorded on (\S+) \(([^)]*)\)\.$/))) return { text: t('tech.update.historyFailures', locale, { count: m[1], date: m[2], codes: m[3] }), localized: true };
   if ((m = value.match(/^(\d+) more (uncorrected read|uncorrected write|NVMe media\/data-integrity) error\(s\) than at the previous scan\.$/))) { const key = m[2] === 'uncorrected read' ? 'tech.storage.moreReadErrors' : m[2] === 'uncorrected write' ? 'tech.storage.moreWriteErrors' : 'tech.storage.moreMediaErrors'; return { text: t(key, locale, { count: m[1] }), localized: true }; }
   if ((m = value.match(/^NVMe available spare \((\d+)%\) is below the device's own threshold \((\d+)%\)\.$/))) return { text: t('tech.storage.spareBelowThreshold', locale, { spare: m[1], threshold: m[2] }), localized: true };

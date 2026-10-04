@@ -11,7 +11,7 @@ const arabic = /[؀-ۿ]/;
 
 test('every assessment check the Windows provider reports has an English and an Arabic label', () => {
   const rust = readFileSync(new URL('../../../crates/system-repair/src/windows_impl.rs', import.meta.url), 'utf8');
-  const assess = rust.slice(rust.indexOf('fn assess('), rust.indexOf('fn repair('));
+  const assess = rust.slice(rust.indexOf('fn assess_impl('), rust.indexOf('impl RepairPlatform for WindowsRepairPlatform'));
   const ids = [...assess.matchAll(/step\(\s*&mut checks,\s*"([a-z-]+)"/g)].map((m) => m[1]);
   assert.ok(ids.includes('dism-scan') && ids.includes('sfc-verify') && ids.includes('disk-scan'), `${ids}`);
   for (const id of ids) {
@@ -78,4 +78,22 @@ test('repair stop binds to the shown plan and says safe-boundary pending in both
   assert.match(controller, /cancel_system_repair',\s*\{\s*planId/);
   const desktop = readFileSync(new URL('../../desktop/src/main.rs', import.meta.url), 'utf8');
   assert.match(desktop, /CancelSystemRepairRequest\s*\{\s*plan_id/);
+});
+
+test('OS servicing drain reads unverified pending in both locales rather than completion', () => {
+  for (const key of ['tech.repair.servicingDrain', 'tech.repair.servicingUnverified']) {
+    assert.ok(hasMessageKey(key), key);
+    assert.match(td(key as never, 'ar'), arabic, key);
+    assert.match(td(key as never, 'en'), /unverified/);
+  }
+  assert.doesNotMatch(td('tech.repair.checkTimedOut', 'en'), /was stopped/);
+});
+
+test('WinRE configured observation keeps protection unknown with owned EN/AR wording', () => {
+  for (const key of ['tech.recovery.winreConfigured', 'tech.recovery.winreDisabled', 'tech.recovery.winreInfoUnknown']) {
+    assert.ok(hasMessageKey(key), key);
+    assert.match(td(key as never, 'ar'), arabic, key);
+  }
+  assert.match(td('tech.recovery.winreConfigured', 'en'), /protection is unknown/);
+  assert.match(td('tech.recovery.winreInfoUnknown', 'en'), /protection is unknown/);
 });

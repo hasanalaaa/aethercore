@@ -140,9 +140,11 @@ fn canonical_payload_state(payload: &FactPayload) -> Option<String> {
             ))
         }
         FactPayload::ThermalZone {
-            temperature_c,
-            critical_c,
-        } => serde_json::to_string(&(temperature_c >= critical_c,)),
+            temperature_decikelvin: Some(reading),
+            critical_decikelvin: Some(critical),
+            ..
+        } => serde_json::to_string(&(reading >= critical,)),
+        FactPayload::ThermalZone { .. } => return None,
         // A changing sample interval/count is observation evidence, not durable machine state.
         FactPayload::NetworkCounterWindow { .. } => return None,
         // Capacity estimates vary with the reported full-charge capacity, not a health verdict.

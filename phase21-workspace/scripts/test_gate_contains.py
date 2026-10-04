@@ -160,7 +160,10 @@ def main() -> int:
         expect(f"P85 {branch} allowed mutating kill", ownership(runner.replace(branch, branch.replace("!mutating && ", ""), 1)), False)
     expect("P85 unguarded mutating kill", ownership(runner.replace("if mutating {", "if mutating { let _ = child.kill();", 1)), False)
     expect("P85 creation failure killed mutating child", ownership(runner.replace("if !mutating {", "if true {", 1)), False)
-    expect("P85 lost polling ownership wait", ownership(runner.replace("// Keep ownership until this exact child exits, even if polling its handle failed.\n                let _ = child.wait();", "", 1)), False)
+    expect("P85 lost polling ownership wait", ownership(runner.replace("// Keep ownership until this exact child exits, even if polling its handle failed.\n                let _ = wait_for_child(&mut child);", "", 1)), False)
+    expect("P85 removed actual owned-child wait helper", ownership(runner.replace("fn wait_for_child(", "fn missing_wait_for_child(", 1)), False)
+    expect("P85 wait error fabricated exit", ownership(runner.replace("Err(_) => thread::sleep(Duration::from_millis(25))", "Err(_) => return fabricated_status", 1)), False)
+    expect("P85 timeout omitted owned-child drain", ownership(runner.replace("let _ = wait_for_child(&mut child);", "", 4)), False)
     for stream in ("stdout", "stderr"):
         lost = f'joined_stream({stream}_thread.join(), "{stream}"'
         assert lost in runner

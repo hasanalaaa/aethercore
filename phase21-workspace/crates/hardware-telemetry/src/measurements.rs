@@ -49,6 +49,11 @@ pub struct ThermalZone {
     pub temperature_c: Option<i32>,
     /// The device's rated critical threshold, not a reading.
     pub critical_c: Option<i32>,
+    /// Exact firmware units; whole Celsius values above are for display only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature_decikelvin: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub critical_decikelvin: Option<u32>,
     /// The highest value observed, kept apart from the rated threshold above.
     pub highest_observed_c: Option<i32>,
     pub coverage: Coverage,

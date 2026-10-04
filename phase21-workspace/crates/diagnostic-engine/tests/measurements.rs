@@ -139,6 +139,8 @@ fn the_limits_are_applied_and_the_largest_snapshot_fits_its_byte_budget() {
                 display_name: name.clone(),
                 temperature_c: Some(1),
                 critical_c: Some(1),
+                temperature_decikelvin: Some(4_232),
+                critical_decikelvin: Some(4_232),
                 highest_observed_c: Some(1),
                 coverage: long(),
             })

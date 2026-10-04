@@ -380,6 +380,75 @@ qualification and P83-06B's comparable boot baseline remain distinct pending
 work. Boot publisher metadata capture and WU reboot source are coordinator/
 lane2-owned; this checkpoint adds neither guessed boot types nor event schemas.
 
+## Measurement boundary corrections — 2026-10-03
+
+Independent review of source head `3ecacc3` found four measurement defects; that head is not
+promoted merely because its existing tests pass. Two actual normalization/rule controls first
+failed: a missing observation timestamp was treated as current, and firmware readings 3731 < 3732
+decikelvin rounded to the same displayed Celsius value and raised a false thermal trip.
+
+The collector now retains both exact firmware readings alongside the existing rounded display.
+Normalization requires measured coverage, a positive nonfuture observation, source/zone identity
+and plausible exact readings. Legacy rounded-only samples remain displayable but cannot raise or
+resolve a thermal finding. The rule and fingerprint compare exact units, with the exact readings
+kept in technical evidence. Missing, failed, future and unidentified samples are rejected.
+
+Battery enumeration now accepts only `ERROR_NO_MORE_ITEMS` as a successful end; every other
+native error reaches the existing collector-fault path, including errors after partial inventory.
+This follows the [SetupDiEnumDeviceInterfaces contract](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdienumdeviceinterfaces).
+Native boundary controls cover successful continuation, normal end and denial/data/buffer failures.
+The network collector records each counter read's own monotonic and wall-clock observation time;
+variable delays reading later adapters no longer stretch the first adapter's interval. The actual
+shared counter attachment control uses 1000 ms and 1500 ms windows in the same inventory.
+
+Quick source validation: 241 affected Rust tests passed before the final counter control, the
+counter controls and host/Windows GNU all-target bindings are checked separately. The fully measured
+snapshot still fits its unchanged byte budget. Native Windows execution of this final correction,
+physical battery devices, firmware thresholds and no-egress capture remain pending; cross-compilation
+is not native qualification. Raw red/green receipts are retained externally under
+`/tmp/aethercore-p83-thermal-*`, `measurement-guards-*`, `counter-time-*` and
+`measurement-native-cross-clippy.log` with the full `aethercore-p83-` prefix.
+
+
+## Both update-event channels and dependency state — 2026-10-04
+
+The owner's Windows 11 build 26200 publisher metadata qualifies System event20/versions0–1,
+Error level2 with named hexadecimal errorCode, and event21/version0, Informational level4 with
+named updatelist. Operational event25/versions0–1 remains discovery-error evidence. The metadata
+and event-level probes are read-only; their raw local receipts remain outside the delivered tree.
+Unsupported provider/channel/id/version/fields, conflicting duplicates and invalid dates stay unknown.
+
+The existing reader now reads both channels within one five-second deadline and200-record total,
+splitting the cap so a busy Operational log cannot starve System. Disabled, denied, unavailable or
+late reads explicitly reduce coverage; an available channel retains its own evidence. Historical
+restart notifications are dated log observations, never the current WUA reboot-required flag, and
+never installation attempts. The evidence-only assessment has no repair fact and the owned EN/AR
+summary identifies both channels, incomplete coverage and the historical restart limit.
+
+The same assessment queries state/configuration for wuauserv, BITS and TrustedInstaller without
+starting them. A shared existing ProviderSlot bounds each observer, retains the actual worker and
+read-budget lease after timeout/cancel, and refuses another service probe while the worker remains.
+Only exact SERVICE_STOPPED can feed the existing diagnosis-scoped service-start gate; pending,
+paused and unknown states no longer masquerade as stopped. Demand-start idle requires no repair,
+disabled policy remains unchanged, and the additional dependency evidence ids cannot propose actions.
+
+Actual System-error parser control failed on the old source before this correction. The old shared
+service verdict also reproduced ServiceStopped for a pending state; the corrected controls cover
+all six other SCM states. Both packages'73 affected tests, all-target host Clippy and Windows GNU
+update bindings passed; the actual two-channel controller has3 positive controls plus2 deliberately
+broken controls which fail their intended assertions. Existing7 actual WUA preflight controls pass.
+UI119 controls and strict Svelte check (zero errors/warnings) passed before the final source-only
+bounded-SCM wiring. Source and cross-bindings checks do not qualify actual final Windows execution.
+No update search, service start/configuration, channel activation, dependency or wire change.
+
+Raw receipts: /tmp/aethercore-p83-wu-system-red.log,
+/tmp/aethercore-p83-wu-pending-service-runtime-red.log,
+/tmp/aethercore-p83-wu-system-services-green.log,
+/tmp/aethercore-p83-wu-actual-event-flow.log,
+/tmp/aethercore-p83-wu-final-host-clippy.log,
+/tmp/aethercore-p83-wu-final-cross-clippy.log,
+/tmp/aethercore-integrated-ui-2026-10-04.log.
+
 ### P83-01B boot observations — finished after review (2026-10-04)
 
 Codex stopped mid-task; its uncommitted work was saved as `493aa0d` (unsealed, unchecked) on top of

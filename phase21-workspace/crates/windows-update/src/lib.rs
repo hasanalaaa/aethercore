@@ -263,9 +263,8 @@ pub fn analyze_history(entries: &[UpdateHistoryEntry]) -> HistoryAnalysis {
     }
 }
 
-/// One error the update client logged (`Microsoft-Windows-WindowsUpdateClient/Operational`, level
-/// Error): the event id, the `errorCode` field it carries and when it was logged. What the id means is
-/// not interpreted here.
+/// One version-checked Error record from the update client Operational or System channel.
+/// Event 25 is discovery evidence, event 20 installation evidence; neither is another WUA attempt.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientError {
@@ -289,41 +288,71 @@ pub struct ClientErrors {
     pub errors: Vec<ClientError>,
     pub unknown_events: u32,
     pub truncated: bool,
+    pub unavailable_channels: u32,
+    /// Historical notifications, never the current WUA reboot-required flag.
+    pub reboot_notifications: Vec<i64>,
 }
 
-const PROVIDER_ATTRIBUTE: &str = "Name=\"Microsoft-Windows-WindowsUpdateClient\"";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClientEvent {
+    Error(ClientError),
+    RebootNotification(i64),
+}
 
 fn xml_between<'a>(xml: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    if xml.matches(open).count() != 1 {
+        return None;
+    }
     let start = xml.find(open)? + open.len();
     let end = xml[start..].find(close)? + start;
     Some(&xml[start..end])
 }
 
-/// Reads the measured Operational schema (update client, event 25, version 1, Error level),
-/// with its named hexadecimal `errorCode` and UTC timestamp. Other schemas stay unknown.
-/// This reads Windows-rendered XML only; it is not a general XML parser.
+/// Windows-rendered XML only: measured provider/channel/id/System-Version and named fields.
+/// Unsupported schemas and conflicting duplicate fields stay unknown.
 pub fn parse_client_error_xml(xml: &str) -> Option<ClientError> {
+    match parse_client_event_xml(xml)? {
+        ClientEvent::Error(error) => Some(error),
+        ClientEvent::RebootNotification(_) => None,
+    }
+}
+
+pub(crate) fn parse_client_event_xml(xml: &str) -> Option<ClientEvent> {
     if xml.len() > 64 * 1024 {
         return None;
     }
-    // EvtRender uses double quotes; the machine fixture was captured with single quotes.
     let normalized = xml.replace('\'', "\"");
     let xml = normalized.as_str();
-    if !xml_between(xml, "<Provider ", "/>")?.contains(PROVIDER_ATTRIBUTE)
-        || xml_between(xml, "<Level>", "</Level>")? != "2"
-        || xml_between(xml, "<Version>", "</Version>")? != "1"
-        || xml_between(xml, "<Channel>", "</Channel>")?
-            != "Microsoft-Windows-WindowsUpdateClient/Operational"
-    {
+    let provider = xml_between(xml, "<Provider ", "/>")?;
+    if xml_between(provider, "Name=\"", "\"")? != "Microsoft-Windows-WindowsUpdateClient" {
         return None;
     }
-    let event_id = xml_between(xml, "<EventID>", "</EventID>")?
+    let event_id: u32 = xml_between(xml, "<EventID>", "</EventID>")?
         .trim()
         .parse()
         .ok()?;
-    // Only event 25, version 1 was measured. Other schemas stay unknown.
-    if event_id != 25 {
+    let version = xml_between(xml, "<Version>", "</Version>")?;
+    let channel = xml_between(xml, "<Channel>", "</Channel>")?;
+    let level = xml_between(xml, "<Level>", "</Level>")?;
+    let error_schema = level == "2"
+        && matches!(version, "0" | "1")
+        && ((event_id == 25 && channel == "Microsoft-Windows-WindowsUpdateClient/Operational")
+            || (event_id == 20 && channel == "System"));
+    let reboot_schema = event_id == 21 && version == "0" && channel == "System" && level == "4";
+    if !error_schema && !reboot_schema {
         return None;
+    }
+    let created = xml_between(xml, "<TimeCreated ", "/>")?;
+    let stamp = xml_between(created, "SystemTime=\"", "\"")?;
+    let unix_ms = chrono::DateTime::parse_from_rfc3339(stamp)
+        .ok()?
+        .timestamp_millis();
+    if unix_ms <= 0 {
+        return None;
+    }
+    if reboot_schema {
+        let updates = xml_between(xml, "<Data Name=\"updatelist\">", "</Data>")?;
+        return (!updates.trim().is_empty()).then_some(ClientEvent::RebootNotification(unix_ms));
     }
     let code = xml_between(xml, "<Data Name=\"errorCode\">", "</Data>")?.trim();
     let error_code = u32::from_str_radix(
@@ -332,16 +361,11 @@ pub fn parse_client_error_xml(xml: &str) -> Option<ClientError> {
         16,
     )
     .ok()?;
-    let created = xml_between(xml, "<TimeCreated ", "/>")?;
-    let stamp = xml_between(created, "SystemTime=\"", "\"")?;
-    let unix_ms = chrono::DateTime::parse_from_rfc3339(stamp)
-        .ok()?
-        .timestamp_millis();
-    Some(ClientError {
+    Some(ClientEvent::Error(ClientError {
         event_id,
         error_code,
         unix_ms,
-    })
+    }))
 }
 
 /// Counts the errors as records of distinct (event, code, time), newest first.
@@ -642,6 +666,80 @@ mod tests {
         let e = parse_client_error_xml(CLIENT_ERROR_XML).expect("an error");
         assert_eq!((e.event_id, e.error_code), (25, 0x8024_0438));
         assert_eq!(e.unix_ms, 1_790_623_589_430, "2026-09-28T19:26:29.430Z");
+    }
+
+    #[test]
+    fn system_installation_error_uses_only_its_measured_channel_and_versions() {
+        let system = CLIENT_ERROR_XML
+            .replace("<EventID>25</EventID>", "<EventID>20</EventID>")
+            .replace(
+                "Microsoft-Windows-WindowsUpdateClient/Operational</Channel>",
+                "System</Channel>",
+            );
+        for version in [0, 1] {
+            let xml = system.replace(
+                "<Version>1</Version>",
+                &format!("<Version>{version}</Version>"),
+            );
+            assert_eq!(
+                parse_client_error_xml(&xml)
+                    .expect("System 20 error")
+                    .event_id,
+                20
+            );
+        }
+        assert!(
+            parse_client_error_xml(&system.replace("<Version>1</Version>", "<Version>2</Version>"))
+                .is_none()
+        );
+        assert!(
+            parse_client_error_xml(
+                &system.replace("<EventID>20</EventID>", "<EventID>19</EventID>")
+            )
+            .is_none()
+        );
+        assert!(
+            parse_client_error_xml(&system.replace("<Level>2</Level>", "<Level>4</Level>"))
+                .is_none()
+        );
+        assert!(
+            parse_client_error_xml(&system.replace(
+                "<Data Name='errorCode'>0x80240438</Data>",
+                "<Data Name='errorCode'>0x80240438</Data><Data Name='errorCode'>0x80070005</Data>"
+            ))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn reboot_event_is_historical_notification_never_an_error_or_current_reboot_flag() {
+        let xml = CLIENT_ERROR_XML
+            .replace("<EventID>25</EventID>", "<EventID>21</EventID>")
+            .replace("<Version>1</Version>", "<Version>0</Version>")
+            .replace("<Level>2</Level>", "<Level>4</Level>")
+            .replace(
+                "Microsoft-Windows-WindowsUpdateClient/Operational</Channel>",
+                "System</Channel>",
+            )
+            .replace(
+                "<Data Name='errorCode'>0x80240438</Data>",
+                "<Data Name='updatelist'>Example update</Data>",
+            );
+        assert_eq!(
+            parse_client_event_xml(&xml),
+            Some(ClientEvent::RebootNotification(1_790_623_589_430))
+        );
+        assert!(parse_client_error_xml(&xml).is_none());
+        for unsupported in [
+            xml.replace("<Version>0</Version>", "<Version>1</Version>"),
+            xml.replace("updatelist", "wrongField"),
+            xml.replace(
+                "System</Channel>",
+                "Microsoft-Windows-WindowsUpdateClient/Operational</Channel>",
+            ),
+        ] {
+            assert!(parse_client_event_xml(&unsupported).is_none());
+        }
     }
 
     #[test]
