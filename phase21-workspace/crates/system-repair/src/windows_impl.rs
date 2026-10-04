@@ -44,6 +44,7 @@ static DISK_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_HISTORY_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_CLIENT_SLOT: ProviderSlot = ProviderSlot::new();
+static WINRE_SLOT: ProviderSlot = ProviderSlot::new();
 
 pub struct WindowsRepairPlatform;
 
@@ -224,7 +225,27 @@ impl WindowsRepairPlatform {
             )
         })?;
         step(&mut checks, "winre-presence", &mut || {
-            Ok(winre_presence_check(&system32))
+            let system32 = system32.clone();
+            let lease_for_worker = lease.clone();
+            run_check(
+                &WINRE_SLOT,
+                (
+                    "winre-state",
+                    "Windows Recovery Environment",
+                    "reagentc.exe /info",
+                ),
+                UPDATE_PROBE_DEADLINE,
+                cancel,
+                move |stop| {
+                    let _read_budget_lease = lease_for_worker;
+                    probe_or_unknown(
+                        "winre-state",
+                        "Windows Recovery Environment",
+                        "reagentc.exe /info",
+                        || winre_configuration_check(&system32, &stop),
+                    )
+                },
+            )
         })?;
         step(&mut checks, "restore-readiness", &mut || {
             Ok(restore_readiness_check(&root))
@@ -761,23 +782,24 @@ fn run_chkdsk_scan(
     Ok(check)
 }
 
-fn winre_presence_check(system32: &Path) -> RepairCheck {
-    let exe = system32.join("reagentc.exe");
-    if exe.is_file() {
-        RepairCheck {
-            id: "winre-state".into(), title: "Windows Recovery Environment".into(), stage: "Unknown".into(),
-            result_code: "WinReStateUnverified".into(), exit_code: 0,
-            detail: "REAgentC is available, but Phase 19 does not infer enabled/disabled WinRE state from localized console prose. Live state qualification remains pending on Windows.".into(),
-            log_hint: "reagentc.exe /info (guided technical detail)".into(),
-        }
-    } else {
-        RepairCheck {
-            id: "winre-state".into(), title: "Windows Recovery Environment".into(), stage: "Unknown".into(),
-            result_code: "WinReStateUnknown".into(), exit_code: -1,
-            detail: "The supported REAgentC executable was not found at the trusted System32 path; recovery state is unknown, not assumed unavailable.".into(),
-            log_hint: String::new(),
-        }
+fn winre_configuration_check(system32: &Path, cancel: &AtomicBool) -> Result<RepairCheck> {
+    if cancel.load(Ordering::SeqCst) {
+        return Err(RepairError::Cancelled);
     }
+    let check = super::process::run_tool(
+        &system32.join("reagentc.exe"),
+        &["/info"],
+        (
+            "winre-state",
+            "Windows Recovery Environment",
+            "reagentc.exe /info",
+        ),
+        &[0],
+        Some(cancel),
+        false,
+        UPDATE_PROBE_DEADLINE,
+    )?;
+    Ok(super::winre::from_info(&check.detail, check.exit_code))
 }
 
 fn restore_readiness_check(root: &Path) -> RepairCheck {

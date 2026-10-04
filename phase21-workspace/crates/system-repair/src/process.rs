@@ -229,6 +229,26 @@ mod tests {
         }
     }
     #[test]
+    fn utf16_output_preserves_code_units_split_across_pipe_chunks() {
+        struct Split(std::io::Cursor<Vec<u8>>);
+        impl std::io::Read for Split {
+            fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
+                self.0.read(&mut target[..3])
+            }
+        }
+        let text = "Windows RE status: Enabled\r\n";
+        let bytes = [
+            vec![0xff, 0xfe],
+            text.encode_utf16().flat_map(u16::to_le_bytes).collect(),
+        ]
+        .concat();
+        assert_eq!(
+            read_tail(Some(Split(std::io::Cursor::new(bytes))), 32_768),
+            text
+        );
+    }
+
+    #[test]
     fn streams_are_bounded_while_reading_and_preserve_the_tail() {
         let mut input = &b"0123456789"[..];
         assert_eq!(read_tail(Some(&mut input), 4), "6789");

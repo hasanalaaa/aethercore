@@ -183,3 +183,38 @@ Locked direct-dependent tests213 across17 suites, all-target Clippy, static351, 
 and existing gate negative controls PASS. Exact Windows build/VM qualification remains NOT RUN.
 Cleanup uncertainty can cause indefinite retained admission; this availability ceiling is
 intentional and cannot be described as bounded completion or a successful terminal outcome.
+
+### Bounded WinRE configuration observation (2026-10-04)
+
+ASTRA P85-04's newer `reagentc /info` authority replaces executable-presence inference with
+a read-only query at the trusted System32 path. The WinRE ProviderSlot retains the original
+assessment ReadBudgetLease inside its actual worker, accepts owner cancellation and the existing
+two-minute first bound, caps decoded output through the existing child reader, discards late
+results, and permits no activation/deactivation, mount, boot or recovery-image mutation.
+
+A measured owner query returned exit0 and a complete en-US Enabled/location/BCD frame. The
+strict parser recognizes only that qualified format: missing/duplicate/conflicting fields,
+noncanonical/zero enabled BCD identity, nonlocal location, invalid indices/version, failed exit,
+unsupported locale/encoding or an incomplete frame produce Unknown. Recognized Disabled is
+Unavailable. A valid Enabled frame emits `WinReConfiguredProtectionUnverified`, with owned
+EN/AR wording that explicitly leaves recovery-image usability, boot readiness and protection
+unknown. It never emits `WinReAvailable`: the existing protection/fact mapping keeps WinRE
+Unknown and preserves the separate prior recovery protections. No path or BCD identifier is
+published in the product detail.
+
+No existing WIM/image-information utility was found in the live crates, service or desktop source.
+Image-header/metadata presence alone would not prove usable image payload or a successful
+recovery boot. Accordingly no new SDK binding/dependency/framework or guessed Available flag
+was introduced. Configured observation is implemented; native locked-image usability and actual
+recovery boot qualification remain open. The owner's Windows UI/culture was en-US; an Arabic
+product UI is localized, but an Arabic Windows console format remains unqualified and Unknown.
+
+Local locked direct-dependent tests217 across17 suites, all-target Clippy, UI109, check0 errors/
+warnings, production build, static351, recursive120, existing gate controls, freeze and EN/AR2122
+parity passed. Shared tests cover the qualified frame, Unknown protection mapping, disabled and
+invalid response controls; a UTF16 reader test covers code units split across pipe chunks. The
+initial missing-observation control failed the positive configured/disabled tests. A mistaken
+new test initially expected no protection of any kind; it was corrected to compare the prior
+protection predicate, because the existing journal recovery is a separate protection. No
+production protection gate was changed. Full exact native crate qualification is recorded by
+the root integration receipts, not inferred from these local checks.
