@@ -433,7 +433,7 @@ disabled policy remains unchanged, and the additional dependency evidence ids ca
 
 Actual System-error parser control failed on the old source before this correction. The old shared
 service verdict also reproduced ServiceStopped for a pending state; the corrected controls cover
-all six other SCM states. Both packages'72 affected tests, all-target host Clippy and Windows GNU
+all six other SCM states. Both packages'73 affected tests, all-target host Clippy and Windows GNU
 update bindings passed; the actual two-channel controller has3 positive controls plus2 deliberately
 broken controls which fail their intended assertions. Existing7 actual WUA preflight controls pass.
 UI119 controls and strict Svelte check (zero errors/warnings) passed before the final source-only
