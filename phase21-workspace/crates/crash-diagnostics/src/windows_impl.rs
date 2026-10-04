@@ -31,7 +31,10 @@ use windows::{
 use crate::{
     CrashDiagnosticsSnapshot, CrashError, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS, EVENT_WINDOW_MS,
     EventEvidence, Result, assemble_snapshot,
-    boot::{BootEvidence, boot_from_fields, dedupe_boots},
+    boot::{
+        BootEvidence, KernelBootClass, PERFORMANCE_PROVIDER, bind_boot_evidence, boot_from_event,
+        delay_from_event,
+    },
     classify_event, dump_in_window,
 };
 
@@ -70,6 +73,8 @@ struct RenderedEventSystem {
     provider: String,
     event_id: u32,
     recorded_unix_ms: i64,
+    recorded_filetime: u64,
+    version: Option<u8>,
 }
 
 struct RenderBuffer {
@@ -188,19 +193,140 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<CrashDiagn
 /// The most recent boots from event 100 of the boot-performance channel, read by field name
 /// through an `EvtRenderContextValues` context so no value is taken by position or offset.
 fn collect_boots(control: &CollectorControl) -> Result<Vec<BootEvidence>> {
-    const FIELDS: [&str; 6] = [
-        "BootTsVersion",
-        "SystemBootInstance",
-        "BootTime",
-        "MainPathBootTime",
-        "BootPostBootTime",
-        "BootNumStartupApps",
-    ];
-    const MAX_BOOT_EVENTS_SCANNED: usize = 64;
+    use BootFieldType::{FileTime, Text, U32};
+    let observed = Utc::now().timestamp_millis();
+    let (records, mut boots_complete) = read_boot_events(
+        control,
+        "Microsoft-Windows-Diagnostics-Performance/Operational",
+        PERFORMANCE_PROVIDER,
+        "EventID=100",
+        &[
+            ("BootTsVersion", U32),
+            ("SystemBootInstance", U32),
+            ("BootTime", U32),
+            ("MainPathBootTime", U32),
+            ("BootPostBootTime", U32),
+            ("BootNumStartupApps", U32),
+            ("BootStartTime", FileTime),
+            ("BootEndTime", FileTime),
+        ],
+        64,
+    )?;
+    let mut boots = Vec::new();
+    for record in records {
+        let system = &record.system;
+        if let Some(boot) = boot_from_event(
+            &system.provider,
+            system.event_id,
+            system.version,
+            &|name| record.field(name),
+            system.recorded_filetime,
+            observed,
+        ) {
+            boots.push(boot);
+        } else {
+            boots_complete = false;
+        }
+    }
+    let (records, mut kernel_complete) = read_boot_events(
+        control,
+        "System",
+        "Microsoft-Windows-Kernel-Boot",
+        "EventID=27",
+        &[("BootType", U32)],
+        64,
+    )
+    .unwrap_or_else(|_| (Vec::new(), false));
+    let mut kernels = Vec::new();
+    for record in records {
+        let system = &record.system;
+        if system.provider == "Microsoft-Windows-Kernel-Boot"
+            && system.event_id == 27
+            && system.version == Some(1)
+            && system.recorded_unix_ms <= observed
+            && let Some(value) = record.field("BootType").and_then(|v| v.parse::<u32>().ok())
+        {
+            kernels.push(KernelBootClass {
+                recorded_filetime: system.recorded_filetime,
+                event_version: 1,
+                value,
+            });
+        } else {
+            kernel_complete = false;
+        }
+    }
+    let (records, mut delays_complete) = read_boot_events(
+        control,
+        "Microsoft-Windows-Diagnostics-Performance/Operational",
+        PERFORMANCE_PROVIDER,
+        "EventID=101 or EventID=103",
+        &[
+            ("StartTime", FileTime),
+            ("Path", Text),
+            ("TotalTime", U32),
+            ("DegradationTime", U32),
+        ],
+        128,
+    )
+    .unwrap_or_else(|_| (Vec::new(), false));
+    let mut delays = Vec::new();
+    for record in records {
+        let system = &record.system;
+        if let Some(delay) = delay_from_event(
+            &system.provider,
+            system.event_id,
+            system.version,
+            &|name| record.field(name),
+            system.recorded_filetime,
+            observed,
+        ) {
+            delays.push(delay);
+        } else {
+            delays_complete = false;
+        }
+    }
+    checkpoint(control, "boot.complete")?;
+    Ok(bind_boot_evidence(
+        boots,
+        &kernels,
+        &delays,
+        boots_complete && kernel_complete,
+        boots_complete && delays_complete,
+    ))
+}
+
+#[derive(Clone, Copy)]
+enum BootFieldType {
+    U32,
+    FileTime,
+    Text,
+}
+struct NamedBootEvent {
+    system: RenderedEventSystem,
+    fields: Vec<(&'static str, Option<String>)>,
+}
+impl NamedBootEvent {
+    fn field(&self, name: &str) -> Option<String> {
+        self.fields
+            .iter()
+            .find(|(key, _)| *key == name)
+            .and_then(|(_, value)| value.clone())
+    }
+}
+/// The three boot queries share the caller's deadline/cancellation and use bounded metadata only.
+/// A cap, unreadable record or unexpected scalar type prevents declaring an unambiguous join.
+fn read_boot_events(
+    control: &CollectorControl,
+    channel: &str,
+    provider: &str,
+    ids: &str,
+    fields: &[(&'static str, BootFieldType)],
+    cap: usize,
+) -> Result<(Vec<NamedBootEvent>, bool)> {
     checkpoint(control, "boot.begin")?;
-    let channel = w("Microsoft-Windows-Diagnostics-Performance/Operational");
+    let channel = w(channel);
     let query = w(&format!(
-        "*[System[Provider[@Name='Microsoft-Windows-Diagnostics-Performance'] and (EventID=100) and TimeCreated[timediff(@SystemTime) <= {EVENT_WINDOW_MS}]]]"
+        "*[System[Provider[@Name='{provider}'] and ({ids}) and TimeCreated[timediff(@SystemTime) <= {EVENT_WINDOW_MS}]]]"
     ));
     let result = EventHandle(
         unsafe {
@@ -216,61 +342,89 @@ fn collect_boots(control: &CollectorControl) -> Result<Vec<BootEvidence>> {
     let system_context = EventHandle(
         unsafe { EvtCreateRenderContext(None, EvtRenderContextSystem.0) }.map_err(win)?,
     );
-    let paths: Vec<Vec<u16>> = FIELDS
+    let paths: Vec<Vec<u16>> = fields
         .iter()
-        .map(|name| w(&format!("Event/EventData/Data[@Name='{name}']")))
+        .map(|(name, _)| w(&format!("Event/EventData/Data[@Name='{name}']")))
         .collect();
-    let path_pointers: Vec<PCWSTR> = paths.iter().map(|p| PCWSTR(p.as_ptr())).collect();
+    let pointers: Vec<PCWSTR> = paths.iter().map(|p| PCWSTR(p.as_ptr())).collect();
     let values_context = EventHandle(
-        unsafe { EvtCreateRenderContext(Some(&path_pointers), EvtRenderContextValues.0) }
+        unsafe { EvtCreateRenderContext(Some(&pointers), EvtRenderContextValues.0) }
             .map_err(win)?,
     );
-
-    let mut boots = Vec::new();
-    let mut scanned = 0usize;
-    while scanned < MAX_BOOT_EVENTS_SCANNED {
+    let mut records = Vec::new();
+    let mut complete = true;
+    let mut scanned = 0;
+    let mut retained_bytes = 0usize;
+    while scanned < cap {
         checkpoint(control, "boot.next")?;
         let mut handles = [0isize; 1];
-        let mut returned = 0u32;
-        let timeout_ms = control.remaining_ms_capped(EVENTLOG_NEXT_SLICE);
-        match unsafe { EvtNext(result.0, &mut handles, timeout_ms, 0, &mut returned) } {
+        let mut returned = 0;
+        match unsafe {
+            EvtNext(
+                result.0,
+                &mut handles,
+                control.remaining_ms_capped(EVENTLOG_NEXT_SLICE),
+                0,
+                &mut returned,
+            )
+        } {
             Ok(()) => {}
             Err(error) if error.code() == ERROR_TIMEOUT.to_hresult() => continue,
-            Err(error) if error.code() == ERROR_NO_MORE_ITEMS.to_hresult() => break,
+            Err(error) if error.code() == ERROR_NO_MORE_ITEMS.to_hresult() => {
+                return Ok((records, complete));
+            }
             Err(error) => return Err(win(error)),
         }
         if returned != 1 || handles[0] == 0 {
             return Err(CrashError::MalformedResponse(
-                "EvtNext returned an inconsistent handle count for the boot channel".into(),
+                "boot EvtNext handle count mismatch".into(),
             ));
         }
         let event = EventHandle(EVT_HANDLE(handles[0]));
         scanned += 1;
-        // An event that does not render is skipped: it is not a boot record we can read.
         let Ok(system) = render_system(system_context.0, event.0) else {
+            complete = false;
             continue;
         };
         let Ok(buffer) = render_values(values_context.0, event.0, MAX_USER_RENDER_BYTES) else {
+            complete = false;
             continue;
         };
-        let Ok(variants) = buffer.variants() else {
+        let Ok(values) = buffer.variants() else {
+            complete = false;
             continue;
         };
-        let texts: Vec<Option<String>> = variants
-            .iter()
-            .map(|variant| variant_to_bounded_text(variant, &buffer).ok().flatten())
-            .collect();
-        let field = |name: &str| {
-            FIELDS
-                .iter()
-                .position(|candidate| *candidate == name)
-                .and_then(|index| texts.get(index).cloned().flatten())
-        };
-        if let Some(boot) = boot_from_fields(&field, system.recorded_unix_ms) {
-            boots.push(boot);
+        if values.len() != fields.len() {
+            complete = false;
+            continue;
         }
+        let mut named = Vec::new();
+        for ((name, kind), value) in fields.iter().zip(values) {
+            let text = match kind {
+                BootFieldType::U32 if !variant_is_array(value) && variant_base_type(value) == 8 => {
+                    Some(unsafe { value.Anonymous.UInt32Val }.to_string())
+                }
+                BootFieldType::FileTime => variant_filetime(value).map(|v| v.to_string()),
+                BootFieldType::Text => {
+                    variant_unicode_string(value, &buffer)?.filter(|v| v.len() <= 4096)
+                }
+                _ => None,
+            };
+            if text.is_none() && variant_base_type(value) != 0 {
+                complete = false;
+            }
+            retained_bytes = retained_bytes.saturating_add(text.as_ref().map_or(0, String::len));
+            named.push((*name, text));
+        }
+        if retained_bytes > 512 * 1024 {
+            return Ok((records, false));
+        }
+        records.push(NamedBootEvent {
+            system,
+            fields: named,
+        });
     }
-    Ok(dedupe_boots(boots))
+    Ok((records, false)) // cap reached: uniqueness cannot be proved over an incomplete query
 }
 
 fn collector_fault(operation: &'static str, error: CrashError) -> CollectorFault {
@@ -424,7 +578,7 @@ fn collect_events(
 
 fn render_system(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<RenderedEventSystem> {
     // EvtRenderContextSystem returns EVT_VARIANT entries in EVT_SYSTEM_PROPERTY_ID order.
-    // Indices: ProviderName=0, EventID=2, TimeCreated=8.
+    // Indices: ProviderName=0, EventID=2, TimeCreated=8, Version=17 (scalar UInt8).
     let buffer = render_values(context, event, MAX_SYSTEM_RENDER_BYTES)?;
     let variants = buffer.variants()?;
     if variants.len() <= 8 {
@@ -444,6 +598,8 @@ fn render_system(context: EVT_HANDLE, event: EVT_HANDLE) -> Result<RenderedEvent
         provider,
         event_id,
         recorded_unix_ms: filetime_to_unix_ms(filetime),
+        recorded_filetime: filetime,
+        version: variants.get(17).and_then(variant_u8),
     })
 }
 
@@ -623,6 +779,13 @@ fn variant_unicode_string(variant: &EVT_VARIANT, buffer: &RenderBuffer) -> Resul
         ));
     };
     Ok(Some(String::from_utf16_lossy(&units[..length])))
+}
+
+fn variant_u8(variant: &EVT_VARIANT) -> Option<u8> {
+    if variant_is_array(variant) || variant_base_type(variant) != 4 {
+        return None;
+    }
+    Some(unsafe { variant.Anonymous.ByteVal })
 }
 
 fn variant_u32_lossless(variant: &EVT_VARIANT) -> Option<u32> {
@@ -951,5 +1114,31 @@ mod tests {
         );
         assert!(q.contains("Microsoft-Windows-WHEA-Logger"), "{q}");
         assert!(q.contains(&format!("<= {EVENT_WINDOW_MS}")), "{q}");
+    }
+    #[test]
+    fn boot_system_version_is_only_scalar_byte_and_filetime_preserves_one_tick() {
+        let mut value = EVT_VARIANT {
+            Type: 4,
+            ..Default::default()
+        };
+        value.Anonymous.ByteVal = 2;
+        assert_eq!(variant_u8(&value), Some(2));
+        for ty in [0, 8, 4 | 0x80] {
+            value.Type = ty;
+            assert_eq!(variant_u8(&value), None);
+        }
+        value.Type = 17;
+        value.Anonymous.FileTimeVal = FILETIME_UNIX_EPOCH_TICKS + 1;
+        assert_eq!(
+            variant_filetime(&value),
+            Some(FILETIME_UNIX_EPOCH_TICKS + 1)
+        );
+        assert_eq!(
+            filetime_to_unix_ms(variant_filetime(&value).unwrap()),
+            0,
+            "UI milliseconds cannot be used for exact delay identity"
+        );
+        value.Type = 17 | 0x80;
+        assert_eq!(variant_filetime(&value), None);
     }
 }
