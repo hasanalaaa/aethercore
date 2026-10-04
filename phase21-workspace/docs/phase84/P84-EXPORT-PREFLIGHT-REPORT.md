@@ -100,7 +100,18 @@ Raw logs: `/private/tmp/p84-export-witness-mac-final.log`,
 `/private/tmp/p84-export-witness-clippy-cross-final.log`,
 `/private/tmp/p84-export-witness-static-final.log`.
 
-Final exact sealed native receipt is pending the code checkpoint and fresh archive extraction.
+Exact source **adf61edf75d6ea222cad4d2e28e0cc47410cfaa0** was extracted into a fresh
+`C:\dev\codex-p84-fixtures\adf61edf75d6\source`, with **no overlay**. Archive SHA-256:
+`f3e7752a6c27861c91e4172a8f1d1e03a3ab51ffc137a575d25b5340e2b06729`.
+Before compilation, all 1630 source + 7 GitHub files matched their seals; afterward all
+1630 source files still matched. Native library fixtures **14 passed, zero failed/ignored**,
+default parallel runner; native all-target backup Clippy `-D warnings`: **PASS**, process exit 0.
+The exact code remained unchanged after this receipt.
+
+Committed raw [log](evidence/p84-export-adf61ed-native.log) SHA-256:
+`b53ae7216a5fd7663147344e88123a9c12688c4f3be12e7785d662a610654a23`;
+structured [receipt](evidence/p84-export-adf61ed-native.json).
+Final documentation/seal commits add only this receipt; their archive was not recompiled.
 Diagnostic overlays are explicitly unqualified. Third diagnostic raw log:
 `/private/tmp/p84-export-witness-native-diagnostic3.log` (14 passed, no failed/ignored).
 Earlier failures: `/private/tmp/p84-export-tag-write-red.log`,
