@@ -1136,8 +1136,6 @@ export const enCatalog = {
   "tech.repair.queued": "Authorized repair queued",
   "tech.repair.preflight": "Checking servicing safety",
   "tech.repair.frozen": "Repair workflow is frozen; waiting for the servicing mutation barrier",
-  "tech.repair.servicingDrain": "The owned repair call has ended. Windows servicing completion remains unverified; access stays reserved until it is safe to continue.",
-  "tech.repair.servicingUnverified": "Windows servicing completion is unverified. No further servicing work was started.",
   "tech.repair.executing": "Running supported Windows repair tools",
   "tech.repair.verifying": "Verifying component store and protected files",
   "tech.repair.completed": "Repair workflow completed and verification commands finished successfully.",

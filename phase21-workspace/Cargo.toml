@@ -85,8 +85,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 windows = { version = "0.62.2", features = [
-  "Wdk_Foundation",
-  "Wdk_Storage_FileSystem",
   "Win32_Foundation",
   "Win32_Networking_NetworkListManager",
   "Win32_Networking_WinHttp",

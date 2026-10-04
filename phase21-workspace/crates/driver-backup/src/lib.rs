@@ -62,7 +62,7 @@ struct BackupFile {
 /// Seals an exported driver package: every file's path, size and SHA-256 in a manifest beside it
 /// (P84-04). An export with no INF, a link, or too many files is refused, not sealed.
 pub fn seal_export(source_inf: &str, destination: &Path) -> Result<BackupEvidence> {
-    let _guard = guard_root(destination, false)?;
+    guard_root(destination, false)?;
     let files = read_export(destination)?;
     if !files
         .iter()
@@ -103,7 +103,7 @@ pub fn seal_export(source_inf: &str, destination: &Path) -> Result<BackupEvidenc
 /// evidence; one that drifted or was replaced proves nothing and blocks the mutation.
 pub fn verify_export(evidence: &BackupEvidence) -> Result<()> {
     let directory = Path::new(&evidence.backup_directory);
-    let _guard = guard_root(directory, false)?;
+    guard_root(directory, false)?;
     if Path::new(&evidence.manifest_path) != directory.join(MANIFEST_NAME) {
         return Err(BackupError::Changed(
             "the manifest is not in the export".into(),
@@ -147,7 +147,7 @@ fn read_export(root: &Path) -> Result<Vec<BackupFile>> {
 }
 
 fn collect_files(root: &Path, dir: &Path, out: &mut Vec<BackupFile>) -> Result<()> {
-    let _guard = guard_root(dir, false)?;
+    guard_root(dir, false)?;
     for entry in fs::read_dir(dir)? {
         if out.len() >= MAX_BACKUP_FILES {
             return Err(BackupError::PnpUtil(
@@ -179,32 +179,35 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<BackupFile>) -> Result<(
     Ok(())
 }
 
-#[cfg(windows)]
-fn guard_root(path: &Path, create: bool) -> Result<windows_impl::RootGuard> {
-    windows_impl::guard_root(path, create)
-}
-
-#[cfg(not(windows))]
-fn guard_root(path: &Path, create: bool) -> Result<Vec<fs::File>> {
+/// Every directory from the volume root down to `path` is a real directory, never a link or a
+/// junction, created as needed when `create` (P84-04). Path-based on purpose: the backup root
+/// lives under `%ProgramData%\AetherCore`, which only SYSTEM, Administrators and the service can
+/// write (install-hardener), so nothing less privileged can race these checks. The NT-native
+/// anchored opens a 2026-10-04 branch added for that race needed new `windows` features (H6)
+/// and held other software's folders open; they defended nothing this DACL leaves open.
+fn guard_root(path: &Path, create: bool) -> Result<()> {
     if !path.is_absolute()
-        || path
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
+        || path.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
     {
         return Err(BackupError::InvalidRoot);
     }
-    let mut cursor = PathBuf::new();
-    for component in path.components() {
-        cursor.push(component);
-        if create && !cursor.try_exists()? {
-            fs::create_dir(&cursor)?;
+    let mut chain: Vec<&Path> = path.ancestors().collect();
+    chain.reverse();
+    for directory in chain {
+        if create && !directory.try_exists()? {
+            fs::create_dir(directory)?;
         }
-        reject_link(&cursor)?;
-        if !fs::metadata(&cursor)?.is_dir() {
+        reject_link(directory)?;
+        if !fs::metadata(directory)?.is_dir() {
             return Err(BackupError::InvalidRoot);
         }
     }
-    Ok(Vec::new())
+    Ok(())
 }
 
 fn read_locked_file(path: &Path) -> Result<Vec<u8>> {
@@ -241,13 +244,7 @@ fn export_into(
     if !validate_oem_inf_name(source_inf) {
         return Err(BackupError::InvalidInf);
     }
-    #[cfg(windows)]
-    let mut guard = guard_root(destination, true)?;
-    #[cfg(not(windows))]
-    let _guard = guard_root(destination, true)?;
-    #[cfg(windows)]
-    guard.admit_export()?;
-    #[cfg(not(windows))]
+    guard_root(destination, true)?;
     if destination.read_dir()?.next().is_some() {
         return Err(BackupError::InvalidRoot);
     }
@@ -258,8 +255,6 @@ fn export_into(
         )));
     }
     export(destination)?;
-    #[cfg(windows)]
-    guard.finish_export()?;
     seal_export(source_inf, destination)
 }
 
@@ -270,13 +265,13 @@ fn package_footprint(root: &Path, allocation_unit: u64) -> Result<u64> {
     if allocation_unit == 0 {
         return Err(BackupError::InvalidRoot);
     }
-    let _guard = guard_root(root, false)?;
+    guard_root(root, false)?;
     let mut pending = vec![root.to_path_buf()];
     let mut entries = 0usize;
     let mut files = 0usize;
     let mut bytes = 0u64;
     while let Some(dir) = pending.pop() {
-        let _directory_guard = guard_root(&dir, false)?;
+        guard_root(&dir, false)?;
         for entry in fs::read_dir(dir)? {
             entries += 1;
             if entries > MAX_BACKUP_FILES {

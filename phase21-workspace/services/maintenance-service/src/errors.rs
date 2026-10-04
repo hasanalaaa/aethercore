@@ -276,9 +276,6 @@ impl From<RepairError> for ServiceError {
             RepairError::Busy | RepairError::AlreadyRunning | RepairError::ServicingBusy => {
                 Self::busy("repair", "repair.busy", detail)
             }
-            RepairError::ServicingUnverified => {
-                Self::conflict("repair", "tech.repair.servicingUnverified", detail)
-            }
             RepairError::OwnershipMismatch => Self::not_found(
                 "repair",
                 "repair.stateUnavailable",
@@ -532,15 +529,6 @@ impl From<aethercore_persistence::PersistenceError> for ServiceError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn unverified_servicing_is_a_declared_conflict_without_a_busy_claim() {
-        let error = ServiceError::from(RepairError::ServicingUnverified);
-        assert_eq!(error.code, ErrorCode::Conflict);
-        assert_eq!(error.status, 409);
-        assert_eq!(error.message_key, "tech.repair.servicingUnverified");
-        assert!(!error.retryable);
-    }
 
     #[test]
     fn kernel_contention_and_ownership_failures_have_typed_semantics() {
