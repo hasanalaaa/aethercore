@@ -166,7 +166,7 @@ Full native CI at the new exact head is still required before integration.
 ## 5. What stayed unmeasured
 
 - **The abortable search job in the service's context (LocalSystem).** From an SSH session the agent refuses `BeginSearch`: `0x80070005` with or without process COM security at impersonate level, and `0x80004003` with a null callback. The plain search runs instead. In the service, which sets the same COM security at startup, I believe the job runs, but I did not measure it without touching the installed service (`DBT-P84-006`).
-- **A free-disk-space check before the export.** There is none; a full disk surfaces as a `pnputil` or file-system error and stops the install. Nor did I check the reparse state of the folders above the backup root (the root and its tree are checked).
+- **Export preflight and ancestor protection:** the follow-up adds bounded package-footprint/caller-available-space preflight and retained child witnesses with anchored creation. Historical `299412d`/`d9b56c8` directory-sharing guards failed actual tag-replacement controls and are superseded. Exact native fixture qualification and limits are recorded in [P84-EXPORT-PREFLIGHT-REPORT.md](P84-EXPORT-PREFLIGHT-REPORT.md); this does not qualify an installed driver change or a guaranteed disk-space reservation.
 - **Any real install, verification or recovery.** Proven with fakes only, by the lane's rule.
 - **The pages with Narrator, on a real install.**
 
