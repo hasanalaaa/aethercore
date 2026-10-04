@@ -279,6 +279,8 @@ pub mod cbs;
 pub mod dism;
 mod process;
 mod servicing;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod winre;
 
 #[cfg(windows)]
 mod dism_api;

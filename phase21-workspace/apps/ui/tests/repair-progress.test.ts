@@ -88,3 +88,12 @@ test('OS servicing drain reads unverified pending in both locales rather than co
   }
   assert.doesNotMatch(td('tech.repair.checkTimedOut', 'en'), /was stopped/);
 });
+
+test('WinRE configured observation keeps protection unknown with owned EN/AR wording', () => {
+  for (const key of ['tech.recovery.winreConfigured', 'tech.recovery.winreDisabled', 'tech.recovery.winreInfoUnknown']) {
+    assert.ok(hasMessageKey(key), key);
+    assert.match(td(key as never, 'ar'), arabic, key);
+  }
+  assert.match(td('tech.recovery.winreConfigured', 'en'), /protection is unknown/);
+  assert.match(td('tech.recovery.winreInfoUnknown', 'en'), /protection is unknown/);
+});
