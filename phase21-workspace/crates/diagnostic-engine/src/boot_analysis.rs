@@ -41,7 +41,8 @@ fn valid(b: &BootEvidence, observed: i64) -> bool {
         && b.raw_class.as_ref().is_some_and(|c| c.event_version == 1)
         && b.recorded_unix_ms > 0
         && b.recorded_unix_ms <= observed
-        && observed.saturating_sub(b.recorded_unix_ms) <= i64::from(aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS) * 86_400_000
+        && observed.saturating_sub(b.recorded_unix_ms)
+            <= i64::from(aethercore_crash_diagnostics::DEFAULT_EVENT_WINDOW_DAYS) * 86_400_000
         && matches!((b.boot_start_filetime,b.boot_end_filetime,b.recorded_filetime),
             (Some(start),Some(end),Some(record)) if start>FILETIME_EPOCH && start<end && end<=record
                 && unix_ms(record)==Some(b.recorded_unix_ms))
@@ -69,7 +70,11 @@ pub(crate) fn compose_boots(
             let duration = b
                 .boot_time_ms
                 .filter(|v| *v > 0 && u32::try_from(*v).is_ok());
-            let kept_delays = if qualified[i] { b.delays.len().min(remaining_delays) } else { 0 };
+            let kept_delays = if qualified[i] {
+                b.delays.len().min(remaining_delays)
+            } else {
+                0
+            };
             remaining_delays -= kept_delays;
             BootRecord {
                 recorded_unix_ms: b.recorded_unix_ms,
@@ -128,8 +133,12 @@ pub(crate) fn compose_boots(
         .collect();
     // Event publication order must agree with completed interval order. A delayed
     // older record is history, never a new latest-boot/baseline assertion.
-    if rows.windows(2).any(|pair| matches!((pair[0].boot_start_filetime,pair[1].boot_end_filetime),
-        (Some(start),Some(end)) if start <= end)) { return result; }
+    if rows.windows(2).any(|pair| {
+        matches!((pair[0].boot_start_filetime,pair[1].boot_end_filetime),
+        (Some(start),Some(end)) if start <= end)
+    }) {
+        return result;
+    }
     let Some(latest) = rows.first().filter(|_| qualified.first() == Some(&true)) else {
         return result;
     };
@@ -329,32 +338,90 @@ mod tests {
     }
     #[test]
     fn delayed_reversed_records_and_outside_source_window_cannot_supply_a_baseline() {
-        let mut rows = vec![row(9,29,90000),row(8,28,50000),row(7,27,40000),row(6,26,30000),row(5,25,20000),row(4,24,10000)];
+        let mut rows = vec![
+            row(9, 29, 90000),
+            row(8, 28, 50000),
+            row(7, 27, 40000),
+            row(6, 26, 30000),
+            row(5, 25, 20000),
+            row(4, 24, 10000),
+        ];
         // An older completed boot written after the newest one is not a latest-boot proof.
-        rows[1].recorded_filetime = Some(rows[0].recorded_filetime.unwrap()+10_000);
-        rows[1].recorded_unix_ms = rows[0].recorded_unix_ms+1;
-        assert!(compose_boots(&rows,Some(&reference()),observed()-20_000,observed()).iter().all(|b|b.comparison.is_none()&&!b.matches_os_restart));
-        let old_observer = observed()+31*86_400_000;
-        assert!(compose_boots(&[row(9,29,90000)],None,old_observer-1,old_observer).iter().all(|b|!b.completed_measurement));
+        rows[1].recorded_filetime = Some(rows[0].recorded_filetime.unwrap() + 10_000);
+        rows[1].recorded_unix_ms = rows[0].recorded_unix_ms + 1;
+        assert!(
+            compose_boots(&rows, Some(&reference()), observed() - 20_000, observed())
+                .iter()
+                .all(|b| b.comparison.is_none() && !b.matches_os_restart)
+        );
+        let old_observer = observed() + 31 * 86_400_000;
+        assert!(
+            compose_boots(&[row(9, 29, 90000)], None, old_observer - 1, old_observer)
+                .iter()
+                .all(|b| !b.completed_measurement)
+        );
     }
     #[test]
     fn maximal_boot_paths_do_not_break_the_existing_snapshot_budget_and_cuts_are_explicit() {
         use aethercore_crash_diagnostics::boot::BootDelayEvidence;
-        use aethercore_hardware_telemetry::measurements::{NetworkAdapter, ThermalZone, Battery};
-        let mut rows = (10..30).enumerate().map(|(i,day)| row(i as u64+1,day,30_000)).collect::<Vec<_>>();
+        use aethercore_hardware_telemetry::measurements::{Battery, NetworkAdapter, ThermalZone};
+        let mut rows = (10..30)
+            .enumerate()
+            .map(|(i, day)| row(i as u64 + 1, day, 30_000))
+            .collect::<Vec<_>>();
         for b in &mut rows {
-            b.delays = (0..32).map(|_|BootDelayEvidence{event_id:101,full_path:format!("C:\\{}", "\\".repeat(4000)),total_time_ms:1700,degradation_time_ms:300,recorded_unix_ms:b.recorded_unix_ms,boot_start_filetime:b.boot_start_filetime.unwrap()}).collect();
+            b.delays = (0..32)
+                .map(|_| BootDelayEvidence {
+                    event_id: 101,
+                    full_path: format!("C:\\{}", "\\".repeat(4000)),
+                    total_time_ms: 1700,
+                    degradation_time_ms: 300,
+                    recorded_unix_ms: b.recorded_unix_ms,
+                    boot_start_filetime: b.boot_start_filetime.unwrap(),
+                })
+                .collect();
         }
-        let boots=compose_boots(&rows,None,observed()-1000,observed());
-        let name="N".repeat(256);let coverage=Coverage{source:name.clone(),reason_key:name.clone(),..Default::default()};
-        let snapshot=crate::DiagnosticsSnapshot{boots,
-            thermal_zones:(0..32).map(|_|ThermalZone{stable_id:name.clone(),display_name:name.clone(),coverage:coverage.clone(),..Default::default()}).collect(),
-            batteries:(0..16).map(|_|Battery{stable_id:name.clone(),display_name:name.clone(),coverage:coverage.clone(),..Default::default()}).collect(),
-            network_adapters:(0..32).map(|_|NetworkAdapter{stable_id:name.clone(),display_name:name.clone(),coverage:coverage.clone(),..Default::default()}).collect(),
-            ..Default::default()};
-        let bytes=serde_json::to_vec(&snapshot).unwrap().len();
-        assert!(bytes<256*1024,"actual boot composition exceeded existing snapshot budget: {bytes}");
-        assert!(snapshot.boots.iter().any(|b|b.delays_truncated));
+        let boots = compose_boots(&rows, None, observed() - 1000, observed());
+        let name = "N".repeat(256);
+        let coverage = Coverage {
+            source: name.clone(),
+            reason_key: name.clone(),
+            ..Default::default()
+        };
+        let snapshot = crate::DiagnosticsSnapshot {
+            boots,
+            thermal_zones: (0..32)
+                .map(|_| ThermalZone {
+                    stable_id: name.clone(),
+                    display_name: name.clone(),
+                    coverage: coverage.clone(),
+                    ..Default::default()
+                })
+                .collect(),
+            batteries: (0..16)
+                .map(|_| Battery {
+                    stable_id: name.clone(),
+                    display_name: name.clone(),
+                    coverage: coverage.clone(),
+                    ..Default::default()
+                })
+                .collect(),
+            network_adapters: (0..32)
+                .map(|_| NetworkAdapter {
+                    stable_id: name.clone(),
+                    display_name: name.clone(),
+                    coverage: coverage.clone(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let bytes = serde_json::to_vec(&snapshot).unwrap().len();
+        assert!(
+            bytes < 256 * 1024,
+            "actual boot composition exceeded existing snapshot budget: {bytes}"
+        );
+        assert!(snapshot.boots.iter().any(|b| b.delays_truncated));
     }
     #[test]
     fn absent_class_and_uncompleted_legacy_samples_keep_history_without_comparison() {

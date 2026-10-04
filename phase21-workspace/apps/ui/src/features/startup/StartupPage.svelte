@@ -104,7 +104,7 @@
           <div class="startup-title"><strong><TechnicalText value={item.displayName}/></strong><span>{localizeKind(item.kind,locale)}</span>{#if item.protected}<em>{t('startup.protected',locale)}</em>{/if}</div>
           <p><LocalizedOwnedText value={item.command || item.source} {locale} data/></p>
           <small>{localizeStartupScope(item.scope,locale)} · {localizePublisher(item.publisher,locale)} · <LocalizedOwnedText value={item.evidenceDetail} {locale}/></small>
-          {#if attribution}<p data-boot-attribution>{t('startup.bootHistory.delay',locale,{total:attribution.delay.totalTimeMs,degradation:attribution.delay.degradationTimeMs,when:formatDateTime(attribution.boot.recordedUnixMs,locale),event:attribution.delay.eventId})} · <TechnicalText value="Microsoft-Windows-Diagnostics-Performance"/></p>{/if}
+          {#if attribution}<p data-boot-attribution>{t('startup.bootHistory.delay',locale,{total:formatNumber(attribution.delay.totalTimeMs,locale),degradation:formatNumber(attribution.delay.degradationTimeMs,locale),when:formatDateTime(attribution.boot.recordedUnixMs,locale),event:attribution.delay.eventId})} · <TechnicalText value="Microsoft-Windows-Diagnostics-Performance"/></p>{/if}
           {#if item.protectionReason}<div class="startup-protection"><LocalizedOwnedText value={item.protectionReason} {locale}/></div>{/if}
         </div>
         <div class="startup-evidence"><span>{t('startup.impact',locale)}</span><strong>{localizeImpact(item.impact,locale)}</strong><small>{localizeConfidence(item.confidence,locale)}</small></div>
