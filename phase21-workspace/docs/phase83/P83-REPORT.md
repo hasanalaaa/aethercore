@@ -15,12 +15,13 @@ and the remaining WU service/System scope stay open until their source and evide
 | P83-03A/B | `3162d0c` | the local Windows Update history, and an evidence-only `update-history` assessment step |
 | P83-03B follow-up | Codex continuation below | bounded local Operational errors, measured event 25/version 1, with a separate translated assessment check |
 | P83-05A | `be6287b`, `c6c9bb0`, `ed89a0a` and P80 | owner-scoped thermal and absolute/relative battery rows with recorded time and distinct missing states |
-| P83-05B follow-up | Codex continuation §6 | Startup reuses dated historical boot rows; comparable-type baseline and per-application attribution remain open |
+| P83-05B follow-up | Codex continuation §6 | Startup reuses dated historical boot rows |
+| P83-01B | `409b2e9`, `493aa0d`, `52e5cd9` | raw Kernel-Boot class, same-class median and five-prior baseline, exact-path historical delay on Startup (see §P83-01B) |
 | P83-06A | `9e404fd`; battery continuation below | thermal trip at firmware threshold; absolute capacity interpretation is informational, not a damage verdict |
 | P83-06B | `d64484a`; boot pending | measured network error/discard window is informational; reset/down/missing/stale data cannot invent a rate or resolve an old observation |
 | P83-04 | — | closed as deferred (D12): nothing built |
 
-Remaining source gaps: P83-01B/05B startup attribution/comparable baseline (DBT-P83-006),
+Remaining source gaps:
 WU service/System/reboot scope (DBT-P83-008, lane2/coordinator continuation), and comparable
 boot findings (DBT-P83-005). Counter/default-route and battery/network interpretation source
 are implemented by the acceptance continuations; their final native/physical qualification remains
@@ -378,3 +379,29 @@ The source battery/network interpretation scope is implemented, while physical
 qualification and P83-06B's comparable boot baseline remain distinct pending
 work. Boot publisher metadata capture and WU reboot source are coordinator/
 lane2-owned; this checkpoint adds neither guessed boot types nor event schemas.
+
+### P83-01B boot observations — finished after review (2026-10-04)
+
+Codex stopped mid-task; its uncommitted work was saved as `493aa0d` (unsealed, unchecked) on top of
+its producer commit `409b2e9` (in the 2026-10-04 integration branch). Lane 2 reviewed it, kept the
+design, and finished it in `52e5cd9`: rustfmt, a fixture that carries a classified boot with a median,
+a baseline, a truncated delay list and a startup entry whose exact path matches a delay (so the leak
+gate reads every new Arabic sentence), localized delay figures, and the seal.
+
+What it says and does not say: the class is the raw Windows value with its source and no cold/fast
+meaning; the median is of the three newest completed same-class boots and the baseline the five prior
+ones, excluding the latest; the OS restart reference is context, never a duration; a delay belongs to
+an entry only by a unique full executable path and is historical, not a cause or a saving.
+
+Checks. Mac: fmt; cargo test of diagnostic-engine, crash-diagnostics, hardware-telemetry and
+maintenance-service; clippy -D warnings on the host and on x86_64-pc-windows-gnu; svelte-check 0/0; all
+122 UI unit tests (`apps/ui/tests/*.test.ts`, as CI runs them, including the server-rendered Startup page
+test); static_validate; leak gate 9/9 clean, 5/5 injected and the three plant controls; layout sweep 60/60.
+PC (`C:\dev\lanes\l2`, 8 jobs) at `52e5cd9`: `cargo fmt --check` and `cargo test` of those crates and
+contracts exit 0; svelte-check 0/0; 122 UI tests; static_validate; seal OK.
+Red before, by mutation: see `DBT-P83-006`.
+Live (read-only probe through the real engine, removed after): 9 completed boots of class 0, the newest
+25 414 ms matched to the restart reference, median 28 545 ms of 3, baseline 28 545 ms of 5, and real
+recorded delays with the publication cut marked.
+Not measured: another boot class or fast startup, a service delay (event 103), Narrator and Arabic on
+the owner's PC.
