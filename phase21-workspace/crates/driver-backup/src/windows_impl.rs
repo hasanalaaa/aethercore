@@ -23,47 +23,304 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 // GetDriveTypeW's documented DRIVE_FIXED result; no extra Windows feature for this constant.
 const DRIVE_FIXED: u32 = 3;
 
-/// Lock each ancestor before creating its child. Omitting DELETE sharing prevents an ancestor
-/// or the export directory being renamed/replaced until export/seal/re-read has finished.
-pub(crate) fn guard_root(path: &Path, create: bool) -> Result<Vec<fs::File>> {
-    use std::path::{Component, Prefix};
-    if !path.is_absolute()
-        || !matches!(path.components().next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)))
+// A held child, rather than directory sharing flags, prevents an in-place reparse tag:
+// Windows refuses SET_REPARSE_POINT on a nonempty directory. Denying DELETE sharing on
+// every held child keeps that condition true. Existing directories are never populated.
+const SENTINEL_NAME: &str = ".aethercore-export-guard";
+
+pub(crate) struct RootGuard {
+    handles: Vec<fs::File>,
+    sentinels: Vec<fs::File>,
+    destination: PathBuf,
+    leaf: usize,
+    leaf_has_sentinel: bool,
+    witness_budget: usize,
+}
+
+impl RootGuard {
+    pub(crate) fn admit_export(&self) -> Result<()> {
+        let mut entries = fs::read_dir(&self.destination)?;
+        if entries
+            .next()
+            .transpose()?
+            .is_none_or(|entry| entry.file_name() != SENTINEL_NAME)
+            || entries.next().is_some()
+        {
+            return Err(BackupError::InvalidRoot);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish_export(&mut self) -> Result<()> {
+        // Acquire a real exported child's no-DELETE lease before releasing any sentinel.
+        // The manifest is not a permanent exception: it does not exist at this handoff.
+        let mut budget = self.witness_budget;
+        let mut witnesses = Vec::new();
+        pin_existing_child(
+            &self.destination,
+            &self.handles[self.leaf],
+            &mut witnesses,
+            &mut budget,
+        )?;
+        self.handles.extend(witnesses);
+        self.witness_budget = budget;
+        self.sentinels.clear();
+        self.leaf_has_sentinel = false;
+        Ok(())
+    }
+}
+
+// The sole create/open helper: a one-component name is resolved against the retained
+// parent object, with DONT_REPARSE and OPEN_REPARSE_POINT. No path-based write is used
+// while a newly created directory could still be empty.
+fn relative_file(
+    parent: &fs::File,
+    name: &std::ffi::OsStr,
+    directory: bool,
+    create: bool,
+    sentinel: bool,
+) -> Result<(fs::File, bool)> {
+    use std::os::windows::{
+        ffi::OsStrExt,
+        io::{AsRawHandle, FromRawHandle},
+    };
+    use windows::{
+        Wdk::{Foundation::OBJECT_ATTRIBUTES, Storage::FileSystem::*},
+        Win32::{
+            Foundation::{HANDLE, OBJECT_ATTRIBUTE_FLAGS, UNICODE_STRING},
+            Storage::FileSystem::{FILE_ACCESS_RIGHTS, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE},
+            System::IO::IO_STATUS_BLOCK,
+        },
+        core::PWSTR,
+    };
+    let mut name: Vec<u16> = name.encode_wide().collect();
+    if name.is_empty()
+        || name.len() > 255
+        || name == [46]
+        || name == [46, 46]
+        || name.iter().any(|c| [0, 47, 92, 58].contains(c))
     {
         return Err(BackupError::InvalidRoot);
     }
-    use std::os::windows::ffi::OsStrExt;
-    let volume: PathBuf = path.components().take(2).collect();
-    let volume: Vec<u16> = volume.as_os_str().encode_wide().chain([0]).collect();
-    // Reject mapped/network/removable destinations before creating anything there.
-    if unsafe { GetDriveTypeW(PCWSTR(volume.as_ptr())) } != DRIVE_FIXED {
+    let unicode = UNICODE_STRING {
+        Length: (name.len() * 2) as u16,
+        MaximumLength: (name.len() * 2) as u16,
+        Buffer: PWSTR(name.as_mut_ptr()),
+    };
+    let attributes = OBJECT_ATTRIBUTES {
+        Length: std::mem::size_of::<OBJECT_ATTRIBUTES>() as u32,
+        RootDirectory: HANDLE(parent.as_raw_handle()),
+        ObjectName: &unicode,
+        Attributes: OBJECT_ATTRIBUTE_FLAGS(0x1040),
+        ..Default::default()
+    }; // CASE_INSENSITIVE | DONT_REPARSE
+    let mut handle = HANDLE::default();
+    let mut status = IO_STATUS_BLOCK::default();
+    let options = FILE_OPEN_REPARSE_POINT.0
+        | FILE_SYNCHRONOUS_IO_NONALERT.0
+        | if directory {
+            FILE_DIRECTORY_FILE.0
+        } else {
+            FILE_NON_DIRECTORY_FILE.0
+        }
+        | if sentinel { FILE_DELETE_ON_CLOSE.0 } else { 0 };
+    let result = unsafe {
+        NtCreateFile(
+            &mut handle,
+            FILE_ACCESS_RIGHTS(
+                0x0010_0080
+                    | if directory { 0x21 } else { 1 }
+                    | if sentinel { 0x0001_0000 } else { 0 },
+            ),
+            &attributes,
+            &mut status,
+            None,
+            FILE_FLAGS_AND_ATTRIBUTES(0x80),
+            FILE_SHARE_MODE(3),
+            if sentinel {
+                FILE_CREATE
+            } else if create {
+                FILE_OPEN_IF
+            } else {
+                FILE_OPEN
+            },
+            NTCREATEFILE_CREATE_OPTIONS(options),
+            None,
+            0,
+        )
+    };
+    result
+        .ok()
+        .map_err(|e| BackupError::PnpUtil(format!("anchored export path open failed: {e}")))?;
+    // NtCreateFile succeeded: ownership transfers immediately to File, including every
+    // subsequent metadata/error path. IO_STATUS_BLOCK's FILE_CREATED value is documented 2.
+    let file = unsafe { fs::File::from_raw_handle(handle.0) };
+    let metadata = file.metadata()?;
+    if metadata.file_attributes() & 0x400 != 0 || metadata.is_dir() != directory {
         return Err(BackupError::InvalidRoot);
     }
-    let mut cursor = PathBuf::new();
-    let mut handles = Vec::new();
-    for component in path.components() {
-        if matches!(component, Component::ParentDir | Component::CurDir) {
+    Ok((file, status.Information == 2))
+}
+
+fn pin_existing_child(
+    path: &Path,
+    directory: &fs::File,
+    handles: &mut Vec<fs::File>,
+    budget: &mut usize,
+) -> Result<()> {
+    if path.components().count() > 128 {
+        return Err(BackupError::InvalidRoot);
+    }
+    for entry in fs::read_dir(path)? {
+        if *budget == 0 {
             return Err(BackupError::InvalidRoot);
         }
-        cursor.push(component);
-        if matches!(component, Component::Prefix(_)) {
+        *budget -= 1;
+        let entry = entry?;
+        if entry.file_name() == SENTINEL_NAME {
             continue;
         }
-        if create && !cursor.try_exists()? {
-            fs::create_dir(&cursor)?;
+        let metadata = entry.metadata()?;
+        if metadata.file_attributes() & 0x400 != 0 {
+            continue;
         }
-        let file = fs::OpenOptions::new()
-            .access_mode(0x81) // LIST_DIRECTORY | READ_ATTRIBUTES
-            .share_mode(1) // READ only: no writer may replace an in-place reparse tag; no DELETE.
-            .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
-            .open(&cursor)?;
-        let metadata = file.metadata()?;
-        if !metadata.is_dir() || metadata.file_attributes() & 0x400 != 0 {
+        let child = match relative_file(
+            directory,
+            &entry.file_name(),
+            metadata.is_dir(),
+            false,
+            false,
+        ) {
+            Ok((file, _)) => file,
+            Err(_) => continue,
+        };
+        if metadata.is_dir() {
+            let count = handles.len();
+            if pin_existing_child(&entry.path(), &child, handles, budget).is_err() {
+                handles.truncate(count);
+                continue;
+            }
+        } else if !metadata.is_file() {
+            continue;
+        }
+        if directory.metadata()?.file_attributes() & 0x400 != 0 {
             return Err(BackupError::InvalidRoot);
         }
-        handles.push(file);
+        handles.push(child);
+        return Ok(());
     }
-    Ok(handles)
+    Err(BackupError::InvalidRoot)
+}
+
+pub(crate) fn guard_root(path: &Path, create: bool) -> Result<RootGuard> {
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::{Component, Prefix};
+    let components: Vec<_> = path.components().collect();
+    if components.len() < 3
+        || components.len() > 128
+        || !path.is_absolute()
+        || !matches!(components.first(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)))
+        || components
+            .iter()
+            .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+    {
+        return Err(BackupError::InvalidRoot);
+    }
+    let volume: PathBuf = components.iter().take(2).collect();
+    let wide: Vec<u16> = volume.as_os_str().encode_wide().chain([0]).collect();
+    if unsafe { GetDriveTypeW(PCWSTR(wide.as_ptr())) } != DRIVE_FIXED {
+        return Err(BackupError::InvalidRoot);
+    }
+    let root = fs::OpenOptions::new()
+        .access_mode(0x81)
+        .share_mode(3)
+        .custom_flags(0x0220_0000)
+        .open(&volume)?;
+    if root.metadata()?.file_attributes() & 0x400 != 0 {
+        return Err(BackupError::InvalidRoot);
+    }
+    let mut guard = RootGuard {
+        handles: vec![root],
+        sentinels: Vec::new(),
+        destination: path.to_owned(),
+        leaf: 0,
+        leaf_has_sentinel: false,
+        witness_budget: crate::MAX_BACKUP_FILES - 1,
+    };
+    let mut cursor = volume;
+    let mut budget = crate::MAX_BACKUP_FILES - 1;
+    for (index, component) in components.iter().enumerate().skip(2) {
+        let Component::Normal(name) = component else {
+            return Err(BackupError::InvalidRoot);
+        };
+        if budget == 0 {
+            return Err(BackupError::InvalidRoot);
+        }
+        budget -= 1;
+        // Reading an existing child first gives the parent a held witness without scanning
+        // the drive root or writing there. A missing child may be created only after an
+        // existing witness has been retained (or a previously owned sentinel is still held).
+        let (child, created) =
+            match relative_file(&guard.handles[guard.leaf], name, true, false, false) {
+                Ok(child) => child,
+                Err(error) if !create => return Err(error),
+                Err(_) => {
+                    let has_sentinel = guard.leaf_has_sentinel;
+                    // Only newly created directories receive sentinels below. Existing directories
+                    // need a read-only existing witness; an empty unowned ancestor is refused.
+                    if !has_sentinel {
+                        let mut witnesses = Vec::new();
+                        pin_existing_child(
+                            &cursor,
+                            &guard.handles[guard.leaf],
+                            &mut witnesses,
+                            &mut budget,
+                        )?;
+                        guard.handles.extend(witnesses);
+                    }
+                    relative_file(&guard.handles[guard.leaf], name, true, true, false)?
+                }
+            };
+        if guard.handles[guard.leaf].metadata()?.file_attributes() & 0x400 != 0 {
+            return Err(BackupError::InvalidRoot);
+        }
+        cursor.push(name);
+        guard.leaf = guard.handles.len();
+        guard.handles.push(child);
+        guard.leaf_has_sentinel = false;
+        let leaf = index + 1 == components.len();
+        let mut witnesses = Vec::new();
+        if created || (create && leaf && fs::read_dir(&cursor)?.next().is_none()) {
+            if budget == 0 {
+                return Err(BackupError::InvalidRoot);
+            }
+            budget -= 1;
+            let (sentinel, _) = relative_file(
+                &guard.handles[guard.leaf],
+                std::ffi::OsStr::new(SENTINEL_NAME),
+                false,
+                true,
+                true,
+            )?;
+            // A concurrent tag write cannot redirect the relative create. Refuse a tagged
+            // object before a path-based caller receives this lease.
+            if guard.handles[guard.leaf].metadata()?.file_attributes() & 0x400 != 0 {
+                return Err(BackupError::InvalidRoot);
+            }
+            guard.sentinels.push(sentinel);
+            guard.leaf_has_sentinel = true;
+        } else if leaf {
+            pin_existing_child(
+                &cursor,
+                &guard.handles[guard.leaf],
+                &mut witnesses,
+                &mut budget,
+            )?;
+            guard.handles.extend(witnesses);
+        }
+    }
+    guard.witness_budget = budget;
+    Ok(guard)
 }
 
 pub fn export_driver_package(oem_inf: &str, destination: &Path) -> Result<BackupEvidence> {
@@ -125,10 +382,6 @@ fn run_export(oem_inf: &str, destination: &Path) -> Result<()> {
         return Err(BackupError::InvalidInf);
     }
     reject_link(destination)?;
-    if destination.read_dir()?.next().is_some() {
-        return Err(BackupError::InvalidRoot);
-    }
-
     let system_root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
     let pnputil = PathBuf::from(system_root)
         .join("System32")
@@ -186,7 +439,47 @@ mod tests {
                     .as_nanos()
             ));
         fs::create_dir(&root).unwrap();
+        fs::write(root.join("fixture-witness"), b"fixture").unwrap();
         root
+    }
+
+    #[test]
+    fn witness_handoff_preserves_export_and_sibling_availability() {
+        let root = fixture("handoff");
+        let destination = root.join("new-parent/leaf");
+        let mut guard = guard_root(&destination, true).unwrap();
+        guard.admit_export().unwrap();
+        assert!(fs::remove_file(destination.join(SENTINEL_NAME)).is_err());
+        fs::write(destination.join("package.inf"), b"[Version]").unwrap();
+        fs::write(root.join("unrelated"), b"sibling").unwrap();
+        fs::create_dir(root.join("sibling")).unwrap();
+        guard.finish_export().unwrap();
+        assert!(!destination.join(SENTINEL_NAME).exists());
+        assert!(!root.join("new-parent").join(SENTINEL_NAME).exists());
+        assert!(fs::remove_file(destination.join("package.inf")).is_err());
+        let evidence = crate::seal_export("oem7.inf", &destination).unwrap();
+        assert_eq!(evidence.file_count, 1);
+        crate::verify_export(&evidence).unwrap();
+        drop(guard);
+        fs::remove_file(destination.join("package.inf")).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unowned_empty_ancestors_are_not_populated_and_failed_export_drops_owned_sentinel() {
+        let root = fixture("unowned");
+        let empty = root.join("empty");
+        fs::create_dir(&empty).unwrap();
+        assert!(guard_root(&empty.join("child"), true).is_err());
+        assert!(empty.read_dir().unwrap().next().is_none());
+        assert!(guard_root(&empty, false).is_err());
+        let destination = root.join("owned");
+        let mut guard = guard_root(&destination, true).unwrap();
+        guard.admit_export().unwrap();
+        assert!(guard.finish_export().is_err());
+        drop(guard);
+        assert!(destination.read_dir().unwrap().next().is_none());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -207,7 +500,9 @@ mod tests {
         let target = root.join("target");
         fs::create_dir(&target).unwrap();
         let link = root.join("link");
-        let cmd = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32/cmd.exe");
+        let cmd = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("cmd.exe");
         // cmd's built-in rejects the canonical \\?\ prefix; fixture paths below MAX_PATH use
         // their ordinary drive spelling. Production guards retain the original path semantics.
         let link_arg = link
@@ -245,33 +540,6 @@ mod tests {
     }
 
     #[test]
-    fn held_directory_refuses_the_writable_handle_needed_to_set_a_reparse_tag() {
-        let root = fixture("tag-write");
-        let destination = root.join("empty");
-        let guards = guard_root(&destination, true).unwrap();
-        let writable = || {
-            fs::OpenOptions::new()
-                .access_mode(0x4000_0000) // GENERIC_WRITE
-                .share_mode(3)
-                .custom_flags(0x0220_0000)
-                .open(&destination)
-        };
-        let while_held = writable();
-        drop(guards);
-        assert!(
-            writable().is_ok(),
-            "positive control: ordinary empty directory allows tag-write access"
-        );
-        let held_was_refused = while_held.is_err();
-        drop(while_held);
-        fs::remove_dir_all(root).unwrap();
-        assert!(
-            held_was_refused,
-            "holding the export path must refuse tag-write access"
-        );
-    }
-
-    #[test]
     fn held_directory_refuses_in_place_reparse_tag_changes() {
         use std::os::windows::io::AsRawHandle;
         use windows::Win32::{
@@ -286,7 +554,9 @@ mod tests {
         fs::create_dir(&target).unwrap();
         let link = root.join("template");
         let spelling = |p: &Path| p.to_string_lossy().trim_start_matches(r"\\?\").to_string();
-        let cmd = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32/cmd.exe");
+        let cmd = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("cmd.exe");
         assert!(
             Command::new(cmd)
                 .args(["/D", "/C", "mklink", "/J"])
@@ -347,13 +617,61 @@ mod tests {
             fs::symlink_metadata(&control).unwrap().file_attributes() & 0x400,
             0
         );
+        // Even a tag raced before the first owned witness cannot redirect a native
+        // RootDirectory-relative create into its junction target.
+        let raced = root.join("raced");
+        fs::create_dir(&raced).unwrap();
+        let original = open(&raced, 0x81).unwrap();
+        let attacker = open(&raced, 0x4000_0000).unwrap();
+        set(&attacker).unwrap();
+        let created = relative_file(
+            &original,
+            std::ffi::OsStr::new("must-not-escape"),
+            false,
+            true,
+            true,
+        );
+        drop(created);
+        assert!(
+            !target.join("must-not-escape").exists(),
+            "handle-relative creation cannot follow a replaced root tag"
+        );
+        drop(attacker);
+        drop(original);
+        fs::remove_dir(&raced).unwrap();
+        let nonempty = root.join("nonempty");
+        fs::create_dir(&nonempty).unwrap();
+        fs::write(nonempty.join("anchor"), b"fixture").unwrap();
+        let anchor = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(3)
+            .open(nonempty.join("anchor"))
+            .unwrap();
+        let nonempty_handle = open(&nonempty, 0x4000_0000).unwrap();
+        let refused = set(&nonempty_handle).expect_err("a held child keeps its parent nonempty");
+        assert_eq!(
+            refused.code().0 as u32,
+            0x8007_0091,
+            "native ERROR_DIR_NOT_EMPTY"
+        );
+        eprintln!("native nonempty tag control: {:?}", refused.code());
+        drop(nonempty_handle);
+        drop(anchor);
         let destination = root.join("guarded");
-        let guards = guard_root(&destination, true).unwrap();
+        let mut guards = guard_root(&destination, true).unwrap();
         // Metadata-only handles may still be shared by the OS. They must not change the tag.
-        for access in [0x80, 0x100] {
+        for access in [0x80, 0x100, 0x4000_0000] {
             // READ_ATTRIBUTES / WRITE_ATTRIBUTES
             if let Ok(file) = open(&destination, access) {
-                assert!(set(&file).is_err());
+                let error = set(&file).expect_err("held witness prevents in-place tag replacement");
+                eprintln!("held tag control access={access:#x}: {:?}", error.code());
+                if access == 0x4000_0000 {
+                    assert_eq!(
+                        error.code().0 as u32,
+                        0x8007_0091,
+                        "full writer must fail because the held directory is nonempty"
+                    );
+                }
             }
         }
         assert_eq!(
@@ -363,7 +681,40 @@ mod tests {
                 & 0x400,
             0
         );
+        let sibling = root.join("sibling-junction");
+        let output = Command::new(
+            PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+                .join("System32")
+                .join("cmd.exe"),
+        )
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(spelling(&sibling))
+        .arg(spelling(&target))
+        .output()
+        .unwrap();
+        assert!(
+            output.status.success(),
+            "sibling creation must remain available: {:?}",
+            output
+        );
+        fs::remove_dir(sibling).unwrap();
+        let ancestor_handle = open(&root, 0x4000_0000).unwrap();
+        assert_eq!(
+            set(&ancestor_handle).unwrap_err().code().0 as u32,
+            0x8007_0091
+        );
+        drop(ancestor_handle);
         fs::write(destination.join("child.inf"), b"[Version]").unwrap();
+        guards.finish_export().unwrap();
+        // File presence is the witness; truncation cannot make the directory empty.
+        fs::write(destination.join("child.inf"), b"").unwrap();
+        assert!(fs::remove_file(destination.join("child.inf")).is_err());
+        let after_handoff = open(&destination, 0x4000_0000).unwrap();
+        assert_eq!(
+            set(&after_handoff).unwrap_err().code().0 as u32,
+            0x8007_0091
+        );
+        drop(after_handoff);
         drop(guards);
         fs::remove_dir(&link).unwrap();
         fs::remove_dir(&control).unwrap();

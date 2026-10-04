@@ -78,7 +78,14 @@ pub fn seal_export(source_inf: &str, destination: &Path) -> Result<BackupEvidenc
     };
     let manifest_path = destination.join(MANIFEST_NAME);
     let manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
-    fs::write(&manifest_path, &manifest_bytes)?;
+    // Never overwrite an injected existing manifest/link after the directory readback.
+    use std::io::Write;
+    let mut manifest_file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&manifest_path)?;
+    manifest_file.write_all(&manifest_bytes)?;
+    drop(manifest_file);
     Ok(BackupEvidence {
         source_inf: manifest.source_inf.clone(),
         backup_directory: destination.to_string_lossy().into_owned(),
@@ -109,7 +116,12 @@ pub fn verify_export(evidence: &BackupEvidence) -> Result<()> {
         ));
     }
     let sealed: BackupManifest = serde_json::from_slice(&manifest_bytes)?;
-    let mut present = read_export(directory)?;
+    let mut present = read_export(directory).map_err(|error| match error {
+        BackupError::InvalidRoot | BackupError::Io(_) => {
+            BackupError::Changed("a file was changed, added or removed".into())
+        }
+        error => error,
+    })?;
     present.retain(|f| f.relative_path != MANIFEST_NAME);
     let mut expected = sealed.files;
     present.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
@@ -168,7 +180,7 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<BackupFile>) -> Result<(
 }
 
 #[cfg(windows)]
-fn guard_root(path: &Path, create: bool) -> Result<Vec<fs::File>> {
+fn guard_root(path: &Path, create: bool) -> Result<windows_impl::RootGuard> {
     windows_impl::guard_root(path, create)
 }
 
@@ -229,7 +241,13 @@ fn export_into(
     if !validate_oem_inf_name(source_inf) {
         return Err(BackupError::InvalidInf);
     }
+    #[cfg(windows)]
+    let mut guard = guard_root(destination, true)?;
+    #[cfg(not(windows))]
     let _guard = guard_root(destination, true)?;
+    #[cfg(windows)]
+    guard.admit_export()?;
+    #[cfg(not(windows))]
     if destination.read_dir()?.next().is_some() {
         return Err(BackupError::InvalidRoot);
     }
@@ -240,6 +258,8 @@ fn export_into(
         )));
     }
     export(destination)?;
+    #[cfg(windows)]
+    guard.finish_export()?;
     seal_export(source_inf, destination)
 }
 
@@ -488,6 +508,16 @@ mod tests {
         fs::remove_file(dir.join("oem7.inf")).unwrap();
         assert!(seal_export("oem7.inf", &dir).is_err());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sealing_refuses_to_overwrite_an_existing_manifest() {
+        let dir = export_dir("manifest-collision");
+        let path = dir.join(MANIFEST_NAME);
+        fs::write(&path, b"untrusted preexisting file").unwrap();
+        assert!(seal_export("oem7.inf", &dir).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"untrusted preexisting file");
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
