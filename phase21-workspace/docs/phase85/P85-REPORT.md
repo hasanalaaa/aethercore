@@ -114,6 +114,15 @@ The superseded CI at `1943619` stalled during VC++ acquisition for hours: its do
 
 Four native loopback controls passed: stalled WebView2 and VC++ bodies each stop after three attempts without publishing an artifact; an initial503 followed by a complete unsigned response retries once and is rejected by the original signature checks. The fixture uses one-second test transfer ceilings and real curl/Authenticode, never downloads or installs Setup. The same fixture is now a Windows CI step before packaging. The strengthened source gate requires the fixed URL and complete transfer bounds. Final full CI must use the integration head including these corrections.
 
+## Review 2026-10-04: the servicing drain did not merge
+
+The two sections below describe a servicing drain from the 2026-10-04 follow-up. **It was dropped in review** (`DBT-P85-006`, commit `2fb187e`), so they describe code that is not on `main`.
+
+- **An unbounded hold on the mutation lease.** A failed DISM cleanup waited forever on a constant, holding the machine-wide lease until the service restarted.
+- **Every assessment lost its SFC result.** The drain refused SFC and DISM unless TrustedInstaller was STOPPED and then blocked in `Drop` until it stopped. The DISM scan (which starts TrustedInstaller) kept the servicing mutex meanwhile, so the SFC check after it always read unverified.
+
+What merged from that work: the read-budget lease carried into each bounded worker, the read-only update-service checks, `wait_for_child`, and WinRE observation.
+
 ## Conservative servicing-drain source checkpoint (2026-10-04)
 
 The prior child/API-exit boundary did not prove that TrustedInstaller had stopped. The shared
