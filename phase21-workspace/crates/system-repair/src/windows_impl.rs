@@ -673,7 +673,7 @@ fn start_update_service() -> Result<RepairCheck> {
                 PCWSTR(wide.as_ptr()),
                 SERVICE_START | SERVICE_QUERY_STATUS,
             )
-            .map_err(|e| RepairError::Command(format!("OpenServiceW({name}): {e}")))?,
+            .map_err(|e| RepairError::Command(format!("OpenServiceW(wuauserv): {e}")))?,
         );
         if !service_running("wuauserv")? {
             StartServiceW(service.get(), None)
