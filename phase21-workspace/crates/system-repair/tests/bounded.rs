@@ -315,5 +315,7 @@ fn timed_out_assessment_keeps_its_actual_provider_read_budget_until_return() {
         0,
         "the drained worker never released its budget"
     );
-    std::fs::remove_dir_all(root).unwrap();
+    // The coordinator holds the database open; Windows cannot remove an open file.
+    drop(coordinator);
+    let _ = std::fs::remove_dir_all(root);
 }
