@@ -141,6 +141,8 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Checking servicing safety':'tech.repair.preflight',
   'Repair workflow is frozen; waiting for the servicing mutation barrier':'tech.repair.frozen',
   'Running supported Windows repair tools':'tech.repair.executing',
+  'The owned repair call has ended; Windows servicing completion remains unverified. Admission is retained.':'tech.repair.servicingDrain',
+  'Windows servicing completion is unverified; no further servicing work was started.':'tech.repair.servicingUnverified',
   'Verifying component store and protected files':'tech.repair.verifying',
   'Repair workflow completed and verification commands finished successfully.':'tech.repair.completed',
   'Repair stopped. No command will be replayed automatically.':'tech.repair.stopped',
@@ -371,7 +373,7 @@ const exactOwnedText: Record<string, MessageKey> = {
   'Windows could not find the source files a component-store repair needs (HRESULT 0x800F081F).':'tech.repair.sourceMissing',
   'DISM RestoreHealth completed. This is mutation evidence only; component-store health must still be verified.':'tech.repair.dismMutationOnly',
 
-  'This check did not finish in time and was stopped; its result is unknown.':'tech.repair.checkTimedOut',
+  'This check did not finish in time. A stop was requested; the earlier worker may still be running and its result is unknown.':'tech.repair.checkTimedOut',
   'An earlier attempt at this check is still running, so it was not started again; its result is unknown.':'tech.repair.checkStillRunning',
   'This check stopped without an answer; its result is unknown.':'tech.repair.checkNoAnswer',
   'Evidence-specific post-repair verification proved the intended state.':'tech.repair.evidenceProved',

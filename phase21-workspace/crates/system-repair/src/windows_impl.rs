@@ -20,7 +20,7 @@ use windows::{
         OpenSCManagerW, OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfigW,
         QueryServiceStatusEx, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_CONFIG,
         SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START, SERVICE_STATUS_PROCESS,
-        StartServiceW,
+        SERVICE_STOPPED, StartServiceW,
     },
     core::PCWSTR,
 };
@@ -54,11 +54,12 @@ struct ServicingGuard {
     _guard: MachineMutationGuard,
 }
 
-impl RepairPlatform for WindowsRepairPlatform {
-    fn assess(
+impl WindowsRepairPlatform {
+    fn assess_impl(
         &self,
         cancel: &std::sync::Arc<AtomicBool>,
         progress: &mut dyn FnMut(AssessStep<'_>),
+        lease: Option<std::sync::Arc<aethercore_operation_kernel::ReadBudgetLease>>,
     ) -> Result<(String, Vec<RepairCheck>)> {
         let root = system_root()?;
         let volume = system_volume()?;
@@ -87,18 +88,21 @@ impl RepairPlatform for WindowsRepairPlatform {
         };
         step(&mut checks, "dism-scan", &mut || {
             const LOG: &str = "%WINDIR%\\Logs\\DISM\\dism.log";
+            let lease_for_worker = lease.clone();
             run_check(
                 &DISM_SLOT,
                 ("dism-scan", "Component store", LOG),
                 DISM_SCAN_DEADLINE,
                 cancel,
-                |stop| {
+                move |stop| {
+                    let _read_budget_lease = lease_for_worker;
                     probe_or_unknown("dism-scan", "Component store", LOG, || {
                         check_online_image_health_cancellable(
                             true,
                             "dism-scan",
                             "Component store",
                             &stop,
+                            None,
                         )
                     })
                 },
@@ -107,12 +111,14 @@ impl RepairPlatform for WindowsRepairPlatform {
         step(&mut checks, "sfc-verify", &mut || {
             const LOG: &str = "%WINDIR%\\Logs\\CBS\\CBS.log";
             let (sfc, root) = (system32.join("sfc.exe"), root.clone());
+            let lease_for_worker = lease.clone();
             run_check(
                 &SFC_SLOT,
                 ("sfc-verify", "Protected system files", LOG),
                 SFC_VERIFY_DEADLINE,
                 cancel,
                 move |stop| {
+                    let _read_budget_lease = lease_for_worker;
                     probe_or_unknown("sfc-verify", "Protected system files", LOG, || {
                         run_sfc(
                             &sfc,
@@ -121,6 +127,7 @@ impl RepairPlatform for WindowsRepairPlatform {
                             "Protected system files",
                             &root,
                             Some(&*stop),
+                            None,
                         )
                     })
                 },
@@ -130,12 +137,16 @@ impl RepairPlatform for WindowsRepairPlatform {
             Ok(servicing_state_check())
         })?;
         step(&mut checks, "update-health", &mut || {
+            let lease_for_worker = lease.clone();
             run_check(
                 &UPDATE_SLOT,
                 ("windows-update", "Windows Update", "Windows Update Agent"),
                 UPDATE_PROBE_DEADLINE,
                 cancel,
-                |_| update_health_check(),
+                move |_| {
+                    let _read_budget_lease = lease_for_worker;
+                    update_health_check()
+                },
             )
         })?;
         if checks
@@ -148,6 +159,7 @@ impl RepairPlatform for WindowsRepairPlatform {
         }
         // Evidence only: the id has no diagnosis fact, so this proposes no repair (P83-03A).
         step(&mut checks, "update-history", &mut || {
+            let lease_for_worker = lease.clone();
             run_check(
                 &UPDATE_HISTORY_SLOT,
                 (
@@ -157,7 +169,8 @@ impl RepairPlatform for WindowsRepairPlatform {
                 ),
                 UPDATE_HISTORY_DEADLINE,
                 cancel,
-                |_| {
+                move |_| {
+                    let _read_budget_lease = lease_for_worker;
                     crate::update_history_check(
                         aethercore_windows_update::query_update_history(UPDATE_HISTORY_ENTRIES)
                             .ok()
@@ -167,6 +180,7 @@ impl RepairPlatform for WindowsRepairPlatform {
             )
         })?;
         step(&mut checks, "update-client-events", &mut || {
+            let lease_for_worker = lease.clone();
             run_check(
                 &UPDATE_CLIENT_SLOT,
                 (
@@ -176,7 +190,8 @@ impl RepairPlatform for WindowsRepairPlatform {
                 ),
                 UPDATE_HISTORY_DEADLINE,
                 cancel,
-                |_| {
+                move |_| {
+                    let _read_budget_lease = lease_for_worker;
                     crate::update_client_check(
                         aethercore_windows_update::query_client_errors(200)
                             .ok()
@@ -188,12 +203,14 @@ impl RepairPlatform for WindowsRepairPlatform {
         step(&mut checks, "disk-scan", &mut || {
             const LOG: &str = "Event Viewer → Application → Chkdsk";
             let (chkdsk, volume) = (system32.join("chkdsk.exe"), volume.clone());
+            let lease_for_worker = lease.clone();
             run_check(
                 &DISK_SLOT,
                 ("disk-scan", "System volume online scan", LOG),
                 DISK_SCAN_DEADLINE,
                 cancel,
                 move |stop| {
+                    let _read_budget_lease = lease_for_worker;
                     probe_or_unknown("disk-scan", "System volume online scan", LOG, || {
                         run_chkdsk_scan(
                             &chkdsk,
@@ -214,6 +231,25 @@ impl RepairPlatform for WindowsRepairPlatform {
         })?;
 
         Ok((volume, checks))
+    }
+}
+
+impl RepairPlatform for WindowsRepairPlatform {
+    fn assess(
+        &self,
+        cancel: &std::sync::Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> Result<(String, Vec<RepairCheck>)> {
+        self.assess_impl(cancel, progress, None)
+    }
+
+    fn assess_with_lease(
+        &self,
+        cancel: &std::sync::Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+        lease: std::sync::Arc<aethercore_operation_kernel::ReadBudgetLease>,
+    ) -> Result<(String, Vec<RepairCheck>)> {
+        self.assess_impl(cancel, progress, Some(lease))
     }
 
     fn repair(
@@ -247,8 +283,9 @@ impl RepairPlatform for WindowsRepairPlatform {
         // Revalidate the component-store state using the DISM API immediately before mutation.
         // A now-healthy image invalidates the old repair assumption rather than replaying RestoreHealth.
         if action.run_component_store {
-            let check =
-                check_online_image_health(false, "dism-preflight", "Component store preflight")?;
+            let (id, title) = ("dism-preflight", "Component store preflight");
+            let pending = Some(&mut *control.servicing_pending);
+            let check = check_online_image_health(false, id, title, pending)?;
             match check.result_code.as_str() {
                 "ComponentStoreRepairable" => emit(check),
                 "ComponentStoreHealthy" => return Err(RepairError::StaleAssessment),
@@ -289,6 +326,7 @@ impl RepairPlatform for WindowsRepairPlatform {
                 "System File Checker repair",
                 &root,
                 Some(control.cancel),
+                Some(&mut *control.servicing_pending),
             )?);
         }
         if control.cancel.load(Ordering::SeqCst) {
@@ -334,6 +372,7 @@ impl RepairPlatform for WindowsRepairPlatform {
                     "verify-dism",
                     "Verify component store",
                     control.cancel,
+                    Some(&mut *control.servicing_pending),
                 )
                 .map_err(stopped)?,
             );
@@ -348,6 +387,7 @@ impl RepairPlatform for WindowsRepairPlatform {
                     "Verify protected system files",
                     &root,
                     Some(control.cancel),
+                    Some(&mut *control.servicing_pending),
                 )
                 .map_err(stopped)?,
             );
@@ -414,6 +454,16 @@ fn update_health_check() -> RepairCheck {
 }
 
 fn service_running(name: &str) -> Result<bool> {
+    Ok(service_state(name)? == SERVICE_RUNNING)
+}
+
+pub(crate) fn trusted_installer_stopped() -> bool {
+    super::servicing::explicitly_stopped(service_state("TrustedInstaller").ok(), SERVICE_STOPPED)
+}
+
+fn service_state(
+    name: &str,
+) -> Result<windows::Win32::System::Services::SERVICE_STATUS_CURRENT_STATE> {
     unsafe {
         let scm = OwnedServiceHandle::new(
             OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)
@@ -440,7 +490,7 @@ fn service_running(name: &str) -> Result<bool> {
             &mut needed,
         )
         .map_err(|e| RepairError::Command(format!("QueryServiceStatusEx({name}): {e}")))?;
-        Ok(status.dwCurrentState == SERVICE_RUNNING)
+        Ok(status.dwCurrentState)
     }
 }
 
@@ -617,12 +667,14 @@ fn run_sfc(
     title: &str,
     root: &Path,
     cancel: Option<&AtomicBool>,
+    pending: Option<&mut (dyn FnMut() + Send)>,
 ) -> Result<RepairCheck> {
     // P85-01: the verdict comes from what THIS run wrote to the CBS log, found from a baseline taken
     // before it started, not from a tail that holds older runs (see `cbs`).
     let cbs_log = root.join("Logs").join("CBS").join("CBS.log");
     let baseline = cbs::CbsBaseline::capture(&cbs_log);
-    let mut check = super::process::run_tool(
+    let drain = super::servicing::ServicingDrain::before_owned_call(pending)?;
+    let result = super::process::run_tool(
         exe,
         args,
         (id, title, "%WINDIR%\\Logs\\CBS\\CBS.log"),
@@ -630,7 +682,10 @@ fn run_sfc(
         cancel,
         args.iter().any(|arg| arg.eq_ignore_ascii_case("/scannow")),
         COMMAND_TIMEOUT,
-    )?;
+    );
+    // Every child/read failure has already drained its owned handles before the OS fence.
+    drop(drain);
+    let mut check = result?;
 
     // Do not infer integrity state from localized console prose. SFC's console output is retained
     // only as bounded diagnostic context; a run the log cannot be attributed to stays Unknown and

@@ -113,3 +113,45 @@ Root integration of verification cancellation passed 197 locked Rust tests using
 The superseded CI at `1943619` stalled during VC++ acquisition for hours: its download handle remained open on an unchanged partial file, with an established HTTPS connection and no child build process. The run was cancelled. Source `6b9ce96` uses native Windows curl for both existing fixed Microsoft prerequisite URLs, with a 30-second connect ceiling, 120 seconds per attempt, two retries and a 360-second retry-start ceiling. This bounds transfer attempts rather than claiming a strict total including backoff or signature validation. Temporary files are admitted only after the existing valid Microsoft Authenticode checks; partial downloads are removed on curl failure. There is no new dependency, CI duration increase or signature bypass.
 
 Four native loopback controls passed: stalled WebView2 and VC++ bodies each stop after three attempts without publishing an artifact; an initial503 followed by a complete unsigned response retries once and is rejected by the original signature checks. The fixture uses one-second test transfer ceilings and real curl/Authenticode, never downloads or installs Setup. The same fixture is now a Windows CI step before packaging. The strengthened source gate requires the fixed URL and complete transfer bounds. Final full CI must use the integration head including these corrections.
+
+## Conservative servicing-drain source checkpoint (2026-10-04)
+
+The prior child/API-exit boundary did not prove that TrustedInstaller had stopped. The shared
+native-call drain now requires the exact SCM `SERVICE_STOPPED` observation after owned SFC
+work/readers or the DISM lifecycle has returned. RUNNING, pending and unreadable states remain
+unverified; they neither release admission nor certify active servicing from RUNNING alone.
+The original mutation lease and DISM lifecycle lock remain held. DISM closes its session and
+shuts down before its SCM drain, and releases its lifecycle lock afterward. SFC error/cancel
+and read-only timeout exits drain the owned child first; a child wait error is retried rather
+than treated as an exit acknowledgement. No mutating child, service or OS process is killed
+by this fence. The existing read-only child stop policy and production deadlines are unchanged.
+
+Each actual Windows assessment provider closure receives an `Arc` of its original
+`ReadBudgetLease`. A timed-out or cancelled observer can return its bounded Unknown/Cancelled
+state while that provider, its slot and its read admission remain charged through actual native
+completion and OS drain. Late results remain discarded. A new service cannot infer idle from
+restart: relevant native-call admission refuses a non-STOPPED or unreadable SCM state with the
+existing declared Conflict outcome and owned EN/AR wording. Mutation drain progress is
+indeterminate and describes completion as unverified; its current stage is preserved. Assessment
+timeout wording now says a stop was requested and the worker may still be running.
+
+Original behavioral RED: an actual assessment coordinator plus a controlled provider reached
+its observer timeout with read budget0 instead of1. Green retains1 until actual provider return,
+then releases exactly once. Shared runtime controls require explicit STOPPED, reject every other
+SCM state/query absence, retain actual mutation admission through uncertain completion, refuse
+another owner/workload, and ignore cancellation as a release condition. The shared function's
+missing-drain controls are recorded separately from the original production RED. Local tests
+for system-repair, maintenance-service and PC intelligence passed210 across17 suites; UI108,
+Svelte check0 errors/warnings, build, static351, recursive120, localization and strengthened
+reader/wait negative controls passed. Final all-target Clippy, source seals and full native phase
+CI are recorded by the checkpoint/integration receipts rather than inferred here.
+
+An idle RUNNING or unreadable TrustedInstaller can retain admission indefinitely. This is an
+explicit conservative availability ceiling, not a bounded completion promise. Detached workers
+are not joined by the service stop path; process exit destroys in-memory admission and does not
+stop Windows servicing or prove it idle. Restart rechecks SCM and preserves durable incomplete
+execution recovery. STOPPED is the narrow release predicate for this owned-call fence, not proof
+that every possible external CBS operation is safe. The SCM observation is not an atomic Windows
+reservation against unrelated system actors. No grace timeout, service-control mutation, new
+wire/dependency or guessed registry CBS-idle heuristic was introduced. Native build and real SFC/
+DISM/TrustedInstaller VM qualification at the new exact head remain NOT RUN in this source receipt.
