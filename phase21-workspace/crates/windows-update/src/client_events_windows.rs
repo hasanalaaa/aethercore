@@ -1,5 +1,5 @@
 //! Read-only, bounded Windows Update client evidence. No event channel is enabled or changed.
-use crate::{ClientErrors, Result, UpdateError, parse_client_error_xml};
+use crate::{ClientErrors, ClientEvent, Result, UpdateError, parse_client_event_xml};
 use std::time::{Duration, Instant};
 use windows::{
     Win32::{
@@ -26,14 +26,48 @@ fn event_error(error: windows::core::Error) -> UpdateError {
     UpdateError::Wua(format!("Windows Update client event log: {error}"))
 }
 
-/// Newest errors in the Operational channel over 30 days, at most 200, within five seconds.
-/// Missing/disabled/inaccessible channels are errors, never a successful empty measurement.
+/// Both local channels share five seconds and at most 200 records. Each gets half the cap
+/// so a busy Operational log cannot hide System evidence. Partial reads retain explicit coverage.
 pub fn query_client_errors(max_entries: usize) -> Result<ClientErrors> {
-    let channel: Vec<u16> = "Microsoft-Windows-WindowsUpdateClient/Operational"
-        .encode_utf16()
-        .chain([0])
-        .collect();
-    let query: Vec<u16> = "*[System[Provider[@Name='Microsoft-Windows-WindowsUpdateClient'] and Level=2 and TimeCreated[timediff(@SystemTime) <= 2592000000]]]".encode_utf16().chain([0]).collect();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let cap = max_entries.min(200);
+    let mut output = ClientErrors::default();
+    for (channel, count, filter) in [
+        (
+            "Microsoft-Windows-WindowsUpdateClient/Operational",
+            cap.div_ceil(2),
+            "Level=2",
+        ),
+        ("System", cap / 2, "(Level=2 or EventID=21)"),
+    ] {
+        match query_channel(channel, filter, count, deadline) {
+            Ok(read) => {
+                output.errors.extend(read.errors);
+                for stamp in read.reboot_notifications {
+                    if !output.reboot_notifications.contains(&stamp) {
+                        output.reboot_notifications.push(stamp);
+                    }
+                }
+                output.unknown_events += read.unknown_events;
+                output.truncated |= read.truncated;
+            }
+            Err(_) => output.unavailable_channels += 1,
+        }
+    }
+    Ok(output)
+}
+
+fn query_channel(
+    channel: &str,
+    filter: &str,
+    max_entries: usize,
+    deadline: Instant,
+) -> Result<ClientErrors> {
+    if Instant::now() >= deadline {
+        return Err(UpdateError::Timeout("Windows Update client events".into()));
+    }
+    let channel: Vec<u16> = channel.encode_utf16().chain([0]).collect();
+    let query: Vec<u16> = format!("*[System[Provider[@Name='Microsoft-Windows-WindowsUpdateClient'] and {filter} and TimeCreated[timediff(@SystemTime) >= 0 and timediff(@SystemTime) <= 2592000000]]]").encode_utf16().chain([0]).collect();
     let config = EventHandle(
         unsafe { EvtOpenChannelConfig(None, PCWSTR(channel.as_ptr()), 0) }.map_err(event_error)?,
     );
@@ -69,16 +103,21 @@ pub fn query_client_errors(max_entries: usize) -> Result<ClientErrors> {
         }
         .map_err(event_error)?,
     );
-    let deadline = Instant::now() + Duration::from_secs(5);
     let mut output = ClientErrors::default();
-    let max_entries = max_entries.min(200);
     for index in 0..=max_entries {
         if Instant::now() >= deadline {
             return Err(UpdateError::Timeout("Windows Update client events".into()));
         }
         let mut handles = [0isize];
         let mut returned = 0;
-        let next = unsafe { EvtNext(result.0, &mut handles, 1000, 0, &mut returned) };
+        let remaining_ms = deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .min(1000) as u32;
+        if remaining_ms == 0 {
+            return Err(UpdateError::Timeout("Windows Update client events".into()));
+        }
+        let next = unsafe { EvtNext(result.0, &mut handles, remaining_ms, 0, &mut returned) };
         // Own every returned handle before checking the API's count or any error.
         let event = EventHandle(EVT_HANDLE(handles[0]));
         match next {
@@ -96,10 +135,22 @@ pub fn query_client_errors(max_entries: usize) -> Result<ClientErrors> {
             break;
         }
         let xml = render_xml(event.0)?;
-        match parse_client_error_xml(&xml) {
-            Some(error) => output.errors.push(error),
-            None => output.unknown_events += 1,
+        match parse_client_event_xml(&xml) {
+            Some(ClientEvent::Error(error))
+                if error.unix_ms <= chrono::Utc::now().timestamp_millis() =>
+            {
+                output.errors.push(error)
+            }
+            Some(ClientEvent::RebootNotification(stamp))
+                if stamp <= chrono::Utc::now().timestamp_millis() =>
+            {
+                output.reboot_notifications.push(stamp)
+            }
+            _ => output.unknown_events += 1,
         }
+    }
+    if Instant::now() >= deadline {
+        return Err(UpdateError::Timeout("Windows Update client events".into()));
     }
     Ok(output)
 }

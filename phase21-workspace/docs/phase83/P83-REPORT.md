@@ -407,3 +407,43 @@ physical battery devices, firmware thresholds and no-egress capture remain pendi
 is not native qualification. Raw red/green receipts are retained externally under
 `/tmp/aethercore-p83-thermal-*`, `measurement-guards-*`, `counter-time-*` and
 `measurement-native-cross-clippy.log` with the full `aethercore-p83-` prefix.
+
+
+## Both update-event channels and dependency state — 2026-10-04
+
+The owner's Windows 11 build 26200 publisher metadata qualifies System event20/versions0–1,
+Error level2 with named hexadecimal errorCode, and event21/version0, Informational level4 with
+named updatelist. Operational event25/versions0–1 remains discovery-error evidence. The metadata
+and event-level probes are read-only; their raw local receipts remain outside the delivered tree.
+Unsupported provider/channel/id/version/fields, conflicting duplicates and invalid dates stay unknown.
+
+The existing reader now reads both channels within one five-second deadline and200-record total,
+splitting the cap so a busy Operational log cannot starve System. Disabled, denied, unavailable or
+late reads explicitly reduce coverage; an available channel retains its own evidence. Historical
+restart notifications are dated log observations, never the current WUA reboot-required flag, and
+never installation attempts. The evidence-only assessment has no repair fact and the owned EN/AR
+summary identifies both channels, incomplete coverage and the historical restart limit.
+
+The same assessment queries state/configuration for wuauserv, BITS and TrustedInstaller without
+starting them. A shared existing ProviderSlot bounds each observer, retains the actual worker and
+read-budget lease after timeout/cancel, and refuses another service probe while the worker remains.
+Only exact SERVICE_STOPPED can feed the existing diagnosis-scoped service-start gate; pending,
+paused and unknown states no longer masquerade as stopped. Demand-start idle requires no repair,
+disabled policy remains unchanged, and the additional dependency evidence ids cannot propose actions.
+
+Actual System-error parser control failed on the old source before this correction. The old shared
+service verdict also reproduced ServiceStopped for a pending state; the corrected controls cover
+all six other SCM states. Both packages'72 affected tests, all-target host Clippy and Windows GNU
+update bindings passed; the actual two-channel controller has3 positive controls plus2 deliberately
+broken controls which fail their intended assertions. Existing7 actual WUA preflight controls pass.
+UI119 controls and strict Svelte check (zero errors/warnings) passed before the final source-only
+bounded-SCM wiring. Source and cross-bindings checks do not qualify actual final Windows execution.
+No update search, service start/configuration, channel activation, dependency or wire change.
+
+Raw receipts: /tmp/aethercore-p83-wu-system-red.log,
+/tmp/aethercore-p83-wu-pending-service-runtime-red.log,
+/tmp/aethercore-p83-wu-system-services-green.log,
+/tmp/aethercore-p83-wu-actual-event-flow.log,
+/tmp/aethercore-p83-wu-final-host-clippy.log,
+/tmp/aethercore-p83-wu-final-cross-clippy.log,
+/tmp/aethercore-integrated-ui-2026-10-04.log.

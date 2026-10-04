@@ -44,6 +44,7 @@ static DISK_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_HISTORY_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_CLIENT_SLOT: ProviderSlot = ProviderSlot::new();
+static UPDATE_SERVICES_SLOT: ProviderSlot = ProviderSlot::new();
 
 pub struct WindowsRepairPlatform;
 
@@ -149,12 +150,54 @@ impl WindowsRepairPlatform {
                 },
             )
         })?;
-        if checks
+        let update_failed = checks
             .last()
-            .is_some_and(|check| check.result_code == "UpdateFailure")
-        {
-            step(&mut checks, "required-update-service", &mut || {
-                Ok(required_update_service_check())
+            .is_some_and(|check| check.result_code == "UpdateFailure");
+        for (step_id, id, name, title) in [
+            (
+                if update_failed {
+                    "required-update-service"
+                } else {
+                    "update-agent-service"
+                },
+                if update_failed {
+                    "required-service"
+                } else {
+                    "update-agent-service"
+                },
+                "wuauserv",
+                "Windows Update service",
+            ),
+            (
+                "update-bits-service",
+                "update-bits-service",
+                "BITS",
+                "Background Intelligent Transfer Service",
+            ),
+            (
+                "update-servicing-service",
+                "update-servicing-service",
+                "TrustedInstaller",
+                "Windows Modules Installer service",
+            ),
+        ] {
+            let lease_for_worker = lease.clone();
+            step(&mut checks, step_id, &mut || {
+                let lease_for_worker = lease_for_worker.clone();
+                run_check(
+                    &UPDATE_SERVICES_SLOT,
+                    (id, title, name),
+                    Duration::from_secs(5),
+                    cancel,
+                    move |_| {
+                        let _read_budget_lease = lease_for_worker;
+                        if id == "required-service" {
+                            required_update_service_check()
+                        } else {
+                            update_dependency_service_check(id, name, title)
+                        }
+                    },
+                )
             })?;
         }
         // Evidence only: the id has no diagnosis fact, so this proposes no repair (P83-03A).
@@ -494,30 +537,73 @@ fn service_state(
     }
 }
 
-fn service_start_type() -> Result<u32> {
+fn service_start_type(name: &str) -> Result<u32> {
     unsafe {
         let scm = OwnedServiceHandle::new(
             OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)
                 .map_err(|e| RepairError::Command(format!("OpenSCManagerW: {e}")))?,
         );
-        let wide = "wuauserv".encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+        let wide = name.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
         let service = OwnedServiceHandle::new(
             OpenServiceW(scm.get(), PCWSTR(wide.as_ptr()), SERVICE_QUERY_CONFIG)
-                .map_err(|e| RepairError::Command(format!("OpenServiceW(wuauserv): {e}")))?,
+                .map_err(|e| RepairError::Command(format!("OpenServiceW({name}): {e}")))?,
         );
         // QueryServiceConfigW's documented maximum is 8 KiB. usize storage preserves ABI alignment.
         let mut buffer = [0usize; 8192 / std::mem::size_of::<usize>()];
         let config = buffer.as_mut_ptr().cast::<QUERY_SERVICE_CONFIGW>();
         let mut needed = 0;
         QueryServiceConfigW(service.get(), Some(config), 8192, &mut needed)
-            .map_err(|e| RepairError::Command(format!("QueryServiceConfigW(wuauserv): {e}")))?;
+            .map_err(|e| RepairError::Command(format!("QueryServiceConfigW({name}): {e}")))?;
         Ok((*config).dwStartType.0)
     }
 }
 
+/// Read-only dependency state: this id never maps to a repair fact or starts a service.
+fn update_dependency_service_check(id: &str, name: &str, title: &str) -> RepairCheck {
+    let observed = service_state(name).and_then(|state| {
+        service_start_type(name).map(|start| super::service_start_verdict(state.0, start))
+    });
+    let (code, stage, detail) = match observed {
+        Ok("ServiceRunning") => (
+            "ServiceRunning",
+            "Completed",
+            "The update dependency service is running; this alone does not establish update health.",
+        ),
+        Ok("ServiceDemandStopped") => (
+            "ServiceDemandStopped",
+            "Completed",
+            "The update dependency service is stopped in demand-start mode. This alone does not require repair.",
+        ),
+        Ok("ServiceDisabled") => (
+            "ServiceDisabled",
+            "Attention",
+            "The update dependency service is disabled. Its configuration may be managed by policy; AetherCore will not change it.",
+        ),
+        Ok("ServiceStopped") => (
+            "ServiceStopped",
+            "Attention",
+            "The update dependency service is stopped in automatic-start mode. This evidence alone does not authorize a service change.",
+        ),
+        _ => (
+            "ServiceUnknown",
+            "Unknown",
+            "The update dependency service state or configuration could not be established. No service change is recommended.",
+        ),
+    };
+    RepairCheck {
+        id: id.into(),
+        title: title.into(),
+        stage: stage.into(),
+        result_code: code.into(),
+        exit_code: 0,
+        detail: detail.into(),
+        log_hint: name.into(),
+    }
+}
+
 fn required_update_service_check() -> RepairCheck {
-    let result = service_running("wuauserv").and_then(|running| {
-        service_start_type().map(|start| super::service_start_verdict(running, start))
+    let result = service_state("wuauserv").and_then(|state| {
+        service_start_type("wuauserv").map(|start| super::service_start_verdict(state.0, start))
     });
     let (code, stage, detail) = match result {
         Ok("ServiceRunning") => (
@@ -576,7 +662,7 @@ fn start_update_service() -> Result<RepairCheck> {
                 PCWSTR(wide.as_ptr()),
                 SERVICE_START | SERVICE_QUERY_STATUS,
             )
-            .map_err(|e| RepairError::Command(format!("OpenServiceW(wuauserv): {e}")))?,
+            .map_err(|e| RepairError::Command(format!("OpenServiceW({name}): {e}")))?,
         );
         if !service_running("wuauserv")? {
             StartServiceW(service.get(), None)

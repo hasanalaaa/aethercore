@@ -563,3 +563,34 @@ test('P83-05B boot history is dated evidence, with no boot-type baseline or appl
     assert.deepEqual(bootRows([], locale), [], 'an unavailable channel never becomes a zero-second boot');
   }
 });
+
+
+test('update event coverage and historical restart notices are owned Arabic prose', () => {
+  for (const coverage of ['all matching events were read', 'older events were not read', 'one or more channels could not be read']) {
+    const text = `1 client error event(s) in the last 30 days; newest: 2026-09-29 (0x80070005); 2 unsupported event(s); ${coverage}. These events are separate from installation attempts. 3 historical restart notification(s); these do not establish whether a restart is required now.`;
+    const localized = localizeOwnedText(text, 'ar');
+    assert.equal(localized.localized, true);
+    assert.match(localized.text, /لا تثبت الحاجة إلى إعادة التشغيل الآن/);
+    assert.doesNotMatch(localized.text, /historical|could not|installation attempts/);
+  }
+  assert.match(localizeOwnedText('Microsoft-Windows-WindowsUpdateClient/Operational + System', 'ar').text, arabic);
+});
+
+
+test('all read-only update dependency verdicts have Arabic keys and prose', () => {
+  for (const id of ['update-agent-service', 'update-bits-service', 'update-servicing-service']) {
+    assert.match(td(`repair.check.${id}`, 'ar'), arabic);
+  }
+  for (const value of [
+    'Background Intelligent Transfer Service', 'Windows Modules Installer service',
+    'The update dependency service is running; this alone does not establish update health.',
+    'The update dependency service is stopped in demand-start mode. This alone does not require repair.',
+    'The update dependency service is disabled. Its configuration may be managed by policy; AetherCore will not change it.',
+    'The update dependency service is stopped in automatic-start mode. This evidence alone does not authorize a service change.',
+    'The update dependency service state or configuration could not be established. No service change is recommended.',
+  ]) {
+    const localized = localizeOwnedText(value, 'ar');
+    assert.equal(localized.localized, true);
+    assert.match(localized.text, arabic);
+  }
+});
