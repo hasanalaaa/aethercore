@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+mod boot_analysis;
 
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
@@ -12,15 +13,15 @@ use aethercore_collector_runtime::{
     FaultKind, IsolationGate, run_isolated_gated, run_isolated_gated_with_token,
 };
 use aethercore_crash_diagnostics::{
-    CrashDiagnosticsSnapshot, CrashError, CrashLink, CrashRecord, DEFAULT_EVENT_WINDOW_DAYS,
-    EventEvidence, boot::BootEvidence, link_dump_to_events,
+    CrashDiagnosticsSnapshot, CrashError, CrashLink, CrashRecord, EventEvidence,
+    boot::BootEvidence, link_dump_to_events,
 };
 use aethercore_hardware_telemetry::{
     HardwareTelemetrySnapshot, MemoryTelemetry, StorageDeviceTelemetry, TelemetryError,
     compare_counters,
     measurements::{
-        Availability, Battery, BootRecord, Coverage, MAX_BATTERIES, MAX_NETWORK_ADAPTERS,
-        MAX_THERMAL_ZONES, NetworkAdapter, ThermalZone, capped,
+        Battery, BootRecord, MAX_BATTERIES, MAX_NETWORK_ADAPTERS, MAX_THERMAL_ZONES,
+        NetworkAdapter, ThermalZone, capped,
     },
     same_counter_device,
 };
@@ -741,29 +742,13 @@ fn compare_with_previous_scan(
 
 /// P83-01A: the boot-performance events as measurement records. `BootTime` is the whole boot in
 /// milliseconds; a record without it is unsupported, never a zero-second boot.
-fn boot_records(boots: &[BootEvidence]) -> Vec<BootRecord> {
-    boots
-        .iter()
-        .map(|b| BootRecord {
-            recorded_unix_ms: b.recorded_unix_ms,
-            duration_ms: b.boot_time_ms,
-            coverage: Coverage {
-                source: "Microsoft-Windows-Diagnostics-Performance event 100".into(),
-                observed_unix_ms: Some(b.recorded_unix_ms),
-                window_days: Some(DEFAULT_EVENT_WINDOW_DAYS),
-                availability: if b.boot_time_ms.is_some() {
-                    Availability::Measured
-                } else {
-                    Availability::Unsupported
-                },
-                reason_key: if b.boot_time_ms.is_some() {
-                    String::new()
-                } else {
-                    "measurement.reason.noBootTime".into()
-                },
-            },
-        })
-        .collect()
+fn boot_records(
+    boots: &[BootEvidence],
+    reference: Option<&aethercore_hardware_telemetry::measurements::OsRestartReference>,
+    started: i64,
+    observed: i64,
+) -> Vec<BootRecord> {
+    boot_analysis::compose_boots(boots, reference, started, observed)
 }
 
 fn run(inner: Arc<Inner>, owner_principal_key: String) {
@@ -846,7 +831,16 @@ fn run(inner: Arc<Inner>, owner_principal_key: String) {
     let memory = hardware.as_ref().and_then(|h| h.memory.clone());
     let boots = crash
         .as_ref()
-        .map(|c| boot_records(&c.boots))
+        .map(|c| {
+            boot_records(
+                &c.boots,
+                hardware
+                    .as_ref()
+                    .and_then(|h| h.os_restart_reference.as_ref()),
+                started_unix_ms,
+                Utc::now().timestamp_millis(),
+            )
+        })
         .unwrap_or_default();
     let (thermal_zones, thermal_cut) = capped(
         hardware
@@ -1210,6 +1204,7 @@ fn build_cards_with_availability(
 mod tests {
     use super::*;
     use aethercore_crash_diagnostics::CrashDiagnosticsSnapshot;
+    use aethercore_hardware_telemetry::measurements::Availability;
     use aethercore_hardware_telemetry::{HardwareTelemetrySnapshot, StorageDeviceTelemetry};
     use aethercore_operation_kernel::ReadBudgetManager;
     const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

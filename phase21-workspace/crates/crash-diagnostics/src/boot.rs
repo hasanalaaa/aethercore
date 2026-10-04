@@ -73,6 +73,8 @@ pub struct BootEvidence {
     #[serde(default)]
     pub completed_measurement: bool,
     #[serde(default)]
+    pub latest_kernel_boot: bool,
+    #[serde(default)]
     pub raw_class: Option<RawBootClass>,
     #[serde(default)]
     pub delays: Vec<BootDelayEvidence>,
@@ -219,6 +221,7 @@ pub(crate) fn bind_boot_evidence(
             || matches!((b.boot_start_filetime,b.boot_end_filetime,other.boot_start_filetime,other.boot_end_filetime),
               (Some(start),Some(end),Some(other_start),Some(other_end)) if start<=other_end && other_start<=end)))).collect();
     for (i, boot) in boots.iter_mut().enumerate() {
+        boot.latest_kernel_boot = false;
         boot.raw_class = None;
         boot.delays.clear();
         if !unambiguous[i] {
@@ -233,6 +236,9 @@ pub(crate) fn bind_boot_evidence(
                 .filter(|k| start <= k.recorded_filetime && k.recorded_filetime <= end)
                 .collect();
             if candidates.len() == 1 && candidates[0].event_version == 1 {
+                boot.latest_kernel_boot = kernels
+                    .iter()
+                    .all(|k| k.recorded_filetime <= candidates[0].recorded_filetime);
                 boot.raw_class = Some(RawBootClass {
                     event_version: 1,
                     value: candidates[0].value,

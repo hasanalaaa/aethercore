@@ -283,6 +283,8 @@ pub struct MemoryTelemetry {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct HardwareTelemetrySnapshot {
+    #[serde(default)]
+    pub os_restart_reference: Option<measurements::OsRestartReference>,
     pub storage: Vec<StorageDeviceTelemetry>,
     pub memory: Option<MemoryTelemetry>,
     #[serde(default)]

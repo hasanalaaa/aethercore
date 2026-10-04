@@ -142,7 +142,7 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
     let mut warnings = Vec::new();
     let mut provider_faults = Vec::new();
 
-    let storage = match run_isolated_gated_with_token(
+    let (storage, os_restart_reference) = match run_isolated_gated_with_token(
         storage_gate(),
         "hardware-telemetry",
         "storage",
@@ -159,14 +159,14 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
             })
         },
     ) {
-        Ok((devices, faults)) => {
+        Ok((devices, faults, reference)) => {
             provider_faults.extend(faults);
-            devices
+            (devices, reference)
         }
         Err(error) => {
             warnings.push(format!("Storage telemetry unavailable: {error}"));
             provider_faults.push(CollectorFaultRecord::from(&error));
-            Vec::new()
+            (Vec::new(), None)
         }
     };
 
@@ -278,6 +278,7 @@ pub fn collect_with_cancellation(parent: CancellationToken) -> Result<HardwareTe
     };
 
     Ok(HardwareTelemetrySnapshot {
+        os_restart_reference,
         storage,
         memory,
         thermal_zones,
@@ -555,11 +556,26 @@ fn collect_memory() -> Result<MemoryTelemetry> {
 
 fn collect_storage(
     control: &CollectorControl,
-) -> Result<(Vec<StorageDeviceTelemetry>, Vec<CollectorFaultRecord>)> {
+) -> Result<(
+    Vec<StorageDeviceTelemetry>,
+    Vec<CollectorFaultRecord>,
+    Option<crate::measurements::OsRestartReference>,
+)> {
     checkpoint(control, "storage.begin")?;
     let _com = init_com()?;
     let services = connect_storage_wmi()?;
     let mut provider_faults = Vec::new();
+    // Reuse this existing worker/control. A missing OS reference never fails storage or supplies duration.
+    let os_restart_reference = match collect_os_restart_reference(control) {
+        Ok(value) => value,
+        Err(error) => {
+            push_fault_bounded(
+                &mut provider_faults,
+                fault_record("os-restart-reference", &error),
+            );
+            None
+        }
+    };
 
     let reliability_result = query_reliability(&services, control);
     let (reliability, reliability_warning) = match reliability_result {
@@ -661,7 +677,37 @@ fn collect_storage(
         }
         classify_storage(device);
     }
-    Ok((devices, provider_faults))
+    Ok((devices, provider_faults, os_restart_reference))
+}
+
+fn collect_os_restart_reference(
+    control: &CollectorControl,
+) -> Result<Option<crate::measurements::OsRestartReference>> {
+    let services = connect_wmi("ROOT\\CIMV2")?;
+    let objects = query(
+        &services,
+        "SELECT LastBootUpTime FROM Win32_OperatingSystem",
+        control,
+    )?;
+    checkpoint(control, "os-restart-reference.complete")?;
+    if objects.len() != 1 {
+        return Ok(None);
+    }
+    let Some(value) =
+        prop_string(&objects[0], "LastBootUpTime").filter(|v| v.len() == 25 && v.is_ascii())
+    else {
+        return Ok(None);
+    };
+    let observed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_millis()).ok());
+    Ok(
+        observed.map(|observed_unix_ms| crate::measurements::OsRestartReference {
+            cim_datetime: value,
+            observed_unix_ms,
+        }),
+    )
 }
 
 fn connect_storage_wmi() -> Result<IWbemServices> {
