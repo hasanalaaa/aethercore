@@ -338,11 +338,17 @@ check("ipc_client_reader_spawn_is_fallible", has(ipc_windows, 'name("aether-ipc-
 # P85 moved the owned child/pipe lifecycle into process.rs. Assert each branch,
 # not a marker anywhere in the former Windows module: joins elsewhere do not prove
 # teardown, and mutating servicing must retain ownership until the child exits.
+def repair_owned_child_wait_is_acknowledged(source: str) -> bool:
+    helper = section(source, "fn wait_for_child(", "fn read_tail<")
+    return has(helper, "loop {", "match child.wait()", "Ok(status) => return status",
+               "Err(_) => thread::sleep(Duration::from_millis(25))")
+
+
 def repair_readers_are_fallible(source: str) -> bool:
     stdout = section(source, "let stdout_thread =", "let stderr_thread =")
     stderr = section(source, "let stderr_thread =", "let deadline =")
-    return all(has(body, "match thread::Builder::new()", f'name("aether-repair-{stream}"',
-                   "Ok(worker) => worker", "Err(error) =>", "let _ = child.wait();",
+    return repair_owned_child_wait_is_acknowledged(source) and all(has(body, "match thread::Builder::new()", f'name("aether-repair-{stream}"',
+                   "Ok(worker) => worker", "Err(error) =>", "let _ = wait_for_child(&mut child);",
                    f"failed to create repair {stream} reader")
                for body, stream in [(stdout, "stdout"), (stderr, "stderr")]) \
         and has(stderr, "let _ = stdout_thread.join();")
@@ -358,13 +364,13 @@ def repair_timeout_preserves_ownership(source: str) -> bool:
     outcome = section(source, "if mutating {", "let code =")
     # Every kill belongs to a read-only branch; reader-creation failures wait even
     # for mutating children. Normal and polling-error exits settle both readers.
-    return all(has(body, "if !mutating { let _ = child.kill(); }", "let _ = child.wait();")
+    return repair_owned_child_wait_is_acknowledged(source) and all(has(body, "if !mutating { let _ = child.kill(); }", "let _ = wait_for_child(&mut child);")
                for body in [stdout, stderr]) \
-        and all(ordered(body, "child.kill()", "child.wait()", "stdout_thread.join()", "stderr_thread.join()", "return Err(")
+        and all(ordered(body, "child.kill()", "wait_for_child(&mut child)", "stdout_thread.join()", "stderr_thread.join()", "return Err(")
                 for body in [timeout, cancel]) \
         and has(timeout, 'format!("{title} timed out")') \
         and has(cancel, "RepairError::Cancelled") \
-        and ordered(polling, "child.wait()", "stdout_thread.join()", "stderr_thread.join()", "return Err(") \
+        and ordered(polling, "wait_for_child(&mut child)", "stdout_thread.join()", "stderr_thread.join()", "return Err(") \
         and has(tails, 'joined_stream(stdout_thread.join(), "stdout"', 'joined_stream(stderr_thread.join(), "stderr"') \
         and has(outcome, "RepairError::RepairStopped", "RepairError::RepairTimedOut") \
         and count(source, "child.kill()") == 4

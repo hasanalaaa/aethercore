@@ -131,7 +131,7 @@ pub fn run_check(
         Bounded::Cancelled => Err(RepairError::Cancelled),
         Bounded::TimedOut => Ok(unknown(
             "CheckTimedOut",
-            "This check did not finish in time and was stopped; its result is unknown.".into(),
+            "This check did not finish in time. A stop was requested; the earlier worker may still be running and its result is unknown.".into(),
         )),
         Bounded::Busy => Ok(unknown(
             "CheckStillRunning",

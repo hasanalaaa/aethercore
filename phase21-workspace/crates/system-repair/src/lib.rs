@@ -72,6 +72,8 @@ pub enum RepairError {
     AlreadyRunning,
     #[error("Windows servicing pipeline is busy")]
     ServicingBusy,
+    #[error("Windows servicing completion is unverified; no further servicing work was started.")]
+    ServicingUnverified,
     #[error("Windows requires a restart before servicing can safely continue")]
     RebootPending,
     #[error("repair command failed: {0}")]
@@ -193,6 +195,8 @@ pub struct RepairControl<'a> {
     pub cancel: &'a Arc<AtomicBool>,
     /// The running tool's own progress, from its callback: `None` when it cannot say.
     pub progress: &'a mut (dyn FnMut(Option<u32>) + Send),
+    /// Called after owned work exits while OS completion remains unverified.
+    pub servicing_pending: &'a mut (dyn FnMut() + Send),
 }
 
 pub trait RepairPlatform: Send + Sync + 'static {
@@ -203,6 +207,15 @@ pub trait RepairPlatform: Send + Sync + 'static {
         cancel: &Arc<AtomicBool>,
         progress: &mut dyn FnMut(AssessStep<'_>),
     ) -> Result<(String, Vec<RepairCheck>)>;
+    /// Transfers read admission to providers whose actual workers can outlive their observer.
+    fn assess_with_lease(
+        &self,
+        cancel: &Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+        _lease: Arc<ReadBudgetLease>,
+    ) -> Result<(String, Vec<RepairCheck>)> {
+        self.assess(cancel, progress)
+    }
     fn repair(
         &self,
         action: &SystemRepairAction,
@@ -265,6 +278,7 @@ pub mod bounded;
 pub mod cbs;
 pub mod dism;
 mod process;
+mod servicing;
 
 #[cfg(windows)]
 mod dism_api;
@@ -414,7 +428,7 @@ impl RepairCoordinator {
         if let Err(error) = thread::Builder::new()
             .name("aether-repair-assessment".into())
             .spawn(move || {
-                let _read_budget_lease = read_budget_lease;
+                let _read_budget_lease = Arc::new(read_budget_lease);
                 // Each check lands in the snapshot as it finishes, so a slow one reads as
                 // "running: <check>, N done" rather than as a hang (P76, DBT-P76-007).
                 let mut progress = |step: AssessStep<'_>| {
@@ -433,7 +447,7 @@ impl RepairCoordinator {
                 // A panic here used to kill the worker and leave the state Scanning for the
                 // life of the service, refusing every later assessment as Busy.
                 let assessed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    platform.assess(&cancel, &mut progress)
+                    platform.assess_with_lease(&cancel, &mut progress, _read_budget_lease.clone())
                 }))
                 .unwrap_or_else(|_| {
                     Err(RepairError::Command(
@@ -1479,9 +1493,23 @@ fn run_worker(
             ..Default::default()
         });
     };
+    let mut servicing_pending = || {
+        let stage = telemetry
+            .get_for_owner(owner_principal_key, plan_id)
+            .map_or_else(|| "Executing".into(), |value| value.stage);
+        telemetry.publish(aethercore_operation_kernel::ProgressTelemetry {
+            owner_principal_key: owner_principal_key.into(),
+            plan_id: plan_id.into(),
+            stage,
+            progress_known: false,
+            detail: "The owned repair call has ended; Windows servicing completion remains unverified. Admission is retained.".into(),
+            ..Default::default()
+        });
+    };
     let mut control = RepairControl {
         cancel,
         progress: &mut tool_progress,
+        servicing_pending: &mut servicing_pending,
     };
     if let Err(error) = platform.repair(&action, &mut control, &mut begin_mutation, &mut emit) {
         timeline_event(
