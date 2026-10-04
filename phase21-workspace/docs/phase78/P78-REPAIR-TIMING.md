@@ -24,3 +24,10 @@ The displayed **Observed elapsed / المدة المرصودة** starts from the
 - `git diff --check`: passed. Source seal is regenerated from the explicit delivered file set and verified separately before commit.
 
 These are source/portable controls. No Windows servicing operation, installed application mutation, native Narrator/RTL/200% display qualification or new native assessment was executed. No Rust, wire or dependency changes are included. Full phase/native CI belongs to the integrator; prior CI is not attributed to this source.
+
+Coordinator review added an actual controller regression for delayed start/cancel replies across
+new streamed assessment identities and reset sessions. It first failed by replacing the new UUID
+with the old response. Both handlers now share the request-generation/identity admission check;
+a cancellation reply also must name its requested assessment. A rejected reply preserves the new
+observation clock. The nine actual reducer/controller/render/clock controls and Svelte check pass.
+External receipts: `/tmp/aethercore-p78-late-rpc-{red,green,check}.log`.

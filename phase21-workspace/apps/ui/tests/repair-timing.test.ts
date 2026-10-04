@@ -30,7 +30,7 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true,
   value: { getItem: () => null, setItem: () => {}, removeItem: () => {} } });
 const { shellState } = await import('../src/app/shell-state.ts');
 const { streamState, createInitialStreamState, reduceKernelEvent, applyStreamReset } = await import('../src/platform/stream-state.ts');
-const { startRepairAssessment } = await import('../src/features/repair/controller.ts');
+const { startRepairAssessment, cancelRepairAssessment } = await import('../src/features/repair/controller.ts');
 const { default: RepairPage } = await import('../src/features/repair/RepairPage.svelte');
 const now = Date.now();
 const assessment = { assessmentId: 'owned-assessment', state: 'Scanning', startedUnixMs: now - 90_000,
@@ -66,6 +66,25 @@ test('actual start RPC clears a different assessment clock and preserves a strea
   await pending;
   assert.equal(awaitState().repairAssessment.state, 'Ready');
   assert.equal(awaitState().repairAssessmentObservedUnixMs, now);
+});
+
+test('late assessment RPC cannot replace a new streamed identity or a reset session', async () => {
+  for (const operation of [startRepairAssessment, cancelRepairAssessment]) {
+    for (const reset of [false, true]) {
+      streamState.set(reduceKernelEvent(createInitialStreamState(), event(1, now)));
+      let resolve!: (value: unknown) => void;
+      rpcAnswer = new Promise((done) => { resolve = done; });
+      const pending = operation();
+      await Promise.resolve();
+      if (reset) applyStreamReset({ reason: 'sequenceReset', currentSequence: 2, replayFloorSequence: 2, messageKey: '' });
+      const newer = { ...assessment, assessmentId: 'new-streamed-assessment' };
+      streamState.set(reduceKernelEvent(awaitState(), event(3, now, newer)));
+      resolve({ ...assessment, state: 'Cancelled', completedUnixMs: now });
+      await pending;
+      assert.equal(awaitState().repairAssessment.assessmentId, newer.assessmentId);
+      assert.equal(awaitState().repairAssessmentObservedUnixMs, now);
+    }
+  }
 });
 
 test('local monotonic frame clock throttles seconds, includes hidden-tab time, and cannot publish after stop', () => {
