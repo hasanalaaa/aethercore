@@ -155,3 +155,31 @@ that every possible external CBS operation is safe. The SCM observation is not a
 reservation against unrelated system actors. No grace timeout, service-control mutation, new
 wire/dependency or guessed registry CBS-idle heuristic was introduced. Native build and real SFC/
 DISM/TrustedInstaller VM qualification at the new exact head remain NOT RUN in this source receipt.
+
+### Confirmed DISM lifecycle cleanup follow-up (2026-10-04)
+
+`DismLifecycle` now owns its `ServicingDrain` field. Its shared cleanup boundary publishes
+indeterminate pending status before the owned cleanup call, and requires exact `S_OK` from
+`DismCloseSession` before calling `DismShutdown`, then exact `S_OK` from shutdown. Only after
+that boundary returns can field drop consult the SCM fence. An error or another success code
+retains the original worker, lifecycle lock and admission indefinitely; SCM STOPPED cannot
+substitute for cleanup confirmation. A failed close never proceeds to shutdown. Neither API
+is blindly retried, and no service stop join or forced process termination was added.
+
+Microsoft documents successful close as `S_OK`, with other-thread operations drained before
+the session is destroyed, and requires sessions closed before the matched shutdown call:
+[DismCloseSession](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/dism/dismclosesession-function?view=windows-11),
+[DismShutdown](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/dism/dismshutdown-function?view=windows-11).
+
+The actual `c3a184f` Drop body was compiled in a std-only runtime fixture with mock API
+boundaries: both close and shutdown errors reproduced early guard release (exit101). The
+new actual Drop body held that guard and pending notice for both failures, and released it
+after ordered successful cleanup (three controls PASS). This fixture replaces the native API
+and drain guard and proves destructor/control-flow behavior; it is not native DISM servicing
+qualification. Shared production-helper tests additionally retain an actual MutationSupervisor
+lease on close failure, shutdown failure and non-S_OK positive code, refuse the next mutation,
+and prove ordered once-only cleanup and no fake pending state without owned resources.
+Locked direct-dependent tests213 across17 suites, all-target Clippy, static351, recursive120
+and existing gate negative controls PASS. Exact Windows build/VM qualification remains NOT RUN.
+Cleanup uncertainty can cause indefinite retained admission; this availability ceiling is
+intentional and cannot be described as bounded completion or a successful terminal outcome.
