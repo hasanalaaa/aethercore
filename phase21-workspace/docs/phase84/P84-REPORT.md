@@ -32,7 +32,7 @@ Two tasks passed the ~300-line guide:
 
 Neither split into a third task, because each half is only complete with the other.
 
-Ledger: `DBT-P84-001` to `DBT-P84-005` and `DBT-P84-007` are closed; `DBT-P84-008` is qualified for source and deterministic fixtures, with exact-head native phase qualification pending; `DBT-P84-006` is open.
+Ledger: `DBT-P84-001` to `DBT-P84-005` and `DBT-P84-007` are closed; `DBT-P84-008` is closed, with full Windows CI green at `3f54b51` (#108); `DBT-P84-009` records the dropped export anchoring; `DBT-P84-006` is open.
 
 ## 2. Red before, per task
 
@@ -82,7 +82,10 @@ All of these ran on the PC in `C:\dev\lanes\l3`, with `CARGO_TARGET_DIR` set to 
   - Mac leak gate as above, plus activity and drivers 2/2.
   - Browser: the Arabic recovery row reads restore point #43, the export folder, and the manual route; a cleanup entry shows none of it.
 
-## 4. Decisions applied
+## Execution recovery (2026-10-01)
+
+Each fix below ends with native CI still to run. Each merged to `main` with its full CI green, and
+full CI, the Windows job included, passed again at `3f54b51` (#108).
 
 ### Execution recovery: preserve the original backup seal
 
@@ -155,6 +158,8 @@ enterprise adversarial 88/88, and localization parity passed. `static_validate.p
 passed 349 checks; its optional `parse_yaml` measurement remained unavailable.
 Full native CI at the new exact head is still required before integration.
 
+## 4. Decisions applied
+
 - **D2 and D14.** The empty request reads the local cache. Online requires a confirmation that names Microsoft's service or the managed server, and holds for one scan. The router binds the scope to the caller's own request, so no confirmation is stored or reused. The install-time WUA access after approval is unchanged.
 - **D13.** No `ProblemStatus` wire field was needed.
 - **D15.** A downgrade is never recommended or selectable. The consent path for a deliberate downgrade was **not built**: it is closed as deferred, because no recommendation makes it part of this release.
@@ -166,7 +171,7 @@ Full native CI at the new exact head is still required before integration.
 ## 5. What stayed unmeasured
 
 - **The abortable search job in the service's context (LocalSystem).** From an SSH session the agent refuses `BeginSearch`: `0x80070005` with or without process COM security at impersonate level, and `0x80004003` with a null callback. The plain search runs instead. In the service, which sets the same COM security at startup, I believe the job runs, but I did not measure it without touching the installed service (`DBT-P84-006`).
-- **Export preflight and ancestor protection** (2026-10-04 follow-up, reviewed): the export now measures the Driver Store package against the space the service can use before PnPUtil runs, refuses a link or junction in any directory from the volume root down, reads every exported file through a handle that refuses writers, and never overwrites a manifest already there. The backup root is writable only by SYSTEM, Administrators and the service, so these checks are path-based; an NT-native anchored-open scheme from the same follow-up was dropped (see [P84-EXPORT-PREFLIGHT-REPORT.md](P84-EXPORT-PREFLIGHT-REPORT.md) and `DBT-P84-008`).
+- **Export preflight and ancestor protection** (2026-10-04 follow-up, reviewed): the export now measures the Driver Store package against the space the service can use before PnPUtil runs, refuses a link or junction in any directory from the volume root down, reads every exported file through a handle that refuses writers, and never overwrites a manifest already there. The backup root is writable only by SYSTEM, Administrators and the service, so these checks are path-based; an NT-native anchored-open scheme from the same follow-up was dropped (see [P84-EXPORT-PREFLIGHT-REPORT.md](P84-EXPORT-PREFLIGHT-REPORT.md) and `DBT-P84-009`).
 - **Any real install, verification or recovery.** Proven with fakes only, by the lane's rule.
 - **The pages with Narrator, on a real install.**
 

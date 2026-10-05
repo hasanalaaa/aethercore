@@ -24,6 +24,11 @@ use aethercore_windows_update::{
 };
 
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+/// How long a test waits for the coordinator's worker to settle. It bounds a hang, not the
+/// product: nothing here races the clock, and the fake platform never blocks. The seven tests run
+/// in parallel and take about 2 s together on the CI PC, so 3 s each failed whenever that PC was
+/// busy with other runners' builds (the #109 run, 2026-10-04).
+const SETTLE: Duration = Duration::from_secs(30);
 
 fn approve(engine: &OperationEngine, plan_id: &str) {
     let intent = engine
@@ -306,7 +311,7 @@ fn temp_root() -> std::path::PathBuf {
 fn ready_hub() -> Arc<DriverHub> {
     let hub = Arc::new(DriverHub::with_backend(Arc::new(FakeDiscovery)));
     start_driver_scan(&hub, OWNER).expect("start fake scan");
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + SETTLE;
     loop {
         let snapshot = hub
             .snapshot_for_owner(OWNER)
@@ -361,7 +366,7 @@ fn protection_barrier_precedes_every_fake_mutation_and_completes() {
     approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + SETTLE;
     loop {
         let status = coordinator
             .status(OWNER, Some(&plan.id))
@@ -443,7 +448,7 @@ fn backup_failure_cancels_protection_and_never_reaches_install() {
     approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + SETTLE;
     loop {
         let status = coordinator
             .status(OWNER, Some(&plan.id))
@@ -514,7 +519,7 @@ fn restore_end_failure_after_mutation_requires_recovery_and_never_completes() {
     approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
 
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + SETTLE;
     loop {
         let status = coordinator
             .status(OWNER, Some(&plan.id))
@@ -650,7 +655,7 @@ fn install_ending_bound_to(
         .expect("plan");
     approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + SETTLE;
     let status = loop {
         let status = coordinator
             .status(OWNER, Some(&plan.id))
@@ -749,7 +754,7 @@ fn install_on(platform: Arc<FakePlatform>) -> (String, bool, u32) {
         .expect("plan");
     approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + SETTLE;
     let status = loop {
         let status = coordinator
             .status(OWNER, Some(&plan.id))
@@ -857,7 +862,7 @@ fn an_install_interrupted_after_the_barrier_is_recovery_required_and_not_replaye
         .expect("plan");
     approve(&engine, &plan.id);
     start_install(&coordinator, OWNER, &plan.id).expect("start install");
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + SETTLE;
     while platform.mutation_count.load(Ordering::SeqCst) == 0 {
         assert!(
             Instant::now() < deadline,

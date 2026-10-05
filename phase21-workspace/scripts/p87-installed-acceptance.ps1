@@ -14,6 +14,8 @@ param(
     [ValidateSet('en','ar')][string]$Locale = 'en',
     [ValidateRange(30,600)][int]$TimeoutSeconds = 300,
     [switch]$AcknowledgeDisposableMachine,
+    # Owner decision D33: the owner's own PC; the lifecycle parent checks the recorded decision.
+    [switch]$OwnerHostAccepted,
     [switch]$ReadOnlyInstalled,
     [string]$VerifyCareRunId,
     [switch]$SelfTest
@@ -52,7 +54,8 @@ if ($SelfTest) {
 }
 if (-not $IsWindows) { throw 'Native Windows acceptance requires Windows.' }
 if (-not $OutputPath) { throw '-OutputPath is required.' }
-if (-not $ReadOnlyInstalled -and -not $AcknowledgeDisposableMachine) { throw 'Installed mutating acceptance requires an acknowledged disposable machine.' }
+if ($OwnerHostAccepted -and $AcknowledgeDisposableMachine) { throw 'Choose one host: -OwnerHostAccepted (D33) or -AcknowledgeDisposableMachine.' }
+if (-not $ReadOnlyInstalled -and -not $AcknowledgeDisposableMachine -and -not $OwnerHostAccepted) { throw 'Installed mutating acceptance requires an acknowledged disposable machine or the owner host under D33.' }
 if (-not $ReadOnlyInstalled -and ($ExpectedSourceSha -notmatch '^[0-9a-f]{40,64}$' -or $ExpectedBundleSha256 -notmatch '^[0-9a-f]{64}$')) { throw 'Exact source and bundle hashes are required.' }
 
 $ids = @('p76-hardware-owned-text','p76-performance-provider-labels','p76-cleanup-owned-text',
@@ -66,14 +69,15 @@ New-Item -ItemType Directory -Force -Path $capture | Out-Null
 $doc = [ordered]@{ schema='aethercore.p87-installed-acceptance.v1'; source_commit=$ExpectedSourceSha;
     bundle_sha256=$ExpectedBundleSha256; windows_build=[int]$os.BuildNumber;
     windows_product_name=$os.Caption; product_type=$(if ($os.ProductType -eq 1) { 'workstation' } else { 'server' });
-    locale=$Locale; ordinary_user=(-not $elevated); token=@{sid=$identity.User.Value;elevated=$elevated};
+    locale=$Locale; host=$(if ($ReadOnlyInstalled) { 'read-only' } elseif ($OwnerHostAccepted) { 'owner-host-d33' } else { 'disposable-vm' });
+    ordinary_user=(-not $elevated); token=@{sid=$identity.User.Value;elevated=$elevated};
     observed_utc=[DateTime]::UtcNow.ToString('o'); read_only=[bool]$ReadOnlyInstalled; surface_witnesses=@{};
     cases=@($ids | ForEach-Object { @{id=$_;disposition='blocked';reason='Not executed.';checks=@{};witnesses=@()} }) }
 if ($VerifyCareRunId) {
     $runGuid=[Guid]::Empty
     if ($ReadOnlyInstalled -or -not [Guid]::TryParse($VerifyCareRunId,[ref]$runGuid)) { throw 'Restart verification requires the recorded native Care run identity.' }
     $previous=Get-Content -LiteralPath $OutputPath -Raw | ConvertFrom-Json -AsHashtable
-    if ($previous.schema -ne $doc.schema -or $previous.source_commit -ne $ExpectedSourceSha -or $previous.bundle_sha256 -ne $ExpectedBundleSha256 -or $previous.locale -ne $Locale -or $previous.token.sid -ne $identity.User.Value -or $previous.care_run_id -ne $VerifyCareRunId -or $previous.worker_ownership_released -isnot [bool] -or -not $previous.worker_ownership_released -or $previous.desktop_closed -isnot [bool] -or -not $previous.desktop_closed) { throw 'Restart verification report does not belong to these bytes and this ordinary user.' }
+    if ($previous.schema -ne $doc.schema -or $previous.host -ne $doc.host -or $previous.source_commit -ne $ExpectedSourceSha -or $previous.bundle_sha256 -ne $ExpectedBundleSha256 -or $previous.locale -ne $Locale -or $previous.token.sid -ne $identity.User.Value -or $previous.care_run_id -ne $VerifyCareRunId -or $previous.worker_ownership_released -isnot [bool] -or -not $previous.worker_ownership_released -or $previous.desktop_closed -isnot [bool] -or -not $previous.desktop_closed) { throw 'Restart verification report does not belong to these bytes and this ordinary user.' }
     $care=@($previous.cases | Where-Object id -eq 'p76-care-timeline-persistence')
     if ($previous.ContainsKey('blocked_reason') -or $previous.read_only -isnot [bool] -or $previous.read_only -or $previous.ordinary_user -isnot [bool] -or -not $previous.ordinary_user -or $previous.token.elevated -isnot [bool] -or $previous.token.elevated -or $previous.restart_pending -isnot [bool] -or -not $previous.restart_pending -or $care.Count -ne 1 -or $care[0].checks.reconnect -isnot [bool] -or -not $care[0].checks.reconnect -or $care[0].checks.restart -isnot [bool] -or $care[0].checks.restart) { throw 'Restart verification requires an ordinary same-run reconnect receipt awaiting restart.' }
     $doc=$previous

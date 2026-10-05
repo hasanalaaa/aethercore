@@ -1,7 +1,7 @@
 # P84-04 follow-up: export capacity and protected ancestors
 
 A follow-up to P84-04 (`DBT-P84-005`), started on 2026-10-04 on a branch built on `3ecacc3`. It
-was then reviewed and reduced before merge (`DBT-P84-008`). This file records what merged; the
+was then reviewed and reduced before merge (`DBT-P84-009`). This file records what merged; the
 branch history keeps what was dropped.
 
 ## What the export does now

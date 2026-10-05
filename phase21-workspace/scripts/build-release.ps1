@@ -4,6 +4,8 @@ param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [switch]$RequireSigning,
     [switch]$UnsignedCandidate,
+    # Owner decision D32: a promotable RC built without any Authenticode signature.
+    [switch]$UnsignedByDecisionD32,
     [ValidateSet('CurrentUser','LocalMachine')][string]$CertificateStore = 'CurrentUser',
     [switch]$SkipOnlineSupplyChain,
     [string]$UpdateTrustPath
@@ -20,6 +22,10 @@ if (-not $Version) {
     throw "Requested version $Version disagrees with Cargo.toml $__canonicalVersion. The product version has ONE source: bump [workspace.package].version."
 }
 if ($UnsignedCandidate -and $RequireSigning) { throw 'UnsignedCandidate cannot be used for a signed production release.' }
+if ($UnsignedByDecisionD32 -and ($RequireSigning -or $UnsignedCandidate)) { throw 'UnsignedByDecisionD32 is its own release mode; it cannot be combined with RequireSigning or UnsignedCandidate.' }
+if ($UnsignedByDecisionD32 -and $env:AETHERCORE_CODESIGN_THUMBPRINT) { throw 'A D32 unsigned RC must not be signed; unset AETHERCORE_CODESIGN_THUMBPRINT.' }
+# Both promotable modes seal, freeze, package the acceptance bytes and write the provenance receipt.
+$ReleaseCandidate = $RequireSigning -or $UnsignedByDecisionD32
 if (-not (Test-Path 'Cargo.lock') -or -not (Test-Path 'pnpm-lock.yaml')) { throw 'Committed dependency lockfiles are required.' }
 if (-not $UnsignedCandidate) {
 if (-not (Test-Path 'release\dependency-locks.sha256') -or -not (Test-Path 'release\dependency-manifests.sha256') -or -not (Test-Path 'release\dependency-freeze.json')) {
@@ -51,9 +57,9 @@ if ($env:SOURCE_DATE_EPOCH -notmatch '^\d{9,12}$') { throw 'SOURCE_DATE_EPOCH is
 $env:CARGO_INCREMENTAL = '0'
 $env:TAURI_SIGNING_PRIVATE_KEY = ''
 
-if ($RequireSigning) {
+if ($ReleaseCandidate) {
     & python (Join-Path $PSScriptRoot 'source_seal.py')
-    if ($LASTEXITCODE -ne 0) { throw 'Signed RC source seal failed before building.' }
+    if ($LASTEXITCODE -ne 0) { throw 'RC source seal failed before building.' }
 }
 
 $ReleaseRoot = Join-Path $Root "out\release\$Version"
@@ -152,7 +158,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Burn engine/final bundle signing failed.' }
 
 $Acceptance = Join-Path $ReleaseRoot 'acceptance'
 New-Item -ItemType Directory -Force $Acceptance | Out-Null
-if ($RequireSigning) {
+if ($ReleaseCandidate) {
     # A test-only client from this source; acceptance must consume it without rebuilding.
     & cargo build --release --locked -p aethercore-ipc --example care_smoke
     if ($LASTEXITCODE -ne 0) { throw 'RC acceptance client build failed.' }
@@ -184,6 +190,7 @@ $metadata = [ordered]@{
     source_commit = $sourceCommit
     protocol_version = 7
     signing_required = [bool]$RequireSigning
+    signing_decision = $(if ($UnsignedByDecisionD32) { 'D32' } else { $null })
     dependency_baseline_approved = -not [bool]$UnsignedCandidate
     online_supply_chain_audit_skipped = [bool]$SkipOnlineSupplyChain
     signer_subject = $signerSubject
@@ -215,5 +222,9 @@ if ($RequireSigning) {
     $expectedThumb = ($env:AETHERCORE_CODESIGN_THUMBPRINT -replace '\s','').ToUpperInvariant()
     & python (Join-Path $PSScriptRoot 'rc-provenance.py') create --release-root $ReleaseRoot --expected-sha $sourceCommit --thumbprint $expectedThumb
     if ($LASTEXITCODE -ne 0) { throw 'Signed RC provenance receipt failed.' }
+} elseif ($UnsignedByDecisionD32) {
+    & python (Join-Path $PSScriptRoot 'rc-provenance.py') create --release-root $ReleaseRoot --expected-sha $sourceCommit --unsigned-d32
+    if ($LASTEXITCODE -ne 0) { throw 'D32 unsigned RC provenance receipt failed.' }
+    Write-Host 'RC signing: unsigned by owner decision D32.' -ForegroundColor Yellow
 }
 Write-Host "AetherCore production release candidate built: $ReleaseRoot" -ForegroundColor Green
