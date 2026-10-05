@@ -89,6 +89,27 @@ message BootRecordInfo {
   int64 recorded_unix_ms = 1;
   bool has_duration = 2; uint64 duration_ms = 3;
   MeasurementCoverageInfo coverage = 4;
+  bool has_system_boot_instance = 5; uint32 system_boot_instance = 6;
+  bool completed_measurement = 7;
+  bool has_raw_class = 8; uint32 raw_class_version = 9; uint32 raw_class_value = 10;
+  // Captured OS last-restart context; does not infer current physical boot or cold/fast semantics.
+  bool matches_os_restart = 11;
+  bool has_boot_start = 12; int64 boot_start_unix_ms = 13;
+  repeated BootDelayInfo delays = 14;
+  bool has_boot_end = 15; int64 boot_end_unix_ms = 16;
+  BootComparisonInfo comparison = 17;
+  bool delays_truncated = 18;
+  bool has_os_restart_observed = 19; int64 os_restart_observed_unix_ms = 20;
+}
+message BootDelayInfo {
+  uint32 event_id = 1; string full_path = 2;
+  uint32 total_time_ms = 3; uint32 degradation_time_ms = 4; int64 recorded_unix_ms = 5;
+}
+message BootComparisonInfo {
+  uint64 median_ms = 1; uint32 sample_count = 2;
+  int64 window_start_unix_ms = 3; int64 window_end_unix_ms = 4;
+  bool has_baseline = 5; uint64 baseline_ms = 6; uint32 baseline_count = 7;
+  int64 baseline_window_start_unix_ms = 8; int64 baseline_window_end_unix_ms = 9;
 }
 message NetworkAdapterInfo {
   string stable_id = 1;

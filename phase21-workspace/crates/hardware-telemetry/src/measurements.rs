@@ -82,6 +82,46 @@ pub struct BootRecord {
     pub recorded_unix_ms: i64,
     pub duration_ms: Option<u64>,
     pub coverage: Coverage,
+    pub system_boot_instance: Option<u32>,
+    pub completed_measurement: bool,
+    pub raw_class_version: Option<u8>,
+    pub raw_class_value: Option<u32>,
+    pub boot_start_unix_ms: Option<i64>,
+    pub boot_end_unix_ms: Option<i64>,
+    pub matches_os_restart: bool,
+    pub os_restart_observed_unix_ms: Option<i64>,
+    pub delays: Vec<BootDelay>,
+    pub delays_truncated: bool,
+    pub comparison: Option<BootComparison>,
+}
+
+/// Internal fixed-source OS restart context, not an uptime-derived duration.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct OsRestartReference {
+    pub cim_datetime: String,
+    pub observed_unix_ms: i64,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BootDelay {
+    pub event_id: u32,
+    pub full_path: String,
+    pub total_time_ms: u32,
+    pub degradation_time_ms: u32,
+    pub recorded_unix_ms: i64,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BootComparison {
+    pub median_ms: u64,
+    pub sample_count: u32,
+    pub window_start_unix_ms: i64,
+    pub window_end_unix_ms: i64,
+    pub baseline_ms: Option<u64>,
+    pub baseline_count: u32,
+    pub baseline_window_start_unix_ms: i64,
+    pub baseline_window_end_unix_ms: i64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]

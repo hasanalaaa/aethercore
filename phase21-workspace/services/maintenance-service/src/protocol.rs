@@ -842,11 +842,97 @@ fn battery_proto(b: Battery) -> v1::BatteryInfo {
 }
 
 fn boot_proto(b: BootRecord) -> v1::BootRecordInfo {
+    let qualified = b.completed_measurement
+        && b.raw_class_version == Some(1)
+        && b.raw_class_value.is_some()
+        && b.system_boot_instance.is_some_and(|i| i > 0);
     v1::BootRecordInfo {
         recorded_unix_ms: b.recorded_unix_ms,
         has_duration: b.duration_ms.is_some(),
         duration_ms: b.duration_ms.unwrap_or_default(),
         coverage: Some(coverage_proto(b.coverage)),
+        has_system_boot_instance: b.system_boot_instance.is_some(),
+        system_boot_instance: b.system_boot_instance.unwrap_or_default(),
+        completed_measurement: b.completed_measurement,
+        has_raw_class: qualified,
+        raw_class_version: if qualified { 1 } else { 0 },
+        raw_class_value: if qualified {
+            b.raw_class_value.unwrap_or_default()
+        } else {
+            0
+        },
+        matches_os_restart: qualified
+            && b.matches_os_restart
+            && b.os_restart_observed_unix_ms.is_some_and(|t| t > 0),
+        has_os_restart_observed: qualified
+            && b.matches_os_restart
+            && b.os_restart_observed_unix_ms.is_some_and(|t| t > 0),
+        os_restart_observed_unix_ms: if qualified && b.matches_os_restart {
+            b.os_restart_observed_unix_ms
+                .filter(|t| *t > 0)
+                .unwrap_or_default()
+        } else {
+            0
+        },
+        has_boot_start: b.boot_start_unix_ms.is_some(),
+        boot_start_unix_ms: b.boot_start_unix_ms.unwrap_or_default(),
+        has_boot_end: b.boot_end_unix_ms.is_some(),
+        boot_end_unix_ms: b.boot_end_unix_ms.unwrap_or_default(),
+        delays: if qualified {
+            b.delays
+                .into_iter()
+                .take(32)
+                .map(|d| v1::BootDelayInfo {
+                    event_id: d.event_id,
+                    full_path: d.full_path,
+                    total_time_ms: d.total_time_ms,
+                    degradation_time_ms: d.degradation_time_ms,
+                    recorded_unix_ms: d.recorded_unix_ms,
+                })
+                .collect()
+        } else {
+            vec![]
+        },
+        delays_truncated: b.delays_truncated,
+        comparison: if qualified {
+            b.comparison
+                .filter(|c| {
+                    c.sample_count == 3
+                        && c.median_ms > 0
+                        && c.window_start_unix_ms > 0
+                        && c.window_end_unix_ms >= c.window_start_unix_ms
+                })
+                .map(|c| {
+                    let baseline = c.baseline_ms.filter(|v| {
+                        *v > 0
+                            && c.baseline_count == 5
+                            && c.baseline_window_start_unix_ms > 0
+                            && c.baseline_window_end_unix_ms >= c.baseline_window_start_unix_ms
+                            && c.baseline_window_end_unix_ms < b.recorded_unix_ms
+                    });
+                    v1::BootComparisonInfo {
+                        median_ms: c.median_ms,
+                        sample_count: c.sample_count,
+                        window_start_unix_ms: c.window_start_unix_ms,
+                        window_end_unix_ms: c.window_end_unix_ms,
+                        has_baseline: baseline.is_some(),
+                        baseline_ms: baseline.unwrap_or_default(),
+                        baseline_count: if baseline.is_some() { 5 } else { 0 },
+                        baseline_window_start_unix_ms: if baseline.is_some() {
+                            c.baseline_window_start_unix_ms
+                        } else {
+                            0
+                        },
+                        baseline_window_end_unix_ms: if baseline.is_some() {
+                            c.baseline_window_end_unix_ms
+                        } else {
+                            0
+                        },
+                    }
+                })
+        } else {
+            None
+        },
     }
 }
 
@@ -1580,6 +1666,101 @@ mod measurement_tests {
             "denied stays denied and is not folded into empty"
         );
         assert!(wire.thermal_zones.is_empty() && wire.network_adapters.is_empty());
+    }
+
+    #[test]
+    fn actual_boot_protocol_roundtrip_preserves_zero_class_and_historical_windows_without_legacy_inference()
+     {
+        use aethercore_diagnostic_engine::measurements::{BootComparison, BootDelay};
+        use prost::Message;
+        let wire = boot_proto(BootRecord {
+            recorded_unix_ms: 1_000_000,
+            duration_ms: Some(90_000),
+            system_boot_instance: Some(9),
+            completed_measurement: true,
+            raw_class_version: Some(1),
+            raw_class_value: Some(0),
+            boot_start_unix_ms: Some(800_000),
+            boot_end_unix_ms: Some(950_000),
+            matches_os_restart: true,
+            os_restart_observed_unix_ms: Some(1_100_000),
+            delays_truncated: true,
+            delays: vec![BootDelay {
+                event_id: 101,
+                full_path: r"C:\Example\app.exe".into(),
+                total_time_ms: 1700,
+                degradation_time_ms: 300,
+                recorded_unix_ms: 1_000_000,
+            }],
+            comparison: Some(BootComparison {
+                median_ms: 40_000,
+                sample_count: 3,
+                window_start_unix_ms: 100_000,
+                window_end_unix_ms: 1_000_000,
+                baseline_ms: Some(30_000),
+                baseline_count: 5,
+                baseline_window_start_unix_ms: 10_000,
+                baseline_window_end_unix_ms: 900_000,
+            }),
+            ..Default::default()
+        });
+        let restored = v1::BootRecordInfo::decode(wire.encode_to_vec().as_slice()).unwrap();
+        assert!(
+            restored.has_raw_class
+                && restored.raw_class_value == 0
+                && restored.matches_os_restart
+                && restored.delays_truncated
+        );
+        assert!(
+            restored.has_os_restart_observed && restored.os_restart_observed_unix_ms == 1_100_000
+        );
+        assert_eq!(restored.delays[0].full_path, r"C:\Example\app.exe");
+        assert_eq!(restored.comparison.as_ref().unwrap().baseline_count, 5);
+        // Wire emitted before additive tags: 2=hasDuration,3=durationMs. No class or healthy baseline is invented.
+        let legacy = v1::BootRecordInfo::decode([0x10, 1, 0x18, 25].as_slice()).unwrap();
+        assert!(
+            legacy.has_duration
+                && !legacy.has_raw_class
+                && !legacy.matches_os_restart
+                && legacy.comparison.is_none()
+        );
+        let absent = boot_proto(BootRecord {
+            duration_ms: Some(25_414),
+            ..Default::default()
+        });
+        assert!(
+            absent.has_duration
+                && !absent.has_raw_class
+                && !absent.has_os_restart_observed
+                && absent.delays.is_empty()
+                && absent.comparison.is_none()
+        );
+    }
+    #[test]
+    fn a_baseline_that_includes_the_latest_boot_or_has_wrong_count_is_not_published() {
+        use aethercore_diagnostic_engine::measurements::BootComparison;
+        for (count, end) in [(4, 999_000), (5, 1_000_000)] {
+            let wire = boot_proto(BootRecord {
+                recorded_unix_ms: 1_000_000,
+                system_boot_instance: Some(9),
+                completed_measurement: true,
+                raw_class_version: Some(1),
+                raw_class_value: Some(0),
+                comparison: Some(BootComparison {
+                    median_ms: 40_000,
+                    sample_count: 3,
+                    window_start_unix_ms: 100_000,
+                    window_end_unix_ms: 1_000_000,
+                    baseline_ms: Some(30_000),
+                    baseline_count: count,
+                    baseline_window_start_unix_ms: 10_000,
+                    baseline_window_end_unix_ms: end,
+                }),
+                ..Default::default()
+            });
+            let c = wire.comparison.unwrap();
+            assert!(!c.has_baseline && c.baseline_count == 0 && c.baseline_ms == 0);
+        }
     }
 
     // P83-02: an adapter that did not report its media state is not a disconnected one.
