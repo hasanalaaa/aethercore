@@ -134,3 +134,5 @@ The first owner-host run of the 0.1.12 D32 RC stopped at `installed-security-bou
 - **DBT-P87-013.** Removing the prior install purged the owner's data, and the restore only reinstalled the product.
 
 The backup is what kept the data. It was restored by hand and verified against its manifest (6 of 6 files), and the service reopened it. The owner-host restore now does this in every run, including after a failed step. The lifecycle evidence records `owner_data_restored`, and `rc-provenance` refuses owner-host evidence without it.
+
+Lane 3 reviewed this (`AUDIT/REVIEW-125.md`): approved with no P1, and the three P2s are fixed as listed in `DBT-P87-013`. One limit is open (P3-b). The restore mirrors the backup with `/MIR`, so files that a newer installer creates and the older backup lacks are removed. That worked for 0.1.11 to 0.1.12. A later version with new state files may need `install-hardener apply` or an MSI repair after the restore.

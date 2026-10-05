@@ -7,7 +7,7 @@ $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Lifecycle source did not parse.' }
 foreach ($name in @('Run-Process','Write-BlockedAcceptance','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart',
-        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostData','Restore-OwnerHostService')) {
+        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostData','Restore-OwnerHostService','Complete-OwnerHost')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if (-not $definition) { if ($name -eq 'Invoke-InstalledAcceptanceWithRestart') { continue };throw "Actual hook missing: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))
@@ -61,6 +61,9 @@ function Start-Process { param([string]$FilePath,[string[]]$ArgumentList,[switch
     return [pscustomobject]@{ExitCode=$fixtureProcessExit}
 }
 function Require([bool]$Value,[string]$Reason) { if (-not $Value) { throw $Reason } }
+$warnings=[Collections.Generic.List[string]]::new();$startedServices=[Collections.Generic.List[string]]::new()
+function Write-Warning { param([string]$Message) $script:warnings.Add($Message) }
+function Start-Service { param($Name) $script:startedServices.Add([string]$Name) }
 $fixtureSignature='Valid'
 function Get-AuthenticodeSignature { param($FilePath) [pscustomobject]@{Status=$fixtureSignature} }
 $fixtureEntries=@()
@@ -161,13 +164,16 @@ try {
     Set-Content (Join-Path $data 'db/state.sqlite') 'owner database';Set-Content (Join-Path $data 'settings.json') '{"locale":"ar"}'
     $parent=Join-Path $acceptanceRoot 'backups';New-Item -ItemType Directory $parent | Out-Null
     $serviceCalls.Clear();$aclObserved=$null
+    $arabicName=(-join [char[]](0x0645,0x0644,0x0627,0x062D,0x0638,0x0627,0x062A)) + '.txt'
+    Set-Content -LiteralPath (Join-Path $data $arabicName) 'owner note'
     $backup=Backup-OwnerHostState $data $parent
-    Require ($backup.files -eq 2 -and (Test-Path (Join-Path $backup.directory 'ProgramData-AetherCore/db/state.sqlite'))) 'Owner data was not copied.'
+    Require (@((Get-Content (Join-Path $backup.directory 'MANIFEST.sha256') -Encoding utf8) -match [regex]::Escape($arabicName)).Count -eq 1) 'A non-ASCII owner file name was not kept in the manifest.'
+    Require ($backup.files -eq 3 -and (Test-Path (Join-Path $backup.directory 'ProgramData-AetherCore/db/state.sqlite'))) 'Owner data was not copied.'
     Require ($backup.manifest_sha256 -eq (Get-FileHash (Join-Path $backup.directory 'MANIFEST.sha256') -Algorithm SHA256).Hash.ToLowerInvariant()) 'Owner backup manifest hash is not bound.'
     Require ((Get-Content (Join-Path $backup.directory 'MANIFEST.sha256')) -contains ((Get-FileHash (Join-Path $data 'db/state.sqlite') -Algorithm SHA256).Hash.ToLowerInvariant() + '  db/state.sqlite')) 'Owner backup manifest omitted a file.'
     Require ($aclObserved.GetSecurityDescriptorSddlForm('Access') -eq 'D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)') 'Owner backup is not SYSTEM/Administrators-only.'
     Require (($serviceCalls -join ',') -eq 'Stop,Stopped') 'Owner data was copied from a running service.'
-    $installDir=Join-Path $acceptanceRoot 'absent-install';$fixtureServicePresent=$false
+    $installDir=Join-Path $acceptanceRoot 'absent-install';$dataDir=Join-Path $acceptanceRoot 'absent-data';$fixtureServicePresent=$false
     $fixtureEntries=@([pscustomobject]@{DisplayName='AetherCore';BundleCachePath='C:\cache\AetherCoreSetup-0.1.11-x64.exe'},[pscustomobject]@{DisplayName='AetherCore';WindowsInstaller=1;PSChildName='{37B66DE3-6044-7D75-504F-166B73992F51}'})
     Remove-OwnerHostInstall
     Require ($processCalls[-1].File -eq 'C:\cache\AetherCoreSetup-0.1.11-x64.exe' -and ($processCalls[-1].Arguments -join ',') -eq '/uninstall,/quiet,/norestart') 'Prior bundle was not uninstalled through its own cached bundle.'
@@ -176,6 +182,16 @@ try {
     $fixtureEntries=@([pscustomobject]@{BundleCachePath='a.exe'},[pscustomobject]@{BundleCachePath='b.exe'});$before=$processCalls.Count
     try { Remove-OwnerHostInstall;throw 'Ambiguous owner install accepted.' } catch { Require ($_.Exception.Message -match 'more than one') 'Wrong ambiguous-install rejection.' }
     Require ($processCalls.Count -eq $before) 'Ambiguous owner install ran an uninstaller.'
+    # P2-1: a refusal before any uninstaller ran must never lead to an RC install on the owner's PC.
+    $priorUninstallRan=$false;$fixtureEntries=@([pscustomobject]@{BundleCachePath='a.exe'},[pscustomobject]@{BundleCachePath='b.exe'})
+    try { Remove-OwnerHostInstall } catch { }
+    Require (-not $priorUninstallRan) 'A refused prior uninstall was recorded as having run.'
+    $serviceRunningAtEnd=$false;$acceptanceStillRunning=$false;$ownerBackup=[ordered]@{directory='C:\fixture-backup'};$before=$processCalls.Count;$startedServices.Clear();$fixtureServicePresent=$true
+    Complete-OwnerHost
+    Require ($processCalls.Count -eq $before -and ($startedServices -join ',') -eq 'AetherCoreMaintenance') 'A refused owner-host run installed the RC instead of only starting the existing service.'
+    New-Item -ItemType Directory $dataDir | Out-Null;$fixtureServicePresent=$false
+    try { Assert-CleanHost;throw 'Orphaned machine data accepted as a clean host.' } catch { Require ($_.Exception.Message -match 'machine data already exists') 'Wrong orphaned-data rejection.' }
+    Remove-Item $dataDir;$fixtureEntries=@([pscustomobject]@{BundleCachePath='a.exe'},[pscustomobject]@{BundleCachePath='b.exe'})
     $fixtureEntries=@($fixtureEntries[0]);$fixtureServicePresent=$true
     try { Remove-OwnerHostInstall;throw 'A remaining service was accepted as removed.' } catch { Require ($_.Exception.Message -match 'service already exists') 'Remaining service was not rejected.' }
     # Every uninstall purges ProgramData\AetherCore (UNINSTALL.txt); the run must put the owner's data back.
@@ -191,6 +207,15 @@ try {
     Set-Content (Join-Path $backup.directory 'ProgramData-AetherCore/settings.json') 'tampered backup';$ownerDataRestored=$false
     try { Restore-OwnerHostData;throw 'A restore that differs from the manifest was accepted.' } catch { Require ($_.Exception.Message -match 'differs from the backup') 'Wrong restore-mismatch rejection.' }
     Require (-not $ownerDataRestored) 'A mismatched restore was recorded as restored.'
+    Set-Content (Join-Path $backup.directory 'ProgramData-AetherCore/settings.json') '{"locale":"ar"}'
+    Add-Content (Join-Path $backup.directory 'MANIFEST.sha256') 'f00d  planted.txt'
+    try { Restore-OwnerHostData;throw 'A rewritten manifest was trusted.' } catch { Require ($_.Exception.Message -match 'differs from the one recorded') 'Wrong rewritten-manifest rejection.' }
+    # P2-2: a still-active test worker leaves the data in the backup and says where and how to restore it.
+    $serviceRunningAtEnd=$false;$acceptanceStillRunning=$true;$warnings.Clear();$before=$processCalls.Count;$serviceCalls.Clear()
+    Complete-OwnerHost
+    Require ($warnings.Count -eq 1 -and $warnings[0] -match 'NOT restored' -and $warnings[0].Contains($backup.directory) -and $warnings[0] -match '/MIR') 'The owner was not told the data was not restored, where it is, or how to restore it.'
+    Require ($processCalls.Count -eq $before -and $serviceCalls.Count -eq 0) 'The owner host was touched while a test worker still owned the service.'
+    $acceptanceStillRunning=$false
     $ownerBackup=$null
     try { Restore-OwnerHostData;throw 'Restore without a backup accepted.' } catch { Require ($_.Exception.Message -match 'no backup') 'Wrong missing-backup rejection.' }
     $OwnerHostAccepted=$false;$AcknowledgeDisposableMachine=$true
@@ -213,5 +238,5 @@ try {
     Require ((Observe-FixtureExit $actualCommand) -eq 1) 'Actual observer shell lost the probe failure/pending exit.'
     Set-Content $packagedScript 'exit 0'
     Require ((Observe-FixtureExit $actualCommand) -eq 0) 'Actual observer shell changed a successful probe exit.'
-    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline, D32/D33 decisions, unsigned honesty, owner-host task switch/restart, protected owner backup, prior uninstall, owner data restore and manifest check, service restore.'
+    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline, D32/D33 decisions, unsigned honesty, owner-host task switch/restart, protected owner backup, prior uninstall, owner data restore and manifest check, non-ASCII names, rewritten manifest, refused prior uninstall, orphaned data, active-worker warning, service restore.'
 } finally { Remove-Item $acceptanceRoot -Recurse -Force }
