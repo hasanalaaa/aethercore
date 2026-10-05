@@ -9,6 +9,8 @@
   import type { StartupDecision, StartupItem } from '../../lib/contracts';
   import { EmptyState } from '../../design/signature';
   import MeasurementRows from '../diagnostics/MeasurementRows.svelte';
+  import { classifiedBoot, bootComparison, historicalDelay } from './boot-observations';
+  import { formatDateTime, formatNumber } from '../../lib/i18n';
   import { bootRows } from '../diagnostics/measurement-rows';
 
   $: snapshot = $streamState.snapshot;
@@ -22,6 +24,8 @@
   $: busy = $shellState.busy;
   $: locale = $shellState.locale;
 
+  $: latestBoot = diagnostics.boots?.[0];
+  $: comparison = latestBoot ? bootComparison(latestBoot) : null;
   const decisionOrder: readonly StartupDecision[] = ['Unreviewed', 'KeepEnabled', 'Disable'];
 
   function decisionFor(item: StartupItem): StartupDecision {
@@ -75,6 +79,16 @@
   {#if diagnostics.boots?.length}
     <p>{t('startup.bootHistory.window',locale,{count:diagnostics.boots.length,days:diagnostics.eventWindowDays,when:diagnostics.completedUnixMs ? formatWhen(diagnostics.completedUnixMs,locale) : t('common.unknown',locale)})}</p>
     <MeasurementRows title={t('measurement.boot.title',locale)} rows={bootRows(diagnostics.boots,locale)} {locale}/>
+    {#if latestBoot && classifiedBoot(latestBoot)}
+      <p>{t('startup.bootHistory.class',locale,{value:`0x${latestBoot.rawClassValue!.toString(16)}`})} · <TechnicalText value="Microsoft-Windows-Kernel-Boot event27/version1"/></p>
+      <p>{t(latestBoot.matchesOsRestart === true && latestBoot.hasOsRestartObserved === true && (latestBoot.osRestartObservedUnixMs ?? 0) > 0 ? 'startup.bootHistory.restartContext' : 'startup.bootHistory.historical',locale)}</p>
+      {#if comparison}<div data-boot-comparison>
+        <p>{t('startup.bootHistory.median',locale,{count:comparison.sampleCount,seconds:formatNumber(comparison.medianMs/1000,locale),start:formatDateTime(comparison.windowStartUnixMs,locale),end:formatDateTime(comparison.windowEndUnixMs,locale)})}</p>
+        {#if comparison.hasBaseline}<p>{t('startup.bootHistory.baseline',locale,{seconds:formatNumber(comparison.baselineMs/1000,locale),start:formatDateTime(comparison.baselineWindowStartUnixMs,locale),end:formatDateTime(comparison.baselineWindowEndUnixMs,locale)})}</p>
+        {:else}<p>{t('startup.bootHistory.baselineUnknown',locale)}</p>{/if}
+      </div>{/if}
+    {:else}<p>{t('startup.bootHistory.classUnknown',locale)}</p>{/if}
+    {#if diagnostics.boots.some(b=>b.delaysTruncated === true)}<p>{t('startup.bootHistory.delayPartial',locale)}</p>{/if}
   {:else}<p>{t('startup.bootHistory.unavailable',locale)}</p>{/if}
 </section>
 {#if startupSnapshot.state === 'Scanning'}<div class="indeterminate cleanup-scan-progress"><span></span></div>{/if}
@@ -84,11 +98,13 @@
 {#if startupSnapshot.state === 'Ready'}
   <section class="startup-list">
     {#each startupSnapshot.items as item (item.itemId)}
+      {@const attribution = historicalDelay(item,startupSnapshot.items,diagnostics.boots ?? [])}
       <article class:protected={item.protected} class="startup-card">
         <div class="startup-main">
           <div class="startup-title"><strong><TechnicalText value={item.displayName}/></strong><span>{localizeKind(item.kind,locale)}</span>{#if item.protected}<em>{t('startup.protected',locale)}</em>{/if}</div>
           <p><LocalizedOwnedText value={item.command || item.source} {locale} data/></p>
           <small>{localizeStartupScope(item.scope,locale)} · {localizePublisher(item.publisher,locale)} · <LocalizedOwnedText value={item.evidenceDetail} {locale}/></small>
+          {#if attribution}<p data-boot-attribution>{t('startup.bootHistory.delay',locale,{total:formatNumber(attribution.delay.totalTimeMs,locale),degradation:formatNumber(attribution.delay.degradationTimeMs,locale),when:formatDateTime(attribution.boot.recordedUnixMs,locale),event:attribution.delay.eventId})} · <TechnicalText value="Microsoft-Windows-Diagnostics-Performance"/></p>{/if}
           {#if item.protectionReason}<div class="startup-protection"><LocalizedOwnedText value={item.protectionReason} {locale}/></div>{/if}
         </div>
         <div class="startup-evidence"><span>{t('startup.impact',locale)}</span><strong>{localizeImpact(item.impact,locale)}</strong><small>{localizeConfidence(item.confidence,locale)}</small></div>

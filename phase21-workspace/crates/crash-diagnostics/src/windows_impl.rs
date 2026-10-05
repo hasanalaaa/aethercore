@@ -223,6 +223,7 @@ fn collect_boots(control: &CollectorControl) -> Result<Vec<BootEvidence>> {
             system.recorded_filetime,
             observed,
         ) {
+            boots_complete &= boot.completed_measurement;
             boots.push(boot);
         } else {
             boots_complete = false;

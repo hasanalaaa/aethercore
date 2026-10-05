@@ -181,7 +181,7 @@ const startupSnapshot: StartupSnapshot = {
     scope: i % 2 ? 'Scheduled task' : i % 3 === 0 ? 'Machine' : 'User',
     displayName: 'Adobe Creative Cloud Desktop Application Startup Helper',
     publisher: i === 1 ? 'Windows / security' : 'Third-party / unknown',
-    command: 'C:\\Program Files\\Adobe\\Adobe Creative Cloud\\ACC\\Creative Cloud Helper.exe --startup',
+    command: i === 4 ? '"C:\\Program Files\\Vendor\\Agent\\agent.exe" --background' : 'C:\\Program Files\\Adobe\\Adobe Creative Cloud\\ACC\\Creative Cloud Helper.exe --startup',
     source: 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run',
     enabled: i !== 3,
     manageable: i !== 1,
@@ -273,7 +273,21 @@ const diagnostics: DiagnosticsSnapshot = {
     hasDesignCapacityRelative: true, designCapacityRelative: 100, hasFullChargeCapacityRelative: true, fullChargeCapacityRelative: 87,
     coverage: fill<MeasurementCoverage>({ source: 'IOCTL_BATTERY_QUERY_INFORMATION', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }),
   })],
-  boots: [fill<BootMeasurement>({ recordedUnixMs: NOW, hasDuration: true, durationMs: 41500, coverage: fill<MeasurementCoverage>({ source: 'Diagnostics-Performance', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }) })],
+  // P83-01B: a classified latest boot (raw Kernel-Boot class 0, no cold/fast meaning) with a
+  // three-sample median, a five-prior baseline that excludes it, and one exact-path delay, then an
+  // older unclassified boot, so the leak gate reads every new sentence in Arabic.
+  boots: [
+    fill<BootMeasurement>({
+      recordedUnixMs: NOW, hasDuration: true, durationMs: 41500,
+      coverage: fill<MeasurementCoverage>({ source: 'Microsoft-Windows-Diagnostics-Performance event100', hasObservedUnixMs: true, observedUnixMs: NOW, availability: 1 }),
+      hasSystemBootInstance: true, systemBootInstance: 9, completedMeasurement: true, hasRawClass: true, rawClassVersion: 1, rawClassValue: 0,
+      matchesOsRestart: false, hasBootStart: true, bootStartUnixMs: NOW - 120_000, hasBootEnd: true, bootEndUnixMs: NOW - 10_000,
+      delays: [{ eventId: 101, fullPath: 'C:\\Program Files\\Vendor\\Agent\\agent.exe', totalTimeMs: 1700, degradationTimeMs: 300, recordedUnixMs: NOW }],
+      delaysTruncated: true,
+      comparison: { medianMs: 38_000, sampleCount: 3, windowStartUnixMs: NOW - 2 * 86_400_000, windowEndUnixMs: NOW, hasBaseline: true, baselineMs: 31_000, baselineCount: 5, baselineWindowStartUnixMs: NOW - 6 * 86_400_000, baselineWindowEndUnixMs: NOW - 86_400_000 },
+    }),
+    fill<BootMeasurement>({ recordedUnixMs: NOW - 86_400_000, hasDuration: true, durationMs: 36000, coverage: fill<MeasurementCoverage>({ source: 'Microsoft-Windows-Diagnostics-Performance event100', hasObservedUnixMs: true, observedUnixMs: NOW - 86_400_000, availability: 1 }) }),
+  ],
   networkAdapters: [fill<NetworkAdapterMeasurement>({
     stableId: '{6A1F0E52-77D2-4A1B-9C3E-5B0D8E2F4A19}', displayName: 'Intel(R) Wi-Fi 6E AX211 160MHz', hasLinkSpeed: false, linkSpeedBps: 0, hasOperationalStatus: true, operationalStatus: 2, hasConnected: false, connected: false, hasIsVirtual: true, isVirtual: false,
     hasAdminEnabled: true, adminEnabled: false, hasIpv4Apipa: true, ipv4Apipa: false,
