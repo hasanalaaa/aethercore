@@ -75,3 +75,34 @@ mod timeline_compatibility {
         );
     }
 }
+
+#[cfg(test)]
+mod perf_window_tests {
+    use super::v1::PerfSnapshot;
+    use prost::Message;
+
+    /// P49-004: the requested cadence (tag 2) keeps its meaning; the window the counters were
+    /// observed over rides beside it on the next free tag (10), and its absence stays absent.
+    #[test]
+    fn a_perf_snapshot_carries_its_measured_window_beside_the_requested_interval() {
+        let old = PerfSnapshot::decode(&b"\x10\xe8\x07"[..]).unwrap();
+        assert_eq!(old.interval_ms, 1000);
+        assert_eq!(
+            old.measured_window_ms, None,
+            "an old snapshot measured no window"
+        );
+        assert_eq!(old.encode_to_vec(), b"\x10\xe8\x07", "absent adds no bytes");
+
+        let new = PerfSnapshot {
+            interval_ms: 1000,
+            measured_window_ms: Some(104),
+            ..Default::default()
+        };
+        assert_eq!(new.encode_to_vec(), b"\x10\xe8\x07\x50\x68");
+        let back = PerfSnapshot::decode(new.encode_to_vec().as_slice()).unwrap();
+        assert_eq!(
+            (back.interval_ms, back.measured_window_ms),
+            (1000, Some(104))
+        );
+    }
+}

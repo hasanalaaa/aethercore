@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use super::{
     CollectedSubsystems, CollectorFault, CpuSample, GpuEngineSample, GpuSample, MemorySample,
-    PerfPlatform, PerfSnapshot, PowerSample, ProcessCpuTopEntry, Reading, StorageQueueSample,
-    power_from_processor_information,
+    ObservedWindow, PerfPlatform, PerfSnapshot, PowerSample, ProcessCpuTopEntry, Reading,
+    StorageQueueSample, power_from_processor_information,
 };
 use windows::Win32::System::Power::{
     CallNtPowerInformation, POWER_INFORMATION_LEVEL, PROCESSOR_POWER_INFORMATION,
@@ -167,12 +167,18 @@ impl QueryHandle {
     /// *before* adding any counter and then read each counter immediately after
     /// adding it, so even with the wildcard expansion working, every read would
     /// have returned nothing. Add counters first, then call this.
-    fn collect_twice(&self, gap: Duration) -> bool {
+    fn collect_twice(&self, gap: Duration) -> Option<Duration> {
         if !self.collect() {
-            return false;
+            return None;
         }
+        // The window is the time between the two readings, on a monotonic clock: what the rate
+        // counters were observed over, not the poll cadence the caller asked for.
+        let started = std::time::Instant::now();
         std::thread::sleep(gap);
-        self.collect()
+        if !self.collect() {
+            return None;
+        }
+        Some(started.elapsed())
     }
 }
 
@@ -349,7 +355,10 @@ pub fn expand_wildcard_path(pattern: &str) -> Result<Vec<String>, String> {
 /// A fresh query per tick costs microseconds and avoids cross-tick state entirely, which keeps
 /// the engine restartable and deterministic under audit. Two `collect` calls are needed for
 /// rate counters to produce a delta; both happen inside this single tick window.
-fn sample_cpu(partial: &mut Vec<CollectorFault>) -> Reading<CpuSample> {
+fn sample_cpu(
+    partial: &mut Vec<CollectorFault>,
+    window: &mut ObservedWindow,
+) -> Reading<CpuSample> {
     let unavailable = |detail: &str, kind: &str| {
         Reading::unavailable(CollectorFault {
             collector: "cpu".into(),
@@ -375,6 +384,7 @@ fn sample_cpu(partial: &mut Vec<CollectorFault>) -> Reading<CpuSample> {
         return unavailable("second PDH collection failed", "ProviderFailure");
     }
     let elapsed = started.elapsed();
+    window.note(elapsed);
     let read_bp = |counter: &Option<CounterHandle>| -> Option<u32> {
         counter.as_ref().and_then(|c| c.read_percent_bp())
     };
@@ -520,7 +530,10 @@ fn sample_power(partial: &mut Vec<CollectorFault>) -> Reading<PowerSample> {
     Reading::from_evidence(Some(sample), || unreachable_fault("power"))
 }
 
-fn sample_memory(partial: &mut Vec<CollectorFault>) -> Reading<MemorySample> {
+fn sample_memory(
+    partial: &mut Vec<CollectorFault>,
+    window: &mut ObservedWindow,
+) -> Reading<MemorySample> {
     use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
     let mut sample = MemorySample::default();
     let mut status = MEMORYSTATUSEX {
@@ -563,7 +576,9 @@ fn sample_memory(partial: &mut Vec<CollectorFault>) -> Reading<MemorySample> {
             let soft = query.add_english_counter(r"\Memory\Pages Output/sec");
             // `Pages Input/sec` and `Pages Output/sec` are rate counters and have
             // no value after one collection.
-            if !query.collect_twice(Duration::from_millis(80)) {
+            let pair = query.collect_twice(Duration::from_millis(80));
+            window.note(pair.unwrap_or_default());
+            if pair.is_none() {
                 partial.push(CollectorFault {
                     collector: "memory.counters".into(),
                     kind: "ProviderFailure".into(),
@@ -601,7 +616,10 @@ fn sample_memory(partial: &mut Vec<CollectorFault>) -> Reading<MemorySample> {
     Reading::from_evidence(Some(sample), || unreachable_fault("memory"))
 }
 
-fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueueSample>> {
+fn sample_storage(
+    partial: &mut Vec<CollectorFault>,
+    window: &mut ObservedWindow,
+) -> Reading<Vec<StorageQueueSample>> {
     let unavailable = |kind: &str, detail: String| {
         Reading::unavailable(CollectorFault {
             collector: "storage".into(),
@@ -672,7 +690,9 @@ fn sample_storage(partial: &mut Vec<CollectorFault>) -> Reading<Vec<StorageQueue
             ),
         );
     }
-    if !query.collect_twice(Duration::from_millis(80)) {
+    let pair = query.collect_twice(Duration::from_millis(80));
+    window.note(pair.unwrap_or_default());
+    if pair.is_none() {
         return unavailable(
             "ProviderFailure",
             "PDH collection failed after adding PhysicalDisk counters".into(),
@@ -813,7 +833,7 @@ fn query_disk_space(instance: &str) -> (u64, u64) {
     }
 }
 
-fn sample_gpu() -> Reading<GpuSample> {
+fn sample_gpu(window: &mut ObservedWindow) -> Reading<GpuSample> {
     // GPU engine enumeration requires DXGI adapter traversal; the passive PDH fallback reads the
     // "GPU Engine" utilization instances the adapter exposes. Adapter identity and VRAM
     // budget come from the existing hardware-telemetry inventory where available.
@@ -885,7 +905,9 @@ fn sample_gpu() -> Reading<GpuSample> {
     let dedicated_pending = memory_counters("Dedicated Usage");
     let shared_pending = memory_counters("Shared Usage");
 
-    if !query.collect_twice(Duration::from_millis(80)) {
+    let pair = query.collect_twice(Duration::from_millis(80));
+    window.note(pair.unwrap_or_default());
+    if pair.is_none() {
         return unavailable(
             "ProviderFailure",
             "PDH collection failed after adding GPU Engine counters".into(),
@@ -983,11 +1005,12 @@ impl PerfPlatform for WindowsPerfPlatform {
         // names). Whole-subsystem availability is carried by the `Reading`s and
         // published by `into_snapshot`, which is the only path to a snapshot.
         let mut partial: Vec<CollectorFault> = Vec::new();
-        let cpu = sample_cpu(&mut partial);
+        let mut window = ObservedWindow::default();
+        let cpu = sample_cpu(&mut partial, &mut window);
         let power = sample_power(&mut partial);
-        let memory = sample_memory(&mut partial);
-        let storage = sample_storage(&mut partial);
-        let gpu = sample_gpu();
+        let memory = sample_memory(&mut partial, &mut window);
+        let storage = sample_storage(&mut partial, &mut window);
+        let gpu = sample_gpu(&mut window);
         let process_top = sample_process_top();
         let mut snapshot = CollectedSubsystems {
             cpu,
@@ -997,7 +1020,8 @@ impl PerfPlatform for WindowsPerfPlatform {
             gpu,
             process_top,
         }
-        .into_snapshot(interval);
+        .into_snapshot(interval)
+        .with_measured_window(window);
         snapshot.collector_faults.extend(partial);
         snapshot.normalized()
     }

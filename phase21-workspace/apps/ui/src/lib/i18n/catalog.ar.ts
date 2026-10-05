@@ -2109,7 +2109,8 @@ export const arCatalog = {
   'overview.tileJournal': 'أحداث السجل',
   'overview.unitMs': 'م.ث',
   'overview.unitPerSecond': '/ث',
-  'overview.noteSampling': 'نافذة رصد {interval} م.ث',
+  'overview.noteSampling': 'نافذة رصد {window} م.ث',
+  'overview.noteSamplingRequested': 'الفاصل المطلوب {interval} م.ث',
   'overview.serviceLog': 'سجل الخدمة',
   'overview.serviceLogEmptyBody': 'لا أحداث بعد.',
 
