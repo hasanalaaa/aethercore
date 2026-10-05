@@ -140,6 +140,7 @@ message ProcessCpuTopEntry {
 
 message PerfSnapshot {
   int64 captured_unix_ms = 1;
+  // The poll cadence that was asked for. It says nothing about how long the counters were observed.
   uint32 interval_ms = 2;
   CpuSample cpu = 3;
   PowerSample power = 4;
@@ -149,6 +150,9 @@ message PerfSnapshot {
   repeated ProcessCpuTopEntry process_top = 8;
   // Degraded collectors are listed with their fault kind instead of failing the snapshot.
   repeated PerfCollectorFault collector_faults = 9;
+  // Longest wall-clock window, in ms, between the two readings of a rate counter that the
+  // provider measured for this snapshot, on a monotonic clock. Absent when it measured none.
+  optional uint32 measured_window_ms = 10;
 }
 
 message PerfCollectorFault {

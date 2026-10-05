@@ -124,6 +124,7 @@ pub(crate) fn perf_snapshot_proto(value: &PerfSnapshot) -> v1::PerfSnapshot {
     v1::PerfSnapshot {
         captured_unix_ms: value.captured_unix_ms,
         interval_ms: value.interval_ms,
+        measured_window_ms: value.measured_window_ms,
         cpu: Some(cpu_sample_proto(&value.cpu)),
         power: Some(power_sample_proto(&value.power)),
         memory: Some(memory_sample_proto(&value.memory)),
@@ -499,5 +500,33 @@ mod dbt_p50_005 {
         // Different owner principal isolates samples
         let resp_other = engine.window("foreign-principal", 10);
         assert_eq!(resp_other.samples.len(), 0);
+    }
+}
+
+#[cfg(test)]
+mod p49_004 {
+    use super::perf_snapshot_proto;
+    use aethercore_performance_telemetry::PerfSnapshot;
+
+    /// The service puts the window the counters were observed over on the wire beside the
+    /// requested cadence, and leaves it absent when the provider measured none.
+    #[test]
+    fn the_wire_snapshot_carries_the_measured_window_and_not_the_cadence_in_its_place() {
+        let measured = PerfSnapshot {
+            interval_ms: 1_000,
+            measured_window_ms: Some(104),
+            ..Default::default()
+        };
+        let wire = perf_snapshot_proto(&measured);
+        assert_eq!(
+            (wire.interval_ms, wire.measured_window_ms),
+            (1_000, Some(104))
+        );
+
+        let unmeasured = perf_snapshot_proto(&PerfSnapshot {
+            interval_ms: 1_000,
+            ..Default::default()
+        });
+        assert_eq!(unmeasured.measured_window_ms, None);
     }
 }

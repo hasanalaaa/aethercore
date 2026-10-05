@@ -2109,7 +2109,8 @@ export const enCatalog = {
   'overview.tileJournal': 'Journal events',
   'overview.unitMs': 'ms',
   'overview.unitPerSecond': '/s',
-  'overview.noteSampling': '{interval} ms observation window',
+  'overview.noteSampling': '{window} ms observation window',
+  'overview.noteSamplingRequested': '{interval} ms requested interval',
   'overview.serviceLog': 'Service log',
   'overview.serviceLogEmptyBody': 'No events yet.',
 

@@ -388,9 +388,12 @@ export type TelemetryTile = {
 };
 
 /**
- * `PerfSnapshot.intervalMs` is the window the counters were observed over — what
- * `platform.sample(interval)` was handed — not a repeat rate. It read "sampled
- * every 1000 ms", which asserted a cadence: true of the Performance screen's
+ * `PerfSnapshot.intervalMs` is the interval that was asked for — what `platform.sample(interval)`
+ * was handed — not a repeat rate and not how long the counters were watched: a 1000 ms request
+ * observes a rate counter for 80 to 100 ms. The window they were observed over is
+ * `measuredWindowMs`, measured by the provider; it is what this note names. When a provider
+ * measured none the note says the requested interval, worded as that, never as a window.
+ * It read "sampled every 1000 ms", which asserted a cadence: true of the Performance screen's
  * sampler, false of this screen, which reads every 5 s (§51.1).
  *
  * Exported because the section header and the tiles both print it, and printing
@@ -399,7 +402,10 @@ export type TelemetryTile = {
  * inches below it.
  */
 export function samplingNote(perf: PerfSnapshot, locale: Locale): string {
-  return t('overview.noteSampling', locale, { interval: count(perf.intervalMs, locale) });
+  const measured = perf.measuredWindowMs;
+  return measured != null && measured > 0
+    ? t('overview.noteSampling', locale, { window: count(measured, locale) })
+    : t('overview.noteSamplingRequested', locale, { interval: count(perf.intervalMs, locale) });
 }
 
 export function telemetryTiles(perf: PerfSnapshot, snapshot: Snapshot, locale: Locale): TelemetryTile[] {
