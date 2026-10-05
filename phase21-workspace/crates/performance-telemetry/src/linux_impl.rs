@@ -12,11 +12,12 @@
 //! affected collector degrades into `collector_faults`; nothing is invented
 //! (QD-026-002 unchanged). GPU has no portable native source and stays Degraded.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::{
-    CollectedSubsystems, CollectorFault, CpuSample, MemorySample, PerfPlatform, PerfSnapshot,
-    PowerSample, ProcessCpuTopEntry, Reading, StorageQueueSample, ThermalThrottleReason,
+    CollectedSubsystems, CollectorFault, CpuSample, MemorySample, ObservedWindow, PerfPlatform,
+    PerfSnapshot, PowerSample, ProcessCpuTopEntry, Reading, StorageQueueSample,
+    ThermalThrottleReason,
 };
 
 const BP: u64 = 10_000;
@@ -420,9 +421,10 @@ pub(crate) fn scan_thermal_zones() -> Vec<u64> {
 // ---------------------------------------------------------------------------
 
 pub struct LinuxPerfPlatform {
-    /// Previous /proc/stat aggregate, carried between ticks so each tick measures its own
-    /// interval. First tick falls back to an in-tick double read (~120ms window).
-    previous_stat: std::sync::Mutex<Option<ProcStatCpu>>,
+    /// Previous /proc/stat aggregate and when it was read, carried between ticks so each tick
+    /// measures its own interval: the delta, and the window it spans, run from that instant.
+    /// First tick falls back to an in-tick double read (~120ms window).
+    previous_stat: std::sync::Mutex<Option<(ProcStatCpu, Instant)>>,
 }
 
 impl Default for LinuxPerfPlatform {
@@ -448,27 +450,28 @@ impl PerfPlatform for LinuxPerfPlatform {
         // names). Whole-subsystem availability is carried by the `Reading`s and
         // published by `into_snapshot` — mirrors windows_impl.rs's `partial` split.
         let mut partial: Vec<CollectorFault> = Vec::new();
+        let mut window = ObservedWindow::default();
 
         // CPU — carried-state delta (first tick: in-tick double read, same as Windows PDH
         // discipline); the ring owns cadence.
         let cpu = match read_proc_stat().as_deref().map(parse_proc_stat_cpu) {
             Some(Some(first)) => {
+                let first_at = Instant::now();
                 let previous = self
                     .previous_stat
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
                     .take();
-                let (carried, mut current) = match previous {
-                    Some(carried) => (carried, first),
+                let (carried, carried_at, mut current, mut current_at) = match previous {
+                    Some((carried, at)) => (carried, at, first, first_at),
                     None => {
                         std::thread::sleep(Duration::from_millis(120).min(interval));
-                        (
-                            first,
-                            read_proc_stat()
-                                .as_deref()
-                                .and_then(parse_proc_stat_cpu)
-                                .unwrap_or(first),
-                        )
+                        match read_proc_stat().as_deref().and_then(parse_proc_stat_cpu) {
+                            Some(second) => (first, first_at, second, Instant::now()),
+                            // No second observation: no window was measured, and the empty
+                            // delta degrades below.
+                            None => (first, first_at, first, first_at),
+                        }
                     }
                 };
                 // DBT-P45-001 (macOS's `busy_bp_from_ticks` shape, "identical on
@@ -498,12 +501,15 @@ impl PerfPlatform for LinuxPerfPlatform {
                             read_proc_stat().as_deref().and_then(parse_proc_stat_cpu)
                         {
                             current = next;
+                            current_at = Instant::now();
                             total_busy_bp = busy_bp_from_proc(carried, current);
                             observations = 2;
                         }
                     }
                 }
-                *self.previous_stat.lock().unwrap_or_else(|p| p.into_inner()) = Some(current);
+                window.note(current_at.saturating_duration_since(carried_at));
+                *self.previous_stat.lock().unwrap_or_else(|p| p.into_inner()) =
+                    Some((current, current_at));
                 match total_busy_bp {
                     None => Reading::unavailable(CollectorFault {
                         collector: "cpu".into(),
@@ -613,7 +619,8 @@ impl PerfPlatform for LinuxPerfPlatform {
             gpu,
             process_top,
         }
-        .into_snapshot(interval);
+        .into_snapshot(interval)
+        .with_measured_window(window);
         snapshot.collector_faults.extend(partial);
         snapshot.normalized()
     }
