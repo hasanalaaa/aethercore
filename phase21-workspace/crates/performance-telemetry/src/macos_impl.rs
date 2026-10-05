@@ -16,11 +16,11 @@
 //! sub-collector degrades into `collector_faults`; it can never fail the snapshot.
 
 use std::mem::size_of;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::{
-    CollectedSubsystems, CollectorFault, CpuSample, MemorySample, PerfPlatform, PerfSnapshot,
-    ProcessCpuTopEntry, Reading, StorageQueueSample,
+    CollectedSubsystems, CollectorFault, CpuSample, MemorySample, ObservedWindow, PerfPlatform,
+    PerfSnapshot, ProcessCpuTopEntry, Reading, StorageQueueSample,
 };
 
 /// `Reading::from_evidence` needs a fault for the `None` arm; where the caller
@@ -131,11 +131,15 @@ pub fn busy_bp_from_ticks(previous: CpuTicks, current: CpuTicks) -> Option<u32> 
     Some(ratio.min(u128::from(BP)) as u32)
 }
 
+/// The tick counters and when they were read: the next tick's delta spans from this instant.
+type StampedTicks = (CpuTicks, Instant);
+
 fn sample_cpu(
-    previous: Option<CpuTicks>,
+    previous: Option<StampedTicks>,
     interval: Duration,
     partial: &mut Vec<CollectorFault>,
-) -> (Reading<CpuSample>, Option<CpuTicks>) {
+    window: &mut ObservedWindow,
+) -> (Reading<CpuSample>, Option<StampedTicks>) {
     let unavailable = |detail: &str, kind: &str| {
         Reading::unavailable(CollectorFault {
             collector: "cpu".into(),
@@ -146,8 +150,9 @@ fn sample_cpu(
     // Rate counters need two observations inside one tick — the same discipline the
     // Windows PDH collector applies (collect → short sleep → collect). A failed first
     // or second observation degrades typed instead of fabricating a value.
-    let Some(first) = previous.or_else(|| {
+    let Some((first, first_at)) = previous.or_else(|| {
         let value = read_cpu_ticks();
+        let at = Instant::now();
         if value.is_none() {
             partial.push(CollectorFault {
                 collector: "cpu".into(),
@@ -155,7 +160,7 @@ fn sample_cpu(
                 detail: "host_statistics64(HOST_CPU_LOAD_INFO) failed".into(),
             });
         }
-        value
+        value.map(|ticks| (ticks, at))
     }) else {
         return (
             unavailable(
@@ -172,9 +177,10 @@ fn sample_cpu(
                 "second host_statistics64 observation failed",
                 "ProviderFailure",
             ),
-            Some(first),
+            Some((first, first_at)),
         );
     };
+    let mut second_at = Instant::now();
     // DBT-P45-001 (formerly DBT-P44-003): `total == 0` means the tick counters did
     // not advance across the window just observed — `host_statistics64`'s data can
     // fail to tick over inside a single ~120ms window under load on this hardware.
@@ -201,11 +207,14 @@ fn sample_cpu(
             std::thread::sleep(wait);
             if let Some(next) = read_cpu_ticks() {
                 second = next;
+                second_at = Instant::now();
                 total_busy_bp = busy_bp_from_ticks(first, second);
                 observations = 2;
             }
         }
     }
+    // Both observations succeeded, so the pair is a measured window whatever the delta says.
+    window.note(second_at.saturating_duration_since(first_at));
     let Some(total_busy_bp) = total_busy_bp else {
         return (
             unavailable(
@@ -216,7 +225,7 @@ fn sample_cpu(
                 ),
                 "Unavailable",
             ),
-            Some(second),
+            Some((second, second_at)),
         );
     };
     // host_statistics64 aggregates every logical CPU; publishing one aggregate entry keeps
@@ -251,7 +260,7 @@ fn sample_cpu(
             }),
             || unreachable_fault("cpu"),
         ),
-        Some(second),
+        Some((second, second_at)),
     )
 }
 
@@ -565,7 +574,7 @@ fn sample_process_top() -> Reading<Vec<ProcessCpuTopEntry>> {
 pub struct MacosPerfPlatform {
     /// Previous absolute mach tick counter, carried between ticks so every tick measures
     /// exactly its own interval. Mutex (not Cell) because `PerfPlatform: Send + Sync`.
-    previous_ticks: std::sync::Mutex<Option<CpuTicks>>,
+    previous_ticks: std::sync::Mutex<Option<StampedTicks>>,
 }
 
 impl Default for MacosPerfPlatform {
@@ -600,7 +609,8 @@ impl PerfPlatform for MacosPerfPlatform {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .take();
-        let (cpu, current) = sample_cpu(previous, interval, &mut partial);
+        let mut window = ObservedWindow::default();
+        let (cpu, current) = sample_cpu(previous, interval, &mut partial, &mut window);
         *self
             .previous_ticks
             .lock()
@@ -632,7 +642,8 @@ impl PerfPlatform for MacosPerfPlatform {
             gpu,
             process_top,
         }
-        .into_snapshot(interval);
+        .into_snapshot(interval)
+        .with_measured_window(window);
         snapshot.collector_faults.extend(partial);
         snapshot.normalized()
     }
