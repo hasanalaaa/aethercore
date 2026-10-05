@@ -32,7 +32,7 @@ Two tasks passed the ~300-line guide:
 
 Neither split into a third task, because each half is only complete with the other.
 
-Ledger: `DBT-P84-001` to `DBT-P84-005` and `DBT-P84-007` are closed; `DBT-P84-008` is qualified for source and deterministic fixtures, with exact-head native phase qualification pending; `DBT-P84-006` is open.
+Ledger: `DBT-P84-001` to `DBT-P84-005` and `DBT-P84-007` are closed; `DBT-P84-008` is closed, with full Windows CI green at `3f54b51` (#108); `DBT-P84-009` records the dropped export anchoring; `DBT-P84-006` is open.
 
 ## 2. Red before, per task
 
@@ -82,7 +82,10 @@ All of these ran on the PC in `C:\dev\lanes\l3`, with `CARGO_TARGET_DIR` set to 
   - Mac leak gate as above, plus activity and drivers 2/2.
   - Browser: the Arabic recovery row reads restore point #43, the export folder, and the manual route; a cleanup entry shows none of it.
 
-## 4. Decisions applied
+## Execution recovery (2026-10-01)
+
+Each fix below ends with native CI still to run. Each merged to `main` with its full CI green, and
+full CI, the Windows job included, passed again at `3f54b51` (#108).
 
 ### Execution recovery: preserve the original backup seal
 
@@ -154,6 +157,8 @@ source was sealed. The recursive audit passed 120/120, Zenith adversarial 35/35,
 enterprise adversarial 88/88, and localization parity passed. `static_validate.py`
 passed 349 checks; its optional `parse_yaml` measurement remained unavailable.
 Full native CI at the new exact head is still required before integration.
+
+## 4. Decisions applied
 
 - **D2 and D14.** The empty request reads the local cache. Online requires a confirmation that names Microsoft's service or the managed server, and holds for one scan. The router binds the scope to the caller's own request, so no confirmation is stored or reused. The install-time WUA access after approval is unchanged.
 - **D13.** No `ProblemStatus` wire field was needed.

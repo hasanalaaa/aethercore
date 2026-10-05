@@ -1,6 +1,6 @@
 # P85 — supported repair and bounded cleanup
 
-Implementation source is available; phase acceptance remains open pending the integration commit's full Windows CI and the qualification gaps below. No live repair or cleanup was run on the owner's host.
+Implementation source is available; full CI, the Windows job included, passed at the integration head `3f54b51` (#108); phase acceptance remains open for the qualification gaps below. No live repair or cleanup was run on the owner's host.
 
 ## Changes and evidence
 
