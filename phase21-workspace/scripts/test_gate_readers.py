@@ -63,15 +63,15 @@ CASES: list[tuple[str, str, bool]] = [
     ("scripts/phase15-security-audit.py", "crates/security/src/lib.rs", True),
     ("scripts/phase13-reliability-audit.py", "services/maintenance-service/src/protocol.rs", True),
     ("scripts/enterprise-adversarial-audit.py", "apps/ui/src/lib/i18n/catalog.en.ts", True),
-    ("scripts/phase35-adversarial-audit.py", "apps/desktop/tauri.conf.json", True),
     ("scripts/static_validate.py", "scripts/setup-and-run.ps1", True),
     ("scripts/static_validate.py", "scripts/phase10-architecture-audit.ps1", True),
     ("scripts/phase14-scheduler-audit.py", "crates/idle-scheduler/src/policy.rs", False),
     ("scripts/zenith-adversarial-audit.py", "apps/ui/src/design/motion/fluid-press.ts", False),
     ("scripts/zenith-recursive-audit.py", "services/maintenance-service/src/streaming.rs", False),
     ("scripts/zenith-recursive-audit.py", "crates/system-repair/src/process.rs", False),
-    # Retired in P76 (retired-audits/README.md); its reader still has to fail closed.
+    # Retired in P76 and P87+ (retired-audits/README.md); their readers still have to fail closed.
     ("retired-audits/phase19-windows-repair-audit.py", "crates/operation-engine/src/lib.rs", False),
+    ("retired-audits/phase35-adversarial-audit.py", "apps/desktop/tauri.conf.json", False),
 ]
 
 # A gate reads its own workflow from the repository root, not from the workspace
