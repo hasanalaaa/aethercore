@@ -1,4 +1,4 @@
-# Owner decisions on the architect's roadmap (D0–D31)
+# Owner decisions on the architect's roadmap (D0–D33)
 
 Source: [`ASTRA-PLAN.md`](ASTRA-PLAN.md) §12, "owner decisions grouped", and the decision text in the
 task sections it cites. Each row is one decision: its ID, what it decides, the recommendation the
@@ -47,3 +47,10 @@ accepted recommendation is what unblocks it, and nothing beyond the recommendati
 | D29 | Extending the measurement contract for timing | A small compatible addition if the contract needs it | 2026-09-28 |
 | D30 | A change to when maintenance is available | Do not relax the barrier before Windows evidence | 2026-09-28 |
 | D31 | Devices, VM images, certificate, media, and approval of specific destructive tests | Release claims limited to the tested matrix; the deliberate pipe DACL is not changed and no debt is resolved by weakening it | 2026-09-28 |
+| D32 | Code signing for the first release (supersedes the "signed" part of D26) | The first release ships **unsigned**: no Authenticode certificate is bought or used, and SmartScreen / "unknown publisher" warnings are accepted. Gates and receipts say "unsigned by owner decision D32" and never claim signed. An unsigned RC is promotable only with this row present and the same-byte hashes verified; every other gate is unchanged, and no gate declares GA | 2026-10-04 |
+| D33 | Where installed acceptance runs (supersedes the VM of D25 for this purpose) | On the owner's own Windows 11 PC, not a disposable VM. The owner accepts that the lifecycle installs, repairs, uninstalls and upgrades the AetherCore they use there. The run needs this row, an explicit `-OwnerHostAccepted`, a protected dated backup of the owner's AetherCore data before anything is touched, and the service running again at the end | 2026-10-04 |
+
+**D32 and D33 provenance.** The planning session relayed the owner's words on 2026-10-04:
+"ما اريد اي شهاده للبرنامج لانها غاليه خلي تولي" (D32) and "ميحتاج VM خلي كلشي على الجهاز و النضام
+الخاص به اعرف كل المخاطر و موافق عليهه" (D33). The owner then confirmed both directly to the executing
+session the same day, answering «أؤكد القرارين» to the question that described each one.

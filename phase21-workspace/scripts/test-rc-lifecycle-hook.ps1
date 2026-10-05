@@ -6,7 +6,8 @@ $source=Join-Path $PSScriptRoot 'phase16-installer-lifecycle.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Lifecycle source did not parse.' }
-foreach ($name in @('Run-Process','Write-BlockedAcceptance','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart')) {
+foreach ($name in @('Run-Process','Write-BlockedAcceptance','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart',
+        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostService')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if (-not $definition) { if ($name -eq 'Invoke-InstalledAcceptanceWithRestart') { continue };throw "Actual hook missing: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))
@@ -21,7 +22,8 @@ $registered=0;$unregistered=0;$principalObserved=$null;$restartFixture=$false;$f
 function Get-CimInstance { param($Filter) @($fixtureOwners) }
 function Invoke-CimMethod { param($InputObject,$MethodName) @{ReturnValue=0;Sid=$fixtureSid} }
 function Get-Acl { param($Path) $value=[pscustomobject]@{};$value|Add-Member ScriptMethod SetAccessRule {param($rule)};return $value }
-function Set-Acl { param($Path,$AclObject) }
+$aclObserved=$null
+function Set-Acl { param($Path,$LiteralPath,$AclObject) $script:aclObserved=$AclObject }
 function New-ScheduledTaskAction { param($Execute,$Argument,$WorkingDirectory) $encoded=$Argument.Split(' ')[-1];$script:taskCommands.Add([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($encoded)));@{Execute=$Execute;Argument=$Argument} }
 function New-ScheduledTaskPrincipal { param($UserId,$LogonType,$RunLevel) $script:principalObserved=@{SID=$UserId;LogonType=$LogonType;RunLevel=$RunLevel};return $principalObserved }
 function New-ScheduledTaskSettingsSet { param($ExecutionTimeLimit) if ($ExecutionTimeLimit -ne [TimeSpan]::Zero) { throw 'Worker would be force-stopped.' };@{} }
@@ -39,8 +41,10 @@ function Start-ScheduledTask { param($TaskName,$ErrorAction)
 function Get-ScheduledTask { param($TaskName,$ErrorAction) @{State='Ready'} }
 function Get-ScheduledTaskInfo { param($TaskName,$ErrorAction) @{LastRunTime=(Get-Date);LastTaskResult=$fixtureTaskExit} }
 function Unregister-ScheduledTask { param($TaskName,[switch]$Confirm,$ErrorAction) $script:unregistered++ }
+$fixtureServicePresent=$true
 function Get-Service { param($Name,$ErrorAction)
     Require ($Name -eq 'AetherCoreMaintenance') 'Wrong service selected.'
+    if (-not $fixtureServicePresent) { return $null }
     $value=[pscustomobject]@{}
     $value|Add-Member ScriptMethod Stop { $script:serviceCalls.Add('Stop') }
     $value|Add-Member ScriptMethod Start { $script:serviceCalls.Add('Start');if ($fixtureOwnerChanges) { $script:fixtureSid='S-1-5-21-1-2-3-2002' } }
@@ -57,6 +61,10 @@ function Start-Process { param([string]$FilePath,[string[]]$ArgumentList,[switch
     return [pscustomobject]@{ExitCode=$fixtureProcessExit}
 }
 function Require([bool]$Value,[string]$Reason) { if (-not $Value) { throw $Reason } }
+$fixtureSignature='Valid'
+function Get-AuthenticodeSignature { param($FilePath) [pscustomobject]@{Status=$fixtureSignature} }
+$fixtureEntries=@()
+function Get-OwnerHostUninstallEntries { @($fixtureEntries) }
 try {
     Run-Process 'fixture-setup.exe' @('/install','/quiet','/norestart') 'Fixture install'
     Require ($processCalls.Count -eq 1 -and ($processCalls[0].Arguments -join ',') -eq '/install,/quiet,/norestart') 'Actual Run-Process lost its installer arguments.'
@@ -128,6 +136,53 @@ try {
         Require ($_.Exception.Message -match 'budget expired before task start') 'Wrong exhausted deadline rejection.'
     }
     Require ($registered -eq $beforeExpired) 'Expired shared observer budget scheduled new work.'
+    # D32/D33: owner decisions, unsigned-artifact honesty and the owner-host backup/uninstall/restore.
+    $Root=Join-Path $acceptanceRoot 'source';New-Item -ItemType Directory (Join-Path $Root 'docs/roadmap') | Out-Null
+    Set-Content (Join-Path $Root 'docs/roadmap/DECISIONS.md') "| D31 | other |`n| D32 | unsigned |"
+    Assert-OwnerDecision 'D32'
+    try { Assert-OwnerDecision 'D33';throw 'Unrecorded D33 accepted.' } catch { Require ($_.Exception.Message -match 'D33 is not recorded') 'Wrong unrecorded-decision rejection.' }
+    $UnsignedByDecisionD32=$true;$fixtureSignature='NotSigned';Assert-RcSignature 'fixture.msi'
+    foreach ($status in @('Valid','HashMismatch')) {
+        $fixtureSignature=$status
+        try { Assert-RcSignature 'fixture.msi';throw "D32 accepted $status." } catch { Require ($_.Exception.Message -match 'not unsigned') 'D32 claimed or accepted a signature.' }
+    }
+    $UnsignedByDecisionD32=$false;$fixtureSignature='NotSigned'
+    try { Assert-RcSignature 'fixture.msi';throw 'Unsigned artifact accepted without D32.' } catch { Require ($_.Exception.Message -match 'Invalid Authenticode') 'Signed mode accepted an unsigned artifact.' }
+    $fixtureSignature='Valid';Assert-RcSignature 'fixture.msi'
+    $restartFixture=$false;$fixtureTaskExit=0;$fixtureOwnershipReleased=$true
+    $OwnerHostAccepted=$true;$AcknowledgeDisposableMachine=$false
+    $null=Invoke-OrdinaryInstalledAcceptance 'en'
+    Require ($taskCommands[-1] -match ' -OwnerHostAccepted' -and $taskCommands[-1] -notmatch 'AcknowledgeDisposableMachine') 'Owner-host task did not carry the D33 switch.'
+    $restartFixture=$true;$probeCalls=0;$serviceCalls.Clear();$installed=$true
+    Invoke-InstalledAcceptanceWithRestart 'en'
+    Require ($probeCalls -eq 2 -and ($serviceCalls -join ',') -eq 'Stop,Stopped,Start,Running') 'Owner-host same-run restart did not execute.'
+    $restartFixture=$false;$fixtureTaskExit=0
+    $data=Join-Path $acceptanceRoot 'owner-data';New-Item -ItemType Directory (Join-Path $data 'db') | Out-Null
+    Set-Content (Join-Path $data 'db/state.sqlite') 'owner database';Set-Content (Join-Path $data 'settings.json') '{"locale":"ar"}'
+    $parent=Join-Path $acceptanceRoot 'backups';New-Item -ItemType Directory $parent | Out-Null
+    $serviceCalls.Clear();$aclObserved=$null
+    $backup=Backup-OwnerHostState $data $parent
+    Require ($backup.files -eq 2 -and (Test-Path (Join-Path $backup.directory 'ProgramData-AetherCore/db/state.sqlite'))) 'Owner data was not copied.'
+    Require ($backup.manifest_sha256 -eq (Get-FileHash (Join-Path $backup.directory 'MANIFEST.sha256') -Algorithm SHA256).Hash.ToLowerInvariant()) 'Owner backup manifest hash is not bound.'
+    Require ((Get-Content (Join-Path $backup.directory 'MANIFEST.sha256')) -contains ((Get-FileHash (Join-Path $data 'db/state.sqlite') -Algorithm SHA256).Hash.ToLowerInvariant() + '  db/state.sqlite')) 'Owner backup manifest omitted a file.'
+    Require ($aclObserved.GetSecurityDescriptorSddlForm('Access') -eq 'D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)') 'Owner backup is not SYSTEM/Administrators-only.'
+    Require (($serviceCalls -join ',') -eq 'Stop,Stopped') 'Owner data was copied from a running service.'
+    $installDir=Join-Path $acceptanceRoot 'absent-install';$fixtureServicePresent=$false
+    $fixtureEntries=@([pscustomobject]@{DisplayName='AetherCore';BundleCachePath='C:\cache\AetherCoreSetup-0.1.11-x64.exe'},[pscustomobject]@{DisplayName='AetherCore';WindowsInstaller=1;PSChildName='{37B66DE3-6044-7D75-504F-166B73992F51}'})
+    Remove-OwnerHostInstall
+    Require ($processCalls[-1].File -eq 'C:\cache\AetherCoreSetup-0.1.11-x64.exe' -and ($processCalls[-1].Arguments -join ',') -eq '/uninstall,/quiet,/norestart') 'Prior bundle was not uninstalled through its own cached bundle.'
+    $fixtureEntries=@($fixtureEntries[1]);Remove-OwnerHostInstall
+    Require ($processCalls[-1].File -eq 'msiexec.exe' -and ($processCalls[-1].Arguments -join ',') -eq '/x,{37B66DE3-6044-7D75-504F-166B73992F51},/qn,/norestart') 'Prior MSI-only install was not removed by product code.'
+    $fixtureEntries=@([pscustomobject]@{BundleCachePath='a.exe'},[pscustomobject]@{BundleCachePath='b.exe'});$before=$processCalls.Count
+    try { Remove-OwnerHostInstall;throw 'Ambiguous owner install accepted.' } catch { Require ($_.Exception.Message -match 'more than one') 'Wrong ambiguous-install rejection.' }
+    Require ($processCalls.Count -eq $before) 'Ambiguous owner install ran an uninstaller.'
+    $fixtureEntries=@($fixtureEntries[0]);$fixtureServicePresent=$true
+    try { Remove-OwnerHostInstall;throw 'A remaining service was accepted as removed.' } catch { Require ($_.Exception.Message -match 'service already exists') 'Remaining service was not rejected.' }
+    $installed=$false;$bundle='fixture-rc.exe';$serviceRunningAtEnd=$false;$serviceCalls.Clear()
+    Restore-OwnerHostService
+    Require ($processCalls[-1].File -eq 'fixture-rc.exe' -and ($processCalls[-1].Arguments -join ',') -eq '/install,/quiet,/norestart' -and $installed) 'Owner service was not reinstalled from the accepted RC.'
+    Require (($serviceCalls -join ',') -eq 'Start,Running' -and $serviceRunningAtEnd) 'Owner service was not observed running at the end.'
+    $OwnerHostAccepted=$false;$AcknowledgeDisposableMachine=$true
     # Execute the actual encoded shell with an exit-only fixture, never a product probe.
     # A child's explicit exit belongs to the called script; the observer needs that code.
     function Observe-FixtureExit([string]$Command) {
@@ -147,5 +202,5 @@ try {
     Require ((Observe-FixtureExit $actualCommand) -eq 1) 'Actual observer shell lost the probe failure/pending exit.'
     Set-Content $packagedScript 'exit 0'
     Require ((Observe-FixtureExit $actualCommand) -eq 0) 'Actual observer shell changed a successful probe exit.'
-    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline.'
+    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline, D32/D33 decisions, unsigned honesty, owner-host task switch/restart, protected owner backup, prior uninstall, service restore.'
 } finally { Remove-Item $acceptanceRoot -Recurse -Force }

@@ -9,31 +9,57 @@ param(
     [string]$AcceptanceEvidenceDirectory,
     [string]$PreviousBundlePath,
     [string]$ExpectedPreviousBundleSha256,
-    [string]$ExpectedPreviousSourceSha
-
+    [string]$ExpectedPreviousSourceSha,
+    # Owner decision D32: the RC and its upgrade baseline are unsigned, and must really be unsigned.
+    [switch]$UnsignedByDecisionD32,
+    # Owner decision D33: run on the owner's own PC instead of a disposable machine.
+    [switch]$OwnerHostAccepted
 )
 $ErrorActionPreference='Stop'
 $Root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path;Set-Location $Root
 if($env:OS -ne 'Windows_NT'){throw 'Phase 16 installer lifecycle requires Windows.'}
-if(-not $AcknowledgeDisposableMachine -and $env:AETHERCORE_INSTALLER_TEST_MACHINE -ne '1'){throw 'This test installs, repairs and uninstalls AetherCore. Use a disposable VM and acknowledge it.'}
+if($OwnerHostAccepted -and $AcknowledgeDisposableMachine){throw 'Choose one host: -OwnerHostAccepted (D33) or -AcknowledgeDisposableMachine.'}
+if(-not $OwnerHostAccepted -and -not $AcknowledgeDisposableMachine -and $env:AETHERCORE_INSTALLER_TEST_MACHINE -ne '1'){throw 'This test installs, repairs and uninstalls AetherCore. Use a disposable VM and acknowledge it, or the owner host under D33 with -OwnerHostAccepted.'}
+function Assert-OwnerDecision([string]$Id){
+    $decisions=Join-Path $Root 'docs/roadmap/DECISIONS.md'
+    if(-not (Test-Path -LiteralPath $decisions) -or (Get-Content -LiteralPath $decisions -Raw) -notmatch "(?m)^\| $Id \|"){throw "Owner decision $Id is not recorded in docs/roadmap/DECISIONS.md."}
+}
+function Assert-RcSignature([string]$Path){
+    $status=(Get-AuthenticodeSignature $Path).Status.ToString()
+    if($UnsignedByDecisionD32){if($status -ne 'NotSigned'){throw "D32 artifact is not unsigned: $Path ($status)"}}
+    elseif($status -ne 'Valid'){throw "Invalid Authenticode signature: $Path"}
+}
+if($OwnerHostAccepted){Assert-OwnerDecision 'D33'}
+if($UnsignedByDecisionD32){Assert-OwnerDecision 'D32'}
+$hostMode=if($OwnerHostAccepted){'owner-host-d33'}else{'disposable-vm'}
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent();$principal=[Security.Principal.WindowsPrincipal]::new($identity)
 if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run installer lifecycle from an elevated PowerShell host.'}
 $release=(Resolve-Path $ReleaseRoot).Path
 $meta=Get-Content (Join-Path $release 'RELEASE-METADATA.json') -Raw|ConvertFrom-Json
 $version=$meta.version;$artifacts=Join-Path $release 'artifacts';$msi=Join-Path $artifacts "AetherCore-$version-x64.msi";$bundle=Join-Path $artifacts "AetherCoreSetup-$version-x64.exe"
-foreach($f in @($msi,$bundle)){if(-not(Test-Path $f)){throw "Release artifact missing: $f"};if((Get-AuthenticodeSignature $f).Status -ne 'Valid'){throw "Invalid Authenticode signature: $f"}}
+foreach($f in @($msi,$bundle)){if(-not(Test-Path $f)){throw "Release artifact missing: $f"};Assert-RcSignature $f}
 if ($InstalledAcceptanceScript -or $PreviousBundlePath) {
     if ($ExpectedSourceSha -notmatch '^[0-9a-f]{40,64}$' -or $ExpectedBundleSha256 -notmatch '^[0-9a-f]{64}$' -or -not $AcceptanceEvidenceDirectory) { throw 'Signed RC acceptance identity/evidence parameters are missing.' }
     if ($meta.source_commit -ne $ExpectedSourceSha -or (Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ExpectedBundleSha256) { throw 'Signed RC lifecycle source/bundle pin mismatch.' }
-    if (-not $PreviousBundlePath -or $ExpectedPreviousBundleSha256 -notmatch '^[0-9a-f]{64}$' -or $ExpectedPreviousSourceSha -notmatch '^[0-9a-f]{40,64}$') { throw 'Signed upgrade qualification requires a pinned previous signed bundle.' }
+}
+# Without a baseline the upgrade step is not run and not recorded; rc-provenance still requires it,
+# so such evidence observes the installed product but can never promote.
+if ($PreviousBundlePath) {
+    if ($ExpectedPreviousBundleSha256 -notmatch '^[0-9a-f]{64}$' -or $ExpectedPreviousSourceSha -notmatch '^[0-9a-f]{40,64}$') { throw 'Signed upgrade qualification requires a pinned previous signed bundle.' }
     $previous=(Resolve-Path $PreviousBundlePath).Path
     if ((Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ExpectedPreviousBundleSha256) { throw 'Previous signed bundle hash mismatch.' }
-    $previousSignature=Get-AuthenticodeSignature $previous
-    if ($previousSignature.Status -ne 'Valid' -or $previousSignature.SignerCertificate.Thumbprint -ne ($env:AETHERCORE_CODESIGN_THUMBPRINT -replace '\s','').ToUpperInvariant()) { throw 'Previous bundle signature/signer is invalid.' }
+    if ($UnsignedByDecisionD32) { Assert-RcSignature $previous } else {
+        $previousSignature=Get-AuthenticodeSignature $previous
+        if ($previousSignature.Status -ne 'Valid' -or $previousSignature.SignerCertificate.Thumbprint -ne ($env:AETHERCORE_CODESIGN_THUMBPRINT -replace '\s','').ToUpperInvariant()) { throw 'Previous bundle signature/signer is invalid.' }
+    }
 }
 $service='AetherCoreMaintenance';$installDir=Join-Path $env:ProgramW6432 'AetherCore';$dataDir=Join-Path $env:ProgramData 'AetherCore'
-if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Refusing GA lifecycle: AetherCore service already exists.'}
-if(Test-Path $installDir){throw 'Refusing GA lifecycle: AetherCore install directory already exists.'}
+function Assert-CleanHost{
+    if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Refusing GA lifecycle: AetherCore service already exists.'}
+    if(Test-Path $installDir){throw 'Refusing GA lifecycle: AetherCore install directory already exists.'}
+}
+# On the owner host the guards run after its own install is backed up and removed.
+if(-not $OwnerHostAccepted){Assert-CleanHost}
 if ($InstalledAcceptanceScript) {
     $acceptanceRoot=[IO.Path]::GetFullPath($AcceptanceEvidenceDirectory)
     $allowedRoot=[IO.Path]::GetFullPath((Join-Path $Root 'out')) + [IO.Path]::DirectorySeparatorChar
@@ -42,6 +68,7 @@ if ($InstalledAcceptanceScript) {
     $packagedScript=Join-Path $release 'acceptance/p87-installed-acceptance.ps1'
     if ((Get-FileHash $InstalledAcceptanceScript -Algorithm SHA256).Hash -ne (Get-FileHash $packagedScript -Algorithm SHA256).Hash) { throw 'Installed acceptance script differs from packaged RC bytes.' }
 }
+$signedArtifacts=-not $UnsignedByDecisionD32
 $out=[IO.Path]::GetFullPath((Join-Path $Root $OutputPath));New-Item -ItemType Directory -Force (Split-Path $out -Parent)|Out-Null
 $steps=New-Object System.Collections.Generic.List[object]
 function Run-Step([string]$Name,[scriptblock]$Body){$t=[DateTimeOffset]::UtcNow;try{&$Body;$steps.Add([pscustomobject]@{name=$Name;ok=$true;started_utc=$t.ToString('o');finished_utc=[DateTimeOffset]::UtcNow.ToString('o')})}catch{$steps.Add([pscustomobject]@{name=$Name;ok=$false;error=$_.Exception.Message;started_utc=$t.ToString('o');finished_utc=[DateTimeOffset]::UtcNow.ToString('o')});throw}}
@@ -68,8 +95,9 @@ function Invoke-OrdinaryInstalledAcceptance([string]$Locale,[string]$VerifyCareR
     $rule=[Security.AccessControl.FileSystemAccessRule]::new($sid,'Modify','ContainerInherit,ObjectInherit','None','Allow')
     $acl.SetAccessRule($rule);Set-Acl $acceptanceRoot $acl
     $quote={param($value) "'" + ($value -replace "'","''") + "'"}
+    $hostSwitch=if ($OwnerHostAccepted) { '-OwnerHostAccepted' } else { '-AcknowledgeDisposableMachine' }
     $verifyArgument=if ($VerifyCareRunId) { ' -VerifyCareRunId ' + (& $quote $VerifyCareRunId) } else { '' }
-    $command="`$ErrorActionPreference='Stop'; try { & $(& $quote $packagedScript) -ReleaseRoot $(& $quote $release) -ExpectedSourceSha $(& $quote $ExpectedSourceSha) -ExpectedBundleSha256 $(& $quote $ExpectedBundleSha256) -Locale $(& $quote $Locale) -OutputPath $(& $quote $output) -TimeoutSeconds 300 -AcknowledgeDisposableMachine$verifyArgument; exit `$LASTEXITCODE } catch { exit 1 }"
+    $command="`$ErrorActionPreference='Stop'; try { & $(& $quote $packagedScript) -ReleaseRoot $(& $quote $release) -ExpectedSourceSha $(& $quote $ExpectedSourceSha) -ExpectedBundleSha256 $(& $quote $ExpectedBundleSha256) -Locale $(& $quote $Locale) -OutputPath $(& $quote $output) -TimeoutSeconds 300 $hostSwitch$verifyArgument; exit `$LASTEXITCODE } catch { exit 1 }"
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $name='AetherCore-RC-Acceptance-' + [Guid]::NewGuid().ToString('N')
     $action=New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument "-NoProfile -NonInteractive -EncodedCommand $encoded" -WorkingDirectory $release
@@ -113,7 +141,7 @@ function Invoke-OrdinaryInstalledAcceptance([string]$Locale,[string]$VerifyCareR
 }
 function Invoke-InstalledAcceptanceWithRestart([string]$Locale) {
     # The existing pre-install guards reject any pre-existing service or product directory.
-    if (-not $installed -or $service -ne 'AetherCoreMaintenance' -or (-not $AcknowledgeDisposableMachine -and $env:AETHERCORE_INSTALLER_TEST_MACHINE -ne '1')) { throw 'Care restart requires this disposable isolated installed service.' }
+    if (-not $installed -or $service -ne 'AetherCoreMaintenance' -or (-not $AcknowledgeDisposableMachine -and -not $OwnerHostAccepted -and $env:AETHERCORE_INSTALLER_TEST_MACHINE -ne '1')) { throw 'Care restart requires this disposable isolated installed service, or the owner host under D33.' }
     $deadline=[DateTimeOffset]::UtcNow.AddSeconds(660)
     $first=Invoke-OrdinaryInstalledAcceptance $Locale -AllowRestartPending -ObservationDeadline $deadline
     $receipt=$first.Receipt
@@ -135,17 +163,80 @@ function Invoke-InstalledAcceptanceWithRestart([string]$Locale) {
         if ($verified.Receipt.care_run_id -ne $runId -or $verified.Receipt.restart_pending -isnot [bool] -or $verified.Receipt.restart_pending -or $finalCare.Count -ne 1 -or $finalCare[0].checks.restart -isnot [bool] -or -not $finalCare[0].checks.restart) { throw 'Same Care run was not proved after isolated service restart.' }
     }
 }
-$acceptanceStillRunning=$false
+function Stop-OwnerHostService {
+    $controller=Get-Service -Name $service -ErrorAction SilentlyContinue
+    if (-not $controller) { return }
+    try {
+        if ($controller.Status -ne 'Stopped') { $controller.Stop() }
+        $controller.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))
+    } finally { $controller.Dispose() }
+}
+function Backup-OwnerHostState([string]$DataDirectory,[string]$BackupParent) {
+    $target=Join-Path $BackupParent ('AetherCore-owner-backup-' + [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssZ'))
+    if (Test-Path -LiteralPath $target) { throw "Owner backup directory already exists: $target" }
+    New-Item -ItemType Directory -Path $target | Out-Null
+    # The copy of the owner's data is SYSTEM/Administrators-only, never ProgramData's inherited Users grants.
+    $acl=[Security.AccessControl.DirectorySecurity]::new()
+    $acl.SetSecurityDescriptorSddlForm('D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)','Access')
+    Set-Acl -LiteralPath $target -AclObject $acl
+    # A running service may be writing its database; the copy is taken from a stopped service.
+    Stop-OwnerHostService
+    $copy=Join-Path $target 'ProgramData-AetherCore'
+    $lines=New-Object System.Collections.Generic.List[string]
+    if (Test-Path -LiteralPath $DataDirectory) {
+        & "$env:SystemRoot\System32\robocopy.exe" $DataDirectory $copy /E /COPY:DAT /DCOPY:DAT /R:0 /W:0 /NP /NFL /NDL /NJH /NJS | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "Owner data backup copy failed (robocopy $LASTEXITCODE)." }
+        $sourceRoot=(Resolve-Path -LiteralPath $DataDirectory).Path
+        foreach ($file in Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Force | Sort-Object FullName) {
+            $relative=$file.FullName.Substring($sourceRoot.TrimEnd('\').Length).TrimStart('\')
+            $hash=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $copied=Join-Path $copy $relative
+            if (-not (Test-Path -LiteralPath $copied) -or (Get-FileHash -LiteralPath $copied -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash) { throw "Owner data backup differs from the source: $relative" }
+            $lines.Add("$hash  $($relative -replace '\\','/')")
+        }
+    }
+    $manifest=Join-Path $target 'MANIFEST.sha256'
+    Set-Content -LiteralPath $manifest -Value $lines -Encoding ascii
+    return [ordered]@{directory=$target;manifest_sha256=(Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant();files=$lines.Count}
+}
+function Get-OwnerHostUninstallEntries {
+    @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*') |
+        ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } |
+        Where-Object { $_.DisplayName -like 'AetherCore*' }
+}
+function Remove-OwnerHostInstall {
+    $entries=@(Get-OwnerHostUninstallEntries)
+    $bundles=@($entries | Where-Object { $_.BundleCachePath })
+    $packages=@($entries | Where-Object { $_.WindowsInstaller -eq 1 -and $_.PSChildName -match '^\{[0-9A-Fa-f-]{36}\}$' })
+    if ($bundles.Count -gt 1 -or ($bundles.Count -eq 0 -and $packages.Count -gt 1)) { throw 'Owner host has more than one AetherCore installation; remove the extra one by hand first.' }
+    if ($bundles.Count -eq 1) { Run-Process $bundles[0].BundleCachePath @('/uninstall','/quiet','/norestart') 'Owner-host prior bundle uninstall' }
+    elseif ($packages.Count -eq 1) { Run-Process msiexec.exe @('/x',$packages[0].PSChildName,'/qn','/norestart') 'Owner-host prior MSI uninstall' }
+    Assert-CleanHost
+}
+function Restore-OwnerHostService {
+    if (-not $script:installed) { Run-Process $bundle @('/install','/quiet','/norestart') 'Owner-host RC reinstall';$script:installed=$true;$script:activeBundle=$bundle }
+    $controller=Get-Service -Name $service -ErrorAction Stop
+    try {
+        if ($controller.Status -ne 'Running') { $controller.Start() }
+        $controller.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(30))
+    } finally { $controller.Dispose() }
+    $script:serviceRunningAtEnd=$true
+}
+$acceptanceStillRunning=$false;$serviceRunningAtEnd=$false;$ownerBackup=$null
 $sentinel=Join-Path $dataDir 'phase16-ga-preserve.sentinel';$installed=$false;$activeBundle=$bundle
 try{
+    if ($OwnerHostAccepted) {
+        Run-Step 'owner-host-backup' { $script:ownerBackup=Backup-OwnerHostState $dataDir $env:ProgramData }
+        Run-Step 'owner-host-prior-uninstall' { Remove-OwnerHostInstall }
+    }
     Run-Step 'burn-install' { Run-Process $bundle @('/install','/quiet','/norestart') 'Burn install';$script:installed=$true }
-    Run-Step 'installed-security-boundaries' { & (Join-Path $PSScriptRoot 'verify-installer-security.ps1') -MsiPath $msi -VerifyInstalledStateOnly -RequireSignedArtifacts -ExpectedPayloadDirectory (Join-Path $release 'payload');if($LASTEXITCODE -ne 0){throw 'Installed state verifier failed.'} }
+    Run-Step 'installed-security-boundaries' { & (Join-Path $PSScriptRoot 'verify-installer-security.ps1') -MsiPath $msi -VerifyInstalledStateOnly -RequireSignedArtifacts:$signedArtifacts -ExpectedPayloadDirectory (Join-Path $release 'payload');if($LASTEXITCODE -ne 0){throw 'Installed state verifier failed.'} }
     Run-Step 'program-data-preservation-sentinel' { 'phase16-preserve'|Set-Content $sentinel -Encoding ascii }
     Run-Step 'repair-closes-acl-drift' {
         & "$env:SystemRoot\System32\icacls.exe" $installDir /grant '*S-1-1-0:(OI)(CI)M' /Q|Out-Null
         if($LASTEXITCODE -ne 0){throw 'Unable to inject ACL drift.'}
         Run-Process msiexec.exe @('/fa',"`"$msi`"",'/qn','/norestart') 'MSI repair'
-        & (Join-Path $PSScriptRoot 'verify-installer-security.ps1') -MsiPath $msi -VerifyInstalledStateOnly -RequireSignedArtifacts -ExpectedPayloadDirectory (Join-Path $release 'payload')
+        & (Join-Path $PSScriptRoot 'verify-installer-security.ps1') -MsiPath $msi -VerifyInstalledStateOnly -RequireSignedArtifacts:$signedArtifacts -ExpectedPayloadDirectory (Join-Path $release 'payload')
         if($LASTEXITCODE -ne 0){throw 'Post-repair state verifier failed.'}
     }
     if ($InstalledAcceptanceScript) {
@@ -167,7 +258,7 @@ try{
             'phase16-upgrade-preserve' | Set-Content $sentinel -Encoding ascii
             $preservedHash=(Get-FileHash $sentinel -Algorithm SHA256).Hash
             Run-Process $bundle @('/install','/quiet','/norestart') 'Signed RC update';$script:activeBundle=$bundle
-            & (Join-Path $PSScriptRoot 'verify-installer-security.ps1') -MsiPath $msi -VerifyInstalledStateOnly -RequireSignedArtifacts -ExpectedPayloadDirectory (Join-Path $release 'payload')
+            & (Join-Path $PSScriptRoot 'verify-installer-security.ps1') -MsiPath $msi -VerifyInstalledStateOnly -RequireSignedArtifacts:$signedArtifacts -ExpectedPayloadDirectory (Join-Path $release 'payload')
             if ($LASTEXITCODE -ne 0) { throw 'Updated signed RC installed security failed.' }
             if ((Get-FileHash $sentinel -Algorithm SHA256).Hash -ne $preservedHash) { throw 'Signed upgrade changed owner data.' }
             Run-Process $bundle @('/uninstall','/quiet','/norestart') 'Updated RC uninstall';$script:installed=$false
@@ -177,10 +268,14 @@ try{
             Remove-Item $sentinel -Force
         }
     }
+    if ($OwnerHostAccepted) { Run-Step 'owner-host-service-restored' { Restore-OwnerHostService } }
 } finally {
-    if($installed -and -not $acceptanceStillRunning){try{Run-Process $activeBundle @('/uninstall','/quiet','/norestart') 'cleanup Burn uninstall'}catch{Write-Warning $_}}
+    if ($OwnerHostAccepted) {
+        # The owner keeps a running AetherCore even when a step failed; nothing is uninstalled here.
+        if (-not $serviceRunningAtEnd -and -not $acceptanceStillRunning) { try { Restore-OwnerHostService } catch { Write-Warning "Owner-host service restore failed: $_ Backup: $($ownerBackup.directory)" } }
+    } elseif($installed -and -not $acceptanceStillRunning){try{Run-Process $activeBundle @('/uninstall','/quiet','/norestart') 'cleanup Burn uninstall'}catch{Write-Warning $_}}
     if ($acceptanceStillRunning) { Write-Warning 'Blocked test worker remains active on the isolated VM; service uninstall was not started.' }
 }
-$doc=[ordered]@{schema='aethercore.ga-installer-lifecycle.v1';ok=$true;version=$version;source_commit=$meta.source_commit;bundle_sha256=(Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant();previous_source_commit=$ExpectedPreviousSourceSha;previous_bundle_sha256=$ExpectedPreviousBundleSha256;windows_build=[Environment]::OSVersion.Version.Build;architecture=$env:PROCESSOR_ARCHITECTURE;executed_utc=[DateTimeOffset]::UtcNow.ToString('o');steps=$steps}
+$doc=[ordered]@{schema='aethercore.ga-installer-lifecycle.v1';ok=$true;host=$hostMode;owner_backup=$ownerBackup;service_running_at_end=$serviceRunningAtEnd;signing=$(if($UnsignedByDecisionD32){'unsigned by owner decision D32'}else{'authenticode'});version=$version;source_commit=$meta.source_commit;bundle_sha256=(Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant();previous_source_commit=$ExpectedPreviousSourceSha;previous_bundle_sha256=$ExpectedPreviousBundleSha256;windows_build=[Environment]::OSVersion.Version.Build;architecture=$env:PROCESSOR_ARCHITECTURE;executed_utc=[DateTimeOffset]::UtcNow.ToString('o');steps=$steps}
 $doc|ConvertTo-Json -Depth 6|Set-Content $out -Encoding utf8
 Write-Host "Phase 16 Burn/MSI lifecycle passed. Evidence: $out" -ForegroundColor Green
