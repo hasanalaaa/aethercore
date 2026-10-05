@@ -139,18 +139,18 @@ Reject {Invoke-ActualJs 'fixture-expression'} 'actual Js rejects renderer except
 $gaps=[Collections.Generic.List[string]]::new()
 $receiptIf=@($ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.IfStatementAst] -and $_.Clauses[0].Item1.Extent.Text -eq '$VerifyCareRunId' })[0]
 $receiptCheck=[scriptblock]::Create($receiptIf.Extent.Text)
-$receipt=@{schema='fixture-schema';source_commit=('a'*40);bundle_sha256=('b'*64);locale='en';ordinary_user=$true;read_only=$false;token=@{sid='S-1-5-21-fixture';elevated=$false};care_run_id='11111111-2222-4333-8444-555555555555';worker_ownership_released=$true;desktop_closed=$true;restart_pending=$true;cases=@(@{id='p76-hardware-owned-text';witness='prior-case'},@{id='p76-performance-provider-labels'},@{id='p76-cleanup-owned-text'},@{id='p76-care-timeline-persistence';checks=@{reconnect=$true;restart=$false};witnesses=@();disposition='blocked';reason='restart pending'},@{id='p76-repair-assessment-terminal'},@{id='p76-care-eligibility-explanation'})}
+$receipt=@{schema='fixture-schema';host='disposable-vm';source_commit=('a'*40);bundle_sha256=('b'*64);locale='en';ordinary_user=$true;read_only=$false;token=@{sid='S-1-5-21-fixture';elevated=$false};care_run_id='11111111-2222-4333-8444-555555555555';worker_ownership_released=$true;desktop_closed=$true;restart_pending=$true;cases=@(@{id='p76-hardware-owned-text';witness='prior-case'},@{id='p76-performance-provider-labels'},@{id='p76-cleanup-owned-text'},@{id='p76-care-timeline-persistence';checks=@{reconnect=$true;restart=$false};witnesses=@();disposition='blocked';reason='restart pending'},@{id='p76-repair-assessment-terminal'},@{id='p76-care-eligibility-explanation'})}
 function Invoke-ReceiptFixture([hashtable]$Receipt) {
     $ExpectedSourceSha='a'*40;$ExpectedBundleSha256='b'*64;$Locale='en'
     $VerifyCareRunId='11111111-2222-4333-8444-555555555555';$ReadOnlyInstalled=$false
-    $identity=@{User=@{Value='S-1-5-21-fixture'}};$doc=@{schema='fixture-schema'};$OutputPath='fixture-only'
+    $identity=@{User=@{Value='S-1-5-21-fixture'}};$doc=@{schema='fixture-schema';host='disposable-vm'};$OutputPath='fixture-only'
     function Get-Content { param($LiteralPath,[switch]$Raw) return ($Receipt | ConvertTo-Json -Depth 12) }
     . $receiptCheck
     return $doc
 }
 $preserved=Invoke-ReceiptFixture $receipt
 Assert ($preserved.cases[0].witness -eq 'prior-case' -and $preserved.care_run_id -eq $receipt.care_run_id) 'actual verification preserves prior receipt and run identity'
-foreach($field in @('schema','source_commit','bundle_sha256','locale','care_run_id','worker_ownership_released','desktop_closed')) {
+foreach($field in @('schema','host','source_commit','bundle_sha256','locale','care_run_id','worker_ownership_released','desktop_closed')) {
     $wrong=$receipt.Clone();$wrong[$field]=if($field -in @('worker_ownership_released','desktop_closed')){$false}else{'wrong-pin'}
     Reject { Invoke-ReceiptFixture $wrong } "actual verification rejects mismatched $field"
 }
@@ -204,7 +204,7 @@ $publication=[scriptblock]::Create($publicationBody.Substring(1,$publicationBody
 function Invoke-RestartPublicationFixture([hashtable]$Receipt) {
     $ExpectedSourceSha='a'*40;$ExpectedBundleSha256='b'*64;$Locale='en'
     $VerifyCareRunId='11111111-2222-4333-8444-555555555555';$ReadOnlyInstalled=$false
-    $identity=@{User=@{Value='S-1-5-21-fixture'}};$doc=@{schema='fixture-schema'};$OutputPath='fixture-only';$capture=$fixtureRoot
+    $identity=@{User=@{Value='S-1-5-21-fixture'}};$doc=@{schema='fixture-schema';host='disposable-vm'};$OutputPath='fixture-only';$capture=$fixtureRoot
     $pageCalls=[Collections.Generic.List[string]]::new()
     function Get-Content {param($LiteralPath,[switch]$Raw) return ($Receipt|ConvertTo-Json -Depth 12)}
     function Invoke-CareSmoke($Log,[string[]]$ProcessArgs) {

@@ -27,6 +27,7 @@ SURFACE_SELECTORS = {'hardware':'.storage-grid','deep-scan':'.deep-scan-header',
                      'care':'.care-panel','timeline':'.timeline-panel','assistant':'.assistant-drawer'}
 
 class PromotionTests(unittest.TestCase):
+    mode = THUMB
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
@@ -43,6 +44,8 @@ class PromotionTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('frozen input\n')
         (cls.source / 'Cargo.toml').write_text('fixture manifest')
+        (cls.source / 'docs/roadmap').mkdir(parents=True)
+        (cls.source / 'docs/roadmap/DECISIONS.md').write_text('| ID | Decides |\n|---|---|\n| D32 | unsigned |\n| D33 | owner host |\n')
         (cls.source / 'scripts').mkdir()
         (cls.source / 'scripts/p87-installed-acceptance.ps1').write_bytes(b'exact acceptance script')
         for name in ['dependency-locks', 'dependency-manifests']:
@@ -69,25 +72,29 @@ class PromotionTests(unittest.TestCase):
         self.addCleanup(self.candidate_tmp.cleanup)
         base = Path(self.candidate_tmp.name)
         self.release = base / 'candidate'
-        self.signatures = patch.object(rc, 'signature', return_value={'status':'Valid', 'thumbprint':THUMB})
+        observed = {'status':'NotSigned','thumbprint':None} if self.mode == rc.D32 else {'status':'Valid', 'thumbprint':THUMB}
+        self.signatures = patch.object(rc, 'signature', return_value=observed)
         self.signatures.start(); self.addCleanup(self.signatures.stop)
         self.release.mkdir()
         self.names = rc.signed_paths(self.version)
         for name in self.names:
             p = self.release / name; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(b'unsigned fixture ' + name.encode())
-        rc.capture_unsigned(self.release, [self.release / p for p in self.names])
-        for name in self.names: (self.release / name).write_bytes(b'signed fixture ' + name.encode())
+        if self.mode != rc.D32:
+            rc.capture_unsigned(self.release, [self.release / p for p in self.names])
+            for name in self.names: (self.release / name).write_bytes(b'signed fixture ' + name.encode())
         smoke = self.release / 'acceptance/care_smoke.exe'; smoke.parent.mkdir(); smoke.write_bytes(b'exact smoke bytes')
         (smoke.parent / 'p87-installed-acceptance.ps1').write_bytes(b'exact acceptance script')
-        rc.write_json(self.release / 'RELEASE-METADATA.json', {'version':self.version,'source_commit':self.sha,'signing_required':True,'dependency_baseline_approved':True,'signer_thumbprint':THUMB})
+        signing = ({'signing_required':False,'signing_decision':'D32','signer_thumbprint':None} if self.mode == rc.D32
+                   else {'signing_required':True,'signer_thumbprint':THUMB})
+        rc.write_json(self.release / 'RELEASE-METADATA.json', dict({'version':self.version,'source_commit':self.sha,'dependency_baseline_approved':True}, **signing))
         paths = self.names + ['acceptance/care_smoke.exe','acceptance/p87-installed-acceptance.ps1','RELEASE-METADATA.json']
         (self.release / 'SHA256SUMS.txt').write_text(''.join(rc.digest(self.release / p) + '  ' + p + '\n' for p in paths))
-        rc.create(self.release, self.source, self.sha, THUMB)
+        rc.create(self.release, self.source, self.sha, self.mode)
         self.receipt = rc.digest(self.release / 'RC-PROVENANCE.json')
         self.bundle = rc.digest(self.release / f'artifacts/AetherCoreSetup-{self.version}-x64.exe')
         self.acceptance = base / 'acceptance.json'
         self.lifecycle = base / 'lifecycle.json'
-        rc.write_json(self.lifecycle, {'schema':'aethercore.ga-installer-lifecycle.v1','ok':True,'version':self.version,'source_commit':self.sha,'bundle_sha256':self.bundle,'previous_source_commit':'f'*40,'previous_bundle_sha256':'f'*64,
+        rc.write_json(self.lifecycle, {'schema':'aethercore.ga-installer-lifecycle.v1','host':'disposable-vm','ok':True,'version':self.version,'source_commit':self.sha,'bundle_sha256':self.bundle,'previous_source_commit':'f'*40,'previous_bundle_sha256':'f'*64,
             'steps':[{'name':name,'ok':True} for name in rc.LIFECYCLE]})
         self.installed = []
         for locale in ['en','ar']:
@@ -108,7 +115,7 @@ class PromotionTests(unittest.TestCase):
                     witnesses.append({'role':role,'path':file.name,'sha256':rc.digest(file)})
                 surfaces[surface] = witnesses
             rc.write_json(path, {'schema':'aethercore.p87-installed-acceptance.v1','source_commit':self.sha,'bundle_sha256':self.bundle,
-                'locale':locale,'ok':True,'desktop_closed':True,'restart_pending':False,'care_run_id':'11111111-2222-4333-8444-555555555555',
+                'locale':locale,'host':'disposable-vm','ok':True,'desktop_closed':True,'restart_pending':False,'care_run_id':'11111111-2222-4333-8444-555555555555',
                 'surface_witnesses':surfaces,
                 'read_only':False,'worker_ownership_released':True,'windows_build':26100,'windows_product_name':'Windows 11 Pro','product_type':'workstation','ordinary_user':True,'token':{'sid':'S-1-5-21-1-2-3-1001','elevated':False},
                 'cases':[{'id':name,'disposition':'passed','checks':{'terminal':True,'progress':True,'unavailable_provider':True,'reconnect':True,'restart':True,'no_op_explained':True},'witnesses':[{'path':locale+'.witness.txt','sha256':rc.digest(base / (locale+'.witness.txt'))}]} for name in rc.SYMPTOMS]})
@@ -116,9 +123,9 @@ class PromotionTests(unittest.TestCase):
             'evidence':{path.name:rc.digest(path) for path in [self.lifecycle]+self.installed}})
         self.acceptance_hash = rc.digest(self.acceptance)
     def verify(self):
-        return rc.verify(self.release, self.source, self.sha, THUMB, self.receipt, self.bundle)
+        return rc.verify(self.release, self.source, self.sha, self.mode, self.receipt, self.bundle)
     def promote(self):
-        return rc.promote(self.release, self.source, self.sha, THUMB, self.receipt, self.bundle, self.acceptance, self.acceptance_hash)
+        return rc.promote(self.release, self.source, self.sha, self.mode, self.receipt, self.bundle, self.acceptance, self.acceptance_hash)
     def test_installed_selectors_match_actual_surface_source(self):
         files = {'hardware':'features/diagnostics/HardwarePage.svelte',
                  'deep-scan':'features/intelligence/DeepScanPage.svelte',
@@ -139,7 +146,7 @@ class PromotionTests(unittest.TestCase):
         (self.release / 'RC-PROVENANCE.json').unlink()
         with self.assertRaisesRegex(rc.Rejected, 'missing'): self.promote()
     def test_other_source_sha_blocks(self):
-        with self.assertRaisesRegex(rc.Rejected, 'source SHA'): rc.verify(self.release,self.source,'0'*40,THUMB,self.receipt,self.bundle)
+        with self.assertRaisesRegex(rc.Rejected, 'source SHA'): rc.verify(self.release,self.source,'0'*40,self.mode,self.receipt,self.bundle)
     def test_bundle_substitution_after_acceptance_blocks(self):
         (self.release / f'artifacts/AetherCoreSetup-{self.version}-x64.exe').write_bytes(b'substitution')
         with self.assertRaisesRegex(rc.Rejected, 'hash'): self.promote()
@@ -194,10 +201,10 @@ class PromotionTests(unittest.TestCase):
         (self.acceptance.parent / 'en.witness.txt').write_text('substituted screen')
         with self.assertRaisesRegex(rc.Rejected,'witness hash'): self.promote()
     def test_accept_producer_checks_actual_evidence(self):
-        doc=rc.accept(self.release,self.source,self.sha,THUMB,self.receipt,self.bundle,self.acceptance.parent)
+        doc=rc.accept(self.release,self.source,self.sha,self.mode,self.receipt,self.bundle,self.acceptance.parent)
         self.assertTrue(doc['ok'])
         self.installed[1].unlink()
-        with self.assertRaisesRegex(rc.Rejected,'missing'): rc.accept(self.release,self.source,self.sha,THUMB,self.receipt,self.bundle,self.acceptance.parent)
+        with self.assertRaisesRegex(rc.Rejected,'missing'): rc.accept(self.release,self.source,self.sha,self.mode,self.receipt,self.bundle,self.acceptance.parent)
     def test_real_native_unsigned_artifact_has_no_fixture_signature_bypass(self):
         if sys.platform != 'win32': self.skipTest('native Authenticode API only')
         self.signatures.stop()
@@ -304,6 +311,85 @@ class PromotionTests(unittest.TestCase):
                 doc=json.loads(json.dumps(original));doc['surface_witnesses'][surface]=doc['surface_witnesses']['care']
                 self.update_installed(doc)
                 with self.assertRaisesRegex(rc.Rejected,'surface runtime'): self.promote()
+
+    def set_decisions(self, text):
+        path=self.source / 'docs/roadmap/DECISIONS.md';original=path.read_bytes()
+        self.addCleanup(path.write_bytes,original);path.write_text(text)
+
+    def owner_host(self, **overrides):
+        doc=rc.read_json(self.lifecycle)
+        doc.update({'host':'owner-host-d33','service_running_at_end':True,
+                    'owner_backup':{'directory':'C:\\ProgramData\\AetherCore-owner-backup-20261004T000000Z','manifest_sha256':'c'*64,'files':3},
+                    'steps':[{'name':n,'ok':True} for n in rc.LIFECYCLE + rc.OWNER_HOST_STEPS]})
+        doc.update(overrides);rc.write_json(self.lifecycle,doc)
+        for path in self.installed:
+            installed=rc.read_json(path);installed['host']='owner-host-d33';rc.write_json(path,installed)
+        accepted=rc.read_json(self.acceptance)
+        accepted['evidence']={p.name:rc.digest(p) for p in [self.lifecycle]+self.installed}
+        rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+
+    def test_owner_host_run_with_backup_and_running_service_can_promote(self):
+        self.owner_host()
+        self.assertTrue(self.promote()['rc_eligible'])
+
+    def test_owner_host_requires_recorded_d33(self):
+        self.owner_host();self.set_decisions('| D32 | unsigned |\n')
+        # Called directly: through promote() the edited sealed source is already rejected as dirty.
+        accepted=rc.read_json(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'decision D33'):
+            rc.validate_evidence(self.acceptance.parent,accepted['evidence'],self.sha,self.bundle,self.version,self.source)
+        with self.assertRaises(rc.Rejected): self.promote()
+
+    def test_owner_host_requires_backup_running_service_and_its_steps(self):
+        for overrides,message in (({'owner_backup':{}},'backup'),({'service_running_at_end':False},'running again'),
+                                  ({'steps':[{'name':n,'ok':True} for n in rc.LIFECYCLE]},'lifecycle required steps')):
+            with self.subTest(overrides=list(overrides)):
+                self.owner_host(**overrides)
+                with self.assertRaisesRegex(rc.Rejected,message): self.promote()
+
+    def test_lifecycle_host_must_be_declared_and_match_installed_receipts(self):
+        doc=rc.read_json(self.lifecycle);doc.pop('host');rc.write_json(self.lifecycle,doc)
+        accepted=rc.read_json(self.acceptance);accepted['evidence']['lifecycle.json']=rc.digest(self.lifecycle);rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'host is not declared'): self.promote()
+        self.owner_host();installed=rc.read_json(self.installed[0]);installed['host']='disposable-vm';self.update_installed(installed)
+        with self.assertRaisesRegex(rc.Rejected,'identity'): self.promote()
+
+class UnsignedD32PromotionTests(PromotionTests):
+    """Every inherited evidence control, run again over a D32 unsigned RC."""
+    mode = rc.D32
+    def test_exact_signed_bytes_can_promote(self):
+        promoted=self.promote()
+        self.assertEqual(promoted['signing'],rc.D32);self.assertFalse(promoted['ga'])
+        self.assertIsNone(rc.read_json(self.release / 'RC-PROVENANCE.json')['signer_thumbprint'])
+    def test_invalid_signature_blocks(self):
+        # D32 never claims signed: a signed or invalid file is not a D32 unsigned artifact.
+        for status in ('Valid','HashMismatch'):
+            with self.subTest(status=status), patch.object(rc,'signature',return_value={'status':status,'thumbprint':THUMB}):
+                with self.assertRaisesRegex(rc.Rejected,'not unsigned'): self.promote()
+    def test_other_valid_signer_blocks(self):
+        self.skipTest('D32 has no signer; covered by test_invalid_signature_blocks')
+    def test_omitted_unsigned_transition_blocks(self):
+        doc=rc.read_json(self.release / 'RC-PROVENANCE.json');doc['artifacts'][0]['signed_sha256']=doc['artifacts'][0]['sha256']
+        rc.write_json(self.release / 'RC-PROVENANCE.json',doc);self.receipt=rc.digest(self.release / 'RC-PROVENANCE.json')
+        with self.assertRaisesRegex(rc.Rejected,'D32 artifact hash'): self.verify()
+    def test_real_native_unsigned_artifact_has_no_fixture_signature_bypass(self):
+        if sys.platform != 'win32': self.skipTest('native Authenticode API only')
+        self.signatures.stop()
+        self.assertEqual(rc.signature(self.release / self.names[0])['status'],'NotSigned')
+        self.verify()
+    def test_d32_requires_the_recorded_owner_decision(self):
+        self.set_decisions('| D31 | other |\n')
+        with self.assertRaisesRegex(rc.Rejected,'decision D32'): self.verify()
+        with self.assertRaisesRegex(rc.Rejected,'decision D32'): self.promote()
+    def test_signed_receipt_cannot_be_verified_as_d32_or_back(self):
+        doc=rc.read_json(self.release / 'RC-PROVENANCE.json');doc['signing']='authenticode'
+        rc.write_json(self.release / 'RC-PROVENANCE.json',doc);self.receipt=rc.digest(self.release / 'RC-PROVENANCE.json')
+        with self.assertRaisesRegex(rc.Rejected,'signer'): self.verify()
+        with self.assertRaisesRegex(rc.Rejected,'signer'): rc.verify(self.release,self.source,self.sha,THUMB,self.receipt,self.bundle)
+    def test_metadata_must_name_d32(self):
+        meta=rc.read_json(self.release / 'RELEASE-METADATA.json');meta['signing_decision']=None
+        rc.write_json(self.release / 'RELEASE-METADATA.json',meta)
+        with self.assertRaises(rc.Rejected): self.verify()
 
 class SigningProtectionTests(unittest.TestCase):
     def setUp(self):

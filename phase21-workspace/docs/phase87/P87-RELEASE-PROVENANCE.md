@@ -1,5 +1,11 @@
 # P87-02B — same-byte signed RC qualification
 
+> **Owner decisions D32 and D33 (2026-10-04) change two premises below.** The first release ships
+> **unsigned by owner decision D32**; no certificate is provisioned, and the "External prerequisites"
+> about a signer describe a release the owner declined. Installed acceptance runs on the owner's own
+> Windows 11 PC under D33, not a disposable VM. The signed `release.yml` path is kept as written for a
+> future signed release; it is not the path of the first release. See "D32 unsigned RC" at the end.
+
 Scope: ASTRA §11 P87-02B and accepted D26; D0 adds no product wire fields. H1–H6 remain unchanged. This implements qualification/promotion eligibility, not publishing or a GA declaration. Real signed qualification remains blocked by the external prerequisites below.
 
 ## Source flow
@@ -108,3 +114,29 @@ requires `ok=true`, no blocked reason, a closed desktop, no pending restart, a
 valid Care UUID and repair progress. Each required screen binds distinct typed
 runtime/accessibility/screenshot witnesses and its actual installed selector.
 Full native CI and real signed installed qualification remain separate gates.
+
+## D32 unsigned RC and D33 owner host (2026-10-04)
+
+`build-release.ps1 -UnsignedByDecisionD32` is its own mode. It cannot be combined with
+`-RequireSigning` or `-UnsignedCandidate`, and it refuses to run while
+`AETHERCORE_CODESIGN_THUMBPRINT` is set. It seals, verifies the freeze, packages
+`acceptance/`, writes `signing_decision: D32` and calls `rc-provenance.py create --unsigned-d32`.
+
+`rc-provenance.py --unsigned-d32` (mutually exclusive with `--thumbprint`) requires the D32 row
+in the sealed `docs/roadmap/DECISIONS.md`. It requires metadata with `signing_required: false`,
+`signing_decision: D32` and no signer. Each of the eight artifacts must be natively `NotSigned`;
+`Valid` or any invalid status is rejected, so an unsigned receipt can never stand for a signature.
+Each artifact's single SHA256 must equal the inventory and the file. Receipt, acceptance and
+promotion all state `signing: unsigned by owner decision D32`. Promotion still says `ga: false`.
+A signed receipt cannot be verified as D32, or the reverse. The full portable suite runs a second
+time over a D32 RC: every evidence control (symptoms, locales, token, witnesses, Windows 11,
+lifecycle, upgrade baseline) rejects the same way. Result: 88 cases, 85 passed, 3 platform skips
+on macOS.
+
+Under D33 the lifecycle evidence declares `host: owner-host-d33`. The verifier then requires:
+- the D33 row;
+- a backup record (directory, manifest SHA256, file count);
+- `service_running_at_end: true`;
+- the three owner-host steps, and the same `host` in both installed receipts.
+
+A missing host, or receipts from different hosts, are rejected.
