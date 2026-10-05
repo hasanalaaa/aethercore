@@ -68,7 +68,10 @@ public static class AetherCoreServiceTokenProbe {
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool GetTokenInformation(IntPtr TokenHandle, int TokenInformationClass, IntPtr TokenInformation, uint TokenInformationLength, out uint ReturnLength);
 
-    [DllImport("advapi32.dll", SetLastError = true)]
+    // The result is read with PtrToStringUni, so bind the W entry point explicitly: without
+    // CharSet the marshaller picks ConvertSidToStringSidA, every SID decodes as garbage and
+    // the service SID is "found 0" in a token that holds it (owner PC, 2026-10-05).
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "ConvertSidToStringSidW", ExactSpelling = true)]
     private static extern bool ConvertSidToStringSid(IntPtr Sid, out IntPtr StringSid);
 
     [DllImport("kernel32.dll", SetLastError = true)]
