@@ -69,6 +69,8 @@ class CiGates(unittest.TestCase):
         dependencies = re.search(r'needs: \[(.*)\]', required)[1].split(', ')
         self.assertEqual(set(dependencies), set(blocks) - {'required'})
         command = re.search(r'^        run: (.+)$', required, re.M)[1]
+        # The count is part of the predicate: relaxing it (`>= 7`) would let a job go missing.
+        self.assertIn(f'length == {len(dependencies)} and', command)
         results = {gate: {'result': 'success'} for gate in dependencies}
         results['tested'] = {'result': 'success', 'outputs': {'skip': 'false'}}
         cases = [(results, 0), ({}, 1)]
