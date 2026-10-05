@@ -344,7 +344,7 @@ fn windows_cpu_pair_has_monotonic_elapsed_metadata() {
 /// zero) when no pair was measured.
 #[test]
 fn the_published_window_is_the_longest_observed_pair_beside_an_unchanged_cadence() {
-    use aethercore_performance_telemetry::ObservedWindow;
+    use aethercore_performance_telemetry::{ObservedWindow, PerfPlatform, PerfSnapshot};
     let mut window = ObservedWindow::default();
     for ms in [80, 104, 97] {
         window.note(Duration::from_millis(ms));
@@ -391,7 +391,7 @@ fn the_published_window_is_the_longest_observed_pair_beside_an_unchanged_cadence
 #[cfg(windows)]
 #[test]
 fn windows_snapshot_publishes_the_window_it_observed_not_the_requested_cadence() {
-    use aethercore_performance_telemetry::WindowsPerfPlatform;
+    use aethercore_performance_telemetry::{PerfPlatform, WindowsPerfPlatform};
     let started = std::time::Instant::now();
     let snapshot = WindowsPerfPlatform.sample(Duration::from_secs(2));
     let outer_ms = started.elapsed().as_millis();
