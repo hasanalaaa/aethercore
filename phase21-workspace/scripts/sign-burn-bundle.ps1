@@ -23,6 +23,8 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw '.NET SDK i
 
 & dotnet tool restore
 if ($LASTEXITCODE -ne 0) { throw 'Pinned WiX tool restore failed before Burn signing.' }
+# DBT-P55-007: nuget.config's signatureValidationMode=require is not enforced by every SDK, so check the restored package itself.
+& (Join-Path $PSScriptRoot 'verify-tool-signatures.ps1')
 $WixVersion = (& dotnet tool run wix --version | Out-String).Trim()
 if ($WixVersion -notmatch '^6\.0\.2') { throw "Unexpected WiX version: $WixVersion (expected 6.0.2)" }
 

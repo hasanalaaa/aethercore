@@ -218,6 +218,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Boot collection flow controls failed.' }
           python scripts/test_rc_provenance.py
           if ($LASTEXITCODE -ne 0) { throw 'Signed RC rejection controls failed.' }
+          python scripts/test_tool_signatures.py
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned tool signature controls failed.' }
       - name: Verify approved dependency freeze
         shell: pwsh
         run: ./scripts/freeze-dependencies.ps1 -VerifyOnly
