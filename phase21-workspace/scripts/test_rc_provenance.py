@@ -8,6 +8,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -375,8 +376,15 @@ class UnsignedD32PromotionTests(PromotionTests):
     def test_real_native_unsigned_artifact_has_no_fixture_signature_bypass(self):
         if sys.platform != 'win32': self.skipTest('native Authenticode API only')
         self.signatures.stop()
-        self.assertEqual(rc.signature(self.release / self.names[0])['status'],'NotSigned')
-        self.verify()
+        # The fixture bytes are not a PE, so Windows reports UnknownError and D32 must reject them.
+        with self.assertRaisesRegex(rc.Rejected,'not unsigned'): self.verify()
+        # A real unsigned PE is what D32 accepts: build one; this control must not silently skip.
+        compiler=shutil.which('rustc')
+        self.assertIsNotNone(compiler,'rustc is required for the native unsigned-PE control')
+        source=self.release / 'unsigned.rs'; source.write_text('fn main() {}')
+        binary=self.release / 'unsigned.exe'
+        subprocess.run([compiler,str(source),'-o',str(binary)],check=True,capture_output=True,timeout=120)
+        self.assertEqual(rc.signature(binary)['status'],'NotSigned')
     def test_d32_requires_the_recorded_owner_decision(self):
         self.set_decisions('| D31 | other |\n')
         with self.assertRaisesRegex(rc.Rejected,'decision D32'): self.verify()
