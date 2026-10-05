@@ -11,10 +11,49 @@ use aethercore_performance_telemetry::SyntheticPerfPlatform;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use aethercore_performance_telemetry::{PerfPlatform, PerfSnapshot};
 
+/// P49-005: a Unix provider publishes the window its CPU tick delta spans, not the cadence it was
+/// asked for. The first tick spans its own in-tick pair (the 120 ms sleep is inside it); a later
+/// tick spans everything since the previous tick's last reading, so the pause between calls is
+/// inside it. `carried_floor_ms` is the smallest window the second call can have beyond that pause.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn assert_window_follows_the_ticks(platform: impl PerfPlatform, carried_floor_ms: u32) {
+    let started = std::time::Instant::now();
+    let first = platform.sample(Duration::from_secs(5));
+    let first_outer_ms = started.elapsed().as_millis();
+    assert_eq!(first.interval_ms, 5_000, "the cadence is what was asked");
+    let first_window = first
+        .measured_window_ms
+        .expect("a measured in-tick pair publishes its window");
+    assert!(
+        first_window >= 120 && u128::from(first_window) <= first_outer_ms,
+        "first tick: {first_window} ms must be its own pair, not the 5000 ms cadence (tick took {first_outer_ms} ms)"
+    );
+
+    let pause = Duration::from_millis(400);
+    std::thread::sleep(pause);
+    let second = platform.sample(Duration::from_secs(5));
+    let all_outer_ms = started.elapsed().as_millis();
+    let second_window = second
+        .measured_window_ms
+        .expect("a carried tick publishes the window since the previous reading");
+    assert!(
+        second_window >= pause.as_millis() as u32 + carried_floor_ms
+            && u128::from(second_window) <= all_outer_ms,
+        "carried tick: {second_window} ms must span the {} ms pause (floor {carried_floor_ms}), inside {all_outer_ms} ms",
+        pause.as_millis()
+    );
+}
+
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
     use aethercore_performance_telemetry::MacosPerfPlatform;
+
+    #[test]
+    fn macos_publishes_the_window_its_cpu_ticks_span() {
+        // A carried tick still waits its 120 ms in-tick pair before reading.
+        assert_window_follows_the_ticks(MacosPerfPlatform::new(), 120);
+    }
 
     /// Injected-counter matrix for the pure tick-delta math (mirrors proc(5) semantics).
     fn ticks(
@@ -136,6 +175,12 @@ mod macos {
 mod linux {
     use super::*;
     use aethercore_performance_telemetry::LinuxPerfPlatform;
+
+    #[test]
+    fn linux_publishes_the_window_its_cpu_ticks_span() {
+        // A carried Linux tick reads once and does not wait in-tick.
+        assert_window_follows_the_ticks(LinuxPerfPlatform::new(), 0);
+    }
 
     #[test]
     fn real_linux_sample_is_normalized() {
@@ -336,5 +381,79 @@ fn windows_cpu_pair_has_monotonic_elapsed_metadata() {
         aethercore_performance_telemetry::__test::decode_pdh_double(&invalid),
         None,
         "a reset/unavailable counter is not a zero-percent reading"
+    );
+}
+
+/// P49-004: `interval_ms` is the cadence that was asked for; the window the rate counters were
+/// observed over is its own measured value, the longest pair this tick took, and unknown (never
+/// zero) when no pair was measured.
+#[test]
+fn the_published_window_is_the_longest_observed_pair_beside_an_unchanged_cadence() {
+    use aethercore_performance_telemetry::{ObservedWindow, PerfPlatform, PerfSnapshot};
+    let mut window = ObservedWindow::default();
+    for ms in [80, 104, 97] {
+        window.note(Duration::from_millis(ms));
+    }
+    let snapshot = PerfSnapshot {
+        interval_ms: 1_000,
+        ..Default::default()
+    }
+    .with_measured_window(window);
+    assert_eq!(snapshot.measured_window_ms, Some(104));
+    assert_eq!(
+        snapshot.interval_ms, 1_000,
+        "the poll cadence is a separate contract"
+    );
+
+    let none = PerfSnapshot::default().with_measured_window(ObservedWindow::default());
+    assert_eq!(none.measured_window_ms, None, "no pair measured is unknown");
+    let mut tiny = ObservedWindow::default();
+    tiny.note(Duration::from_micros(400));
+    assert_eq!(
+        PerfSnapshot::default()
+            .with_measured_window(tiny)
+            .measured_window_ms,
+        None,
+        "a sub-millisecond pair is not a window"
+    );
+    let mut huge = ObservedWindow::default();
+    huge.note(Duration::from_secs(u64::from(u32::MAX)));
+    assert_eq!(
+        PerfSnapshot::default()
+            .with_measured_window(huge)
+            .measured_window_ms,
+        Some(u32::MAX)
+    );
+    assert_eq!(
+        SyntheticPerfPlatform::new()
+            .sample(Duration::from_secs(1))
+            .measured_window_ms,
+        None,
+        "a synthetic tick observed nothing"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_snapshot_publishes_the_window_it_observed_not_the_requested_cadence() {
+    use aethercore_performance_telemetry::{PerfPlatform, WindowsPerfPlatform};
+    let started = std::time::Instant::now();
+    let snapshot = WindowsPerfPlatform.sample(Duration::from_secs(2));
+    let outer_ms = started.elapsed().as_millis();
+    assert_eq!(snapshot.interval_ms, 2_000, "the cadence is what was asked");
+    let cpu_ms = snapshot
+        .cpu
+        .sample_elapsed_ms
+        .expect("native CPU measured its pair");
+    let window = snapshot
+        .measured_window_ms
+        .expect("a tick with a measured pair publishes its window");
+    assert!(
+        window >= cpu_ms,
+        "the published window is the longest pair, and the CPU pair is one of them"
+    );
+    assert!(
+        window >= 80 && u128::from(window) <= outer_ms,
+        "{window} ms must be a pair inside the tick, not the 2000 ms cadence (tick took {outer_ms} ms)"
     );
 }

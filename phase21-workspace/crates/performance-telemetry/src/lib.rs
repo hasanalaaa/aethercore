@@ -175,6 +175,11 @@ pub struct PerfSnapshot {
     pub captured_unix_ms: i64,
     /// Requested poll cadence; subsystems may observe different windows.
     pub interval_ms: u32,
+    /// Longest wall-clock window between the two readings of a rate counter that this tick
+    /// measured, on a monotonic clock. `interval_ms` is what was asked for; this is what was observed.
+    /// Missing means the provider measured none (synthetic and unavailable ticks included).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measured_window_ms: Option<u32>,
     pub cpu: CpuSample,
     pub power: PowerSample,
     pub memory: MemorySample,
@@ -326,6 +331,28 @@ pub struct CollectedSubsystems {
     pub process_top: Reading<Vec<ProcessCpuTopEntry>>,
 }
 
+/// The longest window, between two readings of a rate counter, that one tick measured. A provider
+/// notes each pair it measures and publishes the longest through
+/// [`PerfSnapshot::with_measured_window`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ObservedWindow(Duration);
+
+impl ObservedWindow {
+    pub fn note(&mut self, elapsed: Duration) {
+        self.0 = self.0.max(elapsed);
+    }
+}
+
+impl PerfSnapshot {
+    /// Publishes the observed window beside the requested cadence. A tick that measured no pair,
+    /// or only a sub-millisecond one, publishes none: unknown is never a zero.
+    pub fn with_measured_window(mut self, window: ObservedWindow) -> Self {
+        let millis = window.0.as_millis().min(u128::from(u32::MAX)) as u32;
+        self.measured_window_ms = (millis > 0).then_some(millis);
+        self
+    }
+}
+
 impl CollectedSubsystems {
     /// Publishes the tick. Every `Unavailable` reading contributes its fault;
     /// there is no path that drops one.
@@ -351,6 +378,7 @@ impl CollectedSubsystems {
         PerfSnapshot {
             captured_unix_ms: Utc::now().timestamp_millis(),
             interval_ms: interval.as_millis().min(u128::from(u32::MAX)) as u32,
+            measured_window_ms: None,
             cpu,
             power,
             memory,
@@ -514,6 +542,7 @@ impl PerfPlatform for SyntheticPerfPlatform {
         PerfSnapshot {
             captured_unix_ms: Utc::now().timestamp_millis(),
             interval_ms: interval.as_millis().min(u128::from(u32::MAX)) as u32,
+            measured_window_ms: None,
             cpu: CpuSample {
                 per_processor_busy_bp: vec![busy],
                 total_busy_bp: busy,

@@ -168,7 +168,7 @@ export type GpuEngineSample = { engineName:string; utilizationBp:number };
 export type GpuSample = { adapterId:string; adapterName:string; dedicatedUsedBytes:number; dedicatedTotalBytes:number; sharedUsedBytes:number; engines:GpuEngineSample[]; frametimeJitterUs:number; compositorLagDetected:boolean };
 export type ProcessCpuTopEntry = { pid:number; name:string; cpuBusyBp:number; readBytesPerSec:number; writeBytesPerSec:number; workingSetBytes:number };
 export type PerfSnapshot = {
-  capturedUnixMs:number; intervalMs:number;
+  capturedUnixMs:number; intervalMs:number; measuredWindowMs?:number | null;
   cpu:CpuSample | null; power:PowerSample | null; memory:MemorySample | null;
   storage:StorageQueueSample[]; gpu:GpuSample | null;
   processTop:ProcessCpuTopEntry[]; collectorFaults:PerfCollectorFault[]

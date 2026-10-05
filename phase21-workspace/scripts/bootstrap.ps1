@@ -120,6 +120,8 @@ if ($LASTEXITCODE -ne 0) { throw 'UI build failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Locked Cargo workspace build failed' }
 & dotnet tool restore
 if ($LASTEXITCODE -ne 0) { throw 'Pinned WiX tool restore failed' }
+# DBT-P55-007: nuget.config's signatureValidationMode=require is not enforced by every SDK, so check the restored package itself.
+& (Join-Path $PSScriptRoot 'verify-tool-signatures.ps1')
 Write-Host 'AetherCore Phase 0-16 bootstrap prerequisites complete.' -ForegroundColor Green
 Write-Host 'Run .\scripts\verify-phase16.ps1 for the current source/native production qualification gate.'
 Write-Host 'Run .\scripts\run-dev.ps1 for local development.'
