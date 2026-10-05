@@ -333,6 +333,7 @@ const performance: PerfSnapshot = {
   ...createInitialStreamState().performance,
   capturedUnixMs: NOW,
   intervalMs: 1_000,
+  measuredWindowMs: 104,
   cpu: fill({ perProcessorBusyBp: Array.from({ length: 16 }, (_, i) => 1_200 + i * 260), totalBusyBp: 4_100, dpcIsrBusyBp: 320, contextSwitchesPerSec: 18_400, processorQueueLengthX100: 180 }),
   power: fill({ throttleActive: true, throttleReason: 4, limitReasonsRaw: 4, hasTemperature: true, temperatureC: 84 }),
   memory: fill({ totalPhysicalBytes: 34_359_738_368, availablePhysicalBytes: 9_663_676_416, standbyCacheBytes: 6_442_450_944, modifiedPageListBytes: 268_435_456, commitBytes: 26_843_545_600, commitLimitBytes: 40_802_189_312, hardFaultsPerSec: 480, softFaultsPerSec: 24_000, memoryLoadPercent: 72 }),

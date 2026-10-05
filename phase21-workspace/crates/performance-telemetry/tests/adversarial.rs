@@ -33,6 +33,7 @@ fn hostile_counter_values_are_clamped_into_contract_ranges() {
     let mut hostile = PerfSnapshot {
         captured_unix_ms: 1,
         interval_ms: 999,
+        measured_window_ms: None,
         cpu: CpuSample {
             per_processor_busy_bp: vec![u32::MAX; 512],
             total_busy_bp: u32::MAX,
