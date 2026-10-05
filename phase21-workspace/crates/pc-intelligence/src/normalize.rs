@@ -229,13 +229,27 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot, now: i64) -> Vec<SystemFact> 
         let (Some(temperature_c), Some(critical_c)) = (zone.temperature_c, zone.critical_c) else {
             continue;
         };
-        let observed = zone
-            .coverage
-            .observed_unix_ms
-            .unwrap_or(snapshot.completed_unix_ms);
+        let (Some(reading), Some(critical), Some(observed)) = (
+            zone.temperature_decikelvin,
+            zone.critical_decikelvin,
+            zone.coverage.observed_unix_ms,
+        ) else {
+            continue;
+        };
+        if zone.coverage.availability
+            != aethercore_diagnostic_engine::measurements::Availability::Measured
+            || observed <= 0
+            || observed > now
+            || zone.stable_id.trim().is_empty()
+            || zone.coverage.source.trim().is_empty()
+            || !(2_332..=4_232).contains(&reading)
+            || !(2_332..=4_232).contains(&critical)
+        {
+            continue;
+        }
         out.push(SystemFact::new(
             Domain::Hardware,
-            "hardware-telemetry",
+            &zone.coverage.source,
             ResourceRef::private(
                 "thermal-zone",
                 &zone.stable_id,
@@ -247,9 +261,11 @@ pub fn diagnostics(snapshot: &DiagnosticsSnapshot, now: i64) -> Vec<SystemFact> 
             FactPayload::ThermalZone {
                 temperature_c: i64::from(temperature_c),
                 critical_c: i64::from(critical_c),
+                temperature_decikelvin: zone.temperature_decikelvin,
+                critical_decikelvin: zone.critical_decikelvin,
             },
             EvidenceKind::DeviceState,
-            format!("temperatureC={temperature_c};ratedCriticalC={critical_c}"),
+            format!("temperatureC={temperature_c};ratedCriticalC={critical_c};temperatureDecikelvin={reading};ratedCriticalDecikelvin={critical}"),
         ));
     }
     for battery in &snapshot.batteries {

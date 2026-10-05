@@ -14,12 +14,23 @@ export function setIncludeDiskScan(includeDiskScan: boolean): void { repairUi.up
 export function closeRepairReview(): void { repairUi.update((state) => ({ ...state, reviewOpen: false })); }
 export function openRepairReview(): void { repairUi.update((state) => ({ ...state, reviewOpen: true })); }
 
+function applyAssessmentReply(answer: RepairAssessment, issuedId: string, issuedGeneration: number): void {
+  streamState.update((state) => {
+    if (state.resetGeneration !== issuedGeneration
+      || (state.repairAssessment.assessmentId !== issuedId && state.repairAssessment.assessmentId !== answer.assessmentId)) return state;
+    const assessment = settleAssessment(state.repairAssessment, answer);
+    return { ...state, repairAssessment: assessment,
+      repairAssessmentObservedUnixMs: assessment.assessmentId === state.repairAssessment.assessmentId ? state.repairAssessmentObservedUnixMs : 0 };
+  });
+}
+
 export async function startRepairAssessment(): Promise<void> {
   setPage('repair');
   await runBusy(async () => {
     patchStreamState({ repairPlan: null, repairStatus: null });
+    const issued = get(streamState);
     const answer = await serviceInvoke<RepairAssessment>('start_repair_assessment');
-    streamState.update((state) => ({ ...state, repairAssessment: settleAssessment(state.repairAssessment, answer) }));
+    applyAssessmentReply(answer, issued.repairAssessment.assessmentId, issued.resetGeneration);
   });
 }
 
@@ -27,9 +38,10 @@ export async function startRepairAssessment(): Promise<void> {
  *  assessment on screen (P78-03), so a click that arrives late cannot stop a newer one. */
 export async function cancelRepairAssessment(): Promise<void> {
   try {
-    const { assessmentId } = get(streamState).repairAssessment;
+    const issued = get(streamState);
+    const { assessmentId } = issued.repairAssessment;
     const answer = await serviceInvoke<RepairAssessment>('cancel_repair_assessment', { assessmentId });
-    streamState.update((state) => ({ ...state, repairAssessment: settleAssessment(state.repairAssessment, answer) }));
+    if (answer.assessmentId === assessmentId) applyAssessmentReply(answer, assessmentId, issued.resetGeneration);
   } catch {
     /* the stream still carries the running assessment; the next event settles it */
   }

@@ -295,10 +295,12 @@ fn temp_root() -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!(
-        "aethercore-phase3-coordinator-{}-{sequence}-{nonce}",
-        std::process::id()
-    ))
+    std::fs::canonicalize(std::env::temp_dir())
+        .expect("real fixture parent")
+        .join(format!(
+            "aethercore-phase3-coordinator-{}-{sequence}-{nonce}",
+            std::process::id()
+        ))
 }
 
 fn ready_hub() -> Arc<DriverHub> {

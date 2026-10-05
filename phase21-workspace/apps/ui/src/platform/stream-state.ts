@@ -50,6 +50,8 @@ export type StreamState = {
   installStatus: DriverInstallStatus | null;
   recoveryEntries: RecoveryEntry[];
   repairAssessment: RepairAssessment;
+  /** Timestamp of the last ordered service observation, not a progress-change time. */
+  repairAssessmentObservedUnixMs: number;
   repairPlan: Plan | null;
   repairStatus: SystemRepairStatus | null;
   cleanupSnapshot: CleanupSnapshot;
@@ -149,6 +151,7 @@ export function createInitialStreamState(): StreamState {
       intelligence: null,
       currentCheckId: '',
     },
+    repairAssessmentObservedUnixMs: 0,
     repairPlan: null,
     repairStatus: null,
     cleanupSnapshot: {
@@ -326,6 +329,9 @@ export function reduceKernelEvent(state: StreamState, event: UiKernelEvent): Str
       break;
     case 'repairAssessment':
       next.repairAssessment = event.payload;
+      next.repairAssessmentObservedUnixMs = Number.isSafeInteger(event.emittedUnixMs) && event.emittedUnixMs > 0
+        && (state.repairAssessment.assessmentId !== event.payload.assessmentId
+          || event.emittedUnixMs >= state.repairAssessmentObservedUnixMs) ? event.emittedUnixMs : 0;
       break;
     case 'systemRepairStatus':
       next.repairStatus = event.payload;

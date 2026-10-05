@@ -44,6 +44,8 @@ static DISK_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_HISTORY_SLOT: ProviderSlot = ProviderSlot::new();
 static UPDATE_CLIENT_SLOT: ProviderSlot = ProviderSlot::new();
+static UPDATE_SERVICES_SLOT: ProviderSlot = ProviderSlot::new();
+static WINRE_SLOT: ProviderSlot = ProviderSlot::new();
 
 pub struct WindowsRepairPlatform;
 
@@ -54,11 +56,12 @@ struct ServicingGuard {
     _guard: MachineMutationGuard,
 }
 
-impl RepairPlatform for WindowsRepairPlatform {
-    fn assess(
+impl WindowsRepairPlatform {
+    fn assess_impl(
         &self,
         cancel: &std::sync::Arc<AtomicBool>,
         progress: &mut dyn FnMut(AssessStep<'_>),
+        lease: Option<std::sync::Arc<aethercore_operation_kernel::ReadBudgetLease>>,
     ) -> Result<(String, Vec<RepairCheck>)> {
         let root = system_root()?;
         let volume = system_volume()?;
@@ -87,12 +90,14 @@ impl RepairPlatform for WindowsRepairPlatform {
         };
         step(&mut checks, "dism-scan", &mut || {
             const LOG: &str = "%WINDIR%\\Logs\\DISM\\dism.log";
+            let lease_for_worker = lease.clone();
             run_check(
                 &DISM_SLOT,
                 ("dism-scan", "Component store", LOG),
                 DISM_SCAN_DEADLINE,
                 cancel,
-                |stop| {
+                move |stop| {
+                    let _read_budget_lease = lease_for_worker;
                     probe_or_unknown("dism-scan", "Component store", LOG, || {
                         check_online_image_health_cancellable(
                             true,
@@ -107,12 +112,14 @@ impl RepairPlatform for WindowsRepairPlatform {
         step(&mut checks, "sfc-verify", &mut || {
             const LOG: &str = "%WINDIR%\\Logs\\CBS\\CBS.log";
             let (sfc, root) = (system32.join("sfc.exe"), root.clone());
+            let lease_for_worker = lease.clone();
             run_check(
                 &SFC_SLOT,
                 ("sfc-verify", "Protected system files", LOG),
                 SFC_VERIFY_DEADLINE,
                 cancel,
                 move |stop| {
+                    let _read_budget_lease = lease_for_worker;
                     probe_or_unknown("sfc-verify", "Protected system files", LOG, || {
                         run_sfc(
                             &sfc,
@@ -130,24 +137,71 @@ impl RepairPlatform for WindowsRepairPlatform {
             Ok(servicing_state_check())
         })?;
         step(&mut checks, "update-health", &mut || {
+            let lease_for_worker = lease.clone();
             run_check(
                 &UPDATE_SLOT,
                 ("windows-update", "Windows Update", "Windows Update Agent"),
                 UPDATE_PROBE_DEADLINE,
                 cancel,
-                |_| update_health_check(),
+                move |_| {
+                    let _read_budget_lease = lease_for_worker;
+                    update_health_check()
+                },
             )
         })?;
-        if checks
+        let update_failed = checks
             .last()
-            .is_some_and(|check| check.result_code == "UpdateFailure")
-        {
-            step(&mut checks, "required-update-service", &mut || {
-                Ok(required_update_service_check())
+            .is_some_and(|check| check.result_code == "UpdateFailure");
+        for (step_id, id, name, title) in [
+            (
+                if update_failed {
+                    "required-update-service"
+                } else {
+                    "update-agent-service"
+                },
+                if update_failed {
+                    "required-service"
+                } else {
+                    "update-agent-service"
+                },
+                "wuauserv",
+                "Windows Update service",
+            ),
+            (
+                "update-bits-service",
+                "update-bits-service",
+                "BITS",
+                "Background Intelligent Transfer Service",
+            ),
+            (
+                "update-servicing-service",
+                "update-servicing-service",
+                "TrustedInstaller",
+                "Windows Modules Installer service",
+            ),
+        ] {
+            let lease_for_worker = lease.clone();
+            step(&mut checks, step_id, &mut || {
+                let lease_for_worker = lease_for_worker.clone();
+                run_check(
+                    &UPDATE_SERVICES_SLOT,
+                    (id, title, name),
+                    Duration::from_secs(5),
+                    cancel,
+                    move |_| {
+                        let _read_budget_lease = lease_for_worker;
+                        if id == "required-service" {
+                            required_update_service_check()
+                        } else {
+                            update_dependency_service_check(id, name, title)
+                        }
+                    },
+                )
             })?;
         }
         // Evidence only: the id has no diagnosis fact, so this proposes no repair (P83-03A).
         step(&mut checks, "update-history", &mut || {
+            let lease_for_worker = lease.clone();
             run_check(
                 &UPDATE_HISTORY_SLOT,
                 (
@@ -157,7 +211,8 @@ impl RepairPlatform for WindowsRepairPlatform {
                 ),
                 UPDATE_HISTORY_DEADLINE,
                 cancel,
-                |_| {
+                move |_| {
+                    let _read_budget_lease = lease_for_worker;
                     crate::update_history_check(
                         aethercore_windows_update::query_update_history(UPDATE_HISTORY_ENTRIES)
                             .ok()
@@ -167,6 +222,7 @@ impl RepairPlatform for WindowsRepairPlatform {
             )
         })?;
         step(&mut checks, "update-client-events", &mut || {
+            let lease_for_worker = lease.clone();
             run_check(
                 &UPDATE_CLIENT_SLOT,
                 (
@@ -176,7 +232,8 @@ impl RepairPlatform for WindowsRepairPlatform {
                 ),
                 UPDATE_HISTORY_DEADLINE,
                 cancel,
-                |_| {
+                move |_| {
+                    let _read_budget_lease = lease_for_worker;
                     crate::update_client_check(
                         aethercore_windows_update::query_client_errors(200)
                             .ok()
@@ -188,12 +245,14 @@ impl RepairPlatform for WindowsRepairPlatform {
         step(&mut checks, "disk-scan", &mut || {
             const LOG: &str = "Event Viewer → Application → Chkdsk";
             let (chkdsk, volume) = (system32.join("chkdsk.exe"), volume.clone());
+            let lease_for_worker = lease.clone();
             run_check(
                 &DISK_SLOT,
                 ("disk-scan", "System volume online scan", LOG),
                 DISK_SCAN_DEADLINE,
                 cancel,
                 move |stop| {
+                    let _read_budget_lease = lease_for_worker;
                     probe_or_unknown("disk-scan", "System volume online scan", LOG, || {
                         run_chkdsk_scan(
                             &chkdsk,
@@ -207,13 +266,52 @@ impl RepairPlatform for WindowsRepairPlatform {
             )
         })?;
         step(&mut checks, "winre-presence", &mut || {
-            Ok(winre_presence_check(&system32))
+            let system32 = system32.clone();
+            let lease_for_worker = lease.clone();
+            run_check(
+                &WINRE_SLOT,
+                (
+                    "winre-state",
+                    "Windows Recovery Environment",
+                    "reagentc.exe /info",
+                ),
+                UPDATE_PROBE_DEADLINE,
+                cancel,
+                move |stop| {
+                    let _read_budget_lease = lease_for_worker;
+                    probe_or_unknown(
+                        "winre-state",
+                        "Windows Recovery Environment",
+                        "reagentc.exe /info",
+                        || winre_configuration_check(&system32, &stop),
+                    )
+                },
+            )
         })?;
         step(&mut checks, "restore-readiness", &mut || {
             Ok(restore_readiness_check(&root))
         })?;
 
         Ok((volume, checks))
+    }
+}
+
+impl RepairPlatform for WindowsRepairPlatform {
+    fn assess(
+        &self,
+        cancel: &std::sync::Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> Result<(String, Vec<RepairCheck>)> {
+        self.assess_impl(cancel, progress, None)
+    }
+
+    fn assess_with_lease(
+        &self,
+        cancel: &std::sync::Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+        lease: std::sync::Arc<aethercore_operation_kernel::ReadBudgetLease>,
+    ) -> Result<(String, Vec<RepairCheck>)> {
+        self.assess_impl(cancel, progress, Some(lease))
     }
 
     fn repair(
@@ -414,6 +512,12 @@ fn update_health_check() -> RepairCheck {
 }
 
 fn service_running(name: &str) -> Result<bool> {
+    Ok(service_state(name)? == SERVICE_RUNNING)
+}
+
+fn service_state(
+    name: &str,
+) -> Result<windows::Win32::System::Services::SERVICE_STATUS_CURRENT_STATE> {
     unsafe {
         let scm = OwnedServiceHandle::new(
             OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)
@@ -440,34 +544,77 @@ fn service_running(name: &str) -> Result<bool> {
             &mut needed,
         )
         .map_err(|e| RepairError::Command(format!("QueryServiceStatusEx({name}): {e}")))?;
-        Ok(status.dwCurrentState == SERVICE_RUNNING)
+        Ok(status.dwCurrentState)
     }
 }
 
-fn service_start_type() -> Result<u32> {
+fn service_start_type(name: &str) -> Result<u32> {
     unsafe {
         let scm = OwnedServiceHandle::new(
             OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT)
                 .map_err(|e| RepairError::Command(format!("OpenSCManagerW: {e}")))?,
         );
-        let wide = "wuauserv".encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+        let wide = name.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
         let service = OwnedServiceHandle::new(
             OpenServiceW(scm.get(), PCWSTR(wide.as_ptr()), SERVICE_QUERY_CONFIG)
-                .map_err(|e| RepairError::Command(format!("OpenServiceW(wuauserv): {e}")))?,
+                .map_err(|e| RepairError::Command(format!("OpenServiceW({name}): {e}")))?,
         );
         // QueryServiceConfigW's documented maximum is 8 KiB. usize storage preserves ABI alignment.
         let mut buffer = [0usize; 8192 / std::mem::size_of::<usize>()];
         let config = buffer.as_mut_ptr().cast::<QUERY_SERVICE_CONFIGW>();
         let mut needed = 0;
         QueryServiceConfigW(service.get(), Some(config), 8192, &mut needed)
-            .map_err(|e| RepairError::Command(format!("QueryServiceConfigW(wuauserv): {e}")))?;
+            .map_err(|e| RepairError::Command(format!("QueryServiceConfigW({name}): {e}")))?;
         Ok((*config).dwStartType.0)
     }
 }
 
+/// Read-only dependency state: this id never maps to a repair fact or starts a service.
+fn update_dependency_service_check(id: &str, name: &str, title: &str) -> RepairCheck {
+    let observed = service_state(name).and_then(|state| {
+        service_start_type(name).map(|start| super::service_start_verdict(state.0, start))
+    });
+    let (code, stage, detail) = match observed {
+        Ok("ServiceRunning") => (
+            "ServiceRunning",
+            "Completed",
+            "The update dependency service is running; this alone does not establish update health.",
+        ),
+        Ok("ServiceDemandStopped") => (
+            "ServiceDemandStopped",
+            "Completed",
+            "The update dependency service is stopped in demand-start mode. This alone does not require repair.",
+        ),
+        Ok("ServiceDisabled") => (
+            "ServiceDisabled",
+            "Attention",
+            "The update dependency service is disabled. Its configuration may be managed by policy; AetherCore will not change it.",
+        ),
+        Ok("ServiceStopped") => (
+            "ServiceStopped",
+            "Attention",
+            "The update dependency service is stopped in automatic-start mode. This evidence alone does not authorize a service change.",
+        ),
+        _ => (
+            "ServiceUnknown",
+            "Unknown",
+            "The update dependency service state or configuration could not be established. No service change is recommended.",
+        ),
+    };
+    RepairCheck {
+        id: id.into(),
+        title: title.into(),
+        stage: stage.into(),
+        result_code: code.into(),
+        exit_code: 0,
+        detail: detail.into(),
+        log_hint: name.into(),
+    }
+}
+
 fn required_update_service_check() -> RepairCheck {
-    let result = service_running("wuauserv").and_then(|running| {
-        service_start_type().map(|start| super::service_start_verdict(running, start))
+    let result = service_state("wuauserv").and_then(|state| {
+        service_start_type("wuauserv").map(|start| super::service_start_verdict(state.0, start))
     });
     let (code, stage, detail) = match result {
         Ok("ServiceRunning") => (
@@ -706,23 +853,24 @@ fn run_chkdsk_scan(
     Ok(check)
 }
 
-fn winre_presence_check(system32: &Path) -> RepairCheck {
-    let exe = system32.join("reagentc.exe");
-    if exe.is_file() {
-        RepairCheck {
-            id: "winre-state".into(), title: "Windows Recovery Environment".into(), stage: "Unknown".into(),
-            result_code: "WinReStateUnverified".into(), exit_code: 0,
-            detail: "REAgentC is available, but Phase 19 does not infer enabled/disabled WinRE state from localized console prose. Live state qualification remains pending on Windows.".into(),
-            log_hint: "reagentc.exe /info (guided technical detail)".into(),
-        }
-    } else {
-        RepairCheck {
-            id: "winre-state".into(), title: "Windows Recovery Environment".into(), stage: "Unknown".into(),
-            result_code: "WinReStateUnknown".into(), exit_code: -1,
-            detail: "The supported REAgentC executable was not found at the trusted System32 path; recovery state is unknown, not assumed unavailable.".into(),
-            log_hint: String::new(),
-        }
+fn winre_configuration_check(system32: &Path, cancel: &AtomicBool) -> Result<RepairCheck> {
+    if cancel.load(Ordering::SeqCst) {
+        return Err(RepairError::Cancelled);
     }
+    let check = super::process::run_tool(
+        &system32.join("reagentc.exe"),
+        &["/info"],
+        (
+            "winre-state",
+            "Windows Recovery Environment",
+            "reagentc.exe /info",
+        ),
+        &[0],
+        Some(cancel),
+        false,
+        UPDATE_PROBE_DEADLINE,
+    )?;
+    Ok(super::winre::from_info(&check.detail, check.exit_code))
 }
 
 fn restore_readiness_check(root: &Path) -> RepairCheck {

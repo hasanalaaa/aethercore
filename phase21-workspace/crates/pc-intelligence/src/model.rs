@@ -331,6 +331,10 @@ pub enum FactPayload {
     ThermalZone {
         temperature_c: i64,
         critical_c: i64,
+        #[serde(default)]
+        temperature_decikelvin: Option<u32>,
+        #[serde(default)]
+        critical_decikelvin: Option<u32>,
     },
     /// Two comparable measured readings from an enabled, operational adapter.
     NetworkCounterWindow {

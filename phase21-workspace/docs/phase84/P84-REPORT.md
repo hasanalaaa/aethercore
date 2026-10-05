@@ -166,7 +166,7 @@ Full native CI at the new exact head is still required before integration.
 ## 5. What stayed unmeasured
 
 - **The abortable search job in the service's context (LocalSystem).** From an SSH session the agent refuses `BeginSearch`: `0x80070005` with or without process COM security at impersonate level, and `0x80004003` with a null callback. The plain search runs instead. In the service, which sets the same COM security at startup, I believe the job runs, but I did not measure it without touching the installed service (`DBT-P84-006`).
-- **A free-disk-space check before the export.** There is none; a full disk surfaces as a `pnputil` or file-system error and stops the install. Nor did I check the reparse state of the folders above the backup root (the root and its tree are checked).
+- **Export preflight and ancestor protection** (2026-10-04 follow-up, reviewed): the export now measures the Driver Store package against the space the service can use before PnPUtil runs, refuses a link or junction in any directory from the volume root down, reads every exported file through a handle that refuses writers, and never overwrites a manifest already there. The backup root is writable only by SYSTEM, Administrators and the service, so these checks are path-based; an NT-native anchored-open scheme from the same follow-up was dropped (see [P84-EXPORT-PREFLIGHT-REPORT.md](P84-EXPORT-PREFLIGHT-REPORT.md) and `DBT-P84-008`).
 - **Any real install, verification or recovery.** Proven with fakes only, by the lane's rule.
 - **The pages with Narrator, on a real install.**
 

@@ -38,6 +38,8 @@ pub(crate) fn zone_from_wmi(
         display_name: instance_name.to_string(),
         temperature_c: plausible(current).map(celsius),
         critical_c: plausible(critical).map(celsius),
+        temperature_decikelvin: plausible(current),
+        critical_decikelvin: plausible(critical),
         highest_observed_c: None,
         coverage: Coverage {
             source: SOURCE.into(),
@@ -96,5 +98,18 @@ mod tests {
         let zone = zone_from_wmi("z", Some(3_100), Some(0), 1);
         assert_eq!(zone.temperature_c, Some(37));
         assert_eq!(zone.critical_c, None, "0 is not a rated threshold");
+    }
+
+    #[test]
+    fn display_rounding_preserves_exact_firmware_readings_for_comparison() {
+        let zone = zone_from_wmi("z", Some(3_731), Some(3_732), 1);
+        assert_eq!(
+            (zone.temperature_c, zone.critical_c),
+            (Some(100), Some(100))
+        );
+        assert_eq!(
+            (zone.temperature_decikelvin, zone.critical_decikelvin),
+            (Some(3_731), Some(3_732))
+        );
     }
 }

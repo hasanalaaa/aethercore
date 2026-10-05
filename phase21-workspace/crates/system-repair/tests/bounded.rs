@@ -12,7 +12,7 @@ use std::{
 };
 
 use aethercore_operation_engine::{OperationEngine, SystemRepairAction};
-use aethercore_operation_kernel::{ReadBudgetManager, ReadWorkload};
+use aethercore_operation_kernel::{ReadBudgetLease, ReadBudgetManager, ReadWorkload};
 use aethercore_persistence::Database;
 use aethercore_system_repair::{
     AssessStep, RepairAssessment, RepairAssessmentState, RepairCheck, RepairCoordinator,
@@ -21,7 +21,11 @@ use aethercore_system_repair::{
 };
 
 const OWNER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-type Assess = dyn Fn(&Arc<AtomicBool>, &mut dyn FnMut(AssessStep<'_>)) -> Result<Vec<RepairCheck>>
+type Assess = dyn Fn(
+        &Arc<AtomicBool>,
+        &mut dyn FnMut(AssessStep<'_>),
+        Option<Arc<ReadBudgetLease>>,
+    ) -> Result<Vec<RepairCheck>>
     + Send
     + Sync;
 
@@ -34,7 +38,15 @@ impl RepairPlatform for Scripted {
         cancel: &Arc<AtomicBool>,
         progress: &mut dyn FnMut(AssessStep<'_>),
     ) -> Result<(String, Vec<RepairCheck>)> {
-        Ok(("C:".into(), (self.0)(cancel, progress)?))
+        Ok(("C:".into(), (self.0)(cancel, progress, None)?))
+    }
+    fn assess_with_lease(
+        &self,
+        cancel: &Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+        lease: Arc<ReadBudgetLease>,
+    ) -> Result<(String, Vec<RepairCheck>)> {
+        Ok(("C:".into(), (self.0)(cancel, progress, Some(lease))?))
     }
     fn repair(
         &self,
@@ -118,7 +130,7 @@ fn a_check_that_never_returns_is_unknown_does_not_pile_up_and_cannot_write_late(
     // The second check ignores its stop flag for 400 ms, as a Windows API can.
     let (coordinator, root) = coordinator(
         "stuck",
-        Box::new(|cancel, progress| {
+        Box::new(|cancel, progress, _lease| {
             let mut checks = vec![done("first", "Fine")];
             progress(AssessStep::Finished(&checks[0]));
             progress(AssessStep::Started("second"));
@@ -187,7 +199,7 @@ fn the_owners_cancel_stops_a_check_long_before_its_deadline() {
     static SAW_STOP: AtomicBool = AtomicBool::new(false);
     let (coordinator, root) = coordinator(
         "cancel",
-        Box::new(|cancel, _| {
+        Box::new(|cancel, _, _lease| {
             Ok(vec![run_check(
                 &WATCHED,
                 ("watched", "Watched", "log"),
@@ -251,4 +263,59 @@ fn a_check_that_panics_is_unknown_and_frees_its_slot() {
         "Fine",
         "the slot stayed taken after a panic"
     );
+}
+
+#[test]
+fn timed_out_assessment_keeps_its_actual_provider_read_budget_until_return() {
+    static DRAIN: ProviderSlot = ProviderSlot::new();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let release_rx = Arc::new(std::sync::Mutex::new(Some(release_rx)));
+    let (coordinator, root) = coordinator(
+        "servicing-drain-budget",
+        Box::new(move |cancel, _, lease| {
+            let started = started_tx.clone();
+            let release = release_rx.lock().unwrap().take().expect("one worker");
+            Ok(vec![run_check(
+                &DRAIN,
+                ("dism-scan", "Component store", "fixture"),
+                Duration::from_millis(30),
+                cancel,
+                move |_| {
+                    let _read_budget_lease = lease;
+                    started.send(()).unwrap();
+                    release.recv().unwrap();
+                    done("dism-scan", "ComponentStoreHealthy")
+                },
+            )?])
+        }),
+    );
+    let budget = ReadBudgetManager::new(4);
+    coordinator
+        .start_assessment_with_lease(
+            OWNER,
+            budget.try_acquire(ReadWorkload::RepairAssessment).unwrap(),
+        )
+        .unwrap();
+    started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    let assessment = terminal(&coordinator);
+    assert_eq!(assessment.checks[0].result_code, "CheckTimedOut");
+    let retained = budget.active_total();
+    release_tx.send(()).unwrap();
+    let end = Instant::now() + Duration::from_secs(2);
+    while budget.active_total() != 0 && Instant::now() < end {
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(
+        retained, 1,
+        "the actual servicing provider lost its read admission at observer timeout"
+    );
+    assert_eq!(
+        budget.active_total(),
+        0,
+        "the drained worker never released its budget"
+    );
+    // The coordinator holds the database open; Windows cannot remove an open file.
+    drop(coordinator);
+    let _ = std::fs::remove_dir_all(root);
 }

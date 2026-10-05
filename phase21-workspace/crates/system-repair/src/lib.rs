@@ -203,6 +203,15 @@ pub trait RepairPlatform: Send + Sync + 'static {
         cancel: &Arc<AtomicBool>,
         progress: &mut dyn FnMut(AssessStep<'_>),
     ) -> Result<(String, Vec<RepairCheck>)>;
+    /// Transfers read admission to providers whose actual workers can outlive their observer.
+    fn assess_with_lease(
+        &self,
+        cancel: &Arc<AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+        _lease: Arc<ReadBudgetLease>,
+    ) -> Result<(String, Vec<RepairCheck>)> {
+        self.assess(cancel, progress)
+    }
     fn repair(
         &self,
         action: &SystemRepairAction,
@@ -265,6 +274,8 @@ pub mod bounded;
 pub mod cbs;
 pub mod dism;
 mod process;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod winre;
 
 #[cfg(windows)]
 mod dism_api;
@@ -414,7 +425,7 @@ impl RepairCoordinator {
         if let Err(error) = thread::Builder::new()
             .name("aether-repair-assessment".into())
             .spawn(move || {
-                let _read_budget_lease = read_budget_lease;
+                let _read_budget_lease = Arc::new(read_budget_lease);
                 // Each check lands in the snapshot as it finishes, so a slow one reads as
                 // "running: <check>, N done" rather than as a hang (P76, DBT-P76-007).
                 let mut progress = |step: AssessStep<'_>| {
@@ -433,7 +444,7 @@ impl RepairCoordinator {
                 // A panic here used to kill the worker and leave the state Scanning for the
                 // life of the service, refusing every later assessment as Busy.
                 let assessed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    platform.assess(&cancel, &mut progress)
+                    platform.assess_with_lease(&cancel, &mut progress, _read_budget_lease.clone())
                 }))
                 .unwrap_or_else(|_| {
                     Err(RepairError::Command(
@@ -1979,7 +1990,7 @@ pub(crate) fn update_client_check(
         result_code: "UpdateClientUnavailable".into(),
         exit_code: 0,
         detail: "The Windows Update client event channel could not be read; update installation status is unknown.".into(),
-        log_hint: "Microsoft-Windows-WindowsUpdateClient/Operational".into(),
+        log_hint: "Microsoft-Windows-WindowsUpdateClient/Operational + System".into(),
     };
     let Some(events) = events else {
         return check;
@@ -1987,7 +1998,7 @@ pub(crate) fn update_client_check(
     let summary = summarize_client_errors(&events.errors);
     let (stage, code) = if summary.count > 0 {
         ("Attention", "UpdateClientErrorsRead")
-    } else if events.unknown_events > 0 || events.truncated {
+    } else if events.unknown_events > 0 || events.truncated || events.unavailable_channels > 0 {
         ("Unknown", "UpdateClientIncomplete")
     } else {
         ("Completed", "UpdateClientNoErrorsRead")
@@ -2008,14 +2019,18 @@ pub(crate) fn update_client_check(
             .collect::<Vec<_>>()
             .join(", ")
     };
-    let coverage = if events.truncated {
+    let coverage = if events.unavailable_channels > 0 {
+        "one or more channels could not be read"
+    } else if events.truncated {
         "older events were not read"
     } else {
         "all matching events were read"
     };
     check.detail = format!(
-        "{} client error event(s) in the last 30 days; newest: {date} ({codes}); {} unsupported event(s); {coverage}. These events are separate from installation attempts.",
-        summary.count, events.unknown_events
+        "{} client error event(s) in the last 30 days; newest: {date} ({codes}); {} unsupported event(s); {coverage}. These events are separate from installation attempts. {} historical restart notification(s); these do not establish whether a restart is required now.",
+        summary.count,
+        events.unknown_events,
+        events.reboot_notifications.len()
     );
     check
 }
@@ -2040,6 +2055,7 @@ mod update_client_tests {
             errors: vec![error, error],
             unknown_events: 2,
             truncated: true,
+            ..Default::default()
         }));
         assert_eq!(measured.stage, "Attention");
         assert!(measured.detail.starts_with("1 client error event(s)"));
@@ -2051,13 +2067,39 @@ mod update_client_tests {
             ..Default::default()
         }));
         assert_eq!(unknown.stage, "Unknown");
+        let missing_system = update_client_check(Some(&ClientErrors {
+            unavailable_channels: 1,
+            ..Default::default()
+        }));
+        assert_eq!(missing_system.stage, "Unknown");
+        assert!(missing_system.detail.contains("channels could not be read"));
+        let old_restart = update_client_check(Some(&ClientErrors {
+            reboot_notifications: vec![1790623589430],
+            ..Default::default()
+        }));
+        assert!(
+            old_restart
+                .detail
+                .contains("1 historical restart notification(s)")
+        );
+        assert!(
+            old_restart
+                .detail
+                .contains("do not establish whether a restart is required now")
+        );
+        assert!(check_to_fact(&old_restart).is_none());
     }
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
-fn service_start_verdict(running: bool, start_type: u32) -> &'static str {
-    if running {
+fn service_start_verdict(state: u32, start_type: u32) -> &'static str {
+    if state == 4 {
+        // SERVICE_RUNNING
         return "ServiceRunning";
+    }
+    if state != 1 {
+        // Only SERVICE_STOPPED can be a start candidate.
+        return "ServiceUnknown";
     }
     match start_type {
         2 => "ServiceStopped", // SERVICE_AUTO_START, only after dependent update failure
@@ -2071,13 +2113,32 @@ fn service_start_verdict(running: bool, start_type: u32) -> &'static str {
 mod p85_service_tests {
     #[test]
     fn a_stopped_demand_start_or_disabled_service_is_not_a_start_candidate() {
-        assert_eq!(
-            super::service_start_verdict(false, 3),
-            "ServiceDemandStopped"
-        );
-        assert_eq!(super::service_start_verdict(false, 4), "ServiceDisabled");
-        assert_eq!(super::service_start_verdict(false, 2), "ServiceStopped");
-        assert_eq!(super::service_start_verdict(true, 3), "ServiceRunning");
-        assert_eq!(super::service_start_verdict(false, 999), "ServiceUnknown");
+        assert_eq!(super::service_start_verdict(1, 3), "ServiceDemandStopped");
+        assert_eq!(super::service_start_verdict(1, 4), "ServiceDisabled");
+        assert_eq!(super::service_start_verdict(1, 2), "ServiceStopped");
+        assert_eq!(super::service_start_verdict(4, 3), "ServiceRunning");
+        assert_eq!(super::service_start_verdict(1, 999), "ServiceUnknown");
+        for pending in [0, 2, 3, 5, 6, 7, 99] {
+            assert_eq!(super::service_start_verdict(pending, 2), "ServiceUnknown");
+        }
+        for id in [
+            "update-agent-service",
+            "update-bits-service",
+            "update-servicing-service",
+        ] {
+            let check = super::RepairCheck {
+                id: id.into(),
+                title: String::new(),
+                stage: "Attention".into(),
+                result_code: "ServiceDisabled".into(),
+                exit_code: 0,
+                detail: String::new(),
+                log_hint: String::new(),
+            };
+            assert!(
+                super::check_to_fact(&check).is_none(),
+                "read-only dependency evidence must not propose a repair"
+            );
+        }
     }
 }

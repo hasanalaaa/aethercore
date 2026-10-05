@@ -113,3 +113,117 @@ Root integration of verification cancellation passed 197 locked Rust tests using
 The superseded CI at `1943619` stalled during VC++ acquisition for hours: its download handle remained open on an unchanged partial file, with an established HTTPS connection and no child build process. The run was cancelled. Source `6b9ce96` uses native Windows curl for both existing fixed Microsoft prerequisite URLs, with a 30-second connect ceiling, 120 seconds per attempt, two retries and a 360-second retry-start ceiling. This bounds transfer attempts rather than claiming a strict total including backoff or signature validation. Temporary files are admitted only after the existing valid Microsoft Authenticode checks; partial downloads are removed on curl failure. There is no new dependency, CI duration increase or signature bypass.
 
 Four native loopback controls passed: stalled WebView2 and VC++ bodies each stop after three attempts without publishing an artifact; an initial503 followed by a complete unsigned response retries once and is rejected by the original signature checks. The fixture uses one-second test transfer ceilings and real curl/Authenticode, never downloads or installs Setup. The same fixture is now a Windows CI step before packaging. The strengthened source gate requires the fixed URL and complete transfer bounds. Final full CI must use the integration head including these corrections.
+
+## Review 2026-10-04: the servicing drain did not merge
+
+The two sections below describe a servicing drain from the 2026-10-04 follow-up. **It was dropped in review** (`DBT-P85-006`, commit `2fb187e`), so they describe code that is not on `main`.
+
+- **An unbounded hold on the mutation lease.** A failed DISM cleanup waited forever on a constant, holding the machine-wide lease until the service restarted.
+- **Every assessment lost its SFC result.** The drain refused SFC and DISM unless TrustedInstaller was STOPPED and then blocked in `Drop` until it stopped. The DISM scan (which starts TrustedInstaller) kept the servicing mutex meanwhile, so the SFC check after it always read unverified.
+
+What merged from that work: the read-budget lease carried into each bounded worker, the read-only update-service checks, `wait_for_child`, and WinRE observation.
+
+## Conservative servicing-drain source checkpoint (2026-10-04)
+
+The prior child/API-exit boundary did not prove that TrustedInstaller had stopped. The shared
+native-call drain now requires the exact SCM `SERVICE_STOPPED` observation after owned SFC
+work/readers or the DISM lifecycle has returned. RUNNING, pending and unreadable states remain
+unverified; they neither release admission nor certify active servicing from RUNNING alone.
+The original mutation lease and DISM lifecycle lock remain held. DISM closes its session and
+shuts down before its SCM drain, and releases its lifecycle lock afterward. SFC error/cancel
+and read-only timeout exits drain the owned child first; a child wait error is retried rather
+than treated as an exit acknowledgement. No mutating child, service or OS process is killed
+by this fence. The existing read-only child stop policy and production deadlines are unchanged.
+
+Each actual Windows assessment provider closure receives an `Arc` of its original
+`ReadBudgetLease`. A timed-out or cancelled observer can return its bounded Unknown/Cancelled
+state while that provider, its slot and its read admission remain charged through actual native
+completion and OS drain. Late results remain discarded. A new service cannot infer idle from
+restart: relevant native-call admission refuses a non-STOPPED or unreadable SCM state with the
+existing declared Conflict outcome and owned EN/AR wording. Mutation drain progress is
+indeterminate and describes completion as unverified; its current stage is preserved. Assessment
+timeout wording now says a stop was requested and the worker may still be running.
+
+Original behavioral RED: an actual assessment coordinator plus a controlled provider reached
+its observer timeout with read budget0 instead of1. Green retains1 until actual provider return,
+then releases exactly once. Shared runtime controls require explicit STOPPED, reject every other
+SCM state/query absence, retain actual mutation admission through uncertain completion, refuse
+another owner/workload, and ignore cancellation as a release condition. The shared function's
+missing-drain controls are recorded separately from the original production RED. Local tests
+for system-repair, maintenance-service and PC intelligence passed210 across17 suites; UI108,
+Svelte check0 errors/warnings, build, static351, recursive120, localization and strengthened
+reader/wait negative controls passed. Final all-target Clippy, source seals and full native phase
+CI are recorded by the checkpoint/integration receipts rather than inferred here.
+
+An idle RUNNING or unreadable TrustedInstaller can retain admission indefinitely. This is an
+explicit conservative availability ceiling, not a bounded completion promise. Detached workers
+are not joined by the service stop path; process exit destroys in-memory admission and does not
+stop Windows servicing or prove it idle. Restart rechecks SCM and preserves durable incomplete
+execution recovery. STOPPED is the narrow release predicate for this owned-call fence, not proof
+that every possible external CBS operation is safe. The SCM observation is not an atomic Windows
+reservation against unrelated system actors. No grace timeout, service-control mutation, new
+wire/dependency or guessed registry CBS-idle heuristic was introduced. Native build and real SFC/
+DISM/TrustedInstaller VM qualification at the new exact head remain NOT RUN in this source receipt.
+
+### Confirmed DISM lifecycle cleanup follow-up (2026-10-04)
+
+`DismLifecycle` now owns its `ServicingDrain` field. Its shared cleanup boundary publishes
+indeterminate pending status before the owned cleanup call, and requires exact `S_OK` from
+`DismCloseSession` before calling `DismShutdown`, then exact `S_OK` from shutdown. Only after
+that boundary returns can field drop consult the SCM fence. An error or another success code
+retains the original worker, lifecycle lock and admission indefinitely; SCM STOPPED cannot
+substitute for cleanup confirmation. A failed close never proceeds to shutdown. Neither API
+is blindly retried, and no service stop join or forced process termination was added.
+
+Microsoft documents successful close as `S_OK`, with other-thread operations drained before
+the session is destroyed, and requires sessions closed before the matched shutdown call:
+[DismCloseSession](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/dism/dismclosesession-function?view=windows-11),
+[DismShutdown](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/dism/dismshutdown-function?view=windows-11).
+
+The actual `c3a184f` Drop body was compiled in a std-only runtime fixture with mock API
+boundaries: both close and shutdown errors reproduced early guard release (exit101). The
+new actual Drop body held that guard and pending notice for both failures, and released it
+after ordered successful cleanup (three controls PASS). This fixture replaces the native API
+and drain guard and proves destructor/control-flow behavior; it is not native DISM servicing
+qualification. Shared production-helper tests additionally retain an actual MutationSupervisor
+lease on close failure, shutdown failure and non-S_OK positive code, refuse the next mutation,
+and prove ordered once-only cleanup and no fake pending state without owned resources.
+Locked direct-dependent tests213 across17 suites, all-target Clippy, static351, recursive120
+and existing gate negative controls PASS. Exact Windows build/VM qualification remains NOT RUN.
+Cleanup uncertainty can cause indefinite retained admission; this availability ceiling is
+intentional and cannot be described as bounded completion or a successful terminal outcome.
+
+### Bounded WinRE configuration observation (2026-10-04)
+
+ASTRA P85-04's newer `reagentc /info` authority replaces executable-presence inference with
+a read-only query at the trusted System32 path. The WinRE ProviderSlot retains the original
+assessment ReadBudgetLease inside its actual worker, accepts owner cancellation and the existing
+two-minute first bound, caps decoded output through the existing child reader, discards late
+results, and permits no activation/deactivation, mount, boot or recovery-image mutation.
+
+A measured owner query returned exit0 and a complete en-US Enabled/location/BCD frame. The
+strict parser recognizes only that qualified format: missing/duplicate/conflicting fields,
+noncanonical/zero enabled BCD identity, nonlocal location, invalid indices/version, failed exit,
+unsupported locale/encoding or an incomplete frame produce Unknown. Recognized Disabled is
+Unavailable. A valid Enabled frame emits `WinReConfiguredProtectionUnverified`, with owned
+EN/AR wording that explicitly leaves recovery-image usability, boot readiness and protection
+unknown. It never emits `WinReAvailable`: the existing protection/fact mapping keeps WinRE
+Unknown and preserves the separate prior recovery protections. No path or BCD identifier is
+published in the product detail.
+
+No existing WIM/image-information utility was found in the live crates, service or desktop source.
+Image-header/metadata presence alone would not prove usable image payload or a successful
+recovery boot. Accordingly no new SDK binding/dependency/framework or guessed Available flag
+was introduced. Configured observation is implemented; native locked-image usability and actual
+recovery boot qualification remain open. The owner's Windows UI/culture was en-US; an Arabic
+product UI is localized, but an Arabic Windows console format remains unqualified and Unknown.
+
+Local locked direct-dependent tests217 across17 suites, all-target Clippy, UI109, check0 errors/
+warnings, production build, static351, recursive120, existing gate controls, freeze and EN/AR2122
+parity passed. Shared tests cover the qualified frame, Unknown protection mapping, disabled and
+invalid response controls; a UTF16 reader test covers code units split across pipe chunks. The
+initial missing-observation control failed the positive configured/disabled tests. A mistaken
+new test initially expected no protection of any kind; it was corrected to compare the prior
+protection predicate, because the existing journal recovery is a separate protection. No
+production protection gate was changed. Full exact native crate qualification is recorded by
+the root integration receipts, not inferred from these local checks.

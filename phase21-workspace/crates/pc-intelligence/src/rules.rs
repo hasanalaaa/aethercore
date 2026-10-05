@@ -413,22 +413,25 @@ pub fn evaluate(facts: &[SystemFact], now_ms: i64) -> Vec<Finding> {
             // what is hot: the zone is firmware's, and a reading without a rated threshold never
             // reaches this rule.
             FactPayload::ThermalZone {
-                temperature_c,
-                critical_c,
-            } if *critical_c > 0 && *temperature_c >= *critical_c => findings.push(finding(
-                fact,
-                "THERMAL_TRIP_EXCEEDED",
-                Domain::Hardware,
-                Severity::High,
-                Confidence::High,
-                "finding.thermalTrip.title",
-                "finding.thermalTrip.summary",
-                "finding.thermalTrip.technical",
-                "P83-THERM-001",
-                1,
-                Some(RemediationSafety::HardwareService),
-                ActionType::ReviewHardwareError,
-            )),
+                temperature_decikelvin: Some(reading),
+                critical_decikelvin: Some(critical),
+                ..
+            } if fact.freshness == Freshness::Current && reading >= critical => {
+                findings.push(finding(
+                    fact,
+                    "THERMAL_TRIP_EXCEEDED",
+                    Domain::Hardware,
+                    Severity::High,
+                    Confidence::High,
+                    "finding.thermalTrip.title",
+                    "finding.thermalTrip.summary",
+                    "finding.thermalTrip.technical",
+                    "P83-THERM-001",
+                    1,
+                    Some(RemediationSafety::HardwareService),
+                    ActionType::ReviewHardwareError,
+                ))
+            }
             FactPayload::BatteryCapacity {
                 design_capacity_mwh: design,
                 full_charge_capacity_mwh: full,

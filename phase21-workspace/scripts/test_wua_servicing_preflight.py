@@ -137,5 +137,79 @@ class ActualServicingPreflight(unittest.TestCase):
             print(result.stdout, end='')
 
 
+class ActualClientEventCollection(unittest.TestCase):
+    def test_two_channel_coverage_and_shared_budget(self):
+        native = (ROOT / 'crates/windows-update/src/client_events_windows.rs').read_text()
+        start = 'pub fn query_client_errors(max_entries: usize) -> Result<ClientErrors> {'
+        end = '\nfn query_channel('
+        self.assertEqual(native.count(start), 1)
+        function = native[native.index(start):native.index(end, native.index(start))]
+        shim = r'''
+use std::{cell::RefCell, time::{Duration, Instant}};
+#[derive(Debug,Default)] struct ClientErrors {
+    errors:Vec<u32>, reboot_notifications:Vec<i64>, unknown_events:u32,
+    truncated:bool, unavailable_channels:u32,
+}
+type Result<T> = std::result::Result<T,()>;
+#[derive(Default)] struct State { failed:[bool;2], calls:Vec<(String,usize,Instant)> }
+thread_local! {static STATE:RefCell<State> = RefCell::new(State::default());}
+fn query_channel(channel:&str,filter:&str,cap:usize,deadline:Instant)->Result<ClientErrors> {
+    STATE.with(|s| {let mut s=s.borrow_mut();let index=s.calls.len();
+        assert!(index<2, "unexpected extra channel query");
+        assert!(deadline.saturating_duration_since(Instant::now()) <= Duration::from_secs(5));
+        assert_eq!(filter, if index==0 {"Level=2"} else {"(Level=2 or EventID=21)"});
+        s.calls.push((channel.into(),cap,deadline));
+        if s.failed[index] {return Err(());}
+        Ok(ClientErrors {errors:vec![index as u32], reboot_notifications:vec![10,10],
+            unknown_events:index as u32, truncated:index==1, ..Default::default()})
+    })
+}
+fn run(failed:[bool;2],cap:usize)->ClientErrors {
+    STATE.with(|s|*s.borrow_mut()=State{failed,..Default::default()});
+    query_client_errors(cap).unwrap()
+}
+#[test] fn both_channels_share_one_deadline_and_total_cap_never_exceeds_200() {
+    for cap in [0,1,199,200,usize::MAX] {
+        run([false,false],cap);
+        STATE.with(|s|{let s=s.borrow();assert_eq!(s.calls.len(),2);
+            assert_eq!(s.calls[0].0,"Microsoft-Windows-WindowsUpdateClient/Operational");
+            assert_eq!(s.calls[1].0,"System");assert_eq!(s.calls[0].2,s.calls[1].2);
+            assert_eq!(s.calls[0].1+s.calls[1].1,cap.min(200));});
+    }
+}
+#[test] fn a_missing_channel_retains_other_evidence_but_never_complete_coverage() {
+    for failed in [[true,false],[false,true],[true,true]] {
+        let out=run(failed,200);assert_eq!(out.unavailable_channels, failed.into_iter().filter(|b|*b).count() as u32);
+        assert_eq!(out.errors.len(),failed.into_iter().filter(|b|!*b).count());
+    }
+}
+#[test] fn historical_notifications_do_not_enter_error_counts_or_duplicate() {
+    let out=run([false,false],200);assert_eq!(out.errors,[0,1]);
+    assert_eq!(out.reboot_notifications,[10]);assert_eq!(out.unknown_events,1);assert!(out.truncated);
+}
+'''
+        compiler = shutil.which('rustc')
+        self.assertIsNotNone(compiler, 'rustc is required; client evidence must not silently skip')
+        system = '("System", cap / 2, "(Level=2 or EventID=21)"),'
+        missing = 'Err(_) => output.unavailable_channels += 1,'
+        self.assertEqual(function.count(system), 1)
+        self.assertEqual(function.count(missing), 1)
+        for label, controller, passing in [
+            ('actual-client-events', function, True),
+            ('missing-system-channel', function.replace(system, ''), False),
+            ('lost-unavailable-coverage', function.replace(missing, 'Err(_) => {},'), False),
+        ]:
+            with self.subTest(control=label), tempfile.TemporaryDirectory(prefix='aethercore-wua-events-') as directory:
+                source = Path(directory) / 'fixture.rs'
+                binary = Path(directory) / ('fixture.exe' if os.name == 'nt' else 'fixture')
+                source.write_text(shim + '\n' + controller)
+                built = subprocess.run([compiler, '--test', '--edition=2024', str(source), '-o', str(binary)],
+                                       capture_output=True, text=True, timeout=60)
+                self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                result = subprocess.run([str(binary), '--nocapture'], capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode == 0, passing, result.stdout + result.stderr)
+                print(label + ':\n' + result.stdout, end='')
+
+
 if __name__ == '__main__':
     unittest.main()

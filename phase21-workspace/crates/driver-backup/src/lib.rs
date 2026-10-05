@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -62,6 +62,7 @@ struct BackupFile {
 /// Seals an exported driver package: every file's path, size and SHA-256 in a manifest beside it
 /// (P84-04). An export with no INF, a link, or too many files is refused, not sealed.
 pub fn seal_export(source_inf: &str, destination: &Path) -> Result<BackupEvidence> {
+    guard_root(destination, false)?;
     let files = read_export(destination)?;
     if !files
         .iter()
@@ -77,7 +78,14 @@ pub fn seal_export(source_inf: &str, destination: &Path) -> Result<BackupEvidenc
     };
     let manifest_path = destination.join(MANIFEST_NAME);
     let manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
-    fs::write(&manifest_path, &manifest_bytes)?;
+    // Never overwrite an injected existing manifest/link after the directory readback.
+    use std::io::Write;
+    let mut manifest_file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&manifest_path)?;
+    manifest_file.write_all(&manifest_bytes)?;
+    drop(manifest_file);
     Ok(BackupEvidence {
         source_inf: manifest.source_inf.clone(),
         backup_directory: destination.to_string_lossy().into_owned(),
@@ -95,19 +103,25 @@ pub fn seal_export(source_inf: &str, destination: &Path) -> Result<BackupEvidenc
 /// evidence; one that drifted or was replaced proves nothing and blocks the mutation.
 pub fn verify_export(evidence: &BackupEvidence) -> Result<()> {
     let directory = Path::new(&evidence.backup_directory);
+    guard_root(directory, false)?;
     if Path::new(&evidence.manifest_path) != directory.join(MANIFEST_NAME) {
         return Err(BackupError::Changed(
             "the manifest is not in the export".into(),
         ));
     }
-    let manifest_bytes = fs::read(&evidence.manifest_path)?;
+    let manifest_bytes = read_locked_file(Path::new(&evidence.manifest_path))?;
     if hex::encode(Sha256::digest(&manifest_bytes)) != evidence.manifest_sha256 {
         return Err(BackupError::Changed(
             "a file was changed, added or removed".into(),
         ));
     }
     let sealed: BackupManifest = serde_json::from_slice(&manifest_bytes)?;
-    let mut present = read_export(directory)?;
+    let mut present = read_export(directory).map_err(|error| match error {
+        BackupError::InvalidRoot | BackupError::Io(_) => {
+            BackupError::Changed("a file was changed, added or removed".into())
+        }
+        error => error,
+    })?;
     present.retain(|f| f.relative_path != MANIFEST_NAME);
     let mut expected = sealed.files;
     present.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
@@ -133,6 +147,7 @@ fn read_export(root: &Path) -> Result<Vec<BackupFile>> {
 }
 
 fn collect_files(root: &Path, dir: &Path, out: &mut Vec<BackupFile>) -> Result<()> {
+    guard_root(dir, false)?;
     for entry in fs::read_dir(dir)? {
         if out.len() >= MAX_BACKUP_FILES {
             return Err(BackupError::PnpUtil(
@@ -149,7 +164,7 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<BackupFile>) -> Result<(
         if !ty.is_file() {
             continue;
         }
-        let bytes = fs::read(&path)?;
+        let bytes = read_locked_file(&path)?;
         let relative = path
             .strip_prefix(root)
             .map_err(|_| BackupError::InvalidRoot)?
@@ -162,6 +177,132 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<BackupFile>) -> Result<(
         });
     }
     Ok(())
+}
+
+/// Every directory from the volume root down to `path` is a real directory, never a link or a
+/// junction, created as needed when `create` (P84-04). Path-based on purpose: the backup root
+/// lives under `%ProgramData%\AetherCore`, which only SYSTEM, Administrators and the service can
+/// write (install-hardener), so nothing less privileged can race these checks. The NT-native
+/// anchored opens a 2026-10-04 branch added for that race needed new `windows` features (H6)
+/// and held other software's folders open; they defended nothing this DACL leaves open.
+fn guard_root(path: &Path, create: bool) -> Result<()> {
+    if !path.is_absolute()
+        || path.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+    {
+        return Err(BackupError::InvalidRoot);
+    }
+    let mut chain: Vec<&Path> = path.ancestors().collect();
+    chain.reverse();
+    for directory in chain {
+        if create && !directory.try_exists()? {
+            fs::create_dir(directory)?;
+        }
+        reject_link(directory)?;
+        if !fs::metadata(directory)?.is_dir() {
+            return Err(BackupError::InvalidRoot);
+        }
+    }
+    Ok(())
+}
+
+fn read_locked_file(path: &Path) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+        options.share_mode(1).custom_flags(0x0020_0000); // READ, OPEN_REPARSE_POINT; no writer/delete sharing.
+        let mut file = options.open(path)?;
+        if file.metadata()?.file_attributes() & 0x400 != 0 {
+            return Err(BackupError::InvalidRoot);
+        }
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    }
+    #[cfg(not(windows))]
+    {
+        let mut bytes = Vec::new();
+        options.open(path)?.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    }
+}
+
+#[cfg(any(windows, test))]
+fn export_into(
+    source_inf: &str,
+    destination: &Path,
+    capacity: impl FnOnce(&Path) -> Result<(u64, u64)>,
+    export: impl FnOnce(&Path) -> Result<()>,
+) -> Result<BackupEvidence> {
+    if !validate_oem_inf_name(source_inf) {
+        return Err(BackupError::InvalidInf);
+    }
+    guard_root(destination, true)?;
+    if destination.read_dir()?.next().is_some() {
+        return Err(BackupError::InvalidRoot);
+    }
+    let (required, available) = capacity(destination)?;
+    if required == 0 || available < required {
+        return Err(BackupError::PnpUtil(format!(
+            "insufficient export capacity: required {required} bytes, available {available} bytes"
+        )));
+    }
+    export(destination)?;
+    seal_export(source_inf, destination)
+}
+
+/// Bounded metadata-only footprint, with headroom for the export manifest and filesystem
+/// allocation. This is a preflight snapshot, not a reservation; export/readback still fail closed.
+#[cfg(any(windows, test))]
+fn package_footprint(root: &Path, allocation_unit: u64) -> Result<u64> {
+    if allocation_unit == 0 {
+        return Err(BackupError::InvalidRoot);
+    }
+    guard_root(root, false)?;
+    let mut pending = vec![root.to_path_buf()];
+    let mut entries = 0usize;
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    while let Some(dir) = pending.pop() {
+        guard_root(&dir, false)?;
+        for entry in fs::read_dir(dir)? {
+            entries += 1;
+            if entries > MAX_BACKUP_FILES {
+                return Err(BackupError::InvalidRoot);
+            }
+            let path = entry?.path();
+            reject_link(&path)?;
+            let metadata = fs::symlink_metadata(&path)?;
+            if metadata.is_dir() {
+                pending.push(path);
+            } else if metadata.is_file() {
+                files += 1;
+                let allocation = metadata
+                    .len()
+                    .div_ceil(allocation_unit)
+                    .checked_mul(allocation_unit)
+                    .ok_or(BackupError::InvalidRoot)?;
+                bytes = bytes
+                    .checked_add(allocation)
+                    .ok_or(BackupError::InvalidRoot)?;
+            } else {
+                return Err(BackupError::InvalidRoot);
+            }
+        }
+    }
+    if files == 0 {
+        return Err(BackupError::InvalidRoot);
+    }
+    bytes
+        .checked_add(1024 * 1024)
+        .ok_or(BackupError::InvalidRoot)
 }
 
 /// A symbolic link, or on Windows any reparse point (a junction included), is refused: it could
@@ -232,6 +373,56 @@ pub fn export_driver_package(_: &str, _: &Path) -> Result<BackupEvidence> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn insufficient_capacity_stops_the_export_before_the_command() {
+        let dir = fixture_path("capacity");
+        let called = std::cell::Cell::new(false);
+        let result = export_into(
+            "oem7.inf",
+            &dir,
+            |_| Ok((2, 1)),
+            |root| {
+                called.set(true);
+                fs::write(root.join("driver.inf"), b"[Version]")?;
+                Ok(())
+            },
+        );
+        let _ = fs::remove_dir_all(dir);
+        assert!(!called.get(), "a capacity deficit must not start PnPUtil");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn sufficient_capacity_exports_and_seals_real_fixture_files() {
+        let dir = fixture_path("capacity-ok");
+        let evidence = export_into(
+            "oem7.inf",
+            &dir,
+            |_| Ok((2, 2)),
+            |root| {
+                fs::write(root.join("driver.inf"), b"[Version]")?;
+                fs::write(root.join("driver.cat"), b"fixture")?;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(evidence.file_count, 2);
+        verify_export(&evidence).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn footprint_reads_actual_sizes_and_empty_packages_are_unmeasured() {
+        let dir = export_dir("footprint");
+        assert_eq!(package_footprint(&dir, 1).unwrap(), 1024 * 1024 + 14);
+        assert_eq!(package_footprint(&dir, 4096).unwrap(), 1024 * 1024 + 8192);
+        assert!(package_footprint(&dir, 0).is_err());
+        fs::remove_file(dir.join("oem7.inf")).unwrap();
+        fs::remove_file(dir.join("sub/driver.sys")).unwrap();
+        assert!(package_footprint(&dir, 1).is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn only_service_observed_oem_inf_names_are_accepted() {
         assert!(validate_oem_inf_name("oem42.inf"));
@@ -246,15 +437,20 @@ mod tests {
             assert!(!validate_oem_inf_name(bad), "{bad}");
         }
     }
+    fn fixture_path(name: &str) -> PathBuf {
+        fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(format!(
+                "aethercore-backup-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ))
+    }
     fn export_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "aethercore-backup-{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = fixture_path(name);
         fs::create_dir_all(dir.join("sub")).unwrap();
         fs::write(dir.join("oem7.inf"), b"[Version]").unwrap();
         fs::write(dir.join("sub").join("driver.sys"), b"bytes").unwrap();
@@ -310,6 +506,16 @@ mod tests {
     }
 
     #[test]
+    fn sealing_refuses_to_overwrite_an_existing_manifest() {
+        let dir = export_dir("manifest-collision");
+        let path = dir.join(MANIFEST_NAME);
+        fs::write(&path, b"untrusted preexisting file").unwrap();
+        assert!(seal_export("oem7.inf", &dir).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"untrusted preexisting file");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn rewriting_the_export_and_its_manifest_does_not_reseal_the_original_evidence() {
         let dir = export_dir("rewritten-manifest");
         let evidence = seal_export("oem7.inf", &dir).expect("sealed");
@@ -346,6 +552,27 @@ mod tests {
         assert!(verify_export(&evidence).is_err());
         let _ = fs::remove_file(&dir);
         let _ = fs::remove_dir_all(&moved);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn seal_and_verify_refuse_a_link_in_any_ancestor() {
+        let dir = export_dir("ancestor-link");
+        fs::write(dir.join("sub/child.inf"), b"[Version]").unwrap();
+        let evidence = seal_export("oem7.inf", &dir.join("sub")).unwrap();
+        let link = dir.with_extension("link");
+        std::os::unix::fs::symlink(&dir, &link).unwrap();
+        let nested = link.join("sub");
+        let mut changed = evidence;
+        changed.backup_directory = nested.to_string_lossy().into_owned();
+        changed.manifest_path = nested.join(MANIFEST_NAME).to_string_lossy().into_owned();
+        assert!(verify_export(&changed).is_err());
+        assert!(
+            seal_export("oem7.inf", &nested).is_err(),
+            "ancestor link must not be followed"
+        );
+        fs::remove_file(link).unwrap();
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

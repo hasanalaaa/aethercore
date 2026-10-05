@@ -1073,7 +1073,61 @@ mod tests {
             display_name: r"ACPI\ThermalZone\TZ00".into(),
             temperature_c: temperature,
             critical_c: critical,
+            temperature_decikelvin: temperature.map(|value| (value * 10 + 2_732) as u32),
+            critical_decikelvin: critical.map(|value| (value * 10 + 2_732) as u32),
+            coverage: aethercore_diagnostic_engine::measurements::Coverage {
+                source: "MSAcpi_ThermalZoneTemperature".into(),
+                observed_unix_ms: Some(1_000),
+                availability: aethercore_diagnostic_engine::measurements::Availability::Measured,
+                ..Default::default()
+            },
             ..Default::default()
+        }
+    }
+
+    #[test]
+    fn rounding_display_cannot_cross_the_firmware_trip_point() {
+        for (reading, should_trip) in [(3_731, false), (3_732, true), (3_733, true)] {
+            let mut sample = zone(Some(100), Some(100));
+            sample.temperature_decikelvin = Some(reading);
+            sample.critical_decikelvin = Some(3_732);
+            let facts = crate::normalize::diagnostics(&thermal_snapshot(vec![sample]), 1_000);
+            let trips = crate::rules::evaluate(&facts, 1_000)
+                .iter()
+                .any(|finding| finding.code == "THERMAL_TRIP_EXCEEDED");
+            assert_eq!(trips, should_trip, "exact decikelvin reading {reading}");
+        }
+        let mut legacy = zone(Some(120), Some(105));
+        legacy.temperature_decikelvin = None;
+        let facts = crate::normalize::diagnostics(&thermal_snapshot(vec![legacy]), 1_000);
+        assert!(
+            facts
+                .iter()
+                .all(|fact| fact.payload.kind_name() != "thermalZone")
+        );
+    }
+
+    #[test]
+    fn unavailable_or_unidentified_thermal_reading_is_not_current_evidence() {
+        use aethercore_diagnostic_engine::measurements::Availability;
+        for invalid in 0..7 {
+            let mut sample = zone(Some(120), Some(105));
+            match invalid {
+                0 => sample.coverage.observed_unix_ms = None,
+                1 => sample.coverage.observed_unix_ms = Some(1_001),
+                2 => sample.coverage.observed_unix_ms = Some(0),
+                3 => sample.coverage.availability = Availability::Failed,
+                4 => sample.coverage.availability = Availability::Unknown,
+                5 => sample.stable_id.clear(),
+                _ => sample.coverage.source.clear(),
+            }
+            let facts = crate::normalize::diagnostics(&thermal_snapshot(vec![sample]), 1_000);
+            assert!(
+                facts
+                    .iter()
+                    .all(|fact| fact.payload.kind_name() != "thermalZone"),
+                "invalid thermal observation {invalid} must not raise or resolve a finding"
+            );
         }
     }
 
