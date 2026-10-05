@@ -7,7 +7,7 @@ publish.workspace = true
 license.workspace = true
 
 [build-dependencies]
-tauri-build = { version = "=2.6.3", features = [] }
+tauri-build = { version = "=2.7.1", features = [] }
 
 [dependencies]
 aethercore-product-identity = { path = "../../crates/product-identity" }
@@ -23,7 +23,7 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-tauri = { version = "=2.11.6", features = [] }
+tauri = { version = "=2.12.1", features = [] }
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
