@@ -63,10 +63,11 @@ function Assert-ProtectedAcl([string]$Path,[bool]$DataAcl) {
         if ($users.Count -ne 0) { throw "Users must not have access to service state root: $Path" }
     } else {
         if ($users.Count -eq 0) { throw "Users read/execute ACE missing from install root: $Path" }
+        # Only bits that grant a change. Modify and FullControl also carry the read/execute bits,
+        # so masking with them failed every correctly hardened (RX) install; both contain Write.
         $danger = [System.Security.AccessControl.FileSystemRights]::Write -bor
-                  [System.Security.AccessControl.FileSystemRights]::Modify -bor
-                  [System.Security.AccessControl.FileSystemRights]::FullControl -bor
                   [System.Security.AccessControl.FileSystemRights]::Delete -bor
+                  [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
                   [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
                   [System.Security.AccessControl.FileSystemRights]::TakeOwnership
         foreach ($rule in $users) {

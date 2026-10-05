@@ -165,7 +165,8 @@ if (@($token.RestrictedSids).Count -ne 0) {
     throw "Maintenance service token unexpectedly contains restricting SIDs: $restricted"
 }
 
-$out = Join-Path $Root $OutputPath
+# verify-installer-security passes an absolute path; Join-Path would nest it under $Root.
+$out = if ([IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $Root $OutputPath }
 New-Item -ItemType Directory -Force (Split-Path $out -Parent) | Out-Null
 $evidence = [ordered]@{
     schema = 'aethercore.maintenance-service-token.v1'
