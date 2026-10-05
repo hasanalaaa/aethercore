@@ -319,7 +319,7 @@ class PromotionTests(unittest.TestCase):
 
     def owner_host(self, **overrides):
         doc=rc.read_json(self.lifecycle)
-        doc.update({'host':'owner-host-d33','service_running_at_end':True,
+        doc.update({'host':'owner-host-d33','service_running_at_end':True,'owner_data_restored':True,
                     'owner_backup':{'directory':'C:\\ProgramData\\AetherCore-owner-backup-20261004T000000Z','manifest_sha256':'c'*64,'files':3},
                     'steps':[{'name':n,'ok':True} for n in rc.LIFECYCLE + rc.OWNER_HOST_STEPS]})
         doc.update(overrides);rc.write_json(self.lifecycle,doc)
@@ -343,6 +343,7 @@ class PromotionTests(unittest.TestCase):
 
     def test_owner_host_requires_backup_running_service_and_its_steps(self):
         for overrides,message in (({'owner_backup':{}},'backup'),({'service_running_at_end':False},'running again'),
+                                  ({'owner_data_restored':False},'data was not restored'),
                                   ({'steps':[{'name':n,'ok':True} for n in rc.LIFECYCLE]},'lifecycle required steps')):
             with self.subTest(overrides=list(overrides)):
                 self.owner_host(**overrides)

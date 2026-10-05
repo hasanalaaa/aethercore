@@ -7,7 +7,7 @@ $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Lifecycle source did not parse.' }
 foreach ($name in @('Run-Process','Write-BlockedAcceptance','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart',
-        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostService')) {
+        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostData','Restore-OwnerHostService')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if (-not $definition) { if ($name -eq 'Invoke-InstalledAcceptanceWithRestart') { continue };throw "Actual hook missing: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))
@@ -178,10 +178,21 @@ try {
     Require ($processCalls.Count -eq $before) 'Ambiguous owner install ran an uninstaller.'
     $fixtureEntries=@($fixtureEntries[0]);$fixtureServicePresent=$true
     try { Remove-OwnerHostInstall;throw 'A remaining service was accepted as removed.' } catch { Require ($_.Exception.Message -match 'service already exists') 'Remaining service was not rejected.' }
+    # Every uninstall purges ProgramData\AetherCore (UNINSTALL.txt); the run must put the owner's data back.
+    $dataDir=$data;$ownerBackup=$backup;$ownerDataRestored=$false
+    Remove-Item (Join-Path $data 'settings.json');Set-Content (Join-Path $data 'db/state.sqlite') 'fresh database'
+    Set-Content (Join-Path $data 'db/state.sqlite-wal') 'fresh write-ahead log'
     $installed=$false;$bundle='fixture-rc.exe';$serviceRunningAtEnd=$false;$serviceCalls.Clear()
     Restore-OwnerHostService
     Require ($processCalls[-1].File -eq 'fixture-rc.exe' -and ($processCalls[-1].Arguments -join ',') -eq '/install,/quiet,/norestart' -and $installed) 'Owner service was not reinstalled from the accepted RC.'
-    Require (($serviceCalls -join ',') -eq 'Start,Running' -and $serviceRunningAtEnd) 'Owner service was not observed running at the end.'
+    Require (($serviceCalls -join ',') -eq 'Stop,Stopped,Start,Running' -and $serviceRunningAtEnd) 'Owner data was not restored from a stopped service before the service ran again.'
+    Require ($ownerDataRestored -and (Get-Content (Join-Path $data 'db/state.sqlite') -Raw).Trim() -eq 'owner database' -and (Test-Path (Join-Path $data 'settings.json'))) 'Owner data was not restored from the backup.'
+    Require (-not (Test-Path (Join-Path $data 'db/state.sqlite-wal'))) 'A fresh write-ahead log was left to replay over the restored database.'
+    Set-Content (Join-Path $backup.directory 'ProgramData-AetherCore/settings.json') 'tampered backup';$ownerDataRestored=$false
+    try { Restore-OwnerHostData;throw 'A restore that differs from the manifest was accepted.' } catch { Require ($_.Exception.Message -match 'differs from the backup') 'Wrong restore-mismatch rejection.' }
+    Require (-not $ownerDataRestored) 'A mismatched restore was recorded as restored.'
+    $ownerBackup=$null
+    try { Restore-OwnerHostData;throw 'Restore without a backup accepted.' } catch { Require ($_.Exception.Message -match 'no backup') 'Wrong missing-backup rejection.' }
     $OwnerHostAccepted=$false;$AcknowledgeDisposableMachine=$true
     # Execute the actual encoded shell with an exit-only fixture, never a product probe.
     # A child's explicit exit belongs to the called script; the observer needs that code.
@@ -202,5 +213,5 @@ try {
     Require ((Observe-FixtureExit $actualCommand) -eq 1) 'Actual observer shell lost the probe failure/pending exit.'
     Set-Content $packagedScript 'exit 0'
     Require ((Observe-FixtureExit $actualCommand) -eq 0) 'Actual observer shell changed a successful probe exit.'
-    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline, D32/D33 decisions, unsigned honesty, owner-host task switch/restart, protected owner backup, prior uninstall, service restore.'
+    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline, D32/D33 decisions, unsigned honesty, owner-host task switch/restart, protected owner backup, prior uninstall, owner data restore and manifest check, service restore.'
 } finally { Remove-Item $acceptanceRoot -Recurse -Force }

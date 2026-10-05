@@ -125,3 +125,12 @@ over temporary directories. Its controls cover:
 - reinstall and `Running` observation.
 
 It failed on the parent (`Assert-OwnerDecision` missing) and passes on the PC.
+
+## First real D33 run and its fixes (2026-10-05)
+
+The first owner-host run of the 0.1.12 D32 RC stopped at `installed-security-boundaries`. It found three defects that no fixture or earlier run had reached:
+- **DBT-P87-014.** The service-token verifier decoded every SID as ANSI garbage.
+- **DBT-P87-015.** The lifecycle expected data to survive a full uninstall.
+- **DBT-P87-013.** Removing the prior install purged the owner's data, and the restore only reinstalled the product.
+
+The backup is what kept the data. It was restored by hand and verified against its manifest (6 of 6 files), and the service reopened it. The owner-host restore now does this in every run, including after a failed step. The lifecycle evidence records `owner_data_restored`, and `rc-provenance` refuses owner-host evidence without it.

@@ -213,8 +213,28 @@ function Remove-OwnerHostInstall {
     elseif ($packages.Count -eq 1) { Run-Process msiexec.exe @('/x',$packages[0].PSChildName,'/qn','/norestart') 'Owner-host prior MSI uninstall' }
     Assert-CleanHost
 }
+function Restore-OwnerHostData {
+    # The prior-uninstall and every lifecycle uninstall run PurgeMachineData, so the owner's
+    # data exists only in the backup; it is mirrored back (dropping the fresh DB's -wal/-shm)
+    # from a stopped service and must match the manifest byte for byte.
+    if (-not $script:ownerBackup) { throw 'Owner data cannot be restored: no backup was taken.' }
+    Stop-OwnerHostService
+    $copy=Join-Path $script:ownerBackup.directory 'ProgramData-AetherCore'
+    if (Test-Path -LiteralPath $copy) {
+        & "$env:SystemRoot\System32\robocopy.exe" $copy $dataDir /MIR /COPY:DAT /DCOPY:DAT /R:0 /W:0 /NP /NFL /NDL /NJH /NJS | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "Owner data restore copy failed (robocopy $LASTEXITCODE)." }
+    }
+    foreach ($line in Get-Content -LiteralPath (Join-Path $script:ownerBackup.directory 'MANIFEST.sha256')) {
+        if (-not $line) { continue }
+        $hash,$name=$line -split '  ',2
+        $path=Join-Path $dataDir $name
+        if (-not (Test-Path -LiteralPath $path) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash) { throw "Restored owner data differs from the backup: $name" }
+    }
+    $script:ownerDataRestored=$true
+}
 function Restore-OwnerHostService {
     if (-not $script:installed) { Run-Process $bundle @('/install','/quiet','/norestart') 'Owner-host RC reinstall';$script:installed=$true;$script:activeBundle=$bundle }
+    Restore-OwnerHostData
     $controller=Get-Service -Name $service -ErrorAction Stop
     try {
         if ($controller.Status -ne 'Running') { $controller.Start() }
@@ -222,7 +242,7 @@ function Restore-OwnerHostService {
     } finally { $controller.Dispose() }
     $script:serviceRunningAtEnd=$true
 }
-$acceptanceStillRunning=$false;$serviceRunningAtEnd=$false;$ownerBackup=$null
+$acceptanceStillRunning=$false;$serviceRunningAtEnd=$false;$ownerBackup=$null;$ownerDataRestored=$false
 $sentinel=Join-Path $dataDir 'phase16-ga-preserve.sentinel';$installed=$false;$activeBundle=$bundle
 try{
     if ($OwnerHostAccepted) {
@@ -238,6 +258,7 @@ try{
         Run-Process msiexec.exe @('/fa',"`"$msi`"",'/qn','/norestart') 'MSI repair'
         & (Join-Path $PSScriptRoot 'verify-installer-security.ps1') -MsiPath $msi -VerifyInstalledStateOnly -RequireSignedArtifacts:$signedArtifacts -ExpectedPayloadDirectory (Join-Path $release 'payload')
         if($LASTEXITCODE -ne 0){throw 'Post-repair state verifier failed.'}
+        if(-not(Test-Path $sentinel)){throw 'ProgramData preservation sentinel was removed by MSI repair.'}
     }
     if ($InstalledAcceptanceScript) {
         foreach ($locale in @('en','ar')) {
@@ -248,8 +269,8 @@ try{
     Run-Step 'uninstall-clean-state' {
         if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service remains after Burn uninstall.'}
         if(Test-Path (Join-Path $installDir 'aethercore-desktop.exe')){throw 'Desktop binary remains after Burn uninstall.'}
-        if(-not(Test-Path $sentinel)){throw 'ProgramData preservation sentinel was removed.'}
-        Remove-Item $sentinel -Force
+        # release/UNINSTALL.txt tells users a full uninstall deletes ALL machine data (PurgeMachineData).
+        if(Test-Path $dataDir){throw "Machine data remains after Burn uninstall: $dataDir"}
     }
     if ($PreviousBundlePath) {
         Run-Step 'signed-upgrade-preserves-owner-data' {
@@ -264,18 +285,19 @@ try{
             Run-Process $bundle @('/uninstall','/quiet','/norestart') 'Updated RC uninstall';$script:installed=$false
             if (Get-Service $service -ErrorAction SilentlyContinue) { throw 'Service remains after updated RC uninstall.' }
             if (Test-Path (Join-Path $installDir 'aethercore-desktop.exe')) { throw 'Updated desktop remains after uninstall.' }
-            if ((Get-FileHash $sentinel -Algorithm SHA256).Hash -ne $preservedHash) { throw 'Updated uninstall changed owner data.' }
-            Remove-Item $sentinel -Force
+            if (Test-Path $dataDir) { throw "Machine data remains after updated RC uninstall: $dataDir" }
         }
     }
     if ($OwnerHostAccepted) { Run-Step 'owner-host-service-restored' { Restore-OwnerHostService } }
 } finally {
     if ($OwnerHostAccepted) {
         # The owner keeps a running AetherCore even when a step failed; nothing is uninstalled here.
-        if (-not $serviceRunningAtEnd -and -not $acceptanceStillRunning) { try { Restore-OwnerHostService } catch { Write-Warning "Owner-host service restore failed: $_ Backup: $($ownerBackup.directory)" } }
+        if (-not $serviceRunningAtEnd -and -not $acceptanceStillRunning -and $ownerBackup) { try { Restore-OwnerHostService } catch { Write-Warning "Owner-host restore failed: $_ The owner's data is in $($ownerBackup.directory)" } }
+        # No backup means nothing was uninstalled yet; only the service the backup stopped is started again.
+        elseif (-not $ownerBackup -and (Get-Service $service -ErrorAction SilentlyContinue)) { try { Start-Service $service } catch { Write-Warning "Owner-host service start failed: $_" } }
     } elseif($installed -and -not $acceptanceStillRunning){try{Run-Process $activeBundle @('/uninstall','/quiet','/norestart') 'cleanup Burn uninstall'}catch{Write-Warning $_}}
     if ($acceptanceStillRunning) { Write-Warning 'Blocked test worker remains active on the isolated VM; service uninstall was not started.' }
 }
-$doc=[ordered]@{schema='aethercore.ga-installer-lifecycle.v1';ok=$true;host=$hostMode;owner_backup=$ownerBackup;service_running_at_end=$serviceRunningAtEnd;signing=$(if($UnsignedByDecisionD32){'unsigned by owner decision D32'}else{'authenticode'});version=$version;source_commit=$meta.source_commit;bundle_sha256=(Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant();previous_source_commit=$ExpectedPreviousSourceSha;previous_bundle_sha256=$ExpectedPreviousBundleSha256;windows_build=[Environment]::OSVersion.Version.Build;architecture=$env:PROCESSOR_ARCHITECTURE;executed_utc=[DateTimeOffset]::UtcNow.ToString('o');steps=$steps}
+$doc=[ordered]@{schema='aethercore.ga-installer-lifecycle.v1';ok=$true;host=$hostMode;owner_backup=$ownerBackup;owner_data_restored=$ownerDataRestored;service_running_at_end=$serviceRunningAtEnd;signing=$(if($UnsignedByDecisionD32){'unsigned by owner decision D32'}else{'authenticode'});version=$version;source_commit=$meta.source_commit;bundle_sha256=(Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant();previous_source_commit=$ExpectedPreviousSourceSha;previous_bundle_sha256=$ExpectedPreviousBundleSha256;windows_build=[Environment]::OSVersion.Version.Build;architecture=$env:PROCESSOR_ARCHITECTURE;executed_utc=[DateTimeOffset]::UtcNow.ToString('o');steps=$steps}
 $doc|ConvertTo-Json -Depth 6|Set-Content $out -Encoding utf8
 Write-Host "Phase 16 Burn/MSI lifecycle passed. Evidence: $out" -ForegroundColor Green
