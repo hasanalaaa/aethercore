@@ -379,6 +379,10 @@ jobs:
           rustup override set 1.97.1
       - name: Linux telemetry provider clippy
         run: cargo clippy -p aethercore-performance-telemetry --lib --locked -- -D warnings
+      # P49-005: clippy only compiled the Linux provider; its tests (the measured CPU window among
+      # them) ran nowhere. The crate's own tests are the whole of this step.
+      - name: Linux telemetry provider tests
+        run: cargo test --locked -p aethercore-performance-telemetry
 
       - name: Native Unix frame deadlines and live session delivery
         run: |

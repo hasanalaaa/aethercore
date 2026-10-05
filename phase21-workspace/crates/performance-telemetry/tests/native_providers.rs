@@ -11,10 +11,49 @@ use aethercore_performance_telemetry::SyntheticPerfPlatform;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use aethercore_performance_telemetry::{PerfPlatform, PerfSnapshot};
 
+/// P49-005: a Unix provider publishes the window its CPU tick delta spans, not the cadence it was
+/// asked for. The first tick spans its own in-tick pair (the 120 ms sleep is inside it); a later
+/// tick spans everything since the previous tick's last reading, so the pause between calls is
+/// inside it. `carried_floor_ms` is the smallest window the second call can have beyond that pause.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn assert_window_follows_the_ticks(platform: impl PerfPlatform, carried_floor_ms: u32) {
+    let started = std::time::Instant::now();
+    let first = platform.sample(Duration::from_secs(5));
+    let first_outer_ms = started.elapsed().as_millis();
+    assert_eq!(first.interval_ms, 5_000, "the cadence is what was asked");
+    let first_window = first
+        .measured_window_ms
+        .expect("a measured in-tick pair publishes its window");
+    assert!(
+        first_window >= 120 && u128::from(first_window) <= first_outer_ms,
+        "first tick: {first_window} ms must be its own pair, not the 5000 ms cadence (tick took {first_outer_ms} ms)"
+    );
+
+    let pause = Duration::from_millis(400);
+    std::thread::sleep(pause);
+    let second = platform.sample(Duration::from_secs(5));
+    let all_outer_ms = started.elapsed().as_millis();
+    let second_window = second
+        .measured_window_ms
+        .expect("a carried tick publishes the window since the previous reading");
+    assert!(
+        second_window >= pause.as_millis() as u32 + carried_floor_ms
+            && u128::from(second_window) <= all_outer_ms,
+        "carried tick: {second_window} ms must span the {} ms pause (floor {carried_floor_ms}), inside {all_outer_ms} ms",
+        pause.as_millis()
+    );
+}
+
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
     use aethercore_performance_telemetry::MacosPerfPlatform;
+
+    #[test]
+    fn macos_publishes_the_window_its_cpu_ticks_span() {
+        // A carried tick still waits its 120 ms in-tick pair before reading.
+        assert_window_follows_the_ticks(MacosPerfPlatform::new(), 120);
+    }
 
     /// Injected-counter matrix for the pure tick-delta math (mirrors proc(5) semantics).
     fn ticks(
@@ -136,6 +175,12 @@ mod macos {
 mod linux {
     use super::*;
     use aethercore_performance_telemetry::LinuxPerfPlatform;
+
+    #[test]
+    fn linux_publishes_the_window_its_cpu_ticks_span() {
+        // A carried Linux tick reads once and does not wait in-tick.
+        assert_window_follows_the_ticks(LinuxPerfPlatform::new(), 0);
+    }
 
     #[test]
     fn real_linux_sample_is_normalized() {
