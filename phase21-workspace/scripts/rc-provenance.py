@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Same-byte signed RC acceptance/promotion gate. No signing, rebuilding or publishing.
+"""Same-byte RC acceptance/promotion gate. No signing, rebuilding or publishing.
+
+An RC is either Authenticode-signed by the pinned signer, or unsigned under owner decision D32
+(`--unsigned-d32`), whose bytes must really be unsigned so no receipt can be read as a signature.
 
 Receipt hashes come from the protected signing job; acceptance hashes come from
 its dependent acceptance job. Neither is read back from the untrusted package.
@@ -24,6 +27,10 @@ SYMPTOMS = ('p76-hardware-owned-text','p76-performance-provider-labels','p76-cle
             'p76-care-timeline-persistence','p76-repair-assessment-terminal','p76-care-eligibility-explanation')
 LIFECYCLE = ('burn-install','installed-security-boundaries','program-data-preservation-sentinel',
              'repair-closes-acl-drift','burn-uninstall','uninstall-clean-state','signed-upgrade-preserves-owner-data')
+# D33: the owner's own PC. Its data is backed up and its prior install removed before, and the service runs after.
+OWNER_HOST_STEPS = ('owner-host-backup','owner-host-prior-uninstall','owner-host-service-restored')
+HOSTS = ('disposable-vm','owner-host-d33')
+D32 = 'unsigned by owner decision D32'
 PAYLOAD = ('aethercore-desktop', 'aethercore-maintenance-service', 'aethercore-consent-broker',
            'aethercore-update-broker', 'aethercore-install-hardener', 'aetherctl')
 SURFACE_PAGES = {'hardware':'hardware','deep-scan':'deepScan','repair':'repair',
@@ -71,6 +78,10 @@ def hash_lines(root, path):
     require(entries, 'empty hash inventory')
     return entries
 
+def owner_decision(source, ident):
+    text = (source / 'docs/roadmap/DECISIONS.md').read_text(encoding='utf-8')
+    require(re.search(rf'^\| {ident} \|', text, re.M), f'owner decision {ident} is not recorded')
+
 def signed_paths(version):
     require(re.fullmatch(r'\d+\.\d+\.\d+', version), 'invalid release version')
     return [f'payload/{name}.exe' for name in PAYLOAD] + [f'artifacts/AetherCore-{version}-x64.msi', f'artifacts/AetherCoreSetup-{version}-x64.exe']
@@ -104,7 +115,10 @@ def signature(path):
         raise Rejected('native signature verification failed') from error
 
 def assert_signed(path, thumb):
-    require(re.fullmatch(r'[0-9A-F]{40}', thumb), 'configured signer is missing/invalid')
+    if thumb == D32:
+        require(signature(path).get('status') == 'NotSigned', f'D32 artifact is not unsigned: {path.name}')
+        return
+    require(isinstance(thumb, str) and re.fullmatch(r'[0-9A-F]{40}', thumb), 'configured signer is missing/invalid')
     observed = signature(path)
     require(observed.get('status') == 'Valid', f'invalid signature: {path.name}')
     require((observed.get('thumbprint') or '').upper() == thumb, f'wrong signer: {path.name}')
@@ -119,30 +133,42 @@ def capture_unsigned(release, paths):
         record[name] = digest(safe_path(release, name))
     write_json(file, record)
 
+def signing_metadata(meta, thumb):
+    if thumb == D32:
+        require(meta.get('signing_required') is False and meta.get('signing_decision') == 'D32' and not meta.get('signer_thumbprint'), 'metadata is not a D32 unsigned RC')
+    else:
+        require(meta.get('signing_required') is True, 'unsigned metadata without owner decision D32')
+
 def create(release, source, sha, thumb):
+    if thumb == D32: owner_decision(source, 'D32')
     meta = read_json(release / 'RELEASE-METADATA.json')
-    require(meta.get('source_commit') == sha and meta.get('signing_required') is True and meta.get('dependency_baseline_approved') is True, 'unsigned or wrong-source metadata')
-    require(meta.get('signer_thumbprint', '').upper() == thumb, 'metadata signer mismatch')
+    require(meta.get('source_commit') == sha and meta.get('dependency_baseline_approved') is True, 'wrong-source metadata')
+    signing_metadata(meta, thumb)
+    if thumb != D32: require((meta.get('signer_thumbprint') or '').upper() == thumb, 'metadata signer mismatch')
     names = signed_paths(meta['version'])
-    unsigned = read_json(release / 'RC-UNSIGNED.json')
-    require(set(unsigned) == set(names), 'omitted/extra unsigned signing transition')
+    unsigned = read_json(release / 'RC-UNSIGNED.json') if thumb != D32 else None
+    require(thumb == D32 or set(unsigned) == set(names), 'omitted/extra unsigned signing transition')
     inventory = hash_lines(release, release / 'SHA256SUMS.txt')
     require(set(names + ['acceptance/care_smoke.exe','acceptance/p87-installed-acceptance.ps1','RELEASE-METADATA.json']).issubset(inventory), 'required RC bytes omitted from inventory')
     require(digest(release / 'acceptance/p87-installed-acceptance.ps1') == digest(source / 'scripts/p87-installed-acceptance.ps1'), 'acceptance script differs from sealed source')
     artifacts = []
     for name in names:
         path = safe_path(release, name); assert_signed(path, thumb)
+        if thumb == D32:
+            artifacts.append({'path':name, 'sha256':digest(path)}); continue
         require(re.fullmatch(r'[0-9a-f]{64}', unsigned[name]) and unsigned[name] != digest(path), 'invalid unsigned signing transition')
         artifacts.append({'path':name, 'unsigned_sha256':unsigned[name], 'signed_sha256':digest(path)})
     receipt = {'schema':'aethercore.rc-provenance.v1', 'source_commit':sha, 'source_inputs':snapshot(source,sha),
-               'signer_thumbprint':thumb, 'version':meta['version'], 'artifacts':artifacts,
+               'signing':D32 if thumb == D32 else 'authenticode',
+               'signer_thumbprint':None if thumb == D32 else thumb, 'version':meta['version'], 'artifacts':artifacts,
                'acceptance_script_sha256':digest(source / 'scripts/p87-installed-acceptance.ps1'),
                'inventory_sha256':digest(release / 'SHA256SUMS.txt')}
     write_json(release / 'RC-PROVENANCE.json', receipt)
-    (release / 'RC-UNSIGNED.json').unlink()
+    if thumb != D32: (release / 'RC-UNSIGNED.json').unlink()
     return receipt
 
 def verify(release, source, sha, thumb, receipt_hash, bundle_hash):
+    if thumb == D32: owner_decision(source if source is not None else Path(__file__).resolve().parents[1], 'D32')
     require(digest(release / 'RC-PROVENANCE.json') == receipt_hash, 'receipt hash mismatch')
     receipt = read_json(release / 'RC-PROVENANCE.json')
     require(receipt.get('schema') == 'aethercore.rc-provenance.v1' and receipt.get('source_commit') == sha, 'receipt source SHA mismatch')
@@ -150,11 +176,12 @@ def verify(release, source, sha, thumb, receipt_hash, bundle_hash):
         require(receipt.get('source_inputs') == snapshot(source,sha), 'source/freeze snapshot mismatch')
     else:
         require(set(receipt.get('source_inputs',{})) == set(INPUTS) and all(re.fullmatch(r'[0-9a-f]{64}',v) for v in receipt['source_inputs'].values()), 'baseline source/freeze receipt omitted')
-    require(receipt.get('signer_thumbprint') == thumb, 'receipt signer mismatch')
+    require(receipt.get('signing') == (D32 if thumb == D32 else 'authenticode') and receipt.get('signer_thumbprint') == (None if thumb == D32 else thumb), 'receipt signer mismatch')
     require(digest(release / 'SHA256SUMS.txt') == receipt.get('inventory_sha256'), 'inventory hash mismatch')
     inventory = hash_lines(release, release / 'SHA256SUMS.txt')
     meta = read_json(release / 'RELEASE-METADATA.json')
-    require(meta.get('source_commit') == sha and meta.get('signing_required') is True and meta.get('dependency_baseline_approved') is True and meta.get('version') == receipt.get('version'), 'metadata source/signing mismatch')
+    require(meta.get('source_commit') == sha and meta.get('dependency_baseline_approved') is True and meta.get('version') == receipt.get('version'), 'metadata source/signing mismatch')
+    signing_metadata(meta, thumb)
     names = signed_paths(receipt['version'])
     artifacts = receipt.get('artifacts', [])
     require(len(artifacts) == len(names) and {p['path'] for p in artifacts} == set(names), 'required artifact signing receipts omitted/duplicated')
@@ -164,6 +191,9 @@ def verify(release, source, sha, thumb, receipt_hash, bundle_hash):
         require(receipt['acceptance_script_sha256'] == digest(source / 'scripts/p87-installed-acceptance.ps1'), 'acceptance script differs from sealed source')
     for artifact in artifacts:
         name = artifact['path']; path = safe_path(release,name)
+        if thumb == D32:
+            require(set(artifact) == {'path','sha256'} and digest(path) == artifact['sha256'] == inventory[name], f'D32 artifact hash mismatch: {name}')
+            assert_signed(path,thumb); continue
         unsigned = artifact.get('unsigned_sha256','')
         require(re.fullmatch(r'[0-9a-f]{64}',unsigned) and unsigned != artifact.get('signed_sha256'), 'omitted/invalid unsigned signing transition')
         require(digest(path) == artifact.get('signed_sha256') == inventory[name], f'signed artifact hash mismatch: {name}')
@@ -201,18 +231,29 @@ def validate_surfaces(directory, doc, locale):
                 with path.open('rb') as stream:
                     require(stream.read(8) == b'\x89PNG\r\n\x1a\n', 'surface screenshot is not PNG evidence')
 
-def validate_evidence(directory, evidence, sha, bundle_hash, version):
+def validate_evidence(directory, evidence, sha, bundle_hash, version, source):
     require(set(evidence) == {'lifecycle.json','installed-en.json','installed-ar.json'}, 'required installed/lifecycle evidence omitted')
     for name, expected in evidence.items():
         require(digest(safe_path(directory,name)) == expected, 'acceptance evidence hash mismatch')
     life=read_json(directory / 'lifecycle.json')
     require(life.get('schema') == 'aethercore.ga-installer-lifecycle.v1' and life.get('ok') is True and life.get('version') == version and life.get('source_commit') == sha and life.get('bundle_sha256') == bundle_hash, 'lifecycle evidence failed')
     require(re.fullmatch(r'[0-9a-f]{40,64}',life.get('previous_source_commit','')) and life['previous_source_commit'] != sha and re.fullmatch(r'[0-9a-f]{64}',life.get('previous_bundle_sha256','')) and life['previous_bundle_sha256'] != bundle_hash, 'signed upgrade baseline evidence omitted')
+    host=life.get('host')
+    require(host in HOSTS, 'lifecycle host is not declared')
+    required=LIFECYCLE
+    if host == 'owner-host-d33':
+        owner_decision(source, 'D33')
+        backup=life.get('owner_backup',{})
+        require(isinstance(backup,dict) and isinstance(backup.get('directory'),str) and backup['directory']
+                and re.fullmatch(r'[0-9a-f]{64}',backup.get('manifest_sha256','')) and isinstance(backup.get('files'),int),
+                'owner-host backup evidence omitted')
+        require(life.get('service_running_at_end') is True, 'owner-host service is not running again')
+        required=LIFECYCLE + OWNER_HOST_STEPS
     steps=life.get('steps',[])
-    require(len(steps) == len(LIFECYCLE) and {p.get('name') for p in steps} == set(LIFECYCLE) and all(p.get('ok') is True for p in steps), 'lifecycle required steps failed/omitted')
+    require(len(steps) == len(required) and {p.get('name') for p in steps} == set(required) and all(p.get('ok') is True for p in steps), 'lifecycle required steps failed/omitted')
     for locale in ('en','ar'):
         doc=read_json(directory / ('installed-' + locale + '.json'))
-        require(doc.get('schema') == 'aethercore.p87-installed-acceptance.v1' and doc.get('source_commit') == sha and doc.get('bundle_sha256') == bundle_hash and doc.get('locale') == locale, 'installed acceptance identity mismatch')
+        require(doc.get('schema') == 'aethercore.p87-installed-acceptance.v1' and doc.get('source_commit') == sha and doc.get('bundle_sha256') == bundle_hash and doc.get('locale') == locale and doc.get('host') == host, 'installed acceptance identity mismatch')
         require(doc.get('ok') is True and 'blocked_reason' not in doc and doc.get('desktop_closed') is True
                 and doc.get('restart_pending') is False and re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',doc.get('care_run_id','')),
                 'installed acceptance failed or remains incomplete')
@@ -239,9 +280,9 @@ def validate_evidence(directory, evidence, sha, bundle_hash, version):
 def accept(release, source, sha, thumb, receipt_hash, bundle_hash, directory):
     receipt=verify(release,source,sha,thumb,receipt_hash,bundle_hash)
     evidence={name:digest(directory / name) for name in ('lifecycle.json','installed-en.json','installed-ar.json')}
-    validate_evidence(directory,evidence,sha,bundle_hash,receipt['version'])
+    validate_evidence(directory,evidence,sha,bundle_hash,receipt['version'],source)
     return {'schema':'aethercore.rc-acceptance.v1','source_commit':sha,'bundle_sha256':bundle_hash,
-            'provenance_sha256':receipt_hash,'ok':True,'evidence':evidence}
+            'provenance_sha256':receipt_hash,'signing':receipt['signing'],'ok':True,'evidence':evidence}
 
 def promote(release, source, sha, thumb, receipt_hash, bundle_hash, acceptance, acceptance_hash):
     receipt=verify(release,source,sha,thumb,receipt_hash,bundle_hash)
@@ -250,16 +291,19 @@ def promote(release, source, sha, thumb, receipt_hash, bundle_hash, acceptance, 
     require(accepted.get('schema') == 'aethercore.rc-acceptance.v1' and accepted.get('ok') is True and
             accepted.get('source_commit') == sha and accepted.get('bundle_sha256') == bundle_hash and
             accepted.get('provenance_sha256') == receipt_hash, 'acceptance is absent/failed or belongs to different bytes')
-    validate_evidence(acceptance.parent,accepted.get('evidence',{}),sha,bundle_hash,receipt['version'])
+    validate_evidence(acceptance.parent,accepted.get('evidence',{}),sha,bundle_hash,receipt['version'],source)
     return {'schema':'aethercore.rc-promotion.v1', 'source_commit':sha, 'bundle_sha256':bundle_hash,
-            'provenance_sha256':receipt_hash, 'acceptance_sha256':acceptance_hash, 'rc_eligible':True, 'ga':False}
+            'provenance_sha256':receipt_hash, 'acceptance_sha256':acceptance_hash, 'signing':receipt['signing'],
+            'rc_eligible':True, 'ga':False}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command',choices=['capture-unsigned','create','verify','verify-baseline','accept','promote'])
     parser.add_argument('--release-root',type=Path,required=True)
     parser.add_argument('--source-root',type=Path,default=Path(__file__).resolve().parents[1])
-    parser.add_argument('--expected-sha'); parser.add_argument('--thumbprint')
+    parser.add_argument('--expected-sha')
+    signing=parser.add_mutually_exclusive_group()
+    signing.add_argument('--thumbprint'); signing.add_argument('--unsigned-d32',action='store_true')
     parser.add_argument('--receipt-sha256'); parser.add_argument('--bundle-sha256')
     parser.add_argument('--evidence-directory',type=Path)
     parser.add_argument('--acceptance',type=Path); parser.add_argument('--acceptance-sha256')
@@ -267,9 +311,10 @@ def main():
     args=parser.parse_args()
     try:
         if args.command == 'capture-unsigned': capture_unsigned(args.release_root,args.paths); return 0
-        common=(args.release_root,args.source_root,args.expected_sha,args.thumbprint)
+        thumb=D32 if args.unsigned_d32 else args.thumbprint
+        common=(args.release_root,args.source_root,args.expected_sha,thumb)
         if args.command == 'create': value=create(*common)
-        elif args.command == 'verify-baseline': value=verify(args.release_root,None,args.expected_sha,args.thumbprint,args.receipt_sha256,args.bundle_sha256)
+        elif args.command == 'verify-baseline': value=verify(args.release_root,None,args.expected_sha,thumb,args.receipt_sha256,args.bundle_sha256)
         elif args.command == 'verify': value=verify(*common,args.receipt_sha256,args.bundle_sha256)
         elif args.command == 'accept': value=accept(*common,args.receipt_sha256,args.bundle_sha256,args.evidence_directory)
         else: value=promote(*common,args.receipt_sha256,args.bundle_sha256,args.acceptance,args.acceptance_sha256)
