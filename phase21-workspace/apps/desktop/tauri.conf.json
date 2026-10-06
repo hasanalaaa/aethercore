@@ -20,6 +20,7 @@
         "fullscreen": false,
         "decorations": true,
         "transparent": true,
+        "noRedirectionBitmap": true,
         "center": true,
         "theme": "Dark",
         "backgroundColor": "#00000000",
