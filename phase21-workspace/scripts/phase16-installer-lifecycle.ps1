@@ -78,6 +78,9 @@ function Write-BlockedAcceptance([string]$Path,[string]$Locale,[string]$Reason) 
     [ordered]@{schema='aethercore.p87-installed-acceptance.v1';source_commit=$ExpectedSourceSha;bundle_sha256=$ExpectedBundleSha256;locale=$Locale;ordinary_user=$false;cases=@();disposition='blocked';reason=$Reason} |
         ConvertTo-Json -Depth 6 | Set-Content $Path -Encoding utf8
 }
+function Resolve-OwnerAccount([string]$Sid) {
+    ([Security.Principal.SecurityIdentifier]$Sid).Translate([Security.Principal.NTAccount]).Value
+}
 function Invoke-OrdinaryInstalledAcceptance([string]$Locale,[string]$VerifyCareRunId='',[string]$ExpectedOwnerSid='',[switch]$AllowRestartPending,[DateTimeOffset]$ObservationDeadline=[DateTimeOffset]::UtcNow.AddSeconds(660)) {
     $output=Join-Path $acceptanceRoot "installed-$Locale.json"
     $owners=@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | ForEach-Object {
@@ -102,7 +105,9 @@ function Invoke-OrdinaryInstalledAcceptance([string]$Locale,[string]$VerifyCareR
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $name='AetherCore-RC-Acceptance-' + [Guid]::NewGuid().ToString('N')
     $action=New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument "-NoProfile -NonInteractive -EncodedCommand $encoded" -WorkingDirectory $release
-    $principal=New-ScheduledTaskPrincipal -UserId $owners[0] -LogonType Interactive -RunLevel Limited
+    # Task Scheduler refuses a bare SID for an Interactive principal ("(10,8):UserId", owner PC
+    # 2026-10-06); the account name of the same SID registers. The SID stays the identity checked.
+    $principal=New-ScheduledTaskPrincipal -UserId (Resolve-OwnerAccount $owners[0]) -LogonType Interactive -RunLevel Limited
     # No forced stop: the probe bounds its work; observer timeout is not worker completion.
     $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero)
     $completed=$false
