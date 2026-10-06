@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Lane 1 step 0: the `tested` job may let a push to main skip the windows job only when the same SHA
-already passed its own windows job in a pull request of this repository. Every other outcome -
-nothing found, a failed or skipped windows job, a fork, a different SHA, a lookup that errors - must
-leave `skip=false`, so the windows job runs. `gh` is replaced by a stub that answers from the scenario."""
+"""Lane 1 step 0: the `tested` job may let a push to main skip the `windows` and `windows-candidate` jobs
+only when the same SHA already passed BOTH in a pull request of this repository. Every other outcome -
+nothing found, a failed or skipped job, a pre-split run with only `windows`, a fork, a different SHA, a
+lookup that errors - must leave `skip=false`, so the jobs run. `gh` is replaced by a stub that answers
+from the scenario."""
 import json
 import os
 import subprocess
