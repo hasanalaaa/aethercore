@@ -763,18 +763,14 @@ checks["phase7_dpi_multi_monitor"] = {
     "ok": all(marker in window_ux_ts for marker in ["scaleFactor()", "onScaleChanged", "payload.scaleFactor", "--ac-display-scale"]) and window_config.get("minWidth", 9999) <= 900 and window_config.get("minHeight", 9999) <= 560,
 }
 effects = window_config.get("windowEffects", {}).get("effects", [])
-# `noRedirectionBitmap` is NOT in this assertion, and adding it to the config would
-# break the build rather than satisfy it. `tauri-utils 2.9.3` - the pinned version,
-# `Cargo.lock` - defines no such field on `WindowConfig`, and that struct carries
-# `#[serde(deny_unknown_fields)]` (`config.rs:1916`), so the key would fail config
-# deserialization. The underlying flag exists one layer down, as
-# `tao::platform::windows::WindowBuilderExtWindows::with_no_redirection_bitmap`, and
-# Tauri does not expose it. `PHASE_7_DELIVERABLES.md:30` claims it is enabled; it is
-# not, and cannot be from configuration. Tracked as `DBT-P63-003`. `DBT-P61-001`.
+# `noRedirectionBitmap` (WS_EX_NOREDIRECTIONBITMAP) is part of the assertion: the
+# transparent Mica window is created without a redirection bitmap, which avoids the
+# white flash before the webview paints. Tauri exposes the key on `WindowConfig` from
+# `tauri-utils 2.10`; on the older pinned 2.9.3 it did not exist and the struct's
+# `deny_unknown_fields` made the key a config error (`DBT-P63-003`, `DBT-P61-001`).
 checks["phase7_mica_desktop_shell"] = {
-    "ok": window_config.get("transparent") is True and "mica" in effects and "acrylic" not in effects and window_config.get("scrollBarStyle") == "fluentOverlay",
+    "ok": window_config.get("transparent") is True and "mica" in effects and "acrylic" not in effects and window_config.get("scrollBarStyle") == "fluentOverlay" and window_config.get("noRedirectionBitmap") is True,
     "effects": effects,
-    "note": "noRedirectionBitmap is not expressible in tauri 2.9.3 window config; see DBT-P63-003.",
 }
 checks["phase7_motion_budget"] = {
     "ok": "prefers-reduced-motion" in phase7_css and "transition:transform" not in phase7_css.replace(" ", "") and "transition:all" not in phase7_css.replace(" ", ""),

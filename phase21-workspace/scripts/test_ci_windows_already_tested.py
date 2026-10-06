@@ -53,8 +53,9 @@ def pr_run(run_id: int, sha: str = SHA, repo: str = REPO) -> dict:
     return {"id": run_id, "head_sha": sha, "head_repository": {"full_name": repo}}
 
 
-def windows(conclusion: str) -> list:
-    return [{"name": "deny-check", "conclusion": "success"}, {"name": "windows", "conclusion": conclusion}]
+def windows(conclusion: str, candidate: str = "success") -> list:
+    return [{"name": "deny-check", "conclusion": "success"}, {"name": "windows", "conclusion": conclusion},
+            {"name": "windows-candidate", "conclusion": candidate}]
 
 
 CASES = [
@@ -62,6 +63,9 @@ CASES = [
     ("a later run qualifies after an earlier one did not", {"runs": [pr_run(1), pr_run(2)], "jobs": {"1": windows("failure"), "2": windows("success")}}, "skip=true"),
     ("no run for the SHA", {"runs": []}, "skip=false"),
     ("windows failed in the run", {"runs": [pr_run(1)], "jobs": {"1": windows("failure")}}, "skip=false"),
+    ("the candidate job failed in the run", {"runs": [pr_run(1)], "jobs": {"1": windows("success", "failure")}}, "skip=false"),
+    ("the candidate job was skipped in the run", {"runs": [pr_run(1)], "jobs": {"1": windows("success", "skipped")}}, "skip=false"),
+    ("a run from before the split has only the old windows job", {"runs": [pr_run(1)], "jobs": {"1": [{"name": "windows", "conclusion": "success"}]}}, "skip=false"),
     ("windows was skipped in the run", {"runs": [pr_run(1)], "jobs": {"1": windows("skipped")}}, "skip=false"),
     ("the run has no windows job", {"runs": [pr_run(1)], "jobs": {"1": [{"name": "deny-check", "conclusion": "success"}]}}, "skip=false"),
     ("the run came from a fork", {"runs": [pr_run(1, repo="someone/fork")], "jobs": {"1": windows("success")}}, "skip=false"),
