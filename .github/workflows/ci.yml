@@ -285,8 +285,6 @@ jobs:
             Copy-Item (Join-Path assets/models $entry.fileName) $cached
             Write-Host "kept $cached"
           }
-      - name: Rust unit/integration tests
-        run: cargo test --locked --workspace
       - name: UI production build
         run: pnpm --dir apps/ui build
       - name: Locked Rust workspace check
@@ -312,18 +310,137 @@ jobs:
       - name: Prerequisite transfer bounds and Microsoft signature fixtures
         shell: pwsh
         run: ./scripts/test-prerequisite-downloads.ps1
+      # Last, and `always()`, so a run that dies at step 18 still leaves the build
+      # tree behind for the next one. Skipped on an exact key hit -- there is
+      # nothing new to store when Cargo.lock has not moved.
+      - name: Save Rust build cache
+        if: always() && runner.environment != 'self-hosted' && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            phase21-workspace/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+  # Measured on runs 37294649134 and 37300914874: the single `windows` job took 44-47 minutes, and 21
+  # of them were the unsigned packaging candidate (build-release.ps1 16.6 min + the artifact upload
+  # 4-6 min), which needs none of the other steps' output: it checks out, installs the same pinned
+  # tools, fetches the same embedded model and builds from the committed tree. It is its own job so
+  # it overlaps the tests and gates on a second runner. Same trigger, same runner choice, same
+  # `tested` skip rule and same step commands as before; `CI required` needs it, so a red or missing
+  # candidate still fails the run. Each runner keeps its own persistent build tree (no shared
+  # CARGO_TARGET_DIR: cargo's build lock would serialize the two jobs).
+  windows-candidate:
+    needs: tested
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
+    runs-on: ${{ (vars.WINDOWS_RUNNER == 'self' && github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))) && fromJSON('["self-hosted","Windows","X64","aether-win"]') || 'windows-2025' }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Persistent build tree (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $dir = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) 'cache\target'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          "CARGO_TARGET_DIR=$dir" | Add-Content -Path $env:GITHUB_ENV
+          Write-Host "CARGO_TARGET_DIR=$dir"
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
+          rustup override set 1.97.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.16.0
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        shell: pwsh
+        run: |
+          Set-Location $env:RUNNER_TEMP
+          if ((Get-Command pnpm -ErrorAction SilentlyContinue) -and ((pnpm --version) -eq '11.22.0')) {
+            Write-Host 'pnpm 11.22.0 is already installed'
+          } else {
+            npm install --global pnpm@11.22.0
+            if ($LASTEXITCODE -ne 0) { throw 'pnpm install failed' }
+          }
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore Windows ADK Deployment Tools
+        id: adk-cache
+        if: runner.environment != 'self-hosted'
+        uses: actions/cache/restore@v6
+        with:
+          path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
+          key: ${{ runner.os }}-adk-deploytools-${{ hashFiles('.github/actions/install-windows-adk/action.yml') }}
+      - uses: ./.github/actions/install-windows-adk
+      - name: Save Windows ADK Deployment Tools
+        if: runner.environment != 'self-hosted' && steps.adk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools
+          key: ${{ steps.adk-cache.outputs.cache-primary-key }}
+      # The seal is the first thing every job checks: what is built below is these bytes.
+      - name: Delivered source seal
+        run: python scripts/source_seal.py
+      # A separate key from the `windows` job's tree: both jobs may run on GitHub-hosted runners
+      # (Dependabot, forks) and a shared key would have one of them lose the save.
+      - name: Restore Rust build cache
+        id: cargo-cache
+        if: runner.environment != 'self-hosted'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            phase21-workspace/target
+          key: ${{ runner.os }}-cargo-candidate-1.97.1-${{ hashFiles('phase21-workspace/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-candidate-1.97.1-
+      - name: Restore the embedded model from the persistent cache (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $entry = (Get-Content assets/models/models.manifest.json -Raw | ConvertFrom-Json).artifacts[0]
+          $cached = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) "cache\models\$($entry.fileName)"
+          if (Test-Path $cached) {
+            Copy-Item $cached (Join-Path assets/models $entry.fileName) -Force
+            Write-Host "restored $cached"
+          } else {
+            Write-Host "no cached model at $cached; the fetch step downloads it"
+          }
+      - uses: ./.github/actions/fetch-embedded-model
+      - name: Keep the verified embedded model (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $entry = (Get-Content assets/models/models.manifest.json -Raw | ConvertFrom-Json).artifacts[0]
+          $cache = Join-Path (Split-Path (Split-Path $env:RUNNER_WORKSPACE)) 'cache\models'
+          $cached = Join-Path $cache $entry.fileName
+          if (-not (Test-Path $cached)) {
+            New-Item -ItemType Directory -Force -Path $cache | Out-Null
+            Copy-Item (Join-Path assets/models $entry.fileName) $cached
+            Write-Host "kept $cached"
+          }
       - name: Build unsigned production packaging candidate
         shell: pwsh
         run: ./scripts/build-release.ps1 -SkipOnlineSupplyChain
+      # The 2.17 GB candidate (MSI + setup EXE, each carrying the 1.1 GB model) has no consumer in
+      # this repository and took 4-6 minutes of the owner's home uplink on every pull request. The
+      # build above still runs on every pull request, so the packaging gate is unchanged; the
+      # artifact is kept for a push to main and for a manual dispatch.
       - uses: actions/upload-artifact@v7.0.1
+        if: github.event_name != 'pull_request'
         with:
           name: aethercore-enterprise-converged-unsigned-candidate
           path: phase21-workspace/out/release/**
           if-no-files-found: error
           retention-days: 14
-      # Last, and `always()`, so a run that dies at step 18 still leaves the build
-      # tree behind for the next one. Skipped on an exact key hit -- there is
-      # nothing new to store when Cargo.lock has not moved.
       - name: Save Rust build cache
         if: always() && runner.environment != 'self-hosted' && steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -483,7 +600,7 @@ jobs:
   required:
     name: CI required
     runs-on: ubuntu-latest
-    needs: [tested, windows, gate-self-tests, linux-provider-clippy, deny-check, ui-leak-gate, fast-ui]
+    needs: [tested, windows, windows-candidate, gate-self-tests, linux-provider-clippy, deny-check, ui-leak-gate, fast-ui]
     if: ${{ always() }}
     defaults:
       run:
@@ -492,6 +609,7 @@ jobs:
       - name: Every mandatory gate succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
-        # `windows` may be skipped only when `tested` proved, for this SHA, that its pull request
-        # already passed it (lane 1 step 0); `tested` itself is skipped for everything but a push.
-        run: jq -e 'length == 7 and (.tested.result | IN("success", "skipped")) and (.windows.result == "success" or (.windows.result == "skipped" and .tested.result == "success" and .tested.outputs.skip == "true")) and all(del(.tested, .windows)[]; .result == "success")' <<< "$NEEDS"
+        # `windows` and `windows-candidate` may be skipped only when `tested` proved, for this SHA, that
+        # its pull request already passed both (lane 1 step 0); `tested` itself is skipped for everything
+        # but a push.
+        run: jq -e '.tested as $t | length == 8 and ($t.result | IN("success", "skipped")) and all(.windows, ."windows-candidate"; .result == "success" or (.result == "skipped" and $t.result == "success" and $t.outputs.skip == "true")) and all(del(.tested, .windows, ."windows-candidate")[]; .result == "success")' <<< "$NEEDS"
