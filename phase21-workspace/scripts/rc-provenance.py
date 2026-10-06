@@ -248,6 +248,7 @@ def validate_evidence(directory, evidence, sha, bundle_hash, version, source):
                 and re.fullmatch(r'[0-9a-f]{64}',backup.get('manifest_sha256','')) and isinstance(backup.get('files'),int),
                 'owner-host backup evidence omitted')
         require(life.get('service_running_at_end') is True, 'owner-host service is not running again')
+        require(life.get('owner_data_restored') is True, "owner-host data was not restored from the backup")
         required=LIFECYCLE + OWNER_HOST_STEPS
     steps=life.get('steps',[])
     require(len(steps) == len(required) and {p.get('name') for p in steps} == set(required) and all(p.get('ok') is True for p in steps), 'lifecycle required steps failed/omitted')

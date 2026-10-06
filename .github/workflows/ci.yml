@@ -212,6 +212,7 @@ jobs:
           ./scripts/p87-installed-acceptance.ps1 -SelfTest
           ./scripts/test-p87-installed-acceptance.ps1
           ./scripts/test-rc-lifecycle-hook.ps1
+          ./scripts/test-maintenance-service-token.ps1
           python scripts/test_wua_servicing_preflight.py
           if ($LASTEXITCODE -ne 0) { throw 'WUA servicing preflight controls failed.' }
           python scripts/test_boot_collection_flow.py
