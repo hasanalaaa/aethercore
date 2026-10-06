@@ -63,14 +63,18 @@ function Assert-ProtectedAcl([string]$Path,[bool]$DataAcl) {
         if ($users.Count -ne 0) { throw "Users must not have access to service state root: $Path" }
     } else {
         if ($users.Count -eq 0) { throw "Users read/execute ACE missing from install root: $Path" }
-        $danger = [System.Security.AccessControl.FileSystemRights]::Write -bor
-                  [System.Security.AccessControl.FileSystemRights]::Modify -bor
-                  [System.Security.AccessControl.FileSystemRights]::FullControl -bor
+        # Only bits that grant a change. Modify and FullControl also carry the read/execute bits,
+        # so masking with them failed every correctly hardened (RX) install; both contain Write.
+        $danger = [long]([System.Security.AccessControl.FileSystemRights]::Write -bor
                   [System.Security.AccessControl.FileSystemRights]::Delete -bor
+                  [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
                   [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
-                  [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+                  [System.Security.AccessControl.FileSystemRights]::TakeOwnership)
+        # An inherit-only generic ACE (A;OICIIO;GW;;;BU) leaves the root at RX but hands every new
+        # file Users write; GENERIC_WRITE and GENERIC_ALL are not FileSystemRights members.
+        $danger = $danger -bor 0x40000000 -bor 0x10000000
         foreach ($rule in $users) {
-            if (($rule.Rights -band $danger) -ne 0) { throw "Users have write/modify rights on install root: $Path" }
+            if (([long]$rule.Rights -band $danger) -ne 0) { throw "Users have write/modify rights on install root: $Path" }
         }
     }
 }

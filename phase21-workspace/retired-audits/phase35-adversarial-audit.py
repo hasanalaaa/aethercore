@@ -21,7 +21,7 @@ def gate(name: str, condition: bool, detail: str = "") -> None:
 # and treats ANY new file in it as a source mutation, so a `__pycache__`
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "scripts"))  # retired in P76/DBT-P75-077: the shared reader stays in scripts/
 from gate_reader import SourceReader  # noqa: E402
 
 text = SourceReader(ROOT).read
