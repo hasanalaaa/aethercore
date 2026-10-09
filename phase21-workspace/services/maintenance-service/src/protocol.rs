@@ -1787,3 +1787,35 @@ mod measurement_tests {
         assert!(!unknown.has_is_virtual && unplugged.has_is_virtual && unplugged.is_virtual);
     }
 }
+
+#[cfg(test)]
+mod repair_wire_tests {
+    use super::*;
+    use aethercore_system_repair::RepairAssessmentState;
+
+    /// D34: what the installed acceptance reads off the wire. An unavailable provider reaches the
+    /// client as a check's own `result_code` inside a Ready snapshot (not as a failed assessment),
+    /// and a cancelled snapshot keeps the check measured before the stop.
+    #[test]
+    fn an_unavailable_provider_reaches_the_wire_as_a_check_result_not_a_failure() {
+        let unavailable = RepairCheck {
+            id: "winre-state".into(),
+            result_code: "WinReUnavailable".into(),
+            ..RepairCheck::default()
+        };
+        for state in [
+            RepairAssessmentState::Ready,
+            RepairAssessmentState::Cancelled,
+        ] {
+            let wire = repair_assessment_proto(RepairAssessment {
+                state,
+                checks: vec![unavailable.clone()],
+                ..RepairAssessment::default()
+            });
+            assert_eq!(wire.state, format!("{state:?}"));
+            assert!(wire.error_message.is_empty());
+            let codes: Vec<_> = wire.checks.iter().map(|c| c.result_code.as_str()).collect();
+            assert_eq!(codes, ["WinReUnavailable"], "{state:?}");
+        }
+    }
+}

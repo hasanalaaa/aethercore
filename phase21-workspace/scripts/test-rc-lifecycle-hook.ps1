@@ -6,8 +6,8 @@ $source=Join-Path $PSScriptRoot 'phase16-installer-lifecycle.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Lifecycle source did not parse.' }
-foreach ($name in @('Run-Process','Write-BlockedAcceptance','Resolve-OwnerAccount','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart',
-        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostData','Restore-OwnerHostService','Complete-OwnerHost')) {
+foreach ($name in @('Run-Process','Write-BlockedAcceptance','Resolve-OwnerAccount','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart','Invoke-AllInstalledAcceptance',
+        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostData','Restore-OwnerHostService','Complete-OwnerHost','Assert-NoAetherCoreRegistration')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if (-not $definition) { if ($name -eq 'Invoke-InstalledAcceptanceWithRestart') { continue };throw "Actual hook missing: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))
@@ -20,7 +20,7 @@ New-Item -ItemType Directory $acceptanceRoot | Out-Null
 $ExpectedSourceSha='a'*40;$ExpectedBundleSha256='b'*64
 $release=$acceptanceRoot;$packagedScript=Join-Path $acceptanceRoot ('fixture-probe' + '.ps1')
 Set-Content $packagedScript '# temporary fixture; never executed'
-$fixtureOwners=@();$fixtureStartFails=$false;$fixtureTaskExit=0;$fixtureOwnershipReleased=$true
+$fixtureOwners=@();$fixtureRunId='care-1791560738005';$fixtureStartFails=$false;$fixtureTaskExit=0;$fixtureOwnershipReleased=$true
 $registered=0;$unregistered=0;$principalObserved=$null;$restartFixture=$false;$fixtureSid='S-1-5-21-1-2-3-1001';$fixtureOwnerChanges=$false;$probeCalls=0;$serviceCalls=[Collections.Generic.List[string]]::new();$taskCommands=[Collections.Generic.List[string]]::new()
 function Get-CimInstance { param($Filter) @($fixtureOwners) }
 function Invoke-CimMethod { param($InputObject,$MethodName) @{ReturnValue=0;Sid=$fixtureSid} }
@@ -36,7 +36,7 @@ function Start-ScheduledTask { param($TaskName,$ErrorAction)
     $receipt=@{worker_ownership_released=$fixtureOwnershipReleased}
     if ($restartFixture) {
         $script:probeCalls++
-        $receipt=@{worker_ownership_released=$fixtureOwnershipReleased;desktop_closed=$true;source_commit=$ExpectedSourceSha;bundle_sha256=$ExpectedBundleSha256;locale='en';read_only=$false;ordinary_user=$true;token=@{sid='S-1-5-21-1-2-3-1001';elevated=$false};care_run_id='11111111-2222-4333-8444-555555555555';restart_pending=($probeCalls -eq 1);cases=@(@{id='p76-care-timeline-persistence';checks=@{reconnect=$true;restart=($probeCalls -gt 1)}})}
+        $receipt=@{worker_ownership_released=$fixtureOwnershipReleased;desktop_closed=$true;source_commit=$ExpectedSourceSha;bundle_sha256=$ExpectedBundleSha256;locale='en';read_only=$false;ordinary_user=$true;token=@{sid='S-1-5-21-1-2-3-1001';elevated=$false};care_run_id=$fixtureRunId;restart_pending=($probeCalls -eq 1);cases=@(@{id='p76-care-timeline-persistence';checks=@{reconnect=$true;restart=($probeCalls -gt 1)}})}
         $script:fixtureTaskExit=$(if ($probeCalls -eq 1) { 1 } else { 0 })
     }
     $receipt|ConvertTo-Json -Depth 8|Set-Content $output
@@ -100,21 +100,45 @@ try {
     }
     Require ($acceptanceStillRunning -and $registered -eq 2 -and $unregistered -eq 1) 'Potentially active task ownership was released after failure.'
     $fixtureStartFails=$false;$fixtureTaskExit=1
-    try { Invoke-OrdinaryInstalledAcceptance 'ar';throw 'Failed task accepted.' } catch {
-        Require ($_.Exception.Message -match 'did not produce successful evidence') 'Wrong task exit rejection.'
-    }
+    # A failed symptom whose probe drained its workers is reported, not thrown: the run goes on (D33 run 7).
+    $failedRun=Invoke-OrdinaryInstalledAcceptance 'ar'
+    Require ($failedRun.Passed -is [bool] -and -not $failedRun.Passed -and $failedRun.Receipt) 'A completed failed task was not reported as failed with its evidence.'
     Require (-not $acceptanceStillRunning -and $unregistered -eq 2) 'Actually completed failed task remained owned.'
     $fixtureTaskExit=0;$fixtureOwnershipReleased=$false
     try { Invoke-OrdinaryInstalledAcceptance 'en';throw 'Active nested worker accepted.' } catch {
         Require ($_.Exception.Message -match 'nested worker ownership') 'Wrong nested-worker rejection.'
     }
     Require ($acceptanceStillRunning -and $unregistered -eq 3) 'Completed task allowed service cleanup while nested worker remained active.'
+    # After the updated RC uninstall nothing may stay registered, or the next owner-host run refuses.
+    $fixtureEntries=@()
+    Assert-NoAetherCoreRegistration
+    $fixtureEntries=@([pscustomobject]@{DisplayName='AetherCore';BundleCachePath='C:\fixture\setup.exe'})
+    try { Assert-NoAetherCoreRegistration;throw 'Leftover registration accepted.' } catch { Require ($_.Exception.Message -match 'still registered') 'Wrong leftover-registration rejection.' }
+    $fixtureEntries=@()
+    # The actual locale loop: a failed English run still lets Arabic run, and both outcomes are returned.
+    & {
+        $script:localesRun=[Collections.Generic.List[string]]::new()
+        function Invoke-InstalledAcceptanceWithRestart([string]$Locale) { $script:localesRun.Add($Locale); return ($Locale -ne 'en') }
+        $failedLocales=@(Invoke-AllInstalledAcceptance)
+        Require (($localesRun -join ',') -eq 'en,ar' -and ($failedLocales -join ',') -eq 'en') 'A failed English run stopped Arabic, or a failure was lost.'
+        function Invoke-InstalledAcceptanceWithRestart([string]$Locale) { $script:localesRun.Add($Locale); throw 'nested worker ownership retained' }
+        $localesRun.Clear()
+        try { Invoke-AllInstalledAcceptance;throw 'Unsafe failure continued.' } catch { Require ($_.Exception.Message -match 'nested worker') 'Wrong unsafe-failure rejection.' }
+        Require (($localesRun -join ',') -eq 'en') 'An unsafe failure did not stop the run.'
+    }
     $fixtureOwnershipReleased=$true;$restartFixture=$true;$probeCalls=0
     $AcknowledgeDisposableMachine=$true;$installed=$true;$service='AetherCoreMaintenance'
     Invoke-InstalledAcceptanceWithRestart 'en'
     Require ($probeCalls -eq 2 -and ($serviceCalls -join ',') -eq 'Stop,Stopped,Start,Running') 'Same-run service restart flow did not execute.'
     Require ($principalObserved.RunLevel -eq 'Limited') 'Verification was elevated.'
-    Require ($taskCommands[-2] -notmatch 'VerifyCareRunId' -and $taskCommands[-1] -match "-VerifyCareRunId '11111111-2222-4333-8444-555555555555'") 'Actual verification task arguments lost the same Care UUID.'
+    Require ($taskCommands[-2] -notmatch 'VerifyCareRunId' -and $taskCommands[-1] -match "-VerifyCareRunId 'care-1791560738005'") 'Actual verification task arguments lost the same Care run id.'
+    # The service issues care-<milliseconds> (owner PC run 5); any other identity is not that run.
+    $fixtureRunId='ff0a7cd0-87cf-4152-9b98-326687fc634a';$serviceCalls.Clear();$probeCalls=0
+    try { Invoke-InstalledAcceptanceWithRestart 'en';throw 'Foreign run identity accepted.' } catch {
+        Require ($_.Exception.Message -match 'same-run reconnect receipt') 'Wrong foreign run identity rejection.'
+    }
+    Require ($serviceCalls.Count -eq 0 -and $probeCalls -eq 1) 'Service restarted for a foreign run identity.'
+    $fixtureRunId='care-1791560738005'
     $installed=$false;$serviceCalls.Clear();$probeCalls=0
     try { Invoke-InstalledAcceptanceWithRestart 'en';throw 'Unowned service restart accepted.' } catch {
         Require ($_.Exception.Message -match 'isolated installed service') 'Wrong unowned-service rejection.'
