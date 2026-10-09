@@ -5,6 +5,9 @@ is left out. For what the release is and is not, read `RELEASE-NOTES-0.1.12.md` 
 
 ## What you receive
 
+This note is for someone installing the unsigned release on a Windows PC. Sections 1 and 3 to 5 need only
+PowerShell; section 2 is for developers or reviewers who also have the source and Python.
+
 The release folder (`out/release/0.1.12`, `scripts/build-release.ps1`) holds:
 
 | file | what it is |
@@ -39,7 +42,7 @@ folder as the files, so matching it proves the download is intact, not that the 
 owner built. To detect a swapped folder, compare the setup bundle's hash against a copy you received
 from the owner by another route.
 
-## 2. Full verification (needs the source and Python)
+## 2. Full verification (optional; needs the source and Python)
 
 `scripts/rc-provenance.py verify` checks the receipt, the inventory, every hash and the unsigned status
 together. It runs from a checkout of the release's source commit (`source_commit` in
@@ -63,7 +66,8 @@ Back up first. `C:\ProgramData\AetherCore` holds your operation journal, scans, 
 local signing key, and **every full uninstall deletes it**: the installer runs `PurgeMachineData`
 (`release/UNINSTALL.txt`, `installer/wix/Product.wxs`).
 
-- A **major upgrade** is built not to purge it: `PurgeMachineData` is conditioned on `NOT
+- A **major upgrade** (installing the new version over the old one, without uninstalling first) is built
+  not to purge it: `PurgeMachineData` is conditioned on `NOT
   UPGRADINGPRODUCTCODE` (`installer/wix/Product.wxs`), and the lifecycle test checks that machine data
   survives an MSI repair and a major upgrade (`DBT-P87-015`). Whether an in-place upgrade from 0.1.11 was
   run on a real machine for this release is not stated in the repository.

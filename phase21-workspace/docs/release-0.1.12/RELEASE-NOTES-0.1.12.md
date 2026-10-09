@@ -4,6 +4,10 @@ Draft written 2026-10-06, refreshed 2026-10-09 against `main` `0ca0d233`. Every 
 repository; anything the repository does not say is left out. This is the **first release, unsigned by
 owner decision D32**, and it is not declared GA (see "Signing").
 
+Two terms used throughout: a **decision** (D32, D33) is a recorded choice by the owner, in
+`docs/roadmap/DECISIONS.md`; a **ledger row** (`DBT-...`) is one entry in `docs/LEDGER.md`, the project's
+single list of known defects and limits, each with its status and evidence.
+
 ## What it is
 
 A Windows maintenance and diagnostics app that works locally. After installation it needs no internet,
@@ -14,8 +18,8 @@ no account, no licence server and has no telemetry (`docs/LOCAL_ONLY.md`). It ha
 - the `AetherCoreMaintenance` Windows service, which does the privileged work;
 - `aetherctl`, a command-line tool.
 
-The installed acceptance probe covers six surfaces: hardware, deep scan, repair, Care, timeline and
-the assistant (`scripts/rc-provenance.py`, `SURFACE_PAGES`). On-device insights come from an embedded
+The installed acceptance probe (the automated check run on an installed copy) covers six screens of the
+app: hardware, deep scan, repair, Care (the one-click care run), timeline and the assistant (`scripts/rc-provenance.py`, `SURFACE_PAGES`). On-device insights come from an embedded
 Qwen2.5-1.5B model, with a rule-based fallback when the model does not fit its time budget (`README.md`;
 `DBT-P62-004`).
 
@@ -32,8 +36,8 @@ What it will and will not do to your PC (`docs/PRODUCT_CONTRACT.md`):
 ## Signing: unsigned, and what you will see
 
 The first release is **unsigned** (owner decision D32, `docs/roadmap/DECISIONS.md`). No code-signing
-certificate was bought or used, so Windows SmartScreen and "unknown publisher" warnings are expected and
-were accepted. Every receipt says `signing: unsigned by owner decision D32` and `ga: false`
+certificate was bought or used, so Windows SmartScreen and "unknown publisher" warnings are
+expected and were accepted. Every receipt says `signing: unsigned by owner decision D32` and `ga: false`
 (`docs/phase87/P87-RELEASE-PROVENANCE.md`). Because the files carry no signature, check their SHA-256
 before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
 
@@ -44,7 +48,8 @@ before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
 - CI is green on `main`, including the Windows job and the packaging candidate.
 - The embedded model's generation tests passed 67 of 67 times on the project's three Windows CI runners
   (`DBT-P62-004`).
-- The first four installed acceptance runs on the owner's own Windows 11 PC (owner decision D33) each found
+- The first four installed acceptance runs (decision D33: the release is installed and tried on the owner's
+  own Windows 11 PC, with a protected backup of its data first and a restore after) each found
   a real defect, and each is fixed on `main`: `DBT-P87-013` to `DBT-P87-020`. Among them, one run removed
   the prior install and deleted the owner's data, which the protected backup then restored, hash by hash;
   the run now restores it in every owner-host run (`DBT-P87-013`). Those rows still read `SOURCE FIXED`
