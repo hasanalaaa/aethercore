@@ -194,4 +194,11 @@ Both receipts show `worker_ownership_released=true` and no `owner_locale_restore
 - the rest of the P87-09 matrix: stock WindowsTemp ACL versus split token, a pre-created or locked parent, VC++ runtime absent, ARM64, recovery/media, and an independent no-egress capture at idle;
 - the three DBT-P86-006 measurements: Narrator/keyboard focus, in-flight cancellation latency, and a socket trace;
 - SmartScreen: the lifecycle installs local files without Mark-of-the-Web, so no SmartScreen prompt was shown or observed.
+- the deferred-failure path of DBT-P87-025, because no symptom failed;
+- a provider observed unavailable, recorded under D34;
+- an upgrade from a build older than the guard, such as v0.1.11-rc.1 (`ba9973bd`). That upgrade is expected to purge machine data and was not run;
+- any hardware beyond the owner PC (i7-14700K, 31.69 GiB; the DBT-P86-005 matrix);
+- a signed install or upgrade, declined by D32.
+
+Every other open ledger row is unaffected by this run.
 
