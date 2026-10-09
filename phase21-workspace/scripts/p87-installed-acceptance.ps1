@@ -336,7 +336,7 @@ try {
             # D34: a healthy owner PC has no unavailable provider to observe, and a full assessment
             # outlasts the budget. Name it as not observed; never claim it.
             $doc.cases[4].checks['unavailable_provider_owner_decision']='D34'
-            $doc.cases[4].reason='Progress and terminal observed; no provider was unavailable on the owner host, which is not claimed (owner decision D34).'
+            $doc.cases[4].reason='Progress and terminal observed. Unavailable provider: not observed on the owner''s healthy machine, by owner decision D34.'
             $doc.cases[4].disposition='passed'
         } elseif (-not $unavailable -or -not $progressObserved) { $doc.cases[4].reason='Terminal/cancellation observed; progress or unavailable-provider fixture was not exercised.' }
     }

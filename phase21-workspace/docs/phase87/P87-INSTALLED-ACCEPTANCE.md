@@ -159,5 +159,5 @@ Run 6 (RC at `febcc01b`) passed five of the six symptoms in English:
 - hardware, performance, cleanup and the Care no-op;
 - Care persistence: the same run `care-1791564077214` survived an independent reconnect and a service restart.
 
-Repair observed real progress and a terminal state, but no unavailable provider: the owner PC is healthy, and a full assessment outlasts the probe budget. Under D34 (`DECISIONS.md`), on the owner host only, that check is recorded as not observed. It is never claimed, and acceptance and promotion list it under `not_observed` (DBT-P87-023). The lifecycle restored the owner's data automatically. Arabic and the upgrade had not run yet.
+Repair observed real progress and a terminal state, but no unavailable provider: the owner PC is healthy, and a full assessment outlasts the probe budget. Under D34 (`DECISIONS.md`), on the owner host only, that check reads "not observed on the owner's healthy machine, by owner decision D34". It never reads passed, and acceptance and promotion list it under `not_observed`. The path itself is covered on Windows in CI by the system-repair `bounded.rs` and `winre.rs` tests and the probe's Case 4 fixture named in DBT-P87-023. The lifecycle restored the owner's data automatically. Arabic and the upgrade had not run yet.
 
