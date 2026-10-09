@@ -1,6 +1,6 @@
 # Installing the unsigned AetherCore 0.1.12
 
-Draft written 2026-10-06, refreshed 2026-10-09 against `main` `0ca0d233`. Sources are cited; what the repository does not say
+Draft written 2026-10-06, refreshed 2026-10-09 against `main` `2a0d797a`. Sources are cited; what the repository does not say
 is left out. For what the release is and is not, read `RELEASE-NOTES-0.1.12.md` first.
 
 ## What you receive
@@ -67,10 +67,18 @@ local signing key, and **every full uninstall deletes it**: the installer runs `
 (`release/UNINSTALL.txt`, `installer/wix/Product.wxs`).
 
 - A **major upgrade** (installing the new version over the old one, without uninstalling first) is built
-  not to purge it: `PurgeMachineData` is conditioned on `NOT
+  not to purge it, **but only from a build that already has that protection** (see the warning below): `PurgeMachineData` is conditioned on `NOT
   UPGRADINGPRODUCTCODE` (`installer/wix/Product.wxs`), and the lifecycle test checks that machine data
   survives an MSI repair and a major upgrade (`DBT-P87-015`). Whether an in-place upgrade from 0.1.11 was
   run on a real machine for this release is not stated in the repository.
+- **Upgrading from `v0.1.11-rc.1` (`ba9973bd`, 2026-09-09) deletes your data.** The protection is the
+  `NOT UPGRADINGPRODUCTCODE` condition on `PurgeMachineData`, added in `a013de59` (2026-09-26,
+  `DBT-P74-001`). Windows Installer removes the old product with the *old* package's own rules, and
+  `v0.1.11-rc.1`'s rule has no such condition (`installer/wix/Product.wxs`, line 344 at that tag). That
+  consequence is reasoned from how Windows Installer works and from that file; it was not run on a real
+  upgrade from `rc.1`. Back up first. The upgrade check in the acceptance run starts from the 0.1.11
+  build `578e9cd4` (2026-10-05), which has the condition (bundle `AetherCoreSetup-0.1.11-x64.exe`, SHA-256
+  `0a3f66837025f33a002ba480256794f839e7ba88e7649c7934e7b9b9d6b9e0d2`); its result is run 7's.
 - **Removing the old version first does delete the data.** The one real transition measured, the owner's
   own PC on 2026-10-05, removed 0.1.11 and the database fell from 2,445,312 bytes to a fresh 4,096; the
   protected backup taken first brought back all 6 files and the service reopened them (`DBT-P87-013`).

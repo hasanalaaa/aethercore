@@ -1,6 +1,6 @@
 # AetherCore 0.1.12 — release notes
 
-Draft written 2026-10-06, refreshed 2026-10-09 against `main` `0ca0d233`. Every statement below cites a file in this
+Draft written 2026-10-06, refreshed 2026-10-09 against `main` `2a0d797a`. Every statement below cites a file in this
 repository; anything the repository does not say is left out. This is the **first release, unsigned by
 owner decision D32**, and it is not declared GA (see "Signing").
 
@@ -48,14 +48,16 @@ before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
 - CI is green on `main`, including the Windows job and the packaging candidate.
 - The embedded model's generation tests passed 67 of 67 times on the project's three Windows CI runners
   (`DBT-P62-004`).
-- The first four installed acceptance runs (decision D33: the release is installed and tried on the owner's
-  own Windows 11 PC, with a protected backup of its data first and a restore after) each found
-  a real defect, and each is fixed on `main`: `DBT-P87-013` to `DBT-P87-020`. Among them, one run removed
-  the prior install and deleted the owner's data, which the protected backup then restored, hash by hash;
-  the run now restores it in every owner-host run (`DBT-P87-013`). Those rows still read `SOURCE FIXED`
-  in the ledger: they close with the final acceptance result, not before.
-- The result of the fifth installed acceptance run was not available when this was refreshed, so it
-  is not stated here.
+- Six installed acceptance runs on the owner's own Windows 11 PC (decision D33: the release is installed and
+  tried on the owner's own PC, with a protected backup of its data first and a restore after) found and fixed,
+  in order, `DBT-P87-013` to `DBT-P87-026`. By the ledger's own titles, one of them is a defect in the product
+  itself (the desktop and the update broker carried no UAC execution level, `DBT-P87-018`); the rest are in
+  the lifecycle harness, the installed-state checks and the acceptance probe. One run removed the prior
+  install and deleted the owner's data, which the protected backup then restored, hash by hash
+  (`DBT-P87-013`). Run 6 passed five of the six English symptoms. Those rows still read `SOURCE FIXED` in
+  the ledger: they close with the final acceptance result, not before.
+- The result of the seventh installed acceptance run (Arabic, the service restart, and the upgrade over
+  0.1.11) was not available when this was refreshed, so it is not stated here.
 
 **Not measured, or limited** (accepted, or open with the row):
 
@@ -66,18 +68,20 @@ before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
 | Hardware matrix | Only a high-end PC (Core i7-14700K, 31.69 GiB) was measured; low-memory and mid-range PCs were **not run** | `DBT-P86-005` |
 | Narrator and focus | Native focus order, Narrator and live cancellation latency were not measured on an installed build | `DBT-P86-006` |
 | Real DISM/SFC stop, CBS attribution, WinRE | The code is on `main` with CI green; the real stop and attribution need an isolated VM; WinRE usability is reported as Unknown | `DBT-P85-001`..`005` |
+| Unavailable provider in the repair check | On the owner's healthy PC no provider was unavailable, so that part of the check was not observed. The check passed on real progress and a declared terminal state; the probe cancels the assessment at its first progress, because a full assessment outlasts the probe's 300 s budget. Recorded as "not observed on the owner's healthy machine" and never claimed | `DBT-P87-023` (accepted by owner decision D34) |
 | Driver search inside the service | The abortable Windows Update search was not measured in the installed service's own context | `DBT-P84-006` |
 
-## The 16 open ledger rows, grouped
+## The 17 open ledger rows, grouped
 
-(`docs/LEDGER.md` §1; count by its own rule: 242 rows, 16 open, 2 malformed.)
+(`docs/LEDGER.md` §1; count by its own rule: 243 rows, 17 open, 2 malformed.)
 
 - **Need an isolated Windows VM (6):** `DBT-P85-001`, `P85-002`, `P85-003`, `P85-004`, `P85-005`, `DBT-P84-006`.
 - **Need real hardware or an installed run (5):** `DBT-P86-005`, `DBT-P86-006`, `DBT-P41-001` (the VC++
   redistributable *install* branch of the setup chain has never run), `DBT-P49-003` (installer log
   placement), `DBT-P74-002` (a low-risk install-time race, reasoned, not measured).
-- **Project housekeeping, not product behaviour (4):** `DBT-P36-007` (open until a seal), `DBT-P63-009`
-  (gate token comparisons), `DBT-P79-001` (CI), `DBT-P55-006` (ARM64 build recipes).
+- **Project housekeeping, not product behaviour (5):** `DBT-P36-007` (open until a seal), `DBT-P63-009`
+  (gate token comparisons), `DBT-P79-001` (CI), `DBT-P55-006` (ARM64 build recipes), `DBT-P87-027` (the
+  lifecycle's evidence path is not checked for freshness).
 - **The owner's own PC (1):** `DBT-P55-004` (recovery media not attached).
 
 ## Uninstalling removes your AetherCore data
