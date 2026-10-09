@@ -153,3 +153,11 @@ The other two stopped on probe defects, not product defects:
 
 Arabic and the upgrade from 0.1.11 had not started. The lifecycle kept the owner's data in the backup, as designed; it was restored by hand and matches the manifest.
 
+## D33 run 6 and owner decision D34 (2026-10-09)
+
+Run 6 (RC at `febcc01b`) passed five of the six symptoms in English:
+- hardware, performance, cleanup and the Care no-op;
+- Care persistence: the same run `care-1791564077214` survived an independent reconnect and a service restart.
+
+Repair observed real progress and a terminal state, but no unavailable provider: the owner PC is healthy, and a full assessment outlasts the probe budget. Under D34 (`DECISIONS.md`), on the owner host only, that check is recorded as not observed. It is never claimed, and acceptance and promotion list it under `not_observed` (DBT-P87-023). The lifecycle restored the owner's data automatically. Arabic and the upgrade had not run yet.
+

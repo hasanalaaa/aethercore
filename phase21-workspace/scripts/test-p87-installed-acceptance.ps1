@@ -370,14 +370,14 @@ try {
     $care=Invoke-CareCaseFixture ($observedSmoke -replace 'care-1791560738005',"care-$([char]0x0661)$([char]0x0667)")
     Assert ($care.cases[3].disposition -eq 'failed' -and -not $care.Contains('care_run_id')) 'actual Case3 rejects non-ASCII digits in a run identity'
     $case4Body=Get-CaseBody 4
-    function Invoke-RepairCaseFixture($Existing) {
-        $ReadOnlyInstalled=$false;$capture=$fixtureRoot;$deadline=[DateTime]::UtcNow.AddSeconds(5)
+    function Invoke-RepairCaseFixture($Existing,[string]$ResultCode='ProviderUnavailable',[bool]$OwnerHost=$false) {
+        $OwnerHostAccepted=$OwnerHost;$ReadOnlyInstalled=$false;$capture=$fixtureRoot;$deadline=[DateTime]::UtcNow.AddSeconds(5)
         $doc=@{cases=@($ids | ForEach-Object {@{id=$_;disposition='blocked';reason='Not executed.';checks=@{};witnesses=@()}})}
         $workers=@{assessmentStarted=$false;assessmentId=''}
         $script:calls=[Collections.Generic.List[string]]::new();$script:replies=@{}
-        $settled=@{state='Ready';assessmentId='fresh-owned';currentCheckId='';checks=@(@{resultCode='ProviderUnavailable'})}
+        $settled=@{state='Ready';assessmentId='fresh-owned';currentCheckId='';checks=@(@{resultCode=$ResultCode})}
         Queue get_repair_assessment @($Existing,$settled)
-        Queue start_repair_assessment @(@{state='Ready';assessmentId='fresh-owned';currentCheckId='c1';checks=@(@{resultCode='ProviderUnavailable'})})
+        Queue start_repair_assessment @(@{state='Ready';assessmentId='fresh-owned';currentCheckId='c1';checks=@(@{resultCode=$ResultCode})})
         function Page($Name){}
         function Save-Json($Path,$Value){}
         function Witness($Path){return @{path=$Path}}
@@ -389,6 +389,13 @@ try {
     Assert ($repair.Case.disposition -eq 'passed' -and -not $repair.Workers.assessmentStarted -and $repair.Workers.assessmentId -eq 'fresh-owned') 'actual Case4 starts its own assessment when this user owns none yet'
     $repair=Invoke-RepairCaseFixture @{state='Scanning';assessmentId='existing-unowned'}
     Assert ($repair.Case.disposition -eq 'failed' -and -not @($repair.Calls | Where-Object {$_ -match "invoke\('start_repair_assessment'"}).Count) 'actual Case4 preserves an assessment already scanning'
+    # D33 run 6: the owner's healthy PC had no unavailable provider. Under D34 that is named, not claimed.
+    $repair=Invoke-RepairCaseFixture @{reject='repair.stateUnavailable'} 'NoErrors' $true
+    Assert ($repair.Case.disposition -eq 'passed' -and $repair.Case.checks.unavailable_provider -eq $false -and $repair.Case.checks.unavailable_provider_owner_decision -eq 'D34' -and $repair.Case.reason -match 'D34') 'actual Case4 on the owner host records the unobserved provider under D34'
+    $repair=Invoke-RepairCaseFixture @{reject='repair.stateUnavailable'} 'NoErrors' $false
+    Assert ($repair.Case.disposition -ne 'passed' -and -not $repair.Case.checks.Contains('unavailable_provider_owner_decision')) 'actual Case4 off the owner host still requires an unavailable provider'
+    $repair=Invoke-RepairCaseFixture @{reject='repair.stateUnavailable'} 'ProviderUnavailable' $true
+    Assert ($repair.Case.disposition -eq 'passed' -and $repair.Case.checks.unavailable_provider -eq $true -and -not $repair.Case.checks.Contains('unavailable_provider_owner_decision')) 'actual Case4 on the owner host claims an unavailable provider only when observed'
     # The actual Cdp/Js over a socket whose tasks are real completed .NET tasks: owner PC run 4
     # (2026-10-06) failed on the first Js call with "VoidTaskResult ... ContainsKey".
     foreach ($name in 'Cdp','Js') {
