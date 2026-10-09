@@ -30,6 +30,7 @@ function Js([string]$Expression){
     return $script:renderedScanId -eq ($Matches[1]|ConvertFrom-Json)
   }
   [void]$calls.Add($Expression)
+  if($Expression -match 'localStorage'){return $null}
   if($Expression -notmatch "invoke\('([^']+)',") { throw 'Unexpected expression' }
   $command=$Matches[1]
   if(-not $replies.ContainsKey($command)){throw "Unexpected command: $command"}
@@ -48,6 +49,13 @@ Write-Host 'PASS: approved cleanup English files prose'
 Assert-OwnedText @('ملاحظات القرص NVMe المقاسة') ar
 Reject {Assert-OwnedText @('Files · 3') en} 'isolated Files token rejected'
 Reject {Assert-OwnedText @('ملاحظات القرص Measured disk observations') ar} 'mixed AR/EN prose rejected'
+# The Arabic catalog keeps product names; the owner PC's cleanup page shows the shader cache (D33 run 6).
+Assert-OwnedText @('ذاكرة مظلّلات Direct3D','ملفات مؤرشفة من Windows Error Reporting. احتفظ بها عند تشخيص الأعطال.') ar
+Write-Host 'PASS: Arabic owned text keeps the Direct3D and Windows Error Reporting product names'
+Reject {Assert-OwnedText @('ذاكرة Direct3D shader cache') ar} 'English words beside a product name rejected'
+Reject {Assert-OwnedText @('ملفات Error Reporting') ar} 'a product name only counts whole'
+Assert-OwnedText @('جدول سمات ATA SMART') ar
+Write-Host 'PASS: Arabic owned text keeps the ATA acronym'
 Reject {Assert-OwnedText @('processTop · NotCollected') en} 'raw provider identifiers rejected'
 $echo=$false;$deadline=[DateTime]::UtcNow.AddSeconds(5)
 Queue get_diagnostics_snapshot @(@{state='Collecting';scanId='owned'},@{state='Partial';scanId='owned'})
@@ -83,7 +91,7 @@ function Reset-Finally {
  $script:doc=[ordered]@{cases=@(@{disposition='passed';reason='Synthetic actual-function proof'})}
  $script:workers=@{samplingStarted=$false;assessmentStarted=$false;assessmentId='';careStarted=$false;helper=$null}
  $script:socket=Fake-Socket;$script:desktop=Fake-Desktop $true
- $script:fixture=$null;$script:ReadOnlyInstalled=$false;$script:OutputPath='C:\dev\lanes\l1\unused-synthetic.json'
+ $script:fixture=$null;$script:ReadOnlyInstalled=$false;$script:ownerLocaleRead=$false;$script:ownerLocale=$null;$script:OutputPath='C:\dev\lanes\l1\unused-synthetic.json'
  $script:replies=@{};$script:calls=[Collections.Generic.List[string]]::new()
  Queue get_repair_assessment @(@{state='Ready';assessmentId='owned-id'})
  Queue get_care_status @(@{state='Completed'})
@@ -115,6 +123,18 @@ $socket=$null;$workers.careStarted=$true
 & $finally
 Assert (-not $doc.worker_ownership_released -and -not $doc.ok) 'lost transport with owned worker blocks lifecycle'
 Write-Host 'PASS: actual producer ownership controls'
+# D33 leaves the PC as found: the owner's saved interface language comes back, or its absence does.
+Reset-Finally;$ownerLocaleRead=$true;$ownerLocale='en'
+& $finally
+Assert (@($calls | Where-Object {$_ -match "localStorage\.setItem\('aethercore\.locale',\s*`"en`"\)"}).Count -eq 1) 'finally restores the owner''s saved interface language'
+Reset-Finally;$ownerLocaleRead=$true;$ownerLocale=$null
+& $finally
+Assert (@($calls | Where-Object {$_ -match "localStorage\.removeItem\('aethercore\.locale'\)"}).Count -eq 1) 'finally removes the language the owner never saved'
+Reset-Finally;$ownerLocaleRead=$false;$ownerLocale=$null
+& $finally
+Assert (@($calls | Where-Object {$_ -match 'localStorage'}).Count -eq 0) 'finally writes no language when the probe never changed it'
+$order=$ast.Extent.Text
+Assert ($order.IndexOf("`$ownerLocale=Js `"localStorage.getItem('aethercore.locale')`"") -ge 0 -and $order.IndexOf("`$ownerLocale=Js `"localStorage.getItem('aethercore.locale')`"") -lt $order.IndexOf("localStorage.setItem('aethercore.locale','`$Locale')")) 'the owner''s language is read before the probe writes its own'
 
 Reset-Finally
 Queue get_diagnostics_snapshot @(@{state='Collecting';scanId='owned-scan'},@{state='Ready';scanId='owned-scan'})
@@ -370,14 +390,14 @@ try {
     $care=Invoke-CareCaseFixture ($observedSmoke -replace 'care-1791560738005',"care-$([char]0x0661)$([char]0x0667)")
     Assert ($care.cases[3].disposition -eq 'failed' -and -not $care.Contains('care_run_id')) 'actual Case3 rejects non-ASCII digits in a run identity'
     $case4Body=Get-CaseBody 4
-    function Invoke-RepairCaseFixture($Existing) {
-        $ReadOnlyInstalled=$false;$capture=$fixtureRoot;$deadline=[DateTime]::UtcNow.AddSeconds(5)
+    function Invoke-RepairCaseFixture($Existing,[string]$ResultCode='ProviderUnavailable',[bool]$OwnerHost=$false) {
+        $OwnerHostAccepted=$OwnerHost;$ReadOnlyInstalled=$false;$capture=$fixtureRoot;$deadline=[DateTime]::UtcNow.AddSeconds(5)
         $doc=@{cases=@($ids | ForEach-Object {@{id=$_;disposition='blocked';reason='Not executed.';checks=@{};witnesses=@()}})}
         $workers=@{assessmentStarted=$false;assessmentId=''}
         $script:calls=[Collections.Generic.List[string]]::new();$script:replies=@{}
-        $settled=@{state='Ready';assessmentId='fresh-owned';currentCheckId='';checks=@(@{resultCode='ProviderUnavailable'})}
+        $settled=@{state='Ready';assessmentId='fresh-owned';currentCheckId='';checks=@(@{resultCode=$ResultCode})}
         Queue get_repair_assessment @($Existing,$settled)
-        Queue start_repair_assessment @(@{state='Ready';assessmentId='fresh-owned';currentCheckId='c1';checks=@(@{resultCode='ProviderUnavailable'})})
+        Queue start_repair_assessment @(@{state='Ready';assessmentId='fresh-owned';currentCheckId='c1';checks=@(@{resultCode=$ResultCode})})
         function Page($Name){}
         function Save-Json($Path,$Value){}
         function Witness($Path){return @{path=$Path}}
@@ -389,6 +409,13 @@ try {
     Assert ($repair.Case.disposition -eq 'passed' -and -not $repair.Workers.assessmentStarted -and $repair.Workers.assessmentId -eq 'fresh-owned') 'actual Case4 starts its own assessment when this user owns none yet'
     $repair=Invoke-RepairCaseFixture @{state='Scanning';assessmentId='existing-unowned'}
     Assert ($repair.Case.disposition -eq 'failed' -and -not @($repair.Calls | Where-Object {$_ -match "invoke\('start_repair_assessment'"}).Count) 'actual Case4 preserves an assessment already scanning'
+    # D33 run 6: the owner's healthy PC had no unavailable provider. Under D34 that is named, not claimed.
+    $repair=Invoke-RepairCaseFixture @{reject='repair.stateUnavailable'} 'NoErrors' $true
+    Assert ($repair.Case.disposition -eq 'passed' -and $repair.Case.checks.unavailable_provider -eq $false -and $repair.Case.checks.unavailable_provider_owner_decision -eq 'D34' -and $repair.Case.reason -match 'D34') 'actual Case4 on the owner host records the unobserved provider under D34'
+    $repair=Invoke-RepairCaseFixture @{reject='repair.stateUnavailable'} 'NoErrors' $false
+    Assert ($repair.Case.disposition -ne 'passed' -and -not $repair.Case.checks.Contains('unavailable_provider_owner_decision')) 'actual Case4 off the owner host still requires an unavailable provider'
+    $repair=Invoke-RepairCaseFixture @{reject='repair.stateUnavailable'} 'ProviderUnavailable' $true
+    Assert ($repair.Case.disposition -eq 'passed' -and $repair.Case.checks.unavailable_provider -eq $true -and -not $repair.Case.checks.Contains('unavailable_provider_owner_decision')) 'actual Case4 on the owner host claims an unavailable provider only when observed'
     # The actual Cdp/Js over a socket whose tasks are real completed .NET tasks: owner PC run 4
     # (2026-10-06) failed on the first Js call with "VoidTaskResult ... ContainsKey".
     foreach ($name in 'Cdp','Js') {

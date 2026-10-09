@@ -46,7 +46,7 @@ class PromotionTests(unittest.TestCase):
             path.write_text('frozen input\n')
         (cls.source / 'Cargo.toml').write_text('fixture manifest')
         (cls.source / 'docs/roadmap').mkdir(parents=True)
-        (cls.source / 'docs/roadmap/DECISIONS.md').write_text('| ID | Decides |\n|---|---|\n| D32 | unsigned |\n| D33 | owner host |\n')
+        (cls.source / 'docs/roadmap/DECISIONS.md').write_text('| ID | Decides |\n|---|---|\n| D32 | unsigned |\n| D33 | owner host |\n| D34 | repair on the owner host |\n')
         (cls.source / 'scripts').mkdir()
         (cls.source / 'scripts/p87-installed-acceptance.ps1').write_bytes(b'exact acceptance script')
         for name in ['dependency-locks', 'dependency-manifests']:
@@ -350,6 +350,41 @@ class PromotionTests(unittest.TestCase):
             with self.subTest(overrides=list(overrides)):
                 self.owner_host(**overrides)
                 with self.assertRaisesRegex(rc.Rejected,message): self.promote()
+
+    def d34_repair(self, marker='D34'):
+        # D33 run 6: a healthy owner PC has no unavailable provider to observe (owner decision D34).
+        for path in self.installed:
+            doc=rc.read_json(path);case=next(p for p in doc['cases'] if p['id'] == 'p76-repair-assessment-terminal')
+            case['checks']['unavailable_provider']=False
+            case['checks'].pop('unavailable_provider_owner_decision',None)
+            if marker is not None: case['checks']['unavailable_provider_owner_decision']=marker
+            rc.write_json(path,doc)
+        accepted=rc.read_json(self.acceptance)
+        accepted['evidence'].update({p.name:rc.digest(p) for p in self.installed})
+        rc.write_json(self.acceptance,accepted);self.acceptance_hash=rc.digest(self.acceptance)
+
+    def test_owner_host_d34_promotes_and_names_what_was_not_observed(self):
+        self.owner_host();self.d34_repair()
+        promoted=self.promote()
+        self.assertTrue(promoted['rc_eligible'])
+        self.assertEqual(promoted['not_observed'],[{'locale':l,'case':'p76-repair-assessment-terminal','check':'unavailable_provider','decision':'D34'} for l in ('en','ar')])
+
+    def test_full_evidence_reports_nothing_unobserved(self):
+        self.assertEqual(self.promote()['not_observed'],[])
+
+    def test_d34_does_not_apply_off_the_owner_host_or_without_its_marker(self):
+        self.d34_repair()
+        with self.assertRaisesRegex(rc.Rejected,'runtime check'): self.promote()
+        for marker in (None,'D33',True):
+            with self.subTest(marker=marker):
+                self.owner_host();self.d34_repair(marker)
+                with self.assertRaisesRegex(rc.Rejected,'runtime check'): self.promote()
+
+    def test_owner_host_d34_requires_recorded_decision(self):
+        self.owner_host();self.d34_repair();self.set_decisions('| D32 | unsigned |\n| D33 | owner host |\n')
+        accepted=rc.read_json(self.acceptance)
+        with self.assertRaisesRegex(rc.Rejected,'decision D34'):
+            rc.validate_evidence(self.acceptance.parent,accepted['evidence'],self.sha,self.bundle,self.version,self.source)
 
     def test_lifecycle_host_must_be_declared_and_match_installed_receipts(self):
         doc=rc.read_json(self.lifecycle);doc.pop('host');rc.write_json(self.lifecycle,doc)

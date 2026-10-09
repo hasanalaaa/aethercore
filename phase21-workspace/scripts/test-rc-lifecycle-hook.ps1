@@ -6,8 +6,8 @@ $source=Join-Path $PSScriptRoot 'phase16-installer-lifecycle.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Lifecycle source did not parse.' }
-foreach ($name in @('Run-Process','Write-BlockedAcceptance','Resolve-OwnerAccount','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart',
-        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostData','Restore-OwnerHostService','Complete-OwnerHost')) {
+foreach ($name in @('Run-Process','Write-BlockedAcceptance','Resolve-OwnerAccount','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart','Invoke-AllInstalledAcceptance',
+        'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostData','Restore-OwnerHostService','Complete-OwnerHost','Assert-NoAetherCoreRegistration')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if (-not $definition) { if ($name -eq 'Invoke-InstalledAcceptanceWithRestart') { continue };throw "Actual hook missing: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))
@@ -100,15 +100,32 @@ try {
     }
     Require ($acceptanceStillRunning -and $registered -eq 2 -and $unregistered -eq 1) 'Potentially active task ownership was released after failure.'
     $fixtureStartFails=$false;$fixtureTaskExit=1
-    try { Invoke-OrdinaryInstalledAcceptance 'ar';throw 'Failed task accepted.' } catch {
-        Require ($_.Exception.Message -match 'did not produce successful evidence') 'Wrong task exit rejection.'
-    }
+    # A failed symptom whose probe drained its workers is reported, not thrown: the run goes on (D33 run 7).
+    $failedRun=Invoke-OrdinaryInstalledAcceptance 'ar'
+    Require ($failedRun.Passed -is [bool] -and -not $failedRun.Passed -and $failedRun.Receipt) 'A completed failed task was not reported as failed with its evidence.'
     Require (-not $acceptanceStillRunning -and $unregistered -eq 2) 'Actually completed failed task remained owned.'
     $fixtureTaskExit=0;$fixtureOwnershipReleased=$false
     try { Invoke-OrdinaryInstalledAcceptance 'en';throw 'Active nested worker accepted.' } catch {
         Require ($_.Exception.Message -match 'nested worker ownership') 'Wrong nested-worker rejection.'
     }
     Require ($acceptanceStillRunning -and $unregistered -eq 3) 'Completed task allowed service cleanup while nested worker remained active.'
+    # After the updated RC uninstall nothing may stay registered, or the next owner-host run refuses.
+    $fixtureEntries=@()
+    Assert-NoAetherCoreRegistration
+    $fixtureEntries=@([pscustomobject]@{DisplayName='AetherCore';BundleCachePath='C:\fixture\setup.exe'})
+    try { Assert-NoAetherCoreRegistration;throw 'Leftover registration accepted.' } catch { Require ($_.Exception.Message -match 'still registered') 'Wrong leftover-registration rejection.' }
+    $fixtureEntries=@()
+    # The actual locale loop: a failed English run still lets Arabic run, and both outcomes are returned.
+    & {
+        $script:localesRun=[Collections.Generic.List[string]]::new()
+        function Invoke-InstalledAcceptanceWithRestart([string]$Locale) { $script:localesRun.Add($Locale); return ($Locale -ne 'en') }
+        $failedLocales=@(Invoke-AllInstalledAcceptance)
+        Require (($localesRun -join ',') -eq 'en,ar' -and ($failedLocales -join ',') -eq 'en') 'A failed English run stopped Arabic, or a failure was lost.'
+        function Invoke-InstalledAcceptanceWithRestart([string]$Locale) { $script:localesRun.Add($Locale); throw 'nested worker ownership retained' }
+        $localesRun.Clear()
+        try { Invoke-AllInstalledAcceptance;throw 'Unsafe failure continued.' } catch { Require ($_.Exception.Message -match 'nested worker') 'Wrong unsafe-failure rejection.' }
+        Require (($localesRun -join ',') -eq 'en') 'An unsafe failure did not stop the run.'
+    }
     $fixtureOwnershipReleased=$true;$restartFixture=$true;$probeCalls=0
     $AcknowledgeDisposableMachine=$true;$installed=$true;$service='AetherCoreMaintenance'
     Invoke-InstalledAcceptanceWithRestart 'en'
