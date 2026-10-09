@@ -136,11 +136,9 @@ function Invoke-OrdinaryInstalledAcceptance([string]$Locale,[string]$VerifyCareR
             throw 'Ordinary installed acceptance did not release nested worker ownership; service cleanup retained.'
         }
         $pendingRestart=$AllowRestartPending -and $info.LastTaskResult -eq 1 -and $receipt.restart_pending -is [bool] -and $receipt.restart_pending
-        if (($info.LastTaskResult -ne 0 -and -not $pendingRestart) -or -not (Test-Path $output)) {
-            if (-not (Test-Path $output)) { Write-BlockedAcceptance $output $Locale 'Ordinary probe exited without evidence.' }
-            throw 'Ordinary installed acceptance did not produce successful evidence.'
-        }
-        return [pscustomobject]@{Receipt=$receipt;OwnerSid=$owners[0]}
+        # The probe wrote its evidence and drained its workers, so a failed symptom leaves the service
+        # healthy: it is reported to the caller, which runs the other locale and the upgrade before failing.
+        return [pscustomobject]@{Receipt=$receipt;OwnerSid=$owners[0];Passed=($info.LastTaskResult -eq 0 -or $pendingRestart)}
     } finally {
         if ($completed) { Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction Stop }
     }
@@ -167,7 +165,16 @@ function Invoke-InstalledAcceptanceWithRestart([string]$Locale) {
         $verified=Invoke-OrdinaryInstalledAcceptance $Locale -VerifyCareRunId $runId -ExpectedOwnerSid $first.OwnerSid -ObservationDeadline $deadline
         $finalCare=@($verified.Receipt.cases | Where-Object id -eq 'p76-care-timeline-persistence')
         if ($verified.Receipt.care_run_id -ne $runId -or $verified.Receipt.restart_pending -isnot [bool] -or $verified.Receipt.restart_pending -or $finalCare.Count -ne 1 -or $finalCare[0].checks.restart -isnot [bool] -or -not $finalCare[0].checks.restart) { throw 'Same Care run was not proved after isolated service restart.' }
+        return $verified.Passed
     }
+    return $first.Passed
+}
+function Invoke-AllInstalledAcceptance {
+    # Both locales run even when one reports failed symptoms, so one owner-host run shows every defect.
+    # Anything unsafe (a live worker, a foreign identity) still throws and stops the run.
+    $failed=[Collections.Generic.List[string]]::new()
+    foreach ($locale in @('en','ar')) { if (-not (Invoke-InstalledAcceptanceWithRestart $locale)) { $failed.Add($locale) } }
+    return $failed.ToArray()
 }
 function Stop-OwnerHostService {
     $controller=Get-Service -Name $service -ErrorAction SilentlyContinue
@@ -282,11 +289,8 @@ try{
         if($LASTEXITCODE -ne 0){throw 'Post-repair state verifier failed.'}
         if(-not(Test-Path $sentinel)){throw 'ProgramData preservation sentinel was removed by MSI repair.'}
     }
-    if ($InstalledAcceptanceScript) {
-        foreach ($locale in @('en','ar')) {
-            Invoke-InstalledAcceptanceWithRestart $locale
-        }
-    }
+    $failedLocales=@()
+    if ($InstalledAcceptanceScript) { $failedLocales=@(Invoke-AllInstalledAcceptance) }
     Run-Step 'burn-uninstall' { Run-Process $bundle @('/uninstall','/quiet','/norestart') 'Burn uninstall';$script:installed=$false }
     Run-Step 'uninstall-clean-state' {
         if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service remains after Burn uninstall.'}
@@ -310,6 +314,7 @@ try{
             if (Test-Path $dataDir) { throw "Machine data remains after updated RC uninstall: $dataDir" }
         }
     }
+    if ($failedLocales.Count) { throw "Installed acceptance symptoms failed ($($failedLocales -join ', ')); see installed-<locale>.json. The other steps ran." }
     if ($OwnerHostAccepted) { Run-Step 'owner-host-service-restored' { Restore-OwnerHostService } }
 } finally {
     if ($OwnerHostAccepted) {
