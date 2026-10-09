@@ -28,7 +28,7 @@ function Assert-OwnedText([string[]]$Text, [string]$Language) {
     foreach ($line in $Text) {
         if ($line -match '\b(?:WindowsTemp|UserTemp|WER|processTop|power\.temperature|NotCollected|Degraded)\b' -or $line -cmatch '(?:^|[·•])\s*Files\s*(?:$|[·•])') { throw "Raw identifier in owned text: $line" }
         # Product and API names the Arabic catalog keeps whole (Direct3D: owner PC cleanup, D33 run 6).
-        $prose = $line -replace '\b(?:Windows Error Reporting|Direct3D|NVMe|SMART|WHEA|SFC|DISM|CHKDSK|Windows|NTFS)\b',''
+        $prose = $line -replace '\b(?:Windows Error Reporting|Direct3D|NVMe|SMART|ATA|WHEA|SFC|DISM|CHKDSK|Windows|NTFS)\b',''
         if ($Language -eq 'ar' -and $prose -match '[A-Za-z]{3,}') { throw "English owned text in Arabic: $line" }
     }
 }
@@ -75,7 +75,7 @@ $doc = [ordered]@{ schema='aethercore.p87-installed-acceptance.v1'; source_commi
     observed_utc=[DateTime]::UtcNow.ToString('o'); read_only=[bool]$ReadOnlyInstalled; surface_witnesses=@{};
     cases=@($ids | ForEach-Object { @{id=$_;disposition='blocked';reason='Not executed.';checks=@{};witnesses=@()} }) }
 if ($VerifyCareRunId) {
-    if ($ReadOnlyInstalled -or $VerifyCareRunId -cnotmatch '^care-[0-9]{1,19}$') { throw 'Restart verification requires the recorded native Care run identity.' }
+    if ($ReadOnlyInstalled -or $VerifyCareRunId -cnotmatch '^care-[0-9]{1,19}\z') { throw 'Restart verification requires the recorded native Care run identity.' }
     $previous=Get-Content -LiteralPath $OutputPath -Raw | ConvertFrom-Json -AsHashtable
     if ($previous.schema -ne $doc.schema -or $previous.host -ne $doc.host -or $previous.source_commit -ne $ExpectedSourceSha -or $previous.bundle_sha256 -ne $ExpectedBundleSha256 -or $previous.locale -ne $Locale -or $previous.token.sid -ne $identity.User.Value -or $previous.care_run_id -ne $VerifyCareRunId -or $previous.worker_ownership_released -isnot [bool] -or -not $previous.worker_ownership_released -or $previous.desktop_closed -isnot [bool] -or -not $previous.desktop_closed) { throw 'Restart verification report does not belong to these bytes and this ordinary user.' }
     $care=@($previous.cases | Where-Object id -eq 'p76-care-timeline-persistence')
@@ -84,6 +84,7 @@ if ($VerifyCareRunId) {
 }
 $desktop = $null; $socket = $null
 $workers = @{samplingStarted=$false;assessmentStarted=$false;assessmentId='';careStarted=$false;helper=$null}
+$ownerLocaleRead=$false;$ownerLocale=$null
 $fixture=$null
 $script:cdpId = 0
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -251,6 +252,9 @@ try {
     $cts = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(10))
     try { $null = $socket.ConnectAsync($uri,$cts.Token).GetAwaiter().GetResult() } finally { $cts.Dispose() }
     [void](Cdp Page.enable)
+    # D33 leaves the owner's PC as found: their saved interface language is put back in finally.
+    $ownerLocale=Js "localStorage.getItem('aethercore.locale')"
+    $ownerLocaleRead=$true
     [void](Js "localStorage.setItem('aethercore.locale','$Locale'); location.reload(); true")
     do {
         Start-Sleep -Milliseconds 100
@@ -299,7 +303,7 @@ try {
         $doc.cases[3].witnesses=@(Witness $log)
         if ($fixture -and (Test-Path -LiteralPath $fixture)) { throw 'The acknowledged cleanup did not delete its actual test fixture.' }
         $lines=Get-Content -LiteralPath $log
-        $runLine=@($lines | Where-Object { $_ -cmatch '^SMOKE: care-run-id=care-[0-9]{1,19}$' })
+        $runLine=@($lines | Where-Object { $_ -cmatch '^SMOKE: care-run-id=care-[0-9]{1,19}\z' })
         if ($runLine.Count -ne 1) { throw 'Care smoke omitted its unique run identity.' }
         $doc['care_run_id']=$runLine[0].Substring('SMOKE: care-run-id='.Length)
         if (-not (Select-String -LiteralPath $log -SimpleMatch "SMOKE: reconnected-care-run=$($doc.care_run_id)" -Quiet)) { throw 'Independent Care reconnect was not proved.' }
@@ -420,6 +424,10 @@ try {
             try {
                 foreach ($command in @('get_repair_assessment','get_care_status','get_diagnostics_snapshot','get_cleanup_snapshot')) { [void](Wait-Terminal $command) }
             } catch { $doc['active_worker_error']=$_.Exception.Message;$doc.worker_ownership_released=$false }
+        }
+        if ($ownerLocaleRead) {
+            $restore=if ($null -eq $ownerLocale) { "localStorage.removeItem('aethercore.locale'); true" } else { "localStorage.setItem('aethercore.locale', $(ConvertTo-Json ([string]$ownerLocale) -Compress)); true" }
+            try { [void](Js $restore) } catch { $doc['owner_locale_restore_error']=$_.Exception.Message }
         }
         $socket.Dispose()
     } elseif ($workers.assessmentStarted -or $workers.careStarted -or $workers.samplingStarted) {

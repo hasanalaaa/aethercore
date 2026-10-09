@@ -153,7 +153,7 @@ function Invoke-InstalledAcceptanceWithRestart([string]$Locale) {
     if ($receipt.restart_pending -is [bool] -and $receipt.restart_pending) {
         $care=@($receipt.cases | Where-Object id -eq 'p76-care-timeline-persistence')
         $runId=$receipt.care_run_id
-        if ($runId -cnotmatch '^care-[0-9]{1,19}$' -or $receipt.desktop_closed -isnot [bool] -or -not $receipt.desktop_closed -or $care.Count -ne 1 -or $care[0].checks.reconnect -isnot [bool] -or -not $care[0].checks.reconnect -or $care[0].checks.restart -isnot [bool] -or $care[0].checks.restart) { throw 'Care restart lacks a drained same-run reconnect receipt.' }
+        if ($runId -cnotmatch '^care-[0-9]{1,19}\z' -or $receipt.desktop_closed -isnot [bool] -or -not $receipt.desktop_closed -or $care.Count -ne 1 -or $care[0].checks.reconnect -isnot [bool] -or -not $care[0].checks.reconnect -or $care[0].checks.restart -isnot [bool] -or $care[0].checks.restart) { throw 'Care restart lacks a drained same-run reconnect receipt.' }
         if ([DateTimeOffset]::UtcNow.AddSeconds(60) -ge $deadline) { throw 'Care restart observation budget is exhausted.' }
         $controller=Get-Service -Name $service -ErrorAction Stop
         try {
@@ -216,6 +216,11 @@ function Get-OwnerHostUninstallEntries {
     @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*') |
         ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } |
         Where-Object { $_.DisplayName -like 'AetherCore*' }
+}
+function Assert-NoAetherCoreRegistration {
+    # A bundle or package left registered makes the next owner-host run refuse its prior uninstall.
+    $left=@(Get-OwnerHostUninstallEntries)
+    if ($left.Count) { throw "AetherCore is still registered after uninstall: $(@($left | ForEach-Object DisplayName) -join ', ')" }
 }
 function Remove-OwnerHostInstall {
     $entries=@(Get-OwnerHostUninstallEntries)
@@ -312,6 +317,7 @@ try{
             if (Get-Service $service -ErrorAction SilentlyContinue) { throw 'Service remains after updated RC uninstall.' }
             if (Test-Path (Join-Path $installDir 'aethercore-desktop.exe')) { throw 'Updated desktop remains after uninstall.' }
             if (Test-Path $dataDir) { throw "Machine data remains after updated RC uninstall: $dataDir" }
+            Assert-NoAetherCoreRegistration
         }
     }
     if ($failedLocales.Count) { throw "Installed acceptance symptoms failed ($($failedLocales -join ', ')); see installed-<locale>.json. The other steps ran." }

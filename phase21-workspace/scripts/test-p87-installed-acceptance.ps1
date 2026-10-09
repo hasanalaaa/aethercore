@@ -30,6 +30,7 @@ function Js([string]$Expression){
     return $script:renderedScanId -eq ($Matches[1]|ConvertFrom-Json)
   }
   [void]$calls.Add($Expression)
+  if($Expression -match 'localStorage'){return $null}
   if($Expression -notmatch "invoke\('([^']+)',") { throw 'Unexpected expression' }
   $command=$Matches[1]
   if(-not $replies.ContainsKey($command)){throw "Unexpected command: $command"}
@@ -53,6 +54,8 @@ Assert-OwnedText @('ذاكرة مظلّلات Direct3D','ملفات مؤرشفة
 Write-Host 'PASS: Arabic owned text keeps the Direct3D and Windows Error Reporting product names'
 Reject {Assert-OwnedText @('ذاكرة Direct3D shader cache') ar} 'English words beside a product name rejected'
 Reject {Assert-OwnedText @('ملفات Error Reporting') ar} 'a product name only counts whole'
+Assert-OwnedText @('جدول سمات ATA SMART') ar
+Write-Host 'PASS: Arabic owned text keeps the ATA acronym'
 Reject {Assert-OwnedText @('processTop · NotCollected') en} 'raw provider identifiers rejected'
 $echo=$false;$deadline=[DateTime]::UtcNow.AddSeconds(5)
 Queue get_diagnostics_snapshot @(@{state='Collecting';scanId='owned'},@{state='Partial';scanId='owned'})
@@ -88,7 +91,7 @@ function Reset-Finally {
  $script:doc=[ordered]@{cases=@(@{disposition='passed';reason='Synthetic actual-function proof'})}
  $script:workers=@{samplingStarted=$false;assessmentStarted=$false;assessmentId='';careStarted=$false;helper=$null}
  $script:socket=Fake-Socket;$script:desktop=Fake-Desktop $true
- $script:fixture=$null;$script:ReadOnlyInstalled=$false;$script:OutputPath='C:\dev\lanes\l1\unused-synthetic.json'
+ $script:fixture=$null;$script:ReadOnlyInstalled=$false;$script:ownerLocaleRead=$false;$script:ownerLocale=$null;$script:OutputPath='C:\dev\lanes\l1\unused-synthetic.json'
  $script:replies=@{};$script:calls=[Collections.Generic.List[string]]::new()
  Queue get_repair_assessment @(@{state='Ready';assessmentId='owned-id'})
  Queue get_care_status @(@{state='Completed'})
@@ -120,6 +123,18 @@ $socket=$null;$workers.careStarted=$true
 & $finally
 Assert (-not $doc.worker_ownership_released -and -not $doc.ok) 'lost transport with owned worker blocks lifecycle'
 Write-Host 'PASS: actual producer ownership controls'
+# D33 leaves the PC as found: the owner's saved interface language comes back, or its absence does.
+Reset-Finally;$ownerLocaleRead=$true;$ownerLocale='en'
+& $finally
+Assert (@($calls | Where-Object {$_ -match "localStorage\.setItem\('aethercore\.locale',\s*`"en`"\)"}).Count -eq 1) 'finally restores the owner''s saved interface language'
+Reset-Finally;$ownerLocaleRead=$true;$ownerLocale=$null
+& $finally
+Assert (@($calls | Where-Object {$_ -match "localStorage\.removeItem\('aethercore\.locale'\)"}).Count -eq 1) 'finally removes the language the owner never saved'
+Reset-Finally;$ownerLocaleRead=$false;$ownerLocale=$null
+& $finally
+Assert (@($calls | Where-Object {$_ -match 'localStorage'}).Count -eq 0) 'finally writes no language when the probe never changed it'
+$order=$ast.Extent.Text
+Assert ($order.IndexOf("`$ownerLocale=Js `"localStorage.getItem('aethercore.locale')`"") -ge 0 -and $order.IndexOf("`$ownerLocale=Js `"localStorage.getItem('aethercore.locale')`"") -lt $order.IndexOf("localStorage.setItem('aethercore.locale','`$Locale')")) 'the owner''s language is read before the probe writes its own'
 
 Reset-Finally
 Queue get_diagnostics_snapshot @(@{state='Collecting';scanId='owned-scan'},@{state='Ready';scanId='owned-scan'})
