@@ -1,6 +1,6 @@
 # AetherCore 0.1.12 — release notes
 
-Draft written 2026-10-06 against `main` `582c4105`. Every statement below cites a file in this
+Draft written 2026-10-06, refreshed 2026-10-09 against `main` `0ca0d233`. Every statement below cites a file in this
 repository; anything the repository does not say is left out. This is the **first release, unsigned by
 owner decision D32**, and it is not declared GA (see "Signing").
 
@@ -44,12 +44,13 @@ before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
 - CI is green on `main`, including the Windows job and the packaging candidate.
 - The embedded model's generation tests passed 67 of 67 times on the project's three Windows CI runners
   (`DBT-P62-004`).
-- The first two installed acceptance runs on the owner's own Windows 11 PC (owner decision D33) each found
-  real defects, which are fixed on `main`: `DBT-P87-013` to `DBT-P87-018`. Among them, one run removed the
-  prior install and deleted the owner's data, which the protected backup then restored, hash by hash;
-  the run now restores it in every owner-host run (`DBT-P87-013`).
-- The result of the final installed acceptance run was not available when this was drafted, so it is not
-  stated here.
+- The first four installed acceptance runs on the owner's own Windows 11 PC (owner decision D33) each found
+  a real defect, and each is fixed on `main`: `DBT-P87-013` to `DBT-P87-020`. Among them, one run removed
+  the prior install and deleted the owner's data, which the protected backup then restored, hash by hash;
+  the run now restores it in every owner-host run (`DBT-P87-013`). Those rows still read `SOURCE FIXED`
+  in the ledger: they close with the final acceptance result, not before.
+- The result of the fifth installed acceptance run was not available when this was refreshed, so it
+  is not stated here.
 
 **Not measured, or limited** (accepted, or open with the row):
 

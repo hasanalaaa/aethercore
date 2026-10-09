@@ -1,6 +1,6 @@
 # Installing the unsigned AetherCore 0.1.12
 
-Draft written 2026-10-06 against `main` `582c4105`. Sources are cited; what the repository does not say
+Draft written 2026-10-06, refreshed 2026-10-09 against `main` `0ca0d233`. Sources are cited; what the repository does not say
 is left out. For what the release is and is not, read `RELEASE-NOTES-0.1.12.md` first.
 
 ## What you receive
