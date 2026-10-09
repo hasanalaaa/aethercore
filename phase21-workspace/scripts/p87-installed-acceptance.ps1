@@ -98,7 +98,8 @@ function Cdp([string]$Method, [hashtable]$Params=@{}) {
     $cts = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds([Math]::Min(30,($deadline-[DateTime]::UtcNow).TotalSeconds)))
     try {
         $bytes = [Text.Encoding]::UTF8.GetBytes((@{id=$script:cdpId;method=$Method;params=$Params} | ConvertTo-Json -Depth 20 -Compress))
-        $socket.SendAsync([ArraySegment[byte]]::new($bytes),[Net.WebSockets.WebSocketMessageType]::Text,$true,$cts.Token).GetAwaiter().GetResult()
+        # A non-generic Task is Task<VoidTaskResult> at run time: GetResult() would join the return value.
+        $null = $socket.SendAsync([ArraySegment[byte]]::new($bytes),[Net.WebSockets.WebSocketMessageType]::Text,$true,$cts.Token).GetAwaiter().GetResult()
         do {
             $stream = [IO.MemoryStream]::new()
             try {
@@ -234,7 +235,7 @@ try {
     if ($uri.Host -notin @('127.0.0.1','localhost') -or $uri.Port -ne $port) { throw 'Debug target is not the owned loopback endpoint.' }
     $socket = [Net.WebSockets.ClientWebSocket]::new()
     $cts = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(10))
-    try { $socket.ConnectAsync($uri,$cts.Token).GetAwaiter().GetResult() } finally { $cts.Dispose() }
+    try { $null = $socket.ConnectAsync($uri,$cts.Token).GetAwaiter().GetResult() } finally { $cts.Dispose() }
     [void](Cdp Page.enable)
     [void](Js "localStorage.setItem('aethercore.locale','$Locale'); location.reload(); true")
     do {

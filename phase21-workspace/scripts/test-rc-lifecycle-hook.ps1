@@ -6,12 +6,15 @@ $source=Join-Path $PSScriptRoot 'phase16-installer-lifecycle.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Lifecycle source did not parse.' }
-foreach ($name in @('Run-Process','Write-BlockedAcceptance','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart',
+foreach ($name in @('Run-Process','Write-BlockedAcceptance','Resolve-OwnerAccount','Invoke-OrdinaryInstalledAcceptance','Invoke-InstalledAcceptanceWithRestart',
         'Assert-OwnerDecision','Assert-RcSignature','Assert-CleanHost','Stop-OwnerHostService','Backup-OwnerHostState','Remove-OwnerHostInstall','Restore-OwnerHostData','Restore-OwnerHostService','Complete-OwnerHost')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if (-not $definition) { if ($name -eq 'Invoke-InstalledAcceptanceWithRestart') { continue };throw "Actual hook missing: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))
 }
+$self=[Security.Principal.WindowsIdentity]::GetCurrent()
+if ((Resolve-OwnerAccount $self.User.Value) -ne $self.Name) { throw 'Actual Resolve-OwnerAccount did not turn a SID into its account name.' }
+function Resolve-OwnerAccount([string]$Sid) { "FIXTURE\owner-$($Sid.Split('-')[-1])" }
 $acceptanceRoot=Join-Path ([IO.Path]::GetTempPath()) ('aethercore-rc-hook-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $acceptanceRoot | Out-Null
 $ExpectedSourceSha='a'*40;$ExpectedBundleSha256='b'*64
@@ -90,6 +93,7 @@ try {
     $null=Invoke-OrdinaryInstalledAcceptance 'ar'
     Require ($registered -eq 1 -and $unregistered -eq 1 -and -not $acceptanceStillRunning) 'Completed hook did not release task ownership.'
     Require ($principalObserved.LogonType -eq 'Interactive' -and $principalObserved.RunLevel -eq 'Limited') 'Hook requested elevated or non-interactive token.'
+    Require ($principalObserved.SID -eq 'FIXTURE\owner-1001') 'The task principal was given a bare SID, which Task Scheduler refuses for an Interactive logon.'
     $fixtureStartFails=$true
     try { Invoke-OrdinaryInstalledAcceptance 'en';throw 'Controlled failure accepted.' } catch {
         Require ($_.Exception.Message -match 'controlled start/status failure') 'Wrong worker failure rejection.'
@@ -238,5 +242,5 @@ try {
     Require ((Observe-FixtureExit $actualCommand) -eq 1) 'Actual observer shell lost the probe failure/pending exit.'
     Set-Content $packagedScript 'exit 0'
     Require ((Observe-FixtureExit $actualCommand) -eq 0) 'Actual observer shell changed a successful probe exit.'
-    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline, D32/D33 decisions, unsigned honesty, owner-host task switch/restart, protected owner backup, prior uninstall, owner data restore and manifest check, non-ASCII names, rewritten manifest, refused prior uninstall, orphaned data, active-worker warning, service restore.'
+    Write-Output 'RC_HOOK_FIXTURES_PASS: actual process arguments/quoted MSI/exit codes/ownership, missing desktop, limited interactive token, active-worker failure, actual completed failure, nested ownership, same-run restart, unowned service, active-worker restart rejection, changed desktop, missing disposable acknowledgement, exhausted observer deadline, D32/D33 decisions, unsigned honesty, owner-host task switch/restart, protected owner backup, prior uninstall, owner data restore and manifest check, non-ASCII names, rewritten manifest, refused prior uninstall, orphaned data, active-worker warning, service restore, account-name task principal.'
 } finally { Remove-Item $acceptanceRoot -Recurse -Force }
