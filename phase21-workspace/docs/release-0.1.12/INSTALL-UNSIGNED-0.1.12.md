@@ -1,6 +1,6 @@
 # Installing the unsigned AetherCore 0.1.12
 
-Draft written 2026-10-06, refreshed 2026-10-09 against `main` `2a0d797a`. Sources are cited; what the repository does not say
+Draft written 2026-10-06, refreshed 2026-10-10 against `main` `2a0d797a`. Sources are cited; what the repository does not say
 is left out. For what the release is and is not, read `RELEASE-NOTES-0.1.12.md` first.
 
 ## What you receive
@@ -55,8 +55,15 @@ python scripts/rc-provenance.py verify --release-root <release folder> --expecte
 
 ## 3. Install
 
-Run `AetherCoreSetup-0.1.12-x64.exe`. Expect the SmartScreen / "unknown publisher" warning (D32). The
-repository does not document that dialog's buttons, so they are not described here. The installed service
+Run `AetherCoreSetup-0.1.12-x64.exe`. Expect a SmartScreen / "unknown publisher" warning (D32).
+
+**SmartScreen was not observed for this release.** The acceptance run installed silently from local files,
+which carry no Mark-of-the-Web, so no prompt appeared; the buttons of a downloaded file were never clicked,
+and the repository does not document them. As general Windows 11 behaviour, not observed here, an unsigned
+download normally shows "Windows protected your PC" with a "More info" link and then "Run anyway", and the
+UAC prompt shows "Unknown publisher". Treat that wording as unverified until someone tries a real download.
+
+The installed service
 is `AetherCoreMaintenance`; its files are in `C:\Program Files\AetherCore` and its data in
 `C:\ProgramData\AetherCore` (`release/UNINSTALL.txt`).
 
@@ -69,8 +76,8 @@ local signing key, and **every full uninstall deletes it**: the installer runs `
 - A **major upgrade** (installing the new version over the old one, without uninstalling first) is built
   not to purge it, **but only from a build that already has that protection** (see the warning below): `PurgeMachineData` is conditioned on `NOT
   UPGRADINGPRODUCTCODE` (`installer/wix/Product.wxs`), and the lifecycle test checks that machine data
-  survives an MSI repair and a major upgrade (`DBT-P87-015`). Whether an in-place upgrade from 0.1.11 was
-  run on a real machine for this release is not stated in the repository.
+  survives an MSI repair and a major upgrade (`DBT-P87-015`). Acceptance run 7 upgraded the owner's PC from
+  the 0.1.11 build `578e9cd4` with the data preserved (see the release notes).
 - **Upgrading from `v0.1.11-rc.1` (`ba9973bd`, 2026-09-09) deletes your data.** The protection is the
   `NOT UPGRADINGPRODUCTCODE` condition on `PurgeMachineData`, added in `a013de59` (2026-09-26,
   `DBT-P74-001`). Windows Installer removes the old product with the *old* package's own rules, and

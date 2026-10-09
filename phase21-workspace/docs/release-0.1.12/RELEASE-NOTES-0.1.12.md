@@ -1,6 +1,6 @@
 # AetherCore 0.1.12 — release notes
 
-Draft written 2026-10-06, refreshed 2026-10-09 against `main` `2a0d797a`. Every statement below cites a file in this
+Draft written 2026-10-06, refreshed 2026-10-10 against `main` `2a0d797a`. Every statement below cites a file in this
 repository; anything the repository does not say is left out. This is the **first release, unsigned by
 owner decision D32**, and it is not declared GA (see "Signing").
 
@@ -48,16 +48,21 @@ before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
 - CI is green on `main`, including the Windows job and the packaging candidate.
 - The embedded model's generation tests passed 67 of 67 times on the project's three Windows CI runners
   (`DBT-P62-004`).
-- Six installed acceptance runs on the owner's own Windows 11 PC (decision D33: the release is installed and
+- Seven installed acceptance runs on the owner's own Windows 11 PC (decision D33: the release is installed and
   tried on the owner's own PC, with a protected backup of its data first and a restore after) found and fixed,
   in order, `DBT-P87-013` to `DBT-P87-026`. By the ledger's own titles, one of them is a defect in the product
   itself (the desktop and the update broker carried no UAC execution level, `DBT-P87-018`); the rest are in
   the lifecycle harness, the installed-state checks and the acceptance probe. One run removed the prior
   install and deleted the owner's data, which the protected backup then restored, hash by hash
-  (`DBT-P87-013`). Run 6 passed five of the six English symptoms. Those rows still read `SOURCE FIXED` in
-  the ledger: they close with the final acceptance result, not before.
-- The result of the seventh installed acceptance run (Arabic, the service restart, and the upgrade over
-  0.1.11) was not available when this was refreshed, so it is not stated here.
+  (`DBT-P87-013`).
+- **Run 7 passed** (reported by the acceptance session on 2026-10-09; the evidence files are on the owner's
+  PC), as an ordinary unelevated user, on the release candidate built from source `2a0d797a`: bundle
+  `AetherCoreSetup-0.1.12-x64.exe`, SHA-256
+  `5425a752df800c31914d570200c79dcb788a887a3bf43c53e3564e60b07a3493`, unsigned by decision D32. It covered
+  install, the installed security checks, an MSI repair that closes ACL drift, uninstall (machine data
+  purged, as `release/UNINSTALL.txt` says), and an upgrade from the 0.1.11 build `578e9cd4` with the owner's
+  data preserved; and all six symptoms in English and in Arabic. The promotion check answered
+  `rc_eligible=true, ga=false`: eligible as a release candidate, not declared generally available.
 
 **Not measured, or limited** (accepted, or open with the row):
 
