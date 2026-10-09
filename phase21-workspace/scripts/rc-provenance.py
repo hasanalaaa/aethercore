@@ -256,7 +256,7 @@ def validate_evidence(directory, evidence, sha, bundle_hash, version, source):
         doc=read_json(directory / ('installed-' + locale + '.json'))
         require(doc.get('schema') == 'aethercore.p87-installed-acceptance.v1' and doc.get('source_commit') == sha and doc.get('bundle_sha256') == bundle_hash and doc.get('locale') == locale and doc.get('host') == host, 'installed acceptance identity mismatch')
         require(doc.get('ok') is True and 'blocked_reason' not in doc and doc.get('desktop_closed') is True
-                and doc.get('restart_pending') is False and re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',doc.get('care_run_id','')),
+                and doc.get('restart_pending') is False and re.fullmatch(r'care-[0-9]{1,19}',doc.get('care_run_id','')),
                 'installed acceptance failed or remains incomplete')
         require(doc.get('read_only') is False, 'read-only installed observation cannot qualify')
         require(doc.get('worker_ownership_released') is True, 'installed worker ownership was not released')

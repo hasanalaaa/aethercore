@@ -116,7 +116,7 @@ class PromotionTests(unittest.TestCase):
                     witnesses.append({'role':role,'path':file.name,'sha256':rc.digest(file)})
                 surfaces[surface] = witnesses
             rc.write_json(path, {'schema':'aethercore.p87-installed-acceptance.v1','source_commit':self.sha,'bundle_sha256':self.bundle,
-                'locale':locale,'host':'disposable-vm','ok':True,'desktop_closed':True,'restart_pending':False,'care_run_id':'11111111-2222-4333-8444-555555555555',
+                'locale':locale,'host':'disposable-vm','ok':True,'desktop_closed':True,'restart_pending':False,'care_run_id':'care-1791560738005',
                 'surface_witnesses':surfaces,
                 'read_only':False,'worker_ownership_released':True,'windows_build':26100,'windows_product_name':'Windows 11 Pro','product_type':'workstation','ordinary_user':True,'token':{'sid':'S-1-5-21-1-2-3-1001','elevated':False},
                 'cases':[{'id':name,'disposition':'passed','checks':{'terminal':True,'progress':True,'unavailable_provider':True,'reconnect':True,'restart':True,'no_op_explained':True},'witnesses':[{'path':locale+'.witness.txt','sha256':rc.digest(base / (locale+'.witness.txt'))}]} for name in rc.SYMPTOMS]})
@@ -226,7 +226,9 @@ class PromotionTests(unittest.TestCase):
     def test_failed_or_incomplete_installed_receipt_does_not_promote(self):
         original=rc.read_json(self.installed[0])
         for fields in ({'ok':False},{'ok':None},{'blocked_reason':'Restart verification failed'},
-                       {'desktop_closed':False},{'restart_pending':True},{'care_run_id':'invalid'}):
+                       {'desktop_closed':False},{'restart_pending':True},{'care_run_id':'invalid'},
+                       {'care_run_id':'care-'},{'care_run_id':'CARE-1791560738005'},
+                       {'care_run_id':'11111111-2222-4333-8444-555555555555'}):
             with self.subTest(fields=fields):
                 rc.write_json(self.installed[0],dict(original,**fields))
                 accepted=rc.read_json(self.acceptance);accepted['evidence']['installed-en.json']=rc.digest(self.installed[0])

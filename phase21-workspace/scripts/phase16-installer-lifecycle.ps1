@@ -155,7 +155,7 @@ function Invoke-InstalledAcceptanceWithRestart([string]$Locale) {
     if ($receipt.restart_pending -is [bool] -and $receipt.restart_pending) {
         $care=@($receipt.cases | Where-Object id -eq 'p76-care-timeline-persistence')
         $runId=$receipt.care_run_id
-        if ($runId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' -or $receipt.desktop_closed -isnot [bool] -or -not $receipt.desktop_closed -or $care.Count -ne 1 -or $care[0].checks.reconnect -isnot [bool] -or -not $care[0].checks.reconnect -or $care[0].checks.restart -isnot [bool] -or $care[0].checks.restart) { throw 'Care restart lacks a drained same-run reconnect receipt.' }
+        if ($runId -cnotmatch '^care-[0-9]{1,19}$' -or $receipt.desktop_closed -isnot [bool] -or -not $receipt.desktop_closed -or $care.Count -ne 1 -or $care[0].checks.reconnect -isnot [bool] -or -not $care[0].checks.reconnect -or $care[0].checks.restart -isnot [bool] -or $care[0].checks.restart) { throw 'Care restart lacks a drained same-run reconnect receipt.' }
         if ([DateTimeOffset]::UtcNow.AddSeconds(60) -ge $deadline) { throw 'Care restart observation budget is exhausted.' }
         $controller=Get-Service -Name $service -ErrorAction Stop
         try {

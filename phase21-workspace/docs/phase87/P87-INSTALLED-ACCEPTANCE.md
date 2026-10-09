@@ -136,3 +136,20 @@ The first owner-host run of the 0.1.12 D32 RC stopped at `installed-security-bou
 The backup is what kept the data. It was restored by hand and verified against its manifest (6 of 6 files), and the service reopened it. The owner-host restore now does this in every run, including after a failed step. The lifecycle evidence records `owner_data_restored`, and `rc-provenance` refuses owner-host evidence without it.
 
 Lane 3 reviewed this (`AUDIT/REVIEW-125.md`): approved with no P1, and the three P2s are fixed as listed in `DBT-P87-013`. One limit is open (P3-b). The restore mirrors the backup with `/MIR`, so files that a newer installer creates and the older backup lacks are removed. That worked for 0.1.11 to 0.1.12. A later version with new state files may need `install-hardener apply` or an MSI repair after the restore.
+
+## D33 run 5 (2026-10-09)
+
+Run 5 is the first run in which the owner-host lifecycle reached the six installed symptoms: the 0.1.12 D32 RC at `0ca0d233`, run as the owner, unelevated.
+
+In English, four symptoms passed on real WebView evidence:
+- hardware owned text
+- performance provider labels
+- cleanup owned text
+- the Care no-op explanation
+
+The other two stopped on probe defects, not product defects:
+- **DBT-P87-021.** The Care run id format.
+- **DBT-P87-022.** The typed `repair.stateUnavailable` for a user with no assessment yet.
+
+Arabic and the upgrade from 0.1.11 had not started. The lifecycle kept the owner's data in the backup, as designed; it was restored by hand and matches the manifest.
+

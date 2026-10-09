@@ -74,8 +74,7 @@ $doc = [ordered]@{ schema='aethercore.p87-installed-acceptance.v1'; source_commi
     observed_utc=[DateTime]::UtcNow.ToString('o'); read_only=[bool]$ReadOnlyInstalled; surface_witnesses=@{};
     cases=@($ids | ForEach-Object { @{id=$_;disposition='blocked';reason='Not executed.';checks=@{};witnesses=@()} }) }
 if ($VerifyCareRunId) {
-    $runGuid=[Guid]::Empty
-    if ($ReadOnlyInstalled -or -not [Guid]::TryParse($VerifyCareRunId,[ref]$runGuid)) { throw 'Restart verification requires the recorded native Care run identity.' }
+    if ($ReadOnlyInstalled -or $VerifyCareRunId -cnotmatch '^care-[0-9]{1,19}$') { throw 'Restart verification requires the recorded native Care run identity.' }
     $previous=Get-Content -LiteralPath $OutputPath -Raw | ConvertFrom-Json -AsHashtable
     if ($previous.schema -ne $doc.schema -or $previous.host -ne $doc.host -or $previous.source_commit -ne $ExpectedSourceSha -or $previous.bundle_sha256 -ne $ExpectedBundleSha256 -or $previous.locale -ne $Locale -or $previous.token.sid -ne $identity.User.Value -or $previous.care_run_id -ne $VerifyCareRunId -or $previous.worker_ownership_released -isnot [bool] -or -not $previous.worker_ownership_released -or $previous.desktop_closed -isnot [bool] -or -not $previous.desktop_closed) { throw 'Restart verification report does not belong to these bytes and this ordinary user.' }
     $care=@($previous.cases | Where-Object id -eq 'p76-care-timeline-persistence')
@@ -173,6 +172,16 @@ function Invoke-CareSmoke([string]$Log, [string[]]$ProcessArgs=@()) {
     [IO.File]::WriteAllText($Log,($stdout.GetAwaiter().GetResult()+$stderr.GetAwaiter().GetResult()))
     if ($workers.helper.ExitCode -ne 0) { throw 'Actual installed Care helper failed.' }
 }
+function Get-OwnedState([string]$Command) {
+    try { return Invoke-Installed $Command }
+    catch {
+        # A user who never started this kind of work owns no state of it: the service answers a
+        # typed <domain>.stateUnavailable, not Idle (owner PC run 5, 2026-10-09). Nothing to wait for.
+        $value=try { ($_.Exception.Message | ConvertFrom-Json).exception.value } catch { $null }
+        if ($value -is [string] -and $value -cmatch '^[A-Za-z]+\.stateUnavailable$') { return $null }
+        throw
+    }
+}
 function Wait-Terminal([string]$Command, [string]$ExpectedId='', [string]$IdField='') {
     $terminal = switch ($Command) {
         'get_diagnostics_snapshot' { @('Idle','Ready','Partial','Failed') }
@@ -182,7 +191,11 @@ function Wait-Terminal([string]$Command, [string]$ExpectedId='', [string]$IdFiel
         default { throw 'Unknown provider state contract.' }
     }
     do {
-        $state = Invoke-Installed $Command
+        $state = Get-OwnedState $Command
+        if ($null -eq $state) {
+            if ($ExpectedId) { throw 'Provider operation is no longer owned; another worker is preserved.' }
+            return $null
+        }
         if ($ExpectedId -and $state[$IdField] -ne $ExpectedId) { throw 'Provider operation identity changed; another worker is preserved.' }
         if ($state.state -in $terminal) { return $state }
         if ($state.state -notin @('Scanning','Collecting','Running')) { throw 'Unknown provider state cannot prove terminal completion.' }
@@ -285,7 +298,7 @@ try {
         $doc.cases[3].witnesses=@(Witness $log)
         if ($fixture -and (Test-Path -LiteralPath $fixture)) { throw 'The acknowledged cleanup did not delete its actual test fixture.' }
         $lines=Get-Content -LiteralPath $log
-        $runLine=@($lines | Where-Object { $_ -match '^SMOKE: care-run-id=([0-9a-f-]{36})$' })
+        $runLine=@($lines | Where-Object { $_ -cmatch '^SMOKE: care-run-id=care-[0-9]{1,19}$' })
         if ($runLine.Count -ne 1) { throw 'Care smoke omitted its unique run identity.' }
         $doc['care_run_id']=$runLine[0].Substring('SMOKE: care-run-id='.Length)
         if (-not (Select-String -LiteralPath $log -SimpleMatch "SMOKE: reconnected-care-run=$($doc.care_run_id)" -Quiet)) { throw 'Independent Care reconnect was not proved.' }
@@ -298,7 +311,8 @@ try {
     Case 4 {
         Page repair
         if ($ReadOnlyInstalled) { $doc.cases[4].reason='Assessment/cancellation is not started on the owner host.';return }
-        if ((Invoke-Installed get_repair_assessment).state -eq 'Scanning') { throw 'Existing assessment worker is preserved.' }
+        $existing=Get-OwnedState get_repair_assessment
+        if ($null -ne $existing -and $existing.state -eq 'Scanning') { throw 'Existing assessment worker is preserved.' }
         $workers.assessmentStarted=$true
         $assessment=Invoke-Installed start_repair_assessment;$workers.assessmentId=$assessment.assessmentId
         $progressDeadline=[DateTime]::UtcNow.AddSeconds(20)
