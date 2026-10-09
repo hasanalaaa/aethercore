@@ -161,3 +161,37 @@ Run 6 (RC at `febcc01b`) passed five of the six symptoms in English:
 
 Repair observed real progress and a terminal state, but no unavailable provider: the owner PC is healthy, and a full assessment outlasts the probe budget. Under D34 (`DECISIONS.md`), on the owner host only, that check reads "not observed on the owner's healthy machine, by owner decision D34". It never reads passed, and acceptance and promotion list it under `not_observed`. The path itself is covered on Windows in CI by the system-repair `bounded.rs` and `winre.rs` tests and the probe's Case 4 fixture named in DBT-P87-023. The lifecycle restored the owner's data automatically. Arabic and the upgrade had not run yet.
 
+## D33 run 7: passed (2026-10-09)
+
+**What ran.** Run 7 is the first complete installed qualification of the release candidate, on the owner's Windows 11 PC:
+- **RC:** 0.1.12, unsigned by owner decision D32, at main `2a0d797a`. Bundle `AetherCoreSetup-0.1.12-x64.exe` sha256 `5425a752df800c31914d570200c79dcb788a887a3bf43c53e3564e60b07a3493`.
+- **User:** the owner's ordinary, unelevated account.
+
+**Lifecycle (`lifecycle.json` ok=true).** All 12 steps passed:
+- `owner-host-backup` (`AetherCore-owner-backup-20261009T205630Z`, 6 files)
+- `owner-host-prior-uninstall`
+- `burn-install`
+- `installed-security-boundaries` (token, ACLs, PE manifests)
+- `program-data-preservation-sentinel`
+- `repair-closes-acl-drift`
+- `burn-uninstall`
+- `uninstall-clean-state` (machine data purged, as `UNINSTALL.txt` states)
+- `signed-upgrade-preserves-owner-data`, from the 0.1.11 D32 baseline `578e9cd4`, which contains the purge-on-upgrade guard `a013de59`
+- `owner-host-service-restored`
+
+**Symptoms.** All six passed in both EN and AR:
+- hardware, performance and cleanup owned text, and the Care no-op explanation;
+- Care persistence: the same run survived an independent reconnect and a service restart (`care-1791579522714` EN, `care-1791579565872` AR);
+- repair progress and terminal state. Its unavailable-provider observation reads "not observed on the owner's healthy machine, by owner decision D34".
+
+Both receipts show `worker_ownership_released=true` and no `owner_locale_restore_error`.
+
+**Gates.** `rc-provenance accept` returned 0 (`ACCEPTANCE.json` sha256 `b7b24b91a6d9e2acf7d39c65f023796e5633c9dccbd67ea76bcf492c2117b60a`). `promote` returned 0 with `rc_eligible`, `ga=false`, and `not_observed` = the two D34 entries only.
+
+**Owner state afterwards.** The service is running 0.1.12. The database, `known_hosts` and lock file are byte-identical to the backup, and every backup and post-run folder is kept.
+
+**Not covered by this run, and not claimed:**
+- the rest of the P87-09 matrix: stock WindowsTemp ACL versus split token, a pre-created or locked parent, VC++ runtime absent, ARM64, recovery/media, and an independent no-egress capture at idle;
+- the three DBT-P86-006 measurements: Narrator/keyboard focus, in-flight cancellation latency, and a socket trace;
+- SmartScreen: the lifecycle installs local files without Mark-of-the-Web, so no SmartScreen prompt was shown or observed.
+
