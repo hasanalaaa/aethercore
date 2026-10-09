@@ -6,7 +6,7 @@
 //! care plan preview → one approval (its digest must be the preview's) → one run (every
 //! automatic step must reach its domain; none may be refused for authorization) → a second
 //! run without a new approval must not run (the approval was used up) → a fresh session
-//! must retain the exact run on Timeline. `--verify-run-id <UUID>` is read-only: a fresh
+//! must retain the exact run on Timeline. `--verify-run-id <care-run-id>` is read-only: a fresh
 //! session queries Timeline without starting a scan, granting consent, or running Care.
 
 #[derive(Debug, PartialEq, Eq)]
@@ -19,23 +19,17 @@ fn parse_mode(args: &[String]) -> Result<Mode, String> {
     match args {
         [] => Ok(Mode::Run),
         [flag, run_id] if flag == "--verify-run-id" => {
-            let bytes = run_id.as_bytes();
-            let uuid = bytes.len() == 36
-                && bytes.iter().enumerate().all(|(index, byte)| {
-                    if matches!(index, 8 | 13 | 18 | 23) {
-                        *byte == b'-'
-                    } else {
-                        byte.is_ascii_hexdigit()
-                    }
-                });
-            if !uuid {
+            // The service names a run `care-<UTC milliseconds>` (router/care.rs); an i64 has
+            // at most 19 digits.
+            let millis = run_id.strip_prefix("care-").unwrap_or_default();
+            if !(1..=19).contains(&millis.len()) || !millis.bytes().all(|b| b.is_ascii_digit()) {
                 return Err(
-                    "--verify-run-id requires a UUID in 8-4-4-4-12 hexadecimal form".into(),
+                    "--verify-run-id requires the service's care-<milliseconds> run id".into(),
                 );
             }
-            Ok(Mode::VerifyRun(run_id.to_ascii_lowercase()))
+            Ok(Mode::VerifyRun(run_id.into()))
         }
-        _ => Err("usage: care_smoke [--verify-run-id <UUID>]".into()),
+        _ => Err("usage: care_smoke [--verify-run-id <care-run-id>]".into()),
     }
 }
 
@@ -56,19 +50,23 @@ fn require_run_entry(
 #[cfg(test)]
 mod argument_tests {
     use super::*;
-    const RUN: &str = "ff0a7cd0-87cf-4152-9b98-326687fc634a";
+    // The identity the installed service issues (router/care.rs), as observed on the owner PC.
+    const RUN: &str = "care-1791560738005";
     #[test]
-    fn native_mode_requires_exact_uuid_and_declares_read_only_verification() {
+    fn native_mode_requires_the_service_run_identity_and_declares_read_only_verification() {
         assert_eq!(parse_mode(&[]).unwrap(), Mode::Run);
         assert_eq!(
-            parse_mode(&["--verify-run-id".into(), RUN.to_uppercase()]).unwrap(),
+            parse_mode(&["--verify-run-id".into(), RUN.into()]).unwrap(),
             Mode::VerifyRun(RUN.into())
         );
         for args in [
             vec!["--unknown"],
             vec!["--verify-run-id"],
-            vec!["--verify-run-id", "not-a-uuid"],
-            vec!["--verify-run-id", "ff0a7cd0-87cf-4152-9b98-326687fc634z"],
+            vec!["--verify-run-id", "care-"],
+            vec!["--verify-run-id", "care-17915607380a5"],
+            vec!["--verify-run-id", "CARE-1791560738005"],
+            vec!["--verify-run-id", "care-123456789012345678901"],
+            vec!["--verify-run-id", "ff0a7cd0-87cf-4152-9b98-326687fc634a"],
             vec!["--verify-run-id", RUN, "extra"],
         ] {
             assert!(parse_mode(&args.into_iter().map(String::from).collect::<Vec<_>>()).is_err());

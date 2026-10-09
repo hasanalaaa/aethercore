@@ -250,13 +250,14 @@ def validate_evidence(directory, evidence, sha, bundle_hash, version, source):
         require(life.get('service_running_at_end') is True, 'owner-host service is not running again')
         require(life.get('owner_data_restored') is True, "owner-host data was not restored from the backup")
         required=LIFECYCLE + OWNER_HOST_STEPS
+    not_observed=[]
     steps=life.get('steps',[])
     require(len(steps) == len(required) and {p.get('name') for p in steps} == set(required) and all(p.get('ok') is True for p in steps), 'lifecycle required steps failed/omitted')
     for locale in ('en','ar'):
         doc=read_json(directory / ('installed-' + locale + '.json'))
         require(doc.get('schema') == 'aethercore.p87-installed-acceptance.v1' and doc.get('source_commit') == sha and doc.get('bundle_sha256') == bundle_hash and doc.get('locale') == locale and doc.get('host') == host, 'installed acceptance identity mismatch')
         require(doc.get('ok') is True and 'blocked_reason' not in doc and doc.get('desktop_closed') is True
-                and doc.get('restart_pending') is False and re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',doc.get('care_run_id','')),
+                and doc.get('restart_pending') is False and re.fullmatch(r'care-[0-9]{1,19}',doc.get('care_run_id','')),
                 'installed acceptance failed or remains incomplete')
         require(doc.get('read_only') is False, 'read-only installed observation cannot qualify')
         require(doc.get('worker_ownership_released') is True, 'installed worker ownership was not released')
@@ -271,19 +272,28 @@ def validate_evidence(directory, evidence, sha, bundle_hash, version, source):
                 'p76-care-timeline-persistence': ('reconnect','restart'),
                 'p76-care-eligibility-explanation': ('no_op_explained',),
             }.get(case['id'], ())
-            require(all(case.get('checks',{}).get(key) is True for key in required_checks), 'required runtime check omitted/failed')
+            checks=case.get('checks',{})
+            if (case['id'] == 'p76-repair-assessment-terminal' and host == 'owner-host-d33'
+                    and checks.get('unavailable_provider') is False and checks.get('unavailable_provider_owner_decision') == 'D34'):
+                # D34: a healthy owner PC has no unavailable provider to observe; it is named, never claimed.
+                owner_decision(source, 'D34')
+                required_checks=('terminal','progress')
+                not_observed.append({'locale':locale,'case':case['id'],'check':'unavailable_provider','decision':'D34'})
+            require(all(checks.get(key) is True for key in required_checks), 'required runtime check omitted/failed')
             witnesses=case.get('witnesses',[])
             require(witnesses, 'symptom raw witness omitted')
             for witness in witnesses:
                 require(digest(safe_path(directory,witness['path'])) == witness['sha256'], 'symptom witness hash mismatch')
         validate_surfaces(directory,doc,locale)
+    return not_observed
 
 def accept(release, source, sha, thumb, receipt_hash, bundle_hash, directory):
     receipt=verify(release,source,sha,thumb,receipt_hash,bundle_hash)
     evidence={name:digest(directory / name) for name in ('lifecycle.json','installed-en.json','installed-ar.json')}
-    validate_evidence(directory,evidence,sha,bundle_hash,receipt['version'],source)
+    not_observed=validate_evidence(directory,evidence,sha,bundle_hash,receipt['version'],source)
     return {'schema':'aethercore.rc-acceptance.v1','source_commit':sha,'bundle_sha256':bundle_hash,
-            'provenance_sha256':receipt_hash,'signing':receipt['signing'],'ok':True,'evidence':evidence}
+            'provenance_sha256':receipt_hash,'signing':receipt['signing'],'ok':True,'evidence':evidence,
+            'not_observed':not_observed}
 
 def promote(release, source, sha, thumb, receipt_hash, bundle_hash, acceptance, acceptance_hash):
     receipt=verify(release,source,sha,thumb,receipt_hash,bundle_hash)
@@ -292,10 +302,10 @@ def promote(release, source, sha, thumb, receipt_hash, bundle_hash, acceptance, 
     require(accepted.get('schema') == 'aethercore.rc-acceptance.v1' and accepted.get('ok') is True and
             accepted.get('source_commit') == sha and accepted.get('bundle_sha256') == bundle_hash and
             accepted.get('provenance_sha256') == receipt_hash, 'acceptance is absent/failed or belongs to different bytes')
-    validate_evidence(acceptance.parent,accepted.get('evidence',{}),sha,bundle_hash,receipt['version'],source)
+    not_observed=validate_evidence(acceptance.parent,accepted.get('evidence',{}),sha,bundle_hash,receipt['version'],source)
     return {'schema':'aethercore.rc-promotion.v1', 'source_commit':sha, 'bundle_sha256':bundle_hash,
             'provenance_sha256':receipt_hash, 'acceptance_sha256':acceptance_hash, 'signing':receipt['signing'],
-            'rc_eligible':True, 'ga':False}
+            'rc_eligible':True, 'ga':False, 'not_observed':not_observed}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
