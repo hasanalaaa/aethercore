@@ -328,6 +328,26 @@ try {
     Assert ($foreign.Case.disposition -ne 'passed' -and 'start_cleanup_scan' -notin $foreign.Events -and 'actual-ui-prepare' -notin $foreign.Events) 'actual Case5 preserves an existing cleanup worker without replacement or prepare'
     $readOnly=Invoke-NoOpPreparationFixture -ReadOnly $true
     Assert ('start_cleanup_scan' -notin $readOnly.Events -and 'actual-ui-prepare' -notin $readOnly.Events) 'actual Case5 read-only mode starts no scan or preview'
+    # The actual Cdp/Js over a socket whose tasks are real completed .NET tasks: owner PC run 4
+    # (2026-10-06) failed on the first Js call with "VoidTaskResult ... ContainsKey".
+    foreach ($name in 'Cdp','Js') {
+        # The probe also holds a nested self-test stub named Js; take the definition that speaks CDP.
+        $definition=@($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true) | Where-Object { $_.Extent.Text -match 'SendAsync|Runtime\.evaluate' })[0]
+        Assert ([bool]$definition) "actual $name exists"
+        . ([scriptblock]::Create($definition.Extent.Text))
+    }
+    $deadline=[DateTime]::UtcNow.AddMinutes(1);$cdpId=0
+    $socket=[pscustomobject]@{Sent=[Collections.Generic.List[string]]::new()}
+    $socket | Add-Member ScriptMethod SendAsync { param($segment,$type,$end,$token)
+        $this.Sent.Add([Text.Encoding]::UTF8.GetString($segment.Array,$segment.Offset,$segment.Count))
+        return [Threading.Tasks.Task]::CompletedTask }
+    $socket | Add-Member ScriptMethod ReceiveAsync { param($segment,$token)
+        $request=$this.Sent[$this.Sent.Count-1] | ConvertFrom-Json
+        $bytes=[Text.Encoding]::UTF8.GetBytes((@{id=$request.id;result=@{result=@{type='number';value=2}}} | ConvertTo-Json -Depth 5 -Compress))
+        [Array]::Copy($bytes,$segment.Array,$bytes.Length)
+        return [Threading.Tasks.Task]::FromResult([Net.WebSockets.WebSocketReceiveResult]::new($bytes.Length,[Net.WebSockets.WebSocketMessageType]::Text,$true)) }
+    Assert ((Js '1+1') -eq 2) 'actual Js returns the CDP value, not a leaked task result'
+    Assert (@(Cdp Page.enable).Count -eq 1) 'actual Cdp returns only the CDP result'
     if($gaps.Count){throw ($gaps -join '; ')}
     Write-Host 'P87_PRODUCER_FIXTURES_PASS'
 } finally {
