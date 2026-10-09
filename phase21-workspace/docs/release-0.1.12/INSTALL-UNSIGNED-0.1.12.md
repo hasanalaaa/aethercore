@@ -32,6 +32,10 @@ Select-String 'AetherCoreSetup-0.1.12-x64.exe' .\SHA256SUMS.txt
 (Get-AuthenticodeSignature .\artifacts\AetherCoreSetup-0.1.12-x64.exe).Status   # expect: NotSigned
 ```
 
+For the accepted release candidate (source `2a0d797a`) the setup bundle's SHA-256, as reported by the
+acceptance run and recorded in its receipt, is
+`5425a752df800c31914d570200c79dcb788a887a3bf43c53e3564e60b07a3493`.
+
 The two hashes must be identical (`Get-FileHash` prints capitals and `SHA256SUMS.txt` lower case, so
 compare without regard to case). The rc-provenance gate requires every artifact to be natively
 `NotSigned` and rejects a `Valid` one, so a `Valid` signature here means this is **not** the D32 release
@@ -85,7 +89,8 @@ local signing key, and **every full uninstall deletes it**: the installer runs `
   consequence is reasoned from how Windows Installer works and from that file; it was not run on a real
   upgrade from `rc.1`. Back up first. The upgrade check in the acceptance run starts from the 0.1.11
   build `578e9cd4` (2026-10-05), which has the condition (bundle `AetherCoreSetup-0.1.11-x64.exe`, SHA-256
-  `0a3f66837025f33a002ba480256794f839e7ba88e7649c7934e7b9b9d6b9e0d2`); its result is run 7's.
+  `0a3f66837025f33a002ba480256794f839e7ba88e7649c7934e7b9b9d6b9e0d2`). Run 7 upgraded from that build and
+  the owner's data survived.
 - **Removing the old version first does delete the data.** The one real transition measured, the owner's
   own PC on 2026-10-05, removed 0.1.11 and the database fell from 2,445,312 bytes to a fresh 4,096; the
   protected backup taken first brought back all 6 files and the service reopened them (`DBT-P87-013`).
