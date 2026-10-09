@@ -27,7 +27,8 @@ function Assert-OwnedText([string[]]$Text, [string]$Language) {
     if (-not $Text.Count -or @($Text | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -eq 0) { throw 'Owned text was not exercised.' }
     foreach ($line in $Text) {
         if ($line -match '\b(?:WindowsTemp|UserTemp|WER|processTop|power\.temperature|NotCollected|Degraded)\b' -or $line -cmatch '(?:^|[·•])\s*Files\s*(?:$|[·•])') { throw "Raw identifier in owned text: $line" }
-        $prose = $line -replace '\b(?:NVMe|SMART|WHEA|SFC|DISM|CHKDSK|Windows|NTFS)\b',''
+        # Product and API names the Arabic catalog keeps whole (Direct3D: owner PC cleanup, D33 run 6).
+        $prose = $line -replace '\b(?:Windows Error Reporting|Direct3D|NVMe|SMART|WHEA|SFC|DISM|CHKDSK|Windows|NTFS)\b',''
         if ($Language -eq 'ar' -and $prose -match '[A-Za-z]{3,}') { throw "English owned text in Arabic: $line" }
     }
 }

@@ -48,6 +48,11 @@ Write-Host 'PASS: approved cleanup English files prose'
 Assert-OwnedText @('ملاحظات القرص NVMe المقاسة') ar
 Reject {Assert-OwnedText @('Files · 3') en} 'isolated Files token rejected'
 Reject {Assert-OwnedText @('ملاحظات القرص Measured disk observations') ar} 'mixed AR/EN prose rejected'
+# The Arabic catalog keeps product names; the owner PC's cleanup page shows the shader cache (D33 run 6).
+Assert-OwnedText @('ذاكرة مظلّلات Direct3D','ملفات مؤرشفة من Windows Error Reporting. احتفظ بها عند تشخيص الأعطال.') ar
+Write-Host 'PASS: Arabic owned text keeps the Direct3D and Windows Error Reporting product names'
+Reject {Assert-OwnedText @('ذاكرة Direct3D shader cache') ar} 'English words beside a product name rejected'
+Reject {Assert-OwnedText @('ملفات Error Reporting') ar} 'a product name only counts whole'
 Reject {Assert-OwnedText @('processTop · NotCollected') en} 'raw provider identifiers rejected'
 $echo=$false;$deadline=[DateTime]::UtcNow.AddSeconds(5)
 Queue get_diagnostics_snapshot @(@{state='Collecting';scanId='owned'},@{state='Partial';scanId='owned'})
