@@ -89,6 +89,20 @@ before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
   lifecycle's evidence path is not checked for freshness).
 - **The owner's own PC (1):** `DBT-P55-004` (recovery media not attached).
 
+## Known follow-ups (test tooling, not the product)
+
+Four small items found in review are deferred to the next release candidate, because even a test-only
+change moves the source commit and this candidate is already accepted. None changes what the installed
+product does (`AUDIT` review of PR #132, recorded here for the next candidate):
+
+- the hook test does not yet pin that the locale loop returns a plain true/false;
+- a failed run writes no lifecycle evidence file, so its step timestamps are lost (`DBT-P87-027` is the
+  related ledger row for the evidence path);
+- the probe restores the owner's saved interface language after it drains its workers, so a stuck worker
+  could leave the test language set;
+- the app writes its language key at start-up, so "no saved language" is restored as the start-up default,
+  which looks the same.
+
 ## Uninstalling removes your AetherCore data
 
 A full uninstall deletes **all** machine data in `C:\ProgramData\AetherCore`: the operation journal, every
