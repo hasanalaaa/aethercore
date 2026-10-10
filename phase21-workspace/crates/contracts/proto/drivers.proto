@@ -153,6 +153,11 @@ message DriverHubSnapshot {
   // empty when Windows keeps no such date.
   string search_scope = 14;
   string windows_last_online_search = 15;
+  // The machine the scan was matched against (no serial numbers or identifiers), for the manual
+  // routing of a missing driver. Empty when Windows reports none.
+  string machine_manufacturer = 16;
+  string machine_model = 17;
+  string board_product = 18;
 }
 message DriverHubSnapshotResponse { DriverHubSnapshot snapshot = 1; }
 message DriverInstallItemStatus {

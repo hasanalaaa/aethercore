@@ -9,8 +9,11 @@
     startDriverInstall, startDriverScan, startOnlineDriverSearch, toggleCandidate, toggleExpanded
   } from './controller';
   import { formatBytes, formatRange, shortDigest, stageTone, stateLabel, targetEvidence, targetLabel } from '../shared';
-  import { driverSearchSource, hasMessageKey, localizeMatchQuality, localizeOwnedText, localizeRecommendationReason, localizeState, t, td, type MessageKey } from '../../lib/i18n';
+  import { driverSearchSource, hasMessageKey, localizeMatchQuality, localizeOwnedText, localizeRecommendationReason, localizeState, t, td, formatNumber, type MessageKey } from '../../lib/i18n';
   import type { DriverCandidate, DriverDevice } from '../../lib/contracts';
+  import { vendorDriverAgeYears } from './age';
+  import { machineLabel, manualRoutingGroups, supportRoot } from './routing';
+  import { searchNotice, shouldAutoScan } from './view';
   import { PolicyDenied, type PolicyDenial } from '../../design/signature';
 
   /**
@@ -45,7 +48,8 @@
   $: expanded = $driversUi.expanded;
 
   const filterKeys: Record<string, MessageKey> = {
-    All:'drivers.filter.All', Updates:'drivers.filter.Updates', Problems:'drivers.filter.Problems', Missing:'drivers.filter.Missing', Display:'drivers.filter.Display'
+    All:'drivers.filter.All', Updates:'drivers.filter.Updates', Problems:'drivers.filter.Problems', Missing:'drivers.filter.Missing', Display:'drivers.filter.Display',
+    Vendor:'drivers.filter.Vendor', Managed:'drivers.filter.Managed'
   };
   const scanStepKeys = [
     ['InventoryScanning','drivers.step.inventory','drivers.step.inventoryHint'],
@@ -60,6 +64,21 @@
   /** Handlers take no event: a click never reaches the online search except through its confirmation. */
   const startScan = () => { confirmingOnline = false; void startDriverScan(); };
   let confirmingOnline = false;
+  /** The local inventory loads when the page opens: read-only, no network, once per visit. */
+  let autoStarted = false;
+  $: if (shouldAutoScan(hub.state, snapshot.connected, autoStarted)) { autoStarted = true; startScan(); }
+  $: notice = searchNotice(hub);
+  $: manualGroups = hub.state === 'Ready' ? manualRoutingGroups(hub.devices) : [];
+  const now = Date.now();
+  /** Where to get a driver Windows cannot supply: the maker's support address, as text only. */
+  function manualSource(vendor: string): string {
+    const machine = machineLabel(hub);
+    const maker = supportRoot(hub.machineManufacturer);
+    if (machine && maker) return t('drivers.manual.sourceMachine', locale, { machine, address: maker });
+    const root = supportRoot(vendor);
+    if (vendor && root) return t('drivers.manual.sourceVendor', locale, { vendor, address: root });
+    return t('drivers.manual.sourceGeneric', locale);
+  }
   function confirmOnlineSearch(): void { confirmingOnline = false; void startOnlineDriverSearch(); }
   /**
    * The Microsoft Update Catalog, given to the user to open themselves (P84-05): never opened here.
@@ -137,6 +156,27 @@
   </div></section>
 {/if}
 
+{#if notice}
+  <!-- The list is what Windows already had. The one button is the confirmed online search (D14). -->
+  <section class="warning-strip not-searched"><span>◇</span>
+    <div><strong>{t('drivers.notSearched.title',locale)}</strong>
+      <p>{notice.date ? t('drivers.notSearched.bodyDate',locale,{date:notice.date}) : t('drivers.notSearched.bodyUnknown',locale)}</p></div>
+    <Pressable className="secondary" onclick={() => { confirmingOnline = true; }} disabled={busy || scanStates.includes(hub.state) || !snapshot.connected}>{t('drivers.searchOnline',locale)}</Pressable>
+  </section>
+{/if}
+{#if manualGroups.length}
+  <section class="panel manual-routing" aria-labelledby="drivers-manual-title">
+    <div class="panel-head"><div><h3 id="drivers-manual-title">{t('drivers.manual.title',locale)}</h3></div></div>
+    {#each manualGroups as group (group.vendor)}
+      <article class="manual-group">
+        <strong>{group.vendor ? t('drivers.manual.group',locale,{vendor:group.vendor,count:formatNumber(group.devices.length,locale)}) : t('drivers.manual.groupUnknown',locale,{count:formatNumber(group.devices.length,locale)})}</strong>
+        <p>{t('drivers.manual.body',locale,{source:manualSource(group.vendor)})}</p>
+        <div class="manual-ids"><span>{t('drivers.manual.ids',locale)}</span>{#each group.hardwareIds as id}<code>{id}</code>{/each}</div>
+        <span class="selection-tools"><button use:fluidPress={{ pressedScale: 0.985 }} onclick={() => copy(group.hardwareIds.join('\n'), `group:${group.vendor}`)}>{t('drivers.catalog.copyId',locale)}</button><span role="status">{copied === `group:${group.vendor}` ? t('drivers.catalog.copied',locale) : ''}</span></span>
+      </article>
+    {/each}
+  </section>
+{/if}
 {#if hub.state === 'Ready'}
   <section class:warning={hub.authorityCoverage !== 'CompleteForRequiredAuthorities'} class="authority-coverage"><div><strong>{t('drivers.coverage.title',locale)}</strong><p>{td(`drivers.coverage.${hub.authorityCoverage}` as MessageKey,locale)}</p></div><div class="selection-tools"><button use:fluidPress={{ pressedScale:0.985 }} onclick={selectAllRecommended}>{t('drivers.selectAllRecommended',locale)}</button><button use:fluidPress={{ pressedScale:0.985 }} onclick={clearDriverSelection}>{t('drivers.clearAll',locale)}</button></div></section>
 {/if}
@@ -193,7 +233,7 @@
         <article class:problem={faulted(device)} class:gpu={device.displayManaged} class="device-card">
           <div class="device-main">
             <div class="device-identity"><div class="device-icon">{device.displayManaged ? '▰' : device.className === 'Net' ? '⌁' : device.className === 'MEDIA' ? '◉' : '◇'}</div><div><strong><TechnicalText value={device.displayName}/></strong><p>{#if device.manufacturer}<TechnicalText value={device.manufacturer}/>{:else}{t('drivers.manufacturerUnknown',locale)}{/if} · {#if device.className}<TechnicalText value={device.className}/>{:else}{t('drivers.unclassified',locale)}{/if}</p></div></div>
-            <div class="driver-current"><small>{device.driver?.provider || t('drivers.noDriverMetadata',locale)}</small><strong><TechnicalText value={device.driver?.version || '—'}/></strong><span><TechnicalText value={device.driver?.date || device.driver?.infPath || ''}/></span></div>
+            <div class="driver-current"><small>{device.driver?.provider || t('drivers.noDriverMetadata',locale)}</small><strong><TechnicalText value={device.driver?.version || '—'}/></strong><span><TechnicalText value={device.driver?.date || device.driver?.infPath || ''}/></span>{#if vendorDriverAgeYears(device, now) !== undefined}<em class="driver-age">{t('drivers.age.badge',locale,{value:formatNumber(vendorDriverAgeYears(device, now) ?? 0,locale,{minimumFractionDigits:1,maximumFractionDigits:1})})}</em>{/if}</div>
             <div class="driver-target">{#if device.candidates.length}<small>{device.candidates[0].provider || t('drivers.step.update',locale)}</small><strong>{#if device.candidates[0].targetVersion}<TechnicalText value={device.candidates[0].targetVersion}/>{:else}{targetLabel(device.candidates[0],locale)}{/if}</strong><span>{targetEvidence(device.candidates[0],locale)} · {formatRange(device.candidates[0].minDownloadBytes,device.candidates[0].maxDownloadBytes,locale)}</span>{:else}<small>{t('drivers.step.update',locale)}</small><strong>—</strong><span>{t('drivers.noOffer',locale)}</span>{/if}</div>
             <div class="device-status"><span class:bad={faulted(device)} class:update={device.candidates.some((c) => c.selectable)} class:vendor={device.displayManaged || device.candidates.some((candidate) => candidate.firmwareManaged)}>{stateLabel(device,locale)}</span></div>
             <button use:fluidPress={{ pressedScale: 0.985 }} class="expand-button" aria-label={t('drivers.toggleDetails',locale)} onclick={() => toggleExpanded(device.instanceId)}>{expanded[device.instanceId] ? '−' : '+'}</button>

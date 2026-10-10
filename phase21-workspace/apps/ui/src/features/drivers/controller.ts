@@ -4,10 +4,11 @@ import { currentShellState, setPage, runBusy } from '../../app/shell-state';
 import { serviceInvoke } from '../../platform/service-client';
 import { refreshServiceSnapshot } from '../../platform/snapshot';
 import { patchStreamState, streamState } from '../../platform/stream-state';
+import { filterDevices } from './view';
 
 export const scanStates: readonly string[] = ['InventoryScanning', 'UpdateSearching', 'Matching'];
 export function scanStateIndex(state: string): number { return scanStates.findIndex((candidate) => candidate === state); }
-export const driverFilters: DriverFilter[] = ['All', 'Updates', 'Problems', 'Missing', 'Display'];
+export const driverFilters: DriverFilter[] = ['All', 'Updates', 'Problems', 'Missing', 'Display', 'Vendor', 'Managed'];
 
 type DriversUiState = {
   filter: DriverFilter;
@@ -91,18 +92,7 @@ export function selectedUpdates(): DriverCandidate[] {
 export function filteredDevices(): DriverDevice[] {
   const { hub } = get(streamState);
   const { filter, search } = get(driversUi);
-  const query = search.trim().toLowerCase();
-  return hub.devices.filter((device) => {
-    const filterMatch = filter === 'All'
-      || (filter === 'Updates' && device.candidates.some((candidate) => candidate.recommendationState === 'Recommended' || candidate.recommendationState === 'Optional'))
-      || (filter === 'Problems' && device.hasProblem)
-      || (filter === 'Missing' && device.missingDriver)
-      || (filter === 'Display' && (device.className.toLowerCase() === 'display' || device.displayManaged));
-    if (!filterMatch) return false;
-    if (!query) return true;
-    return [device.displayName, device.manufacturer, device.className, device.instanceId, ...device.hardwareIds]
-      .some((value) => value.toLowerCase().includes(query));
-  });
+  return filterDevices(hub.devices, filter, search, Date.now());
 }
 
 /** A scan of what Windows already knows: the local cache, no network (P84-02A). */

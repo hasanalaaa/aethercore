@@ -201,6 +201,9 @@ pub(crate) fn driver_hub_proto(snapshot: DriverHubSnapshot) -> v1::DriverHubSnap
         provider_status: snapshot.provider_status,
         search_scope: snapshot.search_scope,
         windows_last_online_search: snapshot.windows_last_online_search,
+        machine_manufacturer: snapshot.machine_manufacturer,
+        machine_model: snapshot.machine_model,
+        board_product: snapshot.board_product,
     }
 }
 

@@ -133,11 +133,20 @@ const hub: DriverHub = {
     deviceCount: 148, matchedDeviceCount: 96, updateOfferCount: 12, recommendedUpdateCount: 4,
     problemDeviceCount: 1, missingDriverCount: 1, selectableUpdateCount: 9, managementAuthorityCount: 3,
   },
-  devices: [0, 1, 2, 3, 4, 5].map((i) => device(i)),
+  devices: [
+    ...[0, 1, 2, 3, 4, 5].map((i) => device(i)),
+    // A vendor package from 2023 (registry date format m-d-yyyy), and the owner's real shape of "no driver":
+    // Intel chipset functions on a board whose maker is not in the Windows Update cache.
+    device(6, { displayName: 'Intel(R) iCLS Client', className: 'SoftwareComponent', displayManaged: false, candidates: [], driver: { provider: 'Intel', version: '1.71.99.0', infPath: 'oem12.inf', date: '6-12-2023' } }),
+    ...['7A4C', '7A4D'].map((dev, k) => device(7 + k, { displayName: 'PCI Device', className: '', manufacturer: '', displayManaged: false, hasProblem: true, missingDriver: true, problemCode: 28, deviceState: 'Problem', candidates: [], driver: null, instanceId: `PCI\\VEN_8086&DEV_${dev}&SUBSYS_88821043&REV_11\\3&11583659&0&A${k}`, hardwareIds: [`PCI\\VEN_8086&DEV_${dev}&SUBSYS_88821043&REV_11`, `PCI\\VEN_8086&DEV_${dev}`] })),
+  ],
   authorityCoverage: 'Complete',
   providerStatus: ['WindowsUpdate: Available', 'VendorPortal: Manual'],
   searchScope: 'LocalCacheOnly',
   windowsLastOnlineSearch: '2026-01-20',
+  machineManufacturer: 'ASUS',
+  machineModel: 'System Product Name',
+  boardProduct: 'PRIME Z790-P',
 };
 
 const cleanupSnapshot: CleanupSnapshot = {
