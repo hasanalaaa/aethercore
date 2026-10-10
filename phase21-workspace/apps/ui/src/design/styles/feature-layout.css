@@ -2948,6 +2948,27 @@ header .sub {
 .analyze-button {
   margin-inline-start: 8px;
 }
+.manual-routing .manual-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--ac-material-base);
+  border: 1px solid var(--ac-border-default);
+}
+.manual-ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+}
+.manual-ids span,
+.driver-age {
+  font-style: normal;
+  font-size: var(--ac-type-technical);
+  color: var(--ac-text-3);
+}
 
 /* ---------------------------------------------------------------------------
    Fluid controls

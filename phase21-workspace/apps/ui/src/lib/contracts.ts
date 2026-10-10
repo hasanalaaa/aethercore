@@ -45,7 +45,8 @@ export type DriverHub = {
     scanId:string; state:string; inventoryEpoch:number; startedUnixMs:number; completedUnixMs:number;
     errorMessage:string; summary:HubSummary; devices:DriverDevice[];
     unmatchedOffers:unknown[]; warnings:string[]; authorityCoverage:string; providerStatus:string[];
-    searchScope:string; windowsLastOnlineSearch:string
+    searchScope:string; windowsLastOnlineSearch:string;
+    machineManufacturer:string; machineModel:string; boardProduct:string
   };
 export type DriverInstallItemStatus = {
     candidateId:string; instanceId:string; title:string; stage:string; progressKnown:boolean;
@@ -320,7 +321,7 @@ export type UiKernelEvent =
 export type UiSessionState = { connected:boolean; sessionId:string; serviceVersion:string; currentSequence:number; replayFloorSequence:number; replayComplete:boolean };
 export type UiStreamReset = { reason:string; currentSequence:number; replayFloorSequence:number; messageKey:string };
 export type ProgressTelemetry = { planId:string; stage:string; progressKnown:boolean; overallPercent:number; currentItemId:string; detail:string; bytesCompleted:number; bytesTotal:number };
-export type DriverFilter = 'All' | 'Updates' | 'Problems' | 'Missing' | 'Display';
+export type DriverFilter = 'All' | 'Updates' | 'Problems' | 'Missing' | 'Display' | 'Vendor' | 'Managed';
 
 
 export type SchedulerEvent = { workload:string; state:number; reason:string; changedUnixMs:number; evidenceCount:number; warningCount:number };

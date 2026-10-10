@@ -246,6 +246,15 @@ pub struct DriverHubSnapshot {
     /// age), as Windows records it; empty when it keeps no such date.
     #[serde(default)]
     pub windows_last_online_search: String,
+    /// The machine this scan was matched against, as the local machine profile reports it
+    /// (no serial numbers, UUIDs or asset tags): what a missing driver's user needs to find the
+    /// maker's support page. Empty when Windows reports none. Defaulted for older snapshots.
+    #[serde(default)]
+    pub machine_manufacturer: String,
+    #[serde(default)]
+    pub machine_model: String,
+    #[serde(default)]
+    pub board_product: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -276,6 +285,9 @@ impl Default for DriverHubSnapshot {
             provider_status: Vec::new(),
             search_scope: String::new(),
             windows_last_online_search: String::new(),
+            machine_manufacturer: String::new(),
+            machine_model: String::new(),
+            board_product: String::new(),
         }
     }
 }
@@ -1252,6 +1264,9 @@ fn match_inventory_with_overrides(
         }
         .into(),
         windows_last_online_search: String::new(),
+        machine_manufacturer: machine.manufacturer.clone(),
+        machine_model: machine.product_model.clone(),
+        board_product: machine.board_product.clone(),
     }
 }
 
@@ -1769,6 +1784,28 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         panic!("scan did not reach Ready");
+    }
+
+    /// D35 (drivers quality pass): a scan names the machine it was matched against, so a missing
+    /// driver can point at the maker's support page. Red before: the snapshot carried no machine.
+    #[test]
+    fn a_scan_snapshot_names_the_machine_it_was_matched_against() {
+        let machine = MachineProfile {
+            manufacturer: "ASUS".into(),
+            product_model: "System Product Name".into(),
+            board_product: "PRIME Z790-P".into(),
+            ..MachineProfile::default()
+        };
+        let backend = Arc::new(ScopeRecorder::default());
+        let hub = DriverHub::with_backend_and_machine(backend.clone(), machine);
+        start_scan_in(&hub, OWNER, SearchScope::LocalCacheOnly).unwrap();
+        scopes_of_one_scan(&backend, &hub);
+        let snapshot = hub.snapshot();
+        assert_eq!(snapshot.machine_manufacturer, "ASUS");
+        assert_eq!(snapshot.machine_model, "System Product Name");
+        assert_eq!(snapshot.board_product, "PRIME Z790-P");
+        // Idle, before any scan, says nothing about a machine.
+        assert_eq!(DriverHubSnapshot::default().machine_model, "");
     }
 
     /// P84-02A (D14): a scan the user did not confirm online searches the local cache only, and
