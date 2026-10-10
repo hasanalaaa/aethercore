@@ -48,16 +48,16 @@ required=[
 check('required_artifacts',all((ROOT/p).is_file() for p in required),missing=[p for p in required if not (ROOT/p).is_file()])
 
 # Network authority and static manifest trust.
-check('desktop_only_http_crate','"crates/update-download"' in root_cargo and 'aethercore-update-download' in desktop_cargo)
+check('desktop_only_http_crate',contains(root_cargo,'"crates/update-download"') and contains(desktop_cargo,'aethercore-update-download'))
 check('service_update_engine_has_no_reqwest','reqwest' not in update_cargo.lower() and 'reqwest' not in service_cargo.lower() and 'reqwest' not in platform.lower())
 check('downloader_https_only',has(downloader,'url.starts_with("https://")','authority.contains(\'@\')','url.contains(\'#\')'))
-check('downloader_redirects_disabled','redirect(reqwest::redirect::Policy::none())' in downloader)
+check('downloader_redirects_disabled',contains(downloader,'redirect(reqwest::redirect::Policy::none())'))
 check('downloader_finite_timeouts',has(downloader,'connect_timeout(Duration::from_secs(10))','timeout(Duration::from_secs(60))'))
 check('downloader_body_bounded',has(downloader,'take(max_bytes as u64+1)','ResponseTooLarge'))
 check('downloader_size_bounded',has(downloader,'content_length()','expected_size','SizeMismatch'))
 check('downloader_temp_cleanup',has(downloader,'TempDownload','impl Drop for TempDownload','remove_file(&self.path)'))
 check('downloader_hashes_stream',has(downloader,'Sha256::new()','hash.update(&buffer[..read])','hex::encode(hash.finalize())'))
-check('manifest_exact_bytes_signed_before_parse',manifest.find('verifying.verify(manifest_bytes') < manifest.find('let manifest: UpdateManifest = serde_json::from_slice(manifest_bytes)'))
+check('manifest_exact_bytes_signed_before_parse',position(manifest,'verifying.verify(manifest_bytes') < position(manifest,'let manifest: UpdateManifest = serde_json::from_slice(manifest_bytes)'))
 check('manifest_ed25519_and_key_id',has(manifest,'VerifyingKey::from_bytes','signature.key_id != trust.key_id','Signature::from_bytes'))
 check('manifest_channel_binding',has(manifest,'trust.channel != expected_channel','value.channel != expected_channel'))
 check('manifest_expiry_and_future_bounds',has(manifest,'MAX_MANIFEST_LIFETIME_MS','ManifestError::Expired','ManifestError::FutureDated'))
@@ -83,7 +83,7 @@ check('service_staging_path_derived',has(coordinator,'expected_staged_path','own
 check('service_revalidates_hash_authenticode_hash',count(coordinator,'verify_file_hash_size(&upload.temp_path')>=2 and has(coordinator,'self.verifier.verify_authenticode(&upload.temp_path)'))
 check('intent_revalidates_hash_authenticode_hash',count(coordinator,'verify_file_hash_size(&path,&release.sha256,release.size_bytes)')>=2 and has(coordinator,'self.verifier.verify_authenticode(&path)'))
 check('claim_revalidates_artifact',has(coordinator,'verify_file_hash_size(&path,&intent.release.sha256,intent.release.size_bytes)','self.verifier.verify_authenticode(&path)'))
-check('update_mutation_workload_reserved','Update' in mutation and 'MutationWorkload::Update' in coordinator)
+check('update_mutation_workload_reserved',contains(mutation,'Update') and contains(coordinator,'MutationWorkload::Update'))
 check('one_shot_intent_claim',has(coordinator,'claimed:bool','record.claimed','record.claimed=true','!v.claimed'))
 claim_start=coordinator.find('pub fn claim_install')
 claim_end=coordinator.find('pub fn complete_install',claim_start)
@@ -118,7 +118,7 @@ check('release_builds_and_signs_update_broker',has(build_release,'aethercore-upd
 check('release_validates_update_trust',has(build_release,'validate-update-trust.ps1','Signed Phase 15 release packaging requires -UpdateTrustPath'))
 check('installer_requires_update_payloads',has(build_installer,"'aethercore-update-broker.exe'","'update-trust.json'"))
 check('manifest_build_uses_final_burn_metadata',has(manifest_build,"kind='burn'",'Get-FileHash $bundle -Algorithm SHA256','$size=(Get-Item $bundle).Length'))
-check('manifest_sign_tool_package_name_correct','-p aethercore-update-manifest-tool' in manifest_build)
+check('manifest_sign_tool_package_name_correct',contains(manifest_build,'-p aethercore-update-manifest-tool'))
 check('manifest_signing_key_external',has(manifest_build,'PrivateKeyPath','Resolve-Path $PrivateKeyPath') and 'private' not in trust_template.lower())
 
 # Privacy-first support bundle.
@@ -149,7 +149,7 @@ check('support_verifier_cli_requires_expected_fingerprint',has(support_tool,'exp
 
 # Typed IPC/event/UI.
 check('update_proto_has_descriptor_upload_contracts',has(update_proto,'UpdateCheckDescriptorResponse','SubmitUpdateManifestRequest','UpdateStageUploadDescriptorResponse','WriteUpdateStageChunkRequest'))
-check('legacy_update_download_fields_marked_deprecated','check_for_updates = 46 [deprecated = true]' in operations and 'stage_update = 48 [deprecated = true]' in operations)
+check('legacy_update_download_fields_marked_deprecated',contains(operations,'check_for_updates = 46 [deprecated = true]') and contains(operations,'stage_update = 48 [deprecated = true]'))
 check('support_proto_has_preview_proof_fingerprint',has(support_proto,'SupportBundlePreview','SupportPrivacyReport','public_key_fingerprint_sha256'))
 check('typed_update_support_events',has(events,'EVENT_KIND_UPDATE = 19','EVENT_KIND_SUPPORT_BUNDLE = 20','UpdateSnapshot update_snapshot = 28','SupportBundleEvent support_bundle = 29'))
 check('desktop_normalizes_update_support_events',has(desktop,'Payload::UpdateSnapshot','Payload::SupportBundle'))
@@ -163,20 +163,20 @@ check('typed_update_support_error_keys',has(errors,'update.error.integrity','upd
 # Tests and release gates.
 check('update_engine_regressions',has(coordinator,'signed_manifest_floor_rejects_rollback_and_same_sequence_equivocation','stage_upload_is_offset_bounded_and_rejects_truncation','staged_path_is_service_derived_and_update_lease_is_machine_exclusive'))
 check('support_tamper_regressions',has(support,'deterministic_archive_and_tamper_detection','proof_claim_is_not_malleable','embedded_key_is_not_a_root_of_trust','unmanifested_entry_is_rejected'))
-check('downloader_https_regression','downloader_rejects_non_https_and_ambiguous_authorities' in downloader)
+check('downloader_https_regression',contains(downloader,'downloader_rejects_non_https_and_ambiguous_authorities'))
 check('phase15_crypto_test_gate',has(crypto_ps,'aethercore-update-engine','aethercore-update-download','aethercore-support-bundle','aethercore-support-bundle-verify'))
 check('phase15_verify_inherits_phase14',has(verify,'verify-phase14.ps1','phase15-security-audit.ps1','phase15-crypto-tests.ps1','cargo check --workspace --locked'))
-check('phase15_packaging_after_security_gates',verify.find('phase15-security-audit.ps1') < verify.find('build-release.ps1') if 'build-release.ps1' in verify else False)
+check('phase15_packaging_after_security_gates',position(verify,'phase15-security-audit.ps1') < position(verify,'build-release.ps1') if contains(verify,'build-release.ps1') else False)
 check('phase15_signed_release_requires_update_trust',has(verify,'AETHERCORE_UPDATE_TRUST_PATH','UpdateTrustPath','RequireSigning'))
 check('phase15_ci_release_gate',any(g in ci for g in ['verify-phase15.ps1 -SkipOnlineSupplyChain','verify-phase16.ps1 -SkipOnlineSupplyChain','verify-enterprise.ps1 -SkipOnlineSupplyChain']) and any(g in release for g in ['verify-phase15.ps1 -ReleasePackaging -RequireSigning','verify-phase16.ps1 -ReleasePackaging -RequireSigning','verify-enterprise.ps1 -ReleasePackaging -RequireSigning']))
 check('phase15_docs_capture_trust_boundaries',has(docs,'user-scope downloader','MutationSupervisor::Update','installation-local Ed25519','independent fingerprint','WiX') )
-check('broker_protected_machine_mutation_lock',has(broker,'UpdateMutationGuard::acquire','MachineMutationGuard::try_acquire()') and has(foundation,'pub struct MachineMutationGuard','SHGetKnownFolderPath','FOLDERID_ProgramData','machine-mutation.lock','OPEN_EXISTING','LockFileEx','UnlockFileEx') and broker.find('UpdateMutationGuard::acquire') < broker.find('claim(&intent_id)'))
-check('execution_expiry_is_fail_closed_on_ledger_failure',has(coordinator,'if self.db.clear_update_execution_guard(&ticket_id).is_ok()','self.active.lock().unwrap_or_else(|p|p.into_inner()).take()') and coordinator.find('clear_update_execution_guard(&ticket_id).is_ok()') < coordinator.find('take();',coordinator.find('pub fn reap_expired_execution')))
+check('broker_protected_machine_mutation_lock',has(broker,'UpdateMutationGuard::acquire','MachineMutationGuard::try_acquire()') and has(foundation,'pub struct MachineMutationGuard','SHGetKnownFolderPath','FOLDERID_ProgramData','machine-mutation.lock','OPEN_EXISTING','LockFileEx','UnlockFileEx') and position(broker,'UpdateMutationGuard::acquire') < position(broker,'claim(&intent_id)'))
+check('execution_expiry_is_fail_closed_on_ledger_failure',has(coordinator,'if self.db.clear_update_execution_guard(&ticket_id).is_ok()','self.active.lock().unwrap_or_else(|p|p.into_inner()).take()') and position(coordinator,'clear_update_execution_guard(&ticket_id).is_ok()') < position(coordinator,'take();',position(coordinator,'pub fn reap_expired_execution')))
 check('restart_recovery_preserves_exact_release_identity',has(migration,'release_version TEXT NOT NULL','channel TEXT NOT NULL','notes_message_key TEXT NOT NULL','minimum_windows_build INTEGER NOT NULL') and has(coordinator,'record.release_version.clone()','record.notes_message_key.clone()','record.minimum_windows_build','snapshot.state=UpdateState::Installing','durable_execution_recovery_restores_installing_snapshot_and_release_identity'))
-check('support_ed25519_strict_verification','verify_strict(manifest_bytes' in support)
+check('support_ed25519_strict_verification',contains(support,'verify_strict(manifest_bytes'))
 check('support_embedded_identifier_redaction_regression',has(support,'embedded_sid_and_email_are_redacted_inside_free_form_text','<redacted-sid>','<redacted-email>'))
 check('support_retained_object_quotas',has(support,'MAX_ACTIVE_PREVIEWS_TOTAL','MAX_ACTIVE_BUNDLES_TOTAL','SupportBundleError::ResourceLimit','one_active_bundle_per_owner_is_enforced_and_discard_releases_quota'))
-check('support_failure_discards_service_bundle',desktop.count('request(request::Payload::DiscardSupportBundle')>=2 and has(desktop,'if result.is_err()','remove_file(&temporary)'))
+check('support_failure_discards_service_bundle',count(desktop,'request(request::Payload::DiscardSupportBundle')>=2 and has(desktop,'if result.is_err()','remove_file(&temporary)'))
 
 ok=all(v['ok'] for v in checks.values());failed=[k for k,v in checks.items() if not v['ok']]
 report={'phase':15,'ok':ok,'check_count':len(checks),'checks':checks}
