@@ -78,7 +78,7 @@ class CiGates(unittest.TestCase):
             # `tested` runs only for a push: a pull request leaves it skipped, which is not a failure.
             cases.append(({**results, gate: {'result': state}}, 0 if (gate, state) == ('tested', 'skipped') else 1))
         # Lane 1 step 0: windows may be skipped only when `tested` proved, for this exact SHA, that
-        # its own pull request already passed the windows job. Every other skip is a failure.
+        # its own pull request already passed both Windows jobs. Every other skip is a failure.
         proven = {**results, 'windows': {'result': 'skipped'}, 'windows-candidate': {'result': 'skipped'},
                   'tested': {'result': 'success', 'outputs': {'skip': 'true'}}}
         cases += [
