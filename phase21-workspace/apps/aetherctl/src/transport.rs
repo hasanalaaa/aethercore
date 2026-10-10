@@ -198,6 +198,21 @@ pub struct ServiceClient {
     #[cfg(windows)]
     inner: Option<std::sync::Arc<aethercore_ipc::SessionClient>>,
     timeout: Duration,
+    /// Assistant turns seen on the event stream; `ask` waits here for its terminal turn.
+    /// Every other event stays advisory and is dropped, as before.
+    turns_tx: std::sync::mpsc::Sender<aethercore_contracts::v1::AssistantTurn>,
+    turns: std::sync::mpsc::Receiver<aethercore_contracts::v1::AssistantTurn>,
+}
+
+fn forward_turn(
+    tx: &std::sync::mpsc::Sender<aethercore_contracts::v1::AssistantTurn>,
+    event: aethercore_contracts::v1::EventEnvelope,
+) {
+    if let Some(aethercore_contracts::v1::event_envelope::Payload::AssistantTurn(turn)) =
+        event.payload
+    {
+        let _ = tx.send(turn);
+    }
 }
 
 impl ServiceClient {
@@ -243,9 +258,12 @@ impl ServiceClient {
             session.set_io_timeouts(config.timeout).map_err(|error| {
                 CliError::local_io_with("cli.transport.timeoutSetup", error.to_string())
             })?;
+            let (turns_tx, turns) = std::sync::mpsc::channel();
             let mut client = ServiceClient {
                 inner: Some(session),
                 timeout: config.timeout,
+                turns_tx,
+                turns,
             };
             client.handshake()?;
             Ok(client)
@@ -253,8 +271,15 @@ impl ServiceClient {
         #[cfg(windows)]
         {
             let _ = config.socket_dir;
-            let noop_event = std::sync::Arc::new(|_: aethercore_contracts::v1::EventEnvelope| {})
-                as std::sync::Arc<dyn Fn(aethercore_contracts::v1::EventEnvelope) + Send + Sync>;
+            let (turns_tx, turns) = std::sync::mpsc::channel();
+            let event_tx = turns_tx.clone();
+            let on_event =
+                std::sync::Arc::new(move |event: aethercore_contracts::v1::EventEnvelope| {
+                    forward_turn(&event_tx, event)
+                })
+                    as std::sync::Arc<
+                        dyn Fn(aethercore_contracts::v1::EventEnvelope) + Send + Sync,
+                    >;
             let noop_reset = std::sync::Arc::new(|_: aethercore_contracts::v1::StreamReset| {})
                 as std::sync::Arc<dyn Fn(aethercore_contracts::v1::StreamReset) + Send + Sync>;
             let noop_disconnect =
@@ -263,7 +288,7 @@ impl ServiceClient {
                 "aetherctl",
                 env!("CARGO_PKG_VERSION"),
                 0,
-                noop_event,
+                on_event,
                 noop_reset,
                 noop_disconnect,
             )
@@ -271,6 +296,8 @@ impl ServiceClient {
             Ok(ServiceClient {
                 inner: Some(client),
                 timeout: config.timeout,
+                turns_tx,
+                turns,
             })
         }
     }
@@ -347,6 +374,52 @@ impl ServiceClient {
         })
     }
 
+    /// Waits for `turn_id`'s next streamed state until `deadline`. `None` means the deadline
+    /// passed without one: an observation timeout, never a cancelled or failed turn.
+    pub fn wait_assistant_turn(
+        &mut self,
+        turn_id: &str,
+        deadline: Instant,
+    ) -> Result<Option<aethercore_contracts::v1::AssistantTurn>, CliError> {
+        loop {
+            while let Ok(turn) = self.turns.try_recv() {
+                if turn.turn_id == turn_id {
+                    return Ok(Some(turn));
+                }
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return Ok(None);
+            }
+            #[cfg(windows)]
+            {
+                match self.turns.recv_timeout(deadline - now) {
+                    Ok(turn) if turn.turn_id == turn_id => return Ok(Some(turn)),
+                    Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        return Err(CliError::ProtocolViolation {
+                            detail: "event stream closed".to_string(),
+                        });
+                    }
+                }
+            }
+            #[cfg(unix)]
+            {
+                match self.recv_server_frame()?.payload {
+                    Some(server_frame::Payload::Event(event)) => {
+                        forward_turn(&self.turns_tx, event)
+                    }
+                    Some(server_frame::Payload::StreamReset(reset)) => {
+                        return Err(CliError::ProtocolViolation {
+                            detail: format!("stream reset: {}", reset.message_key),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     /// One request/response cycle. Streaming events interleaved before the response are
     /// drained (they are advisory duplicates of state the response itself carries).
     pub fn call(
@@ -393,7 +466,10 @@ impl ServiceClient {
                             payload: response.payload,
                         });
                     }
-                    Some(server_frame::Payload::Event(_)) => continue,
+                    Some(server_frame::Payload::Event(event)) => {
+                        forward_turn(&self.turns_tx, event);
+                        continue;
+                    }
                     Some(server_frame::Payload::StreamReset(reset)) => {
                         return Err(CliError::ProtocolViolation {
                             detail: format!("stream reset: {}", reset.message_key),

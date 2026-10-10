@@ -51,6 +51,7 @@ SERVICE COMMANDS (require the maintenance-service endpoint):
   timeline  page [--size <n>] [--before <seq>] | patterns
   care      status | start [--non-interactive] | cancel | consent-grant --plan-digest <d>
   insights  list | explain [--question <key>] | dismiss --insight-id <id>
+  ask --question <text> [--locale en|ar]   one grounded assistant turn (read-only)
   scan      start | cancel --scan-id <id> | status | findings | history [--limit <n>]
 
 FLEET / SERVER (Phase 34; SSH out to hosts you have explicitly trusted):
@@ -285,6 +286,11 @@ pub enum ServiceJob {
         plan_digest: String,
     },
     InsightsList,
+    /// One grounded assistant turn, answered only from cited evidence (read-only).
+    Ask {
+        question: String,
+        locale: String,
+    },
     InsightsExplain {
         question_key: String,
     },
@@ -1156,6 +1162,30 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                 }
             }
         }
+        "ask" => {
+            let mut question: Option<String> = None;
+            let mut locale = "en".to_string();
+            while let Some(flag) = cursor.next() {
+                match flag.as_str() {
+                    "--question" => question = Some(cursor.value_after("--question")?),
+                    "--locale" => locale = cursor.value_after("--locale")?,
+                    other => return Err(unknown_flag(other)),
+                }
+            }
+            if !matches!(locale.as_str(), "en" | "ar") {
+                return Err(usage(
+                    "cli.usage.askLocale",
+                    "ask --locale must be en or ar".to_string(),
+                ));
+            }
+            let question = question.filter(|q| !q.trim().is_empty()).ok_or_else(|| {
+                usage(
+                    "cli.usage.askQuestionRequired",
+                    "ask requires --question <text>".to_string(),
+                )
+            })?;
+            Command::Service(ServiceJob::Ask { question, locale })
+        }
         "insights" => {
             let sub = cursor.next().cloned().ok_or_else(|| {
                 usage(
@@ -1589,6 +1619,24 @@ mod tests {
         assert!(USAGE.contains("aetherctl --output json service detect"));
         assert!(USAGE.contains("EXIT CODES"));
         assert!(USAGE.contains("aethercore.aetherctl.v1"));
+    }
+
+    #[test]
+    fn ask_takes_a_question_and_an_optional_locale() {
+        let invocation = parse(&argv(&["ask", "--question", "why is my PC slow?"])).unwrap();
+        assert!(matches!(
+            invocation.command,
+            Command::Service(ServiceJob::Ask { ref question, ref locale })
+                if question == "why is my PC slow?" && locale == "en"
+        ));
+        let invocation = parse(&argv(&["ask", "--question", "لماذا", "--locale", "ar"])).unwrap();
+        assert!(matches!(
+            invocation.command,
+            Command::Service(ServiceJob::Ask { ref locale, .. }) if locale == "ar"
+        ));
+        assert!(parse(&argv(&["ask"])).is_err(), "a question is required");
+        assert!(parse(&argv(&["ask", "--question", "x", "--locale", "fr"])).is_err());
+        assert!(USAGE.contains("ask --question"));
     }
 
     #[test]

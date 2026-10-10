@@ -43,6 +43,7 @@ pub fn command_label(job: &ServiceJob) -> String {
         ServiceJob::CareConsentGrant { .. } => "care consent-grant".to_string(),
         ServiceJob::InsightsList => "insights list".to_string(),
         ServiceJob::InsightsExplain { .. } => "insights explain".to_string(),
+        ServiceJob::Ask { .. } => "ask".to_string(),
         ServiceJob::InsightsDismiss { .. } => "insights dismiss".to_string(),
         ServiceJob::ScanStart => "scan start".to_string(),
         ServiceJob::ScanCancel { .. } => "scan cancel".to_string(),
@@ -252,6 +253,39 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
             scan_snapshot_value(&payload).ok_or_else(|| CliError::ProtocolViolation {
                 detail: "expected DeepScanSnapshotResponse".to_string(),
             })
+        }
+        ServiceJob::Ask { question, locale } => {
+            let turn_id = format!(
+                "cli-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or_default()
+            );
+            let payload = require_ok(client.call(request::Payload::AskAssistant(
+                aethercore_contracts::v1::AskAssistantRequest {
+                    turn_id: turn_id.clone(),
+                    question,
+                    locale,
+                },
+            ))?)?;
+            let Some(response::Payload::AssistantTurn(response)) = payload else {
+                return Err(CliError::ProtocolViolation {
+                    detail: "expected AssistantTurnResponse".to_string(),
+                });
+            };
+            let mut turn = response.turn.unwrap_or_default();
+            let deadline = std::time::Instant::now() + config.timeout;
+            while !is_terminal_turn(&turn) {
+                match client.wait_assistant_turn(&turn_id, deadline)? {
+                    Some(next) => turn = next,
+                    None => break,
+                }
+            }
+            let mut value = assistant_turn_value(&turn);
+            value["observationTimedOut"] = serde_json::Value::from(!is_terminal_turn(&turn));
+            Ok(value)
         }
         ServiceJob::ScanFindings => {
             let payload = require_ok(client.call(request::Payload::GetDeepScanSnapshot(
@@ -775,6 +809,47 @@ fn scan_snapshot_value(payload: &Option<response::Payload>) -> Option<serde_json
     }))
 }
 
+fn is_terminal_turn(turn: &aethercore_contracts::v1::AssistantTurn) -> bool {
+    matches!(turn.state, 2..=5)
+}
+
+/// Quality pass A3: a turn as the CLI reports it. The answer appears only when the citation
+/// gate passed (ANSWERED); streamed or refused text is never printed as an answer.
+fn assistant_turn_value(turn: &aethercore_contracts::v1::AssistantTurn) -> serde_json::Value {
+    let state = match turn.state {
+        1 => "streaming",
+        2 => "answered",
+        3 => "refused",
+        4 => "faulted",
+        5 => "cancelled",
+        _ => "unspecified",
+    };
+    let refusal = match turn.refusal {
+        1 => "noEvidence",
+        2 => "notCovered",
+        3 => "mutationActive",
+        4 => "busy",
+        _ => "",
+    };
+    let refs = |items: &[aethercore_contracts::v1::AssistantEvidenceRef]| {
+        items
+            .iter()
+            .map(|r| serde_json::json!({ "evidenceId": r.evidence_id, "surface": r.surface, "detail": r.detail }))
+            .collect::<Vec<_>>()
+    };
+    serde_json::json!({
+        "turnId": turn.turn_id,
+        "state": state,
+        "answer": (turn.state == 2).then(|| turn.answer.clone()),
+        "citations": refs(&turn.citations),
+        "refusal": refusal,
+        "faultKey": turn.fault_key,
+        "engineLabel": turn.engine_label,
+        "tokensEmitted": turn.tokens_emitted,
+        "packSize": turn.pack.len(),
+    })
+}
+
 fn pc_domain_str(code: i32) -> &'static str {
     match code {
         1 => "system",
@@ -1018,6 +1093,63 @@ mod tests {
                 }),
             },
         ))
+    }
+
+    /// Quality pass A3: the CLI reports a turn the way the drawer must. Streamed text is never
+    /// an answer: `answer` is printed only for an ANSWERED turn, with its citations.
+    #[test]
+    fn assistant_turn_shows_an_answer_only_once_it_is_cited() {
+        use aethercore_contracts::v1::{AssistantEvidenceRef, AssistantTurn};
+        let streaming = AssistantTurn {
+            turn_id: "cli-1".into(),
+            state: 1,
+            answer: "partial text".into(),
+            engine_label: "localModel".into(),
+            ..Default::default()
+        };
+        let value = assistant_turn_value(&streaming);
+        assert_eq!(value["state"], "streaming");
+        assert!(value["answer"].is_null(), "streamed text is not an answer");
+
+        let answered = AssistantTurn {
+            state: 2,
+            answer: "Two crashes were recorded [diag-1].".into(),
+            citations: vec![AssistantEvidenceRef {
+                evidence_id: "diag-1".into(),
+                surface: "diagnostics".into(),
+                detail: "2 crashes".into(),
+            }],
+            ..streaming.clone()
+        };
+        let value = assistant_turn_value(&answered);
+        assert_eq!(value["state"], "answered");
+        assert_eq!(value["answer"], "Two crashes were recorded [diag-1].");
+        assert_eq!(value["citations"][0]["surface"], "diagnostics");
+
+        let refused = AssistantTurn {
+            state: 3,
+            refusal: 2,
+            ..streaming.clone()
+        };
+        let value = assistant_turn_value(&refused);
+        assert_eq!(value["state"], "refused");
+        assert_eq!(value["refusal"], "notCovered");
+        assert!(value["answer"].is_null());
+
+        let faulted = AssistantTurn {
+            state: 4,
+            fault_key: "assistant.fault.modelUnavailable".into(),
+            ..streaming
+        };
+        assert_eq!(
+            assistant_turn_value(&faulted)["faultKey"],
+            "assistant.fault.modelUnavailable"
+        );
+        assert!(is_terminal_turn(&answered) && is_terminal_turn(&refused));
+        assert!(!is_terminal_turn(&AssistantTurn {
+            state: 1,
+            ..Default::default()
+        }));
     }
 
     /// Quality pass B7: the findings themselves, not just their count, so a scan can be
