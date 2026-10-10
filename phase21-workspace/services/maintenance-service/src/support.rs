@@ -115,3 +115,24 @@ pub(crate) fn build_sections(
 
     Ok(sections)
 }
+
+#[cfg(test)]
+mod d35_machine_fields {
+    /// D35 condition: the driver snapshot's `machine_manufacturer`, `machine_model` and `board_product`
+    /// are not an input of any support bundle section. If a section ever includes the snapshot, this
+    /// fails and the fields must go through the bundle's redaction rules first.
+    #[test]
+    fn no_support_bundle_section_reads_the_driver_snapshot_or_its_machine_fields() {
+        let source = include_str!("support.rs");
+        let code = &source[..source.find("#[cfg(test)]").expect("test module marker")];
+        for needle in [
+            "driver_hub",
+            "DriverHub",
+            "machine_manufacturer",
+            "machine_model",
+            "board_product",
+        ] {
+            assert!(!code.contains(needle), "support.rs reads {needle}");
+        }
+    }
+}
