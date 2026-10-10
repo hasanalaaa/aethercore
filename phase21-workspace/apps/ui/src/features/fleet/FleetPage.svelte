@@ -526,7 +526,7 @@
     border-radius: 8px; padding: 0.25rem 0.6rem; font-size:var(--ac-type-body); cursor: pointer;
   }
   .fleet-card-actions button.primary { border-color: var(--ac-accent); color: var(--ac-accent); }
-  .fleet-card-actions button.danger { border-color: #c2791f; color: #c2791f; }
+  .fleet-card-actions button.danger { border-color: var(--role-critical-edge); color: var(--role-critical); }
   .fleet-card-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
   .trust-form, .fleet-form {
     grid-column: 1 / -1; display: grid; gap: 0.5rem;

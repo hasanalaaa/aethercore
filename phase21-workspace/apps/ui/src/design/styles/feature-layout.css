@@ -884,8 +884,7 @@ header .sub {
   border: 1px solid var(--ac-edge);
   border-radius:18px;
   background: var(--ac-material-base);
-  padding:22px;
-  min-height:310px
+  padding:22px
 }
 
 .panel-head {
@@ -1316,8 +1315,8 @@ header .sub {
 }
 
 .recovery-row>span.warning {
-  border-color:#58462e;
-  color:#bda06e
+  border-color:var(--role-attention-edge);
+  color:var(--role-attention)
 }
 
 .recovery-row strong {

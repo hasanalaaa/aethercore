@@ -49,23 +49,26 @@
      else. It exists so the single number a screen is ABOUT outranks its title
      by size alone — the Overview's orb was 44px against a 34px heading and a
      27px tile, three near-neighbours that ranked nothing. */
+  /* Reading sizes, not log sizes. Nothing a person is expected to read is below 13px; the
+     two smallest steps are for mono evidence and kickers only. Before this the body was
+     13.5px and 69% of the Overview's characters were 11px (AUDIT/QUALITY-DESIGN.md S1). */
   --ac-type-hero: 3rem;          /* 48px — the one hero figure on a screen */
-  --ac-type-display: 2.125rem;   /* 34px — the screen title */
+  --ac-type-display: 1.75rem;    /* 28px — the screen title */
   --ac-type-title: 1.25rem;      /* 20px — dialog and section titles */
-  --ac-type-headline: 0.9375rem; /* 15px */
-  --ac-type-body: 0.84375rem;    /* 13.5px — the shell's body size */
-  --ac-type-callout: 0.78125rem; /* 12.5px */
-  --ac-type-caption: 0.71875rem; /* 11.5px */
-  --ac-type-technical: 0.6875rem;/* 11px — mono evidence and rules */
-  --ac-type-kicker: 0.6875rem;   /* 11px uppercase, 0.14em tracked */
+  --ac-type-headline: 1.0625rem; /* 17px — card titles */
+  --ac-type-body: 0.9375rem;     /* 15px — the shell's body size */
+  --ac-type-callout: 0.875rem;   /* 14px — secondary lines */
+  --ac-type-caption: 0.8125rem;  /* 13px — supporting context, the smallest prose */
+  --ac-type-technical: 0.78125rem;/* 12.5px — mono evidence and rules */
+  --ac-type-kicker: 0.78125rem;  /* 12.5px, lightly tracked */
 
-  --ac-tracking-kicker: 0.14em;
-  --ac-tracking-tag: 0.06em;
+  --ac-tracking-kicker: 0.06em;
+  --ac-tracking-tag: 0.03em;
   --ac-tracking-display: -0.025em;
 
   /* ---- the six roles ---------------------------------------------------- */
   /* `fg` reads on a dark surface; `solid` is the filled/backing value. */
-  --role-interactive: #5C7CFA;
+  --role-interactive: #708EFF;
   --role-interactive-solid: #5C7CFA;
   --role-interactive-wash: rgba(92, 124, 250, 0.16);
   --role-interactive-edge: rgba(92, 124, 250, 0.32);
@@ -91,7 +94,7 @@
   --role-critical-wash: rgba(201, 42, 42, 0.14);
   --role-critical-edge: rgba(201, 42, 42, 0.32);
 
-  --role-denied: #CA92D3;
+  --role-denied: #D4A2DC;
   --role-denied-solid: #AD4EBC;
   --role-denied-wash: rgba(173, 78, 188, 0.1);
   --role-denied-band: rgba(173, 78, 188, 0.07);
@@ -102,12 +105,15 @@
   --role-info-wash: rgba(92, 124, 250, 0.16);
 
   /* ---- surfaces --------------------------------------------------------- */
-  --ac-void: #030508;
-  --ac-glass: rgba(14, 18, 23, 0.55);
-  --ac-glass-2: rgba(255, 255, 255, 0.045);
-  --ac-glass-3: rgba(255, 255, 255, 0.08);
-  --ac-edge: rgba(255, 255, 255, 0.08);
-  --ac-edge-strong: rgba(255, 255, 255, 0.14);
+  --ac-void: #0B0F14;
+  /* Surfaces step up from an opaque page: structural #0F141B, then white washes that
+     stack (a card inside a card is lighter than its parent, so nesting stays legible).
+     Edges are 12% so a boundary is visible, not implied. */
+  --ac-glass: #0F141B;
+  --ac-glass-2: rgba(255, 255, 255, 0.06);
+  --ac-glass-3: rgba(255, 255, 255, 0.1);
+  --ac-edge: rgba(255, 255, 255, 0.12);
+  --ac-edge-strong: rgba(255, 255, 255, 0.2);
   --ac-sunken: rgba(0, 0, 0, 0.22);
 
   /* The muted end of this ladder was below WCAG AA and had been since the shell
@@ -115,17 +121,22 @@
      --ac-text-4 read 4.00-4.09:1 against every one of them, and 249 rendered
      text nodes sat on it. The ladder is re-spaced rather than nudged, so the
      four steps stay four distinguishable steps: worst readings are now
-     15.14 / 10.55 / 6.77 / 5.12:1. See tools/contrast-sweep.mjs. */
+     15.14 / 10.55 / 6.77 / 5.12:1. See tools/contrast-sweep.mjs.
+     Step 1 of the visual pass lightened the surfaces (a card inside a card is a
+     third wash, about rgb(50,53,56)), so the lower two steps were raised again
+     (0.66 / 0.58: 5.31:1 on that third wash), and the interactive and denied
+     TEXT colours were lightened to clear 4.5:1 on it. */
   --ac-text-1: rgba(255, 255, 255, 0.95);
   --ac-text-2: rgba(255, 255, 255, 0.78);
-  --ac-text-3: rgba(255, 255, 255, 0.6);
-  --ac-text-4: rgba(255, 255, 255, 0.5);
+  --ac-text-3: rgba(255, 255, 255, 0.66);
+  --ac-text-4: rgba(255, 255, 255, 0.58);
   --ac-text-inverse: #04060a;
 
-  --ac-blur-structural: 40px;
-  --ac-blur-elevated: 40px;
-  --ac-blur-focused: 50px;
-  --ac-saturation: 150%;
+  /* No decorative glass: the surfaces above are flat, so there is nothing to blur. */
+  --ac-blur-structural: 0px;
+  --ac-blur-elevated: 0px;
+  --ac-blur-focused: 0px;
+  --ac-saturation: 100%;
 
   --ac-shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   --ac-shadow-panel: 0 24px 60px -22px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -160,9 +171,9 @@
   --ac-ease-state: cubic-bezier(.22, 1, .36, 1);
   --ac-ease-spring: cubic-bezier(.34, 1.56, .64, 1);
 
-  --ac-sidebar-width: 16.125rem; /* 258px */
-  --ac-control-height: 2.5rem;
-  --ac-target-min: 2.5rem;
+  --ac-sidebar-width: 16.5rem; /* 264px */
+  --ac-control-height: 2.75rem;
+  --ac-target-min: 2.75rem;
   --ac-display-scale: 1;
 
   /* ---- legacy aliases ---------------------------------------------------
@@ -270,12 +281,14 @@
   --role-info: #2241BB;
   --role-info-wash: rgba(59, 91, 219, 0.12);
 
-  --ac-void: #EDF0F5;
-  --ac-glass: rgba(255, 255, 255, 0.62);
-  --ac-glass-2: rgba(10, 14, 20, 0.035);
-  --ac-glass-3: rgba(10, 14, 20, 0.06);
-  --ac-edge: rgba(10, 14, 20, 0.07);
-  --ac-edge-strong: rgba(10, 14, 20, 0.13);
+  /* White cards on a cool grey page, a 1px border and a soft shadow. The previous recipe
+     tinted a card 3.5% DARKER than the page, which read as grey on grey. */
+  --ac-void: #F3F5F9;
+  --ac-glass: #FBFCFE;
+  --ac-glass-2: #FFFFFF;
+  --ac-glass-3: rgba(10, 14, 20, 0.05);
+  --ac-edge: rgba(10, 14, 20, 0.12);
+  --ac-edge-strong: rgba(10, 14, 20, 0.22);
   --ac-sunken: rgba(10, 14, 20, 0.05);
 
   /* Same defect, worse: at 0.55 and 0.48 these read 3.10-4.35:1 on the light
@@ -287,8 +300,8 @@
   --ac-text-4: rgba(8, 12, 18, 0.62);
   --ac-text-inverse: #ffffff;
 
-  --ac-shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  --ac-shadow-panel: 0 24px 60px -26px rgba(20, 30, 50, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --ac-shadow-card: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
+  --ac-shadow-panel: 0 12px 32px -16px rgba(20, 30, 50, 0.22), 0 1px 2px rgba(16, 24, 40, 0.06);
   --ac-shadow-float: 0 40px 90px -30px rgba(20, 30, 50, 0.34);
   --ac-shadow-interactive: 0 14px 30px -14px rgba(76, 110, 245, 0.55);
 

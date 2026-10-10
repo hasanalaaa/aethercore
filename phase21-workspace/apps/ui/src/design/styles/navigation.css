@@ -37,8 +37,8 @@
 .nav-group { display:grid; gap:2px; }
 .nav-group h2 { margin:0 .45rem .12rem; color:var(--ac-text-4); font:650 var(--ac-type-technical)/1.2 var(--ac-font-text); letter-spacing:.1em; text-transform:uppercase; }
 .app-nav-item {
-  min-block-size:2.15rem;
-  display:grid; grid-template-columns:1.45rem minmax(0,1fr); align-items:center; gap:.45rem;
+  min-block-size:2.25rem;
+  display:grid; grid-template-columns:1.5rem minmax(0,1fr); align-items:center; gap:.45rem;
   padding:.22rem .45rem; text-align:start;
 }
 .app-nav-item:hover { color:var(--ac-text-2); background:var(--ac-layer-hover); }
@@ -47,7 +47,7 @@
   background:linear-gradient(180deg,rgba(142,197,245,.105),rgba(142,197,245,.065));
   box-shadow:inset 0 1px rgba(255,255,255,.035);
 }
-.nav-icon { inline-size:1.45rem; block-size:1.45rem; display:grid; place-items:center; border-radius:.4rem; color:var(--ac-text-4); }
+.nav-icon { inline-size:1.5rem; block-size:1.5rem; display:grid; place-items:center; border-radius:.4rem; color:var(--ac-text-4); }
 .app-nav-item.active .nav-icon { color:var(--ac-accent-strong); background:rgba(142,197,245,.08); }
 .nav-availability { align-self:start; color:var(--ac-warning); font-size:var(--ac-type-title); line-height:1; }
 .nav-copy { min-inline-size:0; }

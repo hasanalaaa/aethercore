@@ -14,10 +14,10 @@ The canonical tokens live in `src/design-tokens.css`. They are deliberately sema
 
 | Concern | Rule |
 | --- | --- |
-| Colour | Midnight structural background, cyan evidence/accent, green completion, amber caution, red fault. Never use colour without a text/icon label. |
-| Type | Segoe Variable (display/text) and Cascadia Mono (technical evidence). Body is 15px minimum; captions are reserved for supporting context. |
-| Rhythm | Four-pixel base rhythm. Use `--ac-space-*`; page sections use 24–48px, controls use 40px minimum height. |
-| Surface | Material layers are translucent but boundaries remain visible. One elevation step per interaction layer; no decorative glass blur. |
+| Colour | Six semantic roles (`--role-*` in `design-tokens.css`): interactive blue, verified gold, healthy green, attention amber, critical red, denied violet. Never use colour without a text or icon label; amber is for one warning per screen, not for information. |
+| Type | Inter (Latin), IBM Plex Sans Arabic (Arabic) and JetBrains Mono (technical evidence), all bundled, no network fonts. Body 15px, secondary 14px, supporting context 13px, mono evidence and kickers 12.5px; nothing a person is expected to read is below 13px. Screen title 28px, section title 20px, card title 17px. Mono is for paths, ids and values inside Details, not for counts or labels. |
+| Rhythm | Four-pixel base rhythm. Use `--ac-space-*`; page sections use 24–48px, controls use 44px minimum height (36px for sidebar rows until the sidebar is shortened). |
+| Surface | Flat, no blur. Dark: opaque page (`#0B0F14`), structural `#0F141B`, cards and nested cards are white washes that stack (6% then 10%), 12% edges. Light: white cards on a cool grey page (`#F3F5F9`), 12% edges, a soft shadow; it is a designed reading surface, not an inverted dark theme. |
 | Motion | 90–140ms state feedback and transform/opacity only. Respect `prefers-reduced-motion`; no progress animation may imply work that did not happen. |
 | Direction | Layout uses logical properties (`inline`/`block`). Technical values and paths are isolated LTR; Arabic copy remains naturally RTL. |
 

@@ -375,7 +375,7 @@ f7e031fd04ec22e258e9be96810815b570f029683708c955647726b11bb16d2b  apps/desktop/t
 c84c4062dcfcd4d23520ede03c63406d1e9f92ddea0884de5ae1ca63e48b0f55  apps/install-hardener/Cargo.toml
 3cf6398946e06a62610bcc8c7b06d7e4f4bf2234f3b3e1763f3c253232894fa1  apps/install-hardener/src/main.rs
 daf3754a4f141d76e393f6c1d751d60a7f15ab2bd7ce3d1c78b06ee1a141e9e3  apps/ui/.env.fixture
-111a5fe6db14adb785a5b3560718d9f3c950f780de806b12f4344de392a4c70e  apps/ui/DESIGN_LANGUAGE.md
+1b4d47ea25898041a1e84329c791c54112a4951c75180f2a4546a318c84c7810  apps/ui/DESIGN_LANGUAGE.md
 d45645342a5cb961af55b6adea6126c01b40b71d69adb9fad9e1c6f671811723  apps/ui/index.html
 9cf4cb6debeb87637b4f8d746429140112b4795592cf8ff2d0ed439d6064fd98  apps/ui/layout-fixture.html
 37ec9d62023a5a54caeb2389ac334ef857b752077fc447e4977d9bafc38abc66  apps/ui/layout-sweep.html
@@ -389,7 +389,7 @@ b59034156c3722dd7fc27073f25892bd1cd02cba8365c9d938bd6daafac92ffe  apps/ui/src/ap
 816de0a8c504b08e37fbfd8994a9b80b73f35e0c3e4b6db1c57641a136077489  apps/ui/src/components/AppIcon.svelte
 2bee9f814a74d6b98530889aa9820aba9fe458dcbe959d63a66a0d5a87e9cd6c  apps/ui/src/components/CommandPalette.svelte
 2be326486a86adf5901b29b2f7eba43111e0a49f4fbd6437e214ea614136a652  apps/ui/src/components/NavigationRail.svelte
-04eac6c0ea1c373f6b8e877218a52ba7da676938cfb5fa98e55f1c8ab594cf95  apps/ui/src/design-tokens.css
+69c7aafaeffd41c7c7985440e775d8de1081b5afa79b76f905be84c734eb2f19  apps/ui/src/design-tokens.css
 97dd49f949f4ebd52196aef0516cd7d42510c9113539d4b6a7944945c68491cd  apps/ui/src/design/fonts/ibm-plex-sans-arabic-400.woff2
 7c041a038ea7f3fc8e335a826dae408a39ed8a2f57bd3a2b231ef094bebbdd7c  apps/ui/src/design/fonts/ibm-plex-sans-arabic-500.woff2
 30f7d2d896b45e6ec629df488491ed889643827a3382f40587cd8f083746efde  apps/ui/src/design/fonts/ibm-plex-sans-arabic-600.woff2
@@ -418,11 +418,11 @@ f036490b8386020b8a80a30d826d7fc9896efbd9dfa84b955915abc436f652e1  apps/ui/src/de
 f05e0af5de56eeded5b33af0f8b8af3cb8ac4b2fdf05c6ec0c8ef8eceae5f766  apps/ui/src/design/signature/contracts.ts
 4eb7a82c81079ba9debacd6efbf8a083622557a21a99ec3abb5a2cb9141676f0  apps/ui/src/design/signature/index.ts
 1ee3183f79c6484c4536a29bf4cb0e80ff2ef7dff52fda734bc571d952f77211  apps/ui/src/design/styles/base.css
-cd6308292eb349adc3347c40d0d6eee9d5ce0e98db82984ae97c3407fd38efa9  apps/ui/src/design/styles/feature-layout.css
+33677bc232219d2542f560eaeb023320637c7269275a4cd2b8a53d7d7c7b2173  apps/ui/src/design/styles/feature-layout.css
 0eeb8211a4bbc30fcd8ae3858b5e385259dcfaabc647d852274d6ef0a3817492  apps/ui/src/design/styles/fonts.css
 34a2876b66e7ce71107d5bfbd95f2b58e728bba1cd2290d9403c2c71a385cf94  apps/ui/src/design/styles/materials.css
 eec37c71f08c871f07eb1f89b7a2c42910c1a2b0471ed35f73ef0274697a1b8d  apps/ui/src/design/styles/motion.css
-f89fb559ea97c1a165a0c3a503b760bf34fe5ab55117ad338b01072efef33e8e  apps/ui/src/design/styles/navigation.css
+dcb5c7954a6b148f456586edfb6761c7b1506acfb93f292790b1c23a13a89b6a  apps/ui/src/design/styles/navigation.css
 70d35f82309f64a39253039e038aed554e48f621bf115a8f96b181d6b41a7152  apps/ui/src/design/styles/responsive.css
 6f2bf78f7b6055439a138c940ab14d6cdb47bb3fe75e18b68e0745a9897f7ba6  apps/ui/src/design/styles/typography.css
 a6785d51850a8f5850a99143e49467b7f263dff0f49280f4a1c6c1ec4a49a495  apps/ui/src/dev/layout-fixture.ts
@@ -450,7 +450,7 @@ b3bfe24d9b74e04f9943f8fb99af1d3f538b3fad46c6e93fc9049f166faae838  apps/ui/src/fe
 4036e7e176fee857dac7d843df61642fe7f20e48666f578e1b68575feb7091cc  apps/ui/src/features/diagnostics/memory-test.ts
 e27ae729c4865536f2552087e125fa5e8b1eaf4cbbf685a10cfe4e859cdebbf5  apps/ui/src/features/drivers/DriversPage.svelte
 c54dd065439f74e3df7ce74e188ac73d79c52e0d4b1034350cc563e5ab10d79c  apps/ui/src/features/drivers/controller.ts
-3772ca8e9e8d035f57fc22abebdb12edac7548c69a2d01391b2550b4f15d2bc0  apps/ui/src/features/fleet/FleetPage.svelte
+6d1c4db4c323be2f571d39fc9ffaac6176e6b675c4fe4ed91b62cf82d1df2bb9  apps/ui/src/features/fleet/FleetPage.svelte
 081abe2776b96a11b4184b6fa04dec82e6e19c3b9dae57721a7fc1ec9a3e22ba  apps/ui/src/features/fleet/run-due.ts
 58524e6c19d2f203b3da7d2e02a53de5517a2adcdb71c5915666db19d275b7ee  apps/ui/src/features/insights/InsightsPanel.svelte
 cbb17998110c310791199a4ba317cf0915224a81da61dccbc30ed39412f430dc  apps/ui/src/features/insights/controller.ts
