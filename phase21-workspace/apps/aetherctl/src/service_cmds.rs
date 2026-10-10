@@ -47,6 +47,7 @@ pub fn command_label(job: &ServiceJob) -> String {
         ServiceJob::ScanStart => "scan start".to_string(),
         ServiceJob::ScanCancel { .. } => "scan cancel".to_string(),
         ServiceJob::ScanStatus => "scan status".to_string(),
+        ServiceJob::ScanFindings => "scan findings".to_string(),
         ServiceJob::ScanHistory { .. } => "scan history".to_string(),
         ServiceJob::ExportJournal { .. } => "export journal".to_string(),
     }
@@ -249,6 +250,14 @@ fn execute(config: &Config, job: ServiceJob) -> Result<serde_json::Value, CliErr
                 aethercore_contracts::v1::GetDeepScanSnapshotRequest {},
             ))?)?;
             scan_snapshot_value(&payload).ok_or_else(|| CliError::ProtocolViolation {
+                detail: "expected DeepScanSnapshotResponse".to_string(),
+            })
+        }
+        ServiceJob::ScanFindings => {
+            let payload = require_ok(client.call(request::Payload::GetDeepScanSnapshot(
+                aethercore_contracts::v1::GetDeepScanSnapshotRequest {},
+            ))?)?;
+            scan_findings_value(&payload).ok_or_else(|| CliError::ProtocolViolation {
                 detail: "expected DeepScanSnapshotResponse".to_string(),
             })
         }
@@ -766,6 +775,94 @@ fn scan_snapshot_value(payload: &Option<response::Payload>) -> Option<serde_json
     }))
 }
 
+fn pc_domain_str(code: i32) -> &'static str {
+    match code {
+        1 => "system",
+        2 => "hardware",
+        3 => "drivers",
+        4 => "windows",
+        5 => "storage",
+        6 => "memory",
+        7 => "diagnostics",
+        8 => "performance",
+        9 => "startup",
+        10 => "cleanup",
+        11 => "updates",
+        12 => "recovery",
+        _ => "unspecified",
+    }
+}
+
+fn finding_severity_str(code: i32) -> &'static str {
+    match code {
+        1 => "informational",
+        2 => "low",
+        3 => "moderate",
+        4 => "high",
+        5 => "critical",
+        _ => "unspecified",
+    }
+}
+
+/// Quality pass B7: every finding of the current deep scan with what it cites, so a scan's
+/// usefulness can be judged without the desktop. The same read-only snapshot as `scan status`.
+fn scan_findings_value(payload: &Option<response::Payload>) -> Option<serde_json::Value> {
+    let Some(response::Payload::DeepScanSnapshot(value)) = payload.as_ref() else {
+        return None;
+    };
+    let snapshot = value.snapshot.as_ref()?;
+    let findings: Vec<serde_json::Value> = snapshot
+        .findings
+        .iter()
+        .map(|finding| {
+            let args: serde_json::Map<String, serde_json::Value> = finding
+                .message_args
+                .iter()
+                .map(|arg| (arg.key.clone(), serde_json::Value::from(arg.value.clone())))
+                .collect();
+            let evidence: Vec<serde_json::Value> = finding
+                .evidence
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "factId": e.fact_id,
+                        "kind": e.kind,
+                        "source": e.source,
+                        "observedUnixMs": e.observed_unix_ms,
+                        "technicalValue": e.technical_value,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "id": finding.id,
+                "code": finding.code,
+                "domain": pc_domain_str(finding.domain),
+                "severity": finding_severity_str(finding.severity),
+                "confidence": finding.confidence,
+                "titleKey": finding.title_key,
+                "summaryKey": finding.summary_key,
+                "ruleId": finding.rule_id,
+                "args": args,
+                "resource": finding.affected_resource.as_ref().map(|r| serde_json::json!({
+                    "kind": r.kind,
+                    "stableId": r.stable_id,
+                    "displayName": r.display_name,
+                })),
+                "evidence": evidence,
+                "lifecycle": finding.lifecycle,
+                "ignored": finding.ignored,
+                "remediationAvailable": finding.remediation_available,
+                "remediationSafety": finding.remediation_safety,
+            })
+        })
+        .collect();
+    Some(serde_json::json!({
+        "scanId": snapshot.scan_id,
+        "state": deep_scan_state_str(snapshot.state),
+        "findings": findings,
+    }))
+}
+
 fn scan_history_value(payload: &Option<response::Payload>) -> Option<serde_json::Value> {
     let wrapper = payload.as_ref()?;
     let history = match wrapper {
@@ -921,6 +1018,71 @@ mod tests {
                 }),
             },
         ))
+    }
+
+    /// Quality pass B7: the findings themselves, not just their count, so a scan can be
+    /// judged from the CLI. Read-only: it is the same snapshot request as `scan status`.
+    #[test]
+    fn scan_findings_lists_each_finding_with_its_evidence_and_resource() {
+        use aethercore_contracts::v1::{
+            DeepScanSnapshot, DeepScanSnapshotResponse, PcEvidenceRef, PcFinding, PcMessageArg,
+            PcResourceRef,
+        };
+        let payload = Some(response::Payload::DeepScanSnapshot(
+            DeepScanSnapshotResponse {
+                snapshot: Some(DeepScanSnapshot {
+                    scan_id: "scan-1".into(),
+                    state: 3,
+                    findings: vec![PcFinding {
+                        id: "f-1".into(),
+                        code: "driver.missing".into(),
+                        domain: 3,
+                        severity: 4,
+                        confidence: 2,
+                        title_key: "finding.driver.missing.title".into(),
+                        rule_id: "drivers.problem-device".into(),
+                        message_args: vec![PcMessageArg {
+                            key: "device".into(),
+                            value: "PCI Device".into(),
+                        }],
+                        evidence: vec![PcEvidenceRef {
+                            fact_id: "fact-9".into(),
+                            kind: "PnpDeviceState".into(),
+                            source: "SetupAPI".into(),
+                            observed_unix_ms: 7,
+                            technical_value: "CM_PROB_FAILED_INSTALL (28)".into(),
+                        }],
+                        affected_resource: Some(PcResourceRef {
+                            kind: "device".into(),
+                            stable_id: "PCI\\VEN_1".into(),
+                            display_name: "PCI Device".into(),
+                        }),
+                        remediation_available: true,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+            },
+        ));
+        let value = scan_findings_value(&payload).expect("a snapshot maps to findings");
+        assert_eq!(value["scanId"], "scan-1");
+        assert_eq!(value["state"], "completed");
+        let findings = value["findings"].as_array().unwrap();
+        assert_eq!(findings.len(), 1);
+        let finding = &findings[0];
+        assert_eq!(finding["code"], "driver.missing");
+        assert_eq!(finding["domain"], "drivers");
+        assert_eq!(finding["severity"], "high");
+        assert_eq!(finding["ruleId"], "drivers.problem-device");
+        assert_eq!(finding["args"]["device"], "PCI Device");
+        assert_eq!(finding["resource"]["displayName"], "PCI Device");
+        assert_eq!(finding["evidence"][0]["source"], "SetupAPI");
+        assert_eq!(
+            finding["evidence"][0]["technicalValue"],
+            "CM_PROB_FAILED_INSTALL (28)"
+        );
+        assert_eq!(finding["remediationAvailable"], true);
+        assert!(scan_findings_value(&None).is_none());
     }
 
     /// DBT-P75-045: a start follows the grant only when the service approved the plan whose

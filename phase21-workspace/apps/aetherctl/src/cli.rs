@@ -51,7 +51,7 @@ SERVICE COMMANDS (require the maintenance-service endpoint):
   timeline  page [--size <n>] [--before <seq>] | patterns
   care      status | start [--non-interactive] | cancel | consent-grant --plan-digest <d>
   insights  list | explain [--question <key>] | dismiss --insight-id <id>
-  scan      start | cancel --scan-id <id> | status | history [--limit <n>]
+  scan      start | cancel --scan-id <id> | status | findings | history [--limit <n>]
 
 FLEET / SERVER (Phase 34; SSH out to hosts you have explicitly trusted):
   fleet     add --id <id> --name <n> --host <h> [--port <p>] --user <u> [--tag <t>]
@@ -296,6 +296,8 @@ pub enum ServiceJob {
         scan_id: String,
     },
     ScanStatus,
+    /// The current deep scan's findings with their evidence (read-only).
+    ScanFindings,
     ScanHistory {
         limit: u32,
     },
@@ -1223,6 +1225,7 @@ pub fn parse(args: &[String]) -> Result<Invocation, CliError> {
                     Command::Service(ServiceJob::ScanCancel { scan_id })
                 }
                 "status" => Command::Service(ServiceJob::ScanStatus),
+                "findings" => Command::Service(ServiceJob::ScanFindings),
                 "history" => {
                     let mut limit = 20u32;
                     while let Some(flag) = cursor.next() {
@@ -1272,7 +1275,7 @@ const OPTIMIZE_SUBS: &str = "plan|start|status";
 const TIMELINE_SUBS: &str = "page|patterns";
 const CARE_SUBS: &str = "status|start|cancel|consent-grant";
 const INSIGHTS_SUBS: &str = "list|explain|dismiss";
-const SCAN_SUBS: &str = "start|cancel|status|history";
+const SCAN_SUBS: &str = "start|cancel|status|findings|history";
 
 fn unknown_flag(flag: &str) -> CliError {
     usage("cli.usage.unknownFlag", format!("unknown flag '{flag}'"))
@@ -1586,6 +1589,16 @@ mod tests {
         assert!(USAGE.contains("aetherctl --output json service detect"));
         assert!(USAGE.contains("EXIT CODES"));
         assert!(USAGE.contains("aethercore.aetherctl.v1"));
+    }
+
+    #[test]
+    fn scan_findings_is_a_read_only_service_verb() {
+        let invocation = parse(&argv(&["scan", "findings"])).unwrap();
+        assert!(matches!(
+            invocation.command,
+            Command::Service(ServiceJob::ScanFindings)
+        ));
+        assert!(USAGE.contains("findings"));
     }
 
     #[test]
