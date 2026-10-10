@@ -28,6 +28,7 @@ import type {
   PcCollectorStatus,
   PcEvidenceRef,
   PcFinding,
+  BottleneckReport,
   PerfSnapshot,
   Plan,
   ProviderFault,
@@ -339,11 +340,43 @@ const performance: PerfSnapshot = {
   memory: fill({ totalPhysicalBytes: 34_359_738_368, availablePhysicalBytes: 9_663_676_416, standbyCacheBytes: 6_442_450_944, modifiedPageListBytes: 268_435_456, commitBytes: 26_843_545_600, commitLimitBytes: 40_802_189_312, hardFaultsPerSec: 480, softFaultsPerSec: 24_000, memoryLoadPercent: 72 }),
   storage: [fill({ deviceId: '\\\\.\\PHYSICALDRIVE0', friendlyName: 'Samsung SSD 990 PRO with Heatsink 2TB NVMe M.2', activeTimeBp: 3_400, queueDepthX100: 210, avgTransferLatencyUs: 940, readBytesPerSec: 184_549_376, writeBytesPerSec: 52_428_800, totalSpaceBytes: 2_000_000_000_000, freeSpaceBytes: 1_200_000_000_000 })],
   gpu: fill({ adapterId: 'gpu-0', adapterName: 'NVIDIA GeForce RTX 4070 Laptop GPU', dedicatedUsedBytes: 5_368_709_120, dedicatedTotalBytes: 8_589_934_592, sharedUsedBytes: 1_073_741_824, engines: [fill({ engineName: '3D', utilizationBp: 6_200 }), fill({ engineName: 'VideoDecode', utilizationBp: 1_100 })], frametimeJitterUs: 2_400, compositorLagDetected: true }),
-  processTop: [0, 1, 2, 3, 4].map((i) => fill({ pid: 4_000 + i, name: 'Microsoft.SharePoint.SyncEngine.Host.exe', cpuBusyBp: 1_800 - i * 240, readBytesPerSec: 10_485_760, writeBytesPerSec: 4_194_304, workingSetBytes: 1_073_741_824 })),
+  // Per-process CPU is not collected on Windows (the collector fault below says so); the fixture says nothing else.
+  processTop: [],
   // P76: ids the Windows provider emits (the owner's install showed these two raw).
   collectorFaults: [
     fill({ collector: 'processTop', kind: 'NotCollected', detail: 'Per-process CPU requires a second sample.' }),
     fill({ collector: 'power.temperature', kind: 'Degraded', detail: 'ACPI thermal zones not exposed.' }),
+  ],
+};
+
+/** Findings the way the bottleneck rules word them (keys, arguments and units from performance-bottleneck). */
+const bottleneckReport: BottleneckReport = {
+  reportId: 'report-fixture-1', generatedUnixMs: NOW, analyzedSampleCount: 42, analysisWindowMs: 42_000, digestSha256: 'cd'.repeat(32), ruleEngineVersion: 'p20.bottleneck-rules.v1',
+  findings: [
+    {
+      id: 'finding:cpu-saturation', code: 'CPU_SATURATION', role: 1, confidence: 4, causedByFindingIds: [],
+      titleKey: 'perf.finding.cpuSaturation.title', summaryKey: 'perf.finding.cpuSaturation.summary',
+      messageArgs: [{ key: 'averagePercent', value: '94' }, { key: 'peakPercent', value: '100' }, { key: 'sampleCount', value: '42' }],
+      evidence: [{ factKey: 'cpu.busyBp.avg', observedValue: 9_400, threshold: 9_000, observedUnixMs: NOW }],
+      applicableActionKinds: ['ecoQos', 'backgroundPriority'], firstObservedUnixMs: NOW - 42_000, lastObservedUnixMs: NOW,
+    },
+    {
+      id: 'finding:io-saturation', code: 'IO_SATURATION', role: 2, confidence: 3, causedByFindingIds: [],
+      titleKey: 'perf.finding.ioSaturation.title', summaryKey: 'perf.finding.ioSaturation.summary',
+      messageArgs: [{ key: 'activePeakPercent', value: '97' }, { key: 'activeAvgPercent', value: '81' }],
+      evidence: [
+        { factKey: 'storage.activeBp.peak', observedValue: 9_700, threshold: 9_200, observedUnixMs: NOW },
+        { factKey: 'storage.transferLatencyUs', observedValue: 31_000, threshold: 25_000, observedUnixMs: NOW },
+      ],
+      applicableActionKinds: ['backgroundPriority'], firstObservedUnixMs: NOW - 30_000, lastObservedUnixMs: NOW,
+    },
+    {
+      id: 'finding:power-clamp', code: 'POWER_LIMIT_CLAMP', role: 3, confidence: 3, causedByFindingIds: [],
+      titleKey: 'perf.finding.powerClamp.title', summaryKey: 'perf.finding.powerClamp.summary',
+      messageArgs: [{ key: 'throttledSamples', value: '30' }],
+      evidence: [{ factKey: 'power.throttleActive', observedValue: 1, threshold: 0, observedUnixMs: NOW }],
+      applicableActionKinds: [], firstObservedUnixMs: NOW - 30_000, lastObservedUnixMs: NOW,
+    },
   ],
 };
 
@@ -619,6 +652,7 @@ const STREAM: readonly UiKernelEvent[] = [
   event('diagnosticsSnapshot', diagnostics),
   event('repairAssessment', repairAssessment),
   event('performanceSnapshot', performance),
+  event('bottleneckReport', bottleneckReport),
   event('timelinePage', timelinePage),
   event('insights', insights),
   event('deepScanSnapshot', deepScan),

@@ -13,22 +13,14 @@
    *   never mirrors metric values incorrectly.
    */
   import { onMount } from 'svelte';
-  import { fluidPress } from '../../design/motion';
-  import { shellState } from '../../app/shell-state';
+  import { setPage, shellState } from '../../app/shell-state';
   import type { PerformanceWindowResponse } from '../../lib/contracts';
   import { applyPerformanceWindow, streamState } from '../../platform/stream-state';
   import { Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
   import { EmptyState } from '../../design/signature';
   import { t, td, tp, hasMessageKey, localizeCollector, localizeCollectorFault } from '../../lib/i18n';
-  import {
-    analyzeBottlenecks,
-    closeOptimizationReview,
-    perfUi,
-    reviewOptimizationPlan,
-    setSelectedFindingIds,
-    startPerfSampling,
-    stopPerfSampling,
-  } from './controller';
+  import { analyzeBottlenecks, perfUi, startPerfSampling, stopPerfSampling } from './controller';
+  import { formatEvidence } from './evidence';
   import { serviceInvoke } from '../../platform/service-client';
   import { diskActiveTimeMeasured } from '../overview/instrument';
 
@@ -38,8 +30,7 @@
   $: performanceWindow = $streamState.performanceWindow;
   $: report = $streamState.bottleneckReport;
   $: sampling = $streamState.perfSampling;
-  $: selectedIds = $perfUi.selectedFindingIds;
-  $: plan = $perfUi.plan;
+  $: analysisError = $perfUi.analysisError;
 
   // Phase 27 (T5): honest engine source (native/synthetic) pulled once per mount.
   let engineSource: { source: string; platform: string } | null = null;
@@ -168,6 +159,7 @@
     <Pressable className="secondary analyze-button" onclick={() => analyzeBottlenecks()} disabled={busy || !sampling}>
       <span>◎</span>{report ? t('perf.analyzeAgain', locale) : t('perf.analyze', locale)}
     </Pressable>
+    <Pressable className="secondary" onclick={() => setPage('startup')}>{t('perf.startupLink', locale)}</Pressable>
   </div>
 </header>
 
@@ -243,6 +235,9 @@
 <section class="panel bottleneck-panel">
   <div class="panel-head"><div><p class="eyebrow">{t('perf.analysisEyebrow', locale)}</p><h3>{t('perf.analysisTitle', locale)}</h3></div>
     {#if report}<span class="risk">{tp('unit.finding', locale, report.findings.length)}</span>{/if}</div>
+  {#if analysisError}
+    <div class="error-banner" role="alert"><strong>{hasMessageKey(analysisError) ? td(analysisError, locale) : t('perf.error.analysisFailed', locale)}</strong></div>
+  {/if}
   {#if !report}
     <!-- Honest empty state: nothing has been analysed, and the two counts say
          what an analysis would be run over. -->
@@ -260,41 +255,18 @@
     <div class="finding-list">
       {#each report.findings as finding (finding.id)}
         <article class="finding-card" class:root-cause={finding.role === ROLE_ROOT_CAUSE}>
-          <label class="finding-select">
-            <input
-              type="checkbox"
-              checked={selectedIds.includes(finding.id)}
-              disabled={!finding.applicableActionKinds.length}
-              onchange={(event) => {
-                const checked = (event.currentTarget as HTMLInputElement).checked;
-                setSelectedFindingIds(checked ? [...selectedIds, finding.id] : selectedIds.filter((id) => id !== finding.id));
-              }}
-            />
-            <span></span>
-          </label>
           <div class="finding-body">
             <header><strong>{t(finding.titleKey as never, locale)}</strong><em>{roleLabel(finding.role)}</em></header>
             <p>{t(finding.summaryKey as never, locale, Object.fromEntries(finding.messageArgs.map((arg) => [arg.key, arg.value])) as never)}</p>
             <small class="evidence-line">
               {#each finding.evidence.slice(0, 2) as ev}
-                <TechnicalText value={`${ev.factKey}: ${ev.observedValue >= 1_000_000 ? (ev.observedValue / 1_000_000).toFixed(1) + 'M' : Math.round(ev.observedValue)} / ${ev.threshold >= 1_000_000 ? (ev.threshold / 1_000_000).toFixed(1) + 'M' : Math.round(ev.threshold)}`}/>
+                <span>{formatEvidence(ev, locale)}</span>
               {/each}
             </small>
           </div>
         </article>
       {/each}
     </div>
-    {#if selectedIds.length}
-      <section class="selection-tray">
-        <div><span class="selection-count">{selectedIds.length}</span>
-          <!-- "Only reversible, evidence-backed actions are offered. Everything
-               is journaled and restorable." is the policy band's own sentence,
-               one region away and on every screen. -->
-          <div><strong>{t('perf.planTitle', locale)}</strong></div></div>
-        <button use:fluidPress={{ pressedScale: 0.985 }} class="install-button"
-          onclick={() => reviewOptimizationPlan(selectedIds)} disabled={busy}>{t('perf.reviewPlan', locale)}</button>
-      </section>
-    {/if}
   {/if}
 </section>
 
