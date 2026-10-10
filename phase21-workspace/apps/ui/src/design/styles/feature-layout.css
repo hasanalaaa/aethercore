@@ -2948,6 +2948,34 @@ header .sub {
 .analyze-button {
   margin-inline-start: 8px;
 }
+.consumers-panel .consumer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.consumer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--ac-material-base);
+  border: 1px solid var(--ac-border-default);
+}
+.consumer-row strong {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.consumer-row span {
+  font-size: var(--ac-type-technical);
+  color: var(--ac-text-3);
+  white-space: nowrap;
+}
 
 /* ---------------------------------------------------------------------------
    Fluid controls

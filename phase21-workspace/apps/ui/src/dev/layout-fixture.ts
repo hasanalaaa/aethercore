@@ -28,6 +28,7 @@ import type {
   PcCollectorStatus,
   PcEvidenceRef,
   PcFinding,
+  BottleneckReport,
   PerfSnapshot,
   Plan,
   ProviderFault,
@@ -347,6 +348,37 @@ const performance: PerfSnapshot = {
   ],
 };
 
+/** Findings the way the bottleneck rules word them (keys, arguments and units from performance-bottleneck). */
+const bottleneckReport: BottleneckReport = {
+  reportId: 'report-fixture-1', generatedUnixMs: NOW, analyzedSampleCount: 42, analysisWindowMs: 42_000, digestSha256: 'cd'.repeat(32), ruleEngineVersion: 'p20.bottleneck-rules.v1',
+  findings: [
+    {
+      id: 'finding:cpu-saturation', code: 'CPU_SATURATION', role: 1, confidence: 4, causedByFindingIds: [],
+      titleKey: 'perf.finding.cpuSaturation.title', summaryKey: 'perf.finding.cpuSaturation.summary',
+      messageArgs: [{ key: 'averagePercent', value: '94' }, { key: 'peakPercent', value: '100' }, { key: 'sampleCount', value: '42' }],
+      evidence: [{ factKey: 'cpu.busyBp.avg', observedValue: 9_400, threshold: 9_000, observedUnixMs: NOW }],
+      applicableActionKinds: ['ecoQos', 'backgroundPriority'], firstObservedUnixMs: NOW - 42_000, lastObservedUnixMs: NOW,
+    },
+    {
+      id: 'finding:io-saturation', code: 'IO_SATURATION', role: 2, confidence: 3, causedByFindingIds: [],
+      titleKey: 'perf.finding.ioSaturation.title', summaryKey: 'perf.finding.ioSaturation.summary',
+      messageArgs: [{ key: 'activePeakPercent', value: '97' }, { key: 'activeAvgPercent', value: '81' }],
+      evidence: [
+        { factKey: 'storage.activeBp.peak', observedValue: 9_700, threshold: 9_200, observedUnixMs: NOW },
+        { factKey: 'storage.transferLatencyUs', observedValue: 31_000, threshold: 25_000, observedUnixMs: NOW },
+      ],
+      applicableActionKinds: ['backgroundPriority'], firstObservedUnixMs: NOW - 30_000, lastObservedUnixMs: NOW,
+    },
+    {
+      id: 'finding:power-clamp', code: 'POWER_LIMIT_CLAMP', role: 3, confidence: 3, causedByFindingIds: [],
+      titleKey: 'perf.finding.powerClamp.title', summaryKey: 'perf.finding.powerClamp.summary',
+      messageArgs: [{ key: 'throttledSamples', value: '30' }],
+      evidence: [{ factKey: 'power.throttleActive', observedValue: 1, threshold: 0, observedUnixMs: NOW }],
+      applicableActionKinds: [], firstObservedUnixMs: NOW - 30_000, lastObservedUnixMs: NOW,
+    },
+  ],
+};
+
 const timelinePage: TimelineResponse = {
   // P76: the codes crates/timeline-intelligence/src/ingest.rs emits (a care run, the cleanup
   // it executed, a journal transition, a deep scan), outcome Neutral where ingest says so.
@@ -619,6 +651,7 @@ const STREAM: readonly UiKernelEvent[] = [
   event('diagnosticsSnapshot', diagnostics),
   event('repairAssessment', repairAssessment),
   event('performanceSnapshot', performance),
+  event('bottleneckReport', bottleneckReport),
   event('timelinePage', timelinePage),
   event('insights', insights),
   event('deepScanSnapshot', deepScan),

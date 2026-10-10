@@ -1,17 +1,11 @@
 import { writable } from 'svelte/store';
-import type { BottleneckReport, OptimizationPlanSnapshot, PerfSnapshot } from '../../lib/contracts';
+import type { BottleneckReport, PerfSnapshot } from '../../lib/contracts';
 import { runBusy, setPage } from '../../app/shell-state';
 import { serviceInvoke } from '../../platform/service-client';
 import { patchStreamState, streamState } from '../../platform/stream-state';
 
-export const perfUi = writable({
-  selectedFindingIds: [] as string[],
-  plan: null as OptimizationPlanSnapshot | null,
-});
-
-export function setSelectedFindingIds(ids: string[]): void {
-  perfUi.update((state) => ({ ...state, selectedFindingIds: ids }));
-}
+/** The service's message key for why the last analysis gave nothing; empty when it did not fail. */
+export const perfUi = writable({ analysisError: '' });
 
 /** Starts passive sampling and immediately pulls a first snapshot. */
 export async function startPerfSampling(): Promise<void> {
@@ -40,33 +34,14 @@ export async function analyzeBottlenecks(): Promise<BottleneckReport | null> {
     try {
       const report = await serviceInvoke<BottleneckReport>('get_bottleneck_report');
       patchStreamState({ bottleneckReport: report });
+      perfUi.set({ analysisError: '' });
       lastReport = report;
-    } catch {
-      // Insufficient evidence is a normal early-window state; surface as empty report.
+    } catch (error) {
+      // Too few samples is a normal early-window state, but it is said, not shown as an empty report.
       patchStreamState({ bottleneckReport: null });
+      perfUi.set({ analysisError: typeof error === 'string' ? error : 'perf.error.analysisFailed' });
       lastReport = null;
     }
   });
   return lastReport;
-}
-
-let lastPlan: OptimizationPlanSnapshot | null = null;
-
-export async function reviewOptimizationPlan(findingIds: string[]): Promise<OptimizationPlanSnapshot | null> {
-  await runBusy(async () => {
-    try {
-      const plan = await serviceInvoke<OptimizationPlanSnapshot>('create_optimization_plan', {
-        selectedFindingIds: findingIds,
-      });
-      perfUi.update((state) => ({ ...state, plan }));
-      lastPlan = plan;
-    } catch {
-      lastPlan = null;
-    }
-  });
-  return lastPlan;
-}
-
-export function closeOptimizationReview(): void {
-  perfUi.update((state) => ({ ...state, plan: null, selectedFindingIds: [] }));
 }
