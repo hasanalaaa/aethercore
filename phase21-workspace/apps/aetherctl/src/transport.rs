@@ -17,9 +17,7 @@
 use crate::cli::Config;
 use crate::error::CliError;
 use std::sync::atomic::{AtomicU64, Ordering};
-#[cfg(unix)]
-use std::time::Instant;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 use aethercore_ipc::unix_impl::default_socket_dir;
