@@ -1956,9 +1956,6 @@ export const arCatalog = {
   'perf.fact.memory.modifiedList.growthBytes': 'نمو الذاكرة المعدَّلة {observed} (الحدّ {threshold})',
   'perf.unit.ms': 'مللي ثانية',
   'perf.unit.mb': 'ميغابايت',
-  'perf.consumers.title': 'أكثر التطبيقات استهلاكًا الآن',
-  'perf.consumers.disk': 'القرص',
-  'perf.consumers.empty': 'لا توجد قراءة لكل تطبيق بعد. تحتاج إلى عيّنتين أثناء المراقبة.',
   'perf.startupLink': 'مراجعة عناصر بدء التشغيل',
   'perf.error.analysisFailed': 'تعذّر إكمال التحليل.',
 

@@ -11,6 +11,7 @@ export const perfUi = writable({ analysisError: '' });
 export async function startPerfSampling(): Promise<void> {
   await runBusy(async () => {
     setPage('performance');
+    perfUi.set({ analysisError: '' });
     const snapshot = await serviceInvoke<PerfSnapshot>('get_performance_snapshot');
     patchStreamState({ performance: snapshot });
     await serviceInvoke<void>('start_perf_sampling', { intervalMs: 1000 });

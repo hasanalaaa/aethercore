@@ -18,10 +18,9 @@
   import { applyPerformanceWindow, streamState } from '../../platform/stream-state';
   import { Pressable, ProgressBar, TechnicalText } from '../../design/primitives';
   import { EmptyState } from '../../design/signature';
-  import { t, td, tp, hasMessageKey, formatNumber, localizeCollector, localizeCollectorFault } from '../../lib/i18n';
+  import { t, td, tp, hasMessageKey, localizeCollector, localizeCollectorFault } from '../../lib/i18n';
   import { analyzeBottlenecks, perfUi, startPerfSampling, stopPerfSampling } from './controller';
   import { formatEvidence } from './evidence';
-  import { topConsumers } from './consumers';
   import { serviceInvoke } from '../../platform/service-client';
   import { diskActiveTimeMeasured } from '../overview/instrument';
 
@@ -32,7 +31,6 @@
   $: report = $streamState.bottleneckReport;
   $: sampling = $streamState.perfSampling;
   $: analysisError = $perfUi.analysisError;
-  $: consumers = topConsumers(performance.processTop ?? []);
 
   // Phase 27 (T5): honest engine source (native/synthetic) pulled once per mount.
   let engineSource: { source: string; platform: string } | null = null;
@@ -233,24 +231,6 @@
     <div><strong>{t('perf.throttleActive', locale)}</strong></div>
   </section>
 {/if}
-
-<section class="panel consumers-panel">
-  <div class="panel-head"><div><h3>{t('perf.consumers.title', locale)}</h3></div></div>
-  {#if consumers.length}
-    <ul class="consumer-list">
-      {#each consumers as app (app.pid)}
-        <li class="consumer-row">
-          <strong><TechnicalText value={app.name}/></strong>
-          <span>{t('perf.cpu', locale)} <TechnicalText value={`${formatNumber(Math.round(app.cpuBusyBp / 100), locale)}%`}/></span>
-          <span>{t('perf.memory', locale)} <TechnicalText value={`${formatNumber(Math.round(app.workingSetBytes / (1024 * 1024)), locale)} ${t('perf.unit.mb', locale)}`}/></span>
-          <span>{t('perf.consumers.disk', locale)} <TechnicalText value={`${formatNumber(Math.round((app.readBytesPerSec + app.writeBytesPerSec) / (1024 * 1024) * 10) / 10, locale)} ${t('perf.unit.mb', locale)}/s`}/></span>
-        </li>
-      {/each}
-    </ul>
-  {:else}
-    <p>{t('perf.consumers.empty', locale)}</p>
-  {/if}
-</section>
 
 <section class="panel bottleneck-panel">
   <div class="panel-head"><div><p class="eyebrow">{t('perf.analysisEyebrow', locale)}</p><h3>{t('perf.analysisTitle', locale)}</h3></div>

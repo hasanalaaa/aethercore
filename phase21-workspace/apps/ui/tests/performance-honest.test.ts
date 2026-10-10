@@ -3,7 +3,6 @@
 //    none: the first finding made the page throw (`undefined.replaceAll`) instead of showing it.
 // 2. Evidence reads as a sentence with units, not as `cpu.busyBp.avg: 9400 / 9000`.
 // 3. No checkbox/tray/"review plan" that leads nowhere (the service refuses to execute any plan).
-// 4. The top consumers come from the sampled process list, ordered and bounded.
 // Run: node --experimental-strip-types --import ./tests/resolve-ts.mjs --test tests/*.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -97,15 +96,6 @@ test('an evidence fact nobody labelled is shown as a number pair, never as an ex
   assert.match(text, /5/);
 });
 
-test('the top consumers are the busiest sampled processes, bounded, nameless entries dropped', async () => {
-  const { topConsumers } = await import('../src/features/performance/consumers.ts');
-  const entry = (pid: number, name: string, cpuBusyBp: number, workingSetBytes = 0) =>
-    ({ pid, name, cpuBusyBp, readBytesPerSec: 0, writeBytesPerSec: 0, workingSetBytes });
-  const rows = topConsumers([entry(1, 'a.exe', 100), entry(2, 'b.exe', 900), entry(3, '', 5000), entry(4, 'c.exe', 900, 10), entry(5, 'd.exe', 50), entry(6, 'e.exe', 40), entry(7, 'f.exe', 30)]);
-  assert.deepEqual(rows.map((r) => r.name), ['c.exe', 'b.exe', 'a.exe', 'd.exe', 'e.exe']);
-  assert.deepEqual(topConsumers([]), []);
-});
-
 test('the page offers no selection, tray or plan review that leads nowhere, and links to Startup', () => {
   const page = source('../src/features/performance/PerformancePage.svelte');
   const controller = source('../src/features/performance/controller.ts');
@@ -113,4 +103,11 @@ test('the page offers no selection, tray or plan review that leads nowhere, and 
   assert.doesNotMatch(page, /selection-tray|reviewOptimizationPlan|closeOptimizationReview/);
   assert.doesNotMatch(controller, /create_optimization_plan|reviewOptimizationPlan|closeOptimizationReview/);
   assert.match(page, /setPage\('startup'\)/);
+});
+
+// P3: an analysis error belongs to the monitoring run that produced it.
+test('starting monitoring again clears the previous analysis error', () => {
+  const controller = source('../src/features/performance/controller.ts');
+  const start = controller.slice(controller.indexOf('export async function startPerfSampling'), controller.indexOf('export async function stopPerfSampling'));
+  assert.match(start, /perfUi\.set\(\{ analysisError: '' \}\)/);
 });

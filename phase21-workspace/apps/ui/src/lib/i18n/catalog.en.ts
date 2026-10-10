@@ -1956,9 +1956,6 @@ export const enCatalog = {
   'perf.fact.memory.modifiedList.growthBytes': 'Modified memory growth {observed} (threshold {threshold})',
   'perf.unit.ms': 'ms',
   'perf.unit.mb': 'MB',
-  'perf.consumers.title': 'Busiest apps right now',
-  'perf.consumers.disk': 'Disk',
-  'perf.consumers.empty': 'No per-app reading yet. It needs two samples while monitoring runs.',
   'perf.startupLink': 'Review startup items',
   'perf.error.analysisFailed': 'The analysis could not be completed.',
 
