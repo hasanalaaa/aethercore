@@ -51,6 +51,7 @@ test('every new string exists in English and Arabic with the placeholders the pa
     assert.deepEqual(placeholders(en), args, `${key} en`);
     assert.deepEqual(placeholders(ar), args, `${key} ar`);
     assert.match(ar, arabic, `${key} ar text`);
+    assert.doesNotMatch(ar, /ويندوز/, `${key}: the catalog writes Windows in Latin`);
   }
 });
 

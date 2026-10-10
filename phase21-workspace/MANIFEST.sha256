@@ -484,7 +484,7 @@ cb9c1f7d007f94288013c0d8c886ac2ee4542b2f1174defcd623b4887704ba02  apps/ui/src/fe
 a00e2b438c349180adba977e24d0049d51462d1791203b518be8f51d3fb092de  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-f943f7c0bb80d195b36cc0cd3c0efed2d7c9c3520b2e47f30347af283ca4f72c  apps/ui/src/lib/i18n/catalog.ar.ts
+b6047252b4aa5df0b9e24ee913dbf465c968353320847e616066476bfb440f36  apps/ui/src/lib/i18n/catalog.ar.ts
 7a6f9fdfa7776a86eada34d9ba8bc1c9f206b24df749d058eea663374838952f  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 861d75f3596e142099802c67260c936723dcab045446c37bfd2c257d0e2339cd  apps/ui/src/lib/i18n/plurals.ar.ts
@@ -510,7 +510,7 @@ beaa2c21771b610e4e05091c295982c1aa8778742112321d416af5dfbecf476f  apps/ui/tests/
 5ac85a94e3fc27835c41809c5ca2f030fff5b37440112ec5b910c68891ffcc8d  apps/ui/tests/boot-observations.test.ts
 302dee8cc1ba957ddf466a9602b8b1af825e3bc22f13194cd1a5896e8d6d0884  apps/ui/tests/care-result.test.ts
 310648e27ae417adfcccbe9f08b14ab0f67ee007eeb25b552b5899550420b3e7  apps/ui/tests/care.test.ts
-c5aee4b8c38b1e89ee5373a962d2f6cda4fee01dbb48c544a8c1c28592607f15  apps/ui/tests/drivers-guided.test.ts
+b6ba64bb5278f76f40613f9843bb96c0ee7a910484a7c4afdb64c793e035c93c  apps/ui/tests/drivers-guided.test.ts
 1cf7410d144104e46f6c922722dc066cc4bebcaf249a2af4f86a93fe72147bf8  apps/ui/tests/finding-card.test.ts
 a4a092f82b169bb987ca5c82173a78e8c882c0adfb2a004912b360b4f4bef40b  apps/ui/tests/fleet.test.ts
 9aed44d763c9451c9fc407e129a36763e8ba0e36ee4658c2630f1e77fdab7419  apps/ui/tests/insights-scope.test.ts
