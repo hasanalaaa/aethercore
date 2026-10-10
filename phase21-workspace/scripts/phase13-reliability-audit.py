@@ -17,7 +17,7 @@ checks = {}
 # entry for this import would be reported as the gate rewriting the tree.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gate_reader import SourceReader, contains  # noqa: E402
+from gate_reader import SourceReader, contains, position  # noqa: E402
 
 read = SourceReader(ROOT).read
 
@@ -70,13 +70,13 @@ check('collector_watchdog_isolation', has(runtime, 'run_isolated_gated', 'Isolat
 check('fault_taxonomy', has(runtime, 'Timeout', 'Cancelled', 'Unavailable', 'PermissionDenied', 'MalformedResponse', 'ProviderFailure', 'Io', 'Internal'))
 check('fault_detail_bounded', has(runtime, 'MAX_FAULT_DETAIL_BYTES', 'bounded_detail', 'CollectorFaultRecord::new', 'is_char_boundary', 'fault_detail_is_utf8_bounded_before_crossing_process_boundaries'))
 check('watchdog_fault_injection_tests', has(runtime, 'watchdog_cancels_and_returns_timeout', 'timed_out_provider_remains_quarantined_until_worker_exits', 'successful_gated_provider_releases_before_result_is_visible', 'panic_is_contained_as_internal_fault'))
-check('lease_release_precedes_result_publication', runtime.find('drop(lease);') < runtime.find('tx.send(result)') and 'successful_gated_provider_releases_before_result_is_visible' in runtime)
+check('lease_release_precedes_result_publication', position(runtime, 'drop(lease);') < position(runtime, 'tx.send(result)') and contains(runtime, 'successful_gated_provider_releases_before_result_is_visible'))
 
 # WMI discipline.
 check('no_unbounded_wmi_in_collectors', 'WBEM_INFINITE' not in hardware_win and 'WBEM_INFINITE' not in restore)
 check('wmi_finite_next', has(hardware_win, 'remaining_ms_capped(WMI_NEXT_SLICE)', '.Next(timeout_ms', 'Ok(out)'))
 check('wmi_semantic_status_handling', has(hardware_win, 'WBEM_S_TIMEDOUT', 'WBEM_S_FALSE', 'status.is_err()', 'terminal WBEM_S_FALSE with a non-empty result', 'returned == 0'))
-check('wmi_provider_object_cap', 'bounded 256-object storage inventory' in hardware_win)
+check('wmi_provider_object_cap', contains(hardware_win, 'bounded 256-object storage inventory'))
 check('wmi_return_count_consistency', has(hardware_win, 'fn take_wmi_object(', 'returned > 1', 'reported one returned object but supplied no object', 'populated an object while reporting zero returned objects'))
 check('wmi_permission_denied_classification', has(hardware_win, 'E_ACCESSDENIED', 'WBEM_E_ACCESS_DENIED', 'TelemetryError::PermissionDenied', 'FaultKind::PermissionDenied'))
 check('restore_point_wmi_finite_status', has(restore, 'WBEM_S_TIMEDOUT', 'WBEM_S_FALSE', '.Next(5_000'))
@@ -105,7 +105,7 @@ check('event_alignment_validation', has(crash_win, 'align_of::<EVT_VARIANT>()', 
 check('event_handle_count_bounds', has(crash_win, 'EvtNext reported more event handles than the bounded output array', 'Take ownership of every non-null handle', 'EvtNext returned null, sparse, or trailing handles inconsistent with its reported count', 'EvtNext succeeded without returning an event handle'))
 check('event_finite_next', has(crash_win, 'remaining_ms_capped(EVENTLOG_NEXT_SLICE)', 'ERROR_TIMEOUT'))
 check('event_malformed_partial_fault', has(crash_win, 'malformed_events', 'FaultKind::MalformedResponse', 'eventlog.render'))
-check('event_classification_structured_payload', 'payload_values: &[String]' in crash and 'structured_payload_classification_does_not_require_xml' in crash)
+check('event_classification_structured_payload', contains(crash, 'payload_values: &[String]') and contains(crash, 'structured_payload_classification_does_not_require_xml'))
 check('minidump_bounds', has(crash_win, 'MAX_DUMPS', 'take(header_bytes as u64)', 'header_data.len() >= size_of::<DUMP_HEADER64>()', 'header_data.len() >= size_of::<DUMP_HEADER32>()'))
 check('minidump_partial_faults', has(crash_win, 'minidump.enumerate', 'minidump.metadata', 'minidump.parse', 'ProviderFailure', 'CollectorFaultRecord::new'))
 check('live_crash_probe_exists', has(crash, '#[ignore =', 'live_event_and_minidump_collection_is_read_only'))
@@ -118,24 +118,24 @@ check('top_level_scan_panic_cannot_leave_collecting', has(diag, 'catch_unwind(As
 # which whitespace removal cannot undo. The signatures are otherwise identical.
 # `DBT-P61-001`.
 check('provider_control_propagation', has(diag, 'fn hardware(&self, control: CollectorControl,)', 'fn crashes(&self, control: CollectorControl,)', 'collect_with_cancellation(control.cancellation())'))
-check('provider_panic_containment', 'provider_panic_is_contained_and_persisted_as_typed_fault' in diag)
+check('provider_panic_containment', contains(diag, 'provider_panic_is_contained_and_persisted_as_typed_fault'))
 check('fault_records_share_bounded_constructor', 'CollectorFaultRecord {' not in crash_win and has(runtime, 'impl CollectorFaultRecord', 'Self::new(fault.provider') and 'ProviderFaultRecord{provider:"diagnostic-engine"' not in diag and 'ProviderFaultRecord{provider:"diagnostic-journal"' not in diag)
-check('nested_provider_faults_preserved', 'nested_provider_faults_are_preserved_in_the_diagnostic_snapshot' in diag and 'provider_faults.extend(h.provider_faults' in diag and 'provider_faults.extend(c.provider_faults' in diag)
-check('diagnostic_persistence_failure_is_visible', 'let _=inner.db.save_diagnostic_snapshot' not in diag and 'diagnostic-journal' in diag and 'snapshot.persist' in diag and 'Diagnostic history persistence was unavailable' in diag)
+check('nested_provider_faults_preserved', contains(diag, 'nested_provider_faults_are_preserved_in_the_diagnostic_snapshot') and contains(diag, 'provider_faults.extend(h.provider_faults') and contains(diag, 'provider_faults.extend(c.provider_faults'))
+check('diagnostic_persistence_failure_is_visible', 'let _=inner.db.save_diagnostic_snapshot' not in diag and contains(diag, 'diagnostic-journal') and contains(diag, 'snapshot.persist') and contains(diag, 'Diagnostic history persistence was unavailable'))
 
 # Contract and localized UI exposure. Raw details stay out of normal UI.
 check('provider_fault_contract', has(proto, 'enum ProviderFaultKind', 'message ProviderFaultInfo', 'repeated ProviderFaultInfo provider_faults = 13'))
 check('provider_fault_service_mapping', has(protocol, 'provider_faults:v.provider_faults', 'provider_fault_kind_code', 'v1::ProviderFaultInfo'))
-check('provider_fault_ui_contract', has(contracts, 'export type ProviderFault', 'providerFaults:ProviderFault[]') and 'providerFaults: []' in stream)
-check('provider_fault_localized_ui', has(fault_ui, 'localizeProviderFaultKind', 'localizeFaultProvider') and not re.search(r'fault\.operation|(?<!localizeFaultProvider\()fault\.provider|<TechnicalText', re.sub(r'\{#each[^\n]*\n', '', fault_ui)) and 'ProviderFaultsPanel' in hardware_ui and 'ProviderFaultsPanel' in crash_ui)
+check('provider_fault_ui_contract', has(contracts, 'export type ProviderFault', 'providerFaults:ProviderFault[]') and contains(stream, 'providerFaults: []'))
+check('provider_fault_localized_ui', has(fault_ui, 'localizeProviderFaultKind', 'localizeFaultProvider') and not re.search(r'fault\.operation|(?<!localizeFaultProvider\()fault\.provider|<TechnicalText', re.sub(r'\{#each[^\n]*\n', '', fault_ui)) and contains(hardware_ui, 'ProviderFaultsPanel') and contains(crash_ui, 'ProviderFaultsPanel'))
 check('provider_fault_raw_detail_not_rendered', 'fault.detail' not in fault_ui and '{fault.detail}' not in (hardware_ui + crash_ui))
-check('provider_fault_catalog_parity_surface', has(en, 'diagnostics.providerFaults.title', 'diagnostics.providerFaults.kind.timeout', 'diagnostics.providerFaults.kind.malformedResponse') and has(ar, 'diagnostics.providerFaults.title', 'diagnostics.providerFaults.kind.timeout', 'diagnostics.providerFaults.kind.malformedResponse') and 'localizeProviderFaultKind' in semantic)
+check('provider_fault_catalog_parity_surface', has(en, 'diagnostics.providerFaults.title', 'diagnostics.providerFaults.kind.timeout', 'diagnostics.providerFaults.kind.malformedResponse') and has(ar, 'diagnostics.providerFaults.title', 'diagnostics.providerFaults.kind.timeout', 'diagnostics.providerFaults.kind.malformedResponse') and contains(semantic, 'localizeProviderFaultKind'))
 
 # Verification / CI integration.
 check('fault_injection_windows_gate', has(fault_ps, 'aethercore-collector-runtime', 'aethercore-hardware-telemetry', 'aethercore-crash-diagnostics', 'aethercore-diagnostic-engine', '$LiveReadOnly', 'parent_cancellation_propagates_to_children_without_reverse_poisoning', 'external_cancellation_interrupts_supervisor_before_watchdog_deadline', 'provider_supervisor_panic_is_classified', 'scan_runtime_failure_marks_collecting_snapshot_failed'))
 check('fault_injection_covers_event_preallocation_and_vendor_tail', has(fault_ps, 'render_property_count_is_rejected_before_allocation_when_pathological', 'nvme_parser_accepts_vendor_tail_without_reading_past_standard_prefix'))
 check('phase13_windows_gate', has(verify, 'verify-phase12.ps1', 'phase13-reliability-audit.ps1', 'phase13-fault-injection.ps1', 'cargo check --workspace --locked', 'aethercore-collector-runtime -p aethercore-hardware-telemetry'))
-check('release_packaging_deferred_until_reliability', verify.find('build-release.ps1') > verify.find('phase13-fault-injection.ps1') > verify.find('verify-phase12.ps1'))
+check('release_packaging_deferred_until_reliability', position(verify, 'build-release.ps1') > position(verify, 'phase13-fault-injection.ps1') > position(verify, 'verify-phase12.ps1'))
 check('phase13_ci_release_gate', any(g in ci for g in ['verify-phase13.ps1 -SkipOnlineSupplyChain','verify-phase14.ps1 -SkipOnlineSupplyChain','verify-phase15.ps1 -SkipOnlineSupplyChain','verify-phase16.ps1 -SkipOnlineSupplyChain','verify-enterprise.ps1 -SkipOnlineSupplyChain']) and any(g in release for g in ['verify-phase13.ps1 -ReleasePackaging -RequireSigning','verify-phase14.ps1 -ReleasePackaging -RequireSigning','verify-phase15.ps1 -ReleasePackaging -RequireSigning','verify-phase16.ps1 -ReleasePackaging -RequireSigning','verify-enterprise.ps1 -ReleasePackaging -RequireSigning']))
 check('documented_reliability_contract', has(docs, 'hierarchical', 'IsolationGate', 'WBEM_S_TIMEDOUT', 'EvtRenderContextSystem', 'MalformedResponse', 'ProviderFault'))
 
