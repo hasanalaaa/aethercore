@@ -26,6 +26,7 @@ const MIGRATION_0015: &str = include_str!("../migrations/0015_phase34_fleet.sql"
 const MIGRATION_0016: &str =
     include_str!("../migrations/0016_p46_byte_progress_determinedness.sql");
 const MIGRATION_0017: &str = include_str!("../migrations/0017_care_actual_deleted_bytes.sql");
+const MIGRATION_0018: &str = include_str!("../migrations/0018_intelligence_scan_user_key.sql");
 
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "0001_init", MIGRATION_0001),
@@ -45,6 +46,7 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
     (15, "0015_phase34_fleet", MIGRATION_0015),
     (16, "0016_p46_byte_progress_determinedness", MIGRATION_0016),
     (17, "0017_care_actual_deleted_bytes", MIGRATION_0017),
+    (18, "0018_intelligence_scan_user_key", MIGRATION_0018),
 ];
 
 #[derive(Debug, Error)]
@@ -370,6 +372,8 @@ pub struct DiagnosticSnapshotRecord {
 pub struct IntelligenceScanRecord {
     pub scan_id: String,
     pub owner_principal_key: String,
+    /// The Windows user's key (`PrincipalContext::user_key`); '' for rows before migration 0018.
+    pub owner_user_key: String,
     pub state: String,
     pub status: String,
     pub started_unix_ms: i64,
@@ -1713,8 +1717,8 @@ impl Database {
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
         conn.execute(
-            "INSERT OR REPLACE INTO intelligence_scans(scan_id,owner_principal_key,state,status,started_unix_ms,completed_unix_ms,machine_state_fingerprint,rule_engine_version,app_version,finding_count,unavailable_collector_count,snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            params![record.scan_id,record.owner_principal_key,record.state,record.status,record.started_unix_ms,record.completed_unix_ms,record.machine_state_fingerprint,record.rule_engine_version,record.app_version,record.finding_count,record.unavailable_collector_count,record.snapshot_json],
+            "INSERT OR REPLACE INTO intelligence_scans(scan_id,owner_principal_key,owner_user_key,state,status,started_unix_ms,completed_unix_ms,machine_state_fingerprint,rule_engine_version,app_version,finding_count,unavailable_collector_count,snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            params![record.scan_id,record.owner_principal_key,record.owner_user_key,record.state,record.status,record.started_unix_ms,record.completed_unix_ms,record.machine_state_fingerprint,record.rule_engine_version,record.app_version,record.finding_count,record.unavailable_collector_count,record.snapshot_json],
         )?;
         conn.execute(
             "DELETE FROM intelligence_scans WHERE owner_principal_key=? AND scan_id NOT IN (SELECT scan_id FROM intelligence_scans WHERE owner_principal_key=? ORDER BY completed_unix_ms DESC LIMIT 50) AND scan_id NOT IN (SELECT scan_id FROM intelligence_remediation_plans)",
@@ -1728,30 +1732,50 @@ impl Database {
         owner_principal_key: &str,
         limit: usize,
     ) -> Result<Vec<IntelligenceScanRecord>> {
+        self.intelligence_scans_where("owner_principal_key", owner_principal_key, limit)
+    }
+
+    /// Quality pass B6: the Windows user's scans across every logon session. An empty key
+    /// (unknown SID) matches nothing, so pre-0018 rows are never handed to a user.
+    pub fn intelligence_scans_for_user(
+        &self,
+        owner_user_key: &str,
+        limit: usize,
+    ) -> Result<Vec<IntelligenceScanRecord>> {
+        if owner_user_key.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.intelligence_scans_where("owner_user_key", owner_user_key, limit)
+    }
+
+    fn intelligence_scans_where(
+        &self,
+        column: &'static str,
+        key: &str,
+        limit: usize,
+    ) -> Result<Vec<IntelligenceScanRecord>> {
         let conn = self
             .connection
             .lock()
             .map_err(|_| PersistenceError::Poisoned)?;
-        let mut stmt=conn.prepare("SELECT scan_id,owner_principal_key,state,status,started_unix_ms,completed_unix_ms,machine_state_fingerprint,rule_engine_version,app_version,finding_count,unavailable_collector_count,snapshot_json FROM intelligence_scans WHERE owner_principal_key=? ORDER BY completed_unix_ms DESC LIMIT ?")?;
-        let rows = stmt.query_map(
-            params![owner_principal_key, limit.clamp(1, 200) as i64],
-            |r| {
-                Ok(IntelligenceScanRecord {
-                    scan_id: r.get(0)?,
-                    owner_principal_key: r.get(1)?,
-                    state: r.get(2)?,
-                    status: r.get(3)?,
-                    started_unix_ms: r.get(4)?,
-                    completed_unix_ms: r.get(5)?,
-                    machine_state_fingerprint: r.get(6)?,
-                    rule_engine_version: r.get(7)?,
-                    app_version: r.get(8)?,
-                    finding_count: r.get::<_, i64>(9)?.max(0) as u32,
-                    unavailable_collector_count: r.get::<_, i64>(10)?.max(0) as u32,
-                    snapshot_json: r.get(11)?,
-                })
-            },
-        )?;
+        let mut stmt=conn.prepare(&format!("SELECT scan_id,owner_principal_key,owner_user_key,state,status,started_unix_ms,completed_unix_ms,machine_state_fingerprint,rule_engine_version,app_version,finding_count,unavailable_collector_count,snapshot_json FROM intelligence_scans WHERE {column}=? ORDER BY completed_unix_ms DESC LIMIT ?"))?;
+        let rows = stmt.query_map(params![key, limit.clamp(1, 200) as i64], |r| {
+            Ok(IntelligenceScanRecord {
+                scan_id: r.get(0)?,
+                owner_principal_key: r.get(1)?,
+                owner_user_key: r.get(2)?,
+                state: r.get(3)?,
+                status: r.get(4)?,
+                started_unix_ms: r.get(5)?,
+                completed_unix_ms: r.get(6)?,
+                machine_state_fingerprint: r.get(7)?,
+                rule_engine_version: r.get(8)?,
+                app_version: r.get(9)?,
+                finding_count: r.get::<_, i64>(10)?.max(0) as u32,
+                unavailable_collector_count: r.get::<_, i64>(11)?.max(0) as u32,
+                snapshot_json: r.get(12)?,
+            })
+        })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
     }
@@ -2939,6 +2963,7 @@ mod tests {
         db.save_intelligence_scan(&IntelligenceScanRecord {
             scan_id: "scan-1".into(),
             owner_principal_key: owner.into(),
+            owner_user_key: String::new(),
             state: "Completed".into(),
             status: "AttentionRecommended".into(),
             started_unix_ms: 10,

@@ -49,6 +49,9 @@ struct Inner {
     db: Arc<Database>,
     snapshot: Mutex<DeepScanSnapshot>,
     owner: Mutex<String>,
+    /// The Windows user of the scan in flight (`PrincipalContext::user_key`), recorded with
+    /// the scan so its history follows the user across sign-ins. Quality pass B6.
+    owner_user: Mutex<String>,
     run_ownership: Mutex<RunOwnership>,
     app_version: String,
 }
@@ -86,6 +89,7 @@ impl DeepScanCoordinator {
                 db,
                 snapshot: Mutex::new(snapshot),
                 owner: Mutex::new(String::new()),
+                owner_user: Mutex::new(String::new()),
                 run_ownership: Mutex::new(RunOwnership::default()),
                 app_version,
             }),
@@ -105,7 +109,23 @@ impl DeepScanCoordinator {
             .clone())
     }
 
-    pub fn start(&self, owner: &str) -> Result<DeepScanSnapshot> {
+    /// The user's newest persisted completed or partial scan, for a session that does not own
+    /// the live state (a new sign-in, another console). Read-only: cancel stays session-bound.
+    pub fn latest_completed_for_user(&self, owner_user: &str) -> Result<Option<DeepScanSnapshot>> {
+        let rows = self
+            .inner
+            .db
+            .intelligence_scans_for_user(owner_user, 5)
+            .map_err(|e| IntelligenceError::Persistence(e.to_string()))?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|record| {
+                serde_json::from_str::<DeepScanSnapshot>(&record.snapshot_json).ok()
+            })
+            .find(|snapshot| matches!(snapshot.state, ScanState::Completed | ScanState::Partial)))
+    }
+
+    pub fn start(&self, owner: &str, owner_user: &str) -> Result<DeepScanSnapshot> {
         let now = Utc::now().timestamp_millis();
         let scan_id = Uuid::new_v4().to_string();
         let token = CancellationToken::new();
@@ -127,6 +147,11 @@ impl DeepScanCoordinator {
             }
             identity = ownership.install(scan_id.clone(), now, token.clone());
             *current_owner = owner.to_owned();
+            *self
+                .inner
+                .owner_user
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = owner_user.to_owned();
             *snapshot = DeepScanSnapshot {
                 scan_id: scan_id.clone(),
                 state: ScanState::Scanning,
@@ -238,10 +263,11 @@ impl DeepScanCoordinator {
         Ok(())
     }
 
-    pub fn history(&self, owner: &str, limit: usize) -> Result<Vec<DeepScanHistoryEntry>> {
+    /// The Windows user's completed scans across logon sessions (`PrincipalContext::user_key`).
+    pub fn history(&self, owner_user: &str, limit: usize) -> Result<Vec<DeepScanHistoryEntry>> {
         self.inner
             .db
-            .intelligence_scans_for_owner(owner, limit)
+            .intelligence_scans_for_user(owner_user, limit)
             .map_err(|e| IntelligenceError::Persistence(e.to_string()))
             .map(|rows| {
                 rows.into_iter()
@@ -619,7 +645,18 @@ fn run(inner: Arc<Inner>, owner: String, token: CancellationToken, identity: Run
         app_version: inner.app_version.clone(),
     };
 
-    let snapshot = persist(&inner.db, &owner, snapshot, &persisted_findings);
+    let owner_user = inner
+        .owner_user
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    let snapshot = persist(
+        &inner.db,
+        &owner,
+        &owner_user,
+        snapshot,
+        &persisted_findings,
+    );
     set_snapshot_if_owner(&inner, &identity, snapshot);
     clear_run_if_owner(&inner, &identity);
 }
@@ -1009,7 +1046,12 @@ fn complete(
         rule_engine_version: RULE_ENGINE_VERSION.into(),
         app_version: inner.app_version.clone(),
     };
-    let snapshot = persist(&inner.db, owner, snapshot, &persisted_findings);
+    let owner_user = inner
+        .owner_user
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    let snapshot = persist(&inner.db, owner, &owner_user, snapshot, &persisted_findings);
     set_snapshot_if_owner(inner, identity, snapshot);
     clear_run_if_owner(inner, identity);
 }
@@ -1221,6 +1263,7 @@ fn summarize(findings: &[Finding], facts: &[SystemFact]) -> FindingSummary {
 fn persist(
     db: &Database,
     owner: &str,
+    owner_user: &str,
     mut snapshot: DeepScanSnapshot,
     findings: &[Finding],
 ) -> DeepScanSnapshot {
@@ -1272,6 +1315,7 @@ fn persist(
             let record = IntelligenceScanRecord {
                 scan_id: snapshot.scan_id.clone(),
                 owner_principal_key: owner.into(),
+                owner_user_key: owner_user.into(),
                 state: format!("{:?}", snapshot.state),
                 status: format!("{:?}", snapshot.status),
                 started_unix_ms: snapshot.started_unix_ms,

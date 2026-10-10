@@ -33,6 +33,18 @@ impl PrincipalContext {
         hex::encode(Sha256::digest(material.as_bytes()))
     }
 
+    /// Opaque key for what the Windows user may read back across sign-ins: their deep scan
+    /// history and preferences. Quality pass B6. Never an authorization key: anything that
+    /// changes the machine stays bound to `binding_key()`. Empty when the SID is unknown.
+    pub fn user_key(&self) -> String {
+        if self.user_sid.is_empty() {
+            return String::new();
+        }
+        hex::encode(Sha256::digest(
+            format!("user|sid={}", self.user_sid).as_bytes(),
+        ))
+    }
+
     /// Fills in `profile_dir` from `user_sid`. Must be called with the SERVICE's own
     /// authority, never while impersonating the caller.
     pub fn resolve_profile_dir(&mut self) {
@@ -628,6 +640,23 @@ mod tests {
             session_id: session,
             profile_dir: None,
         }
+    }
+
+    /// Quality pass B6: what a user may read back (history, their own preferences) follows
+    /// the Windows user across sign-ins; what authorizes a change stays logon-scoped.
+    #[test]
+    fn user_key_follows_the_user_across_logons_and_sessions_only() {
+        let a = principal(r"C:\A.exe", false, 10, 1);
+        let after_reboot = principal(r"C:\B.exe", true, 99, 2);
+        let mut other_user = principal(r"C:\A.exe", false, 10, 1);
+        other_user.user_sid = "010500000000000515000000ffffffff".into();
+        assert_eq!(a.user_key(), after_reboot.user_key());
+        assert_ne!(a.user_key(), other_user.user_key());
+        assert_ne!(a.user_key(), a.binding_key(), "the two keys never collide");
+        assert_ne!(a.binding_key(), after_reboot.binding_key());
+        let mut unknown = principal(r"C:\A.exe", false, 10, 1);
+        unknown.user_sid = String::new();
+        assert!(unknown.user_key().is_empty(), "no SID, no user key");
     }
 
     #[test]

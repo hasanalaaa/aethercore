@@ -35,7 +35,10 @@ pub(super) fn start_deep_scan(call: &Call<'_>) -> Routed {
     let request_context = call.request_context;
     let principal_key = &call.principal_key;
     request_context.checkpoint().map_err(err)?;
-    let value = ctx.intelligence.start(principal_key).map_err(err)?;
+    let value = ctx
+        .intelligence
+        .start(principal_key, &call.peer.user_key())
+        .map_err(err)?;
     let _ = ctx
         .intelligence
         .record_stream_event(principal_key, &value.scan_id);
@@ -91,10 +94,19 @@ pub(super) fn cancel_deep_scan(call: &Call<'_>, v: v1::CancelDeepScanRequest) ->
 pub(super) fn get_deep_scan_snapshot(call: &Call<'_>) -> Routed {
     let ctx = call.ctx;
     let principal_key = &call.principal_key;
-    let value = ctx
-        .intelligence
-        .snapshot_for_owner(principal_key)
-        .map_err(err)?;
+    // Quality pass B6: a session that does not own the live scan (a new sign-in, another
+    // console) sees its user's latest completed result instead of "unavailable".
+    let value = match ctx.intelligence.snapshot_for_owner(principal_key) {
+        Ok(value) if !value.scan_id.is_empty() => value,
+        owned => match ctx
+            .intelligence
+            .latest_completed_for_user(&call.peer.user_key())
+            .map_err(err)?
+        {
+            Some(latest) => latest,
+            None => owned.map_err(err)?,
+        },
+    };
     Ok(Some(response::Payload::DeepScanSnapshot(
         v1::DeepScanSnapshotResponse {
             snapshot: Some(deep_scan_snapshot_proto(value)),
@@ -104,10 +116,9 @@ pub(super) fn get_deep_scan_snapshot(call: &Call<'_>) -> Routed {
 
 pub(super) fn get_deep_scan_history(call: &Call<'_>, v: v1::GetDeepScanHistoryRequest) -> Routed {
     let ctx = call.ctx;
-    let principal_key = &call.principal_key;
     let entries = ctx
         .intelligence
-        .history(principal_key, v.limit.clamp(1, 50) as usize)
+        .history(&call.peer.user_key(), v.limit.clamp(1, 50) as usize)
         .map_err(err)?;
     Ok(Some(response::Payload::DeepScanHistory(
         v1::DeepScanHistoryResponse {
