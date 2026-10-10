@@ -482,7 +482,7 @@ cb9c1f7d007f94288013c0d8c886ac2ee4542b2f1174defcd623b4887704ba02  apps/ui/src/fe
 82f7b5c2ead5fe9445e2e02c9bdf0cde8f3cdb138194b9a8781e632d45f13089  apps/ui/src/lib/contracts.ts
 c92f91f37abe39c72814261ac6227c3d6c332d3f24f97e2cc275dfdb1946ae8b  apps/ui/src/lib/i18n.ts
 4149b8052d5bf58ea987579740012183ca53fdace53791db29dc30f65ba80f38  apps/ui/src/lib/i18n/bidi.ts
-756f2c467507c68c14b26c79c6e76c1d084169360d2a325f40dbc9a64cecac51  apps/ui/src/lib/i18n/catalog.ar.ts
+972cc946032bc66d877a8e78568c989f08e2eb43bd522de187be70bd49fcd9df  apps/ui/src/lib/i18n/catalog.ar.ts
 e8789da8d27fe7e468c73da538e3c420e6672282af6a9ffb42c07631d882c27c  apps/ui/src/lib/i18n/catalog.en.ts
 d093674d74659def8d97b12d4d661f1cb2f1d81a53f354eb5d27fcadc97fa090  apps/ui/src/lib/i18n/index.ts
 861d75f3596e142099802c67260c936723dcab045446c37bfd2c257d0e2339cd  apps/ui/src/lib/i18n/plurals.ar.ts
@@ -514,7 +514,7 @@ a4a092f82b169bb987ca5c82173a78e8c882c0adfb2a004912b360b4f4bef40b  apps/ui/tests/
 1d93e762b5d2f417a3352c2ff4196c6dba886a53f9af7d64bb93ff314c626549  apps/ui/tests/localized-text.test.ts
 59e1b489beeb808d961b6e5db7d7d8e965921b6f9ecd92e912914c4c1a05dc7d  apps/ui/tests/navigation.test.ts
 8a4d470283f161bf1e62dd5c61a00799c3af75009ddf894d3642ca0f71f872c6  apps/ui/tests/network-measurements.test.ts
-bdbe30b2d7425a1cf99a09f34ce3eb47fd4da1f3850488ee9d66083916ee88e8  apps/ui/tests/performance-honest.test.ts
+b9af856566a1d4d3de93eced1b5a0010bee26b70cb423d003c3850041efd5333  apps/ui/tests/performance-honest.test.ts
 912ca611aa6c2e79c882d55061b1d9406e704881b2767d102c1556f3dedb8a9f  apps/ui/tests/repair-progress.test.ts
 66619c72355a328938a45dcbf5df97899ac255358d0e317670d3885a33547bc4  apps/ui/tests/repair-timing.test.ts
 ad27fd90c77735a5d42b830cb5c054712f94b6196fe611cdb2c62cdfb3803ee4  apps/ui/tests/resolve-ts.mjs

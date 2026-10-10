@@ -111,3 +111,14 @@ test('starting monitoring again clears the previous analysis error', () => {
   const start = controller.slice(controller.indexOf('export async function startPerfSampling'), controller.indexOf('export async function stopPerfSampling'));
   assert.match(start, /perfUi\.set\(\{ analysisError: '' \}\)/);
 });
+
+// Review of #140 (lane 3): the catalog writes Windows in Latin; the new Arabic keeps to it, and the
+// two titles say what the rule measures (a 90% average is "very busy", not "busy completely").
+test('the new Arabic performance text spells Windows in Latin and states the limits the rules use', () => {
+  const ar = arCatalog as Record<string, string>;
+  for (const [key, value] of Object.entries(ar)) {
+    if (key.startsWith('perf.finding.') || key.startsWith('perf.fact.')) assert.doesNotMatch(value, /ويندوز/, key);
+  }
+  assert.equal(ar['perf.finding.cpuSaturation.title'], 'المعالج مشغول جدًا');
+  assert.equal(ar['perf.finding.gpuBound.title'], 'المعالج الرسومي هو العامل المحدِّد للأداء');
+});
