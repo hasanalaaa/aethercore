@@ -1283,3 +1283,134 @@ fn p85_cancel_during_first_verification_prevents_the_next_check() {
 fn p85_cancel_during_last_verification_rejects_a_late_success() {
     cancel_during_verification(true);
 }
+
+/// D34: a provider that reports itself unavailable (WinRE disabled, System Restore off) is an
+/// assessment RESULT, not a failure. `hold` keeps the next check running until the owner cancels,
+/// the shape of the installed acceptance's repair case (progress, then a terminal state by cancel).
+struct UnavailableProvider {
+    hold: bool,
+}
+
+impl RepairPlatform for UnavailableProvider {
+    fn assess(
+        &self,
+        cancel: &Arc<std::sync::atomic::AtomicBool>,
+        progress: &mut dyn FnMut(AssessStep<'_>),
+    ) -> aethercore_system_repair::Result<(String, Vec<RepairCheck>)> {
+        let finished = |id: &str, code: &str| RepairCheck {
+            id: id.into(),
+            title: id.into(),
+            stage: "Attention".into(),
+            result_code: code.into(),
+            ..RepairCheck::default()
+        };
+        let winre = finished("winre-state", "WinReUnavailable");
+        let restore = finished("restore-state", "RestoreUnavailable");
+        progress(AssessStep::Started("winre-state"));
+        progress(AssessStep::Finished(&winre));
+        if self.hold {
+            progress(AssessStep::Started("sfc-verify"));
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                assert!(Instant::now() < deadline, "never cancelled");
+                thread::sleep(Duration::from_millis(10));
+            }
+            return Err(RepairError::Cancelled);
+        }
+        progress(AssessStep::Started("restore-state"));
+        progress(AssessStep::Finished(&restore));
+        Ok(("C:".into(), vec![winre, restore]))
+    }
+    fn repair(
+        &self,
+        _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
+        _: &mut dyn FnMut() -> aethercore_system_repair::Result<()>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        Ok(())
+    }
+    fn verify(
+        &self,
+        _: &SystemRepairAction,
+        _control: &mut aethercore_system_repair::RepairControl<'_>,
+        _: &mut dyn FnMut(RepairCheck),
+    ) -> aethercore_system_repair::Result<()> {
+        Ok(())
+    }
+}
+
+fn settled_assessment(
+    hold: bool,
+    label: &str,
+) -> (
+    aethercore_system_repair::RepairAssessment,
+    std::path::PathBuf,
+    RepairCoordinator,
+) {
+    let root = temp_root(label);
+    std::fs::create_dir_all(&root).expect("temp root");
+    let db = Arc::new(Database::open(root.join("state.db")).expect("db"));
+    let engine = Arc::new(OperationEngine::new(db.clone()));
+    let coordinator =
+        RepairCoordinator::with_platform(engine, db, Arc::new(UnavailableProvider { hold }));
+    start_assessment(&coordinator, OWNER).expect("start");
+    if hold {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while coordinator
+            .assessment_for_owner(OWNER)
+            .expect("snapshot")
+            .current_check_id
+            != "sfc-verify"
+        {
+            assert!(Instant::now() < deadline, "no progress was reported");
+            thread::sleep(Duration::from_millis(10));
+        }
+        coordinator.cancel_assessment(OWNER, "").expect("cancel");
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let settled = loop {
+        let current = coordinator.assessment_for_owner(OWNER).expect("snapshot");
+        if current.state != RepairAssessmentState::Scanning || Instant::now() > deadline {
+            break current;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    (settled, root, coordinator)
+}
+
+#[test]
+fn d34_an_assessment_with_unavailable_providers_is_ready_and_reports_them_unavailable() {
+    let (ready, root, _coordinator) = settled_assessment(false, "unavailable-ready");
+    assert_eq!(ready.state, RepairAssessmentState::Ready, "{ready:?}");
+    let codes: Vec<_> = ready
+        .checks
+        .iter()
+        .map(|c| c.result_code.as_str())
+        .collect();
+    assert_eq!(codes, ["WinReUnavailable", "RestoreUnavailable"]);
+    let intelligence = ready.intelligence.expect("typed recovery readiness");
+    assert_eq!(
+        intelligence.recovery.win_re,
+        aethercore_system_repair::FactState::Unavailable
+    );
+    assert_eq!(
+        intelligence.recovery.system_restore,
+        aethercore_system_repair::FactState::Unavailable
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn d34_a_cancelled_assessment_keeps_the_unavailable_provider_it_already_measured() {
+    let (cancelled, root, _coordinator) = settled_assessment(true, "unavailable-cancel");
+    assert_eq!(
+        cancelled.state,
+        RepairAssessmentState::Cancelled,
+        "{cancelled:?}"
+    );
+    assert!(cancelled.current_check_id.is_empty());
+    assert_eq!(cancelled.checks.len(), 1, "{cancelled:?}");
+    assert_eq!(cancelled.checks[0].result_code, "WinReUnavailable");
+    let _ = std::fs::remove_dir_all(root);
+}

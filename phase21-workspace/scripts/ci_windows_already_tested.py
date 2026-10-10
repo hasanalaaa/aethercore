@@ -2,7 +2,7 @@
 """Decides whether a push to main can skip the CI `windows` and `windows-candidate` jobs (lane 1, step 0).
 
 A fast-forward push puts a commit on main that already ran the whole CI as a pull request of this
-repository, on the same SHA. Running the ~40 minute windows job again on main tests nothing new.
+repository, on the same SHA. Running the two Windows jobs (~15 minutes each) again on main tests nothing new.
 It skips only when a `pull_request` run of ci.yml for exactly this SHA, from this repository's own
 branch, has BOTH a `windows` and a `windows-candidate` job that succeeded (the packaging candidate was
 split out of `windows`, so a run that has only the old single job proves nothing about it). Every other outcome - nothing found, a failure, a skip,
@@ -41,8 +41,8 @@ def main() -> int:
     repo, sha = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]
     try:
         skip = already_tested(repo, sha)
-    except Exception as error:  # fail closed: any doubt means the windows job runs
-        print(f"lookup failed, the windows job will run: {error}", file=sys.stderr)
+    except Exception as error:  # fail closed: any doubt means the windows jobs run
+        print(f"lookup failed, the windows jobs will run: {error}", file=sys.stderr)
         skip = False
     line = f"skip={'true' if skip else 'false'}"
     print(line)

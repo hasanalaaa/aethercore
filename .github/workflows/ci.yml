@@ -38,10 +38,11 @@ defaults:
 
 jobs:
   # Lane 1 step 0: a fast-forward push to main lands a commit that already ran this whole workflow as a
-  # pull request of this repository, on the same SHA; running the ~40 minute windows job again on main
-  # tests nothing new. This job says so only when it can prove it: a `pull_request` run of this workflow
-  # for exactly this SHA, from this repository's own branch, whose `windows` job succeeded. Any doubt -
-  # nothing found, a failure, a fork, a lookup that errors - and `windows` runs as before. Pull requests,
+  # pull request of this repository, on the same SHA; running the `windows` and `windows-candidate` jobs
+  # (~15 minutes each) again on main tests nothing new. This job says so only when it can prove it: a
+  # `pull_request` run of this workflow for exactly this SHA, from this repository's own branch, in which
+  # BOTH jobs succeeded. Any doubt - nothing found, a failure, a fork, a lookup that errors - and both
+  # run as before. Pull requests,
   # `workflow_dispatch` and everything else never reach this job.
   tested:
     if: github.event_name == 'push'

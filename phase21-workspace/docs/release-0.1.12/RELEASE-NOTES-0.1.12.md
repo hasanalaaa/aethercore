@@ -76,9 +76,9 @@ before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
 | Unavailable provider in the repair check | On the owner's healthy PC no provider was unavailable, so that part of the check was not observed. The check passed on real progress and a declared terminal state; the probe cancels the assessment at its first progress, because a full assessment outlasts the probe's 300 s budget. Recorded as "not observed on the owner's healthy machine" and never claimed | `DBT-P87-023` (accepted by owner decision D34) |
 | Driver search inside the service | The abortable Windows Update search was not measured in the installed service's own context | `DBT-P84-006` |
 
-## The 17 open ledger rows, grouped
+## The 18 open ledger rows, grouped
 
-(`docs/LEDGER.md` §1; count by its own rule: 243 rows, 17 open, 2 malformed.)
+(`docs/LEDGER.md` §1; count by its own rule: 244 rows, 18 open, 2 malformed.)
 
 - **Need an isolated Windows VM (6):** `DBT-P85-001`, `P85-002`, `P85-003`, `P85-004`, `P85-005`, `DBT-P84-006`.
 - **Need real hardware or an installed run (5):** `DBT-P86-005`, `DBT-P86-006`, `DBT-P41-001` (the VC++
@@ -88,6 +88,9 @@ before you run them: `INSTALL-UNSIGNED-0.1.12.md`.
   (gate token comparisons), `DBT-P79-001` (CI), `DBT-P55-006` (ARM64 build recipes), `DBT-P87-027` (the
   lifecycle's evidence path is not checked for freshness).
 - **The owner's own PC (1):** `DBT-P55-004` (recovery media not attached).
+- **A wire-format observation (1):** `DBT-D34-001` (a cancelled repair assessment's numeric state code is
+  "unspecified" while its text state is correctly "Cancelled"; nothing reads the code today, and fixing it
+  changes the wire contract, so it needs the owner).
 
 ## Known follow-ups (test tooling, not the product)
 
